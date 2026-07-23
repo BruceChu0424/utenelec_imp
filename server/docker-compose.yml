@@ -1,0 +1,24 @@
+# 开发用 PostgreSQL（含 pgcrypto）。生产请用受管数据库或加固的独立部署。
+services:
+  postgres:
+    # 用 postgis/postgis（本地已有镜像；基于 postgres:16，含 pgcrypto 扩展）
+    image: postgis/postgis:16-3.4
+    container_name: uten-imp-postgres
+    environment:
+      POSTGRES_DB: uten_imp
+      POSTGRES_USER: uten
+      POSTGRES_PASSWORD: uten
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    ports:
+      - "5433:5432"
+    volumes:
+      - uten_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uten -d uten_imp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  uten_pgdata:

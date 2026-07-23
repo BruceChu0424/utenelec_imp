@@ -1,0 +1,13 @@
+# 开发环境：宽松、详细日志、不强制 HTTPS
+server:
+  ssl:
+    enabled: false
+
+logging:
+  level:
+    com.uten.imp: DEBUG
+    org.springframework.security: INFO
+
+uten:
+  security:
+    require-https: false

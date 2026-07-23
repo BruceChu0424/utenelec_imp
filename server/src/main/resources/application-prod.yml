@@ -1,0 +1,18 @@
+# 生产环境：严格、静默、强制 HTTPS（建议前置反向代理终结 TLS）
+server:
+  ssl:
+    enabled: ${UTEN_SSL_ENABLED:false}   # 由反向代理终结 TLS 时保持 false 并配 X-Forwarded-Proto
+
+spring:
+  jpa:
+    show-sql: false
+
+uten:
+  security:
+    require-https: ${UTEN_REQUIRE_HTTPS:true}
+
+logging:
+  level:
+    com.uten.imp: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN

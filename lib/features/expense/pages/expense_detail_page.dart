@@ -1,0 +1,396 @@
+// 报销详情页
+// 文档：docs/03-页面/报销详情页.md（待写）
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_info_row.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_toast.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_section_header.dart';
+import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
+import '../models/expense_claim.dart';
+import '../models/expense_item.dart';
+import '../providers/expense_providers.dart';
+
+class ExpenseDetailPage extends ConsumerWidget {
+  const ExpenseDetailPage({super.key, required this.claimId});
+
+  final String claimId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final detail = ref.watch(expenseDetailProvider(claimId));
+
+    return Scaffold(
+      appBar: const UtenAppBar(showBackButton: true),
+      body: detail.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => UtenEmpty.error(
+          message: '加载失败：$e',
+          onAction: () => ref.invalidate(expenseDetailProvider(claimId)),
+        ),
+        data: (claim) {
+          if (claim == null) return const UtenEmpty(message: '报销单不存在');
+          return _Content(claim: claim);
+        },
+      ),
+    );
+  }
+}
+
+class _Content extends ConsumerWidget {
+  const _Content({required this.claim});
+  final ExpenseClaim claim;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final canSubmit = claim.status == ExpenseClaimStatus.draft;
+    final canWithdraw =
+        claim.status == ExpenseClaimStatus.submitted ||
+        claim.status == ExpenseClaimStatus.reviewing;
+    final canDelete = claim.status == ExpenseClaimStatus.draft;
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // 金额 Hero
+              _buildHero(theme),
+              const SizedBox(height: 16),
+
+              // 基本信息
+              UtenCard(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    UtenInfoRow(
+                      label: '标题',
+                      value: claim.title,
+                      isImportant: true,
+                    ),
+                    UtenInfoRow(label: '申请人', value: claim.applicantName),
+                    UtenInfoRow(label: '创建时间', value: _fmt(claim.createdAt)),
+                    UtenInfoRow(label: '提交时间', value: _fmt(claim.submittedAt)),
+                    if (claim.approvedAt != null)
+                      UtenInfoRow(label: '审批时间', value: _fmt(claim.approvedAt)),
+                    if (claim.paidAt != null)
+                      UtenInfoRow(
+                        label: '打款时间',
+                        value: _fmt(claim.paidAt),
+                        showDivider: false,
+                      ),
+                  ],
+                ),
+              ),
+
+              if (claim.remark != null) ...[
+                const SizedBox(height: 16),
+                _buildRemark(
+                  theme,
+                  '备注',
+                  claim.remark!,
+                  theme.colorScheme.surfaceContainerLow,
+                ),
+              ],
+
+              if (claim.rejectReason != null) ...[
+                const SizedBox(height: 12),
+                _buildRemark(
+                  theme,
+                  '驳回原因',
+                  claim.rejectReason!,
+                  UtenColors.error.withValues(alpha: 0.08),
+                  isWarning: true,
+                ),
+              ],
+
+              const SizedBox(height: 16),
+              // 明细（瀑布流网格：手机 1 列、平板 2 列、桌面 3-4 列）
+              const UtenSectionHeader(title: '报销明细'),
+              const SizedBox(height: 8),
+              UtenResponsiveGrid(
+                itemCount: claim.items.length,
+                spacing: 10,
+                itemBuilder: (context, i, _) =>
+                    _buildItemRow(theme, claim.items[i]),
+              ),
+              const SizedBox(height: 16),
+
+              // 合计
+              UtenCard(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    UtenInfoRow(
+                      label: '共 ${claim.items.length} 项',
+                      value: '¥ ${claim.totalAmount.toStringAsFixed(2)}',
+                      isImportant: true,
+                      showDivider: false,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // 底部操作栏
+        if (canSubmit || canWithdraw || canDelete)
+          UtenBottomActionBar(
+            child: Row(
+              children: [
+                if (canDelete) ...[
+                  UtenButton(
+                    type: UtenButtonType.ghost,
+                    icon: Icons.delete_outline_rounded,
+                    onPressed: () async {
+                      await deleteExpense(ref, claim.id);
+                      if (context.mounted) {
+                        UtenToast.success(context, '已删除');
+                        context.go(RouteName.expense);
+                      }
+                    },
+                    child: const Text('删除'),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: canSubmit
+                      ? UtenButton(
+                          icon: Icons.send_rounded,
+                          isExpanded: true,
+                          onPressed: () async {
+                            await submitExpense(ref, claim.id);
+                            if (context.mounted) {
+                              UtenToast.success(context, '已提交，等待审批');
+                            }
+                          },
+                          child: const Text('提交审批'),
+                        )
+                      : UtenButton(
+                          type: UtenButtonType.ghost,
+                          icon: Icons.undo_rounded,
+                          isExpanded: true,
+                          onPressed: () async {
+                            await withdrawExpense(ref, claim.id);
+                            if (context.mounted) {
+                              UtenToast.success(context, '已撤回');
+                            }
+                          },
+                          child: const Text('撤回'),
+                        ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildHero(ThemeData theme) {
+    return UtenCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '报销总额',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              UtenStatusBadge(
+                label: claim.status.label,
+                type: _statusBadgeType(claim.status),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '¥',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                claim.totalAmount.toStringAsFixed(2),
+                style: theme.textTheme.displayMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: UtenColors.primary,
+                  height: 1,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '共 ${claim.items.length} 项明细',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRemark(
+    ThemeData theme,
+    String title,
+    String content,
+    Color bg, {
+    bool isWarning = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isWarning
+              ? UtenColors.error.withValues(alpha: 0.3)
+              : theme.colorScheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isWarning
+                ? Icons.warning_amber_rounded
+                : Icons.info_outline_rounded,
+            size: 16,
+            color: isWarning
+                ? UtenColors.error
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isWarning
+                        ? UtenColors.error
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(content, style: theme.textTheme.bodyMedium),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemRow(ThemeData theme, ExpenseItem item) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: item.category.color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              item.category.icon,
+              color: item.category.color,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.category.label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (item.description != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      item.description!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    _fmt(item.date),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '¥ ${item.amount.toStringAsFixed(2)}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: UtenColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(DateTime? d) {
+    if (d == null) return '—';
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  UtenStatusBadgeType _statusBadgeType(ExpenseClaimStatus s) => switch (s) {
+    ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+    ExpenseClaimStatus.submitted => UtenStatusBadgeType.info,
+    ExpenseClaimStatus.reviewing => UtenStatusBadgeType.warning,
+    ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+    ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+    ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+  };
+}

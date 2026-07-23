@@ -1,0 +1,40 @@
+package com.uten.imp.common.web;
+
+import lombok.Getter;
+
+/** 业务错误码（统一返回 {code, message, fieldErrors?}，避免泄露后端细节/堆栈）。 */
+@Getter
+public enum ErrorCode {
+
+    BAD_CREDENTIALS(401, "账号或密码错误"),
+    ACCOUNT_LOCKED(401, "账号已锁定，请稍后再试"),
+    ACCOUNT_DISABLED(401, "账号已停用"),
+    MUST_CHANGE_PASSWORD(401, "首次登录需修改密码"),
+    UNAUTHORIZED(401, "未登录或会话已过期"),
+    FORBIDDEN(403, "无权限访问"),
+    NOT_FOUND(404, "资源不存在"),
+    CONFLICT(409, "数据冲突"),
+    VALIDATION_FAILED(422, "参数校验失败"),
+    PASSWORD_TOO_WEAK(422, "密码强度不足"),
+    PASSWORD_REUSE(422, "不能与最近用过的密码相同"),
+    RATE_LIMITED(429, "请求过于频繁，请稍后再试"),
+    BUSINESS(400, "业务处理失败"),
+    IS_EMPLOYEE(422, "该手机号为优腾员工账号，请走员工通道登录"),
+    SMS_CODE_INVALID(400, "验证码错误"),
+    SMS_CODE_EXPIRED(400, "验证码已过期，请重新获取"),
+    SMS_RATE_LIMITED(429, "验证码发送过于频繁，请稍后再试"),
+    QR_INVALID(400, "二维码无效或已损坏"),
+    QR_EXPIRED(400, "二维码已过期"),
+    QR_USED(400, "该访客凭证已使用"),
+    VISITOR_NOT_FOUND(404, "访客申请不存在"),
+    VISITOR_BLOCKED(403, "访客账号已被限制"),
+    INTERNAL(500, "服务器内部错误");
+
+    private final int httpStatus;
+    private final String defaultMessage;
+
+    ErrorCode(int httpStatus, String defaultMessage) {
+        this.httpStatus = httpStatus;
+        this.defaultMessage = defaultMessage;
+    }
+}

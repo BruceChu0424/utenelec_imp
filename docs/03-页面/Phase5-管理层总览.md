@@ -1,0 +1,35 @@
+# Phase 5 — 管理层总览
+
+> **manager 角色端**总纲。3 个页面：经营 Dashboard、多维分析、异常告警。全部**只读 + 决策辅助**。
+> 上层：[页面总览](页面总览.md)。全局机制见 [全局机制](../05-架构/全局机制.md)。
+
+---
+
+## 一、定位
+
+管理层在桌面/大屏看全公司经营全貌、自助下钻分析、跟踪异常告警，辅助决策。区别于员工 [工作台](工作台首页.md)（个人概览），这里是**全公司经营视角**。
+
+## 二、页面清单
+
+| # | 页面 | 路由 | 文档 |
+|---|---|---|---|
+| 1 | 经营 Dashboard | `/analytics/dashboard` | [经营Dashboard页.md](经营Dashboard页.md) |
+| 2 | 多维分析 | `/analytics/explore` | [多维分析页.md](多维分析页.md) |
+| 3 | 异常告警 | `/analytics/alerts` | [异常告警页.md](异常告警页.md) |
+
+## 三、角色权限
+- manager（只读全公司）/ admin。权限点门槛 `employee:view`（见全局机制 permission_by_path）。
+- 视角选择器：可切全公司/部门/员工（见全局机制 §2.3）。
+
+## 四、共同特征
+- **大屏优先**：KPI 矩阵 + 图表，rich 档可加动效；lite 降级为静态数字表。
+- **图表**：Phase 4 用 `UtenChartPlaceholder`，**Phase 5 选定图表库**（fl_chart vs syncfusion，见技术选型 §9）后替换。
+- **只读**：无写操作，导出走审计。
+- **实时性**：后端接入后定时刷新/推送。
+
+## 五、数据来源
+聚合 Phase 2-4 各模块：人员（Employee）、工资（Payroll）、报销（Expense）、产量（ProductionOutput）、库存（InventoryStock）、检测（LabTest）、设备（Hvac）。
+
+---
+
+**最后更新**：2026-07-22 · **状态**：总览定稿

@@ -1,0 +1,115 @@
+// 我的访客(被访人)：确认/拒绝转给自己的访客申请。
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/api_exception.dart';
+import '../../visitor/repositories/visitor_staff_repository.dart';
+import '../../visitor/widgets/visitor_status_ui.dart';
+import '../providers/visitor_approval_providers.dart';
+
+class MyVisitorsPage extends ConsumerWidget {
+  const MyVisitorsPage({super.key});
+
+  Future<void> _confirm(WidgetRef ref, String id, bool confirmed, AppLocalizations l10n) async {
+    try {
+      await ref.read(visitorStaffRepositoryProvider).hostConfirm(id, confirmed: confirmed);
+      ref.invalidate(myAsHostProvider);
+    } on ApiException catch (e) {
+      _toast(ref, e.message);
+    } catch (_) {
+      _toast(ref, l10n.commonError);
+    }
+  }
+
+  void _toast(WidgetRef ref, String msg) {
+    final ctx = ref.context;
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
+    final list = ref.watch(myAsHostProvider);
+    return Scaffold(
+      appBar: UtenAppBar(title: l10n.myVisitorsTitle, showBackButton: true),
+      body: RefreshIndicator(
+        onRefresh: () async => ref.invalidate(myAsHostProvider),
+        child: list.when(
+          loading: () => const UtenSkeletonList(itemCount: 4),
+          error: (e, _) => UtenEmpty.error(
+            message: '$e',
+            actionLabel: l10n.commonRetry,
+            onAction: () => ref.invalidate(myAsHostProvider),
+          ),
+          data: (items) {
+            if (items.isEmpty) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  const SizedBox(height: 80),
+                  UtenEmpty(icon: Icons.person_search_rounded, message: l10n.myVisitorsEmpty),
+                ],
+              );
+            }
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1600),
+                  child: UtenResponsiveGrid(
+                    itemCount: items.length,
+                    itemBuilder: (context, i, itemWidth) {
+                      final app = items[i];
+                      return UtenCard(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(app.visitorName,
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 4),
+                            Text('${l10n.visitorDetailPurpose}: ${app.visitPurpose}',
+                                style: Theme.of(context).textTheme.bodyMedium),
+                            const SizedBox(height: 4),
+                            Text('${l10n.visitorDetailVisitTime}: ${fmtDateTime(app.plannedVisitAt)}',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: UtenButton(
+                                    type: UtenButtonType.danger,
+                                    onPressed: () => _confirm(ref, app.id, false, l10n),
+                                    child: Text(l10n.myVisitorsReject),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: UtenButton(
+                                    onPressed: () => _confirm(ref, app.id, true, l10n),
+                                    child: Text(l10n.myVisitorsConfirm),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}

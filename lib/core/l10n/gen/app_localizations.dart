@@ -1177,6 +1177,1350 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'到访时间'**
   String get securityVisitTime;
+
+  /// No description provided for @navHrGroup.
+  ///
+  /// In zh, this message translates to:
+  /// **'人事管理'**
+  String get navHrGroup;
+
+  /// No description provided for @navHrEmployees.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工档案'**
+  String get navHrEmployees;
+
+  /// No description provided for @navHrDepartments.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门管理'**
+  String get navHrDepartments;
+
+  /// No description provided for @navHrOnboarding.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职办理'**
+  String get navHrOnboarding;
+
+  /// No description provided for @navHrPayrollGenerate.
+  ///
+  /// In zh, this message translates to:
+  /// **'工资条生成'**
+  String get navHrPayrollGenerate;
+
+  /// No description provided for @navHrNoticePublish.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知发布'**
+  String get navHrNoticePublish;
+
+  /// No description provided for @employeeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工档案'**
+  String get employeeTitle;
+
+  /// No description provided for @employeeFabOnboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职'**
+  String get employeeFabOnboard;
+
+  /// No description provided for @employeeSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索工号 / 姓名'**
+  String get employeeSearchHint;
+
+  /// No description provided for @employeeEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无员工'**
+  String get employeeEmpty;
+
+  /// No description provided for @employeeEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'点右下角「入职」添加新员工'**
+  String get employeeEmptyHint;
+
+  /// No description provided for @employeeLoadMore.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载更多'**
+  String get employeeLoadMore;
+
+  /// No description provided for @employeeDetailTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工详情'**
+  String get employeeDetailTitle;
+
+  /// No description provided for @employeeDetailBasic.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本信息'**
+  String get employeeDetailBasic;
+
+  /// No description provided for @employeeDetailContact.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系与地址'**
+  String get employeeDetailContact;
+
+  /// No description provided for @employeeDetailOrg.
+  ///
+  /// In zh, this message translates to:
+  /// **'组织与用工'**
+  String get employeeDetailOrg;
+
+  /// No description provided for @employeeDetailContract.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同 / 薪资（按权限可见）'**
+  String get employeeDetailContract;
+
+  /// No description provided for @employeeDetailEmergency.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急联系人'**
+  String get employeeDetailEmergency;
+
+  /// No description provided for @employeeDetailHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'任职轨迹'**
+  String get employeeDetailHistory;
+
+  /// No description provided for @employeeFieldCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'工号'**
+  String get employeeFieldCode;
+
+  /// No description provided for @employeeFieldName.
+  ///
+  /// In zh, this message translates to:
+  /// **'姓名'**
+  String get employeeFieldName;
+
+  /// No description provided for @employeeFieldGender.
+  ///
+  /// In zh, this message translates to:
+  /// **'性别'**
+  String get employeeFieldGender;
+
+  /// No description provided for @employeeFieldIdType.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件类型'**
+  String get employeeFieldIdType;
+
+  /// No description provided for @employeeFieldIdNumber.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件号码'**
+  String get employeeFieldIdNumber;
+
+  /// No description provided for @employeeFieldBirthDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'出生日期'**
+  String get employeeFieldBirthDate;
+
+  /// No description provided for @employeeFieldEthnicity.
+  ///
+  /// In zh, this message translates to:
+  /// **'民族'**
+  String get employeeFieldEthnicity;
+
+  /// No description provided for @employeeFieldPoliticalStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'政治面貌'**
+  String get employeeFieldPoliticalStatus;
+
+  /// No description provided for @employeeFieldMaritalStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'婚姻状况'**
+  String get employeeFieldMaritalStatus;
+
+  /// No description provided for @employeeFieldPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机号'**
+  String get employeeFieldPhone;
+
+  /// No description provided for @employeeFieldOfficePhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'办公电话'**
+  String get employeeFieldOfficePhone;
+
+  /// No description provided for @employeeFieldEmail.
+  ///
+  /// In zh, this message translates to:
+  /// **'企业邮箱'**
+  String get employeeFieldEmail;
+
+  /// No description provided for @employeeFieldHujiAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'户籍地址'**
+  String get employeeFieldHujiAddress;
+
+  /// No description provided for @employeeFieldResidenceAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'现居住地'**
+  String get employeeFieldResidenceAddress;
+
+  /// No description provided for @employeeFieldDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'所属部门'**
+  String get employeeFieldDepartment;
+
+  /// No description provided for @employeeFieldPosition.
+  ///
+  /// In zh, this message translates to:
+  /// **'岗位'**
+  String get employeeFieldPosition;
+
+  /// No description provided for @employeeFieldSupervisor.
+  ///
+  /// In zh, this message translates to:
+  /// **'直属上级'**
+  String get employeeFieldSupervisor;
+
+  /// No description provided for @employeeFieldHireDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职日期'**
+  String get employeeFieldHireDate;
+
+  /// No description provided for @employeeFieldConfirmedDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'转正日期'**
+  String get employeeFieldConfirmedDate;
+
+  /// No description provided for @employeeFieldStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作状态'**
+  String get employeeFieldStatus;
+
+  /// No description provided for @employeeFieldEmploymentType.
+  ///
+  /// In zh, this message translates to:
+  /// **'用工形式'**
+  String get employeeFieldEmploymentType;
+
+  /// No description provided for @employeeFieldWorkLocation.
+  ///
+  /// In zh, this message translates to:
+  /// **'办公地点'**
+  String get employeeFieldWorkLocation;
+
+  /// No description provided for @employeeFieldSeatNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'工位号'**
+  String get employeeFieldSeatNo;
+
+  /// No description provided for @employeeFieldContractType.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同类型'**
+  String get employeeFieldContractType;
+
+  /// No description provided for @employeeFieldContractPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同起止'**
+  String get employeeFieldContractPeriod;
+
+  /// No description provided for @employeeFieldProbation.
+  ///
+  /// In zh, this message translates to:
+  /// **'试用期'**
+  String get employeeFieldProbation;
+
+  /// No description provided for @employeeFieldRenewCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'续签次数'**
+  String get employeeFieldRenewCount;
+
+  /// No description provided for @employeeFieldBaseSalary.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本工资'**
+  String get employeeFieldBaseSalary;
+
+  /// No description provided for @employeeFieldPerfSalary.
+  ///
+  /// In zh, this message translates to:
+  /// **'绩效/补贴'**
+  String get employeeFieldPerfSalary;
+
+  /// No description provided for @employeeFieldSocialBase.
+  ///
+  /// In zh, this message translates to:
+  /// **'社保基数'**
+  String get employeeFieldSocialBase;
+
+  /// No description provided for @employeeFieldHousingBase.
+  ///
+  /// In zh, this message translates to:
+  /// **'公积金基数'**
+  String get employeeFieldHousingBase;
+
+  /// No description provided for @employeeFieldBankBranch.
+  ///
+  /// In zh, this message translates to:
+  /// **'开户银行'**
+  String get employeeFieldBankBranch;
+
+  /// No description provided for @employeeFieldBankAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'银行卡号'**
+  String get employeeFieldBankAccount;
+
+  /// No description provided for @employeeContractPeriodValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'{start} ~ {end}'**
+  String employeeContractPeriodValue(Object end, Object start);
+
+  /// No description provided for @employeeProbationValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'{months} 个月（至 {end}）'**
+  String employeeProbationValue(Object end, Object months);
+
+  /// No description provided for @employeeRenewCountValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count}'**
+  String employeeRenewCountValue(Object count);
+
+  /// No description provided for @employeeEditTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑员工'**
+  String get employeeEditTitle;
+
+  /// No description provided for @employeeEditBasic.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本信息'**
+  String get employeeEditBasic;
+
+  /// No description provided for @employeeEditOrg.
+  ///
+  /// In zh, this message translates to:
+  /// **'组织信息'**
+  String get employeeEditOrg;
+
+  /// No description provided for @employeeEditFieldPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机'**
+  String get employeeEditFieldPhone;
+
+  /// No description provided for @employeeEditFieldDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门'**
+  String get employeeEditFieldDepartment;
+
+  /// No description provided for @employeeEditFieldPosition.
+  ///
+  /// In zh, this message translates to:
+  /// **'岗位'**
+  String get employeeEditFieldPosition;
+
+  /// No description provided for @employeeEditFieldEmploymentType.
+  ///
+  /// In zh, this message translates to:
+  /// **'用工性质'**
+  String get employeeEditFieldEmploymentType;
+
+  /// No description provided for @employeeEditFieldStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工状态'**
+  String get employeeEditFieldStatus;
+
+  /// No description provided for @employeeEditSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存（Mock）'**
+  String get employeeEditSaved;
+
+  /// No description provided for @employeeEditLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败：{error}'**
+  String employeeEditLoadFailed(Object error);
+
+  /// No description provided for @employeeEditNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工不存在'**
+  String get employeeEditNotFound;
+
+  /// No description provided for @employeeEditRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'必填'**
+  String get employeeEditRequired;
+
+  /// No description provided for @employeeOnboardTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'新员工入职'**
+  String get employeeOnboardTitle;
+
+  /// No description provided for @employeeOnboardGroupProfile.
+  ///
+  /// In zh, this message translates to:
+  /// **'档案'**
+  String get employeeOnboardGroupProfile;
+
+  /// No description provided for @employeeOnboardGroupOrg.
+  ///
+  /// In zh, this message translates to:
+  /// **'组织'**
+  String get employeeOnboardGroupOrg;
+
+  /// No description provided for @employeeOnboardGroupPay.
+  ///
+  /// In zh, this message translates to:
+  /// **'薪资 / 银行（可选，仅 HR/管理员可见）'**
+  String get employeeOnboardGroupPay;
+
+  /// No description provided for @employeeOnboardSubmit.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交入职'**
+  String get employeeOnboardSubmit;
+
+  /// No description provided for @employeeOnboardSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职成功：账号=工号，初始密码=身份证后六位（首登需改）'**
+  String get employeeOnboardSuccess;
+
+  /// No description provided for @employeeOnboardSubmitFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交失败，请重试'**
+  String get employeeOnboardSubmitFailed;
+
+  /// No description provided for @employeeOnboardNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交后将自动创建登录账号：账号=工号，初始密码=身份证后六位，首次登录必须修改密码。'**
+  String get employeeOnboardNote;
+
+  /// No description provided for @employeeOnboardHintCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'如 E1001'**
+  String get employeeOnboardHintCode;
+
+  /// No description provided for @employeeOnboardHintName.
+  ///
+  /// In zh, this message translates to:
+  /// **'张三'**
+  String get employeeOnboardHintName;
+
+  /// No description provided for @employeeOnboardHintIdNumber.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入身份证号'**
+  String get employeeOnboardHintIdNumber;
+
+  /// No description provided for @employeeOnboardIdNumberInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份证号格式不正确'**
+  String get employeeOnboardIdNumberInvalid;
+
+  /// No description provided for @employeeOnboardHintPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'11 位手机号'**
+  String get employeeOnboardHintPhone;
+
+  /// No description provided for @employeeOnboardPhoneRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机号不能为空'**
+  String get employeeOnboardPhoneRequired;
+
+  /// No description provided for @employeeOnboardPhoneInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机号格式不正确'**
+  String get employeeOnboardPhoneInvalid;
+
+  /// No description provided for @employeeOnboardEmailOptional.
+  ///
+  /// In zh, this message translates to:
+  /// **'可选'**
+  String get employeeOnboardEmailOptional;
+
+  /// No description provided for @employeeOnboardHireDateHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'yyyy-MM-dd'**
+  String get employeeOnboardHireDateHint;
+
+  /// No description provided for @employeeOnboardPickHireDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择入职日期'**
+  String get employeeOnboardPickHireDate;
+
+  /// No description provided for @employeeOnboardPickDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择部门'**
+  String get employeeOnboardPickDepartment;
+
+  /// No description provided for @employeeOnboardFieldRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'{field}不能为空'**
+  String employeeOnboardFieldRequired(Object field);
+
+  /// No description provided for @employeeOnboardLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败'**
+  String get employeeOnboardLoadFailed;
+
+  /// No description provided for @idTypeIdCard.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份证'**
+  String get idTypeIdCard;
+
+  /// No description provided for @idTypePassport.
+  ///
+  /// In zh, this message translates to:
+  /// **'护照'**
+  String get idTypePassport;
+
+  /// No description provided for @idTypeHmtPermit.
+  ///
+  /// In zh, this message translates to:
+  /// **'港澳台通行证'**
+  String get idTypeHmtPermit;
+
+  /// No description provided for @idTypeOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他'**
+  String get idTypeOther;
+
+  /// No description provided for @employeeOffboardTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'离职办理'**
+  String get employeeOffboardTitle;
+
+  /// No description provided for @employeeOffboardStepStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'发起离职'**
+  String get employeeOffboardStepStart;
+
+  /// No description provided for @employeeOffboardStepHandover.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作交接'**
+  String get employeeOffboardStepHandover;
+
+  /// No description provided for @employeeOffboardStepCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'回收确认'**
+  String get employeeOffboardStepCheck;
+
+  /// No description provided for @employeeOffboardFieldType.
+  ///
+  /// In zh, this message translates to:
+  /// **'离职类型'**
+  String get employeeOffboardFieldType;
+
+  /// No description provided for @employeeOffboardFieldDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'离职日期'**
+  String get employeeOffboardFieldDate;
+
+  /// No description provided for @employeeOffboardPickDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择日期'**
+  String get employeeOffboardPickDate;
+
+  /// No description provided for @employeeOffboardFieldReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'离职原因'**
+  String get employeeOffboardFieldReason;
+
+  /// No description provided for @employeeOffboardFieldHandover.
+  ///
+  /// In zh, this message translates to:
+  /// **'交接说明（文档/项目/权限）'**
+  String get employeeOffboardFieldHandover;
+
+  /// No description provided for @employeeOffboardPickDateRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择离职日期'**
+  String get employeeOffboardPickDateRequired;
+
+  /// No description provided for @employeeOffboardChecksRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请确认所有回收项'**
+  String get employeeOffboardChecksRequired;
+
+  /// No description provided for @employeeOffboardConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认办理离职？'**
+  String get employeeOffboardConfirmTitle;
+
+  /// No description provided for @employeeOffboardConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工账号将被停用。'**
+  String get employeeOffboardConfirmBody;
+
+  /// No description provided for @employeeOffboardConfirmAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认办理离职'**
+  String get employeeOffboardConfirmAction;
+
+  /// No description provided for @employeeOffboardNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get employeeOffboardNext;
+
+  /// No description provided for @employeeOffboardBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一步'**
+  String get employeeOffboardBack;
+
+  /// No description provided for @employeeOffboardCompleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'离职办理完成（Mock）'**
+  String get employeeOffboardCompleted;
+
+  /// No description provided for @employeeOffboardLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败'**
+  String get employeeOffboardLoadFailed;
+
+  /// No description provided for @resignTypeVoluntary.
+  ///
+  /// In zh, this message translates to:
+  /// **'主动辞职'**
+  String get resignTypeVoluntary;
+
+  /// No description provided for @resignTypeDismissed.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司辞退'**
+  String get resignTypeDismissed;
+
+  /// No description provided for @resignTypeContractEnd.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同到期'**
+  String get resignTypeContractEnd;
+
+  /// No description provided for @resignTypeRetire.
+  ///
+  /// In zh, this message translates to:
+  /// **'退休'**
+  String get resignTypeRetire;
+
+  /// No description provided for @resignCheckAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'收回门禁卡'**
+  String get resignCheckAccess;
+
+  /// No description provided for @resignCheckAssets.
+  ///
+  /// In zh, this message translates to:
+  /// **'回收公司资产'**
+  String get resignCheckAssets;
+
+  /// No description provided for @resignCheckAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'停用系统账号'**
+  String get resignCheckAccount;
+
+  /// No description provided for @resignCheckSocial.
+  ///
+  /// In zh, this message translates to:
+  /// **'停缴社保公积金'**
+  String get resignCheckSocial;
+
+  /// No description provided for @employeeStatusActive.
+  ///
+  /// In zh, this message translates to:
+  /// **'在职'**
+  String get employeeStatusActive;
+
+  /// No description provided for @employeeStatusProbation.
+  ///
+  /// In zh, this message translates to:
+  /// **'试用'**
+  String get employeeStatusProbation;
+
+  /// No description provided for @employeeStatusOnLeave.
+  ///
+  /// In zh, this message translates to:
+  /// **'休假'**
+  String get employeeStatusOnLeave;
+
+  /// No description provided for @employeeStatusResigned.
+  ///
+  /// In zh, this message translates to:
+  /// **'离职'**
+  String get employeeStatusResigned;
+
+  /// No description provided for @employeeStatusUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'未知'**
+  String get employeeStatusUnknown;
+
+  /// No description provided for @genderMale.
+  ///
+  /// In zh, this message translates to:
+  /// **'男'**
+  String get genderMale;
+
+  /// No description provided for @genderFemale.
+  ///
+  /// In zh, this message translates to:
+  /// **'女'**
+  String get genderFemale;
+
+  /// No description provided for @employmentTypeRegular.
+  ///
+  /// In zh, this message translates to:
+  /// **'正式'**
+  String get employmentTypeRegular;
+
+  /// No description provided for @employmentTypeDispatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'劳务派遣'**
+  String get employmentTypeDispatch;
+
+  /// No description provided for @employmentTypeIntern.
+  ///
+  /// In zh, this message translates to:
+  /// **'实习'**
+  String get employmentTypeIntern;
+
+  /// No description provided for @employmentTypeOutsource.
+  ///
+  /// In zh, this message translates to:
+  /// **'外包'**
+  String get employmentTypeOutsource;
+
+  /// No description provided for @contractTypeFixed.
+  ///
+  /// In zh, this message translates to:
+  /// **'固定期限'**
+  String get contractTypeFixed;
+
+  /// No description provided for @contractTypeOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'无固定期限'**
+  String get contractTypeOpen;
+
+  /// No description provided for @contractTypeTask.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务'**
+  String get contractTypeTask;
+
+  /// No description provided for @contractTypeIntern.
+  ///
+  /// In zh, this message translates to:
+  /// **'实习'**
+  String get contractTypeIntern;
+
+  /// No description provided for @historyEventOnboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职'**
+  String get historyEventOnboard;
+
+  /// No description provided for @historyEventTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'调岗'**
+  String get historyEventTransfer;
+
+  /// No description provided for @historyEventResign.
+  ///
+  /// In zh, this message translates to:
+  /// **'离职'**
+  String get historyEventResign;
+
+  /// No description provided for @departmentTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门管理'**
+  String get departmentTitle;
+
+  /// No description provided for @departmentTreeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'组织架构'**
+  String get departmentTreeTitle;
+
+  /// No description provided for @departmentEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择部门'**
+  String get departmentEmpty;
+
+  /// No description provided for @departmentEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'点右上角图标打开部门树'**
+  String get departmentEmptyHint;
+
+  /// No description provided for @departmentEmptySelect.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择左侧部门'**
+  String get departmentEmptySelect;
+
+  /// No description provided for @departmentTooltipAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增部门'**
+  String get departmentTooltipAdd;
+
+  /// No description provided for @departmentTooltipRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get departmentTooltipRefresh;
+
+  /// No description provided for @departmentTooltipTree.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门树'**
+  String get departmentTooltipTree;
+
+  /// No description provided for @departmentDialogAddTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增部门'**
+  String get departmentDialogAddTitle;
+
+  /// No description provided for @departmentDialogDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除部门'**
+  String get departmentDialogDeleteTitle;
+
+  /// No description provided for @departmentFieldCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门编码'**
+  String get departmentFieldCode;
+
+  /// No description provided for @departmentFieldCodeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'如 DEPT-XX'**
+  String get departmentFieldCodeHint;
+
+  /// No description provided for @departmentFieldName.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门名称'**
+  String get departmentFieldName;
+
+  /// No description provided for @departmentFieldLevel.
+  ///
+  /// In zh, this message translates to:
+  /// **'层级'**
+  String get departmentFieldLevel;
+
+  /// No description provided for @departmentCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建'**
+  String get departmentCreate;
+
+  /// No description provided for @departmentDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get departmentDelete;
+
+  /// No description provided for @departmentRequireCodeAndName.
+  ///
+  /// In zh, this message translates to:
+  /// **'编码与名称必填'**
+  String get departmentRequireCodeAndName;
+
+  /// No description provided for @departmentCreated.
+  ///
+  /// In zh, this message translates to:
+  /// **'已创建'**
+  String get departmentCreated;
+
+  /// No description provided for @departmentDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除'**
+  String get departmentDeleted;
+
+  /// No description provided for @departmentDeleteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认删除「{name}」？仅无子部门且无员工的叶子部门可删。'**
+  String departmentDeleteConfirm(Object name);
+
+  /// No description provided for @departmentLevelAndCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'{level} · 编码 {code}'**
+  String departmentLevelAndCode(Object level, Object code);
+
+  /// No description provided for @departmentStatEmployees.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工'**
+  String get departmentStatEmployees;
+
+  /// No description provided for @departmentStatChildren.
+  ///
+  /// In zh, this message translates to:
+  /// **'子部门'**
+  String get departmentStatChildren;
+
+  /// No description provided for @departmentStatManager.
+  ///
+  /// In zh, this message translates to:
+  /// **'负责人'**
+  String get departmentStatManager;
+
+  /// No description provided for @departmentStatParent.
+  ///
+  /// In zh, this message translates to:
+  /// **'上级'**
+  String get departmentStatParent;
+
+  /// No description provided for @departmentEmployeesHeader.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工（{count}）'**
+  String departmentEmployeesHeader(Object count);
+
+  /// No description provided for @departmentEmployeesEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'该部门（含子部门）暂无员工'**
+  String get departmentEmployeesEmpty;
+
+  /// No description provided for @departmentStatValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'{label}：{value}'**
+  String departmentStatValue(Object label, Object value);
+
+  /// No description provided for @departmentLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败'**
+  String get departmentLoadFailed;
+
+  /// No description provided for @departmentLevelCompany.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司'**
+  String get departmentLevelCompany;
+
+  /// No description provided for @departmentLevelDecision.
+  ///
+  /// In zh, this message translates to:
+  /// **'决策层'**
+  String get departmentLevelDecision;
+
+  /// No description provided for @departmentLevelManagement.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理中心'**
+  String get departmentLevelManagement;
+
+  /// No description provided for @departmentLevelPrimary.
+  ///
+  /// In zh, this message translates to:
+  /// **'一级部门'**
+  String get departmentLevelPrimary;
+
+  /// No description provided for @departmentLevelSecondary.
+  ///
+  /// In zh, this message translates to:
+  /// **'二级班组'**
+  String get departmentLevelSecondary;
+
+  /// No description provided for @departmentLevelTertiary.
+  ///
+  /// In zh, this message translates to:
+  /// **'三级科室'**
+  String get departmentLevelTertiary;
+
+  /// No description provided for @payrollGenerateTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'工资条生成'**
+  String get payrollGenerateTitle;
+
+  /// No description provided for @payrollStepScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择范围'**
+  String get payrollStepScope;
+
+  /// No description provided for @payrollStepItems.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置薪酬项'**
+  String get payrollStepItems;
+
+  /// No description provided for @payrollStepPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'预览计算'**
+  String get payrollStepPreview;
+
+  /// No description provided for @payrollStepSubmit.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交审核'**
+  String get payrollStepSubmit;
+
+  /// No description provided for @payrollFieldMonth.
+  ///
+  /// In zh, this message translates to:
+  /// **'工资月份'**
+  String get payrollFieldMonth;
+
+  /// No description provided for @payrollFieldScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'生成范围'**
+  String get payrollFieldScope;
+
+  /// No description provided for @payrollItemOvertime.
+  ///
+  /// In zh, this message translates to:
+  /// **'加班费 (+15%)'**
+  String get payrollItemOvertime;
+
+  /// No description provided for @payrollItemBonus.
+  ///
+  /// In zh, this message translates to:
+  /// **'绩效奖金 (+10%)'**
+  String get payrollItemBonus;
+
+  /// No description provided for @payrollItemSocial.
+  ///
+  /// In zh, this message translates to:
+  /// **'社保公积金 (-10.5%)'**
+  String get payrollItemSocial;
+
+  /// No description provided for @payrollItemTax.
+  ///
+  /// In zh, this message translates to:
+  /// **'个人所得税 (-5%)'**
+  String get payrollItemTax;
+
+  /// No description provided for @payrollSubmitNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交后将进入财务审核流程，审核通过后由人事发布给员工。'**
+  String get payrollSubmitNote;
+
+  /// No description provided for @payrollSubmitButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交审核'**
+  String get payrollSubmitButton;
+
+  /// No description provided for @payrollSubmitted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已提交审核，等待财务审核（Mock）'**
+  String get payrollSubmitted;
+
+  /// No description provided for @payrollLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败：{error}'**
+  String payrollLoadFailed(Object error);
+
+  /// No description provided for @payrollEmptyPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'该范围无可计算员工'**
+  String get payrollEmptyPreview;
+
+  /// No description provided for @payrollTableTotalLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'合计'**
+  String get payrollTableTotalLabel;
+
+  /// No description provided for @payrollTableTotalValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'¥ {total} · {count} 人'**
+  String payrollTableTotalValue(Object total, Object count);
+
+  /// No description provided for @payrollTableHeaderName.
+  ///
+  /// In zh, this message translates to:
+  /// **'工号/姓名'**
+  String get payrollTableHeaderName;
+
+  /// No description provided for @payrollTableHeaderNet.
+  ///
+  /// In zh, this message translates to:
+  /// **'实发'**
+  String get payrollTableHeaderNet;
+
+  /// No description provided for @payrollTableRowName.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}（{code}）'**
+  String payrollTableRowName(Object name, Object code);
+
+  /// No description provided for @payrollTableRowNet.
+  ///
+  /// In zh, this message translates to:
+  /// **'¥ {net}'**
+  String payrollTableRowNet(Object net);
+
+  /// No description provided for @payrollNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get payrollNext;
+
+  /// No description provided for @payrollBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一步'**
+  String get payrollBack;
+
+  /// No description provided for @payrollDeptAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全员'**
+  String get payrollDeptAll;
+
+  /// No description provided for @payrollDeptProduction.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产部'**
+  String get payrollDeptProduction;
+
+  /// No description provided for @payrollDeptQuality.
+  ///
+  /// In zh, this message translates to:
+  /// **'质量部'**
+  String get payrollDeptQuality;
+
+  /// No description provided for @payrollDeptHr.
+  ///
+  /// In zh, this message translates to:
+  /// **'人事部'**
+  String get payrollDeptHr;
+
+  /// No description provided for @payrollDeptFinance.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务部'**
+  String get payrollDeptFinance;
+
+  /// No description provided for @noticePublishTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布通知'**
+  String get noticePublishTitle;
+
+  /// No description provided for @noticePublishSaveDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'存草稿'**
+  String get noticePublishSaveDraft;
+
+  /// No description provided for @noticePublishDraftSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存草稿（Mock）'**
+  String get noticePublishDraftSaved;
+
+  /// No description provided for @noticePublishPublishButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布'**
+  String get noticePublishPublishButton;
+
+  /// No description provided for @noticePublishTopPriority.
+  ///
+  /// In zh, this message translates to:
+  /// **'置顶'**
+  String get noticePublishTopPriority;
+
+  /// No description provided for @noticePublishTitleHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知标题（必填）'**
+  String get noticePublishTitleHint;
+
+  /// No description provided for @noticePublishContentHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知正文……'**
+  String get noticePublishContentHint;
+
+  /// No description provided for @noticePublishScopeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'可见范围'**
+  String get noticePublishScopeTitle;
+
+  /// No description provided for @noticePublishScopeAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全员'**
+  String get noticePublishScopeAll;
+
+  /// No description provided for @noticePublishScopeDept.
+  ///
+  /// In zh, this message translates to:
+  /// **'按部门'**
+  String get noticePublishScopeDept;
+
+  /// No description provided for @noticePublishFieldDept.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门'**
+  String get noticePublishFieldDept;
+
+  /// No description provided for @noticePublishScopeAllHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将通知到全公司所有员工'**
+  String get noticePublishScopeAllHint;
+
+  /// No description provided for @noticePublishScopeDeptHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将通知到「{dept}」全体员工'**
+  String noticePublishScopeDeptHint(Object dept);
+
+  /// No description provided for @noticePublishValidateTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写标题'**
+  String get noticePublishValidateTitle;
+
+  /// No description provided for @noticePublishValidateContent.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写正文'**
+  String get noticePublishValidateContent;
+
+  /// No description provided for @noticePublishConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认发布？'**
+  String get noticePublishConfirmTitle;
+
+  /// No description provided for @noticePublishConfirmBodyAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'将通知到全员'**
+  String get noticePublishConfirmBodyAll;
+
+  /// No description provided for @noticePublishConfirmBodyDept.
+  ///
+  /// In zh, this message translates to:
+  /// **'将通知到「{dept}」'**
+  String noticePublishConfirmBodyDept(Object dept);
+
+  /// No description provided for @noticePublishPublished.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知已发布（Mock）'**
+  String get noticePublishPublished;
+
+  /// No description provided for @noticeTypeAnnouncement.
+  ///
+  /// In zh, this message translates to:
+  /// **'公告'**
+  String get noticeTypeAnnouncement;
+
+  /// No description provided for @noticeTypePolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'制度'**
+  String get noticeTypePolicy;
+
+  /// No description provided for @noticeTypeBenefit.
+  ///
+  /// In zh, this message translates to:
+  /// **'福利'**
+  String get noticeTypeBenefit;
+
+  /// No description provided for @noticeTypeSystem.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统'**
+  String get noticeTypeSystem;
+
+  /// No description provided for @noticeTypeUrgent.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急'**
+  String get noticeTypeUrgent;
 }
 
 class _AppLocalizationsDelegate

@@ -3,6 +3,7 @@
 // 递归渲染组织架构；选中高亮、可选删除按钮。改这里全站部门树一致。
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../models/department_node.dart';
 
 class DepartmentTree extends StatelessWidget {
@@ -26,6 +27,7 @@ class DepartmentTree extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -33,7 +35,12 @@ class DepartmentTree extends StatelessWidget {
           Container(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             color: theme.colorScheme.surface,
-            child: Text('组织架构', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            child: Text(
+              l10n.departmentTreeTitle,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         Expanded(
           child: ListView(
@@ -57,31 +64,53 @@ class DepartmentTree extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
         ),
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-        child: Row(children: [
-          Icon(hasChildren ? Icons.account_tree_outlined : Icons.circle_outlined, size: 18),
-          const SizedBox(width: 8),
-          Expanded(child: Text(node.name, overflow: TextOverflow.ellipsis)),
-          if (node.headcount != null && node.headcount! > 0)
-            Text('${node.headcount}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-          if (onDelete != null) ...[
-            const SizedBox(width: 4),
-            InkWell(
-              onTap: () => onDelete!(node),
-              child: const Icon(Icons.delete_outline, size: 16, color: Colors.grey),
+        child: Row(
+          children: [
+            Icon(
+              hasChildren ? Icons.account_tree_outlined : Icons.circle_outlined,
+              size: 18,
             ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(node.name, overflow: TextOverflow.ellipsis)),
+            if (node.headcount != null && node.headcount! > 0)
+              Text(
+                '${node.headcount}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            if (onDelete != null) ...[
+              const SizedBox(width: 4),
+              InkWell(
+                onTap: () => onDelete!(node),
+                child: const Icon(
+                  Icons.delete_outline,
+                  size: 16,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
           ],
-        ]),
+        ),
       ),
     );
     if (!hasChildren) {
-      return Padding(padding: EdgeInsets.only(left: depth * 12.0, right: 8, top: 1, bottom: 1), child: title);
+      return Padding(
+        padding: EdgeInsets.only(
+          left: depth * 12.0,
+          right: 8,
+          top: 1,
+          bottom: 1,
+        ),
+        child: title,
+      );
     }
     return ExpansionTile(
       initiallyExpanded: depth < initiallyExpandDepth,
       tilePadding: EdgeInsets.only(left: depth * 8.0, right: 8),
       dense: true,
       title: title,
-      children: [for (final c in node.children) _buildNode(c, depth + 1, context)],
+      children: [
+        for (final c in node.children) _buildNode(c, depth + 1, context),
+      ],
     );
   }
 }

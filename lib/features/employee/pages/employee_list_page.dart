@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_person_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
@@ -22,12 +23,7 @@ class EmployeeListPage extends ConsumerStatefulWidget {
 }
 
 class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
-  static const _statusMap = {
-    'active': '在职',
-    'probation': '试用',
-    'onLeave': '休假',
-    'resigned': '离职',
-  };
+  static const _statusKeys = ['active', 'probation', 'onLeave', 'resigned'];
 
   final _searchCtl = TextEditingController();
   String _search = '';
@@ -72,7 +68,9 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     });
     _page = 1;
     try {
-      final r = await ref.read(employeeRepositoryProvider).list(
+      final r = await ref
+          .read(employeeRepositoryProvider)
+          .list(
             page: 1,
             size: 20,
             search: _search.isEmpty ? null : _search,
@@ -95,7 +93,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = '加载失败';
+        _error = AppLocalizations.of(context).employeeOnboardLoadFailed;
         _loading = false;
       });
     }
@@ -105,7 +103,9 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     if (_loadingMore || _page >= _totalPages) return;
     setState(() => _loadingMore = true);
     try {
-      final r = await ref.read(employeeRepositoryProvider).list(
+      final r = await ref
+          .read(employeeRepositoryProvider)
+          .list(
             page: _page + 1,
             size: 20,
             search: _search.isEmpty ? null : _search,
@@ -137,11 +137,12 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('员工档案')),
+      appBar: AppBar(title: Text(l10n.employeeTitle)),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.person_add_rounded),
-        label: const Text('入职'),
+        label: Text(l10n.employeeFabOnboard),
         onPressed: () async {
           await context.push('/employee/onboarding');
           _reload();
@@ -154,7 +155,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
             child: TextField(
               controller: _searchCtl,
               decoration: InputDecoration(
-                hintText: '搜索工号 / 姓名',
+                hintText: l10n.employeeSearchHint,
                 prefixIcon: const Icon(Icons.search_rounded, size: 20),
                 isDense: true,
                 border: const OutlineInputBorder(),
@@ -172,14 +173,14 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: _statusMap.entries.map((e) {
-                final selected = _statuses.contains(e.key);
+              children: _statusKeys.map((key) {
+                final selected = _statuses.contains(key);
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: FilterChip(
-                    label: Text(e.value),
+                    label: Text(_statusLabel(l10n, key)),
                     selected: selected,
-                    onSelected: (_) => _toggleStatus(e.key),
+                    onSelected: (_) => _toggleStatus(key),
                   ),
                 );
               }).toList(),
@@ -192,16 +193,29 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     );
   }
 
+  String _statusLabel(AppLocalizations l10n, String key) => switch (key) {
+    'active' => l10n.employeeStatusActive,
+    'probation' => l10n.employeeStatusProbation,
+    'onLeave' => l10n.employeeStatusOnLeave,
+    'resigned' => l10n.employeeStatusResigned,
+    _ => key,
+  };
+
   Widget _body() {
+    final l10n = AppLocalizations.of(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
-      return UtenEmpty.error(message: _error, actionLabel: '重试', onAction: _reload);
+      return UtenEmpty.error(
+        message: _error,
+        actionLabel: l10n.commonRetry,
+        onAction: _reload,
+      );
     }
     if (_items.isEmpty) {
       return UtenEmpty(
         icon: Icons.people_outline_rounded,
-        message: '暂无员工',
-        description: '点右下角「入职」添加新员工',
+        message: l10n.employeeEmpty,
+        description: l10n.employeeEmptyHint,
       );
     }
     return ListView.builder(
@@ -214,7 +228,10 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
               child: Center(
                 child: _loadingMore
                     ? const CircularProgressIndicator()
-                    : FilledButton.tonal(onPressed: _loadMore, child: const Text('加载更多')),
+                    : FilledButton.tonal(
+                        onPressed: _loadMore,
+                        child: Text(l10n.employeeLoadMore),
+                      ),
               ),
             );
           }
@@ -223,7 +240,8 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
         final e = _items[i];
         return UtenPersonCard(
           title: e.fullName,
-          subtitle: '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
+          subtitle:
+              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
           avatarText: e.fullName,
           trailing: EmployeeStatusBadge(status: e.status),
           onTap: () => context.push('/employee/${e.id}'),

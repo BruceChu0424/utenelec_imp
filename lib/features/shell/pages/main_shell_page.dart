@@ -87,38 +87,38 @@ class MainShellPage extends ConsumerWidget {
           ),
         ],
       ),
-      const _NavGroup(
-        title: '人事管理',
+      _NavGroup(
+        title: l10n.navHrGroup,
         roles: [Role.hr, Role.admin, Role.manager],
         items: [
           _NavDestination(
             icon: Icons.badge_outlined,
             selectedIcon: Icons.badge_rounded,
-            label: '员工档案',
+            label: l10n.navHrEmployees,
             location: '/employee',
           ),
           _NavDestination(
             icon: Icons.account_tree_outlined,
             selectedIcon: Icons.account_tree_rounded,
-            label: '部门管理',
+            label: l10n.navHrDepartments,
             location: '/department',
           ),
           _NavDestination(
             icon: Icons.person_add_outlined,
             selectedIcon: Icons.person_add_rounded,
-            label: '入职办理',
+            label: l10n.navHrOnboarding,
             location: '/employee/onboarding',
           ),
           _NavDestination(
             icon: Icons.request_quote_outlined,
             selectedIcon: Icons.request_quote_rounded,
-            label: '工资条生成',
+            label: l10n.navHrPayrollGenerate,
             location: '/payroll/generate',
           ),
           _NavDestination(
             icon: Icons.campaign_outlined,
             selectedIcon: Icons.campaign_rounded,
-            label: '通知发布',
+            label: l10n.navHrNoticePublish,
             location: '/notice/publish',
           ),
         ],

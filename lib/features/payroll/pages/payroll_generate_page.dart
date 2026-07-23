@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../employee/models/employee.dart';
 import '../../employee/providers/employee_providers.dart';
 
@@ -23,7 +24,8 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
 
   final String _month =
       '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
-  final _departments = ['全员', '生产部', '质量部', '人事部', '财务部'];
+  // Backend option codes are unchanged; labels come from l10n at build time.
+  static const _departmentCodes = ['全员', '生产部', '质量部', '人事部', '财务部'];
   String _department = '全员';
 
   // 薪酬项开关
@@ -32,10 +34,23 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
   bool _social = true; // 社保
   bool _tax = true; // 个税
 
+  String _departmentLabel(AppLocalizations l10n, String code) => switch (code) {
+    '全员' => l10n.payrollDeptAll,
+    '生产部' => l10n.payrollDeptProduction,
+    '质量部' => l10n.payrollDeptQuality,
+    '人事部' => l10n.payrollDeptHr,
+    '财务部' => l10n.payrollDeptFinance,
+    _ => code,
+  };
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: const UtenAppBar(title: '工资条生成', showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.payrollGenerateTitle,
+        showBackButton: true,
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -45,7 +60,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => setState(() => _step--),
-                    child: const Text('上一步'),
+                    child: Text(l10n.payrollBack),
                   ),
                 ),
               if (_step > 0) const SizedBox(width: 12),
@@ -54,8 +69,15 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
                   onPressed: _submitting ? null : _next,
                   child: _submitting
                       ? const SizedBox(
-                          width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(_step == 3 ? '提交审核' : '下一步'),
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(
+                          _step == 3
+                              ? l10n.payrollSubmitButton
+                              : l10n.payrollNext,
+                        ),
                 ),
               ),
             ],
@@ -69,30 +91,42 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
         controlsBuilder: (context, details) => const SizedBox.shrink(),
         steps: [
           Step(
-            title: const Text('选择范围'),
+            title: Text(l10n.payrollStepScope),
             isActive: _step >= 0,
             state: _step > 0 ? StepState.complete : StepState.indexed,
             content: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 InputDecorator(
-                  decoration: const InputDecoration(
-                      labelText: '工资月份', border: OutlineInputBorder(), isDense: true),
+                  decoration: InputDecoration(
+                    labelText: l10n.payrollFieldMonth,
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
                   child: Text(_month),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: _department,
-                  decoration: const InputDecoration(
-                      labelText: '生成范围', border: OutlineInputBorder(), isDense: true),
-                  items: [for (final d in _departments) DropdownMenuItem(value: d, child: Text(d))],
+                  decoration: InputDecoration(
+                    labelText: l10n.payrollFieldScope,
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: [
+                    for (final d in _departmentCodes)
+                      DropdownMenuItem(
+                        value: d,
+                        child: Text(_departmentLabel(l10n, d)),
+                      ),
+                  ],
                   onChanged: (v) => setState(() => _department = v!),
                 ),
               ],
             ),
           ),
           Step(
-            title: const Text('配置薪酬项'),
+            title: Text(l10n.payrollStepItems),
             isActive: _step >= 1,
             state: _step > 1
                 ? StepState.complete
@@ -100,30 +134,38 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
             content: Column(
               children: [
                 SwitchListTile(
-                  dense: true, contentPadding: EdgeInsets.zero,
-                  title: const Text('加班费 (+15%)'), value: _overtime,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(l10n.payrollItemOvertime),
+                  value: _overtime,
                   onChanged: (v) => setState(() => _overtime = v),
                 ),
                 SwitchListTile(
-                  dense: true, contentPadding: EdgeInsets.zero,
-                  title: const Text('绩效奖金 (+10%)'), value: _bonus,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(l10n.payrollItemBonus),
+                  value: _bonus,
                   onChanged: (v) => setState(() => _bonus = v),
                 ),
                 SwitchListTile(
-                  dense: true, contentPadding: EdgeInsets.zero,
-                  title: const Text('社保公积金 (-10.5%)'), value: _social,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(l10n.payrollItemSocial),
+                  value: _social,
                   onChanged: (v) => setState(() => _social = v),
                 ),
                 SwitchListTile(
-                  dense: true, contentPadding: EdgeInsets.zero,
-                  title: const Text('个人所得税 (-5%)'), value: _tax,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(l10n.payrollItemTax),
+                  value: _tax,
                   onChanged: (v) => setState(() => _tax = v),
                 ),
               ],
             ),
           ),
           Step(
-            title: const Text('预览计算'),
+            title: Text(l10n.payrollStepPreview),
             isActive: _step >= 2,
             state: _step > 2
                 ? StepState.complete
@@ -138,12 +180,12 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
             ),
           ),
           Step(
-            title: const Text('提交审核'),
+            title: Text(l10n.payrollStepSubmit),
             isActive: _step >= 3,
             state: _step == 3 ? StepState.indexed : StepState.disabled,
-            content: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('提交后将进入财务审核流程，审核通过后由人事发布给员工。'),
+            content: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(l10n.payrollSubmitNote),
             ),
           ),
         ],
@@ -152,6 +194,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
   }
 
   Future<void> _next() async {
+    final l10n = AppLocalizations.of(context);
     if (_step < 3) {
       setState(() => _step++);
       return;
@@ -160,9 +203,9 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     if (mounted) {
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已提交审核，等待财务审核（Mock）')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.payrollSubmitted)));
       context.go('/employee');
     }
   }
@@ -187,20 +230,25 @@ class _Preview extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef r) {
+    final l10n = AppLocalizations.of(context);
     final empsAsync = ref.watch(employeeListProvider);
     return empsAsync.when(
       loading: () => const Padding(
         padding: EdgeInsets.all(16),
         child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       ),
-      error: (e, _) => Text('加载失败：$e'),
+      error: (e, _) => Text(l10n.payrollLoadFailed(e.toString())),
       data: (all) {
         final emps = department == '全员'
             ? all.where((e) => e.status != EmployeeStatus.resigned).toList()
             : all
-                .where((e) => e.department == department && e.status != EmployeeStatus.resigned)
-                .toList();
-        if (emps.isEmpty) return const Text('该范围无可计算员工');
+                  .where(
+                    (e) =>
+                        e.department == department &&
+                        e.status != EmployeeStatus.resigned,
+                  )
+                  .toList();
+        if (emps.isEmpty) return Text(l10n.payrollEmptyPreview);
 
         final rows = <(Employee, num)>[];
         num total = 0;
@@ -230,17 +278,28 @@ class _Preview extends ConsumerWidget {
                     _Row(code: e.code, name: e.fullName, net: net),
                   Container(
                     color: theme.colorScheme.surfaceContainerHigh,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     child: Row(
                       children: [
-                        const Expanded(
-                          child: Text('合计',
-                              style: TextStyle(fontWeight: FontWeight.w700)),
+                        Expanded(
+                          child: Text(
+                            l10n.payrollTableTotalLabel,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
-                        Text('¥ ${total.toStringAsFixed(0)}  ·  ${rows.length} 人',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: theme.colorScheme.primary)),
+                        Text(
+                          l10n.payrollTableTotalValue(
+                            total.toStringAsFixed(0),
+                            rows.length,
+                          ),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -257,13 +316,26 @@ class _Preview extends ConsumerWidget {
 class _HeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final t = Theme.of(context).textTheme.bodySmall!;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
         children: [
-          Expanded(flex: 2, child: Text('工号/姓名', style: t.copyWith(color: Colors.grey))),
-          Expanded(child: Text('实发', style: t.copyWith(color: Colors.grey), textAlign: TextAlign.right)),
+          Expanded(
+            flex: 2,
+            child: Text(
+              l10n.payrollTableHeaderName,
+              style: t.copyWith(color: Colors.grey),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              l10n.payrollTableHeaderNet,
+              style: t.copyWith(color: Colors.grey),
+              textAlign: TextAlign.right,
+            ),
+          ),
         ],
       ),
     );
@@ -277,6 +349,7 @@ class _Row extends StatelessWidget {
   final num net;
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -284,14 +357,18 @@ class _Row extends StatelessWidget {
         children: [
           Expanded(
             flex: 2,
-            child: Text('$name（$code）', style: theme.textTheme.bodySmall),
+            child: Text(
+              l10n.payrollTableRowName(name, code),
+              style: theme.textTheme.bodySmall,
+            ),
           ),
           Expanded(
             child: Text(
-              '¥ ${net.toStringAsFixed(0)}',
+              l10n.payrollTableRowNet(net.toStringAsFixed(0)),
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall?.copyWith(
-                  fontFeatures: const [FontFeature.tabularFigures()]),
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],

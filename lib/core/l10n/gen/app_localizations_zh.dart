@@ -557,4 +557,707 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get securityVisitTime => '到访时间';
+
+  @override
+  String get navHrGroup => '人事管理';
+
+  @override
+  String get navHrEmployees => '员工档案';
+
+  @override
+  String get navHrDepartments => '部门管理';
+
+  @override
+  String get navHrOnboarding => '入职办理';
+
+  @override
+  String get navHrPayrollGenerate => '工资条生成';
+
+  @override
+  String get navHrNoticePublish => '通知发布';
+
+  @override
+  String get employeeTitle => '员工档案';
+
+  @override
+  String get employeeFabOnboard => '入职';
+
+  @override
+  String get employeeSearchHint => '搜索工号 / 姓名';
+
+  @override
+  String get employeeEmpty => '暂无员工';
+
+  @override
+  String get employeeEmptyHint => '点右下角「入职」添加新员工';
+
+  @override
+  String get employeeLoadMore => '加载更多';
+
+  @override
+  String get employeeDetailTitle => '员工详情';
+
+  @override
+  String get employeeDetailBasic => '基本信息';
+
+  @override
+  String get employeeDetailContact => '联系与地址';
+
+  @override
+  String get employeeDetailOrg => '组织与用工';
+
+  @override
+  String get employeeDetailContract => '合同 / 薪资（按权限可见）';
+
+  @override
+  String get employeeDetailEmergency => '紧急联系人';
+
+  @override
+  String get employeeDetailHistory => '任职轨迹';
+
+  @override
+  String get employeeFieldCode => '工号';
+
+  @override
+  String get employeeFieldName => '姓名';
+
+  @override
+  String get employeeFieldGender => '性别';
+
+  @override
+  String get employeeFieldIdType => '证件类型';
+
+  @override
+  String get employeeFieldIdNumber => '证件号码';
+
+  @override
+  String get employeeFieldBirthDate => '出生日期';
+
+  @override
+  String get employeeFieldEthnicity => '民族';
+
+  @override
+  String get employeeFieldPoliticalStatus => '政治面貌';
+
+  @override
+  String get employeeFieldMaritalStatus => '婚姻状况';
+
+  @override
+  String get employeeFieldPhone => '手机号';
+
+  @override
+  String get employeeFieldOfficePhone => '办公电话';
+
+  @override
+  String get employeeFieldEmail => '企业邮箱';
+
+  @override
+  String get employeeFieldHujiAddress => '户籍地址';
+
+  @override
+  String get employeeFieldResidenceAddress => '现居住地';
+
+  @override
+  String get employeeFieldDepartment => '所属部门';
+
+  @override
+  String get employeeFieldPosition => '岗位';
+
+  @override
+  String get employeeFieldSupervisor => '直属上级';
+
+  @override
+  String get employeeFieldHireDate => '入职日期';
+
+  @override
+  String get employeeFieldConfirmedDate => '转正日期';
+
+  @override
+  String get employeeFieldStatus => '工作状态';
+
+  @override
+  String get employeeFieldEmploymentType => '用工形式';
+
+  @override
+  String get employeeFieldWorkLocation => '办公地点';
+
+  @override
+  String get employeeFieldSeatNo => '工位号';
+
+  @override
+  String get employeeFieldContractType => '合同类型';
+
+  @override
+  String get employeeFieldContractPeriod => '合同起止';
+
+  @override
+  String get employeeFieldProbation => '试用期';
+
+  @override
+  String get employeeFieldRenewCount => '续签次数';
+
+  @override
+  String get employeeFieldBaseSalary => '基本工资';
+
+  @override
+  String get employeeFieldPerfSalary => '绩效/补贴';
+
+  @override
+  String get employeeFieldSocialBase => '社保基数';
+
+  @override
+  String get employeeFieldHousingBase => '公积金基数';
+
+  @override
+  String get employeeFieldBankBranch => '开户银行';
+
+  @override
+  String get employeeFieldBankAccount => '银行卡号';
+
+  @override
+  String employeeContractPeriodValue(Object end, Object start) {
+    return '$start ~ $end';
+  }
+
+  @override
+  String employeeProbationValue(Object end, Object months) {
+    return '$months 个月（至 $end）';
+  }
+
+  @override
+  String employeeRenewCountValue(Object count) {
+    return '$count';
+  }
+
+  @override
+  String get employeeEditTitle => '编辑员工';
+
+  @override
+  String get employeeEditBasic => '基本信息';
+
+  @override
+  String get employeeEditOrg => '组织信息';
+
+  @override
+  String get employeeEditFieldPhone => '手机';
+
+  @override
+  String get employeeEditFieldDepartment => '部门';
+
+  @override
+  String get employeeEditFieldPosition => '岗位';
+
+  @override
+  String get employeeEditFieldEmploymentType => '用工性质';
+
+  @override
+  String get employeeEditFieldStatus => '员工状态';
+
+  @override
+  String get employeeEditSaved => '已保存（Mock）';
+
+  @override
+  String employeeEditLoadFailed(Object error) {
+    return '加载失败：$error';
+  }
+
+  @override
+  String get employeeEditNotFound => '员工不存在';
+
+  @override
+  String get employeeEditRequired => '必填';
+
+  @override
+  String get employeeOnboardTitle => '新员工入职';
+
+  @override
+  String get employeeOnboardGroupProfile => '档案';
+
+  @override
+  String get employeeOnboardGroupOrg => '组织';
+
+  @override
+  String get employeeOnboardGroupPay => '薪资 / 银行（可选，仅 HR/管理员可见）';
+
+  @override
+  String get employeeOnboardSubmit => '提交入职';
+
+  @override
+  String get employeeOnboardSuccess => '入职成功：账号=工号，初始密码=身份证后六位（首登需改）';
+
+  @override
+  String get employeeOnboardSubmitFailed => '提交失败，请重试';
+
+  @override
+  String get employeeOnboardNote =>
+      '提交后将自动创建登录账号：账号=工号，初始密码=身份证后六位，首次登录必须修改密码。';
+
+  @override
+  String get employeeOnboardHintCode => '如 E1001';
+
+  @override
+  String get employeeOnboardHintName => '张三';
+
+  @override
+  String get employeeOnboardHintIdNumber => '请输入身份证号';
+
+  @override
+  String get employeeOnboardIdNumberInvalid => '身份证号格式不正确';
+
+  @override
+  String get employeeOnboardHintPhone => '11 位手机号';
+
+  @override
+  String get employeeOnboardPhoneRequired => '手机号不能为空';
+
+  @override
+  String get employeeOnboardPhoneInvalid => '手机号格式不正确';
+
+  @override
+  String get employeeOnboardEmailOptional => '可选';
+
+  @override
+  String get employeeOnboardHireDateHint => 'yyyy-MM-dd';
+
+  @override
+  String get employeeOnboardPickHireDate => '请选择入职日期';
+
+  @override
+  String get employeeOnboardPickDepartment => '请选择部门';
+
+  @override
+  String employeeOnboardFieldRequired(Object field) {
+    return '$field不能为空';
+  }
+
+  @override
+  String get employeeOnboardLoadFailed => '加载失败';
+
+  @override
+  String get idTypeIdCard => '身份证';
+
+  @override
+  String get idTypePassport => '护照';
+
+  @override
+  String get idTypeHmtPermit => '港澳台通行证';
+
+  @override
+  String get idTypeOther => '其他';
+
+  @override
+  String get employeeOffboardTitle => '离职办理';
+
+  @override
+  String get employeeOffboardStepStart => '发起离职';
+
+  @override
+  String get employeeOffboardStepHandover => '工作交接';
+
+  @override
+  String get employeeOffboardStepCheck => '回收确认';
+
+  @override
+  String get employeeOffboardFieldType => '离职类型';
+
+  @override
+  String get employeeOffboardFieldDate => '离职日期';
+
+  @override
+  String get employeeOffboardPickDate => '选择日期';
+
+  @override
+  String get employeeOffboardFieldReason => '离职原因';
+
+  @override
+  String get employeeOffboardFieldHandover => '交接说明（文档/项目/权限）';
+
+  @override
+  String get employeeOffboardPickDateRequired => '请选择离职日期';
+
+  @override
+  String get employeeOffboardChecksRequired => '请确认所有回收项';
+
+  @override
+  String get employeeOffboardConfirmTitle => '确认办理离职？';
+
+  @override
+  String get employeeOffboardConfirmBody => '该员工账号将被停用。';
+
+  @override
+  String get employeeOffboardConfirmAction => '确认办理离职';
+
+  @override
+  String get employeeOffboardNext => '下一步';
+
+  @override
+  String get employeeOffboardBack => '上一步';
+
+  @override
+  String get employeeOffboardCompleted => '离职办理完成（Mock）';
+
+  @override
+  String get employeeOffboardLoadFailed => '加载失败';
+
+  @override
+  String get resignTypeVoluntary => '主动辞职';
+
+  @override
+  String get resignTypeDismissed => '公司辞退';
+
+  @override
+  String get resignTypeContractEnd => '合同到期';
+
+  @override
+  String get resignTypeRetire => '退休';
+
+  @override
+  String get resignCheckAccess => '收回门禁卡';
+
+  @override
+  String get resignCheckAssets => '回收公司资产';
+
+  @override
+  String get resignCheckAccount => '停用系统账号';
+
+  @override
+  String get resignCheckSocial => '停缴社保公积金';
+
+  @override
+  String get employeeStatusActive => '在职';
+
+  @override
+  String get employeeStatusProbation => '试用';
+
+  @override
+  String get employeeStatusOnLeave => '休假';
+
+  @override
+  String get employeeStatusResigned => '离职';
+
+  @override
+  String get employeeStatusUnknown => '未知';
+
+  @override
+  String get genderMale => '男';
+
+  @override
+  String get genderFemale => '女';
+
+  @override
+  String get employmentTypeRegular => '正式';
+
+  @override
+  String get employmentTypeDispatch => '劳务派遣';
+
+  @override
+  String get employmentTypeIntern => '实习';
+
+  @override
+  String get employmentTypeOutsource => '外包';
+
+  @override
+  String get contractTypeFixed => '固定期限';
+
+  @override
+  String get contractTypeOpen => '无固定期限';
+
+  @override
+  String get contractTypeTask => '任务';
+
+  @override
+  String get contractTypeIntern => '实习';
+
+  @override
+  String get historyEventOnboard => '入职';
+
+  @override
+  String get historyEventTransfer => '调岗';
+
+  @override
+  String get historyEventResign => '离职';
+
+  @override
+  String get departmentTitle => '部门管理';
+
+  @override
+  String get departmentTreeTitle => '组织架构';
+
+  @override
+  String get departmentEmpty => '选择部门';
+
+  @override
+  String get departmentEmptyHint => '点右上角图标打开部门树';
+
+  @override
+  String get departmentEmptySelect => '请选择左侧部门';
+
+  @override
+  String get departmentTooltipAdd => '新增部门';
+
+  @override
+  String get departmentTooltipRefresh => '刷新';
+
+  @override
+  String get departmentTooltipTree => '部门树';
+
+  @override
+  String get departmentDialogAddTitle => '新增部门';
+
+  @override
+  String get departmentDialogDeleteTitle => '删除部门';
+
+  @override
+  String get departmentFieldCode => '部门编码';
+
+  @override
+  String get departmentFieldCodeHint => '如 DEPT-XX';
+
+  @override
+  String get departmentFieldName => '部门名称';
+
+  @override
+  String get departmentFieldLevel => '层级';
+
+  @override
+  String get departmentCreate => '创建';
+
+  @override
+  String get departmentDelete => '删除';
+
+  @override
+  String get departmentRequireCodeAndName => '编码与名称必填';
+
+  @override
+  String get departmentCreated => '已创建';
+
+  @override
+  String get departmentDeleted => '已删除';
+
+  @override
+  String departmentDeleteConfirm(Object name) {
+    return '确认删除「$name」？仅无子部门且无员工的叶子部门可删。';
+  }
+
+  @override
+  String departmentLevelAndCode(Object level, Object code) {
+    return '$level · 编码 $code';
+  }
+
+  @override
+  String get departmentStatEmployees => '员工';
+
+  @override
+  String get departmentStatChildren => '子部门';
+
+  @override
+  String get departmentStatManager => '负责人';
+
+  @override
+  String get departmentStatParent => '上级';
+
+  @override
+  String departmentEmployeesHeader(Object count) {
+    return '员工（$count）';
+  }
+
+  @override
+  String get departmentEmployeesEmpty => '该部门（含子部门）暂无员工';
+
+  @override
+  String departmentStatValue(Object label, Object value) {
+    return '$label：$value';
+  }
+
+  @override
+  String get departmentLoadFailed => '加载失败';
+
+  @override
+  String get departmentLevelCompany => '公司';
+
+  @override
+  String get departmentLevelDecision => '决策层';
+
+  @override
+  String get departmentLevelManagement => '管理中心';
+
+  @override
+  String get departmentLevelPrimary => '一级部门';
+
+  @override
+  String get departmentLevelSecondary => '二级班组';
+
+  @override
+  String get departmentLevelTertiary => '三级科室';
+
+  @override
+  String get payrollGenerateTitle => '工资条生成';
+
+  @override
+  String get payrollStepScope => '选择范围';
+
+  @override
+  String get payrollStepItems => '配置薪酬项';
+
+  @override
+  String get payrollStepPreview => '预览计算';
+
+  @override
+  String get payrollStepSubmit => '提交审核';
+
+  @override
+  String get payrollFieldMonth => '工资月份';
+
+  @override
+  String get payrollFieldScope => '生成范围';
+
+  @override
+  String get payrollItemOvertime => '加班费 (+15%)';
+
+  @override
+  String get payrollItemBonus => '绩效奖金 (+10%)';
+
+  @override
+  String get payrollItemSocial => '社保公积金 (-10.5%)';
+
+  @override
+  String get payrollItemTax => '个人所得税 (-5%)';
+
+  @override
+  String get payrollSubmitNote => '提交后将进入财务审核流程，审核通过后由人事发布给员工。';
+
+  @override
+  String get payrollSubmitButton => '提交审核';
+
+  @override
+  String get payrollSubmitted => '已提交审核，等待财务审核（Mock）';
+
+  @override
+  String payrollLoadFailed(Object error) {
+    return '加载失败：$error';
+  }
+
+  @override
+  String get payrollEmptyPreview => '该范围无可计算员工';
+
+  @override
+  String get payrollTableTotalLabel => '合计';
+
+  @override
+  String payrollTableTotalValue(Object total, Object count) {
+    return '¥ $total · $count 人';
+  }
+
+  @override
+  String get payrollTableHeaderName => '工号/姓名';
+
+  @override
+  String get payrollTableHeaderNet => '实发';
+
+  @override
+  String payrollTableRowName(Object name, Object code) {
+    return '$name（$code）';
+  }
+
+  @override
+  String payrollTableRowNet(Object net) {
+    return '¥ $net';
+  }
+
+  @override
+  String get payrollNext => '下一步';
+
+  @override
+  String get payrollBack => '上一步';
+
+  @override
+  String get payrollDeptAll => '全员';
+
+  @override
+  String get payrollDeptProduction => '生产部';
+
+  @override
+  String get payrollDeptQuality => '质量部';
+
+  @override
+  String get payrollDeptHr => '人事部';
+
+  @override
+  String get payrollDeptFinance => '财务部';
+
+  @override
+  String get noticePublishTitle => '发布通知';
+
+  @override
+  String get noticePublishSaveDraft => '存草稿';
+
+  @override
+  String get noticePublishDraftSaved => '已保存草稿（Mock）';
+
+  @override
+  String get noticePublishPublishButton => '发布';
+
+  @override
+  String get noticePublishTopPriority => '置顶';
+
+  @override
+  String get noticePublishTitleHint => '通知标题（必填）';
+
+  @override
+  String get noticePublishContentHint => '通知正文……';
+
+  @override
+  String get noticePublishScopeTitle => '可见范围';
+
+  @override
+  String get noticePublishScopeAll => '全员';
+
+  @override
+  String get noticePublishScopeDept => '按部门';
+
+  @override
+  String get noticePublishFieldDept => '部门';
+
+  @override
+  String get noticePublishScopeAllHint => '将通知到全公司所有员工';
+
+  @override
+  String noticePublishScopeDeptHint(Object dept) {
+    return '将通知到「$dept」全体员工';
+  }
+
+  @override
+  String get noticePublishValidateTitle => '请填写标题';
+
+  @override
+  String get noticePublishValidateContent => '请填写正文';
+
+  @override
+  String get noticePublishConfirmTitle => '确认发布？';
+
+  @override
+  String get noticePublishConfirmBodyAll => '将通知到全员';
+
+  @override
+  String noticePublishConfirmBodyDept(Object dept) {
+    return '将通知到「$dept」';
+  }
+
+  @override
+  String get noticePublishPublished => '通知已发布（Mock）';
+
+  @override
+  String get noticeTypeAnnouncement => '公告';
+
+  @override
+  String get noticeTypePolicy => '制度';
+
+  @override
+  String get noticeTypeBenefit => '福利';
+
+  @override
+  String get noticeTypeSystem => '系统';
+
+  @override
+  String get noticeTypeUrgent => '紧急';
 }

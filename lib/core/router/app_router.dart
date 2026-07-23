@@ -54,6 +54,7 @@ import '../../features/entry/pages/entry_selection_page.dart';
 import '../../features/visitor/pages/visitor_apply_page.dart';
 import '../../features/visitor/pages/visitor_application_detail_page.dart';
 import '../../features/visitor/pages/visitor_home_page.dart';
+import '../../features/visitor/pages/visitor_settings_page.dart';
 import '../../features/visitor/pages/visitor_login_page.dart';
 import '../../features/visitor/providers/visitor_session_provider.dart';
 import '../../shared/providers/session_provider.dart';
@@ -129,6 +130,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // —— 访客自助流程（不进 ShellRoute）——
       GoRoute(path: RouteName.visitorLogin, name: 'visitor-login', builder: (_, _) => const VisitorLoginPage()),
       GoRoute(path: RouteName.visitorHome, name: 'visitor-home', builder: (_, _) => const VisitorHomePage()),
+      GoRoute(path: RouteName.visitorSettings, name: 'visitor-settings', builder: (_, _) => const VisitorSettingsPage()),
       GoRoute(path: RouteName.visitorApply, name: 'visitor-apply', builder: (_, _) => const VisitorApplyPage()),
       GoRoute(
         path: RouteName.visitorApplyDetail,

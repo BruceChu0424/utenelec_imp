@@ -104,20 +104,10 @@ class _LoginPageState extends ConsumerState<LoginPage>
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
-    final isDark = theme.brightness == Brightness.dark;
-
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: DecoratedBox(
-        decoration: BoxDecoration(
-          color: isDark ? null : theme.scaffoldBackgroundColor,
-          gradient: isDark
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF07110E), Color(0xFF0F241D)],
-                )
-              : null,
-        ),
+        decoration: BoxDecoration(color: theme.scaffoldBackgroundColor),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {

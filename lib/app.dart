@@ -9,6 +9,7 @@ import 'core/l10n/gen/app_localizations.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/dark_theme.dart';
 import 'core/theme/light_theme.dart';
+import 'core/ui/app_notification.dart';
 import 'shared/providers/font_scale_provider.dart';
 import 'shared/providers/locale_provider.dart';
 import 'shared/providers/theme_provider.dart';
@@ -46,7 +47,7 @@ class UtenApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      // 字号缩放
+      // 字号缩放 + 顶部通知宿主（覆盖在所有页面之上）
       builder: (context, child) {
         final mediaQuery = MediaQuery.of(context);
         // textScaler 用 linear 缩放：原始 scaleFactor 乘以用户选择的字号因子
@@ -56,7 +57,17 @@ class UtenApp extends ConsumerWidget {
               mediaQuery.textScaler.scale(1) * fontScale.factor,
             ),
           ),
-          child: child!,
+          child: Stack(
+            children: [
+              child!,
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AppNotificationHost(),
+              ),
+            ],
+          ),
         );
       },
 

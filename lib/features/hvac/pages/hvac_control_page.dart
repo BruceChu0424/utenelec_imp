@@ -8,6 +8,8 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../models/hvac_device.dart';
 import '../providers/hvac_providers.dart';
 
@@ -22,6 +24,8 @@ class HvacControlPage extends ConsumerStatefulWidget {
 class _HvacControlPageState extends ConsumerState<HvacControlPage> {
   HvacDevice? _device;
   final _history = <_Cmd>[];
+  // 防止用户连续拨动开关/滑杆/模式导致请求并发。
+  final _guard = ClickGuard();
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +60,12 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
                                   style: TextStyle(fontWeight: FontWeight.w600))),
                               Switch(
                                 value: _device!.power,
-                                onChanged: (v) => _update(_device!.copyWith(power: v), v ? '开机' : '关机'),
+                                onChanged: _guard.isBusy
+                                    ? null
+                                    : (v) => _update(
+                                        _device!.copyWith(power: v),
+                                        v ? '开机' : '关机',
+                                      ),
                               ),
                             ],
                           ),
@@ -75,12 +84,16 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
                             min: 16, max: 30, divisions: 14,
                             value: _device!.targetTemp,
                             activeColor: UtenColors.teal600,
-                            onChanged: _device!.power
+                            onChanged: (_device!.power && !_guard.isBusy)
                                 ? (v) => setState(() =>
                                     _device = _device!.copyWith(targetTemp: v))
                                 : null,
-                            onChangeEnd: (v) =>
-                                _update(_device!.copyWith(targetTemp: v), '调温 ${v.toStringAsFixed(0)}°C'),
+                            onChangeEnd: _guard.isBusy
+                                ? null
+                                : (v) => _update(
+                                    _device!.copyWith(targetTemp: v),
+                                    '调温 ${v.toStringAsFixed(0)}°C',
+                                  ),
                           ),
                           const Divider(),
                           // 模式
@@ -90,9 +103,11 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
                           ),
                           SegmentedButton<HvacMode>(
                             selected: {_device!.mode},
-                            onSelectionChanged: _device!.power
+                            onSelectionChanged: (_device!.power && !_guard.isBusy)
                                 ? (s) => _update(
-                                    _device!.copyWith(mode: s.first), '切换${s.first.label}')
+                                    _device!.copyWith(mode: s.first),
+                                    '切换${s.first.label}',
+                                  )
                                 : null,
                             segments: [
                               for (final m in HvacMode.values)
@@ -110,9 +125,11 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
                           ),
                           SegmentedButton<HvacFan>(
                             selected: {_device!.fan},
-                            onSelectionChanged: _device!.power
+                            onSelectionChanged: (_device!.power && !_guard.isBusy)
                                 ? (s) => _update(
-                                    _device!.copyWith(fan: s.first), '风速${s.first.label}')
+                                    _device!.copyWith(fan: s.first),
+                                    '风速${s.first.label}',
+                                  )
                                 : null,
                             segments: [
                               for (final f in HvacFan.values)
@@ -151,10 +168,15 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
   }
 
   void _update(HvacDevice next, String action) {
-    setState(() => _device = next);
-    _history.insert(0, _Cmd(action: action, time: DateTime.now()));
-    ref.read(hvacRepositoryProvider).update(next);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$action（Mock）')));
+    // 联动控件（Switch/Slider/SegmentedButton）一被拖动就会回调，
+    // 没守住就会一次发多个 PUT。本页用 _guard 让上一个请求回来之前不再触发。
+    final f = _guard.run(() async {
+      setState(() => _device = next);
+      _history.insert(0, _Cmd(action: action, time: DateTime.now()));
+      await ref.read(hvacRepositoryProvider).update(next);
+      if (mounted) context.appInfo('$action（Mock）');
+    });
+    if (f != null) setState(() {}); // 进入置忙，重建以禁用以下控件
   }
 }
 
@@ -193,7 +215,7 @@ class _Hero extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [UtenColors.deepGreen, UtenColors.teal600],
+          colors: [UtenColors.teal500, UtenColors.teal600],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

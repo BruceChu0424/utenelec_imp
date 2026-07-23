@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/ui/app_notification.dart';
 
 enum ResignType { voluntary, dismissed, contractEnd, retire }
 
@@ -186,14 +187,14 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
     final l10n = AppLocalizations.of(context);
     if (_step < 2) {
       if (_step == 0 && _date == null) {
-        _toast(l10n.employeeOffboardPickDateRequired);
+        _toastError(l10n.employeeOffboardPickDateRequired);
         return;
       }
       setState(() => _step++);
       return;
     }
     if (!_checks.every((c) => c)) {
-      _toast(l10n.employeeOffboardChecksRequired);
+      _toastError(l10n.employeeOffboardChecksRequired);
       return;
     }
     final ok = await showDialog<bool>(
@@ -219,15 +220,15 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     if (mounted) {
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.employeeOffboardCompleted)));
+      context.appSuccess(l10n.employeeOffboardCompleted);
       context.go('/employee/${widget.employeeId}');
     }
   }
 
-  void _toast(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _toastError(String msg) {
+    if (!mounted) return;
+    context.appError(msg);
+  }
 }
 
 class _Deco extends InputDecoration {

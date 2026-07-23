@@ -4,12 +4,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/ui/app_notification.dart';
 
 class NoticePublishPage extends StatefulWidget {
   const NoticePublishPage({super.key});
@@ -26,7 +27,6 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
   // 可见范围：0=全员 1=按部门
   int _scope = 0;
   String _department = '生产部';
-  bool _publishing = false;
 
   // Backend option codes are unchanged; labels come from l10n at build time.
   static const _typeCodes = ['公告', '制度', '福利', '系统', '紧急'];
@@ -56,17 +56,21 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
     _ => code,
   };
 
-  Future<void> _publish() async {
+  /// 发布按钮的回调：校验 → 二次确认 → 模拟发请求 → 顶部绿色提示 → 跳列表页。
+  /// 由 UtenActionButton 自管 loading-state 与防连点（点完一次后置忙，回执到达才解锁）。
+  Future<void> _onPublish() async {
     final l10n = AppLocalizations.of(context);
+    // 1) 校验（在按钮上，提前拦截比"点了再告诉用户哪里缺"更友好）
     if (_title.text.trim().isEmpty) {
-      _toast(l10n.noticePublishValidateTitle);
+      if (context.mounted) context.appError(l10n.noticePublishValidateTitle);
       return;
     }
     if (_content.text.trim().isEmpty) {
-      _toast(l10n.noticePublishValidateContent);
+      if (context.mounted) context.appError(l10n.noticePublishValidateContent);
       return;
     }
-    final ok = await showDialog<bool>(
+    // 2) 二次确认。async gap 后必须 guard 一下：BuildContext 可能已经失效
+    final dialog = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.noticePublishConfirmTitle),
@@ -89,17 +93,14 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (dialog != true) return;
 
-    setState(() => _publishing = true);
+    // 3) 实际请求（mock）。这里由 UtenActionButton 在调用本方法时已经置忙，
+    //    等 await resolve 后按钮自动解锁，恢复可点。
     await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _publishing = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.noticePublishPublished)));
-      context.go('/notice');
-    }
+    if (!mounted) return;  // State 自己的 context 用 mounted 守卫足矣
+    context.appSuccess(l10n.noticePublishPublished);
+    context.go('/notice');
   }
 
   @override
@@ -111,19 +112,24 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
       bottomNavigationBar: UtenBottomActionBar(
         child: Row(
           children: [
-            UtenButton(
-              type: UtenButtonType.ghost,
-              onPressed: () => _toast(l10n.noticePublishDraftSaved),
-              child: Text(l10n.noticePublishSaveDraft),
+            UtenActionButton(
+              type: UtenActionButtonType.ghost,
+              label: Text(l10n.noticePublishSaveDraft),
+              loadingLabel: const Text('保存中…'),
+              onAction: () async {
+                await Future<void>.delayed(const Duration(milliseconds: 400));
+                if (context.mounted) context.appInfo(l10n.noticePublishDraftSaved);
+              },
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: UtenButton(
-                isLoading: _publishing,
+              child: UtenActionButton(
+                type: UtenActionButtonType.primary,
                 isExpanded: true,
                 icon: Icons.send_rounded,
-                onPressed: _publish,
-                child: Text(l10n.noticePublishPublishButton),
+                label: Text(l10n.noticePublishPublishButton),
+                loadingLabel: const Text('发布中…'),
+                onAction: _onPublish,
               ),
             ),
           ],
@@ -247,7 +253,4 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
       ),
     );
   }
-
-  void _toast(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }

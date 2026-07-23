@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 /// 通知类型
 enum NoticeType {
   /// 公司公告（人事发布）
-  announcement('公告', 0xFF0F3D2E, Icons.campaign_rounded),
+  announcement('公告', 0xFF14B8A6, Icons.campaign_rounded),
 
   /// 制度发布
   policy('制度', 0xFF8B5CF6, Icons.gavel_rounded),

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/id_card_utils.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
@@ -183,20 +184,15 @@ class _EmployeeOnboardingPageState
             ),
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.employeeOnboardSuccess)));
+      // 顶部绿色通知——不再依赖 ScaffoldMessenger，避免与失败 notification 叠加。
+      context.appSuccess(l10n.employeeOnboardSuccess);
       context.pop();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      context.appApiError(e, fallback: l10n.employeeOnboardSubmitFailed);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.employeeOnboardSubmitFailed)));
+      context.appError(l10n.employeeOnboardSubmitFailed);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -229,7 +225,7 @@ class _EmployeeOnboardingPageState
                       validator: (v) => _req(l10n, v, l10n.employeeFieldName),
                     ),
                     DropdownButtonFormField<String>(
-                      value: _idType,
+                      initialValue: _idType,
                       decoration: InputDecoration(
                         labelText: '${l10n.employeeFieldIdType}*',
                       ),
@@ -257,10 +253,12 @@ class _EmployeeOnboardingPageState
                       '${l10n.employeeFieldPhone}*',
                       l10n.employeeOnboardHintPhone,
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty)
+                        if (v == null || v.trim().isEmpty) {
                           return l10n.employeeOnboardPhoneRequired;
-                        if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(v.trim()))
+                        }
+                        if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(v.trim())) {
                           return l10n.employeeOnboardPhoneInvalid;
+                        }
                         return null;
                       },
                     ),
@@ -272,7 +270,7 @@ class _EmployeeOnboardingPageState
                   ]),
                   _group(theme, l10n.employeeOnboardGroupOrg, [
                     DropdownButtonFormField<String>(
-                      value: _departmentId,
+                      initialValue: _departmentId,
                       decoration: InputDecoration(
                         labelText: '${l10n.employeeFieldDepartment}*',
                       ),
@@ -306,7 +304,7 @@ class _EmployeeOnboardingPageState
                       ),
                     ),
                     DropdownButtonFormField<String>(
-                      value: _employmentType,
+                      initialValue: _employmentType,
                       decoration: InputDecoration(
                         labelText: '${l10n.employeeFieldEmploymentType}*',
                       ),
@@ -323,7 +321,7 @@ class _EmployeeOnboardingPageState
                       ),
                     ),
                     DropdownButtonFormField<String>(
-                      value: _status,
+                      initialValue: _status,
                       decoration: InputDecoration(
                         labelText: '${l10n.employeeFieldStatus}*',
                       ),

@@ -12,6 +12,8 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../providers/lab_providers.dart';
 
 class LabTestReportPage extends ConsumerWidget {
@@ -26,11 +28,16 @@ class LabTestReportPage extends ConsumerWidget {
         title: '检测报告',
         showBackButton: true,
         actions: [
-          TextButton.icon(
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('导出 PDF（Mock）'))),
-            icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+          UtenActionButton(
+            type: UtenActionButtonType.ghost,
+            size: UtenActionButtonSize.small,
+            icon: Icons.picture_as_pdf_outlined,
             label: const Text('导出'),
+            loadingLabel: const Text('生成中…'),
+            onAction: () async {
+              await Future<void>.delayed(const Duration(milliseconds: 600));
+              if (context.mounted) context.appInfo('导出 PDF（Mock）');
+            },
           ),
         ],
       ),
@@ -60,7 +67,7 @@ class LabTestReportPage extends ConsumerWidget {
                                 ? UtenColors.teal600
                                 : UtenColors.error,
                             t.qualified
-                                ? UtenColors.deepGreen
+                                ? UtenColors.teal500
                                 : const Color(0xFFB91C1C),
                           ],
                           begin: Alignment.topLeft,

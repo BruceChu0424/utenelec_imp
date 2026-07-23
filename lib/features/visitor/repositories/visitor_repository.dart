@@ -53,12 +53,14 @@ class EmployeeDirItem {
 }
 
 class DeptDirItem {
-  const DeptDirItem({required this.id, required this.name});
+  const DeptDirItem({required this.id, required this.name, this.parentId});
   final String id;
   final String name;
+  final String? parentId;
   factory DeptDirItem.fromJson(Map<String, dynamic> j) => DeptDirItem(
         id: (j['id'] ?? '').toString(),
         name: (j['name'] ?? '').toString(),
+        parentId: j['parentId'] == null ? null : (j['parentId']).toString(),
       );
 }
 

@@ -4,17 +4,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/feedback/uten_toast.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/payroll_item.dart';
 import '../models/payroll_slip.dart';
 import '../providers/payroll_providers.dart';
@@ -243,16 +243,18 @@ class _DetailContent extends ConsumerWidget {
 
         // 底部下载按钮
         UtenBottomActionBar(
-          child: UtenButton(
+          child: UtenActionButton(
             isExpanded: true,
             icon: Icons.download_outlined,
-            onPressed: () async {
+            type: UtenActionButtonType.primary,
+            label: const Text('下载工资条'),
+            loadingLabel: const Text('生成中…'),
+            onAction: () async {
               await markPayrollDownloaded(ref, slip.id);
               if (context.mounted) {
-                UtenToast.success(context, '已生成工资条 PDF（Mock）');
+                context.appSuccess('已生成工资条 PDF（Mock）');
               }
             },
-            child: const Text('下载工资条'),
           ),
         ),
       ],

@@ -70,6 +70,12 @@ class ProfilePage extends ConsumerWidget {
 
   /// 左栏：用户卡 + 快捷入口
   Widget _buildLeftColumn(ThemeData theme, AppUser? user) {
+    // super admin 不设置职务（position 字段为 null），UI 上展示"系统管理员"标识。
+    final isSuperAdmin = user?.superAdmin ?? false;
+    final positionLabel = isSuperAdmin
+        ? '系统管理员（超级管理员）'
+        : (user?.position ?? '—');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -84,15 +90,44 @@ class ProfilePage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      user?.name ?? '—',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            user?.name ?? '—',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isSuperAdmin) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'SUPER',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${user?.department ?? '—'} · ${user?.position ?? '—'}',
+                      '${user?.department ?? '—'} · $positionLabel',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -171,7 +206,9 @@ class ProfilePage extends ConsumerWidget {
               _InfoTile(
                 icon: Icons.work_outline_rounded,
                 label: l10n.profilePosition,
-                value: user?.position ?? '—',
+                value: (user?.superAdmin ?? false)
+                    ? '系统管理员'
+                    : (user?.position ?? '—'),
               ),
               const Divider(height: 1, indent: 56),
               _InfoTile(

@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../core/constants/assets.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -121,6 +120,12 @@ class MainShellPage extends ConsumerWidget {
             label: l10n.navHrNoticePublish,
             location: '/notice/publish',
           ),
+          _NavDestination(
+            icon: Icons.how_to_reg_outlined,
+            selectedIcon: Icons.how_to_reg_rounded,
+            label: l10n.visitorApprovalTitle,
+            location: RouteName.visitorApproval,
+          ),
         ],
       ),
       const _NavGroup(
@@ -220,18 +225,6 @@ class MainShellPage extends ConsumerWidget {
         ],
       ),
       _NavGroup(
-        title: l10n.visitorApprovalTitle,
-        roles: [Role.hr, Role.admin],
-        items: [
-          _NavDestination(
-            icon: Icons.how_to_reg_outlined,
-            selectedIcon: Icons.how_to_reg_rounded,
-            label: l10n.visitorApprovalTitle,
-            location: RouteName.visitorApproval,
-          ),
-        ],
-      ),
-      _NavGroup(
         title: l10n.securityTitle,
         roles: [Role.security, Role.admin],
         items: [
@@ -254,6 +247,13 @@ class MainShellPage extends ConsumerWidget {
 
     final breakpoint = context.breakpoint;
 
+    // 所有 destination 的 location，用于 _isActive 的最长前缀匹配
+    final allLocations = <String>[
+      for (final d in primaryDestinations) d.location,
+      for (final g in groups)
+        for (final d in g.items) d.location,
+    ];
+
     return Scaffold(
       body: switch (breakpoint) {
         UtenBreakpoint.compact => _CompactShell(
@@ -265,6 +265,7 @@ class MainShellPage extends ConsumerWidget {
           primaryDestinations: primaryDestinations,
           groups: groups,
           currentLocation: location,
+          allLocations: allLocations,
           expanded: breakpoint.isExpanded,
           child: child,
         ),
@@ -298,14 +299,22 @@ class _NavGroup {
   final List<_NavDestination> items;
 }
 
-bool _isActive(String current, String target) {
-  if (current == target) return true;
-  return current.startsWith('$target/');
+bool _isActive(String current, String target, List<String> allLocations) {
+  // 必须自身能匹配（精确或前缀）
+  final selfHit = current == target || current.startsWith('$target/');
+  if (!selfHit) return false;
+  // 但如果存在更具体的 sibling 也匹配，则让位给 sibling
+  for (final loc in allLocations) {
+    if (loc.length <= target.length) continue;
+    if (current == loc || current.startsWith('$loc/')) return false;
+  }
+  return true;
 }
 
 int _primaryIndex(String location, List<_NavDestination> all) {
+  final allLocs = [for (final d in all) d.location];
   for (var i = 0; i < all.length; i++) {
-    if (_isActive(location, all[i].location)) return i;
+    if (_isActive(location, all[i].location, allLocs)) return i;
   }
   return 0;
 }
@@ -348,6 +357,7 @@ class _ExpandedShell extends StatelessWidget {
     required this.primaryDestinations,
     required this.groups,
     required this.currentLocation,
+    required this.allLocations,
     required this.child,
     required this.expanded,
   });
@@ -355,6 +365,7 @@ class _ExpandedShell extends StatelessWidget {
   final List<_NavDestination> primaryDestinations;
   final List<_NavGroup> groups;
   final String currentLocation;
+  final List<String> allLocations;
   final Widget child;
   final bool expanded;
 
@@ -391,7 +402,11 @@ class _ExpandedShell extends StatelessWidget {
                         _NavItem(
                           destination: d,
                           expanded: expanded,
-                          isSelected: _isActive(currentLocation, d.location),
+                          isSelected: _isActive(
+                            currentLocation,
+                            d.location,
+                            allLocations,
+                          ),
                           onTap: () => context.go(d.location),
                         ),
                       for (final g in groups) ...[
@@ -422,15 +437,17 @@ class _ExpandedShell extends StatelessWidget {
                           _NavItem(
                             destination: d,
                             expanded: expanded,
-                            isSelected: _isActive(currentLocation, d.location),
+                            isSelected: _isActive(
+                              currentLocation,
+                              d.location,
+                              allLocations,
+                            ),
                             onTap: () => context.go(d.location),
                           ),
                       ],
                     ],
                   ),
                 ),
-                const Divider(height: 1),
-                _UserFooter(expanded: expanded),
               ],
             ),
           ),
@@ -457,9 +474,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final selectedColor = theme.brightness == Brightness.dark
-        ? UtenColors.teal400
-        : UtenColors.deepGreen;
+    final selectedColor = UtenColors.teal400;
     final iconColor = isSelected
         ? selectedColor
         : theme.colorScheme.onSurfaceVariant;
@@ -600,35 +615,6 @@ class _Logo extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _UserFooter extends StatelessWidget {
-  const _UserFooter({required this.expanded});
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: expanded
-          ? Row(
-              children: [
-                const UtenUserAvatar(size: 32),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '张优腾',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            )
-          : const UtenUserAvatar(size: 32),
     );
   }
 }

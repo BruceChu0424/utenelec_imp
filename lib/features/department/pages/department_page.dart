@@ -12,6 +12,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -129,7 +130,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: level,
+                  initialValue: level,
                   decoration: InputDecoration(
                     labelText: l10n.departmentFieldLevel,
                   ),
@@ -161,7 +162,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     );
     if (result != true) return;
     if (codeCtl.text.trim().isEmpty || nameCtl.text.trim().isEmpty) {
-      _toast(l10n.departmentRequireCodeAndName);
+      _toastError(l10n.departmentRequireCodeAndName);
       return;
     }
     try {
@@ -175,10 +176,10 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               parentId: parentId,
             ),
           );
-      _toast(l10n.departmentCreated);
+      _toastSuccess(l10n.departmentCreated);
       await _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toastError(e.message);
     }
   }
 
@@ -205,17 +206,22 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     if (ok != true) return;
     try {
       await ref.read(departmentRepositoryProvider).delete(node.id);
-      _toast(l10n.departmentDeleted);
+      _toastSuccess(l10n.departmentDeleted);
       if (_selectedId == node.id) _selectedId = null;
       await _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toastError(e.message);
     }
   }
 
-  void _toast(String msg) {
+  void _toastSuccess(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    context.appSuccess(msg);
+  }
+
+  void _toastError(String msg) {
+    if (!mounted) return;
+    context.appError(msg);
   }
 
   @override

@@ -12,6 +12,8 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../models/production.dart';
 import '../providers/production_providers.dart';
 
@@ -29,11 +31,16 @@ class ProductionOutputStatsPage extends ConsumerWidget {
         subtitle: '本周 · 全公司',
         showBackButton: true,
         actions: [
-          TextButton.icon(
-            onPressed: () => ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('导出 Excel（Mock）'))),
-            icon: const Icon(Icons.download_rounded, size: 20),
+          UtenActionButton(
+            type: UtenActionButtonType.ghost,
+            size: UtenActionButtonSize.small,
+            icon: Icons.download_rounded,
             label: const Text('导出'),
+            loadingLabel: const Text('导出中…'),
+            onAction: () async {
+              await Future<void>.delayed(const Duration(milliseconds: 600));
+              if (context.mounted) context.appInfo('导出 Excel（Mock）');
+            },
           ),
         ],
       ),

@@ -91,6 +91,7 @@ class SessionNotifier extends Notifier<SessionState> {
         department: p.department,
         position: p.position,
         permissions: p.permissions,
+        superAdmin: p.superAdmin,
       );
 
   static Role _toRole(String code) =>

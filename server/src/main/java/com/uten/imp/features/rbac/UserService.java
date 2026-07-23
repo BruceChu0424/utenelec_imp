@@ -106,9 +106,11 @@ public class UserService {
     public void assignRoles(UUID id, List<String> roleCodes) {
         tx.bind();
         require(id);
-        // 仅 admin 可授予 admin 角色（防 HR 提权，C1）
-        if (roleCodes != null && roleCodes.contains("admin")
-                && !currentUser.get().map(u -> u.getRoles().contains("admin")).orElse(false)) {
+        // 仅 admin / super admin 可授予 admin 角色（防 HR 提权，C1）
+        boolean currentIsAdmin = currentUser.get()
+                .map(u -> u.getRoles().contains("admin") || u.isSuperAdmin())
+                .orElse(false);
+        if (roleCodes != null && roleCodes.contains("admin") && !currentIsAdmin) {
             throw new ApiException(ErrorCode.FORBIDDEN, "仅管理员可授予 admin 角色");
         }
         userRoleRepo.deleteByIdUserId(id);

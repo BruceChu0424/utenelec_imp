@@ -26,7 +26,7 @@ class UtenUserAvatar extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: const LinearGradient(
-            colors: [UtenColors.deepGreen, UtenColors.teal700],
+            colors: [UtenColors.teal500, UtenColors.teal700],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),

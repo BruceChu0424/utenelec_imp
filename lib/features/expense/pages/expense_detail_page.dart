@@ -5,18 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_toast.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
@@ -152,44 +152,48 @@ class _Content extends ConsumerWidget {
             child: Row(
               children: [
                 if (canDelete) ...[
-                  UtenButton(
-                    type: UtenButtonType.ghost,
+                  UtenActionButton(
+                    type: UtenActionButtonType.ghost,
                     icon: Icons.delete_outline_rounded,
-                    onPressed: () async {
+                    label: const Text('删除'),
+                    loadingLabel: const Text('删除中…'),
+                    onAction: () async {
                       await deleteExpense(ref, claim.id);
                       if (context.mounted) {
-                        UtenToast.success(context, '已删除');
+                        context.appSuccess('已删除');
                         context.go(RouteName.expense);
                       }
                     },
-                    child: const Text('删除'),
                   ),
                   const SizedBox(width: 12),
                 ],
                 Expanded(
                   child: canSubmit
-                      ? UtenButton(
+                      ? UtenActionButton(
                           icon: Icons.send_rounded,
+                          type: UtenActionButtonType.primary,
                           isExpanded: true,
-                          onPressed: () async {
+                          label: const Text('提交审批'),
+                          loadingLabel: const Text('提交中…'),
+                          onAction: () async {
                             await submitExpense(ref, claim.id);
                             if (context.mounted) {
-                              UtenToast.success(context, '已提交，等待审批');
+                              context.appSuccess('已提交，等待审批');
                             }
                           },
-                          child: const Text('提交审批'),
                         )
-                      : UtenButton(
-                          type: UtenButtonType.ghost,
+                      : UtenActionButton(
+                          type: UtenActionButtonType.ghost,
                           icon: Icons.undo_rounded,
                           isExpanded: true,
-                          onPressed: () async {
+                          label: const Text('撤回'),
+                          loadingLabel: const Text('撤回中…'),
+                          onAction: () async {
                             await withdrawExpense(ref, claim.id);
                             if (context.mounted) {
-                              UtenToast.success(context, '已撤回');
+                              context.appSuccess('已撤回');
                             }
                           },
-                          child: const Text('撤回'),
                         ),
                 ),
               ],

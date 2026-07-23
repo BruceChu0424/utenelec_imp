@@ -674,6 +674,18 @@ abstract class AppLocalizations {
   /// **'我的访客预约'**
   String get visitorHomeTitle;
 
+  /// No description provided for @visitorSettingsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'访客设置'**
+  String get visitorSettingsTitle;
+
+  /// No description provided for @visitorSettingsTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置'**
+  String get visitorSettingsTooltip;
+
   /// No description provided for @visitorApplyNew.
   ///
   /// In zh, this message translates to:
@@ -835,6 +847,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请选择到访时间'**
   String get visitorApplyValidateVisitTime;
+
+  /// No description provided for @visitorApplyValidateVisitTimeFuture.
+  ///
+  /// In zh, this message translates to:
+  /// **'到访时间需晚于当前时间'**
+  String get visitorApplyValidateVisitTimeFuture;
+
+  /// No description provided for @visitorApplyDuplicateTime.
+  ///
+  /// In zh, this message translates to:
+  /// **'您已有相同时段的进行中预约，请换一个时间'**
+  String get visitorApplyDuplicateTime;
 
   /// No description provided for @visitorApplySuccess.
   ///
@@ -1526,6 +1550,18 @@ abstract class AppLocalizations {
   /// **'组织信息'**
   String get employeeEditOrg;
 
+  /// No description provided for @employeeEditContact.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系方式'**
+  String get employeeEditContact;
+
+  /// No description provided for @employeeEditSalary.
+  ///
+  /// In zh, this message translates to:
+  /// **'薪资与银行'**
+  String get employeeEditSalary;
+
   /// No description provided for @employeeEditFieldPhone.
   ///
   /// In zh, this message translates to:
@@ -1559,8 +1595,14 @@ abstract class AppLocalizations {
   /// No description provided for @employeeEditSaved.
   ///
   /// In zh, this message translates to:
-  /// **'已保存（Mock）'**
+  /// **'已保存'**
   String get employeeEditSaved;
+
+  /// No description provided for @employeeEditSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存失败，请重试'**
+  String get employeeEditSaveFailed;
 
   /// No description provided for @employeeEditLoadFailed.
   ///

@@ -28,7 +28,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   final _searchCtl = TextEditingController();
   String _search = '';
   Timer? _debounce;
-  Set<String> _statuses = {};
+  final Set<String> _statuses = {};
   final List<EmployeeSummary> _items = [];
   int _page = 1;
   int _totalPages = 1;
@@ -71,8 +71,6 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       final r = await ref
           .read(employeeRepositoryProvider)
           .list(
-            page: 1,
-            size: 20,
             search: _search.isEmpty ? null : _search,
             statuses: _statuses.isEmpty ? null : _statuses,
           );
@@ -107,7 +105,6 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
           .read(employeeRepositoryProvider)
           .list(
             page: _page + 1,
-            size: 20,
             search: _search.isEmpty ? null : _search,
             statuses: _statuses.isEmpty ? null : _statuses,
           );

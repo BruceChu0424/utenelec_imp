@@ -39,6 +39,7 @@ abstract final class RouteName {
   // 访客端（独立流程，不进 ShellRoute）
   static const String visitorLogin = '/visitor/login';
   static const String visitorHome = '/visitor/home';
+  static const String visitorSettings = '/visitor/settings';
   static const String visitorApply = '/visitor/apply';
   static const String visitorApplyDetail = '/visitor/apply/:id';
 

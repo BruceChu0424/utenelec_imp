@@ -176,11 +176,9 @@ class _UtenButtonState extends State<UtenButton> {
   /// 返回 (背景色, 文字色, 边框色)
   (Color, Color, Color?) _resolveColors(bool isDark) {
     return switch (widget.type) {
-      // 主按钮：实心深绿（浅色）/ 青绿（深色）
+      // 主按钮：浅色 / 深色都用 teal500（青绿），统一品牌
       UtenButtonType.primary =>
-        isDark
-            ? (UtenColors.teal500, UtenColors.teal950, null)
-            : (UtenColors.primary, Colors.white, null),
+        (UtenColors.teal500, UtenColors.teal950, null),
       // 次要按钮：浅灰背景 + 深文字（类似 macOS / Linear 的次按钮）
       UtenButtonType.secondary =>
         isDark

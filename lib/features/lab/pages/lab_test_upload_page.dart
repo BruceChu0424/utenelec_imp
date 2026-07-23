@@ -10,6 +10,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/lab_test.dart';
 import '../providers/lab_providers.dart';
 
@@ -46,7 +47,7 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
         _sampleName.text.isEmpty ||
         _project.text.isEmpty ||
         _result.text.isEmpty) {
-      _toast('请填写样品编号、名称、项目和结果');
+      if (mounted) context.appError('请填写样品编号、名称、项目和结果');
       return;
     }
     setState(() => _saving = true);
@@ -64,9 +65,7 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
     await ref.read(labRepositoryProvider).create(test);
     if (mounted) {
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('检测数据已上传（Mock）')),
-      );
+      context.appSuccess('检测数据已上传（Mock）');
       ref.invalidate(labListProvider);
       context.go('/lab/test/${test.id}');
     }
@@ -132,9 +131,6 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
       ),
     );
   }
-
-  void _toast(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }
 
 class _F extends StatelessWidget {

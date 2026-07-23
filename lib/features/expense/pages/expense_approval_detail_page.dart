@@ -15,6 +15,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
 
@@ -50,9 +51,7 @@ class _ExpenseApprovalDetailPageState
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (mounted) {
       setState(() => _acting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(approve ? '已通过（Mock）' : '已驳回（Mock）')),
-      );
+      context.appInfo(approve ? '已通过（Mock）' : '已驳回（Mock）');
       ref.invalidate(expenseApprovalListProvider);
       context.go('/expense/approval');
     }
@@ -209,7 +208,7 @@ class _Hero extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [UtenColors.deepGreen, UtenColors.teal600],
+          colors: [UtenColors.teal500, UtenColors.teal600],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

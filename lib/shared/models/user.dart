@@ -13,6 +13,7 @@ class AppUser {
     this.position,
     this.avatarUrl,
     this.permissions = const [],
+    this.superAdmin = false,
   });
 
   final String id;
@@ -20,11 +21,16 @@ class AppUser {
   final String name;
   final List<Role> roles;
   final String? department;
+  /// super admin 该字段为 null（数据库没设 position），显示端展示"系统管理员"。
   final String? position;
   final String? avatarUrl;
 
-  /// 功能权限点（来自后端 JWT；admin 视为通配）
+  /// 功能权限点（来自后端 JWT；admin / super admin 视为通配，set 已包含所有权限）
   final List<String> permissions;
+
+  /// 超级管理员（来自后端 users.is_super_admin）。拥有该字段后所有权限检查短路放行。
+  /// 与 isAdmin 不同：super admin 不依赖具体 role/rolePermission 映射。
+  final bool superAdmin;
 
   /// 是否拥有指定角色
   bool hasRole(Role role) => roles.contains(role);
@@ -33,11 +39,11 @@ class AppUser {
   bool hasAnyRole(List<Role> roles) =>
       roles.any((r) => this.roles.contains(r));
 
-  /// 是否拥有指定功能权限点
-  bool can(String perm) => isAdmin || permissions.contains(perm);
+  /// 是否拥有指定功能权限点（super admin 一律 true）
+  bool can(String perm) => superAdmin || isAdmin || permissions.contains(perm);
 
-  /// 是否为管理员
-  bool get isAdmin => hasRole(Role.admin);
+  /// 是否为管理员（含 super admin）
+  bool get isAdmin => superAdmin || hasRole(Role.admin);
 
   /// 是否为管理层
   bool get isManager => hasRole(Role.manager);

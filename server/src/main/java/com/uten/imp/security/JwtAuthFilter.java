@@ -26,6 +26,7 @@ import java.util.UUID;
  * 解析 Authorization: Bearer access-jwt，按 typ claim 区分主体并**复查 DB 状态**：
  * <ul>
  *   <li>staff：停用/锁定/软删 → 拒绝；mcp 以 DB 为准（管理员重置后立即降权）</li>
+ *   <li>staff super-admin：以 DB 的 users.is_super_admin 为准（不依赖 JWT claim，重置后立即同步）</li>
  *   <li>visitor：blocked → 拒绝</li>
  * </ul>
  */
@@ -67,7 +68,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    /** 员工：复查 users 状态（停用/锁定/软删 → 拒绝；mcp 以 DB 为准）。 */
+    /**
+     * 员工：复查 users 状态（停用/锁定/软删 → 拒绝；mcp 以 DB 为准）。
+     * 超级管理员（users.is_super_admin=TRUE）也以 DB 为准：万一被管理员取消超管，
+     * 下一次请求立即拿不到 superAdmin 标记。
+     */
     private AuthUser resolveStaff(UUID userId, Claims c) {
         UserAccount user = userRepo.findById(userId).orElse(null);
         if (user == null || user.isDeleted()
@@ -81,7 +86,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         Set<String> roles = new HashSet<>(asStringList(c.get("roles")));
         Set<String> perms = new HashSet<>(asStringList(c.get("perms")));
         boolean mcp = user.isMustChangePassword();
-        return new AuthUser(userId, employeeId, loginAccount, roles, perms, mcp, true);
+        return new AuthUser(userId, employeeId, loginAccount, roles, perms, mcp, true, user.isSuperAdmin());
     }
 
     /** 访客：复查 visitor_accounts 状态（blocked → 拒绝）。 */

@@ -14,6 +14,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_repository.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
@@ -31,14 +32,10 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
           action: action, comment: comment, rejectReason: rejectReason);
       ref.invalidate(visitorApprovalDetailProvider(applicationId));
     } on ApiException catch (e) {
-      _toast(ref, e.message);
+      ref.context.appApiError(e, fallback: AppLocalizations.of(ref.context).commonError);
     } catch (_) {
-      _toast(ref, AppLocalizations.of(ref.context).commonError);
+      ref.context.appError(AppLocalizations.of(ref.context).commonError);
     }
-  }
-
-  void _toast(WidgetRef ref, String msg) {
-    ScaffoldMessenger.of(ref.context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _approve(BuildContext context, WidgetRef ref, AppLocalizations l10n) async {

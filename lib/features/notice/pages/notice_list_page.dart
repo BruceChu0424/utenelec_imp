@@ -12,6 +12,8 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 
@@ -42,16 +44,16 @@ class NoticeListPage extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
             child: Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () async {
+              child: UtenActionButton(
+                type: UtenActionButtonType.ghost,
+                size: UtenActionButtonSize.small,
+                label: const Text('全部已读'),
+                onAction: () async {
                   await markAllNoticeRead(ref);
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('全部已读')),
-                    );
+                    context.appSuccess('全部已读');
                   }
                 },
-                child: const Text('全部已读'),
               ),
             ),
           ),

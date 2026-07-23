@@ -53,6 +53,11 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
         subtitle: visitor?.visitorNo,
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: l10n.visitorSettingsTooltip,
+            onPressed: () => context.go(RouteName.visitorSettings),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: l10n.visitorLogout,
             onPressed: _logout,

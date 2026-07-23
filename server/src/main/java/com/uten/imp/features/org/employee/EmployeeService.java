@@ -306,11 +306,13 @@ public class EmployeeService {
         user.setFailedAttempts(0);
         userRepo.save(user);
 
-        // 8. 角色（默认 employee）—— 仅 admin 可授予 admin 角色（防 HR 提权，C1）
+        // 8. 角色（默认 employee）—— 仅 admin / super admin 可授予 admin 角色（防 HR 提权，C1）
         List<String> roleCodes = (req.account() == null || req.account().roles() == null || req.account().roles().isEmpty())
                 ? List.of("employee") : req.account().roles();
-        if (roleCodes.contains("admin")
-                && !currentUser.get().map(u -> u.getRoles().contains("admin")).orElse(false)) {
+        boolean currentIsAdmin = currentUser.get()
+                .map(u -> u.getRoles().contains("admin") || u.isSuperAdmin())
+                .orElse(false);
+        if (roleCodes.contains("admin") && !currentIsAdmin) {
             throw new ApiException(ErrorCode.FORBIDDEN, "仅管理员可授予 admin 角色");
         }
         for (Role role : roleRepo.findByCodeIn(roleCodes)) {

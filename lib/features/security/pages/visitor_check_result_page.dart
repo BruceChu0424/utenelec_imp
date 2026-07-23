@@ -10,6 +10,7 @@ import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 
 class VisitorCheckResultPage extends ConsumerStatefulWidget {
@@ -69,8 +70,7 @@ class _VisitorCheckResultPageState extends ConsumerState<VisitorCheckResultPage>
       final r = await ref.read(visitorStaffRepositoryProvider).checkIn(id);
       if (!mounted) return;
       setState(() => _result = r);
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppLocalizations.of(context).securityCheckInDone)));
+      context.appSuccess(AppLocalizations.of(context).securityCheckInDone);
     } finally {
       if (mounted) setState(() => _checking = false);
     }

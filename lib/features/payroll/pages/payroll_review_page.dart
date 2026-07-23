@@ -11,6 +11,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../employee/models/employee.dart';
 import '../../employee/providers/employee_providers.dart';
 
@@ -147,9 +148,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     if (mounted) {
       setState(() => _acting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(approve ? '已审核通过，交人事发布（Mock）' : '已驳回（Mock）')),
-      );
+      context.appInfo(approve ? '已审核通过，交人事发布（Mock）' : '已驳回（Mock）');
     }
   }
 }

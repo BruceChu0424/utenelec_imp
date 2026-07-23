@@ -9,6 +9,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/production.dart';
 import '../providers/production_providers.dart';
 
@@ -41,7 +42,7 @@ class _ProductionOutputEntryPageState
   Future<void> _save({required bool keepGoing}) async {
     final q = int.tryParse(_qualified.text) ?? 0;
     if (q <= 0) {
-      _toast('请输入合格数');
+      if (mounted) context.appError('请输入合格数');
       return;
     }
     final uq = int.tryParse(_unqualified.text) ?? 0;
@@ -59,9 +60,7 @@ class _ProductionOutputEntryPageState
     if (mounted) {
       setState(() => _saving = false);
       ref.invalidate(productionOutputListProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(keepGoing ? '已录入，可继续' : '已保存（Mock）')),
-      );
+      context.appSuccess(keepGoing ? '已录入，可继续' : '已保存（Mock）');
       _qualified.clear();
       _unqualified.clear();
     }
@@ -192,9 +191,6 @@ class _ProductionOutputEntryPageState
       ),
     );
   }
-
-  void _toast(String msg) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 }
 
 class _Dropdown extends StatelessWidget {

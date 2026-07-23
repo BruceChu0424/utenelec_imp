@@ -25,6 +25,13 @@ import java.util.UUID;
 /**
  * 鉴权服务：登录（防枚举/锁定/限流/密码长度上限）、刷新（轮换+悲观锁+锁定拒绝）、
  * 登出、改密（返回新令牌：当前设备保持登录、其他设备令牌失效）、我的资料。
+ *
+ * <p>超级管理员（{@code users.is_super_admin=true}）的能力：
+ * <ul>
+ *   <li>登录成功后 {@link #permsOf(UUID)} 直接返回全量 permissions，绕过 role_permissions 缺漏</li>
+ *   <li>返回的 UserProfile.position 为 null（不设置职务语义），position 字段 UI 上隐藏</li>
+ *   <li>前端可通过 isSuperAdmin 直接短路所有权限检查</li>
+ * </ul>
  */
 @Service
 public class AuthService {
@@ -36,6 +43,7 @@ public class AuthService {
     private final EmployeeRepository employeeRepo;
     private final UserRoleRepository userRoleRepo;
     private final RolePermissionRepository rolePermissionRepo;
+    private final PermissionRepository permissionRepo;
     private final RefreshTokenRepository refreshTokenRepo;
     private final RefreshTokenService refreshTokenService;
     private final PasswordHistoryRepository passwordHistoryRepo;
@@ -51,6 +59,7 @@ public class AuthService {
 
     public AuthService(UserAccountRepository userRepo, EmployeeRepository employeeRepo,
                        UserRoleRepository userRoleRepo, RolePermissionRepository rolePermissionRepo,
+                       PermissionRepository permissionRepo,
                        RefreshTokenRepository refreshTokenRepo, RefreshTokenService refreshTokenService,
                        PasswordHistoryRepository passwordHistoryRepo,
                        JwtService jwtService, PasswordEncoder passwordEncoder,
@@ -61,6 +70,7 @@ public class AuthService {
         this.employeeRepo = employeeRepo;
         this.userRoleRepo = userRoleRepo;
         this.rolePermissionRepo = rolePermissionRepo;
+        this.permissionRepo = permissionRepo;
         this.refreshTokenRepo = refreshTokenRepo;
         this.refreshTokenService = refreshTokenService;
         this.passwordHistoryRepo = passwordHistoryRepo;
@@ -241,7 +251,7 @@ public class AuthService {
 
     private TokenResponse buildTokenResponse(UserAccount user, String rawRefresh) {
         Set<String> roles = rolesOf(user.getId());
-        Set<String> perms = permsOf(user.getId());
+        Set<String> perms = permsOf(user);
         String access = jwtService.issueAccess(user.getId(), user.getEmployeeId(), user.getLoginAccount(),
                 roles, perms, user.isMustChangePassword());
         return new TokenResponse(access, rawRefresh, jwtService.getAccessTtlSeconds(),
@@ -251,24 +261,48 @@ public class AuthService {
     private TokenResponse.UserProfile profile(UserAccount user) {
         Employee e = employeeRepo.findById(user.getEmployeeId()).orElse(null);
         List<String> roles = rolesOf(user.getId()).stream().sorted().toList();
-        List<String> perms = permsOf(user.getId()).stream().sorted().toList();
+        List<String> perms = permsOf(user).stream().sorted().toList();
         String dept = (e != null && e.getDepartment() != null) ? e.getDepartment().getName() : null;
-        String pos = (e != null && e.getPosition() != null) ? e.getPosition().getName() : null;
+        // 超管：position 字段为 null（不设置职务）。这样前端能按 isSuperAdmin && position == null
+        // 自然展示"系统管理员"，避免显示一个空岗位。
+        String pos = (user.isSuperAdmin() || e == null || e.getPosition() == null)
+                ? null
+                : e.getPosition().getName();
         return new TokenResponse.UserProfile(
                 user.getId().toString(),
                 user.getLoginAccount(),
                 e == null ? null : e.getFullName(),
                 e == null ? null : e.getCode(),
-                dept, pos, roles, perms);
+                dept,
+                pos,
+                user.isSuperAdmin(),
+                roles,
+                perms);
     }
 
     private Set<String> rolesOf(UUID userId) {
         return new HashSet<>(userRoleRepo.findRoleCodesByUserId(userId));
     }
 
-    private Set<String> permsOf(UUID userId) {
-        List<UUID> roleIds = userRoleRepo.findRoleIdsByUserIds(List.of(userId));
+    /**
+     * 用户权限集合。超级管理员（{@code users.is_super_admin=true}）直接拿到全量
+     * permissions 表内容，绕过 role_permissions 是否有缺漏。
+     */
+    private Set<String> permsOf(UserAccount user) {
+        if (user.isSuperAdmin()) {
+            return permissionRepo.findAll().stream()
+                    .map(Permission::getCode)
+                    .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        }
+        List<UUID> roleIds = userRoleRepo.findRoleIdsByUserIds(List.of(user.getId()));
         return new HashSet<>(rolePermissionRepo.findPermissionCodesByRoleIds(roleIds));
+    }
+
+    /** 旧签名（按 userId），留作内部调用保持向后兼容。 */
+    private Set<String> permsOf(UUID userId) {
+        UserAccount user = userRepo.findById(userId).orElse(null);
+        if (user == null) return Set.of();
+        return permsOf(user);
     }
 
     private void ensureDummy() {

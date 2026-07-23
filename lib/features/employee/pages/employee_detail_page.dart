@@ -3,6 +3,7 @@
 // 文档：docs/03-页面/员工详情页.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
@@ -10,6 +11,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
@@ -68,7 +70,20 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.employeeDetailTitle)),
+      appBar: AppBar(
+        title: Text(l10n.employeeDetailTitle),
+        actions: [
+          if (ref.watch(currentPermissionsProvider).contains(Perm.employeeEdit))
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: l10n.employeeEditTitle,
+              onPressed: () async {
+                await context.push('/employee/${widget.employeeId}/edit');
+                _load();
+              },
+            ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -302,7 +317,6 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
   Widget _header(ThemeData theme, AppLocalizations l10n) {
     final p = _p;
     return UtenCard(
-      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           CircleAvatar(

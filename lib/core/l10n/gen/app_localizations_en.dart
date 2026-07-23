@@ -308,6 +308,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorHomeTitle => 'My Appointments';
 
   @override
+  String get visitorSettingsTitle => 'Visitor Settings';
+
+  @override
+  String get visitorSettingsTooltip => 'Settings';
+
+  @override
   String get visitorApplyNew => 'New Visit';
 
   @override
@@ -387,6 +393,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get visitorApplyValidateVisitTime => 'Please select visit time';
+
+  @override
+  String get visitorApplyValidateVisitTimeFuture =>
+      'Visit time must be later than now';
+
+  @override
+  String get visitorApplyDuplicateTime =>
+      'You already have an active visit at this time';
 
   @override
   String get visitorApplySuccess => 'Submitted, awaiting approval';
@@ -740,6 +754,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeEditOrg => 'Organization';
 
   @override
+  String get employeeEditContact => 'Contact';
+
+  @override
+  String get employeeEditSalary => 'Salary & Bank';
+
+  @override
   String get employeeEditFieldPhone => 'Mobile';
 
   @override
@@ -755,7 +775,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeEditFieldStatus => 'Status';
 
   @override
-  String get employeeEditSaved => 'Saved (mock)';
+  String get employeeEditSaved => 'Saved';
+
+  @override
+  String get employeeEditSaveFailed => 'Save failed, please try again';
 
   @override
   String employeeEditLoadFailed(Object error) {

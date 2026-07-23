@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
@@ -12,7 +13,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 被访人目录（访客在申请页选择接待人/部门）。
@@ -22,22 +25,39 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class VisitorDirectoryService {
 
+    /** 公司根节点的 level：访客选不到公司本身，只能选下属部门。 */
+    private static final String COMPANY_LEVEL = "公司";
+
     private final EmployeeRepository employeeRepo;
     private final DepartmentRepository departmentRepo;
 
     public List<DepartmentDirectoryItem> listDepartments() {
         return departmentRepo.findAll().stream()
-                .map(d -> new DepartmentDirectoryItem(d.getId(), d.getName()))
+                // 排除公司根节点：访客接待必须选到下属部门，否则按部门查员工会得到空集。
+                .filter(d -> !COMPANY_LEVEL.equals(d.getLevel()))
+                .map(d -> new DepartmentDirectoryItem(
+                        d.getId(),
+                        d.getName(),
+                        d.getParent() == null ? null : d.getParent().getId()))
                 .sorted(Comparator.comparing(DepartmentDirectoryItem::name))
                 .toList();
     }
 
     public List<EmployeeDirectoryItem> listEmployees(UUID departmentId, String keyword) {
+        // departmentId 命中时，按"该部门 + 全部子部门"匹配——这样选父部门
+        // （如总经办）也能看到所有下属员工；选叶子就只看叶子。
+        // 选错层级不会让访客卡在"该部门无员工"。
+        final Set<UUID> departmentScope = (departmentId == null)
+                ? null
+                : departmentRepo.findSubtree(departmentId).stream()
+                        .map(Department::getId)
+                        .collect(Collectors.toSet());
+
         Specification<Employee> spec = (root, query, cb) -> {
             Predicate p = cb.and(cb.equal(root.get("deleted"), false),
                     root.get("status").in("active", "probation", "onLeave"));
-            if (departmentId != null) {
-                p = cb.and(p, cb.equal(root.get("department").get("id"), departmentId));
+            if (departmentScope != null) {
+                p = cb.and(p, root.get("department").get("id").in(departmentScope));
             }
             if (keyword != null && !keyword.isBlank()) {
                 String like = "%" + keyword.trim() + "%";

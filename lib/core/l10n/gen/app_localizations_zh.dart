@@ -307,6 +307,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorHomeTitle => '我的访客预约';
 
   @override
+  String get visitorSettingsTitle => '访客设置';
+
+  @override
+  String get visitorSettingsTooltip => '设置';
+
+  @override
   String get visitorApplyNew => '预约来访';
 
   @override
@@ -386,6 +392,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get visitorApplyValidateVisitTime => '请选择到访时间';
+
+  @override
+  String get visitorApplyValidateVisitTimeFuture => '到访时间需晚于当前时间';
+
+  @override
+  String get visitorApplyDuplicateTime => '您已有相同时段的进行中预约，请换一个时间';
 
   @override
   String get visitorApplySuccess => '预约已提交，等待审批';
@@ -739,6 +751,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeEditOrg => '组织信息';
 
   @override
+  String get employeeEditContact => '联系方式';
+
+  @override
+  String get employeeEditSalary => '薪资与银行';
+
+  @override
   String get employeeEditFieldPhone => '手机';
 
   @override
@@ -754,7 +772,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeEditFieldStatus => '员工状态';
 
   @override
-  String get employeeEditSaved => '已保存（Mock）';
+  String get employeeEditSaved => '已保存';
+
+  @override
+  String get employeeEditSaveFailed => '保存失败，请重试';
 
   @override
   String employeeEditLoadFailed(Object error) {

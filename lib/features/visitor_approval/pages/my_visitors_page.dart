@@ -10,6 +10,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
@@ -22,15 +23,10 @@ class MyVisitorsPage extends ConsumerWidget {
       await ref.read(visitorStaffRepositoryProvider).hostConfirm(id, confirmed: confirmed);
       ref.invalidate(myAsHostProvider);
     } on ApiException catch (e) {
-      _toast(ref, e.message);
+      ref.context.appApiError(e, fallback: l10n.commonError);
     } catch (_) {
-      _toast(ref, l10n.commonError);
+      ref.context.appError(l10n.commonError);
     }
-  }
-
-  void _toast(WidgetRef ref, String msg) {
-    final ctx = ref.context;
-    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override

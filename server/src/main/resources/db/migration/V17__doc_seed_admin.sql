@@ -1,0 +1,32 @@
+-- 文档迁移：补充 V08__seed_admin.sql 的设计语义
+-- 位置：V17
+-- 原因：V08 已在数据库落地，不能再修改（Flyway 校验会失败），故把新增的设计
+-- 说明搬到本迁移承载。DDL 零变更，仅注释。
+--
+-- ─────────────────────────────────────────────────────────────────────────
+-- 超级管理员（admin）语义
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- 1.【登录账号】由后端 ApplicationRunner（BootstrapRunner）在首次启动时创建：
+--      login_account='admin'
+--      password_hash = Argon2id(.env 的 BOOTSTRAP_ADMIN_PASSWORD)
+--      must_change_password=true
+--      user_roles→admin
+--      is_super_admin=TRUE（V16__super_admin.sql 新增）
+--
+-- 2.【职务 / 岗位】position_id 故意 NULL：
+--      V08 INSERT 显式不写 position 列，落到 NULL（V03 列 nullable）。
+--      业务侧通过 EmployeeService.onboard 写入员工时也不会给 ADMIN 分配岗位。
+--      前端拿到 isSuperAdmin=true，UI 上"岗位/职务"等字段置为「系统管理员」。
+--
+-- 3.【部门归属】DB 上 employees.department_id NOT NULL，V08 把 admin 归属到
+--      "行政与人力资源部"（code='DEPT_HR'）占位，便于 HR 找到这条员工档案归档；
+--      但 dept 与业务授权无关（超管走 is_super_admin 通道，绕过 role 映射）。
+--
+-- 4.【权限】不依赖 role_permissions 全映射：
+--      V16 给 is_super_admin=TRUE 后，AuthService.permsOf() 直接读取 permissions
+--      全量，绕过 role 映射缺漏。
+--
+-- ─────────────────────────────────────────────────────────────────────────
+-- 注：V16 已经在用户表上加了 is_super_admin 列并把 admin 标记为 TRUE；本迁移
+-- 为补充文档，不修改任何 DDL。

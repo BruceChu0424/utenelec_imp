@@ -1,14 +1,19 @@
-// SettingsPage - 设置页
-// 文档：docs/03-页面/设置页.md（待写）
+// VisitorSettingsPage - 访客端设置页
+// 文档：docs/03-页面/访客预约系统.md
 //
-// 包含：主题切换 / 语言切换 / 字号调节 / 性能档切换 / 关于 / 退出登录
-// 外观 + 性能 + 关于 三段与 VisitorSettingsPage 共享 SettingsSection 布局。
+// 设计原则（与员工 SettingsPage 一致）：
+// - 直接调用平台已有的 4 个 switcher 组件（UtenThemeSwitcher / UtenLocaleSwitcher
+//   / UtenFontScaler / UtenPerformanceTierSwitcher），逻辑零重复
+// - 用 SettingsSection 统一"标题 + 卡片 + 行 + 分隔线"布局
+// - 关于/退出登录用访客自己的 session
+// - 不显示"修改密码"——访客是验证码登录，没有密码
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/settings/uten_font_scaler.dart';
 import '../../../components/settings/uten_locale_switcher.dart';
 import '../../../components/settings/uten_performance_switcher.dart';
@@ -16,11 +21,11 @@ import '../../../components/settings/uten_theme_switcher.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
-import '../../../shared/providers/session_provider.dart';
-import '../widgets/settings_section.dart';
+import '../../settings/widgets/settings_section.dart';
+import '../providers/visitor_session_provider.dart';
 
-class SettingsPage extends ConsumerWidget {
-  const SettingsPage({super.key});
+class VisitorSettingsPage extends ConsumerWidget {
+  const VisitorSettingsPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,6 +33,10 @@ class SettingsPage extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
+      appBar: UtenAppBar(
+        title: l10n.visitorSettingsTitle,
+        showBackButton: true,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -83,27 +92,7 @@ class SettingsPage extends ConsumerWidget {
 
             const SizedBox(height: 24),
 
-            // 账号
-            SettingsSection(
-              title: '账号',
-              children: [
-                Material(
-                  color: Colors.transparent,
-                  child: ListTile(
-                    leading: const Icon(Icons.lock_outline_rounded, size: 20),
-                    title: const Text('修改密码'),
-                    subtitle: const Text('修改登录密码'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.go(RouteName.changePassword),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // 退出登录
+            // 退出访客
             UtenCard(
               padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
               child: Material(
@@ -111,9 +100,9 @@ class SettingsPage extends ConsumerWidget {
                 child: ListTile(
                   leading: const Icon(Icons.logout,
                       color: UtenColors.error, size: 20),
-                  title: const Text(
-                    '退出登录',
-                    style: TextStyle(color: UtenColors.error),
+                  title: Text(
+                    l10n.visitorLogout,
+                    style: const TextStyle(color: UtenColors.error),
                   ),
                   onTap: () => _confirmLogout(context, ref),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8),
@@ -123,14 +112,12 @@ class SettingsPage extends ConsumerWidget {
 
             const SizedBox(height: 32),
 
-            // 页脚信息
             Center(
               child: Text(
-                'Phase 0 地基 Demo\n完整功能将在 Phase 1+ 陆续开放',
+                'Uten IMP · 访客端',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                textAlign: TextAlign.center,
               ),
             ),
           ],
@@ -144,7 +131,7 @@ class SettingsPage extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(l10n.settingsLogout),
+        title: Text(l10n.visitorLogout),
         content: Text(l10n.settingsLogoutConfirm),
         actions: [
           TextButton(
@@ -161,9 +148,9 @@ class SettingsPage extends ConsumerWidget {
     );
 
     if (confirmed == true) {
-      await ref.read(sessionProvider.notifier).logout();
+      await ref.read(visitorSessionProvider.notifier).logout();
       if (context.mounted) {
-        context.go(RouteName.login);
+        context.go(RouteName.entry);
       }
     }
   }

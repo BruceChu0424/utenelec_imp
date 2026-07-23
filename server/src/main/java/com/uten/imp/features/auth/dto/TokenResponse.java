@@ -14,8 +14,16 @@ public record TokenResponse(
             String loginAccount,
             String name,
             String code,
+            /**
+             * 部门名。后端 super admin 也照样返一个 dept 名（DB NOT NULL 约束），
+             * 但前端会按 isSuperAdmin 隐藏。
+             */
             String department,
+            /**
+             * 岗位名。super admin 该字段为 null（admin 没设置 position）。
+             */
             String position,
+            boolean superAdmin,
             List<String> roles,
             List<String> permissions
     ) {}

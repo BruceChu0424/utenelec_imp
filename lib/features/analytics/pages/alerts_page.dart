@@ -12,6 +12,8 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../models/alert.dart';
 import '../providers/analytics_providers.dart';
 
@@ -169,11 +171,16 @@ class _AlertCard extends StatelessWidget {
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已标记处理中（Mock）'))),
-                icon: const Icon(Icons.touch_app_rounded, size: 18),
+              child: UtenActionButton(
+                type: UtenActionButtonType.ghost,
+                size: UtenActionButtonSize.small,
+                icon: Icons.touch_app_rounded,
                 label: const Text('开始处理'),
+                loadingLabel: const Text('处理中…'),
+                onAction: () async {
+                  await Future<void>.delayed(const Duration(milliseconds: 400));
+                  if (context.mounted) context.appInfo('已标记处理中（Mock）');
+                },
               ),
             ),
           ],

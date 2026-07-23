@@ -15,24 +15,15 @@ class EntrySelectionPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final isCompact = MediaQuery.sizeOf(context).width < 480;
     final pagePadding = isCompact ? 20.0 : 24.0;
     final cardPadding = isCompact ? 24.0 : 32.0;
     final logoWidth = isCompact ? 200.0 : 220.0;
 
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: DecoratedBox(
-        decoration: BoxDecoration(
-          color: isDark ? null : theme.scaffoldBackgroundColor,
-          gradient: isDark
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF07110E), Color(0xFF0F241D)],
-                )
-              : null,
-        ),
+        decoration: BoxDecoration(color: theme.scaffoldBackgroundColor),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, c) {

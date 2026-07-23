@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../employee/models/employee.dart';
 import '../../employee/providers/employee_providers.dart';
 
@@ -203,9 +204,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     if (mounted) {
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.payrollSubmitted)));
+      context.appSuccess(l10n.payrollSubmitted);
       context.go('/employee');
     }
   }

@@ -17,6 +17,7 @@ abstract interface class EmployeeRepository {
   });
   Future<EmployeeProfile> getById(String id);
   Future<EmployeeProfile> create(EmployeeOnboardingInput input);
+  Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
   Future<void> transfer(String id, Map<String, dynamic> body);
   Future<void> offboard(String id, Map<String, dynamic> body);
   Future<void> delete(String id);
@@ -56,6 +57,12 @@ class DioEmployeeRepository implements EmployeeRepository {
   @override
   Future<EmployeeProfile> create(EmployeeOnboardingInput input) async {
     final json = await api.post(ApiEndpoints.employees, body: input.toJson());
+    return EmployeeProfile.fromJson(json);
+  }
+
+  @override
+  Future<EmployeeProfile> update(String id, Map<String, dynamic> body) async {
+    final json = await api.put(ApiEndpoints.employee(id), body: body);
     return EmployeeProfile.fromJson(json);
   }
 

@@ -2,7 +2,7 @@
   "@@locale": "en",
 
   "appTitle": "Uten Integrated Management Platform",
-  "appName": "Uten IMP",
+  "appName": "UTEN IMP",
 
   "commonConfirm": "Confirm",
   "commonCancel": "Cancel",
@@ -24,12 +24,8 @@
   "commonViewAll": "View all",
   "commonAction": "Action",
 
-  "loginTitle": "Welcome back",
-  "loginSubtitle": "Sign in to Uten Integrated Management Platform",
-  "loginAccountLabel": "Account",
   "loginAccountHint": "Employee code or phone number",
   "loginAccountRequired": "Please enter your account",
-  "loginPasswordLabel": "Password",
   "loginPasswordHint": "Enter your password",
   "loginPasswordRequired": "Please enter your password",
   "loginRememberMe": "Remember this device",
@@ -38,7 +34,6 @@
   "loginLoggingIn": "Signing in…",
   "loginSuccess": "Signed in",
   "loginFailed": "Invalid account or password",
-  "loginWelcomeHint": "Demo mode: any account/password works",
   "loginFooter": "© 2026 Uten Integrated Management Platform",
 
   "navDashboard": "Dashboard",
@@ -91,13 +86,9 @@
   "profileDepartment": "Department",
   "profilePosition": "Position",
 
-  "entryTitle": "Welcome to Uten",
   "entrySubtitle": "Choose how to sign in",
   "entryStaff": "Staff Sign In",
-  "entryStaffDesc": "Employee / HR / Finance / Manager / Security",
   "entryVisitor": "Visitor Sign In",
-  "entryVisitorDesc": "Visitor appointment registration",
-  "entryStaffHint": "You are a Uten employee, please use staff sign in",
 
   "visitorLoginTitle": "Visitor Sign In",
   "visitorLoginSubtitle": "Enter your phone to get a code",

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
@@ -59,11 +60,7 @@ class ProfilePage extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                leftColumn,
-                const SizedBox(height: 16),
-                rightColumn,
-              ],
+              children: [leftColumn, const SizedBox(height: 16), rightColumn],
             ),
           );
         },
@@ -81,23 +78,7 @@ class ProfilePage extends ConsumerWidget {
           padding: const EdgeInsets.all(20),
           child: Row(
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [UtenColors.deepGreen, UtenColors.teal700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
+              UtenUserAvatar(size: 56, name: user?.name),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -127,18 +108,18 @@ class ProfilePage extends ConsumerWidget {
                                   vertical: 3,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: UtenColors.teal50,
+                                  color: theme.colorScheme.surfaceContainer,
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
-                                    color: UtenColors.teal200,
+                                    color: theme.colorScheme.outlineVariant,
                                   ),
                                 ),
                                 child: Text(
                                   r.displayNameZh,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: UtenColors.teal700,
+                                    color: theme.colorScheme.primary,
                                   ),
                                 ),
                               );
@@ -160,7 +141,11 @@ class ProfilePage extends ConsumerWidget {
 
   /// 右栏：信息详情 + 设置入口 + 版本号
   Widget _buildRightColumn(
-      BuildContext context, ThemeData theme, AppLocalizations l10n, AppUser? user) {
+    BuildContext context,
+    ThemeData theme,
+    AppLocalizations l10n,
+    AppUser? user,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -254,10 +239,10 @@ class _SectionLabel extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              letterSpacing: 0.3,
-            ),
+          fontWeight: FontWeight.w700,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }
@@ -270,25 +255,29 @@ class _QuickEntries extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = <_Entry>[
       const _Entry(
-          icon: Icons.account_balance_wallet_rounded,
-          label: '工资条',
-          color: UtenColors.teal600,
-          path: RouteName.payrollSlipList),
+        icon: Icons.account_balance_wallet_rounded,
+        label: '工资条',
+        color: UtenColors.teal600,
+        path: RouteName.payrollSlipList,
+      ),
       const _Entry(
-          icon: Icons.receipt_long_rounded,
-          label: '我的报销',
-          color: UtenColors.info,
-          path: RouteName.expense),
+        icon: Icons.receipt_long_rounded,
+        label: '我的报销',
+        color: UtenColors.info,
+        path: RouteName.expense,
+      ),
       const _Entry(
-          icon: Icons.campaign_rounded,
-          label: '公司通知',
-          color: UtenColors.warning,
-          path: RouteName.notice),
+        icon: Icons.campaign_rounded,
+        label: '公司通知',
+        color: UtenColors.warning,
+        path: RouteName.notice,
+      ),
       const _Entry(
-          icon: Icons.lightbulb_outline_rounded,
-          label: '建议箱',
-          color: UtenColors.success,
-          path: RouteName.suggestion),
+        icon: Icons.lightbulb_outline_rounded,
+        label: '建议箱',
+        color: UtenColors.success,
+        path: RouteName.suggestion,
+      ),
     ];
 
     return UtenCard(
@@ -409,8 +398,11 @@ class _NavTile extends StatelessWidget {
       type: MaterialType.transparency,
       child: ListTile(
         onTap: onTap,
-        leading:
-            Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+        leading: Icon(
+          icon,
+          size: 20,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
         title: Text(label),
         subtitle: description != null
             ? Text(

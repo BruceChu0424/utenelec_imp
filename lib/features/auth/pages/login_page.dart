@@ -2,15 +2,16 @@
 // 文档：docs/03-页面/登录页.md（待写）
 //
 // 设计：
-// - 深绿青绿渐变背景
+// - 深色 slate-900 → slate-800 渐变背景
 // - 玻璃拟态登录卡
 // - 中等进场动画
-// - 点击即登录（前端 Mock）
+// - 顶部品牌字标 UtenWordmarkLogo
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/brand/uten_wordmark_logo.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -44,10 +45,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: UtenAnim.slow,
-    );
+    _controller = AnimationController(vsync: this, duration: UtenAnim.slow);
     _fadeAnimation = CurvedAnimation(
       parent: _controller,
       curve: UtenAnim.enter,
@@ -76,7 +74,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
     });
 
     try {
-      await ref.read(sessionProvider.notifier).login(
+      await ref
+          .read(sessionProvider.notifier)
+          .login(
             account: _accountController.text.trim(),
             password: _passwordController.text,
             rememberDevice: _rememberDevice,
@@ -104,28 +104,26 @@ class _LoginPageState extends ConsumerState<LoginPage>
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       body: DecoratedBox(
-        // 登录页统一用深色背景（中性深灰，和系统深色模式一致），
-        // 不用大块绿色——避免和浅色模式的中性页面反差过大。
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF0F172A), // slate-900
-              Color(0xFF1E293B), // slate-800
-            ],
-          ),
+        decoration: BoxDecoration(
+          color: isDark ? null : theme.scaffoldBackgroundColor,
+          gradient: isDark
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF07110E), Color(0xFF0F241D)],
+                )
+              : null,
         ),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
               return SingleChildScrollView(
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Center(
                     child: FadeTransition(
                       opacity: _fadeAnimation,
@@ -145,195 +143,124 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   Widget _buildLoginCard(AppLocalizations l10n, ThemeData theme) {
+    final isCompact = MediaQuery.sizeOf(context).width < 480;
+    final pagePadding = isCompact ? 20.0 : 24.0;
+    final cardPadding = isCompact ? 24.0 : 32.0;
+    final logoWidth = isCompact ? 200.0 : 220.0;
+
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 420),
+      constraints: const BoxConstraints(maxWidth: 440),
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(pagePadding),
         child: UtenCard(
-        padding: const EdgeInsets.all(32),
-        borderRadius: 20,
-        elevation: UtenCardElevation.high,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Logo
-              _buildLogo(),
-              const SizedBox(height: 24),
-              // 标题（深色文字，跟随主题）
-              Text(
-                l10n.loginTitle,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                l10n.loginSubtitle,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              // 账号
-              UtenInput(
-                controller: _accountController,
-                label: l10n.loginAccountLabel,
-                hint: l10n.loginAccountHint,
-                prefixIcon: Icons.person_outline_rounded,
-                textInputAction: TextInputAction.next,
-                validator: (value) =>
-                    (value == null || value.isEmpty) ? l10n.loginAccountRequired : null,
-                autofillHints: const ['username'],
-              ),
-              const SizedBox(height: 16),
-              // 密码
-              UtenInput(
-                controller: _passwordController,
-                label: l10n.loginPasswordLabel,
-                hint: l10n.loginPasswordHint,
-                prefixIcon: Icons.lock_outline_rounded,
-                isPassword: true,
-                textInputAction: TextInputAction.go,
-                onFieldSubmitted: (_) => _handleLogin(),
-                validator: (value) =>
-                    (value == null || value.isEmpty) ? l10n.loginPasswordRequired : null,
-                autofillHints: const ['password'],
-              ),
-              const SizedBox(height: 16),
-              // 记住设备 + 忘记密码
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: Checkbox(
-                          value: _rememberDevice,
-                          onChanged: (v) =>
-                              setState(() => _rememberDevice = v ?? false),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        l10n.loginRememberMe,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: UtenColors.error.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error_outline, color: UtenColors.error, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: UtenColors.error,
-                          ),
-                        ),
-                      ),
-                    ],
+          padding: EdgeInsets.all(cardPadding),
+          borderRadius: 16,
+          elevation: UtenCardElevation.high,
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: UtenWordmarkLogo(
+                    width: logoWidth,
+                    height: logoWidth / (405 / 74),
                   ),
                 ),
-              ],
-              const SizedBox(height: 20),
-              // 登录按钮（主按钮，跟随主题色）
-              UtenButton(
-                onPressed: _isLoading ? null : _handleLogin,
-                isLoading: _isLoading,
-                isExpanded: true,
-                size: UtenButtonSize.large,
-                child: Text(
-                  _isLoading ? l10n.loginLoggingIn : l10n.loginButton,
+                const SizedBox(height: 32),
+                UtenInput(
+                  controller: _accountController,
+                  hint: l10n.loginAccountHint,
+                  prefixIcon: Icons.person_outline_rounded,
+                  textInputAction: TextInputAction.next,
+                  validator: (value) => (value == null || value.isEmpty)
+                      ? l10n.loginAccountRequired
+                      : null,
+                  autofillHints: const ['username'],
                 ),
-              ),
-              const SizedBox(height: 16),
-              // 演示提示（跟随主题的浅色背景）
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(8),
+                const SizedBox(height: 16),
+                UtenInput(
+                  controller: _passwordController,
+                  hint: l10n.loginPasswordHint,
+                  prefixIcon: Icons.lock_outline_rounded,
+                  isPassword: true,
+                  textInputAction: TextInputAction.go,
+                  onFieldSubmitted: (_) => _handleLogin(),
+                  validator: (value) => (value == null || value.isEmpty)
+                      ? l10n.loginPasswordRequired
+                      : null,
+                  autofillHints: const ['password'],
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                const SizedBox(height: 16),
+                Row(
                   children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      size: 14,
-                      color: theme.colorScheme.onSurfaceVariant,
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Checkbox(
+                        value: _rememberDevice,
+                        onChanged: (value) =>
+                            setState(() => _rememberDevice = value ?? false),
+                      ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     Text(
-                      l10n.loginWelcomeHint,
+                      l10n.loginRememberMe,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 20),
-              // 页脚
-              Text(
-                l10n.loginFooter,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: UtenColors.error.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: UtenColors.error,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: UtenColors.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                UtenButton(
+                  onPressed: _isLoading ? null : _handleLogin,
+                  isLoading: _isLoading,
+                  isExpanded: true,
+                  size: UtenButtonSize.large,
+                  child: Text(
+                    _isLoading ? l10n.loginLoggingIn : l10n.loginButton,
+                  ),
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-      ),
-    );
-  }
-
-  Widget _buildLogo() {
-    return Container(
-      width: 64,
-      height: 64,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF14B8A6), Color(0xFF2DD4BF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: UtenColors.teal500.withValues(alpha: 0.4),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: const Center(
-        child: Text(
-          'U',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-            fontSize: 36,
+                const SizedBox(height: 24),
+                Text(
+                  l10n.loginFooter,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),

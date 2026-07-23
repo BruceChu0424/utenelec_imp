@@ -3,8 +3,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
-
 /// Uten 列表项
 ///
 /// 通用一行卡片：左侧图标/头像 + 标题 + 副标题 + 右侧状态/数值/箭头
@@ -153,7 +151,7 @@ class UtenListItem extends StatelessWidget {
   }
 
   Widget _buildLeadingIcon(ThemeData theme) {
-    final color = leadingColor ?? UtenColors.accent;
+    final color = leadingColor ?? theme.colorScheme.primary;
     return Container(
       width: 40,
       height: 40,

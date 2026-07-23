@@ -12,7 +12,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTitle => 'Uten Integrated Management Platform';
 
   @override
-  String get appName => 'Uten IMP';
+  String get appName => 'UTEN IMP';
 
   @override
   String get commonConfirm => 'Confirm';
@@ -72,22 +72,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonAction => 'Action';
 
   @override
-  String get loginTitle => 'Welcome back';
-
-  @override
-  String get loginSubtitle => 'Sign in to Uten Integrated Management Platform';
-
-  @override
-  String get loginAccountLabel => 'Account';
-
-  @override
   String get loginAccountHint => 'Employee code or phone number';
 
   @override
   String get loginAccountRequired => 'Please enter your account';
-
-  @override
-  String get loginPasswordLabel => 'Password';
 
   @override
   String get loginPasswordHint => 'Enter your password';
@@ -112,9 +100,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get loginFailed => 'Invalid account or password';
-
-  @override
-  String get loginWelcomeHint => 'Demo mode: any account/password works';
 
   @override
   String get loginFooter => '© 2026 Uten Integrated Management Platform';
@@ -261,26 +246,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profilePosition => 'Position';
 
   @override
-  String get entryTitle => 'Welcome to Uten';
-
-  @override
   String get entrySubtitle => 'Choose how to sign in';
 
   @override
   String get entryStaff => 'Staff Sign In';
 
   @override
-  String get entryStaffDesc => 'Employee / HR / Finance / Manager / Security';
-
-  @override
   String get entryVisitor => 'Visitor Sign In';
-
-  @override
-  String get entryVisitorDesc => 'Visitor appointment registration';
-
-  @override
-  String get entryStaffHint =>
-      'You are a Uten employee, please use staff sign in';
 
   @override
   String get visitorLoginTitle => 'Visitor Sign In';

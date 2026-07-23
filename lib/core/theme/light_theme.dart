@@ -18,16 +18,16 @@ ThemeData buildLightTheme() {
     brightness: Brightness.light,
     primary: UtenColors.primary,
     onPrimary: Colors.white,
-    primaryContainer: UtenColors.teal50,
-    onPrimaryContainer: UtenColors.teal900,
-    secondary: UtenColors.accent,
+    primaryContainer: UtenColors.surfaceMid,
+    onPrimaryContainer: UtenColors.deepGreen,
+    secondary: UtenColors.deepGreen,
     onSecondary: Colors.white,
-    secondaryContainer: UtenColors.teal50,
-    onSecondaryContainer: UtenColors.teal900,
-    tertiary: UtenColors.teal600,
+    secondaryContainer: UtenColors.surfaceMid,
+    onSecondaryContainer: UtenColors.deepGreen,
+    tertiary: UtenColors.deepGreen,
     onTertiary: Colors.white,
-    tertiaryContainer: UtenColors.teal50,
-    onTertiaryContainer: UtenColors.teal900,
+    tertiaryContainer: UtenColors.surfaceMid,
+    onTertiaryContainer: UtenColors.deepGreen,
     error: UtenColors.error,
     onError: Colors.white,
     errorContainer: UtenColors.errorBg,
@@ -46,7 +46,7 @@ ThemeData buildLightTheme() {
     scrim: UtenColors.slate950,
     inverseSurface: UtenColors.slate900,
     onInverseSurface: UtenColors.slate50,
-    inversePrimary: UtenColors.teal400,
+    inversePrimary: UtenColors.deepGreen,
     surfaceTint: UtenColors.primary,
   );
 
@@ -61,64 +61,96 @@ ThemeData buildLightTheme() {
     // ===== 文字系统（Material type roles）=====
     textTheme: const TextTheme(
       displayLarge: TextStyle(
-        fontSize: 48, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.1, letterSpacing: -0.5,
+        fontSize: 48,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.1,
+        letterSpacing: -0.5,
       ),
       displayMedium: TextStyle(
-        fontSize: 36, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.15, letterSpacing: -0.3,
+        fontSize: 36,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.15,
+        letterSpacing: -0.3,
       ),
       displaySmall: TextStyle(
-        fontSize: 28, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.2,
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.2,
       ),
       headlineLarge: TextStyle(
-        fontSize: 24, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.3,
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.3,
       ),
       headlineMedium: TextStyle(
-        fontSize: 20, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.35,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.35,
       ),
       headlineSmall: TextStyle(
-        fontSize: 18, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       titleLarge: TextStyle(
-        fontSize: 16, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       titleMedium: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       titleSmall: TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       bodyLarge: TextStyle(
-        fontSize: 15, fontWeight: FontWeight.w400,
-        color: UtenColors.textPrimary, height: 1.5,
+        fontSize: 15,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.textPrimary,
+        height: 1.5,
       ),
       bodyMedium: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w400,
-        color: UtenColors.textPrimary, height: 1.5,
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.textPrimary,
+        height: 1.5,
       ),
       bodySmall: TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w400,
-        color: UtenColors.textSecondary, height: 1.45,
+        fontSize: 13,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.textSecondary,
+        height: 1.45,
       ),
       labelLarge: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       labelMedium: TextStyle(
-        fontSize: 12, fontWeight: FontWeight.w600,
-        color: UtenColors.textSecondary, height: 1.4,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textSecondary,
+        height: 1.4,
       ),
       labelSmall: TextStyle(
-        fontSize: 11, fontWeight: FontWeight.w500,
-        color: UtenColors.textTertiary, height: 1.4,
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        color: UtenColors.textTertiary,
+        height: 1.4,
       ),
     ),
 
@@ -238,10 +270,12 @@ ThemeData buildLightTheme() {
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: UtenColors.border),
       ),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       hintStyle: const TextStyle(color: UtenColors.textTertiary, fontSize: 14),
-      labelStyle: const TextStyle(color: UtenColors.textSecondary, fontSize: 14),
+      labelStyle: const TextStyle(
+        color: UtenColors.textSecondary,
+        fontSize: 14,
+      ),
     ),
 
     // ===== 导航 =====
@@ -249,7 +283,7 @@ ThemeData buildLightTheme() {
       backgroundColor: UtenColors.surface,
       elevation: 0,
       height: 64,
-      indicatorColor: UtenColors.teal50,
+      indicatorColor: UtenColors.surfaceMid,
       indicatorShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
       ),
@@ -258,30 +292,34 @@ ThemeData buildLightTheme() {
         return TextStyle(
           fontSize: 11,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          color: selected ? UtenColors.teal600 : UtenColors.textTertiary,
+          color: selected ? UtenColors.deepGreen : UtenColors.textTertiary,
         );
       }),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
         return IconThemeData(
           size: 22,
-          color: selected ? UtenColors.teal600 : UtenColors.textTertiary,
+          color: selected ? UtenColors.deepGreen : UtenColors.textTertiary,
         );
       }),
     ),
     navigationRailTheme: NavigationRailThemeData(
       backgroundColor: UtenColors.surface,
       elevation: 0,
-      indicatorColor: UtenColors.teal50,
+      indicatorColor: UtenColors.surfaceMid,
       indicatorShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
       ),
-      selectedIconTheme:
-          const IconThemeData(color: UtenColors.teal600, size: 22),
-      unselectedIconTheme:
-          const IconThemeData(color: UtenColors.textTertiary, size: 22),
+      selectedIconTheme: const IconThemeData(
+        color: UtenColors.deepGreen,
+        size: 22,
+      ),
+      unselectedIconTheme: const IconThemeData(
+        color: UtenColors.textTertiary,
+        size: 22,
+      ),
       selectedLabelTextStyle: const TextStyle(
-        color: UtenColors.teal600,
+        color: UtenColors.deepGreen,
         fontSize: 12,
         fontWeight: FontWeight.w600,
       ),
@@ -294,7 +332,7 @@ ThemeData buildLightTheme() {
 
     chipTheme: ChipThemeData(
       backgroundColor: UtenColors.surfaceMid,
-      selectedColor: UtenColors.teal50,
+      selectedColor: UtenColors.surfaceMid,
       labelStyle: const TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w500,
@@ -354,8 +392,10 @@ ThemeData buildLightTheme() {
       elevation: 2,
       highlightElevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      extendedTextStyle:
-          const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      extendedTextStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
     ),
 
     switchTheme: SwitchThemeData(
@@ -390,10 +430,11 @@ ThemeData buildLightTheme() {
     tabBarTheme: const TabBarThemeData(
       labelColor: UtenColors.textPrimary,
       unselectedLabelColor: UtenColors.textSecondary,
-      labelStyle:
-          TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-      unselectedLabelStyle:
-          TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      labelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
       indicator: UnderlineTabIndicator(
         borderSide: BorderSide(color: UtenColors.primary, width: 2),
       ),

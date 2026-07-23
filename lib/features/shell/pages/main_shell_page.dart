@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/data_display/uten_user_avatar.dart';
+import '../../../core/constants/assets.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
@@ -55,44 +57,192 @@ class MainShellPage extends ConsumerWidget {
 
     // 角色分组（按角色显隐）
     final allGroups = <_NavGroup>[
-      _NavGroup(title: '业务模块', roles: null, items: [
-        const _NavDestination(icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet_rounded, label: '工资条', location: '/payroll/slip'),
-        const _NavDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long_rounded, label: '我的报销', location: '/expense'),
-        const _NavDestination(icon: Icons.lightbulb_outline_rounded, selectedIcon: Icons.lightbulb_rounded, label: '建议箱', location: '/suggestion'),
-        _NavDestination(icon: Icons.person_search_outlined, selectedIcon: Icons.person_search_rounded, label: l10n.myVisitorsTitle, location: RouteName.myVisitors),
-      ]),
-      const _NavGroup(title: '人事管理', roles: [Role.hr, Role.admin, Role.manager], items: [
-        _NavDestination(icon: Icons.badge_outlined, selectedIcon: Icons.badge_rounded, label: '员工档案', location: '/employee'),
-        _NavDestination(icon: Icons.account_tree_outlined, selectedIcon: Icons.account_tree_rounded, label: '部门管理', location: '/department'),
-        _NavDestination(icon: Icons.person_add_outlined, selectedIcon: Icons.person_add_rounded, label: '入职办理', location: '/employee/onboarding'),
-        _NavDestination(icon: Icons.request_quote_outlined, selectedIcon: Icons.request_quote_rounded, label: '工资条生成', location: '/payroll/generate'),
-        _NavDestination(icon: Icons.campaign_outlined, selectedIcon: Icons.campaign_rounded, label: '通知发布', location: '/notice/publish'),
-      ]),
-      const _NavGroup(title: '财务管理', roles: [Role.finance, Role.admin, Role.manager], items: [
-        _NavDestination(icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check_rounded, label: '报销审批', location: '/expense/approval'),
-        _NavDestination(icon: Icons.rate_review_outlined, selectedIcon: Icons.rate_review_rounded, label: '工资条审核', location: '/payroll/review'),
-        _NavDestination(icon: Icons.bar_chart_outlined, selectedIcon: Icons.bar_chart_rounded, label: '财务报表', location: '/finance/report'),
-      ]),
-      const _NavGroup(title: '生产管理', roles: [Role.production, Role.admin, Role.manager], items: [
-        _NavDestination(icon: Icons.science_outlined, selectedIcon: Icons.science_rounded, label: '检测记录', location: '/lab/test'),
-        _NavDestination(icon: Icons.hvac_outlined, selectedIcon: Icons.hvac_rounded, label: '空调控制', location: '/hvac'),
-        _NavDestination(icon: Icons.view_timeline_outlined, selectedIcon: Icons.view_timeline_rounded, label: '流水线看板', location: '/production/line'),
-        _NavDestination(icon: Icons.edit_note_outlined, selectedIcon: Icons.edit_note_rounded, label: '产量录入', location: '/production/output/entry'),
-        _NavDestination(icon: Icons.insights_outlined, selectedIcon: Icons.insights_rounded, label: '产量统计', location: '/production/output'),
-        _NavDestination(icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2_rounded, label: '库存查询', location: '/inventory'),
-        _NavDestination(icon: Icons.swap_vert_rounded, selectedIcon: Icons.swap_vert_rounded, label: '出入库记录', location: '/inventory/movement'),
-      ]),
-      const _NavGroup(title: '决策支持', roles: [Role.manager, Role.admin], items: [
-        _NavDestination(icon: Icons.space_dashboard_outlined, selectedIcon: Icons.space_dashboard_rounded, label: '经营 Dashboard', location: '/analytics/dashboard'),
-        _NavDestination(icon: Icons.query_stats_outlined, selectedIcon: Icons.query_stats_rounded, label: '多维分析', location: '/analytics/explore'),
-        _NavDestination(icon: Icons.notifications_active_outlined, selectedIcon: Icons.notifications_active_rounded, label: '异常告警', location: '/analytics/alerts'),
-      ]),
-      _NavGroup(title: l10n.visitorApprovalTitle, roles: [Role.hr, Role.admin], items: [
-        _NavDestination(icon: Icons.how_to_reg_outlined, selectedIcon: Icons.how_to_reg_rounded, label: l10n.visitorApprovalTitle, location: RouteName.visitorApproval),
-      ]),
-      _NavGroup(title: l10n.securityTitle, roles: [Role.security, Role.admin], items: [
-        _NavDestination(icon: Icons.qr_code_scanner_rounded, selectedIcon: Icons.qr_code_scanner_rounded, label: l10n.securityTitle, location: RouteName.securityScan),
-      ]),
+      _NavGroup(
+        title: '业务模块',
+        roles: null,
+        items: [
+          const _NavDestination(
+            icon: Icons.account_balance_wallet_outlined,
+            selectedIcon: Icons.account_balance_wallet_rounded,
+            label: '工资条',
+            location: '/payroll/slip',
+          ),
+          const _NavDestination(
+            icon: Icons.receipt_long_outlined,
+            selectedIcon: Icons.receipt_long_rounded,
+            label: '我的报销',
+            location: '/expense',
+          ),
+          const _NavDestination(
+            icon: Icons.lightbulb_outline_rounded,
+            selectedIcon: Icons.lightbulb_rounded,
+            label: '建议箱',
+            location: '/suggestion',
+          ),
+          _NavDestination(
+            icon: Icons.person_search_outlined,
+            selectedIcon: Icons.person_search_rounded,
+            label: l10n.myVisitorsTitle,
+            location: RouteName.myVisitors,
+          ),
+        ],
+      ),
+      const _NavGroup(
+        title: '人事管理',
+        roles: [Role.hr, Role.admin, Role.manager],
+        items: [
+          _NavDestination(
+            icon: Icons.badge_outlined,
+            selectedIcon: Icons.badge_rounded,
+            label: '员工档案',
+            location: '/employee',
+          ),
+          _NavDestination(
+            icon: Icons.account_tree_outlined,
+            selectedIcon: Icons.account_tree_rounded,
+            label: '部门管理',
+            location: '/department',
+          ),
+          _NavDestination(
+            icon: Icons.person_add_outlined,
+            selectedIcon: Icons.person_add_rounded,
+            label: '入职办理',
+            location: '/employee/onboarding',
+          ),
+          _NavDestination(
+            icon: Icons.request_quote_outlined,
+            selectedIcon: Icons.request_quote_rounded,
+            label: '工资条生成',
+            location: '/payroll/generate',
+          ),
+          _NavDestination(
+            icon: Icons.campaign_outlined,
+            selectedIcon: Icons.campaign_rounded,
+            label: '通知发布',
+            location: '/notice/publish',
+          ),
+        ],
+      ),
+      const _NavGroup(
+        title: '财务管理',
+        roles: [Role.finance, Role.admin, Role.manager],
+        items: [
+          _NavDestination(
+            icon: Icons.fact_check_outlined,
+            selectedIcon: Icons.fact_check_rounded,
+            label: '报销审批',
+            location: '/expense/approval',
+          ),
+          _NavDestination(
+            icon: Icons.rate_review_outlined,
+            selectedIcon: Icons.rate_review_rounded,
+            label: '工资条审核',
+            location: '/payroll/review',
+          ),
+          _NavDestination(
+            icon: Icons.bar_chart_outlined,
+            selectedIcon: Icons.bar_chart_rounded,
+            label: '财务报表',
+            location: '/finance/report',
+          ),
+        ],
+      ),
+      const _NavGroup(
+        title: '生产管理',
+        roles: [Role.production, Role.admin, Role.manager],
+        items: [
+          _NavDestination(
+            icon: Icons.science_outlined,
+            selectedIcon: Icons.science_rounded,
+            label: '检测记录',
+            location: '/lab/test',
+          ),
+          _NavDestination(
+            icon: Icons.hvac_outlined,
+            selectedIcon: Icons.hvac_rounded,
+            label: '空调控制',
+            location: '/hvac',
+          ),
+          _NavDestination(
+            icon: Icons.view_timeline_outlined,
+            selectedIcon: Icons.view_timeline_rounded,
+            label: '流水线看板',
+            location: '/production/line',
+          ),
+          _NavDestination(
+            icon: Icons.edit_note_outlined,
+            selectedIcon: Icons.edit_note_rounded,
+            label: '产量录入',
+            location: '/production/output/entry',
+          ),
+          _NavDestination(
+            icon: Icons.insights_outlined,
+            selectedIcon: Icons.insights_rounded,
+            label: '产量统计',
+            location: '/production/output',
+          ),
+          _NavDestination(
+            icon: Icons.inventory_2_outlined,
+            selectedIcon: Icons.inventory_2_rounded,
+            label: '库存查询',
+            location: '/inventory',
+          ),
+          _NavDestination(
+            icon: Icons.swap_vert_rounded,
+            selectedIcon: Icons.swap_vert_rounded,
+            label: '出入库记录',
+            location: '/inventory/movement',
+          ),
+        ],
+      ),
+      const _NavGroup(
+        title: '决策支持',
+        roles: [Role.manager, Role.admin],
+        items: [
+          _NavDestination(
+            icon: Icons.space_dashboard_outlined,
+            selectedIcon: Icons.space_dashboard_rounded,
+            label: '经营 Dashboard',
+            location: '/analytics/dashboard',
+          ),
+          _NavDestination(
+            icon: Icons.query_stats_outlined,
+            selectedIcon: Icons.query_stats_rounded,
+            label: '多维分析',
+            location: '/analytics/explore',
+          ),
+          _NavDestination(
+            icon: Icons.notifications_active_outlined,
+            selectedIcon: Icons.notifications_active_rounded,
+            label: '异常告警',
+            location: '/analytics/alerts',
+          ),
+        ],
+      ),
+      _NavGroup(
+        title: l10n.visitorApprovalTitle,
+        roles: [Role.hr, Role.admin],
+        items: [
+          _NavDestination(
+            icon: Icons.how_to_reg_outlined,
+            selectedIcon: Icons.how_to_reg_rounded,
+            label: l10n.visitorApprovalTitle,
+            location: RouteName.visitorApproval,
+          ),
+        ],
+      ),
+      _NavGroup(
+        title: l10n.securityTitle,
+        roles: [Role.security, Role.admin],
+        items: [
+          _NavDestination(
+            icon: Icons.qr_code_scanner_rounded,
+            selectedIcon: Icons.qr_code_scanner_rounded,
+            label: l10n.securityTitle,
+            location: RouteName.securityScan,
+          ),
+        ],
+      ),
     ];
 
     final userRoles = ref.watch(
@@ -107,17 +257,17 @@ class MainShellPage extends ConsumerWidget {
     return Scaffold(
       body: switch (breakpoint) {
         UtenBreakpoint.compact => _CompactShell(
-            destinations: primaryDestinations,
-            currentLocation: location,
-            child: child,
-          ),
+          destinations: primaryDestinations,
+          currentLocation: location,
+          child: child,
+        ),
         UtenBreakpoint.medium || UtenBreakpoint.expanded => _ExpandedShell(
-            primaryDestinations: primaryDestinations,
-            groups: groups,
-            currentLocation: location,
-            expanded: breakpoint.isExpanded,
-            child: child,
-          ),
+          primaryDestinations: primaryDestinations,
+          groups: groups,
+          currentLocation: location,
+          expanded: breakpoint.isExpanded,
+          child: child,
+        ),
       },
     );
   }
@@ -138,7 +288,11 @@ class _NavDestination {
 }
 
 class _NavGroup {
-  const _NavGroup({required this.title, required this.roles, required this.items});
+  const _NavGroup({
+    required this.title,
+    required this.roles,
+    required this.items,
+  });
   final String title;
   final List<Role>? roles;
   final List<_NavDestination> items;
@@ -222,7 +376,10 @@ class _ExpandedShell extends StatelessWidget {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 24,
+                    horizontal: 16,
+                  ),
                   child: _Logo(expanded: expanded),
                 ),
                 const Divider(height: 1),
@@ -254,7 +411,10 @@ class _ExpandedShell extends StatelessWidget {
                           const SizedBox(height: 12),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Divider(height: 1, color: theme.colorScheme.outlineVariant),
+                            child: Divider(
+                              height: 1,
+                              color: theme.colorScheme.outlineVariant,
+                            ),
                           ),
                           const SizedBox(height: 4),
                         ],
@@ -299,9 +459,10 @@ class _NavItem extends StatelessWidget {
     final theme = Theme.of(context);
     final selectedColor = theme.brightness == Brightness.dark
         ? UtenColors.teal400
-        : UtenColors.teal600;
-    final iconColor =
-        isSelected ? selectedColor : theme.colorScheme.onSurfaceVariant;
+        : UtenColors.deepGreen;
+    final iconColor = isSelected
+        ? selectedColor
+        : theme.colorScheme.onSurfaceVariant;
     final textColor = isSelected ? selectedColor : theme.colorScheme.onSurface;
 
     return Padding(
@@ -309,8 +470,8 @@ class _NavItem extends StatelessWidget {
       child: Material(
         color: isSelected
             ? (theme.brightness == Brightness.dark
-                ? UtenColors.teal900.withValues(alpha: 0.3)
-                : UtenColors.teal50)
+                  ? UtenColors.teal900.withValues(alpha: 0.3)
+                  : UtenColors.surfaceMid)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
@@ -318,42 +479,61 @@ class _NavItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: EdgeInsets.symmetric(
-                vertical: 10, horizontal: expanded ? 12 : 0),
+              vertical: 10,
+              horizontal: expanded ? 12 : 0,
+            ),
             child: expanded
-                ? Row(children: [
-                    Icon(isSelected ? destination.selectedIcon : destination.icon,
-                        size: 20, color: iconColor),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
+                ? Row(
+                    children: [
+                      Icon(
+                        isSelected
+                            ? destination.selectedIcon
+                            : destination.icon,
+                        size: 20,
+                        color: iconColor,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          destination.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: textColor,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isSelected
+                            ? destination.selectedIcon
+                            : destination.icon,
+                        size: 22,
+                        color: iconColor,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
                         destination.label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: textColor,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
-                          fontSize: 14,
+                          fontSize: 10,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
                         ),
                       ),
-                    ),
-                  ])
-                : Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(isSelected ? destination.selectedIcon : destination.icon,
-                        size: 22, color: iconColor),
-                    const SizedBox(height: 4),
-                    Text(
-                      destination.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 10,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
-                  ]),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -367,62 +547,60 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final logoSize = expanded ? 42.0 : 40.0;
 
-    if (!expanded) {
-      return Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0F3D2E), Color(0xFF14B8A6)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Center(
-          child: Text('U',
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22)),
-        ),
-      );
-    }
+    final logo = Container(
+      width: logoSize,
+      height: logoSize,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.asset(
+        UtenAssets.logoIp,
+        fit: BoxFit.cover,
+        semanticLabel: l10n.appTitle,
+      ),
+    );
 
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0F3D2E), Color(0xFF14B8A6)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+    if (!expanded) return logo;
+
+    return Row(
+      children: [
+        logo,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.appTitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                l10n.appName,
+                maxLines: 1,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ],
           ),
-          borderRadius: BorderRadius.circular(10),
         ),
-        child: const Center(
-          child: Text('U',
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20)),
-        ),
-      ),
-      const SizedBox(width: 12),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('优腾',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          Text('Uten IMP',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.5,
-              )),
-        ],
-      ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -435,25 +613,22 @@ class _UserFooter extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(12),
       child: expanded
-          ? Row(children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-                child: Icon(Icons.person_rounded,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('张优腾',
+          ? Row(
+              children: [
+                const UtenUserAvatar(size: 32),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '张优腾',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                    overflow: TextOverflow.ellipsis),
-              ),
-            ])
-          : Icon(Icons.person_rounded,
-              size: 22, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            )
+          : const UtenUserAvatar(size: 32),
     );
   }
 }

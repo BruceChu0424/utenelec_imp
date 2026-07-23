@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/cards/uten_stat_card.dart';
+import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
@@ -74,8 +75,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   @override
   void initState() {
     super.initState();
-    _staggerController =
-        AnimationController(vsync: this, duration: UtenAnim.slow);
+    _staggerController = AnimationController(
+      vsync: this,
+      duration: UtenAnim.slow,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _staggerController.forward();
     });
@@ -133,23 +136,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   Widget _buildPageHeader(ThemeData theme, String name, int unreadCount) {
     return Row(
       children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [UtenColors.deepGreen, UtenColors.teal700],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(
-            Icons.person_rounded,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
+        UtenUserAvatar(name: name),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -212,8 +199,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
           builder: (context, child) {
             final intervalBegin = (i * 0.08).clamp(0.0, 0.8);
             final intervalEnd = (intervalBegin + 0.2).clamp(0.0, 1.0);
-            final t = Interval(intervalBegin, intervalEnd, curve: Curves.easeOut)
-                .transform(_staggerController.value);
+            final t = Interval(
+              intervalBegin,
+              intervalEnd,
+              curve: Curves.easeOut,
+            ).transform(_staggerController.value);
             return Opacity(
               opacity: t,
               child: Transform.translate(
@@ -443,11 +433,7 @@ class _TodoTile extends StatelessWidget {
                   color: todo.statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  Icons.circle,
-                  color: todo.statusColor,
-                  size: 8,
-                ),
+                child: Icon(Icons.circle, color: todo.statusColor, size: 8),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -477,8 +463,7 @@ class _TodoTile extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: todo.statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),

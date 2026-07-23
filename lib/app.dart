@@ -28,7 +28,7 @@ class UtenApp extends ConsumerWidget {
     final darkTheme = buildDarkTheme();
 
     return MaterialApp.router(
-      title: '优腾综合管理平台',
+      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
       debugShowCheckedModeBanner: false,
 
       // 主题

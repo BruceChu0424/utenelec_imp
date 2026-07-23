@@ -101,13 +101,13 @@ abstract class AppLocalizations {
   /// 应用标题
   ///
   /// In zh, this message translates to:
-  /// **'优腾综合管理平台'**
+  /// **'优腾·综合管理平台'**
   String get appTitle;
 
   /// 应用代号
   ///
   /// In zh, this message translates to:
-  /// **'Uten IMP'**
+  /// **'UTEN IMP'**
   String get appName;
 
   /// No description provided for @commonConfirm.
@@ -224,24 +224,6 @@ abstract class AppLocalizations {
   /// **'操作'**
   String get commonAction;
 
-  /// No description provided for @loginTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'欢迎回来'**
-  String get loginTitle;
-
-  /// No description provided for @loginSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'登录到优腾综合管理平台'**
-  String get loginSubtitle;
-
-  /// No description provided for @loginAccountLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'账号'**
-  String get loginAccountLabel;
-
   /// No description provided for @loginAccountHint.
   ///
   /// In zh, this message translates to:
@@ -253,12 +235,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请输入账号'**
   String get loginAccountRequired;
-
-  /// No description provided for @loginPasswordLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'密码'**
-  String get loginPasswordLabel;
 
   /// No description provided for @loginPasswordHint.
   ///
@@ -307,12 +283,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'账号或密码错误'**
   String get loginFailed;
-
-  /// No description provided for @loginWelcomeHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'演示模式：任意账号密码即可登录'**
-  String get loginWelcomeHint;
 
   /// No description provided for @loginFooter.
   ///
@@ -590,12 +560,6 @@ abstract class AppLocalizations {
   /// **'岗位'**
   String get profilePosition;
 
-  /// No description provided for @entryTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'欢迎使用优腾'**
-  String get entryTitle;
-
   /// No description provided for @entrySubtitle.
   ///
   /// In zh, this message translates to:
@@ -608,29 +572,11 @@ abstract class AppLocalizations {
   /// **'内部人员登录'**
   String get entryStaff;
 
-  /// No description provided for @entryStaffDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'员工 / 人事 / 财务 / 管理层 / 保安'**
-  String get entryStaffDesc;
-
   /// No description provided for @entryVisitor.
   ///
   /// In zh, this message translates to:
   /// **'访客登录'**
   String get entryVisitor;
-
-  /// No description provided for @entryVisitorDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'外来访客预约登记'**
-  String get entryVisitorDesc;
-
-  /// No description provided for @entryStaffHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'您是优腾员工，请走员工通道'**
-  String get entryStaffHint;
 
   /// No description provided for @visitorLoginTitle.
   ///

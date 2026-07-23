@@ -68,13 +68,14 @@ class UtenStatCard extends ConsumerWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: (iconColor ?? UtenColors.accent)
-                        .withValues(alpha: 0.1),
+                    color: (iconColor ?? theme.colorScheme.primary).withValues(
+                      alpha: 0.1,
+                    ),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
                     icon,
-                    color: iconColor ?? UtenColors.accent,
+                    color: iconColor ?? theme.colorScheme.primary,
                     size: 18,
                   ),
                 ),
@@ -224,7 +225,4 @@ class UtenStatCard extends ConsumerWidget {
   }
 }
 
-enum UtenTrend {
-  up,
-  down,
-}
+enum UtenTrend { up, down }

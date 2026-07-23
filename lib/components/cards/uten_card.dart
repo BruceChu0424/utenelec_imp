@@ -50,23 +50,22 @@ class UtenCard extends ConsumerWidget {
     // 玻璃拟态仅在 rich 档启用，其他档降级为实心
     final effectiveVariant =
         (variant == UtenCardVariant.glass && !tier.enableBlur)
-            ? UtenCardVariant.solid
-            : variant;
+        ? UtenCardVariant.solid
+        : variant;
 
     final bgColor = switch (effectiveVariant) {
       UtenCardVariant.solid => theme.colorScheme.surface,
-      UtenCardVariant.glass => (isDark ? UtenColors.darkSurface : Colors.white)
-          .withValues(alpha: 0.7),
+      UtenCardVariant.glass =>
+        (isDark ? UtenColors.darkSurface : Colors.white).withValues(alpha: 0.7),
       UtenCardVariant.outlined => Colors.transparent,
     };
 
     final borderColor = showBorder
         ? switch (effectiveVariant) {
-            UtenCardVariant.solid => isDark
-                ? UtenColors.darkBorder
-                : UtenColors.border,
+            UtenCardVariant.solid =>
+              isDark ? UtenColors.darkBorder : UtenColors.border,
             UtenCardVariant.glass =>
-              (isDark ? UtenColors.teal400 : UtenColors.accent)
+              (isDark ? UtenColors.teal400 : theme.colorScheme.primary)
                   .withValues(alpha: 0.3),
             UtenCardVariant.outlined =>
               isDark ? UtenColors.darkBorderStrong : UtenColors.borderStrong,
@@ -126,11 +125,7 @@ class UtenCard extends ConsumerWidget {
   }
 }
 
-enum UtenCardVariant {
-  solid,
-  glass,
-  outlined,
-}
+enum UtenCardVariant { solid, glass, outlined }
 
 enum UtenCardElevation {
   /// 无阴影

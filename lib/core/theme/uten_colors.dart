@@ -4,7 +4,7 @@
 //
 // 设计原则：
 // 1. 背景走中性灰阶（slate），不铺品牌色
-// 2. 主色 teal600（浅色）/ teal400（深色），仅用于强调
+// 2. 浅色模式交互主色统一用深森林绿，青绿仅用于深色模式和语义强调
 // 3. 卡片/容器用白色或浅中性色，靠细边框 + 极轻阴影分层
 // 4. 文字用 slate-900 / slate-600 / slate-400 三档建立层级
 
@@ -13,10 +13,10 @@ import 'package:flutter/material.dart';
 /// Uten 品牌色板常量
 abstract final class UtenColors {
   // ===== 品牌主色 =====
-  /// 主色（鲜亮绿）- 仅用于按钮等实心色块
-  static const Color primary = Color(0xFF039855);
+  /// 浅色模式交互主色：深森林绿
+  static const Color primary = Color(0xFF0F3D2E);
 
-  // 深森林绿（仅用于头像/登录页等装饰渐变，勿当交互色用）
+  /// 品牌深森林绿
   static const Color deepGreen = Color(0xFF0F3D2E);
 
   // ===== 青绿色阶（交互态统一用 teal 系）=====
@@ -85,32 +85,32 @@ abstract final class UtenColors {
 
   // ===== 阴影 token =====
   static List<BoxShadow> cardShadow({bool isDark = false}) => [
-        BoxShadow(
-          color: isDark
-              ? const Color(0xFF000000).withValues(alpha: 0.3)
-              : const Color(0xFF0F172A).withValues(alpha: 0.04),
-          blurRadius: 1,
-          offset: const Offset(0, 1),
-        ),
-      ];
+    BoxShadow(
+      color: isDark
+          ? const Color(0xFF000000).withValues(alpha: 0.3)
+          : const Color(0xFF0F172A).withValues(alpha: 0.04),
+      blurRadius: 1,
+      offset: const Offset(0, 1),
+    ),
+  ];
 
   static List<BoxShadow> cardShadowLg({bool isDark = false}) => [
-        BoxShadow(
-          color: isDark
-              ? const Color(0xFF000000).withValues(alpha: 0.4)
-              : const Color(0xFF0F172A).withValues(alpha: 0.08),
-          blurRadius: 8,
-          offset: const Offset(0, 2),
-        ),
-      ];
+    BoxShadow(
+      color: isDark
+          ? const Color(0xFF000000).withValues(alpha: 0.4)
+          : const Color(0xFF0F172A).withValues(alpha: 0.08),
+      blurRadius: 8,
+      offset: const Offset(0, 2),
+    ),
+  ];
 
   static List<BoxShadow> popoverShadow({bool isDark = false}) => [
-        BoxShadow(
-          color: isDark
-              ? const Color(0xFF000000).withValues(alpha: 0.5)
-              : const Color(0xFF0F172A).withValues(alpha: 0.12),
-          blurRadius: 16,
-          offset: const Offset(0, 8),
-        ),
-      ];
+    BoxShadow(
+      color: isDark
+          ? const Color(0xFF000000).withValues(alpha: 0.5)
+          : const Color(0xFF0F172A).withValues(alpha: 0.12),
+      blurRadius: 16,
+      offset: const Offset(0, 8),
+    ),
+  ];
 }

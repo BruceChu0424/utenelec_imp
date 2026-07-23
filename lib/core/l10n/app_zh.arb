@@ -1,10 +1,10 @@
 {
   "@@locale": "zh",
 
-  "appTitle": "优腾综合管理平台",
+  "appTitle": "优腾·综合管理平台",
   "@appTitle": {"description": "应用标题"},
 
-  "appName": "Uten IMP",
+  "appName": "UTEN IMP",
   "@appName": {"description": "应用代号"},
 
   "commonConfirm": "确认",
@@ -27,12 +27,8 @@
   "commonViewAll": "查看全部",
   "commonAction": "操作",
 
-  "loginTitle": "欢迎回来",
-  "loginSubtitle": "登录到优腾综合管理平台",
-  "loginAccountLabel": "账号",
   "loginAccountHint": "请输入员工工号或手机号",
   "loginAccountRequired": "请输入账号",
-  "loginPasswordLabel": "密码",
   "loginPasswordHint": "请输入密码",
   "loginPasswordRequired": "请输入密码",
   "loginRememberMe": "记住此设备",
@@ -41,7 +37,6 @@
   "loginLoggingIn": "登录中…",
   "loginSuccess": "登录成功",
   "loginFailed": "账号或密码错误",
-  "loginWelcomeHint": "演示模式：任意账号密码即可登录",
   "loginFooter": "© 2026 优腾 · 综合管理平台",
 
   "navDashboard": "工作台",
@@ -97,13 +92,9 @@
   "profileDepartment": "部门",
   "profilePosition": "岗位",
 
-  "entryTitle": "欢迎使用优腾",
   "entrySubtitle": "请选择登录方式",
   "entryStaff": "内部人员登录",
-  "entryStaffDesc": "员工 / 人事 / 财务 / 管理层 / 保安",
   "entryVisitor": "访客登录",
-  "entryVisitorDesc": "外来访客预约登记",
-  "entryStaffHint": "您是优腾员工，请走员工通道",
 
   "visitorLoginTitle": "访客登录",
   "visitorLoginSubtitle": "输入手机号获取验证码",

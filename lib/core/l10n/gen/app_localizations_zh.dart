@@ -9,10 +9,10 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
-  String get appTitle => '优腾综合管理平台';
+  String get appTitle => '优腾·综合管理平台';
 
   @override
-  String get appName => 'Uten IMP';
+  String get appName => 'UTEN IMP';
 
   @override
   String get commonConfirm => '确认';
@@ -72,22 +72,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commonAction => '操作';
 
   @override
-  String get loginTitle => '欢迎回来';
-
-  @override
-  String get loginSubtitle => '登录到优腾综合管理平台';
-
-  @override
-  String get loginAccountLabel => '账号';
-
-  @override
   String get loginAccountHint => '请输入员工工号或手机号';
 
   @override
   String get loginAccountRequired => '请输入账号';
-
-  @override
-  String get loginPasswordLabel => '密码';
 
   @override
   String get loginPasswordHint => '请输入密码';
@@ -112,9 +100,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get loginFailed => '账号或密码错误';
-
-  @override
-  String get loginWelcomeHint => '演示模式：任意账号密码即可登录';
 
   @override
   String get loginFooter => '© 2026 优腾 · 综合管理平台';
@@ -261,25 +246,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profilePosition => '岗位';
 
   @override
-  String get entryTitle => '欢迎使用优腾';
-
-  @override
   String get entrySubtitle => '请选择登录方式';
 
   @override
   String get entryStaff => '内部人员登录';
 
   @override
-  String get entryStaffDesc => '员工 / 人事 / 财务 / 管理层 / 保安';
-
-  @override
   String get entryVisitor => '访客登录';
-
-  @override
-  String get entryVisitorDesc => '外来访客预约登记';
-
-  @override
-  String get entryStaffHint => '您是优腾员工，请走员工通道';
 
   @override
   String get visitorLoginTitle => '访客登录';

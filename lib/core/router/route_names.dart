@@ -33,6 +33,14 @@ abstract final class RouteName {
   static const String employee = '/employee';
   static const String employeeDetail = '/employee/:id';
 
+  // 个人信息修改（Phase 6）
+  static const String profileEdit = '/profile/edit';
+  static const String profileMyChanges = '/profile/me/changes';
+
+  // HR 端：员工个人信息修改审批
+  static const String hrProfileChanges = '/hr/profile-changes';
+  static const String hrProfileChangeDetail = '/hr/profile-changes/:id';
+
   // 入口选择（登录前：内部人员 / 访客）
   static const String entry = '/entry';
 
@@ -65,4 +73,7 @@ abstract final class RoutePath {
   static String suggestionDetail(String id) => '/suggestion/$id';
   static String employeeDetail(String id) => '/employee/$id';
   static String employeeEdit(String id) => '/employee/$id/edit';
+
+  /// 员工修改审批单批详情（HR 端）。
+  static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
 }

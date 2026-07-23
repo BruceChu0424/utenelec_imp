@@ -8,6 +8,7 @@ class UserProfile {
     required this.roles,
     required this.permissions,
     required this.superAdmin,
+    this.employeeId,
     this.name,
     this.code,
     this.department,
@@ -16,6 +17,8 @@ class UserProfile {
 
   final String id;
   final String loginAccount;
+  /// 员工档案 ID（employees.id）。Phase 6 起用于「自助编辑个人信息」直接拉完整档案。
+  final String? employeeId;
   final String? name;
   final String? code;
   final String? department;
@@ -33,6 +36,7 @@ class UserProfile {
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
         id: json['id'] as String,
         loginAccount: json['loginAccount'] as String,
+        employeeId: json['employeeId'] as String?,
         name: json['name'] as String?,
         code: json['code'] as String?,
         department: json['department'] as String?,

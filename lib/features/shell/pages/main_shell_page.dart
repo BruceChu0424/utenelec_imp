@@ -16,6 +16,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../shared/models/role.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../hr_profile/widgets/hr_pending_badge.dart';
 
 class MainShellPage extends ConsumerWidget {
   const MainShellPage({super.key, required this.child});
@@ -125,6 +126,14 @@ class MainShellPage extends ConsumerWidget {
             selectedIcon: Icons.how_to_reg_rounded,
             label: l10n.visitorApprovalTitle,
             location: RouteName.visitorApproval,
+            showPendingBadge: true,
+          ),
+          _NavDestination(
+            icon: Icons.assignment_late_outlined,
+            selectedIcon: Icons.assignment_late_rounded,
+            label: l10n.profileChangeHrQueueTitle,
+            location: RouteName.hrProfileChanges,
+            showPendingBadge: true,
           ),
         ],
       ),
@@ -280,12 +289,16 @@ class _NavDestination {
     required this.selectedIcon,
     required this.label,
     required this.location,
+    this.showPendingBadge = false,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
   final String location;
+
+  /// 是否在右侧挂 HR 待审红色徽章（>0 才渲染）。
+  final bool showPendingBadge;
 }
 
 class _NavGroup {
@@ -522,17 +535,33 @@ class _NavItem extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (destination.showPendingBadge)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: const HrPendingBadge(showLabel: true),
+                        ),
                     ],
                   )
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        isSelected
-                            ? destination.selectedIcon
-                            : destination.icon,
-                        size: 22,
-                        color: iconColor,
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Icon(
+                            isSelected
+                                ? destination.selectedIcon
+                                : destination.icon,
+                            size: 22,
+                            color: iconColor,
+                          ),
+                          if (destination.showPendingBadge)
+                            const Positioned(
+                              right: -8,
+                              top: -4,
+                              child: HrPendingBadge(),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(

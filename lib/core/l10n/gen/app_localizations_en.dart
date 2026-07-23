@@ -1291,4 +1291,334 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noticeTypeUrgent => 'Urgent';
+
+  @override
+  String get profileChangeEditTitle => 'Edit profile';
+
+  @override
+  String get profileChangeEditCta => 'Edit my profile';
+
+  @override
+  String get profileChangeEditHrOnlyHint =>
+      'Please contact HR to change the fields below';
+
+  @override
+  String get profileChangeSectionBasic =>
+      'Basic info (changes apply immediately)';
+
+  @override
+  String get profileChangeSectionReview =>
+      'Contact & important fields (require HR review)';
+
+  @override
+  String get profileChangeSectionIdentity =>
+      'Name & emergency contacts (require HR review)';
+
+  @override
+  String get profileChangeFieldDirect => 'Direct edit';
+
+  @override
+  String get profileChangeFieldReview => 'Requires HR review';
+
+  @override
+  String get profileChangeFieldHrOnly => 'Contact HR';
+
+  @override
+  String get profileChangePasswordHint =>
+      'For your safety, please enter your current password';
+
+  @override
+  String get profileChangePasswordLabel => 'Current password';
+
+  @override
+  String get profileChangePasswordWrong => 'Incorrect password';
+
+  @override
+  String get profileChangeSubmitSuccess => 'Submitted, pending HR review';
+
+  @override
+  String get profileChangeSubmitApplied => 'Changes saved';
+
+  @override
+  String get profileChangeSubmitFailed => 'Submit failed, please retry';
+
+  @override
+  String get profileChangeConflict =>
+      'Profile has been updated by someone else, please refresh';
+
+  @override
+  String get profileChangeRateLimited =>
+      'You already submitted a change for this field in the last 24 hours';
+
+  @override
+  String get profileChangeListTitle => 'My change requests';
+
+  @override
+  String get profileChangeListCta => 'View my requests';
+
+  @override
+  String get profileChangeListEmpty => 'No change requests yet';
+
+  @override
+  String get profileChangeFilterAll => 'All';
+
+  @override
+  String get profileChangeFilterPending => 'Pending';
+
+  @override
+  String get profileChangeFilterApplied => 'Applied';
+
+  @override
+  String get profileChangeFilterApproved => 'Approved';
+
+  @override
+  String get profileChangeFilterRejected => 'Rejected';
+
+  @override
+  String get profileChangeFilterCancelled => 'Cancelled';
+
+  @override
+  String get profileChangeStatusPending => 'Pending HR review';
+
+  @override
+  String get profileChangeStatusApplied => 'Applied';
+
+  @override
+  String get profileChangeStatusApproved => 'Approved';
+
+  @override
+  String get profileChangeStatusRejected => 'Rejected';
+
+  @override
+  String get profileChangeStatusCancelled => 'Cancelled';
+
+  @override
+  String get profileChangeCancel => 'Cancel';
+
+  @override
+  String get profileChangeCancelledByMe => 'Cancelled by me';
+
+  @override
+  String get profileChangeFieldLabel => 'Field';
+
+  @override
+  String get profileChangeBefore => 'Before';
+
+  @override
+  String get profileChangeAfter => 'After';
+
+  @override
+  String get profileChangeSubmittedAt => 'Submitted at';
+
+  @override
+  String get profileChangeReviewer => 'Reviewer';
+
+  @override
+  String get profileChangeReviewComment => 'Review comment';
+
+  @override
+  String get profileChangeDiffTitle => 'Changes in this request';
+
+  @override
+  String profileChangeBatchItems(Object count) {
+    return '$count field(s)';
+  }
+
+  @override
+  String get profileChangeHrQueueTitle => 'Profile change reviews';
+
+  @override
+  String get profileChangeHrQueueEmpty => 'No pending reviews';
+
+  @override
+  String get profileChangeReviewApprove => 'Approve';
+
+  @override
+  String get profileChangeReviewReject => 'Reject';
+
+  @override
+  String get profileChangeRejectDialogTitle => 'Reject request';
+
+  @override
+  String get profileChangeRejectReasonRequired =>
+      'Rejection reason is required';
+
+  @override
+  String get profileChangeRejectReasonHint =>
+      'Explain why; the employee will see this';
+
+  @override
+  String get profileChangeApproveDialogTitle => 'Confirm approval?';
+
+  @override
+  String get profileChangeApproveDialogBody =>
+      'Changes will be merged into the employee profile immediately';
+
+  @override
+  String get profileChangeConfirm => 'Confirm';
+
+  @override
+  String get profileChangeCancel2 => 'Cancel';
+
+  @override
+  String get profileChangeRejectSuccess => 'Rejected';
+
+  @override
+  String get profileChangeApproveSuccess => 'Approved';
+
+  @override
+  String get profileChangeFieldPhone => 'Mobile';
+
+  @override
+  String get profileChangeFieldFullName => 'Full name';
+
+  @override
+  String get profileChangeFieldHujiAddress => 'Hukou address';
+
+  @override
+  String get profileChangeFieldEmergencyName => 'Emergency contact name';
+
+  @override
+  String get profileChangeFieldEmergencyPhone => 'Emergency contact phone';
+
+  @override
+  String get profileChangeFieldEmergencyRelationship => 'Relationship';
+
+  @override
+  String profilePendingBadge(Object count) {
+    return '$count pending';
+  }
+
+  @override
+  String get profilePendingSectionTitle => 'Pending profile change reviews';
+
+  @override
+  String get profilePendingSectionEmpty =>
+      'No pending reviews for this employee';
+
+  @override
+  String get profilePendingSectionViewAll => 'All →';
+
+  @override
+  String get profileFieldPhoneMask => '138****1234';
+
+  @override
+  String get profileFieldIdCardMask => '****';
+
+  @override
+  String get profileFieldBankAccountMask => '****1234';
+
+  @override
+  String get profileFieldGroupIdentity => 'Identity';
+
+  @override
+  String get profileFieldGroupContact => 'Contact';
+
+  @override
+  String get profileFieldGroupAddress => 'Address';
+
+  @override
+  String get profileFieldGroupEmergency => 'Emergency contacts';
+
+  @override
+  String get profileFieldGroupOrg => 'Organization';
+
+  @override
+  String get profileFieldGroupCompensation => 'Compensation & bank';
+
+  @override
+  String get profileFieldWorkLocation => 'Work location';
+
+  @override
+  String get profileFieldSeatNo => 'Seat';
+
+  @override
+  String get profileFieldOfficePhone => 'Office phone';
+
+  @override
+  String get profileFieldEmail => 'Email';
+
+  @override
+  String get profileFieldResidenceAddress => 'Residence address';
+
+  @override
+  String get profileFieldHujiAddress => 'Hukou address';
+
+  @override
+  String get profileFieldEthnicity => 'Ethnicity';
+
+  @override
+  String get profileFieldPoliticalStatus => 'Political status';
+
+  @override
+  String get profileFieldMaritalStatus => 'Marital status';
+
+  @override
+  String get profileFieldBirthDate => 'Birth date';
+
+  @override
+  String get profileFieldGender => 'Gender';
+
+  @override
+  String get profileFieldIdType => 'ID type';
+
+  @override
+  String get profileFieldIdNumber => 'ID number';
+
+  @override
+  String get profileFieldSupervisor => 'Supervisor';
+
+  @override
+  String get profileFieldHireDate => 'Hire date';
+
+  @override
+  String get profileFieldConfirmedAt => 'Confirmed at';
+
+  @override
+  String get profileFieldEmploymentType => 'Employment type';
+
+  @override
+  String get profileFieldAttendanceGroup => 'Attendance group';
+
+  @override
+  String get profileFieldPaperArchiveNo => 'Paper archive no.';
+
+  @override
+  String get profileFieldBaseSalary => 'Base salary';
+
+  @override
+  String get profileFieldPerfSalary => 'Performance salary';
+
+  @override
+  String get profileFieldSocialInsuranceBase => 'Social insurance base';
+
+  @override
+  String get profileFieldSocialInsuranceLocation => 'Social insurance location';
+
+  @override
+  String get profileFieldHousingFundBase => 'Housing fund base';
+
+  @override
+  String get profileFieldAllowanceStandard => 'Allowance standard';
+
+  @override
+  String get profileFieldBankBranch => 'Bank branch';
+
+  @override
+  String get profileFieldBankAccount => 'Bank account';
+
+  @override
+  String get profileFieldContractType => 'Contract type';
+
+  @override
+  String get profileFieldContractStart => 'Contract start';
+
+  @override
+  String get profileFieldContractEnd => 'Contract end';
+
+  @override
+  String get profileFieldProbationMonths => 'Probation (months)';
+
+  @override
+  String get profileFieldRenewCount => 'Renewal count';
 }

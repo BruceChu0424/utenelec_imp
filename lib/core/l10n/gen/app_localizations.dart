@@ -2563,6 +2563,636 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'紧急'**
   String get noticeTypeUrgent;
+
+  /// No description provided for @profileChangeEditTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改个人信息'**
+  String get profileChangeEditTitle;
+
+  /// No description provided for @profileChangeEditCta.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改我的信息'**
+  String get profileChangeEditCta;
+
+  /// No description provided for @profileChangeEditHrOnlyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'以下字段请联系人事修改'**
+  String get profileChangeEditHrOnlyHint;
+
+  /// No description provided for @profileChangeSectionBasic.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本信息（直改生效）'**
+  String get profileChangeSectionBasic;
+
+  /// No description provided for @profileChangeSectionReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系方式与重要字段（需 HR 审核）'**
+  String get profileChangeSectionReview;
+
+  /// No description provided for @profileChangeSectionIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'姓名与紧急联系人（需 HR 审核）'**
+  String get profileChangeSectionIdentity;
+
+  /// No description provided for @profileChangeFieldDirect.
+  ///
+  /// In zh, this message translates to:
+  /// **'可直接修改'**
+  String get profileChangeFieldDirect;
+
+  /// No description provided for @profileChangeFieldReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'需 HR 审核后生效'**
+  String get profileChangeFieldReview;
+
+  /// No description provided for @profileChangeFieldHrOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'请联系人事修改'**
+  String get profileChangeFieldHrOnly;
+
+  /// No description provided for @profileChangePasswordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'为安全起见，请输入当前登录密码'**
+  String get profileChangePasswordHint;
+
+  /// No description provided for @profileChangePasswordLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前密码'**
+  String get profileChangePasswordLabel;
+
+  /// No description provided for @profileChangePasswordWrong.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码错误，请重试'**
+  String get profileChangePasswordWrong;
+
+  /// No description provided for @profileChangeSubmitSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改已提交，HR 审核后生效'**
+  String get profileChangeSubmitSuccess;
+
+  /// No description provided for @profileChangeSubmitApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改已保存'**
+  String get profileChangeSubmitApplied;
+
+  /// No description provided for @profileChangeSubmitFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交失败，请稍后重试'**
+  String get profileChangeSubmitFailed;
+
+  /// No description provided for @profileChangeConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'档案已被他人更新，请刷新后再试'**
+  String get profileChangeConflict;
+
+  /// No description provided for @profileChangeRateLimited.
+  ///
+  /// In zh, this message translates to:
+  /// **'24h 内已提交过该字段的修改，请等待处理'**
+  String get profileChangeRateLimited;
+
+  /// No description provided for @profileChangeListTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'我的修改申请'**
+  String get profileChangeListTitle;
+
+  /// No description provided for @profileChangeListCta.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看申请记录'**
+  String get profileChangeListCta;
+
+  /// No description provided for @profileChangeListEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无修改申请'**
+  String get profileChangeListEmpty;
+
+  /// No description provided for @profileChangeFilterAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部'**
+  String get profileChangeFilterAll;
+
+  /// No description provided for @profileChangeFilterPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待审核'**
+  String get profileChangeFilterPending;
+
+  /// No description provided for @profileChangeFilterApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已生效'**
+  String get profileChangeFilterApplied;
+
+  /// No description provided for @profileChangeFilterApproved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已通过'**
+  String get profileChangeFilterApproved;
+
+  /// No description provided for @profileChangeFilterRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'已驳回'**
+  String get profileChangeFilterRejected;
+
+  /// No description provided for @profileChangeFilterCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤销'**
+  String get profileChangeFilterCancelled;
+
+  /// No description provided for @profileChangeStatusPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待 HR 审核'**
+  String get profileChangeStatusPending;
+
+  /// No description provided for @profileChangeStatusApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已生效'**
+  String get profileChangeStatusApplied;
+
+  /// No description provided for @profileChangeStatusApproved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已通过'**
+  String get profileChangeStatusApproved;
+
+  /// No description provided for @profileChangeStatusRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'已驳回'**
+  String get profileChangeStatusRejected;
+
+  /// No description provided for @profileChangeStatusCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤销'**
+  String get profileChangeStatusCancelled;
+
+  /// No description provided for @profileChangeCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销'**
+  String get profileChangeCancel;
+
+  /// No description provided for @profileChangeCancelledByMe.
+  ///
+  /// In zh, this message translates to:
+  /// **'已由我撤销'**
+  String get profileChangeCancelledByMe;
+
+  /// No description provided for @profileChangeFieldLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'字段'**
+  String get profileChangeFieldLabel;
+
+  /// No description provided for @profileChangeBefore.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改前'**
+  String get profileChangeBefore;
+
+  /// No description provided for @profileChangeAfter.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改后'**
+  String get profileChangeAfter;
+
+  /// No description provided for @profileChangeSubmittedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交时间'**
+  String get profileChangeSubmittedAt;
+
+  /// No description provided for @profileChangeReviewer.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核人'**
+  String get profileChangeReviewer;
+
+  /// No description provided for @profileChangeReviewComment.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核意见'**
+  String get profileChangeReviewComment;
+
+  /// No description provided for @profileChangeDiffTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次修改'**
+  String get profileChangeDiffTitle;
+
+  /// No description provided for @profileChangeBatchItems.
+  ///
+  /// In zh, this message translates to:
+  /// **'共 {count} 项'**
+  String profileChangeBatchItems(Object count);
+
+  /// No description provided for @profileChangeHrQueueTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工修改审批'**
+  String get profileChangeHrQueueTitle;
+
+  /// No description provided for @profileChangeHrQueueEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无待审申请'**
+  String get profileChangeHrQueueEmpty;
+
+  /// No description provided for @profileChangeReviewApprove.
+  ///
+  /// In zh, this message translates to:
+  /// **'批准'**
+  String get profileChangeReviewApprove;
+
+  /// No description provided for @profileChangeReviewReject.
+  ///
+  /// In zh, this message translates to:
+  /// **'驳回'**
+  String get profileChangeReviewReject;
+
+  /// No description provided for @profileChangeRejectDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'驳回申请'**
+  String get profileChangeRejectDialogTitle;
+
+  /// No description provided for @profileChangeRejectReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写驳回原因'**
+  String get profileChangeRejectReasonRequired;
+
+  /// No description provided for @profileChangeRejectReasonHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请说明驳回原因，员工会看到'**
+  String get profileChangeRejectReasonHint;
+
+  /// No description provided for @profileChangeApproveDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认批准？'**
+  String get profileChangeApproveDialogTitle;
+
+  /// No description provided for @profileChangeApproveDialogBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'批准后将立即合并到员工档案'**
+  String get profileChangeApproveDialogBody;
+
+  /// No description provided for @profileChangeConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get profileChangeConfirm;
+
+  /// No description provided for @profileChangeCancel2.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get profileChangeCancel2;
+
+  /// No description provided for @profileChangeRejectSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已驳回'**
+  String get profileChangeRejectSuccess;
+
+  /// No description provided for @profileChangeApproveSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已批准'**
+  String get profileChangeApproveSuccess;
+
+  /// No description provided for @profileChangeFieldPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机'**
+  String get profileChangeFieldPhone;
+
+  /// No description provided for @profileChangeFieldFullName.
+  ///
+  /// In zh, this message translates to:
+  /// **'姓名'**
+  String get profileChangeFieldFullName;
+
+  /// No description provided for @profileChangeFieldHujiAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'户籍地址'**
+  String get profileChangeFieldHujiAddress;
+
+  /// No description provided for @profileChangeFieldEmergencyName.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急联系人姓名'**
+  String get profileChangeFieldEmergencyName;
+
+  /// No description provided for @profileChangeFieldEmergencyPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急联系人电话'**
+  String get profileChangeFieldEmergencyPhone;
+
+  /// No description provided for @profileChangeFieldEmergencyRelationship.
+  ///
+  /// In zh, this message translates to:
+  /// **'与本人关系'**
+  String get profileChangeFieldEmergencyRelationship;
+
+  /// No description provided for @profilePendingBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 项待审'**
+  String profilePendingBadge(Object count);
+
+  /// No description provided for @profilePendingSectionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'待我审核的修改申请'**
+  String get profilePendingSectionTitle;
+
+  /// No description provided for @profilePendingSectionEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工暂无待审申请'**
+  String get profilePendingSectionEmpty;
+
+  /// No description provided for @profilePendingSectionViewAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部 →'**
+  String get profilePendingSectionViewAll;
+
+  /// No description provided for @profileFieldPhoneMask.
+  ///
+  /// In zh, this message translates to:
+  /// **'138****1234'**
+  String get profileFieldPhoneMask;
+
+  /// No description provided for @profileFieldIdCardMask.
+  ///
+  /// In zh, this message translates to:
+  /// **'****'**
+  String get profileFieldIdCardMask;
+
+  /// No description provided for @profileFieldBankAccountMask.
+  ///
+  /// In zh, this message translates to:
+  /// **'****1234'**
+  String get profileFieldBankAccountMask;
+
+  /// No description provided for @profileFieldGroupIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份信息'**
+  String get profileFieldGroupIdentity;
+
+  /// No description provided for @profileFieldGroupContact.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系方式'**
+  String get profileFieldGroupContact;
+
+  /// No description provided for @profileFieldGroupAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'地址'**
+  String get profileFieldGroupAddress;
+
+  /// No description provided for @profileFieldGroupEmergency.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急联系人'**
+  String get profileFieldGroupEmergency;
+
+  /// No description provided for @profileFieldGroupOrg.
+  ///
+  /// In zh, this message translates to:
+  /// **'组织与入职'**
+  String get profileFieldGroupOrg;
+
+  /// No description provided for @profileFieldGroupCompensation.
+  ///
+  /// In zh, this message translates to:
+  /// **'薪资与银行'**
+  String get profileFieldGroupCompensation;
+
+  /// No description provided for @profileFieldWorkLocation.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作地'**
+  String get profileFieldWorkLocation;
+
+  /// No description provided for @profileFieldSeatNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'工位'**
+  String get profileFieldSeatNo;
+
+  /// No description provided for @profileFieldOfficePhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'办公电话'**
+  String get profileFieldOfficePhone;
+
+  /// No description provided for @profileFieldEmail.
+  ///
+  /// In zh, this message translates to:
+  /// **'邮箱'**
+  String get profileFieldEmail;
+
+  /// No description provided for @profileFieldResidenceAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'现住址'**
+  String get profileFieldResidenceAddress;
+
+  /// No description provided for @profileFieldHujiAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'户籍地址'**
+  String get profileFieldHujiAddress;
+
+  /// No description provided for @profileFieldEthnicity.
+  ///
+  /// In zh, this message translates to:
+  /// **'民族'**
+  String get profileFieldEthnicity;
+
+  /// No description provided for @profileFieldPoliticalStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'政治面貌'**
+  String get profileFieldPoliticalStatus;
+
+  /// No description provided for @profileFieldMaritalStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'婚姻状况'**
+  String get profileFieldMaritalStatus;
+
+  /// No description provided for @profileFieldBirthDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'出生日期'**
+  String get profileFieldBirthDate;
+
+  /// No description provided for @profileFieldGender.
+  ///
+  /// In zh, this message translates to:
+  /// **'性别'**
+  String get profileFieldGender;
+
+  /// No description provided for @profileFieldIdType.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件类型'**
+  String get profileFieldIdType;
+
+  /// No description provided for @profileFieldIdNumber.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份证号'**
+  String get profileFieldIdNumber;
+
+  /// No description provided for @profileFieldSupervisor.
+  ///
+  /// In zh, this message translates to:
+  /// **'直属主管'**
+  String get profileFieldSupervisor;
+
+  /// No description provided for @profileFieldHireDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职日期'**
+  String get profileFieldHireDate;
+
+  /// No description provided for @profileFieldConfirmedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'转正日期'**
+  String get profileFieldConfirmedAt;
+
+  /// No description provided for @profileFieldEmploymentType.
+  ///
+  /// In zh, this message translates to:
+  /// **'用工性质'**
+  String get profileFieldEmploymentType;
+
+  /// No description provided for @profileFieldAttendanceGroup.
+  ///
+  /// In zh, this message translates to:
+  /// **'考勤组'**
+  String get profileFieldAttendanceGroup;
+
+  /// No description provided for @profileFieldPaperArchiveNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'纸质档案号'**
+  String get profileFieldPaperArchiveNo;
+
+  /// No description provided for @profileFieldBaseSalary.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本工资'**
+  String get profileFieldBaseSalary;
+
+  /// No description provided for @profileFieldPerfSalary.
+  ///
+  /// In zh, this message translates to:
+  /// **'绩效工资'**
+  String get profileFieldPerfSalary;
+
+  /// No description provided for @profileFieldSocialInsuranceBase.
+  ///
+  /// In zh, this message translates to:
+  /// **'社保基数'**
+  String get profileFieldSocialInsuranceBase;
+
+  /// No description provided for @profileFieldSocialInsuranceLocation.
+  ///
+  /// In zh, this message translates to:
+  /// **'社保缴纳地'**
+  String get profileFieldSocialInsuranceLocation;
+
+  /// No description provided for @profileFieldHousingFundBase.
+  ///
+  /// In zh, this message translates to:
+  /// **'公积金基数'**
+  String get profileFieldHousingFundBase;
+
+  /// No description provided for @profileFieldAllowanceStandard.
+  ///
+  /// In zh, this message translates to:
+  /// **'补贴标准'**
+  String get profileFieldAllowanceStandard;
+
+  /// No description provided for @profileFieldBankBranch.
+  ///
+  /// In zh, this message translates to:
+  /// **'开户行'**
+  String get profileFieldBankBranch;
+
+  /// No description provided for @profileFieldBankAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'银行账号'**
+  String get profileFieldBankAccount;
+
+  /// No description provided for @profileFieldContractType.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同类型'**
+  String get profileFieldContractType;
+
+  /// No description provided for @profileFieldContractStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同起始'**
+  String get profileFieldContractStart;
+
+  /// No description provided for @profileFieldContractEnd.
+  ///
+  /// In zh, this message translates to:
+  /// **'合同截止'**
+  String get profileFieldContractEnd;
+
+  /// No description provided for @profileFieldProbationMonths.
+  ///
+  /// In zh, this message translates to:
+  /// **'试用期（月）'**
+  String get profileFieldProbationMonths;
+
+  /// No description provided for @profileFieldRenewCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'续签次数'**
+  String get profileFieldRenewCount;
 }
 
 class _AppLocalizationsDelegate

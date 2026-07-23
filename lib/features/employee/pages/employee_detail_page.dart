@@ -15,6 +15,7 @@ import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
+import '../widgets/profile_change_pending_section.dart';
 
 class EmployeeDetailPage extends ConsumerStatefulWidget {
   const EmployeeDetailPage({super.key, required this.employeeId});
@@ -98,6 +99,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   _header(theme, l10n),
+                  ProfileChangePendingSection(employeeId: widget.employeeId),
                   const SizedBox(height: 12),
                   _section(l10n.employeeDetailBasic, [
                     UtenInfoRow(

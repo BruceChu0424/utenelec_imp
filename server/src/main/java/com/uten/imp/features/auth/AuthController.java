@@ -47,6 +47,16 @@ public class AuthController {
         return authService.me(currentUser::requireId);
     }
 
+    /**
+     * 二次确认密码（不改密；用于"修改个人信息/手机/姓名"等敏感动作前的校验）。
+     * 200 OK → 密码正确；401 BAD_CREDENTIALS → 密码错误。
+     * 不计入登录失败计数（不影响 lockout），但审计日志落 "verify_password" 记录。
+     */
+    @PostMapping("/verify-password")
+    public void verifyPassword(@Valid @RequestBody VerifyPasswordRequest req) {
+        authService.verifyPassword(req.password());
+    }
+
     private String clientIp(HttpServletRequest req) {
         String xff = req.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {

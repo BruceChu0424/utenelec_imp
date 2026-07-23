@@ -1281,4 +1281,323 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noticeTypeUrgent => '紧急';
+
+  @override
+  String get profileChangeEditTitle => '修改个人信息';
+
+  @override
+  String get profileChangeEditCta => '修改我的信息';
+
+  @override
+  String get profileChangeEditHrOnlyHint => '以下字段请联系人事修改';
+
+  @override
+  String get profileChangeSectionBasic => '基本信息（直改生效）';
+
+  @override
+  String get profileChangeSectionReview => '联系方式与重要字段（需 HR 审核）';
+
+  @override
+  String get profileChangeSectionIdentity => '姓名与紧急联系人（需 HR 审核）';
+
+  @override
+  String get profileChangeFieldDirect => '可直接修改';
+
+  @override
+  String get profileChangeFieldReview => '需 HR 审核后生效';
+
+  @override
+  String get profileChangeFieldHrOnly => '请联系人事修改';
+
+  @override
+  String get profileChangePasswordHint => '为安全起见，请输入当前登录密码';
+
+  @override
+  String get profileChangePasswordLabel => '当前密码';
+
+  @override
+  String get profileChangePasswordWrong => '密码错误，请重试';
+
+  @override
+  String get profileChangeSubmitSuccess => '修改已提交，HR 审核后生效';
+
+  @override
+  String get profileChangeSubmitApplied => '修改已保存';
+
+  @override
+  String get profileChangeSubmitFailed => '提交失败，请稍后重试';
+
+  @override
+  String get profileChangeConflict => '档案已被他人更新，请刷新后再试';
+
+  @override
+  String get profileChangeRateLimited => '24h 内已提交过该字段的修改，请等待处理';
+
+  @override
+  String get profileChangeListTitle => '我的修改申请';
+
+  @override
+  String get profileChangeListCta => '查看申请记录';
+
+  @override
+  String get profileChangeListEmpty => '暂无修改申请';
+
+  @override
+  String get profileChangeFilterAll => '全部';
+
+  @override
+  String get profileChangeFilterPending => '待审核';
+
+  @override
+  String get profileChangeFilterApplied => '已生效';
+
+  @override
+  String get profileChangeFilterApproved => '已通过';
+
+  @override
+  String get profileChangeFilterRejected => '已驳回';
+
+  @override
+  String get profileChangeFilterCancelled => '已撤销';
+
+  @override
+  String get profileChangeStatusPending => '待 HR 审核';
+
+  @override
+  String get profileChangeStatusApplied => '已生效';
+
+  @override
+  String get profileChangeStatusApproved => '已通过';
+
+  @override
+  String get profileChangeStatusRejected => '已驳回';
+
+  @override
+  String get profileChangeStatusCancelled => '已撤销';
+
+  @override
+  String get profileChangeCancel => '撤销';
+
+  @override
+  String get profileChangeCancelledByMe => '已由我撤销';
+
+  @override
+  String get profileChangeFieldLabel => '字段';
+
+  @override
+  String get profileChangeBefore => '修改前';
+
+  @override
+  String get profileChangeAfter => '修改后';
+
+  @override
+  String get profileChangeSubmittedAt => '提交时间';
+
+  @override
+  String get profileChangeReviewer => '审核人';
+
+  @override
+  String get profileChangeReviewComment => '审核意见';
+
+  @override
+  String get profileChangeDiffTitle => '本次修改';
+
+  @override
+  String profileChangeBatchItems(Object count) {
+    return '共 $count 项';
+  }
+
+  @override
+  String get profileChangeHrQueueTitle => '员工修改审批';
+
+  @override
+  String get profileChangeHrQueueEmpty => '暂无待审申请';
+
+  @override
+  String get profileChangeReviewApprove => '批准';
+
+  @override
+  String get profileChangeReviewReject => '驳回';
+
+  @override
+  String get profileChangeRejectDialogTitle => '驳回申请';
+
+  @override
+  String get profileChangeRejectReasonRequired => '请填写驳回原因';
+
+  @override
+  String get profileChangeRejectReasonHint => '请说明驳回原因，员工会看到';
+
+  @override
+  String get profileChangeApproveDialogTitle => '确认批准？';
+
+  @override
+  String get profileChangeApproveDialogBody => '批准后将立即合并到员工档案';
+
+  @override
+  String get profileChangeConfirm => '确认';
+
+  @override
+  String get profileChangeCancel2 => '取消';
+
+  @override
+  String get profileChangeRejectSuccess => '已驳回';
+
+  @override
+  String get profileChangeApproveSuccess => '已批准';
+
+  @override
+  String get profileChangeFieldPhone => '手机';
+
+  @override
+  String get profileChangeFieldFullName => '姓名';
+
+  @override
+  String get profileChangeFieldHujiAddress => '户籍地址';
+
+  @override
+  String get profileChangeFieldEmergencyName => '紧急联系人姓名';
+
+  @override
+  String get profileChangeFieldEmergencyPhone => '紧急联系人电话';
+
+  @override
+  String get profileChangeFieldEmergencyRelationship => '与本人关系';
+
+  @override
+  String profilePendingBadge(Object count) {
+    return '$count 项待审';
+  }
+
+  @override
+  String get profilePendingSectionTitle => '待我审核的修改申请';
+
+  @override
+  String get profilePendingSectionEmpty => '该员工暂无待审申请';
+
+  @override
+  String get profilePendingSectionViewAll => '全部 →';
+
+  @override
+  String get profileFieldPhoneMask => '138****1234';
+
+  @override
+  String get profileFieldIdCardMask => '****';
+
+  @override
+  String get profileFieldBankAccountMask => '****1234';
+
+  @override
+  String get profileFieldGroupIdentity => '身份信息';
+
+  @override
+  String get profileFieldGroupContact => '联系方式';
+
+  @override
+  String get profileFieldGroupAddress => '地址';
+
+  @override
+  String get profileFieldGroupEmergency => '紧急联系人';
+
+  @override
+  String get profileFieldGroupOrg => '组织与入职';
+
+  @override
+  String get profileFieldGroupCompensation => '薪资与银行';
+
+  @override
+  String get profileFieldWorkLocation => '工作地';
+
+  @override
+  String get profileFieldSeatNo => '工位';
+
+  @override
+  String get profileFieldOfficePhone => '办公电话';
+
+  @override
+  String get profileFieldEmail => '邮箱';
+
+  @override
+  String get profileFieldResidenceAddress => '现住址';
+
+  @override
+  String get profileFieldHujiAddress => '户籍地址';
+
+  @override
+  String get profileFieldEthnicity => '民族';
+
+  @override
+  String get profileFieldPoliticalStatus => '政治面貌';
+
+  @override
+  String get profileFieldMaritalStatus => '婚姻状况';
+
+  @override
+  String get profileFieldBirthDate => '出生日期';
+
+  @override
+  String get profileFieldGender => '性别';
+
+  @override
+  String get profileFieldIdType => '证件类型';
+
+  @override
+  String get profileFieldIdNumber => '身份证号';
+
+  @override
+  String get profileFieldSupervisor => '直属主管';
+
+  @override
+  String get profileFieldHireDate => '入职日期';
+
+  @override
+  String get profileFieldConfirmedAt => '转正日期';
+
+  @override
+  String get profileFieldEmploymentType => '用工性质';
+
+  @override
+  String get profileFieldAttendanceGroup => '考勤组';
+
+  @override
+  String get profileFieldPaperArchiveNo => '纸质档案号';
+
+  @override
+  String get profileFieldBaseSalary => '基本工资';
+
+  @override
+  String get profileFieldPerfSalary => '绩效工资';
+
+  @override
+  String get profileFieldSocialInsuranceBase => '社保基数';
+
+  @override
+  String get profileFieldSocialInsuranceLocation => '社保缴纳地';
+
+  @override
+  String get profileFieldHousingFundBase => '公积金基数';
+
+  @override
+  String get profileFieldAllowanceStandard => '补贴标准';
+
+  @override
+  String get profileFieldBankBranch => '开户行';
+
+  @override
+  String get profileFieldBankAccount => '银行账号';
+
+  @override
+  String get profileFieldContractType => '合同类型';
+
+  @override
+  String get profileFieldContractStart => '合同起始';
+
+  @override
+  String get profileFieldContractEnd => '合同截止';
+
+  @override
+  String get profileFieldProbationMonths => '试用期（月）';
+
+  @override
+  String get profileFieldRenewCount => '续签次数';
 }

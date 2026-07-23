@@ -23,6 +23,8 @@ import '../../features/expense/pages/expense_detail_page.dart';
 import '../../features/expense/pages/expense_list_page.dart';
 import '../../features/expense/pages/expense_new_page.dart';
 import '../../features/finance/pages/finance_report_page.dart';
+import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
+import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
 import '../../features/hvac/pages/hvac_control_page.dart';
 import '../../features/hvac/pages/hvac_overview_page.dart';
 import '../../features/inventory/pages/inventory_list_page.dart';
@@ -40,6 +42,8 @@ import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/pages/production_line_board_page.dart';
 import '../../features/production/pages/production_output_entry_page.dart';
 import '../../features/production/pages/production_output_stats_page.dart';
+import '../../features/profile/pages/my_profile_changes_page.dart';
+import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
 import '../../features/settings/pages/settings_page.dart';
 import '../../features/shell/pages/main_shell_page.dart';
@@ -209,6 +213,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: RouteName.visitorApprovalDetail, name: 'visitor-approval-detail', builder: (_, s) => VisitorApprovalDetailPage(applicationId: s.pathParameters['id']!)),
           GoRoute(path: RouteName.myVisitors, name: 'my-visitors', builder: (_, _) => const MyVisitorsPage()),
           GoRoute(path: RouteName.securityScan, name: 'security-scan', builder: (_, _) => const SecurityScanPage()),
+
+          // —— 个人信息自助修改（员工侧）——
+          GoRoute(path: RouteName.profileEdit, name: 'profile-edit', builder: (_, _) => const ProfileEditPage()),
+          GoRoute(path: RouteName.profileMyChanges, name: 'profile-my-changes', builder: (_, _) => const MyProfileChangesPage()),
+
+          // —— HR 端：员工个人信息修改审批 ——
+          GoRoute(path: RouteName.hrProfileChanges, name: 'hr-profile-changes', builder: (_, _) => const HrProfileChangesListPage()),
+          GoRoute(path: RouteName.hrProfileChangeDetail, name: 'hr-profile-change-detail', builder: (_, s) => HrProfileChangeDetailPage(batchId: s.pathParameters['id']!)),
         ],
       ),
     ],

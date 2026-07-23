@@ -14,6 +14,7 @@ class AppUser {
     this.avatarUrl,
     this.permissions = const [],
     this.superAdmin = false,
+    this.employeeId,
   });
 
   final String id;
@@ -31,6 +32,10 @@ class AppUser {
   /// 超级管理员（来自后端 users.is_super_admin）。拥有该字段后所有权限检查短路放行。
   /// 与 isAdmin 不同：super admin 不依赖具体 role/rolePermission 映射。
   final bool superAdmin;
+
+  /// 员工档案 ID（employees.id）。Phase 6 起后端 /auth/me 返回，
+  /// 自助编辑等场景直接拿这个去查 /api/org/employees/{id}。
+  final String? employeeId;
 
   /// 是否拥有指定角色
   bool hasRole(Role role) => roles.contains(role);

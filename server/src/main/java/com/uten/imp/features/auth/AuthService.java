@@ -242,6 +242,27 @@ public class AuthService {
         return profile(user);
     }
 
+    /**
+     * 二次确认密码（不改密；用于"修改个人信息/手机/姓名"等敏感动作前的校验）。
+     * 不计入登录失败计数（与登录错密码隔离，避免被攻击者借道锁定账号）。
+     */
+    @Transactional(readOnly = true)
+    public void verifyPassword(String password) {
+        if (password == null || password.isEmpty()) {
+            throw new ApiException(ErrorCode.BAD_CREDENTIALS);
+        }
+        UUID userId = currentUser.requireId();
+        UserAccount user = userRepo.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            audit.logExplicit(userId, user.getLoginAccount(),
+                    "verify_password_failed", "users", userId.toString(), "bad_password");
+            throw new ApiException(ErrorCode.BAD_CREDENTIALS, "密码错误");
+        }
+        audit.logExplicit(userId, user.getLoginAccount(),
+                "verify_password", "users", userId.toString(), "success");
+    }
+
     // ===== 内部 =====
 
     private TokenResponse issueTokens(UserAccount user) {
@@ -271,6 +292,7 @@ public class AuthService {
         return new TokenResponse.UserProfile(
                 user.getId().toString(),
                 user.getLoginAccount(),
+                e == null ? null : e.getId().toString(),
                 e == null ? null : e.getFullName(),
                 e == null ? null : e.getCode(),
                 dept,

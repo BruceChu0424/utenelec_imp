@@ -84,4 +84,11 @@ public class Employee extends SoftDeletableEntity {
     private String email;
 
     private String paperArchiveNo;
+
+    /**
+     * 乐观锁版本号。每次写都 +1；前端在 profile_change_requests 上 snapshot employee_version，
+     * 审批时校验，不一致即 409（防止申请期内 HR 改了档案导致员工"按过期基线"被合并）。
+     */
+    @Column(name = "version", nullable = false)
+    private Integer version = 0;
 }

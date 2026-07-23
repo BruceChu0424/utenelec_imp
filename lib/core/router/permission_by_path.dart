@@ -41,5 +41,13 @@ String? requiredPermFor(String location) {
   }
   // 管理层
   if (location.startsWith('/analytics/')) return 'viewcontext:scoped';
+  // 个人信息自助修改（员工侧）
+  if (location == '/profile/edit' || location == '/profile/me/changes') {
+    return Perm.profileEditSelf;
+  }
+  // HR 端：员工修改审批
+  if (location == '/hr/profile-changes' || location.startsWith('/hr/profile-changes/')) {
+    return Perm.profileReview;
+  }
   return null;
 }

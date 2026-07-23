@@ -21,6 +21,13 @@ abstract final class Perm {
   static const visitorView = 'visitor:view';
   static const visitorApprove = 'visitor:approve';
   static const visitorCheckIn = 'visitor:check-in';
+
+  // 个人信息自助修改（Phase 6）
+  static const profileEditSelf = 'profile:edit:self';
+  static const profileReview = 'profile:review';
+  /// 查看员工薪资/补偿字段（HR/finance/admin）；
+  /// 渐进替代 DataAccessPolicy 里按角色名硬编码的判断。
+  static const employeeCompensationView = 'employee:compensation:view';
 }
 
 /// 当前用户的功能权限集合。
@@ -49,6 +56,9 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.visitorView,
       Perm.visitorApprove,
       Perm.visitorCheckIn,
+      Perm.profileEditSelf,
+      Perm.profileReview,
+      Perm.employeeCompensationView,
       ...user.permissions,
     };
   }

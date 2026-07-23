@@ -12,6 +12,11 @@ public record TokenResponse(
     public record UserProfile(
             String id,
             String loginAccount,
+            /**
+             * 员工档案 ID（employees.id）。Phase 6 起前端用此字段直接查 /api/org/employees/{id}
+             * 取完整档案做自助编辑。
+             */
+            String employeeId,
             String name,
             String code,
             /**

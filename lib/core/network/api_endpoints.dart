@@ -47,4 +47,14 @@ abstract final class ApiEndpoints {
   static String visitorHostConfirm(String id) => '/visitor-approval/$id/host-confirm';
   static const securityVerify = '/security/verify';
   static String securityCheckIn(String id) => '/security/check-in/$id';
+
+  // 个人信息修改（Phase 6）
+  static const authVerifyPassword = '/auth/verify-password';
+  static const profileMyChanges = '/profile/me/changes';
+  static const hrProfileChanges = '/hr/profile-changes';
+  static const hrProfileChangesPendingCount = '/hr/profile-changes/pending-count';
+  static String hrProfileChangesPendingCountFor(String employeeId) =>
+      '/hr/profile-changes/pending-count/$employeeId';
+  static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
+  static String hrProfileChangeReview(String id) => '/hr/profile-changes/$id/review';
 }

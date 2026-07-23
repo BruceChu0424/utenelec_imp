@@ -347,19 +347,125 @@ class _CompactShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentIndex = _primaryIndex(currentLocation, destinations);
 
+    // 自适应底部 tab bar（放弃 NavigationBar 因为它会强制撑满父容器宽度）：
+    //   - 整条 bar 宽度 = 各 tab 的 intrinsic 宽度之和 + padding，不强制 100% 屏宽
+    //   - tab 越多 → bar 越宽；tab 越少 → bar 越窄
+    //   - 选中态：teal500 主色背景 + 白色 icon / label（与主按钮一致）
+    //   - 未选中：透明 + onSurfaceVariant
+    //   - 居中悬浮在底部，外包 SafeArea(top:false) 处理 home indicator 安全区
     return Scaffold(
-      body: SafeArea(child: child),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (i) => context.go(destinations[i].location),
-        destinations: [
-          for (final d in destinations)
-            NavigationDestination(
-              icon: Icon(d.icon),
-              selectedIcon: Icon(d.selectedIcon),
-              label: d.label,
+      body: Column(
+        children: [
+          Expanded(child: SafeArea(child: child)),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Center(
+                child: _AdaptiveNavBar(
+                  destinations: destinations,
+                  currentIndex: currentIndex,
+                  onTap: (i) => context.go(destinations[i].location),
+                ),
+              ),
             ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// 自适应宽度底部 tab bar：放弃 NavigationBar（它会撑满父容器宽度），
+/// 自己用 Row(mainAxisSize: min) + StadiumBorder 容器实现，
+/// 宽度由各 tab 内容 intrinsic 计算，tab 多则宽、tab 少则窄。
+class _AdaptiveNavBar extends StatelessWidget {
+  const _AdaptiveNavBar({
+    required this.destinations,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  final List<_NavDestination> destinations;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surface,
+      shape: StadiumBorder(
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < destinations.length; i++)
+              _AdaptiveTab(
+                destination: destinations[i],
+                isSelected: i == currentIndex,
+                onTap: () => onTap(i),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 单个 tab：胶囊形背景，选中态 teal500 + 白字白 icon。
+class _AdaptiveTab extends StatelessWidget {
+  const _AdaptiveTab({
+    required this.destination,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final _NavDestination destination;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bg = isSelected ? UtenColors.teal500 : Colors.transparent;
+    final fg = isSelected
+        ? Colors.white
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Material(
+      color: bg,
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const StadiumBorder(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? destination.selectedIcon : destination.icon,
+                size: 22,
+                color: fg,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                destination.label,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -487,19 +593,19 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final selectedColor = UtenColors.teal400;
-    final iconColor = isSelected
-        ? selectedColor
-        : theme.colorScheme.onSurfaceVariant;
-    final textColor = isSelected ? selectedColor : theme.colorScheme.onSurface;
+    // 选中态：文字/icon 用品牌主色（teal500，与按钮背景同色）；
+    // 背景用同色系的浅绿（teal50 / teal100），建立「主色文字 + 主色淡底」的语义对。
+    const selectedFg = UtenColors.teal500;
+    final iconColor = isSelected ? selectedFg : theme.colorScheme.onSurfaceVariant;
+    final textColor = isSelected ? selectedFg : theme.colorScheme.onSurface;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: isSelected
             ? (theme.brightness == Brightness.dark
-                  ? UtenColors.teal900.withValues(alpha: 0.3)
-                  : UtenColors.surfaceMid)
+                  ? UtenColors.teal900.withValues(alpha: 0.35)
+                  : UtenColors.teal50)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
@@ -536,9 +642,9 @@ class _NavItem extends StatelessWidget {
                         ),
                       ),
                       if (destination.showPendingBadge)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: const HrPendingBadge(showLabel: true),
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8),
+                          child: HrPendingBadge(showLabel: true),
                         ),
                     ],
                   )

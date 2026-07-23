@@ -75,7 +75,7 @@ class PayrollSlipListPage extends ConsumerWidget {
                         slip: slips[i],
                         onTap: () {
                           markPayrollViewed(ref, slips[i].id);
-                          context.go(RoutePath.payrollSlipDetail(slips[i].id));
+                          context.push(RoutePath.payrollSlipDetail(slips[i].id));
                         },
                       ),
                     ),

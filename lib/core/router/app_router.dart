@@ -106,7 +106,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         case AuthStatus.mustChangePassword:
           return isChangePw ? null : '${RouteName.changePassword}?forced=true';
         case AuthStatus.authenticated:
-          if (isLogin || isChangePw) return RouteName.dashboard;
+          // 注意：isChangePw 不在此重定向——"我的→修改密码"是已登录用户的合法入口。
+          // 强制改密（mustChangePassword）由前两个分支独立处理。
+          if (isLogin) return RouteName.dashboard;
           final required = requiredPermFor(loc);
           if (required != null && !(session.user?.can(required) ?? false)) {
             return RouteName.dashboard;

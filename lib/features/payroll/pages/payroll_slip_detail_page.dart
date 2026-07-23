@@ -29,7 +29,7 @@ class PayrollSlipDetailPage extends ConsumerWidget {
     final detail = ref.watch(payrollDetailProvider(slipId));
 
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '工资条详情', showBackButton: true),
       body: detail.when(
         loading: () => const _LoadingView(),
         error: (e, _) => UtenEmpty.error(

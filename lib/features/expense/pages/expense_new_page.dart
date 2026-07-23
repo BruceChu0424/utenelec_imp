@@ -281,7 +281,7 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
       if (saveOnly) {
         if (mounted) {
           UtenToast.success(context, '已保存草稿');
-          context.go(RoutePath.expenseDetail(claim.id));
+          context.push(RoutePath.expenseDetail(claim.id));
         }
       } else {
         await submitExpense(ref, claim.id);

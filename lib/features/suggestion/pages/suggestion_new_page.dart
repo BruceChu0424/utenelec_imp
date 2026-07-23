@@ -188,7 +188,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
       );
       if (mounted) {
         UtenToast.success(context, '提交成功，感谢您的建议！');
-        context.go(RoutePath.suggestionDetail(s.id));
+        context.push(RoutePath.suggestionDetail(s.id));
       }
     } catch (e) {
       if (mounted) UtenToast.error(context, '提交失败：$e');

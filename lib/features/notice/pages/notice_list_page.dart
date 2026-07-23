@@ -89,7 +89,7 @@ class NoticeListPage extends ConsumerWidget {
                           if (!notices[i].isRead) {
                             markNoticeRead(ref, notices[i].id);
                           }
-                          context.go(RoutePath.noticeDetail(notices[i].id));
+                          context.push(RoutePath.noticeDetail(notices[i].id));
                         },
                       ),
                     ),

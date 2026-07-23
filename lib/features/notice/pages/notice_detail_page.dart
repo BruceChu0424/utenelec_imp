@@ -20,7 +20,7 @@ class NoticeDetailPage extends ConsumerWidget {
     final detail = ref.watch(noticeDetailProvider(noticeId));
 
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '通知详情', showBackButton: true),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(

@@ -20,7 +20,7 @@ class SuggestionDetailPage extends ConsumerWidget {
     final detail = ref.watch(suggestionDetailProvider(suggestionId));
 
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '建议详情', showBackButton: true),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(

@@ -93,7 +93,7 @@ class ExpenseListPage extends ConsumerWidget {
                       itemBuilder: (context, i, _) => _ClaimCard(
                         claim: claims[i],
                         onTap: () => context
-                            .go(RoutePath.expenseDetail(claims[i].id)),
+                            .push(RoutePath.expenseDetail(claims[i].id)),
                       ),
                     ),
                   );

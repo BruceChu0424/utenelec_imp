@@ -43,18 +43,21 @@ class UtenPersonCard extends StatelessWidget {
       margin: margin,
       elevation: elevation,
       padding: EdgeInsets.zero,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: CircleAvatar(
-          backgroundColor: avatarColor ?? theme.colorScheme.primaryContainer,
-          foregroundColor: theme.colorScheme.onPrimaryContainer,
-          child: Text(initial),
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          leading: CircleAvatar(
+            backgroundColor: avatarColor ?? theme.colorScheme.primaryContainer,
+            foregroundColor: theme.colorScheme.onPrimaryContainer,
+            child: Text(initial),
+          ),
+          title: Text(title, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+          subtitle: subtitle == null || subtitle!.isEmpty
+              ? null
+              : Text(subtitle!, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodySmall),
+          trailing: trailing,
         ),
-        title: Text(title, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
-        subtitle: subtitle == null || subtitle!.isEmpty
-            ? null
-            : Text(subtitle!, overflow: TextOverflow.ellipsis, maxLines: 1, style: theme.textTheme.bodySmall),
-        trailing: trailing,
       ),
     );
   }

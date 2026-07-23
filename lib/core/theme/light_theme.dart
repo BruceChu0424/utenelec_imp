@@ -19,7 +19,7 @@ ThemeData buildLightTheme() {
   const colorScheme = ColorScheme(
     brightness: Brightness.light,
     primary: UtenColors.teal500,
-    onPrimary: UtenColors.teal950,
+    onPrimary: Colors.white,
     primaryContainer: UtenColors.teal100,
     onPrimaryContainer: UtenColors.teal900,
     secondary: UtenColors.teal400,
@@ -193,7 +193,7 @@ ThemeData buildLightTheme() {
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: UtenColors.teal500,
-        foregroundColor: UtenColors.teal950,
+        foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
         elevation: 0,
@@ -206,7 +206,7 @@ ThemeData buildLightTheme() {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: UtenColors.teal500,
-        foregroundColor: UtenColors.teal950,
+        foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
         elevation: 0,
@@ -392,7 +392,7 @@ ThemeData buildLightTheme() {
 
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: UtenColors.teal500,
-      foregroundColor: UtenColors.teal950,
+      foregroundColor: Colors.white,
       elevation: 2,
       highlightElevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

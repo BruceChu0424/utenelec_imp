@@ -92,7 +92,7 @@ class SuggestionListPage extends ConsumerWidget {
                       itemBuilder: (context, i, _) => _SuggestionCard(
                         suggestion: suggestions[i],
                         onTap: () => context
-                            .go(RoutePath.suggestionDetail(suggestions[i].id)),
+                            .push(RoutePath.suggestionDetail(suggestions[i].id)),
                         onLike: () =>
                             toggleSuggestionLike(ref, suggestions[i].id),
                       ),

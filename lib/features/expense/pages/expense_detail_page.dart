@@ -31,7 +31,7 @@ class ExpenseDetailPage extends ConsumerWidget {
     final detail = ref.watch(expenseDetailProvider(claimId));
 
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '报销详情', showBackButton: true),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(

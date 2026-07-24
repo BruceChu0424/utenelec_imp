@@ -69,6 +69,14 @@ uten:
     send-interval-seconds: 60
     daily-limit: 10
 
+app:
+  legacy:
+    # 老库（SQL Server YTDQ_2023）迁移数据源；默认关，迁移时显式 UTEN_LEGACY_ENABLED=true
+    enabled: ${UTEN_LEGACY_ENABLED:false}
+    datasource-url: ${UTEN_LEGACY_DB_URL:}
+    datasource-username: ${UTEN_LEGACY_DB_USER:}
+    datasource-password: ${UTEN_LEGACY_DB_PASSWORD:}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

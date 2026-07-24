@@ -1,0 +1,133 @@
+// 货品资料分类树/详情模型（对应后端 MaterialCategoryNode / MaterialCategoryDetail）。
+//
+// 与部门模型的差异：
+// - level 是 int（层级深度），不再是部门那套字符串枚举（公司/决策层/...）；
+// - 去掉 manager/headcount（分类不挂人）；
+// - 新增 legacyId（旧系统编码，迁移用）。
+
+/// 货品分类树节点（递归 children）。
+class ProductCategoryNode {
+  ProductCategoryNode({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.level,
+    required this.children,
+    this.parentId,
+    this.sortOrder,
+    this.legacyId,
+  });
+
+  final String id;
+  final String code;
+  final String name;
+
+  /// 层级深度（0 = 顶级）。
+  final int level;
+  final String? parentId;
+  final int? sortOrder;
+  final int? legacyId;
+  final List<ProductCategoryNode> children;
+
+  bool get hasChildren => children.isNotEmpty;
+
+  factory ProductCategoryNode.fromJson(Map<String, dynamic> json) {
+    final list = json['children'] as List<dynamic>? ?? const [];
+    return ProductCategoryNode(
+      id: json['id'] as String,
+      code: json['code'] as String,
+      name: json['name'] as String,
+      level: (json['level'] as num?)?.toInt() ?? 0,
+      parentId: json['parentId'] as String?,
+      sortOrder: (json['sortOrder'] as num?)?.toInt(),
+      legacyId: (json['legacyId'] as num?)?.toInt(),
+      children: list
+          .map((e) => ProductCategoryNode.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+/// 货品分类详情。
+class ProductCategoryDetail {
+  const ProductCategoryDetail({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.level,
+    required this.path,
+    required this.childCount,
+    this.parentId,
+    this.parentName,
+    this.sortOrder,
+    this.legacyId,
+  });
+
+  final String id;
+  final String code;
+  final String name;
+  final int level;
+  final String? parentId;
+  final String? parentName;
+  final int? sortOrder;
+  final int? legacyId;
+
+  /// 完整路径文案（如「原材料 > 钢材 > 不锈钢」）。
+  final String path;
+  final int childCount;
+
+  factory ProductCategoryDetail.fromJson(Map<String, dynamic> json) =>
+      ProductCategoryDetail(
+        id: json['id'] as String,
+        code: json['code'] as String,
+        name: json['name'] as String,
+        level: (json['level'] as num?)?.toInt() ?? 0,
+        parentId: json['parentId'] as String?,
+        parentName: json['parentName'] as String?,
+        sortOrder: (json['sortOrder'] as num?)?.toInt(),
+        legacyId: (json['legacyId'] as num?)?.toInt(),
+        path: json['path'] as String? ?? '',
+        childCount: (json['childCount'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 新建分类请求体：{code,name,parentId?,sortOrder?}。
+class ProductCategorySaveInput {
+  const ProductCategorySaveInput({
+    required this.code,
+    required this.name,
+    this.parentId,
+    this.sortOrder,
+  });
+
+  final String code;
+  final String name;
+  final String? parentId;
+  final int? sortOrder;
+
+  Map<String, dynamic> toJson() => {
+        'code': code,
+        'name': name,
+        if (parentId != null) 'parentId': parentId,
+        if (sortOrder != null) 'sortOrder': sortOrder,
+      };
+}
+
+/// 编辑分类请求体：{name,parentId?,sortOrder?}（code 不可改，不在体内）。
+class ProductCategoryUpdateInput {
+  const ProductCategoryUpdateInput({
+    required this.name,
+    this.parentId,
+    this.sortOrder,
+  });
+
+  final String name;
+  final String? parentId;
+  final int? sortOrder;
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        if (parentId != null) 'parentId': parentId,
+        if (sortOrder != null) 'sortOrder': sortOrder,
+      };
+}

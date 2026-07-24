@@ -58,6 +58,13 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Microsoft SQL Server（老库 YTDQ_2023 迁移用，按需连接，不常驻连接池） -->
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- JWT (jjwt 0.12.x) -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

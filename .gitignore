@@ -66,3 +66,7 @@ server/mvnw.cmd
 __pycache__/
 *.pyc
 server/backups/
+# 老库迁移数据导出（真实业务数据/PII：客户/供应商/货品/模具主档 + 分类，本地导出，绝不入库；
+# 需要时用 server/legacy_migration/export_legacy.ps1 重新生成）
+server/legacy_migration/data/
+server/src/main/resources/legacy-migration/

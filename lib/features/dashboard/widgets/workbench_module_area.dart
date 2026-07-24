@@ -213,11 +213,11 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.myVisitors,
         badge: VisitorHostPendingBadge(),
       ),
-      // 基础资料 = 我的资料页（/profile 现有路由，登录即可访问）
+      // 基础资料 = 货品资料分类树等（/basicinfo，登录即可访问）
       _ModuleItem(
-        icon: Icons.person_outline_rounded,
+        icon: Icons.category_outlined,
         label: '基础资料',
-        location: RouteName.profile,
+        location: RouteName.basicinfo,
       ),
       _ModuleItem(
         icon: Icons.lightbulb_outline_rounded,
@@ -276,16 +276,9 @@ const _allGroups = <_ModuleGroup>[
         label: '采购管理',
         location: RouteName.financePurchase,
       ),
-      _ModuleItem(
-        icon: Icons.people_alt_outlined,
-        label: '客户资料',
-        location: RouteName.financeCustomers,
-      ),
-      _ModuleItem(
-        icon: Icons.local_shipping_outlined,
-        label: '供应商资料',
-        location: RouteName.financeSuppliers,
-      ),
+      // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier），
+      // 财税部组不再保留占位入口（2026-07-24）。
+
       _ModuleItem(
         icon: Icons.account_balance_outlined,
         label: '账户资料',

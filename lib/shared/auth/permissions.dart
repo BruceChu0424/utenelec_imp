@@ -54,6 +54,37 @@ abstract final class Perm {
 
   /// 基础资料（我的资料页）
   static const basicinfoView = 'basicinfo:view';
+
+  /// 货品资料分类（基础资料）
+  static const materialCategoryView = 'material_category:view';
+  static const materialCategoryEdit = 'material_category:edit';
+
+  /// 货品主档（基础资料；V32 已将 goods:view 授予全部部门）
+  static const goodsView = 'goods:view';
+  static const goodsEdit = 'goods:edit';
+
+  /// 模具资料分类（基础资料）
+  static const mouldCategoryView = 'mould_category:view';
+  static const mouldCategoryEdit = 'mould_category:edit';
+
+  /// 模具主档（基础资料；V34 已将 mould:view 授予全部部门）
+  static const mouldView = 'mould:view';
+  static const mouldEdit = 'mould:edit';
+
+  /// 客户资料分类（基础资料）
+  static const clientCategoryView = 'client_category:view';
+  static const clientCategoryEdit = 'client_category:edit';
+
+  /// 客户主档（基础资料；V36 已将 client:view 授予全部部门）
+  static const clientView = 'client:view';
+  static const clientEdit = 'client:edit';
+
+  /// 供应商资料分类（基础资料）
+  static const supplierCategoryView = 'supplier_category:view';
+  static const supplierCategoryEdit = 'supplier_category:edit';
+
+  // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
+  // 后端 V38 以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
 }
 
 /// 当前用户的功能权限集合。
@@ -98,6 +129,20 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.accountView,
       Perm.accountEdit,
       Perm.basicinfoView,
+      Perm.materialCategoryView,
+      Perm.materialCategoryEdit,
+      Perm.goodsView,
+      Perm.goodsEdit,
+      Perm.mouldCategoryView,
+      Perm.mouldCategoryEdit,
+      Perm.mouldView,
+      Perm.mouldEdit,
+      Perm.clientCategoryView,
+      Perm.clientCategoryEdit,
+      Perm.clientView,
+      Perm.clientEdit,
+      Perm.supplierCategoryView,
+      Perm.supplierCategoryEdit,
       ...user.permissions,
     };
   }

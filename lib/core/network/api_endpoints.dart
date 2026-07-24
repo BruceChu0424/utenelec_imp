@@ -13,6 +13,50 @@ abstract final class ApiEndpoints {
   static String department(String id) => '/org/departments/$id';
   static const departments = '/org/departments';
 
+  // 货品资料分类（基础资料 / master-data）
+  static const materialCategories = '/master/material-categories';
+  static const materialCategoryTree = '$materialCategories/tree';
+  static String materialCategorySubtree(String id) =>
+      '$materialCategories/$id/subtree';
+  static String materialCategory(String id) => '$materialCategories/$id';
+
+  // 货品主档（基础资料 / master-data）—— 分类下货品分页 + 详情
+  static const goods = '/master/goods';
+  static String good(String id) => '/master/goods/$id';
+
+  // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
+  static const mouldCategories = '/master/mould-categories';
+  static const mouldCategoryTree = '$mouldCategories/tree';
+  static String mouldCategorySubtree(String id) =>
+      '$mouldCategories/$id/subtree';
+  static String mouldCategory(String id) => '$mouldCategories/$id';
+
+  // 模具主档（基础资料 / master-data）—— 分类下模具分页 + 详情
+  static const moulds = '/master/moulds';
+  static String mould(String id) => '/master/moulds/$id';
+
+  // 客户资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
+  static const clientCategories = '/master/client-categories';
+  static const clientCategoryTree = '$clientCategories/tree';
+  static String clientCategorySubtree(String id) =>
+      '$clientCategories/$id/subtree';
+  static String clientCategory(String id) => '$clientCategories/$id';
+
+  // 客户主档（基础资料 / master-data）—— 分类下客户分页 + 详情
+  static const clients = '/master/clients';
+  static String client(String id) => '/master/clients/$id';
+
+  // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
+  static const supplierCategories = '/master/supplier-categories';
+  static const supplierCategoryTree = '$supplierCategories/tree';
+  static String supplierCategorySubtree(String id) =>
+      '$supplierCategories/$id/subtree';
+  static String supplierCategory(String id) => '$supplierCategories/$id';
+
+  // 供应商主档（基础资料 / master-data）—— 分类下供应商分页 + 详情
+  static const suppliers = '/master/suppliers';
+  static String supplier(String id) => '/master/suppliers/$id';
+
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
       '/org/departments/$deptId/positions';

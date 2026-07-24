@@ -11,6 +11,16 @@ abstract final class RouteName {
   static const String changePassword = '/change-password';
   static const String department = '/department';
 
+  // 基础资料（登录即可访问，不设路由守卫）
+  // /basicinfo       = 资料入口 hub（货品资料 / 模具资料 / ...）
+  // /basicinfo/goods = 货品资料（分类树 + 货品）
+  // /basicinfo/mould = 模具资料（分类树 + 模具）
+  static const String basicinfo = '/basicinfo';
+  static const String basicinfoGoods = '/basicinfo/goods';
+  static const String basicinfoMould = '/basicinfo/mould';
+  static const String basicinfoClient = '/basicinfo/client';
+  static const String basicinfoSupplier = '/basicinfo/supplier';
+
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
   static const String payrollSlipDetail = '/payroll/slip/:id';

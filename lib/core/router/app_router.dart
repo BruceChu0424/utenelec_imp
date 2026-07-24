@@ -11,6 +11,11 @@ import '../../features/analytics/pages/analytics_explore_page.dart';
 import '../../features/analytics/pages/business_dashboard_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/auth/pages/login_page.dart';
+import '../../features/basic_data/pages/basic_data_hub_page.dart';
+import '../../features/basic_data/pages/client_category_page.dart';
+import '../../features/basic_data/pages/mould_category_page.dart';
+import '../../features/basic_data/pages/product_category_page.dart';
+import '../../features/basic_data/pages/supplier_category_page.dart';
 import '../../features/dashboard/pages/dashboard_page.dart';
 import '../../features/department/pages/department_page.dart';
 import '../../features/employee/pages/employee_detail_page.dart';
@@ -358,6 +363,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/department',
             name: 'department',
             builder: (_, _) => const DepartmentPage(),
+          ),
+
+          // —— 基础资料（hub：货品/模具资料同级入口；登录即可访问）——
+          GoRoute(
+            path: RouteName.basicinfo,
+            name: 'basicinfo',
+            builder: (_, _) => const BasicDataHubPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoGoods,
+            name: 'basicinfo-goods',
+            builder: (_, _) => const ProductCategoryPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoMould,
+            name: 'basicinfo-mould',
+            builder: (_, _) => const MouldCategoryPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoClient,
+            name: 'basicinfo-client',
+            builder: (_, _) => const ClientCategoryPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoSupplier,
+            name: 'basicinfo-supplier',
+            builder: (_, _) => const SupplierCategoryPage(),
           ),
 
           // —— 实验室（upload 在 :id 前）——

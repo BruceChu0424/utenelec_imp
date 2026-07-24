@@ -20,6 +20,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/widgets/uten_location_field.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/employee_status_badge.dart';
@@ -36,9 +37,6 @@ class DepartmentPage extends ConsumerStatefulWidget {
 }
 
 class _DepartmentPageState extends ConsumerState<DepartmentPage> {
-  // Backend option codes are unchanged; labels come from l10n at build time.
-  static const _levelCodes = ['公司', '决策层', '管理中心', '一级部门', '二级班组', '三级科室'];
-
   List<DepartmentNode>? _tree;
   String? _selectedId;
   bool _loading = true;
@@ -107,11 +105,54 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     _ => code,
   };
 
+  /// 由父部门层级推导新部门的层级（公司/根→一级；一级→二级；二级→三级；三级封顶）。
+  /// 后端信任前端 level（不推导），故此处保证 level 与父级一致，杜绝旧版「下拉框随便选
+  /// level、却挂在任意父级下」的不一致。
+  String _childDeptLevel(String? parentLevel) {
+    switch (parentLevel) {
+      case null:
+      case '公司':
+      case '决策层':
+      case '管理中心':
+        return '一级部门';
+      case '一级部门':
+        return '二级班组';
+      case '二级班组':
+        return '三级科室';
+      case '三级科室':
+        return '三级科室'; // 已最深，不再细分
+      default:
+        return '二级班组';
+    }
+  }
+
   Future<void> _showCreateDialog({String? parentId}) async {
     final l10n = AppLocalizations.of(context);
     final nameCtl = TextEditingController();
     final codeCtl = TextEditingController();
-    String level = '二级班组';
+    final tree = _tree ?? const <DepartmentNode>[];
+    DepartmentNode? parent = parentId == null ? null : _findById(tree, parentId);
+
+    Future<void> pickParent(void Function(VoidCallback) setSt) async {
+      final pick = await showUtenPickerSheet<DepartmentNode>(
+        context: context,
+        title: l10n.departmentDialogAddTitle,
+        rootLabel: l10n.departmentLevelCompany,
+        rootHint: _levelLabel(l10n, _childDeptLevel(null)),
+        childBuilder: (sctx, onSelect, onSelectRoot) => UtenDepartmentTreeView(
+          nodes: tree,
+          mode: UtenDepartmentTreeMode.single,
+          selectedIds: {parent?.id ?? ''},
+          // 仅可选层级（一级/二级/三级）能被选为父级；决策层/管理中心仅作骨架展开。
+          nodeEnabledPredicate: (n) =>
+              kSelectableDepartmentLevels.contains(n.level),
+          onToggleSelect: onSelect,
+        ),
+      );
+      if (pick == null) return;
+      setSt(() => parent = pick.isRoot ? null : pick.node);
+    }
+
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -121,6 +162,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                UtenLocationField(
+                  pathLabel: parent?.name,
+                  rootLabel: l10n.departmentLevelCompany,
+                  resultLevelLabel:
+                      _levelLabel(l10n, _childDeptLevel(parent?.level)),
+                  onTap: () => pickParent(setSt),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   controller: codeCtl,
                   decoration: InputDecoration(
@@ -134,22 +183,6 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
                   decoration: InputDecoration(
                     labelText: l10n.departmentFieldName,
                   ),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                DropdownButtonFormField<String>(
-                  initialValue: level,
-                  decoration: InputDecoration(
-                    labelText: l10n.departmentFieldLevel,
-                  ),
-                  items: _levelCodes
-                      .map(
-                        (c) => DropdownMenuItem(
-                          value: c,
-                          child: Text(_levelLabel(l10n, c)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setSt(() => level = v ?? level),
                 ),
               ],
             ),
@@ -173,14 +206,12 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       return;
     }
     try {
-      await ref
-          .read(departmentRepositoryProvider)
-          .create(
+      await ref.read(departmentRepositoryProvider).create(
             DepartmentSaveInput(
               code: codeCtl.text.trim(),
               name: nameCtl.text.trim(),
-              level: level,
-              parentId: parentId,
+              level: _childDeptLevel(parent?.level),
+              parentId: parent?.id,
             ),
           );
       _toastSuccess(l10n.departmentCreated);
@@ -224,6 +255,104 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   void _toastSuccess(String msg) {
     if (!mounted) return;
     context.appSuccess(msg);
+  }
+
+  /// 收集某节点自身 + 全部后代的 id（编辑时禁止把节点移到自己子树下）。
+  Set<String> _subtreeIds(DepartmentNode node) {
+    final ids = <String>{node.id};
+    for (final c in node.children) {
+      ids.addAll(_subtreeIds(c));
+    }
+    return ids;
+  }
+
+  /// 编辑部门：重命名 + 移动（改父级，level 由后端按新父级重算）。
+  /// 与新增对话框同构（UtenLocationField + 底部抽屉），只是预填现值、改调 update。
+  Future<void> _showEditDialog(DepartmentNode node) async {
+    final l10n = AppLocalizations.of(context);
+    final nameCtl = TextEditingController(text: node.name);
+    final tree = _tree ?? const <DepartmentNode>[];
+    DepartmentNode? parent =
+        node.parentId == null ? null : _findById(tree, node.parentId!);
+    final blocked = _subtreeIds(node); // 自己 + 后代不能选作新父级
+
+    Future<void> pickParent(void Function(VoidCallback) setSt) async {
+      final pick = await showUtenPickerSheet<DepartmentNode>(
+        context: context,
+        title: '选择上级部门', // TODO(l10n): 补 arb
+        rootLabel: l10n.departmentLevelCompany,
+        showRootOption: false, // 后端 parentId=null 视为不改，编辑不提供移到根
+        childBuilder: (sctx, onSelect, onSelectRoot) => UtenDepartmentTreeView(
+          nodes: tree,
+          mode: UtenDepartmentTreeMode.single,
+          selectedIds: {parent?.id ?? ''},
+          nodeEnabledPredicate: (n) =>
+              kSelectableDepartmentLevels.contains(n.level) &&
+              !blocked.contains(n.id),
+          onToggleSelect: onSelect,
+        ),
+      );
+      if (pick == null) return;
+      setSt(() => parent = pick.isRoot ? null : pick.node);
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('编辑部门'), // TODO(l10n): 补 arb
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UtenLocationField(
+                  pathLabel: parent?.name,
+                  rootLabel: l10n.departmentLevelCompany,
+                  resultLevelLabel:
+                      _levelLabel(l10n, _childDeptLevel(parent?.level)),
+                  onTap: () => pickParent(setSt),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                TextField(
+                  controller: nameCtl,
+                  decoration: InputDecoration(
+                    labelText: l10n.departmentFieldName,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.commonSave),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != true) return;
+    if (nameCtl.text.trim().isEmpty) {
+      _toastError('请输入部门名称'); // TODO(l10n): 补 arb
+      return;
+    }
+    try {
+      await ref.read(departmentRepositoryProvider).update(
+            node.id,
+            DepartmentUpdateInput(
+              name: nameCtl.text.trim(),
+              parentId: parent?.id,
+            ),
+          );
+      _toastSuccess('已保存'); // TODO(l10n): 补 arb
+      await _load();
+    } on ApiException catch (e) {
+      _toastError(e.message);
+    }
   }
 
   /// 打开部门岗位管理（仅可选层级节点提供入口，trailingBuilder 里控制）。
@@ -272,6 +401,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               child: const Padding(
                 padding: EdgeInsets.all(2),
                 child: Icon(Icons.badge_outlined, size: 16, color: Colors.grey),
+              ),
+            ),
+          if (kSelectableDepartmentLevels.contains(node.level))
+            InkWell(
+              onTap: () => _showEditDialog(node),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.edit_outlined, size: 16, color: Colors.grey),
               ),
             ),
           const SizedBox(width: 4),

@@ -34,16 +34,23 @@ abstract final class ApiEndpoints {
   static String userEnable(String id) => '/admin/users/$id/enable';
   static String userResetPassword(String id) =>
       '/admin/users/$id/reset-password';
-  static const adminRoles = '/admin/roles';
 
   // 权限管理（超级管理员）
   /// 列全部权限点（GET /admin/permissions；与前端路由 /admin/permissions 同名，注意区分）
   static const adminPermissionList = '/admin/permissions';
-  static String userRoles(String id) => '/admin/users/$id/roles';
   static String userPermOverrides(String id) =>
       '/admin/users/$id/permission-overrides';
-  static const adminDepartmentRoles = '/admin/department-roles';
-  static String departmentRoles(String id) => '/admin/departments/$id/roles';
+
+  /// 完整权限目录（按 category 分组、已排序）
+  static const adminPermissionCatalog = '/admin/permission-catalog';
+
+  /// 部门已配置的权限点
+  static String departmentPermissions(String id) =>
+      '/admin/departments/$id/permissions';
+
+  /// 员工有效权限（部门 ∪ 角色 ± 个人覆盖，后端计算）
+  static String userEffectivePermissions(String id) =>
+      '/admin/users/$id/effective-permissions';
 
   // 访客（visitor）
   static const visitorSendCode = '/visitor/auth/send-code';
@@ -80,4 +87,8 @@ abstract final class ApiEndpoints {
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
   static String hrProfileChangeReview(String id) =>
       '/hr/profile-changes/$id/review';
+
+  // 用户偏好（任意 key-value；工作台布局等）
+  static const userPreferences = '/user/preferences';
+  static String userPreference(String key) => '/user/preferences/$key';
 }

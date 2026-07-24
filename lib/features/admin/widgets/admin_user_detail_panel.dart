@@ -1,30 +1,31 @@
 // AdminUserDetailPanel - 员工权限详情面板
 //
-// 三段：
+// 两段：
 //   1. 账号：姓名/工号/部门/状态 + 锁定/解锁/停用/启用/重置密码（危险操作二次确认）
-//   2. 角色分配：角色多选 chip + 保存（PUT /admin/users/{id}/roles）
-//   3. 个人权限覆盖：按 category 折叠分组的权限矩阵，三态（继承/加授/回收）
-//      + 有效权限着色（有效=绿 / 回收=红 / 无关=灰）
+//   2. 权限明细：完整权限目录按 category 层级分组，每个权限点两态显示
+//      （已授权 / 未授权），Switch 表示最终有效状态，拨动即调整本地
+//      待保存的 grants/revokes，底部「保存覆盖」提交。
 //
-// 有效权限计算（前端本地算）：
-//   rolePerms = 用户直接角色 ∪ 其部门配置角色 的 permissions 并集
-//   effective = rolePerms ∪ grants − revokes
+// 有效权限以后端为准（GET /admin/users/{id}/effective-permissions）：
+//   effective = 全员基础 ∪ 部门配置 ∪ 个人加授 − 个人收回
+//   前端只根据拨动结果增量维护 grants/revokes，不在本地合成有效权限。
+//
+// 角色体系已下线（ADR-011 演进）：员工属于哪个部门由「员工档案」维护，
+// 权限只分两层——部门配置（集体）+ 个人调整（例外），此面板不再有角色分配。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_toast.dart';
-import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
-
-/// 权限覆盖三态。
-enum _OverrideState { inherit, grant, revoke }
+import 'perm_catalog_group_section.dart';
 
 class AdminUserDetailPanel extends ConsumerStatefulWidget {
   const AdminUserDetailPanel({
@@ -37,7 +38,7 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
 
   final AdminUserSummary user;
 
-  /// 账号操作（锁定/启停/重置密码/角色保存）成功后回调，用于刷新列表。
+  /// 账号操作（锁定/启停/重置密码）成功后回调，用于刷新列表。
   final VoidCallback onAccountChanged;
 
   final bool showBack;
@@ -49,49 +50,12 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
 }
 
 class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
-  late Set<String> _selectedRoles = widget.user.roles.toSet();
+  /// 本地待保存的加授/收回集合；null = 未做编辑（跟随服务端数据）
+  Set<String>? _localGrants;
+  Set<String>? _localRevokes;
 
-  /// permCode → 三态（grants→加授，revokes→回收，其余→继承）
-  Map<String, _OverrideState> _overrides = {};
-  bool _overridesLoading = true;
-  bool _savingRoles = false;
   bool _savingOverrides = false;
   bool _acting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadOverrides();
-  }
-
-  @override
-  void didUpdateWidget(covariant AdminUserDetailPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 列表刷新后 user.roles 可能变化：同步角色选择
-    if (oldWidget.user.roles.join() != widget.user.roles.join()) {
-      _selectedRoles = widget.user.roles.toSet();
-    }
-  }
-
-  Future<void> _loadOverrides() async {
-    try {
-      final o = await ref
-          .read(adminRepositoryProvider)
-          .getUserPermOverrides(widget.user.id);
-      if (!mounted) return;
-      setState(() {
-        _overrides = {
-          for (final c in o.grants) c: _OverrideState.grant,
-          for (final c in o.revokes) c: _OverrideState.revoke,
-        };
-        _overridesLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _overridesLoading = false);
-      UtenToast.error(context, '加载权限覆盖失败');
-    }
-  }
 
   // ===== 账号操作 =====
 
@@ -124,48 +88,64 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     }
   }
 
-  // ===== 角色保存 =====
-
-  Future<void> _saveRoles() async {
-    setState(() => _savingRoles = true);
-    try {
-      await ref
-          .read(adminRepositoryProvider)
-          .updateUserRoles(widget.user.id, _selectedRoles.toList());
-      if (!mounted) return;
-      UtenToast.success(context, '角色已保存');
-      widget.onAccountChanged();
-    } catch (_) {
-      if (!mounted) return;
-      UtenToast.error(context, '保存角色失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _savingRoles = false);
-    }
-  }
-
   // ===== 覆盖保存 =====
 
-  Future<void> _saveOverrides() async {
+  /// 待保存的加授/收回集合（未编辑时取服务端数据）
+  Set<String> _pendingGrants(EffectivePermissions data) =>
+      _localGrants ?? data.grants.toSet();
+  Set<String> _pendingRevokes(EffectivePermissions data) =>
+      _localRevokes ?? data.revokes.toSet();
+
+  /// 拨动某个权限点的最终有效状态：换算为 grants/revokes 的增量调整。
+  /// - 打开：原本被收回的移出 revokes；部门/基础没有的加入 grants；
+  ///   部门/基础已有的无需覆盖（移出 grants/revokes 回到默认）。
+  /// - 关闭：部门/基础来的加入 revokes；本来没有的移出 grants。
+  void _togglePerm(EffectivePermissions data, String code, bool value) {
+    final base = {...data.departmentPermissions, ...data.baselinePermissions};
+    final grants = _pendingGrants(data);
+    final revokes = _pendingRevokes(data);
+    setState(() {
+      if (value) {
+        revokes.remove(code);
+        if (base.contains(code)) {
+          grants.remove(code);
+        } else {
+          grants.add(code);
+        }
+      } else {
+        grants.remove(code);
+        if (base.contains(code)) {
+          revokes.add(code);
+        } else {
+          revokes.remove(code);
+        }
+      }
+      _localGrants = grants;
+      _localRevokes = revokes;
+    });
+  }
+
+  Future<void> _saveOverrides(EffectivePermissions data) async {
     setState(() => _savingOverrides = true);
     try {
-      final grants = <String>[];
-      final revokes = <String>[];
-      _overrides.forEach((code, state) {
-        if (state == _OverrideState.grant) grants.add(code);
-        if (state == _OverrideState.revoke) revokes.add(code);
-      });
       await ref
           .read(adminRepositoryProvider)
           .updateUserPermOverrides(
             widget.user.id,
-            grants: grants,
-            revokes: revokes,
+            grants: _pendingGrants(data).toList(),
+            revokes: _pendingRevokes(data).toList(),
           );
+      // 保存成功后重新拉取有效权限刷新显示
+      ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
       if (!mounted) return;
-      UtenToast.success(context, '权限覆盖已保存');
+      setState(() {
+        _localGrants = null;
+        _localRevokes = null;
+      });
+      UtenToast.success(context, '权限调整已保存');
     } catch (_) {
       if (!mounted) return;
-      UtenToast.error(context, '保存覆盖失败，请稍后重试');
+      UtenToast.error(context, '保存失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _savingOverrides = false);
     }
@@ -173,9 +153,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final rolesAsync = ref.watch(adminRolesProvider);
-    final permsAsync = ref.watch(adminPermissionsProvider);
-    final deptRolesAsync = ref.watch(adminDepartmentRolesProvider);
+    final effectiveAsync = ref.watch(
+      adminEffectivePermissionsProvider(widget.user.id),
+    );
+    final catalogAsync = ref.watch(permissionCatalogProvider);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
@@ -191,9 +172,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           ),
         _accountSection(),
         const SizedBox(height: 12),
-        _rolesSection(rolesAsync),
-        const SizedBox(height: 12),
-        _overridesSection(rolesAsync, permsAsync, deptRolesAsync),
+        _permSection(effectiveAsync, catalogAsync),
       ],
     );
   }
@@ -340,117 +319,64 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     );
   }
 
-  // ===== 段 2：角色分配 =====
+  // ===== 段 2：权限明细（两态：已授权 / 未授权） =====
 
-  Widget _rolesSection(AsyncValue<List<AdminRole>> rolesAsync) {
-    final theme = Theme.of(context);
-    return UtenCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '角色分配',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          rolesAsync.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-            error: (e, _) => _loadError('角色加载失败'),
-            data: (roles) {
-              if (roles.isEmpty) {
-                return Text(
-                  '暂无可分配角色',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                );
-              }
-              return Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final role in roles)
-                    FilterChip(
-                      selected: _selectedRoles.contains(role.code),
-                      onSelected: (v) {
-                        setState(() {
-                          if (v) {
-                            _selectedRoles.add(role.code);
-                          } else {
-                            _selectedRoles.remove(role.code);
-                          }
-                        });
-                      },
-                      label: Text(
-                        role.code == 'admin'
-                            ? '${role.name}（仅管理员可授予）'
-                            : role.name,
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: UtenButton(
-              size: UtenButtonSize.small,
-              isLoading: _savingRoles,
-              onPressed: _saveRoles,
-              child: const Text('保存角色'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===== 段 3：个人权限覆盖 =====
-
-  Widget _overridesSection(
-    AsyncValue<List<AdminRole>> rolesAsync,
-    AsyncValue<List<AdminPermission>> permsAsync,
-    AsyncValue<List<DepartmentRoleEntry>> deptRolesAsync,
+  Widget _permSection(
+    AsyncValue<EffectivePermissions> effectiveAsync,
+    AsyncValue<List<PermissionCatalogGroup>> catalogAsync,
   ) {
     final theme = Theme.of(context);
+    final data = effectiveAsync.valueOrNull;
     return UtenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '个人权限覆盖',
+            '权限明细',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            '在角色/部门继承的基础上，对单个权限点加授或回收。',
+            '最终有效权限 = 全员基础 ∪ 部门配置 ∪ 个人加授 − 个人收回。'
+            '拨动开关调整个人加授/收回，保存后生效。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
+          // 超管提示：恒为全量权限，此页仅展示不可调整
+          if (data?.superAdmin ?? false) ...[
+            const SizedBox(height: 6),
+            Text(
+              '该账号是超级管理员，默认拥有全部权限，无需也不能在此调整。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: UtenColors.warning,
+              ),
+            ),
+          ],
+          // 部门行（无部门则不显示）
+          if (data?.departmentName != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              '部门：${data!.departmentName} · '
+              '部门已配 ${data.departmentPermissions.length} 项权限',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
-          if (_overridesLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else
-            _permMatrix(rolesAsync, permsAsync, deptRolesAsync),
+          _permMatrix(effectiveAsync, catalogAsync),
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
             child: UtenButton(
               size: UtenButtonSize.small,
               isLoading: _savingOverrides,
-              onPressed: _overridesLoading ? null : _saveOverrides,
+              onPressed: data == null || data.superAdmin
+                  ? null
+                  : () => _saveOverrides(data),
               child: const Text('保存覆盖'),
             ),
           ),
@@ -467,108 +393,84 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   }
 
   Widget _permMatrix(
-    AsyncValue<List<AdminRole>> rolesAsync,
-    AsyncValue<List<AdminPermission>> permsAsync,
-    AsyncValue<List<DepartmentRoleEntry>> deptRolesAsync,
+    AsyncValue<EffectivePermissions> effectiveAsync,
+    AsyncValue<List<PermissionCatalogGroup>> catalogAsync,
   ) {
-    final roles = rolesAsync.valueOrNull;
-    final perms = permsAsync.valueOrNull;
-    final deptRoles = deptRolesAsync.valueOrNull;
-    if (rolesAsync.hasError || permsAsync.hasError || deptRolesAsync.hasError) {
+    if (effectiveAsync.hasError || catalogAsync.hasError) {
       return _loadError('权限数据加载失败');
     }
-    if (roles == null || perms == null || deptRoles == null) {
+    final data = effectiveAsync.valueOrNull;
+    final groups = catalogAsync.valueOrNull;
+    if (data == null || groups == null) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 16),
         child: Center(child: CircularProgressIndicator()),
       );
     }
-    if (perms.isEmpty) {
-      return _loadError('暂无权限点');
+    if (groups.isEmpty) {
+      return _loadError('权限目录为空');
     }
 
-    // ===== 有效权限计算 =====
-    // rolePerms = 用户直接角色 ∪ 其部门配置角色 的 permissions 并集
-    // effective = rolePerms ∪ grants − revokes
-    final roleByCode = {for (final r in roles) r.code: r};
-    Set<String> permsOf(Iterable<String> codes) => {
-      for (final c in codes) ...?roleByCode[c]?.permissions,
-    };
-    final directRolePerms = permsOf(widget.user.roles);
-    final deptRolePerms = permsOf(
-      deptRoles
-          .where((e) => e.departmentId == widget.user.departmentId)
-          .expand((e) => e.roles),
-    );
-    final rolePerms = {...directRolePerms, ...deptRolePerms};
-
-    // 按 category 分组
-    final grouped = <String, List<AdminPermission>>{};
-    for (final p in perms) {
-      grouped.putIfAbsent(p.category, () => []).add(p);
-    }
-
+    // 完整目录按 category 分组展示（动态目录，不硬编码权限清单）
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (final entry in grouped.entries)
-          UtenCollapsibleSection(
-            title: '${entry.key}（${entry.value.length}）',
-            child: Column(
-              children: [
-                for (final p in entry.value)
-                  _permRow(
-                    p,
-                    inheritedViaRole: directRolePerms.contains(p.code),
-                    inheritedViaDept: deptRolePerms.contains(p.code),
-                    effective: _isEffective(p.code, rolePerms),
-                  ),
-              ],
-            ),
+        for (final group in groups)
+          PermCatalogGroupSection(
+            title: group.category,
+            // 组内已授权/总数，与两态主标签口径一致
+            countLabel:
+                '${group.permissions.where((p) => _isEffective(data, p.code)).length}/${group.permissions.length}',
+            children: [
+              for (final p in group.permissions) _permRow(data, p),
+            ],
           ),
       ],
     );
   }
 
-  /// 有效判定：继承所得且未回收，或被加授。
-  bool _isEffective(String code, Set<String> rolePerms) {
-    final state = _overrides[code] ?? _OverrideState.inherit;
-    if (state == _OverrideState.revoke) return false;
-    if (state == _OverrideState.grant) return true;
-    return rolePerms.contains(code);
+  /// 某权限点对该员工的最终有效状态（与 _permRow 主标签同一口径）
+  bool _isEffective(EffectivePermissions data, String code) {
+    // 超管恒为全量：直接以后端 effective 为准
+    if (data.superAdmin) return true;
+    final viaDept = data.departmentPermissions.contains(code);
+    final viaBaseline = data.baselinePermissions.contains(code);
+    final revoked = _pendingRevokes(data).contains(code);
+    return ((viaDept || viaBaseline) && !revoked) ||
+        _pendingGrants(data).contains(code);
   }
 
-  Widget _permRow(
-    AdminPermission p, {
-    required bool inheritedViaRole,
-    required bool inheritedViaDept,
-    required bool effective,
-  }) {
+  Widget _permRow(EffectivePermissions data, AdminPermission p) {
     final theme = Theme.of(context);
-    final state = _overrides[p.code] ?? _OverrideState.inherit;
-    // 有效结果着色：有效=绿、回收=红、无关=灰
-    final nameColor = switch (state) {
-      _OverrideState.revoke => UtenColors.error,
-      _ when effective => UtenColors.success,
-      _ => theme.colorScheme.onSurfaceVariant,
-    };
+    final grants = _pendingGrants(data);
+    final revokes = _pendingRevokes(data);
+    final viaDept = data.departmentPermissions.contains(p.code);
+    final viaBaseline = data.baselinePermissions.contains(p.code);
+    final revoked = !data.superAdmin && revokes.contains(p.code);
+    // 最终有效状态：超管恒 true；否则 部门/基础所得且未被收回，或被个人加授
+    final effective = data.superAdmin ||
+        ((viaDept || viaBaseline) && !revoked) ||
+        grants.contains(p.code);
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 6,
                   children: [
                     Text(
                       p.name,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: nameColor,
                         fontWeight: FontWeight.w600,
+                        // 被收回的权限名用红色弱化 + 删除线
+                        color: revoked ? UtenColors.error : null,
+                        decoration: revoked ? TextDecoration.lineThrough : null,
                       ),
                     ),
                     Text(
@@ -578,61 +480,60 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                         fontSize: 11,
                       ),
                     ),
-                    if (inheritedViaRole)
-                      _inheritTag('角色继承')
-                    else if (inheritedViaDept)
-                      _inheritTag('部门继承'),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              for (final (s, label) in const [
-                (_OverrideState.inherit, '继承'),
-                (_OverrideState.grant, '加授'),
-                (_OverrideState.revoke, '回收'),
-              ])
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(label),
-                    selected: state == s,
-                    visualDensity: VisualDensity.compact,
-                    labelStyle: const TextStyle(fontSize: 12),
-                    onSelected: (_) {
-                      setState(() {
-                        if (s == _OverrideState.inherit) {
-                          _overrides.remove(p.code);
-                        } else {
-                          _overrides[p.code] = s;
-                        }
-                      });
-                    },
-                  ),
+                const SizedBox(height: 2),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 2,
+                  children: [
+                    if (viaDept) _sourceTag('部门'),
+                    if (viaBaseline) _sourceTag('基础'),
+                    if (grants.contains(p.code)) _sourceTag('个人加授'),
+                    if (revoked) _sourceTag('已收回', danger: true),
+                  ],
                 ),
-            ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 两态主标签：已授权（绿）/ 未授权（灰）
+          UtenStatusBadge(
+            label: effective ? '已授权' : '未授权',
+            type: effective
+                ? UtenStatusBadgeType.success
+                : UtenStatusBadgeType.neutral,
+            size: UtenStatusBadgeSize.small,
+          ),
+          const SizedBox(width: 4),
+          // 超管恒为全量，开关禁用（个人覆盖对超管无意义，后端也拦截写入）
+          Switch(
+            value: effective,
+            onChanged: data.superAdmin
+                ? null
+                : (v) => _togglePerm(data, p.code, v),
           ),
         ],
       ),
     );
   }
 
-  Widget _inheritTag(String label) {
+  /// 来源小标签（部门 / 基础 / 个人加授 / 已收回）
+  Widget _sourceTag(String label, {bool danger = false}) {
     final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
+        color: danger
+            ? UtenColors.error.withValues(alpha: 0.1)
+            : theme.colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label,
         style: TextStyle(
           fontSize: 10,
-          color: theme.colorScheme.onSurfaceVariant,
+          color: danger ? UtenColors.error : theme.colorScheme.onSurfaceVariant,
         ),
       ),
     );

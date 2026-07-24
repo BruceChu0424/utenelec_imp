@@ -1,11 +1,8 @@
 package com.uten.imp.features.admin;
 
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.admin.dto.DepartmentRolesDto;
 import com.uten.imp.features.admin.dto.PermissionDto;
 import com.uten.imp.features.admin.dto.PermissionOverridesDto;
-import com.uten.imp.features.admin.dto.RoleDto;
-import com.uten.imp.features.admin.dto.SetRolesRequest;
 import com.uten.imp.features.admin.dto.UserSummary;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -63,34 +60,14 @@ public class AdminUserController {
         userAccountAdmin.resetPassword(id);
     }
 
-    @PutMapping("/users/{id}/roles")
-    @PreAuthorize("hasAuthority('user:manage')")
-    public void assignRoles(@PathVariable UUID id, @RequestBody SetRolesRequest req) {
-        roleAdmin.assignRoles(id, req.roles() == null ? List.of() : req.roles());
-    }
-
-    @GetMapping("/roles")
-    @PreAuthorize("hasAuthority('user:manage')")
-    public List<RoleDto> roles() {
-        return roleAdmin.listRoles();
-    }
+    // 角色体系已下线（ADR-011/V29）：角色分配相关端点（/users/{id}/roles、/roles、
+    // /department-roles、/departments/{id}/roles）已移除，权限只走
+    // 部门配置（AdminPermissionController）+ 个人覆盖（下方端点）。
 
     @GetMapping("/permissions")
     @PreAuthorize("hasAuthority('user:manage')")
     public List<PermissionDto> permissions() {
         return roleAdmin.listPermissions();
-    }
-
-    @GetMapping("/department-roles")
-    @PreAuthorize("hasAuthority('user:manage')")
-    public List<DepartmentRolesDto> departmentRoles() {
-        return roleAdmin.listDepartmentRoles();
-    }
-
-    @PutMapping("/departments/{id}/roles")
-    @PreAuthorize("hasAuthority('user:manage')")
-    public void setDepartmentRoles(@PathVariable UUID id, @RequestBody SetRolesRequest req) {
-        roleAdmin.setDepartmentRoles(id, req.roles() == null ? List.of() : req.roles());
     }
 
     @GetMapping("/users/{id}/permission-overrides")

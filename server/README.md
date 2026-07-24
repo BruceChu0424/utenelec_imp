@@ -23,7 +23,7 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
 
 ## 数据库
 - schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`）。
-- 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统 → `V13` 访客权限拆分 → `V14` 车牌加密 → `V15` 访客通行码 → `V16` 超管 → `V17` 种子 admin 文档 → `V18` 个人信息修改申请 → `V19` 修改审批权限点 → `V20` 修改申请审计列 → `V21` 权限管理体系（部门默认角色 `department_roles` + 个人权限覆盖 `user_permission_overrides`，见 [ADR-007](../docs/99-决策记录-ADR/ADR-007-导航重构与三层权限模型.md)）→ `V22` 审计覆盖扩展（部门角色/权限覆盖/紧急联系人补触发器）→ `V23` 修复 V18 坏审计触发器（个人信息修改链路的部署级阻断 bug，见 [ADR-009](../docs/99-决策记录-ADR/ADR-009-后端安全加固与功能补全.md)）→ `V24` 岗位模板种子（ADR-010）→ `V25` 决策支持独立权限点 `analytics:view`（默认 manager/admin，与 viewcontext 解耦）。
+- 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统 → `V13` 访客权限拆分 → `V14` 车牌加密 → `V15` 访客通行码 → `V16` 超管 → `V17` 种子 admin 文档 → `V18` 个人信息修改申请 → `V19` 修改审批权限点 → `V20` 修改申请审计列 → `V21` 权限管理体系（部门默认角色 `department_roles` + 个人权限覆盖 `user_permission_overrides`，见 [ADR-007](../docs/99-决策记录-ADR/ADR-007-导航重构与三层权限模型.md)）→ `V22` 审计覆盖扩展（部门角色/权限覆盖/紧急联系人补触发器）→ `V23` 修复 V18 坏审计触发器（个人信息修改链路的部署级阻断 bug，见 [ADR-009](../docs/99-决策记录-ADR/ADR-009-后端安全加固与功能补全.md)）→ `V24` 岗位模板种子（ADR-010）→ `V25` 决策支持独立权限点 `analytics:view` → `V26` 工资条生成权限移交财务 → `V27` 部门直配权限点 `department_permissions` + 用户偏好 `user_preferences`（[ADR-011](../docs/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）→ `V28` 权限目录分组名中文化 → `V29` **角色体系下线**（存量角色权限沉淀为部门配置，PermissionResolver 不再读 user_roles/department_roles）→ `V30` 敏感字段脱敏按权限点化（新增 `employee:pii:view`）。
 - 机密 PII（身份证/手机/银行卡/薪资/车牌）用 pgcrypto 字段级加密；主密钥走环境变量 `UTEN_PGP_MASTER_KEY`，每事务 `SET LOCAL app.pgp_key`。
 - 审计：敏感表挂 `AFTER` 触发器写 `audit_log`，actor 从会话变量 `app.actor_id` 取（由后端每事务绑定）。
 - 并发：员工档案写路径全量手动递增 `version`，修改申请审批时版本不符 → 409 防丢更新（ADR-009 §1）。
@@ -42,14 +42,17 @@ com.uten.imp
 ├─ audit/                  审计写入（AuditService · AuditLog 实体/仓库）
 └─ features/               业务域
    ├─ auth/                   员工认证：AuthController · LoginService · PasswordService ·
-   │  │                        TokenIssuer · PermissionResolver（权限三层合成）· RefreshTokenService
+   │  │                        TokenIssuer · PermissionResolver（全员基础 ∪ 部门配置含上级 ± 个人覆盖）· RefreshTokenService
    │  └─ model/                 UserAccount · RefreshToken · PasswordHistory（实体+仓库）
    ├─ rbac/                   纯 RBAC 模型：Role · Permission · UserRole · RolePermission ·
-   │                             DepartmentRole · UserPermissionOverride（实体+仓库，无 API）
+   │                             DepartmentRole · DepartmentPermission · UserPermissionOverride
+   │                             （实体+仓库，无 API；角色相关表自 V29 起仅作兼容保留）
    ├─ admin/                  后台管理 API（/api/admin）：AdminUserController ·
    │  │                        UserAccountAdminService（账号状态/重置密码）·
-   │  │                        RoleAdminService（角色/部门默认角色）· PermissionOverrideAdminService
-   │  └─ dto/                  UserSummary · RoleDto · PermissionDto · 各请求/响应 DTO
+   │  │                        RoleAdminService（权限点查询）· PermissionOverrideAdminService（个人覆盖，
+   │  │                        保存后吊销目标用户 refresh token 即时生效）· DepartmentPermissionAdminService
+   │  │                        （权限目录/部门配置/有效权限分解，部门配置保存后吊销子树用户令牌）
+   │  └─ dto/                  UserSummary · PermissionDto · 权限目录/部门配置/有效权限 各 DTO
    ├─ org/                   组织域
    │  ├─ department/           部门树 CRUD
    │  ├─ position/             岗位（实体+仓库，无独立 API）
@@ -79,7 +82,7 @@ com.uten.imp
 锁定检查同时覆盖登录（LoginService）与令牌刷新（TokenIssuer.refresh），防止被锁用户持 refresh token 续期。
 
 ## 安全要点（见顶层计划文档 §四、§十三）
-Argon2id 密码 · 短 access JWT(15min) + 不透明轮换 refresh(7d, 哈希入库, 重用检测) · 登录限流 5/min/IP · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按角色脱敏 · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露 · **每请求主键级账号状态复查**（锁定/停用立即 401，ADR-009 §4）· **prod 关闭 swagger**（404 + 白名单回落认证，ADR-009 §3）。
+Argon2id 密码 · 短 access JWT(15min) + 不透明轮换 refresh(7d, 哈希入库, 重用检测) · 登录限流 5/min/IP · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按权限点脱敏（`employee:pii:view` / `employee:compensation:view`，V30 起不再按角色） · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露 · **每请求主键级账号状态复查**（锁定/停用立即 401，ADR-009 §4）· **prod 关闭 swagger**（404 + 白名单回落认证，ADR-009 §3）。
 
 ## 密钥与敏感配置（务必专业）
 

@@ -78,12 +78,12 @@ public class EmployeeQueryService {
         return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
     }
 
-    // ===== 详情（按角色脱敏） =====
+    // ===== 详情（按权限点脱敏，ADR-011/V29 后不再按角色） =====
     @Transactional(readOnly = true)
     public EmployeeDetail detail(UUID id) {
         tx.bind();
         Employee e = requireEmployee(id);
-        Set<String> roles = currentUser.get().map(AuthUser::getRoles).orElse(Set.of());
+        Set<String> perms = currentUser.get().map(AuthUser::getPermissions).orElse(Set.of());
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id).orElse(null);
         EmployeeCompensation c = compensationRepo.findByEmployeeId(id).orElse(null);
 
@@ -128,12 +128,12 @@ public class EmployeeQueryService {
         }
         d.setRenewCount((int) contractRepo.countByEmployeeId(id));
 
-        fillSensitive(d, s, c, roles);
+        fillSensitive(d, s, c, perms);
 
-        // 紧急联系人（phone 按角色脱敏）
+        // 紧急联系人（phone 按权限点脱敏）
         List<NestedDtos.EmergencyContactDto> ec = emergencyRepo.findByEmployeeIdOrderBySortOrderAsc(id).stream()
                 .map(x -> new NestedDtos.EmergencyContactDto(x.getId(), x.getName(),
-                        decryptMasked(x.getPhoneEnc(), roles), x.getRelationship()))
+                        decryptMasked(x.getPhoneEnc(), perms), x.getRelationship()))
                 .toList();
         d.setEmergencyContacts(ec);
 
@@ -153,7 +153,7 @@ public class EmployeeQueryService {
                 .toList());
 
         // 隐私保护（M5/PIPL）：非 hr/admin 不可见民族/政治面貌/婚姻/户籍/现居/出生日期
-        if (!policy.canSeeIdCardAndBank(roles)) {
+        if (!policy.canSeeIdCardAndBank(perms)) {
             d.setEthnicity(null);
             d.setPoliticalStatus(null);
             d.setMaritalStatus(null);
@@ -182,11 +182,11 @@ public class EmployeeQueryService {
                 h.getEventDate(), h.getRemark());
     }
 
-    private void fillSensitive(EmployeeDetail d, EmployeeSensitive s, EmployeeCompensation c, Set<String> roles) {
+    private void fillSensitive(EmployeeDetail d, EmployeeSensitive s, EmployeeCompensation c, Set<String> perms) {
         if (s != null) {
             String idPlain = tx.decrypt(s.getIdCardEnc());
             String phonePlain = tx.decrypt(s.getPhoneEnc());
-            if (policy.canSeeIdCardAndBank(roles)) {
+            if (policy.canSeeIdCardAndBank(perms)) {
                 d.setIdNumber(idPlain);
                 d.setPhone(phonePlain);
                 if (s.getBankAccountEnc() != null) d.setBankAccount(tx.decrypt(s.getBankAccountEnc()));
@@ -197,7 +197,7 @@ public class EmployeeQueryService {
             }
         }
         if (c != null) {
-            if (policy.canSeeSalary(roles)) {
+            if (policy.canSeeSalary(perms)) {
                 d.setBaseSalary(tx.decrypt(c.getBaseSalaryEnc()));
                 d.setPerfSalary(tx.decrypt(c.getPerfSalaryEnc()));
                 d.setSocialInsuranceBase(tx.decrypt(c.getSocialInsuranceBaseEnc()));
@@ -208,10 +208,10 @@ public class EmployeeQueryService {
         }
     }
 
-    private String decryptMasked(String cipher, Set<String> roles) {
+    private String decryptMasked(String cipher, Set<String> perms) {
         if (cipher == null) return null;
         String plain = tx.decrypt(cipher);
-        return policy.canSeeIdCardAndBank(roles) ? plain : maskPhone(plain);
+        return policy.canSeeIdCardAndBank(perms) ? plain : maskPhone(plain);
     }
 
     private Collection<UUID> resolveDeptIds(UUID departmentId, boolean includeSubtree) {

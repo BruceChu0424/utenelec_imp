@@ -124,9 +124,11 @@ class ProfilePage extends ConsumerWidget {
             ),
           ),
 
-          // ───── expanded：双列靠左，左 380「身份组」+ 右 ≤720「档案组」 ─────
+          // ───── expanded：双列靠左，左 380「身份组」+ 右 Expanded→≤720「档案组」 ─────
           // 不再 Center + maxWidth，让内容从左边 padding 直接起；
-          // 右边给档案组一个最大宽度避免信息行被拉得过长（保证 60-75 字符可读）。
+          // 右边 Expanded 吃掉 Row 剩余空间（视口自适应，无横向溢出），
+          // 再用 ConstrainedBox(maxWidth: 720) 锁住信息行最大宽度（60-75 字符可读）。
+          // ≥1196dp 浏览器时右列定宽 720 留白，是可读性设计取舍，不是溢出。
           UtenBreakpoint.expanded => SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
@@ -149,9 +151,14 @@ class ProfilePage extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s32),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: profileGroup,
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: profileGroup,
+                    ),
+                  ),
                 ),
               ],
             ),

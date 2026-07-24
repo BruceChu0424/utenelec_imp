@@ -40,6 +40,7 @@ import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
+import '../../features/placeholder/pages/feature_placeholder_page.dart';
 import '../../features/production/pages/production_line_board_page.dart';
 import '../../features/production/pages/production_output_entry_page.dart';
 import '../../features/production/pages/production_output_stats_page.dart';
@@ -112,8 +113,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // 注意：isChangePw 不在此重定向——"我的→修改密码"是已登录用户的合法入口。
           // 强制改密（mustChangePassword）由前两个分支独立处理。
           if (isLogin) return RouteName.dashboard;
-          final required = requiredPermFor(loc);
-          if (required != null && !(session.user?.can(required) ?? false)) {
+          // "多级权限任一满足即可"的路径（如客户资料）返回列表，任一命中即放行
+          final requiredAny = requiredAnyPermFor(loc);
+          if (requiredAny != null &&
+              !(session.user?.canAny(requiredAny) ?? false)) {
             return RouteName.dashboard;
           }
           return null;
@@ -219,6 +222,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/finance/report',
             name: 'finance-report',
             builder: (_, _) => const FinanceReportPage(),
+          ),
+
+          // —— 财税部新模块（占位页：权限已可配置，功能规划接入中）——
+          GoRoute(
+            path: RouteName.financePurchase,
+            name: 'finance-purchase',
+            builder: (_, _) => const FeaturePlaceholderPage(
+              title: '采购管理',
+              icon: Icons.shopping_cart_outlined,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.financeCustomers,
+            name: 'finance-customers',
+            builder: (_, _) => const FeaturePlaceholderPage(
+              title: '客户资料',
+              icon: Icons.people_alt_outlined,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.financeSuppliers,
+            name: 'finance-suppliers',
+            builder: (_, _) => const FeaturePlaceholderPage(
+              title: '供应商资料',
+              icon: Icons.local_shipping_outlined,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.financeAccounts,
+            name: 'finance-accounts',
+            builder: (_, _) => const FeaturePlaceholderPage(
+              title: '账户资料',
+              icon: Icons.account_balance_outlined,
+            ),
           ),
 
           // —— 报销（approval 静态段在 :id 前）——

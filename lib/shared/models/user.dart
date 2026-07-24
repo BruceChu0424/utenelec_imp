@@ -44,8 +44,13 @@ class AppUser {
   bool hasAnyRole(List<Role> roles) =>
       roles.any((r) => this.roles.contains(r));
 
-  /// 是否拥有指定功能权限点（super admin 一律 true）
-  bool can(String perm) => superAdmin || isAdmin || permissions.contains(perm);
+  /// 是否拥有指定功能权限点（super admin 一律 true）。
+  /// 角色体系下线（V29）后只认权限点，不再因残留 admin 角色短路放行。
+  bool can(String perm) => superAdmin || permissions.contains(perm);
+
+  /// 是否拥有任一指定功能权限点（super admin 一律 true）。
+  /// 用于"多级权限任一满足即可见/可进"的场景（如客户资料 self/department/all）。
+  bool canAny(List<String> perms) => perms.any(can);
 
   /// 是否为管理员（含 super admin）
   bool get isAdmin => superAdmin || hasRole(Role.admin);

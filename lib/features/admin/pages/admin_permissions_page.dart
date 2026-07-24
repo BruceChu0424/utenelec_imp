@@ -2,7 +2,7 @@
 //
 // 顶部说明条 + 分段切换「按员工 | 按部门」。
 // 按员工：主从布局（expanded 左列表右详情；compact 列表 → 详情带返回）。
-// 按部门：部门树 + 部门角色配置（见 widgets/admin_department_perm_view.dart）。
+// 按部门：单选部门 + 从完整权限目录勾选权限点（见 widgets/admin_department_perm_view.dart）。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 路由守卫：/admin/* → Perm.userManage（见 core/router/permission_by_path.dart）。
 import 'package:flutter/material.dart';
@@ -62,7 +62,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
               const SizedBox(width: UtenSpacing.s12),
               Expanded(
                 child: Text(
-                  '权限管理 · 分配员工角色与权限覆盖，或按部门批量配置角色。此入口仅超级管理员可见。',
+                  '权限管理 · 按员工分配角色与调整权限，或按部门配置权限点。此入口仅超级管理员可见。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.5,

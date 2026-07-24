@@ -1,6 +1,7 @@
 // 权限管理（超级管理员）数据模型。
-// 对应后端接口契约：/admin/users · /admin/roles · /admin/permissions
-// · /admin/users/{id}/permission-overrides · /admin/department-roles。
+// 对应后端接口契约：/admin/users · /admin/permissions · /admin/permission-catalog
+// · /admin/users/{id}/permission-overrides · /admin/users/{id}/effective-permissions
+// · /admin/departments/{id}/permissions。角色体系已下线（ADR-011/V29）。
 
 /// 员工账号摘要（GET /admin/users 的 items[]）。
 class AdminUserSummary {
@@ -24,7 +25,7 @@ class AdminUserSummary {
   final String status;
   final bool mustChangePassword;
 
-  /// 已分配的角色 code 列表
+  /// 已分配的角色 code 列表（历史遗留字段，后端仍返回；角色体系下线后仅作展示参考，不参与权限）
   final List<String> roles;
   final String? employeeName;
   final String? employeeCode;
@@ -47,35 +48,6 @@ class AdminUserSummary {
         departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
       );
-}
-
-/// 角色（GET /admin/roles）。
-class AdminRole {
-  const AdminRole({
-    required this.id,
-    required this.code,
-    required this.name,
-    required this.permissions,
-    this.description,
-  });
-
-  final String id;
-  final String code;
-  final String name;
-  final String? description;
-
-  /// 该角色包含的权限点 code 列表
-  final List<String> permissions;
-
-  factory AdminRole.fromJson(Map<String, dynamic> json) => AdminRole(
-    id: json['id'] as String,
-    code: json['code'] as String? ?? '',
-    name: json['name'] as String? ?? '',
-    description: json['description'] as String?,
-    permissions: (json['permissions'] as List<dynamic>? ?? const [])
-        .map((e) => e as String)
-        .toList(),
-  );
 }
 
 /// 权限点（GET /admin/permissions）。
@@ -103,30 +75,6 @@ class AdminPermission {
       );
 }
 
-/// 部门-角色配置项（GET /admin/department-roles）。
-class DepartmentRoleEntry {
-  const DepartmentRoleEntry({
-    required this.departmentId,
-    required this.departmentName,
-    required this.roles,
-  });
-
-  final String departmentId;
-  final String departmentName;
-
-  /// 该部门已配置的角色 code 列表
-  final List<String> roles;
-
-  factory DepartmentRoleEntry.fromJson(Map<String, dynamic> json) =>
-      DepartmentRoleEntry(
-        departmentId: json['departmentId'] as String,
-        departmentName: json['departmentName'] as String? ?? '',
-        roles: (json['roles'] as List<dynamic>? ?? const [])
-            .map((e) => e as String)
-            .toList(),
-      );
-}
-
 /// 个人权限覆盖（GET /admin/users/{id}/permission-overrides）。
 class UserPermOverrides {
   const UserPermOverrides({required this.grants, required this.revokes});
@@ -145,5 +93,91 @@ class UserPermOverrides {
         revokes: (json['revokes'] as List<dynamic>? ?? const [])
             .map((e) => e as String)
             .toList(),
+      );
+}
+
+/// 权限目录分组（GET /admin/permission-catalog 的数组项）。
+/// 目录是动态的：后端返回什么前端显示什么，不硬编码权限清单。
+class PermissionCatalogGroup {
+  const PermissionCatalogGroup({required this.category, required this.permissions});
+
+  /// 分组名（如「财税部·客户资料」）
+  final String category;
+
+  /// 该分组下的权限点（已按后端排序）
+  final List<AdminPermission> permissions;
+
+  factory PermissionCatalogGroup.fromJson(Map<String, dynamic> json) {
+    final category = json['category'] as String? ?? '其他';
+    return PermissionCatalogGroup(
+      category: category,
+      permissions:
+          (json['permissions'] as List<dynamic>? ?? const [])
+              .map((e) {
+                final p = e as Map<String, dynamic>;
+                final code = p['code'] as String? ?? '';
+                // 目录项可能不带 id/category，用 code 兜底 id、组名兜底 category
+                return AdminPermission(
+                  id: p['id'] as String? ?? code,
+                  code: code,
+                  name: p['name'] as String? ?? '',
+                  category: p['category'] as String? ?? category,
+                );
+              })
+              .toList(),
+    );
+  }
+}
+
+/// 员工有效权限（GET /admin/users/{id}/effective-permissions）。
+/// effective 由后端计算：全员基础 ∪ 部门配置 ∪ 个人加授 − 个人收回。
+class EffectivePermissions {
+  const EffectivePermissions({
+    required this.departmentPermissions,
+    required this.baselinePermissions,
+    required this.grants,
+    required this.revokes,
+    required this.effective,
+    this.departmentId,
+    this.departmentName,
+    this.superAdmin = false,
+  });
+
+  final String? departmentId;
+  final String? departmentName;
+
+  /// 超级管理员：恒为全量权限，权限页据此全部显示"已授权"且不可调整
+  final bool superAdmin;
+
+  /// 所在部门已配置的权限点 code 列表
+  final List<String> departmentPermissions;
+
+  /// 全员基础权限点 code 列表（人人有份，角色体系下线后仅保留基础包）
+  final List<String> baselinePermissions;
+
+  /// 个人加授的权限点 code 列表
+  final List<String> grants;
+
+  /// 个人收回的权限点 code 列表
+  final List<String> revokes;
+
+  /// 最终有效权限点 code 列表（后端计算结果，前端以此为准）
+  final List<String> effective;
+
+  static List<String> _codes(Map<String, dynamic> json, String key) =>
+      (json[key] as List<dynamic>? ?? const [])
+          .map((e) => e as String)
+          .toList();
+
+  factory EffectivePermissions.fromJson(Map<String, dynamic> json) =>
+      EffectivePermissions(
+        departmentId: json['departmentId'] as String?,
+        departmentName: json['departmentName'] as String?,
+        departmentPermissions: _codes(json, 'departmentPermissions'),
+        baselinePermissions: _codes(json, 'baselinePermissions'),
+        grants: _codes(json, 'grants'),
+        revokes: _codes(json, 'revokes'),
+        effective: _codes(json, 'effective'),
+        superAdmin: json['superAdmin'] as bool? ?? false,
       );
 }

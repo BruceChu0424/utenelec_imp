@@ -60,6 +60,12 @@ abstract final class RouteName {
 
   // 系统管理（超级管理员）
   static const String adminPermissions = '/admin/permissions';
+
+  // 财税部新模块（页面未接入前由占位页承接，权限点已种子化）
+  static const String financePurchase = '/finance/purchase';
+  static const String financeCustomers = '/finance/customers';
+  static const String financeSuppliers = '/finance/suppliers';
+  static const String financeAccounts = '/finance/accounts';
 }
 
 /// 路径拼接工具（带参数的路由）

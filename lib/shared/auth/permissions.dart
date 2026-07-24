@@ -33,6 +33,27 @@ abstract final class Perm {
   /// 决策支持（经营 Dashboard/多维分析/异常告警）。默认仅 manager/admin，
   /// 其他人由超管在权限管理页显式授予（V25，与 viewcontext:scoped 解耦）。
   static const analyticsView = 'analytics:view';
+
+  // ===== 财税部新模块（后端已种子化；页面未接入前由占位页承接）=====
+  /// 采购管理
+  static const purchaseView = 'purchase:view';
+  static const purchaseEdit = 'purchase:edit';
+
+  /// 客户资料（三级数据范围：本人/部门/全部，任一即可看入口）
+  static const customerViewSelf = 'customer:view:self';
+  static const customerViewDepartment = 'customer:view:department';
+  static const customerViewAll = 'customer:view:all';
+
+  /// 供应商资料
+  static const supplierView = 'supplier:view';
+  static const supplierEdit = 'supplier:edit';
+
+  /// 账户资料
+  static const accountView = 'account:view';
+  static const accountEdit = 'account:edit';
+
+  /// 基础资料（我的资料页）
+  static const basicinfoView = 'basicinfo:view';
 }
 
 /// 当前用户的功能权限集合。
@@ -66,6 +87,17 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.profileReview,
       Perm.employeeCompensationView,
       Perm.analyticsView,
+      // 财税部新模块（超管兜底，后端漏推也能 work）
+      Perm.purchaseView,
+      Perm.purchaseEdit,
+      Perm.customerViewSelf,
+      Perm.customerViewDepartment,
+      Perm.customerViewAll,
+      Perm.supplierView,
+      Perm.supplierEdit,
+      Perm.accountView,
+      Perm.accountEdit,
+      Perm.basicinfoView,
       ...user.permissions,
     };
   }

@@ -23,4 +23,8 @@ public class Permission extends BaseEntity {
     private String name;
 
     private String category;
+
+    /** 权限目录组内展示排序（V27 新增列，默认 0）。 */
+    @Column(name = "sort_order", nullable = false)
+    private Integer sortOrder = 0;
 }

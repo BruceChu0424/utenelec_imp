@@ -59,3 +59,10 @@ server/mvnw.cmd
 # === AI / 本地工具配置（不进仓库） ===
 .claude/
 .zcode/
+
+# === 本地数据/临时文件（不进仓库） ===
+/YTDQ_2023-202607
+/.tmp-shot.png
+__pycache__/
+*.pyc
+server/backups/

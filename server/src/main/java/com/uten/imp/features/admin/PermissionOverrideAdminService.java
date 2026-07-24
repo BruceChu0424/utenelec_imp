@@ -3,6 +3,7 @@ package com.uten.imp.features.admin;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.dto.PermissionOverridesDto;
+import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.rbac.Permission;
 import com.uten.imp.features.rbac.PermissionRepository;
@@ -32,6 +33,7 @@ public class PermissionOverrideAdminService {
     private final PermissionRepository permissionRepo;
     private final TxSessionVars tx;
     private final AdminUserSupport support;
+    private final RefreshTokenRepository refreshTokenRepo;
 
     /** 某用户的个人权限点覆盖（grant/revoke 分列）。 */
     @Transactional(readOnly = true)
@@ -83,6 +85,8 @@ public class PermissionOverrideAdminService {
         for (String code : revokeSet) {
             saveOverride(userId, byCode.get(code).getId(), "revoke");
         }
+        // 权限变更即时生效：吊销该用户 refresh token，强制重新登录拿新权限
+        refreshTokenRepo.revokeAllByUserId(userId);
     }
 
     private void saveOverride(UUID userId, UUID permissionId, String effect) {

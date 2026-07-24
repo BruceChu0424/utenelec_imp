@@ -11,7 +11,7 @@ rm -rf /tmp/uten-classes && mkdir -p /tmp/uten-classes
 find src/main/java -name '*.java' > /tmp/uten-sources.txt
 COUNT=$(wc -l < /tmp/uten-sources.txt)
 echo "Compiling $COUNT files..."
-"$JAVA_HOME/bin/javac" -encoding UTF-8 -nowarn -proc:full \
+"$JAVA_HOME/bin/javac" -encoding UTF-8 -nowarn -parameters -proc:full \
   -cp "$CP" -processorpath "$(cygpath -w "$LOMBOK")" \
   -d /tmp/uten-classes @/tmp/uten-sources.txt 2>&1 | head -100
 echo "EXIT_OK"

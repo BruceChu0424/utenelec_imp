@@ -1,4 +1,5 @@
-// 权限管理仓库（超级管理员）：账号列表/角色/权限点/覆盖/部门角色/账号操作。
+// 权限管理仓库（超级管理员）：账号列表/权限点/个人覆盖/部门权限配置/账号操作。
+// 角色体系已下线（ADR-011/V29），角色相关接口已移除。
 // 模仿 DioEmployeeRepository：注入 ApiClient，DioException 已在 ApiClient 层
 // 统一转为 ApiException。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,14 +18,8 @@ abstract interface class AdminRepository {
     String? search,
   });
 
-  /// 全部角色。
-  Future<List<AdminRole>> listRoles();
-
   /// 全部权限点。
   Future<List<AdminPermission>> listPermissions();
-
-  /// 保存用户角色分配。
-  Future<void> updateUserRoles(String userId, List<String> roleCodes);
 
   /// 个人权限覆盖（grants=加授，revokes=回收）。
   Future<UserPermOverrides> getUserPermOverrides(String userId);
@@ -36,17 +31,23 @@ abstract interface class AdminRepository {
     required List<String> revokes,
   });
 
-  /// 部门-角色配置列表。
-  Future<List<DepartmentRoleEntry>> listDepartmentRoles();
-
-  /// 保存部门角色配置。
-  Future<void> updateDepartmentRoles(
-    String departmentId,
-    List<String> roleCodes,
-  );
-
   /// 部门树（复用 /org/departments/tree）。
   Future<List<DepartmentNode>> departmentTree();
+
+  /// 完整权限目录（按 category 分组、已排序）。
+  Future<List<PermissionCatalogGroup>> permissionCatalog();
+
+  /// 部门已配置的权限点 code 列表。
+  Future<List<String>> departmentPermissions(String departmentId);
+
+  /// 保存部门权限配置（整体替换，未知 code 后端报错）。
+  Future<void> updateDepartmentPermissions(
+    String departmentId,
+    List<String> permissionCodes,
+  );
+
+  /// 员工有效权限（部门 ∪ 角色 ± 个人覆盖，后端计算）。
+  Future<EffectivePermissions> effectivePermissions(String userId);
 
   // ===== 账号操作（已有接口）=====
   Future<void> lockUser(String userId);
@@ -78,20 +79,10 @@ class DioAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<List<AdminRole>> listRoles() async {
-    final list = await api.getList(ApiEndpoints.adminRoles);
-    return list.map(AdminRole.fromJson).toList();
-  }
-
-  @override
   Future<List<AdminPermission>> listPermissions() async {
     final list = await api.getList(ApiEndpoints.adminPermissionList);
     return list.map(AdminPermission.fromJson).toList();
   }
-
-  @override
-  Future<void> updateUserRoles(String userId, List<String> roleCodes) =>
-      api.put(ApiEndpoints.userRoles(userId), body: {'roles': roleCodes});
 
   @override
   Future<UserPermOverrides> getUserPermOverrides(String userId) async {
@@ -110,24 +101,38 @@ class DioAdminRepository implements AdminRepository {
   );
 
   @override
-  Future<List<DepartmentRoleEntry>> listDepartmentRoles() async {
-    final list = await api.getList(ApiEndpoints.adminDepartmentRoles);
-    return list.map(DepartmentRoleEntry.fromJson).toList();
-  }
-
-  @override
-  Future<void> updateDepartmentRoles(
-    String departmentId,
-    List<String> roleCodes,
-  ) => api.put(
-    ApiEndpoints.departmentRoles(departmentId),
-    body: {'roles': roleCodes},
-  );
-
-  @override
   Future<List<DepartmentNode>> departmentTree() async {
     final list = await api.getList(ApiEndpoints.departmentsTree);
     return list.map(DepartmentNode.fromJson).toList();
+  }
+
+  @override
+  Future<List<PermissionCatalogGroup>> permissionCatalog() async {
+    final list = await api.getList(ApiEndpoints.adminPermissionCatalog);
+    return list.map(PermissionCatalogGroup.fromJson).toList();
+  }
+
+  @override
+  Future<List<String>> departmentPermissions(String departmentId) async {
+    final json = await api.get(ApiEndpoints.departmentPermissions(departmentId));
+    return (json['permissions'] as List<dynamic>? ?? const [])
+        .map((e) => e as String)
+        .toList();
+  }
+
+  @override
+  Future<void> updateDepartmentPermissions(
+    String departmentId,
+    List<String> permissionCodes,
+  ) => api.put(
+    ApiEndpoints.departmentPermissions(departmentId),
+    body: {'permissions': permissionCodes},
+  );
+
+  @override
+  Future<EffectivePermissions> effectivePermissions(String userId) async {
+    final json = await api.get(ApiEndpoints.userEffectivePermissions(userId));
+    return EffectivePermissions.fromJson(json);
   }
 
   @override

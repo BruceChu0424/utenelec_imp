@@ -10,6 +10,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
@@ -31,6 +32,9 @@ public class VisitorDirectoryService {
     private final EmployeeRepository employeeRepo;
     private final DepartmentRepository departmentRepo;
 
+    // open-in-view=false：映射 DTO 时访问懒加载关联（parent/department），必须包在事务里，
+    // 否则有数据的部门会抛 LazyInitializationException（空结果部门反而"正常"，极具迷惑性）。
+    @Transactional(readOnly = true)
     public List<DepartmentDirectoryItem> listDepartments() {
         return departmentRepo.findAll().stream()
                 // 软删部门不泄露给访客（与 DepartmentService.tree 的过滤一致）
@@ -49,6 +53,7 @@ public class VisitorDirectoryService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public List<EmployeeDirectoryItem> listEmployees(UUID departmentId, String keyword) {
         // departmentId 命中时，按"该部门 + 全部子部门"匹配——这样选父部门
         // （如总经办）也能看到所有下属员工；选叶子就只看叶子。

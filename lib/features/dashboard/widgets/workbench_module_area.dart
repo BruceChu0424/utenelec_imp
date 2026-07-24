@@ -77,11 +77,6 @@ class WorkbenchModuleArea extends ConsumerWidget {
             location: '/employee/onboarding',
           ),
           _ModuleItem(
-            icon: Icons.request_quote_outlined,
-            label: l10n.navHrPayrollGenerate,
-            location: '/payroll/generate',
-          ),
-          _ModuleItem(
             icon: Icons.campaign_outlined,
             label: l10n.navHrNoticePublish,
             location: '/notice/publish',
@@ -100,21 +95,27 @@ class WorkbenchModuleArea extends ConsumerWidget {
           ),
         ],
       ),
-      const _ModuleGroup(
+      _ModuleGroup(
         title: '财务管理',
         color: UtenColors.success,
         items: [
-          _ModuleItem(
+          const _ModuleItem(
             icon: Icons.fact_check_outlined,
             label: '报销审批',
             location: '/expense/approval',
           ),
+          // 工资条生成归属财务（V26：payroll:generate 仅 finance/admin 持有）
           _ModuleItem(
+            icon: Icons.request_quote_outlined,
+            label: l10n.navHrPayrollGenerate,
+            location: '/payroll/generate',
+          ),
+          const _ModuleItem(
             icon: Icons.rate_review_outlined,
             label: '工资条审核',
             location: '/payroll/review',
           ),
-          _ModuleItem(
+          const _ModuleItem(
             icon: Icons.bar_chart_outlined,
             label: '财务报表',
             location: '/finance/report',

@@ -23,10 +23,12 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/role.dart';
 import '../../../shared/models/user.dart';
@@ -42,7 +44,9 @@ class ProfilePage extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final user = session.user;
     final theme = Theme.of(context);
-    final canEdit = ref.watch(currentPermissionsProvider).contains(Perm.profileEditSelf);
+    final canEdit = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.profileEditSelf);
 
     if (user == null) {
       return const Scaffold(
@@ -53,9 +57,20 @@ class ProfilePage extends ConsumerWidget {
     }
 
     final bp = context.breakpoint;
-    final horizontalPadding = bp.select<double>(compact: 16, medium: 24, expanded: 32);
+    final horizontalPadding = bp.select<double>(
+      compact: UtenSpacing.s16,
+      medium: UtenSpacing.s24,
+      expanded: UtenSpacing.s32,
+    );
 
-    final identityGroup = _buildIdentityGroup(context, ref, theme, l10n, user, canEdit);
+    final identityGroup = _buildIdentityGroup(
+      context,
+      ref,
+      theme,
+      l10n,
+      user,
+      canEdit,
+    );
     final profileGroup = _buildProfileGroup(context, theme, l10n, user);
 
     return Scaffold(
@@ -66,66 +81,81 @@ class ProfilePage extends ConsumerWidget {
         child: switch (bp) {
           // ───── compact：单列垂直堆叠 ─────
           UtenBreakpoint.compact => SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 16, horizontalPadding, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  identityGroup.hero,
-                  const SizedBox(height: 12),
-                  identityGroup.shortcut,
-                  const SizedBox(height: 24),
-                  profileGroup,
-                ],
-              ),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              UtenSpacing.s16,
+              horizontalPadding,
+              96, // 底部悬浮胶囊导航留白
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                identityGroup.hero,
+                const SizedBox(height: UtenSpacing.s12),
+                identityGroup.shortcut,
+                const SizedBox(height: UtenSpacing.s24),
+                profileGroup,
+              ],
+            ),
+          ),
 
           // ───── medium：单列，但用更宽的内边距 + 更大头像 ─────
           UtenBreakpoint.medium => SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 24, horizontalPadding, 32),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      identityGroup.hero,
-                      const SizedBox(height: 16),
-                      identityGroup.shortcut,
-                      const SizedBox(height: 24),
-                      profileGroup,
-                    ],
-                  ),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              UtenSpacing.s24,
+              horizontalPadding,
+              96, // 底部悬浮胶囊导航留白
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    identityGroup.hero,
+                    const SizedBox(height: UtenSpacing.s16),
+                    identityGroup.shortcut,
+                    const SizedBox(height: UtenSpacing.s24),
+                    profileGroup,
+                  ],
                 ),
               ),
             ),
+          ),
 
           // ───── expanded：双列靠左，左 380「身份组」+ 右 ≤720「档案组」 ─────
           // 不再 Center + maxWidth，让内容从左边 padding 直接起；
           // 右边给档案组一个最大宽度避免信息行被拉得过长（保证 60-75 字符可读）。
           UtenBreakpoint.expanded => SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(horizontalPadding, 32, horizontalPadding, 40),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 380,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        identityGroup.hero,
-                        const SizedBox(height: 16),
-                        identityGroup.shortcut,
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 32),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 720),
-                    child: profileGroup,
-                  ),
-                ],
-              ),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              UtenSpacing.s32,
+              horizontalPadding,
+              110, // 底部悬浮胶囊导航留白
             ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 380,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      identityGroup.hero,
+                      const SizedBox(height: UtenSpacing.s16),
+                      identityGroup.shortcut,
+                    ],
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s32),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: profileGroup,
+                ),
+              ],
+            ),
+          ),
         },
       ),
     );
@@ -157,7 +187,7 @@ class ProfilePage extends ConsumerWidget {
     AppLocalizations l10n,
     AppUser user,
   ) {
-    return _section(l10n, theme, l10n.profileTitle, [
+    return _section(l10n, l10n.profileTitle, [
       UtenInfoRow(
         label: l10n.profileEmployeeCode,
         value: user.code,
@@ -171,36 +201,27 @@ class ProfilePage extends ConsumerWidget {
       UtenInfoRow(label: l10n.profileFieldSeatNo, value: _notSet),
       UtenInfoRow(label: l10n.profileFieldResidenceAddress, value: _notSet),
       UtenInfoRow(label: l10n.profileFieldHujiAddress, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldEthnicity, value: _notSet, showDivider: false),
+      UtenInfoRow(
+        label: l10n.profileFieldEthnicity,
+        value: _notSet,
+        showDivider: false,
+      ),
     ]);
   }
 
   static const _notSet = '—';
 
-  Widget _section(
-    AppLocalizations l10n,
-    ThemeData theme,
-    String title,
-    List<Widget> rows,
-  ) {
+  Widget _section(AppLocalizations l10n, String title, List<Widget> rows) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurfaceVariant,
-              letterSpacing: 0.3,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
+        UtenSectionHeader(title: title, subdued: true),
+        const SizedBox(height: UtenSpacing.s8),
         UtenCard(
-          elevation: UtenCardElevation.none,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s16,
+            vertical: UtenSpacing.s4,
+          ),
           child: Column(children: rows),
         ),
       ],
@@ -242,15 +263,14 @@ class _HeroCard extends StatelessWidget {
         : (user.position ?? '—');
 
     return UtenCard(
-      elevation: UtenCardElevation.none,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(UtenSpacing.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               UtenUserAvatar(size: avatarSize, name: user.name),
-              const SizedBox(width: 16),
+              const SizedBox(width: UtenSpacing.s16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,8 +278,8 @@ class _HeroCard extends StatelessWidget {
                     // 名字 + 角色徽章同行：用 Wrap 让长名字能换行时 chip 跟着换
                     Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 8,
-                      runSpacing: 6,
+                      spacing: UtenSpacing.s8,
+                      runSpacing: UtenSpacing.s4,
                       children: [
                         Text(
                           user.name,
@@ -271,7 +291,7 @@ class _HeroCard extends StatelessWidget {
                         ..._buildRoleChips(user, theme),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: UtenSpacing.s4),
                     Text(
                       '${user.department ?? '—'} · $positionLabel',
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -283,7 +303,7 @@ class _HeroCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: UtenSpacing.s16),
           // CTA：修改我的信息 + 修改密码
           Row(
             children: [
@@ -296,7 +316,7 @@ class _HeroCard extends StatelessWidget {
                     child: Text(l10n.profileChangeEditCta),
                   ),
                 ),
-              if (canEdit) const SizedBox(width: 8),
+              if (canEdit) const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: UtenButton(
                   type: UtenButtonType.secondary,
@@ -321,13 +341,15 @@ class _HeroCard extends StatelessWidget {
     final chips = <Widget>[];
 
     if (user.superAdmin) {
-      chips.add(_RoleChip(
-        label: 'ADMIN',
-        icon: Icons.verified_rounded,
-        background: UtenColors.teal500,
-        foreground: Colors.white,
-        theme: theme,
-      ));
+      chips.add(
+        _RoleChip(
+          label: 'ADMIN',
+          icon: Icons.verified_rounded,
+          background: UtenColors.teal500,
+          foreground: Colors.white,
+          theme: theme,
+        ),
+      );
     }
 
     const maxNormalRoles = 2;
@@ -336,20 +358,24 @@ class _HeroCard extends StatelessWidget {
         ? roles.take(maxNormalRoles).toList()
         : roles;
     for (final r in showRoles) {
-      chips.add(_RoleChip(
-        label: r.displayNameZh,
-        icon: _iconForRole(r),
-        outline: true,
-        theme: theme,
-      ));
+      chips.add(
+        _RoleChip(
+          label: r.displayNameZh,
+          icon: _iconForRole(r),
+          outline: true,
+          theme: theme,
+        ),
+      );
     }
     if (roles.length > maxNormalRoles) {
-      chips.add(_RoleChip(
-        label: '+${roles.length - maxNormalRoles}',
-        outline: true,
-        theme: theme,
-        muted: true,
-      ));
+      chips.add(
+        _RoleChip(
+          label: '+${roles.length - maxNormalRoles}',
+          outline: true,
+          theme: theme,
+          muted: true,
+        ),
+      );
     }
     return chips;
   }
@@ -398,14 +424,14 @@ class _RoleChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = foreground ??
+    final fg =
+        foreground ??
         (muted
             ? theme.colorScheme.onSurfaceVariant
             : theme.colorScheme.primary);
-    final bg = background ??
-        (outline
-            ? theme.colorScheme.surfaceContainer
-            : Colors.transparent);
+    final bg =
+        background ??
+        (outline ? theme.colorScheme.surfaceContainer : Colors.transparent);
 
     final borderSide = outline
         ? BorderSide(color: theme.colorScheme.outlineVariant)
@@ -413,12 +439,12 @@ class _RoleChip extends StatelessWidget {
 
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: icon != null ? 8 : 10,
+        horizontal: icon != null ? UtenSpacing.s8 : UtenSpacing.s12,
         vertical: 3,
       ),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: UtenRadius.smAll,
         border: outline ? Border.fromBorderSide(borderSide) : null,
       ),
       child: Row(
@@ -426,7 +452,7 @@ class _RoleChip extends StatelessWidget {
         children: [
           if (icon != null) ...[
             Icon(icon, size: 12, color: fg),
-            const SizedBox(width: 4),
+            const SizedBox(width: UtenSpacing.s4),
           ],
           Text(
             label,
@@ -452,21 +478,20 @@ class _MyChangesShortcut extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final async = ref.watch(myProfileChangesProvider('pending'));
-    final count = async.maybeWhen(
-      data: (page) => page.total,
-      orElse: () => 0,
-    );
+    final count = async.maybeWhen(data: (page) => page.total, orElse: () => 0);
 
     return UtenCard(
-      elevation: UtenCardElevation.none,
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s4,
+        ),
         leading: Container(
           width: 36,
           height: 36,
           decoration: BoxDecoration(
             color: theme.colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: UtenRadius.lgAll,
           ),
           child: Icon(
             Icons.assignment_outlined,

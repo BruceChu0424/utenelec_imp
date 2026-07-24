@@ -1,19 +1,18 @@
 package com.uten.imp.features.auth;
 
+import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.config.props.JwtProperties;
-import com.uten.imp.features.rbac.RefreshToken;
-import com.uten.imp.features.rbac.RefreshTokenRepository;
+import com.uten.imp.features.auth.model.RefreshToken;
+import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.UUID;
 
 /**
- * 不透明刷新令牌：生成 256bit 随机串，只存 sha256 哈希。轮换 + 重用检测见 {@link AuthService#refresh}。
+ * 不透明刷新令牌：生成 256bit 随机串，只存 sha256 哈希。轮换 + 重用检测见 {@link TokenIssuer#refresh}。
  */
 @Service
 public class RefreshTokenService {
@@ -34,7 +33,7 @@ public class RefreshTokenService {
         RefreshToken t = new RefreshToken();
         t.setUserId(userId);
         t.setDeviceInfo(deviceInfo);
-        t.setTokenHash(sha256(raw));
+        t.setTokenHash(HashUtil.sha256(raw));
         t.setIssuedAt(OffsetDateTime.now());
         t.setExpiresAt(OffsetDateTime.now().plusDays(props.getRefreshTtlDays()));
         repo.save(t);
@@ -46,16 +45,6 @@ public class RefreshTokenService {
         token.setRevokedAt(OffsetDateTime.now());
         token.setReplacedBy(replacedById);
         repo.save(token);
-    }
-
-    public static String sha256(String raw) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] h = md.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(h);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     private static String rawToken() {

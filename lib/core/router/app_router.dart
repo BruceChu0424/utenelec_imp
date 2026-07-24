@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/analytics/pages/alerts_page.dart';
 import '../../features/analytics/pages/analytics_explore_page.dart';
 import '../../features/analytics/pages/business_dashboard_page.dart';
+import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/dashboard/pages/dashboard_page.dart';
 import '../../features/department/pages/department_page.dart';
@@ -86,14 +87,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // 2) 访客自助流程（/visitor/*）：员工不进，由访客 session 守卫
       if (isVisitorPath) {
-        if (session.status == AuthStatus.authenticated) return RouteName.dashboard;
+        if (session.status == AuthStatus.authenticated)
+          return RouteName.dashboard;
         if (vSession.isLoggedIn) return null;
         return loc == RouteName.visitorLogin ? null : RouteName.visitorLogin;
       }
 
       // 3) 入口选择页：两端都未登录才显示
       if (isEntry) {
-        if (session.status == AuthStatus.authenticated) return RouteName.dashboard;
+        if (session.status == AuthStatus.authenticated)
+          return RouteName.dashboard;
         if (vSession.isLoggedIn) return RouteName.visitorHome;
         return null;
       }
@@ -131,98 +134,327 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
 
       // —— 入口选择（登录前）——
-      GoRoute(path: RouteName.entry, name: 'entry', builder: (_, _) => const EntrySelectionPage()),
+      GoRoute(
+        path: RouteName.entry,
+        name: 'entry',
+        builder: (_, _) => const EntrySelectionPage(),
+      ),
 
       // —— 访客自助流程（不进 ShellRoute）——
-      GoRoute(path: RouteName.visitorLogin, name: 'visitor-login', builder: (_, _) => const VisitorLoginPage()),
-      GoRoute(path: RouteName.visitorHome, name: 'visitor-home', builder: (_, _) => const VisitorHomePage()),
-      GoRoute(path: RouteName.visitorSettings, name: 'visitor-settings', builder: (_, _) => const VisitorSettingsPage()),
-      GoRoute(path: RouteName.visitorApply, name: 'visitor-apply', builder: (_, _) => const VisitorApplyPage()),
+      GoRoute(
+        path: RouteName.visitorLogin,
+        name: 'visitor-login',
+        builder: (_, _) => const VisitorLoginPage(),
+      ),
+      GoRoute(
+        path: RouteName.visitorHome,
+        name: 'visitor-home',
+        builder: (_, _) => const VisitorHomePage(),
+      ),
+      GoRoute(
+        path: RouteName.visitorSettings,
+        name: 'visitor-settings',
+        builder: (_, _) => const VisitorSettingsPage(),
+      ),
+      GoRoute(
+        path: RouteName.visitorApply,
+        name: 'visitor-apply',
+        builder: (_, _) => const VisitorApplyPage(),
+      ),
       GoRoute(
         path: RouteName.visitorApplyDetail,
         name: 'visitor-apply-detail',
-        builder: (_, s) => VisitorApplicationDetailPage(applicationId: s.pathParameters['id']!),
+        builder: (_, s) => VisitorApplicationDetailPage(
+          applicationId: s.pathParameters['id']!,
+        ),
       ),
       ShellRoute(
         builder: (context, state, child) => MainShellPage(child: child),
         routes: [
-          GoRoute(path: RouteName.home, redirect: (_, _) => RouteName.dashboard),
+          GoRoute(
+            path: RouteName.home,
+            redirect: (_, _) => RouteName.dashboard,
+          ),
 
           // —— 地基 ——
-          GoRoute(path: RouteName.dashboard, name: 'dashboard', builder: (_, _) => const DashboardPage()),
-          GoRoute(path: RouteName.profile, name: 'profile', builder: (_, _) => const ProfilePage()),
-          GoRoute(path: RouteName.settings, name: 'settings', builder: (_, _) => const SettingsPage()),
+          GoRoute(
+            path: RouteName.dashboard,
+            name: 'dashboard',
+            builder: (_, _) => const DashboardPage(),
+          ),
+          GoRoute(
+            path: RouteName.profile,
+            name: 'profile',
+            builder: (_, _) => const ProfilePage(),
+          ),
+          GoRoute(
+            path: RouteName.settings,
+            name: 'settings',
+            builder: (_, _) => const SettingsPage(),
+          ),
 
           // —— 工资 ——
-          GoRoute(path: '/payroll/slip', name: 'payroll-slip-list', builder: (_, _) => const PayrollSlipListPage()),
-          GoRoute(path: '/payroll/slip/:id', name: 'payroll-slip-detail', builder: (_, s) => PayrollSlipDetailPage(slipId: s.pathParameters['id']!)),
-          GoRoute(path: '/payroll/generate', name: 'payroll-generate', builder: (_, _) => const PayrollGeneratePage()),
-          GoRoute(path: '/payroll/review', name: 'payroll-review', builder: (_, _) => const PayrollReviewPage()),
-          GoRoute(path: '/finance/report', name: 'finance-report', builder: (_, _) => const FinanceReportPage()),
+          GoRoute(
+            path: '/payroll/slip',
+            name: 'payroll-slip-list',
+            builder: (_, _) => const PayrollSlipListPage(),
+          ),
+          GoRoute(
+            path: '/payroll/slip/:id',
+            name: 'payroll-slip-detail',
+            builder: (_, s) =>
+                PayrollSlipDetailPage(slipId: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/payroll/generate',
+            name: 'payroll-generate',
+            builder: (_, _) => const PayrollGeneratePage(),
+          ),
+          GoRoute(
+            path: '/payroll/review',
+            name: 'payroll-review',
+            builder: (_, _) => const PayrollReviewPage(),
+          ),
+          GoRoute(
+            path: '/finance/report',
+            name: 'finance-report',
+            builder: (_, _) => const FinanceReportPage(),
+          ),
 
           // —— 报销（approval 静态段在 :id 前）——
-          GoRoute(path: '/expense', name: 'expense-list', builder: (_, _) => const ExpenseListPage()),
-          GoRoute(path: '/expense/new', name: 'expense-new', builder: (_, _) => const ExpenseNewPage()),
-          GoRoute(path: '/expense/approval', name: 'expense-approval-list', builder: (_, _) => const ExpenseApprovalListPage()),
-          GoRoute(path: '/expense/approval/:id', name: 'expense-approval-detail', builder: (_, s) => ExpenseApprovalDetailPage(claimId: s.pathParameters['id']!)),
-          GoRoute(path: '/expense/:id', name: 'expense-detail', builder: (_, s) => ExpenseDetailPage(claimId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/expense',
+            name: 'expense-list',
+            builder: (_, _) => const ExpenseListPage(),
+          ),
+          GoRoute(
+            path: '/expense/new',
+            name: 'expense-new',
+            builder: (_, _) => const ExpenseNewPage(),
+          ),
+          GoRoute(
+            path: '/expense/approval',
+            name: 'expense-approval-list',
+            builder: (_, _) => const ExpenseApprovalListPage(),
+          ),
+          GoRoute(
+            path: '/expense/approval/:id',
+            name: 'expense-approval-detail',
+            builder: (_, s) =>
+                ExpenseApprovalDetailPage(claimId: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/expense/:id',
+            name: 'expense-detail',
+            builder: (_, s) =>
+                ExpenseDetailPage(claimId: s.pathParameters['id']!),
+          ),
 
           // —— 通知 ——
-          GoRoute(path: '/notice', name: 'notice-list', builder: (_, _) => const NoticeListPage()),
-          GoRoute(path: '/notice/publish', name: 'notice-publish', builder: (_, _) => const NoticePublishPage()),
-          GoRoute(path: '/notice/:id', name: 'notice-detail', builder: (_, s) => NoticeDetailPage(noticeId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/notice',
+            name: 'notice-list',
+            builder: (_, _) => const NoticeListPage(),
+          ),
+          GoRoute(
+            path: '/notice/publish',
+            name: 'notice-publish',
+            builder: (_, _) => const NoticePublishPage(),
+          ),
+          GoRoute(
+            path: '/notice/:id',
+            name: 'notice-detail',
+            builder: (_, s) =>
+                NoticeDetailPage(noticeId: s.pathParameters['id']!),
+          ),
 
           // —— 建议箱 ——
-          GoRoute(path: '/suggestion', name: 'suggestion-list', builder: (_, _) => const SuggestionListPage()),
-          GoRoute(path: '/suggestion/new', name: 'suggestion-new', builder: (_, _) => const SuggestionNewPage()),
-          GoRoute(path: '/suggestion/:id', name: 'suggestion-detail', builder: (_, s) => SuggestionDetailPage(suggestionId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/suggestion',
+            name: 'suggestion-list',
+            builder: (_, _) => const SuggestionListPage(),
+          ),
+          GoRoute(
+            path: '/suggestion/new',
+            name: 'suggestion-new',
+            builder: (_, _) => const SuggestionNewPage(),
+          ),
+          GoRoute(
+            path: '/suggestion/:id',
+            name: 'suggestion-detail',
+            builder: (_, s) =>
+                SuggestionDetailPage(suggestionId: s.pathParameters['id']!),
+          ),
 
           // —— 员工档案（onboarding/edit/offboarding 静态段在 :id 前）——
-          GoRoute(path: '/employee', name: 'employee-list', builder: (_, _) => const EmployeeListPage()),
-          GoRoute(path: '/employee/onboarding', name: 'employee-onboarding', builder: (_, _) => const EmployeeOnboardingPage()),
-          GoRoute(path: '/employee/:id/edit', name: 'employee-edit', builder: (_, s) => EmployeeEditPage(employeeId: s.pathParameters['id']!)),
-          GoRoute(path: '/employee/:id/offboarding', name: 'employee-offboarding', builder: (_, s) => EmployeeOffboardingPage(employeeId: s.pathParameters['id']!)),
-          GoRoute(path: '/employee/:id', name: 'employee-detail', builder: (_, s) => EmployeeDetailPage(employeeId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/employee',
+            name: 'employee-list',
+            builder: (_, _) => const EmployeeListPage(),
+          ),
+          GoRoute(
+            path: '/employee/onboarding',
+            name: 'employee-onboarding',
+            builder: (_, _) => const EmployeeOnboardingPage(),
+          ),
+          GoRoute(
+            path: '/employee/:id/edit',
+            name: 'employee-edit',
+            builder: (_, s) =>
+                EmployeeEditPage(employeeId: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/employee/:id/offboarding',
+            name: 'employee-offboarding',
+            builder: (_, s) =>
+                EmployeeOffboardingPage(employeeId: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: '/employee/:id',
+            name: 'employee-detail',
+            builder: (_, s) =>
+                EmployeeDetailPage(employeeId: s.pathParameters['id']!),
+          ),
 
           // —— 部门 ——
-          GoRoute(path: '/department', name: 'department', builder: (_, _) => const DepartmentPage()),
+          GoRoute(
+            path: '/department',
+            name: 'department',
+            builder: (_, _) => const DepartmentPage(),
+          ),
 
           // —— 实验室（upload 在 :id 前）——
-          GoRoute(path: '/lab/test', name: 'lab-list', builder: (_, _) => const LabTestListPage()),
-          GoRoute(path: '/lab/test/upload', name: 'lab-upload', builder: (_, _) => const LabTestUploadPage()),
-          GoRoute(path: '/lab/test/:id', name: 'lab-report', builder: (_, s) => LabTestReportPage(testId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/lab/test',
+            name: 'lab-list',
+            builder: (_, _) => const LabTestListPage(),
+          ),
+          GoRoute(
+            path: '/lab/test/upload',
+            name: 'lab-upload',
+            builder: (_, _) => const LabTestUploadPage(),
+          ),
+          GoRoute(
+            path: '/lab/test/:id',
+            name: 'lab-report',
+            builder: (_, s) =>
+                LabTestReportPage(testId: s.pathParameters['id']!),
+          ),
 
           // —— 空调 ——
-          GoRoute(path: '/hvac', name: 'hvac-overview', builder: (_, _) => const HvacOverviewPage()),
-          GoRoute(path: '/hvac/:id', name: 'hvac-control', builder: (_, s) => HvacControlPage(deviceId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/hvac',
+            name: 'hvac-overview',
+            builder: (_, _) => const HvacOverviewPage(),
+          ),
+          GoRoute(
+            path: '/hvac/:id',
+            name: 'hvac-control',
+            builder: (_, s) =>
+                HvacControlPage(deviceId: s.pathParameters['id']!),
+          ),
 
           // —— 生产 ——
-          GoRoute(path: '/production/line', name: 'production-board', builder: (_, _) => const ProductionLineBoardPage()),
-          GoRoute(path: '/production/output/entry', name: 'production-output-entry', builder: (_, _) => const ProductionOutputEntryPage()),
-          GoRoute(path: '/production/output', name: 'production-output-stats', builder: (_, _) => const ProductionOutputStatsPage()),
+          GoRoute(
+            path: '/production/line',
+            name: 'production-board',
+            builder: (_, _) => const ProductionLineBoardPage(),
+          ),
+          GoRoute(
+            path: '/production/output/entry',
+            name: 'production-output-entry',
+            builder: (_, _) => const ProductionOutputEntryPage(),
+          ),
+          GoRoute(
+            path: '/production/output',
+            name: 'production-output-stats',
+            builder: (_, _) => const ProductionOutputStatsPage(),
+          ),
 
           // —— 库存 ——
-          GoRoute(path: '/inventory', name: 'inventory-list', builder: (_, _) => const InventoryListPage()),
-          GoRoute(path: '/inventory/movement', name: 'inventory-movement', builder: (_, _) => const InventoryMovementPage()),
+          GoRoute(
+            path: '/inventory',
+            name: 'inventory-list',
+            builder: (_, _) => const InventoryListPage(),
+          ),
+          GoRoute(
+            path: '/inventory/movement',
+            name: 'inventory-movement',
+            builder: (_, _) => const InventoryMovementPage(),
+          ),
 
           // —— 管理层分析 ——
-          GoRoute(path: '/analytics/dashboard', name: 'analytics-dashboard', builder: (_, _) => const BusinessDashboardPage()),
-          GoRoute(path: '/analytics/explore', name: 'analytics-explore', builder: (_, _) => const AnalyticsExplorePage()),
-          GoRoute(path: '/analytics/alerts', name: 'analytics-alerts', builder: (_, _) => const AlertsPage()),
+          GoRoute(
+            path: '/analytics/dashboard',
+            name: 'analytics-dashboard',
+            builder: (_, _) => const BusinessDashboardPage(),
+          ),
+          GoRoute(
+            path: '/analytics/explore',
+            name: 'analytics-explore',
+            builder: (_, _) => const AnalyticsExplorePage(),
+          ),
+          GoRoute(
+            path: '/analytics/alerts',
+            name: 'analytics-alerts',
+            builder: (_, _) => const AlertsPage(),
+          ),
 
           // —— 访客审批 / 被访人 / 保安扫码 ——
-          GoRoute(path: RouteName.visitorApproval, name: 'visitor-approval-list', builder: (_, _) => const VisitorApprovalListPage()),
-          GoRoute(path: RouteName.visitorApprovalDetail, name: 'visitor-approval-detail', builder: (_, s) => VisitorApprovalDetailPage(applicationId: s.pathParameters['id']!)),
-          GoRoute(path: RouteName.myVisitors, name: 'my-visitors', builder: (_, _) => const MyVisitorsPage()),
-          GoRoute(path: RouteName.securityScan, name: 'security-scan', builder: (_, _) => const SecurityScanPage()),
+          GoRoute(
+            path: RouteName.visitorApproval,
+            name: 'visitor-approval-list',
+            builder: (_, _) => const VisitorApprovalListPage(),
+          ),
+          GoRoute(
+            path: RouteName.visitorApprovalDetail,
+            name: 'visitor-approval-detail',
+            builder: (_, s) => VisitorApprovalDetailPage(
+              applicationId: s.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.myVisitors,
+            name: 'my-visitors',
+            builder: (_, _) => const MyVisitorsPage(),
+          ),
+          GoRoute(
+            path: RouteName.securityScan,
+            name: 'security-scan',
+            builder: (_, _) => const SecurityScanPage(),
+          ),
 
           // —— 个人信息自助修改（员工侧）——
-          GoRoute(path: RouteName.profileEdit, name: 'profile-edit', builder: (_, _) => const ProfileEditPage()),
-          GoRoute(path: RouteName.profileMyChanges, name: 'profile-my-changes', builder: (_, _) => const MyProfileChangesPage()),
+          GoRoute(
+            path: RouteName.profileEdit,
+            name: 'profile-edit',
+            builder: (_, _) => const ProfileEditPage(),
+          ),
+          GoRoute(
+            path: RouteName.profileMyChanges,
+            name: 'profile-my-changes',
+            builder: (_, _) => const MyProfileChangesPage(),
+          ),
 
           // —— HR 端：员工个人信息修改审批 ——
-          GoRoute(path: RouteName.hrProfileChanges, name: 'hr-profile-changes', builder: (_, _) => const HrProfileChangesListPage()),
-          GoRoute(path: RouteName.hrProfileChangeDetail, name: 'hr-profile-change-detail', builder: (_, s) => HrProfileChangeDetailPage(batchId: s.pathParameters['id']!)),
+          GoRoute(
+            path: RouteName.hrProfileChanges,
+            name: 'hr-profile-changes',
+            builder: (_, _) => const HrProfileChangesListPage(),
+          ),
+          GoRoute(
+            path: RouteName.hrProfileChangeDetail,
+            name: 'hr-profile-change-detail',
+            builder: (_, s) =>
+                HrProfileChangeDetailPage(batchId: s.pathParameters['id']!),
+          ),
+
+          // —— 系统管理（超管）——
+          GoRoute(
+            path: RouteName.adminPermissions,
+            name: 'admin-permissions',
+            builder: (_, _) => const AdminPermissionsPage(),
+          ),
         ],
       ),
     ],

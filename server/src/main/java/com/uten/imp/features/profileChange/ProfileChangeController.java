@@ -1,6 +1,6 @@
-package com.uten.imp.features.profileChange;
+package com.uten.imp.features.profilechange;
 
-import com.uten.imp.features.profileChange.dto.ProfileChangeDto;
+import com.uten.imp.features.profilechange.dto.ProfileChangeDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -30,14 +30,16 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ProfileChangeController {
 
-    private final ProfileChangeService service;
+    private final ProfileChangeSubmitService submitService;
+    private final ProfileChangeQueryService queryService;
+    private final ProfileChangeReviewService reviewService;
 
     // ===== 员工 =====
 
     @PostMapping("/api/profile/me/changes")
     @PreAuthorize("hasAuthority('profile:edit:self')")
     public ProfileChangeDto.SubmitResponse submit(@RequestBody ProfileChangeDto.SubmitRequest req) {
-        return service.submit(req);
+        return submitService.submit(req);
     }
 
     @GetMapping("/api/profile/me/changes")
@@ -46,19 +48,19 @@ public class ProfileChangeController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status) {
-        return service.myList(page, size, status);
+        return queryService.myList(page, size, status);
     }
 
     @GetMapping("/api/profile/me/changes/{batchId}")
     @PreAuthorize("hasAuthority('profile:edit:self')")
     public ProfileChangeDto.BatchDetail myDetail(@PathVariable UUID batchId) {
-        return service.myBatchDetail(batchId);
+        return queryService.myBatchDetail(batchId);
     }
 
     @DeleteMapping("/api/profile/me/changes/{batchId}")
     @PreAuthorize("hasAuthority('profile:edit:self')")
     public void cancel(@PathVariable UUID batchId) {
-        service.cancelBatch(batchId);
+        queryService.cancelBatch(batchId);
     }
 
     // ===== HR =====
@@ -70,31 +72,31 @@ public class ProfileChangeController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID employeeId) {
-        return service.hrList(page, size, status, employeeId);
+        return queryService.hrList(page, size, status, employeeId);
     }
 
     @GetMapping("/api/hr/profile-changes/{batchId}")
     @PreAuthorize("hasAuthority('profile:review')")
     public ProfileChangeDto.BatchDetail hrDetail(@PathVariable UUID batchId) {
-        return service.hrBatchDetail(batchId);
+        return queryService.hrBatchDetail(batchId);
     }
 
     @PostMapping("/api/hr/profile-changes/{batchId}/review")
     @PreAuthorize("hasAuthority('profile:review')")
     public ProfileChangeDto.BatchDetail review(@PathVariable UUID batchId,
                                                @RequestBody ProfileChangeDto.ReviewAction req) {
-        return service.review(batchId, req);
+        return reviewService.review(batchId, req);
     }
 
     @GetMapping("/api/hr/profile-changes/pending-count")
     @PreAuthorize("hasAuthority('profile:review')")
     public Map<String, Long> pendingCount() {
-        return Map.of("count", service.pendingCount());
+        return Map.of("count", reviewService.pendingCount());
     }
 
     @GetMapping("/api/hr/profile-changes/pending-count/{employeeId}")
     @PreAuthorize("hasAuthority('profile:review')")
     public Map<String, Long> pendingCountForEmployee(@PathVariable UUID employeeId) {
-        return Map.of("count", service.pendingCountForEmployee(employeeId));
+        return Map.of("count", reviewService.pendingCountForEmployee(employeeId));
     }
 }

@@ -3,18 +3,23 @@
 //
 // 顶部 UtenSegmentedFilter（全部 / 待审 / 已通过 / 已驳回 / 已生效）
 // 主区 UtenResponsiveGrid 卡片列表（每张 = 一批）
+// 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/profile_change_request.dart';
 import '../providers/profile_change_providers.dart';
@@ -50,33 +55,33 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       ..addAll([
         UtenSegment(value: null, label: l10n.profileChangeFilterAll),
         UtenSegment(value: 'pending', label: l10n.profileChangeFilterPending),
-        UtenSegment(
-          value: 'applied',
-          label: l10n.profileChangeFilterApplied,
-        ),
-        UtenSegment(
-          value: 'rejected',
-          label: l10n.profileChangeFilterRejected,
-        ),
+        UtenSegment(value: 'applied', label: l10n.profileChangeFilterApplied),
+        UtenSegment(value: 'rejected', label: l10n.profileChangeFilterRejected),
       ]);
 
     final async = ref.watch(myProfileChangesProvider(_status));
 
-    return Scaffold(
-      appBar: UtenAppBar(title: l10n.profileChangeListTitle),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: UtenSegmentedFilter<String?>(
-              segments: _segments,
-              selected: _status,
-              onChanged: (v) => setState(() => _status = v),
-            ),
+    Widget body = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          child: UtenSegmentedFilter<String?>(
+            segments: _segments,
+            selected: _status,
+            onChanged: (v) => setState(() => _status = v),
           ),
-          Expanded(child: _buildBody(context, l10n, async)),
-        ],
-      ),
+        ),
+        Expanded(child: _buildBody(context, l10n, async)),
+      ],
+    );
+    // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
+    return Scaffold(
+      appBar: UtenAppBar(title: l10n.profileChangeListTitle, showBackButton: true),
+      body: body,
     );
   }
 
@@ -125,7 +130,7 @@ class _MyBatchCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final (statusText, statusColor) = _statusStyle(l10n, theme, item.status);
+    final (statusText, statusType) = _statusStyle(l10n, item.status);
     return UtenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,24 +145,14 @@ class _MyBatchCard extends ConsumerWidget {
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  statusText,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: statusColor,
-                  ),
-                ),
+              UtenStatusBadge(
+                label: statusText,
+                type: statusType,
+                size: UtenStatusBadgeSize.small,
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           Text(
             item.fieldLabels.take(3).join('、') +
                 (item.fieldLabels.length > 3 ? '…' : ''),
@@ -167,7 +162,7 @@ class _MyBatchCard extends ConsumerWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: UtenSpacing.s4),
           Text(
             _formatTime(item.submittedAt),
             style: theme.textTheme.bodySmall?.copyWith(
@@ -175,12 +170,12 @@ class _MyBatchCard extends ConsumerWidget {
             ),
           ),
           if (item.reviewComment != null && item.reviewComment!.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: UtenSpacing.s8),
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(UtenSpacing.s8),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainer,
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: UtenRadius.smAll,
               ),
               child: Text(
                 item.reviewComment!,
@@ -190,7 +185,7 @@ class _MyBatchCard extends ConsumerWidget {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           Row(
             children: [
               if (item.status == ProfileChangeStatus.pending)
@@ -203,7 +198,7 @@ class _MyBatchCard extends ConsumerWidget {
                   ),
                 ),
               if (item.status == ProfileChangeStatus.pending)
-                const SizedBox(width: 8),
+                const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: UtenButton(
                   type: UtenButtonType.primary,
@@ -226,7 +221,11 @@ class _MyBatchCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _cancel(BuildContext context, WidgetRef ref, String batchId) async {
+  Future<void> _cancel(
+    BuildContext context,
+    WidgetRef ref,
+    String batchId,
+  ) async {
     final l10n = AppLocalizations.of(context);
     try {
       await ref.read(profileChangeRepositoryProvider).cancel(batchId);
@@ -256,35 +255,38 @@ class _MyBatchDetailDialog extends ConsumerWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(UtenSpacing.s20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 l10n.profileChangeDiffTitle,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: UtenSpacing.s12),
               Flexible(
                 child: async.when(
                   data: (batch) => SingleChildScrollView(
                     child: Column(
                       children: [
                         for (final item in batch.items)
-                          ProfileChangeDiffRow(item: item, showStatusBadge: true),
+                          ProfileChangeDiffRow(
+                            item: item,
+                            showStatusBadge: true,
+                          ),
                       ],
                     ),
                   ),
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Text(
-                    e is ApiException ? e.message : e.toString(),
-                  ),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) =>
+                      Text(e is ApiException ? e.message : e.toString()),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: UtenSpacing.s12),
               Align(
                 alignment: Alignment.centerRight,
                 child: UtenButton(
@@ -301,18 +303,21 @@ class _MyBatchDetailDialog extends ConsumerWidget {
   }
 }
 
-(String, Color) _statusStyle(AppLocalizations l10n, ThemeData theme, ProfileChangeStatus s) {
+(String, UtenStatusBadgeType) _statusStyle(
+  AppLocalizations l10n,
+  ProfileChangeStatus s,
+) {
   switch (s) {
     case ProfileChangeStatus.pending:
-      return (l10n.profileChangeStatusPending, theme.colorScheme.tertiary);
+      return (l10n.profileChangeStatusPending, UtenStatusBadgeType.warning);
     case ProfileChangeStatus.applied:
-      return (l10n.profileChangeStatusApplied, theme.colorScheme.primary);
+      return (l10n.profileChangeStatusApplied, UtenStatusBadgeType.success);
     case ProfileChangeStatus.approved:
-      return (l10n.profileChangeStatusApproved, theme.colorScheme.primary);
+      return (l10n.profileChangeStatusApproved, UtenStatusBadgeType.success);
     case ProfileChangeStatus.rejected:
-      return (l10n.profileChangeStatusRejected, theme.colorScheme.error);
+      return (l10n.profileChangeStatusRejected, UtenStatusBadgeType.danger);
     case ProfileChangeStatus.cancelled:
-      return (l10n.profileChangeStatusCancelled, theme.colorScheme.onSurfaceVariant);
+      return (l10n.profileChangeStatusCancelled, UtenStatusBadgeType.neutral);
   }
 }
 

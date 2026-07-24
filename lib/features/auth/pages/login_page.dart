@@ -1,25 +1,30 @@
-// LoginPage - 登录页
+// LoginPage - 登录页（v2 - 响应式认证布局）
 // 文档：docs/03-页面/登录页.md（待写）
 //
 // 设计：
-// - 深色 slate-900 → slate-800 渐变背景
-// - 玻璃拟态登录卡
-// - 中等进场动画
-// - 顶部品牌字标 UtenWordmarkLogo
+// - compact（<600dp）：全屏洁净布局——无卡片，品牌吉祥物 + 字标 + 表单
+//   直接落在页面背景上，24px 水平留白
+// - medium+（≥600dp）：极淡 teal 调页面底（teal50 / 深色 darkBackground）+
+//   居中登录卡（maxWidth 440，14 圆角生态 → 卡片 16，高层级阴影），
+//   克制不铺渐变
+// - 保留淡入 + 上滑进场动画；认证逻辑 / 校验器 / Provider 不变
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/brand/uten_brand_mascot.dart';
 import '../../../components/brand/uten_wordmark_logo.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/session_provider.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -103,156 +108,166 @@ class _LoginPageState extends ConsumerState<LoginPage>
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final isCompact = context.breakpoint.isCompact;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: DecoratedBox(
-        decoration: BoxDecoration(color: theme.scaffoldBackgroundColor),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: Center(
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: SlideTransition(
-                        position: _slideAnimation,
-                        child: _buildLoginCard(l10n, theme),
-                      ),
+      // medium+ 铺一层极淡 teal 调底，让白色登录卡自然浮起；compact 保持页面底色
+      backgroundColor: isCompact
+          ? theme.scaffoldBackgroundColor
+          : (isDark ? UtenColors.darkBackground : UtenColors.teal50),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: isCompact
+                          // 全屏洁净布局：表单直通背景
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: UtenSpacing.s24,
+                              ),
+                              child: _buildLoginForm(l10n, theme),
+                            )
+                          // 居中登录卡（maxWidth 440）
+                          : Padding(
+                              padding: const EdgeInsets.all(UtenSpacing.s24),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 440,
+                                ),
+                                child: UtenCard(
+                                  padding: const EdgeInsets.all(
+                                    UtenSpacing.s32,
+                                  ),
+                                  borderRadius: UtenRadius.xl,
+                                  child: _buildLoginForm(l10n, theme),
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildLoginCard(AppLocalizations l10n, ThemeData theme) {
-    final isCompact = MediaQuery.sizeOf(context).width < 480;
-    final pagePadding = isCompact ? 20.0 : 24.0;
-    final cardPadding = isCompact ? 24.0 : 32.0;
-    final logoWidth = isCompact ? 200.0 : 220.0;
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 440),
-      child: Padding(
-        padding: EdgeInsets.all(pagePadding),
-        child: UtenCard(
-          padding: EdgeInsets.all(cardPadding),
-          borderRadius: 16,
-          elevation: UtenCardElevation.high,
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: UtenWordmarkLogo(
-                    width: logoWidth,
-                    height: logoWidth / (405 / 74),
+  /// 品牌区 + 表单字段（两种布局共用同一份内容）
+  Widget _buildLoginForm(AppLocalizations l10n, ThemeData theme) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 品牌区：吉祥物 + 横向字标
+          const Center(child: UtenBrandMascot.size(88)),
+          const SizedBox(height: UtenSpacing.s16),
+          const Center(
+            child: UtenWordmarkLogo(width: 220, height: 220 / (405 / 74)),
+          ),
+          const SizedBox(height: UtenSpacing.s32),
+          UtenInput(
+            controller: _accountController,
+            hint: l10n.loginAccountHint,
+            prefixIcon: Icons.person_outline_rounded,
+            textInputAction: TextInputAction.next,
+            validator: (value) => (value == null || value.isEmpty)
+                ? l10n.loginAccountRequired
+                : null,
+            autofillHints: const ['username'],
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          UtenInput(
+            controller: _passwordController,
+            hint: l10n.loginPasswordHint,
+            prefixIcon: Icons.lock_outline_rounded,
+            isPassword: true,
+            textInputAction: TextInputAction.go,
+            onFieldSubmitted: (_) => _handleLogin(),
+            validator: (value) => (value == null || value.isEmpty)
+                ? l10n.loginPasswordRequired
+                : null,
+            autofillHints: const ['password'],
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: Checkbox(
+                  value: _rememberDevice,
+                  onChanged: (value) =>
+                      setState(() => _rememberDevice = value ?? false),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Text(
+                l10n.loginRememberMe,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: UtenSpacing.s16),
+            Container(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              decoration: BoxDecoration(
+                color: UtenColors.error.withValues(alpha: 0.12),
+                borderRadius: UtenRadius.mdAll,
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: UtenColors.error,
+                    size: 18,
                   ),
-                ),
-                const SizedBox(height: 32),
-                UtenInput(
-                  controller: _accountController,
-                  hint: l10n.loginAccountHint,
-                  prefixIcon: Icons.person_outline_rounded,
-                  textInputAction: TextInputAction.next,
-                  validator: (value) => (value == null || value.isEmpty)
-                      ? l10n.loginAccountRequired
-                      : null,
-                  autofillHints: const ['username'],
-                ),
-                const SizedBox(height: 16),
-                UtenInput(
-                  controller: _passwordController,
-                  hint: l10n.loginPasswordHint,
-                  prefixIcon: Icons.lock_outline_rounded,
-                  isPassword: true,
-                  textInputAction: TextInputAction.go,
-                  onFieldSubmitted: (_) => _handleLogin(),
-                  validator: (value) => (value == null || value.isEmpty)
-                      ? l10n.loginPasswordRequired
-                      : null,
-                  autofillHints: const ['password'],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: Checkbox(
-                        value: _rememberDevice,
-                        onChanged: (value) =>
-                            setState(() => _rememberDevice = value ?? false),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      l10n.loginRememberMe,
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: UtenColors.error,
                       ),
-                    ),
-                  ],
-                ),
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: UtenColors.error.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: UtenColors.error,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _errorMessage!,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: UtenColors.error,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
-                UtenButton(
-                  onPressed: _isLoading ? null : _handleLogin,
-                  isLoading: _isLoading,
-                  isExpanded: true,
-                  size: UtenButtonSize.large,
-                  child: Text(
-                    _isLoading ? l10n.loginLoggingIn : l10n.loginButton,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  l10n.loginFooter,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+              ),
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s24),
+          UtenButton(
+            onPressed: _isLoading ? null : _handleLogin,
+            isLoading: _isLoading,
+            isExpanded: true,
+            size: UtenButtonSize.large,
+            child: Text(
+              _isLoading ? l10n.loginLoggingIn : l10n.loginButton,
             ),
           ),
-        ),
+          const SizedBox(height: UtenSpacing.s24),
+          Text(
+            l10n.loginFooter,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

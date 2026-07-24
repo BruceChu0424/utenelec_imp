@@ -57,6 +57,9 @@ abstract final class RouteName {
   static const String myVisitors = '/my-visitors';
   static const String securityScan = '/security/scan';
   static const String securityCheck = '/security/check/:id';
+
+  // 系统管理（超级管理员）
+  static const String adminPermissions = '/admin/permissions';
 }
 
 /// 路径拼接工具（带参数的路由）

@@ -37,14 +37,6 @@ public class AuthUser implements UserDetails {
     private final boolean accountNonLocked;
     private final boolean superAdmin;       // 超级管理员标记
 
-    /** 员工构造（兼容既有 JwtAuthFilter 调用）。 */
-    public AuthUser(UUID id, UUID employeeId, String loginAccount,
-                    Set<String> roles, Set<String> permissions,
-                    boolean mustChangePassword, boolean accountNonLocked) {
-        this(id, SubjectType.STAFF, employeeId, null, loginAccount, null,
-                roles, permissions, mustChangePassword, accountNonLocked, false);
-    }
-
     /** 员工构造（含 superAdmin 标记）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
                     Set<String> roles, Set<String> permissions,

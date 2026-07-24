@@ -2,6 +2,9 @@
 // 文档：docs/03-页面/新建报销页.md（待写）
 //
 // 步骤：填标题 → 添加明细项 → 填备注 → 提交/保存草稿
+//
+// 响应式：全断点套 UtenContentContainer.narrow（maxWidth 1120）——
+// 外壳只收敛到 1600，表单页需自行钳窄居中
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,9 +16,11 @@ import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
 
@@ -46,12 +51,16 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '新建报销', showBackButton: true),
       body: Column(
         children: [
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
+            // narrow 容器：compact 提供 gutter，medium+ 把表单钳到 1120 居中
+            child: UtenContentContainer.narrow(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                  vertical: UtenSpacing.s16,
+                ),
               children: [
                 UtenCard(
                   child: Column(
@@ -66,7 +75,7 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
 
                 // 明细
                 UtenSectionHeader(
@@ -77,18 +86,18 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                     label: const Text('添加'),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 if (_items.isEmpty)
                   _buildEmptyItems(theme)
                 else
                   ..._items.map(
                     (i) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                       child: _buildItemCard(theme, i),
                     ),
                   ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
 
                 // 备注
                 UtenCard(
@@ -105,6 +114,7 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                   ),
                 ),
               ],
+              ),
             ),
           ),
 
@@ -128,12 +138,13 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                           color: UtenColors.primary,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: UtenSpacing.s16),
                 UtenButton(
                   type: UtenButtonType.ghost,
                   onPressed: _isSubmitting
@@ -160,10 +171,10 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
 
   Widget _buildEmptyItems(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24),
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s24),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: UtenRadius.lgAll,
         border: Border.all(
           color: theme.colorScheme.outlineVariant,
         ),
@@ -175,7 +186,7 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
             size: 32,
             color: theme.colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           Text(
             '点击右上角"添加"创建报销项',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -188,13 +199,9 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
   }
 
   Widget _buildItemCard(ThemeData theme, ExpenseItem item) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
+    // 明细小卡：UtenCard 无阴影变体（radius 14 + 细边框）
+    return UtenCard(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Row(
         children: [
           Container(
@@ -341,7 +348,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                   '类别',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -356,7 +363,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
                 // 金额
                 TextFormField(
                   controller: _amountController,

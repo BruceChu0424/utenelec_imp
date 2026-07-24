@@ -5,7 +5,6 @@ server:
 
 logging:
   level:
-    com.uten.imp: DEBUG
     org.springframework.security: INFO
 
 uten:

@@ -1,12 +1,14 @@
 package com.uten.imp.features.visitor;
 
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SmsProperties;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
 import com.uten.imp.security.JwtService;
+import com.uten.imp.security.LoginRateLimiter;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Set;
+
+import static com.uten.imp.common.util.Strings.maskPhone;
 
 /**
  * 访客鉴权：发送验证码 / 登录（含员工检测）/ 刷新 / 登出。
@@ -36,7 +40,7 @@ public class VisitorAuthService {
     private final TxSessionVars tx;
     private final SmsProperties smsProps;
     private final AuditService audit;
-    private final com.uten.imp.security.LoginRateLimiter rateLimiter;
+    private final LoginRateLimiter rateLimiter;
 
     @Transactional
     public VisitorAuthDto.SendCodeResponse sendCode(String phoneRaw, String ip) {
@@ -79,6 +83,8 @@ public class VisitorAuthService {
             acc = accountRepo.findByPhoneHash(phoneHash)
                     .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL));
         }
+        // 审计 actor = 访客本人（写 visitor_accounts，V12 触发器读取 app.actor_id）
+        tx.bindActor(acc.getId());
         acc.setLastLoginAt(OffsetDateTime.now());
         accountRepo.save(acc);
 
@@ -93,7 +99,7 @@ public class VisitorAuthService {
 
     @Transactional
     public VisitorAuthDto.VisitorTokenResponse refresh(String rawRefresh, String deviceInfo) {
-        String hash = VisitorRefreshTokenService.sha256(rawRefresh);
+        String hash = HashUtil.sha256(rawRefresh);
         VisitorRefreshToken token = refreshRepo.findAndLockByTokenHash(hash)
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
 
@@ -125,7 +131,7 @@ public class VisitorAuthService {
         if (rawRefresh == null || rawRefresh.isBlank()) {
             return;
         }
-        String hash = VisitorRefreshTokenService.sha256(rawRefresh);
+        String hash = HashUtil.sha256(rawRefresh);
         refreshRepo.findAndLockByTokenHash(hash).ifPresent(t -> refreshService.revoke(t, null));
     }
 
@@ -139,6 +145,9 @@ public class VisitorAuthService {
         a.setName(vno);
         a.setAvatarSeed(tail);
         a.setStatus("active");
+        // 主键在 Java 端生成（BaseEntity），可在 INSERT 前绑定审计 actor，
+        // 使首行 visitor_accounts 审计也带 app.actor_id（V12 触发器）
+        tx.bindActor(a.getId());
         return accountRepo.save(a);
     }
 
@@ -172,12 +181,5 @@ public class VisitorAuthService {
         if (!phone.matches("^1[3-9]\\d{9}$")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED);
         }
-    }
-
-    private static String maskPhone(String phone) {
-        if (phone == null || phone.length() < 7) {
-            return "***";
-        }
-        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 }

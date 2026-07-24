@@ -8,6 +8,4 @@ import java.util.UUID;
 public interface EmergencyContactRepository extends JpaRepository<EmergencyContact, UUID> {
 
     List<EmergencyContact> findByEmployeeIdOrderBySortOrderAsc(UUID employeeId);
-
-    void deleteByEmployeeId(UUID employeeId);
 }

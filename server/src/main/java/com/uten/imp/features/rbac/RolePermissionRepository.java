@@ -19,5 +19,11 @@ public interface RolePermissionRepository extends JpaRepository<RolePermission, 
             """, nativeQuery = true)
     List<String> findPermissionCodesByRoleIds(@Param("roleIds") Collection<UUID> roleIds);
 
-    void deleteByIdRoleId(UUID roleId);
+    /** 全量角色-权限映射（role_id, permission_code），管理端角色列表用。 */
+    @Query(value = """
+            SELECT rp.role_id, p.code
+            FROM role_permissions rp
+            JOIN permissions p ON p.id = rp.permission_id
+            """, nativeQuery = true)
+    List<Object[]> findAllRolePermissionCodes();
 }

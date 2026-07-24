@@ -1,4 +1,5 @@
 // 通知发布页（Phase 2）
+// 表单页全断点套 UtenContentContainer（maxWidth 760 居中收敛）。
 // 文档：docs/03-页面/通知发布页.md
 
 import 'package:flutter/material.dart';
@@ -8,8 +9,10 @@ import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 
 class NoticePublishPage extends StatefulWidget {
@@ -98,7 +101,7 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
     // 3) 实际请求（mock）。这里由 UtenActionButton 在调用本方法时已经置忙，
     //    等 await resolve 后按钮自动解锁，恢复可点。
     await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;  // State 自己的 context 用 mounted 守卫足矣
+    if (!mounted) return; // State 自己的 context 用 mounted 守卫足矣
     context.appSuccess(l10n.noticePublishPublished);
     context.go('/notice');
   }
@@ -118,7 +121,8 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
               loadingLabel: const Text('保存中…'),
               onAction: () async {
                 await Future<void>.delayed(const Duration(milliseconds: 400));
-                if (context.mounted) context.appInfo(l10n.noticePublishDraftSaved);
+                if (context.mounted)
+                  context.appInfo(l10n.noticePublishDraftSaved);
               },
             ),
             const SizedBox(width: 12),
@@ -135,119 +139,117 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
           ],
         ),
       ),
-      // 响应式：大屏居中限宽，小屏铺满
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UtenCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // 类型 + 置顶
-                      Row(
-                        children: [
-                          DropdownButton<String>(
-                            value: _type,
-                            underline: const SizedBox(),
-                            items: [
-                              for (final t in _typeCodes)
-                                DropdownMenuItem(
-                                  value: t,
-                                  child: Text(_typeLabel(l10n, t)),
-                                ),
-                            ],
-                            onChanged: (v) => setState(() => _type = v!),
-                          ),
-                          const Spacer(),
-                          Text(l10n.noticePublishTopPriority),
-                          Switch(
-                            value: _topPriority,
-                            onChanged: (v) => setState(() => _topPriority = v),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _title,
-                        decoration: InputDecoration(
-                          hintText: l10n.noticePublishTitleHint,
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _content,
-                        maxLines: 8,
-                        decoration: InputDecoration(
-                          hintText: l10n.noticePublishContentHint,
-                          border: const OutlineInputBorder(),
-                          alignLabelWithHint: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                UtenSectionHeader(title: l10n.noticePublishScopeTitle),
-                const SizedBox(height: 8),
-                UtenCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SegmentedButton<int>(
-                        segments: [
-                          ButtonSegment(
-                            value: 0,
-                            label: Text(l10n.noticePublishScopeAll),
-                          ),
-                          ButtonSegment(
-                            value: 1,
-                            label: Text(l10n.noticePublishScopeDept),
-                          ),
-                        ],
-                        selected: {_scope},
-                        onSelectionChanged: (s) =>
-                            setState(() => _scope = s.first),
-                      ),
-                      if (_scope == 1) ...[
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _department,
-                          decoration: InputDecoration(
-                            labelText: l10n.noticePublishFieldDept,
-                            border: const OutlineInputBorder(),
-                          ),
+      // 响应式：全断点居中限宽（760），gutter 由容器自适应
+      body: UtenContentContainer(
+        maxWidth: 760,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              UtenCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 类型 + 置顶
+                    Row(
+                      children: [
+                        DropdownButton<String>(
+                          value: _type,
+                          underline: const SizedBox(),
                           items: [
-                            for (final d in _departmentCodes)
+                            for (final t in _typeCodes)
                               DropdownMenuItem(
-                                value: d,
-                                child: Text(_departmentLabel(l10n, d)),
+                                value: t,
+                                child: Text(_typeLabel(l10n, t)),
                               ),
                           ],
-                          onChanged: (v) => setState(() => _department = v!),
+                          onChanged: (v) => setState(() => _type = v!),
+                        ),
+                        const Spacer(),
+                        Text(l10n.noticePublishTopPriority),
+                        Switch(
+                          value: _topPriority,
+                          onChanged: (v) => setState(() => _topPriority = v),
                         ),
                       ],
-                      const SizedBox(height: 8),
-                      Text(
-                        _scope == 0
-                            ? l10n.noticePublishScopeAllHint
-                            : l10n.noticePublishScopeDeptHint(
-                                _departmentLabel(l10n, _department),
-                              ),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    TextField(
+                      controller: _title,
+                      decoration: InputDecoration(
+                        hintText: l10n.noticePublishTitleHint,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    TextField(
+                      controller: _content,
+                      maxLines: 8,
+                      decoration: InputDecoration(
+                        hintText: l10n.noticePublishContentHint,
+                        border: const OutlineInputBorder(),
+                        alignLabelWithHint: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s24),
+              UtenSectionHeader(title: l10n.noticePublishScopeTitle),
+              const SizedBox(height: UtenSpacing.s8),
+              UtenCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SegmentedButton<int>(
+                      segments: [
+                        ButtonSegment(
+                          value: 0,
+                          label: Text(l10n.noticePublishScopeAll),
                         ),
+                        ButtonSegment(
+                          value: 1,
+                          label: Text(l10n.noticePublishScopeDept),
+                        ),
+                      ],
+                      selected: {_scope},
+                      onSelectionChanged: (s) =>
+                          setState(() => _scope = s.first),
+                    ),
+                    if (_scope == 1) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _department,
+                        decoration: InputDecoration(
+                          labelText: l10n.noticePublishFieldDept,
+                          border: const OutlineInputBorder(),
+                        ),
+                        items: [
+                          for (final d in _departmentCodes)
+                            DropdownMenuItem(
+                              value: d,
+                              child: Text(_departmentLabel(l10n, d)),
+                            ),
+                        ],
+                        onChanged: (v) => setState(() => _department = v!),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    Text(
+                      _scope == 0
+                          ? l10n.noticePublishScopeAllHint
+                          : l10n.noticePublishScopeDeptHint(
+                              _departmentLabel(l10n, _department),
+                            ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

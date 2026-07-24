@@ -68,23 +68,23 @@ ThemeData buildDarkTheme() {
       ),
       displaySmall: TextStyle(
         fontSize: 28, fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary, height: 1.2,
+        color: UtenColors.darkTextPrimary, height: 1.2, letterSpacing: -0.2,
       ),
       headlineLarge: TextStyle(
         fontSize: 24, fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary, height: 1.3,
+        color: UtenColors.darkTextPrimary, height: 1.3, letterSpacing: -0.3,
       ),
       headlineMedium: TextStyle(
         fontSize: 20, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.35,
+        color: UtenColors.darkTextPrimary, height: 1.35, letterSpacing: -0.2,
       ),
       headlineSmall: TextStyle(
         fontSize: 18, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.4,
+        color: UtenColors.darkTextPrimary, height: 1.4, letterSpacing: -0.2,
       ),
       titleLarge: TextStyle(
         fontSize: 16, fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary, height: 1.4,
+        color: UtenColors.darkTextPrimary, height: 1.4, letterSpacing: -0.2,
       ),
       titleMedium: TextStyle(
         fontSize: 14, fontWeight: FontWeight.w600,
@@ -139,7 +139,7 @@ ThemeData buildDarkTheme() {
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         side: const BorderSide(color: UtenColors.darkBorder),
       ),
     ),
@@ -150,12 +150,14 @@ ThemeData buildDarkTheme() {
       space: 1,
     ),
 
+    // 叠加态与浅色主题一致：实心叠 teal700，线框/文字叠 teal400（深色下更亮）
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: UtenColors.teal500,
         foregroundColor: UtenColors.teal950,
         disabledBackgroundColor: UtenColors.darkSurfaceHigh,
         disabledForegroundColor: UtenColors.darkTextTertiary,
+        overlayColor: UtenColors.teal700,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -169,6 +171,7 @@ ThemeData buildDarkTheme() {
         foregroundColor: UtenColors.teal950,
         disabledBackgroundColor: UtenColors.darkSurfaceHigh,
         disabledForegroundColor: UtenColors.darkTextTertiary,
+        overlayColor: UtenColors.teal700,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -181,6 +184,7 @@ ThemeData buildDarkTheme() {
         foregroundColor: UtenColors.darkTextPrimary,
         backgroundColor: UtenColors.darkSurface,
         disabledForegroundColor: UtenColors.darkTextTertiary,
+        overlayColor: UtenColors.teal400,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -191,6 +195,7 @@ ThemeData buildDarkTheme() {
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: UtenColors.teal400,
+        overlayColor: UtenColors.teal400,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         minimumSize: const Size(0, 40),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -304,7 +309,7 @@ ThemeData buildDarkTheme() {
         color: UtenColors.darkTextSecondary,
       ),
       side: const BorderSide(color: UtenColors.darkBorder),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
 
@@ -312,7 +317,7 @@ ThemeData buildDarkTheme() {
       backgroundColor: UtenColors.darkSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         side: const BorderSide(color: UtenColors.darkBorder),
       ),
       titleTextStyle: const TextStyle(
@@ -330,7 +335,7 @@ ThemeData buildDarkTheme() {
       contentTextStyle:
           const TextStyle(color: UtenColors.slate900, fontSize: 14),
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
 
     listTileTheme: const ListTileThemeData(

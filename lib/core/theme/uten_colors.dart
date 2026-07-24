@@ -11,6 +11,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'uten_tokens.dart';
+
 /// Uten 品牌色板常量
 abstract final class UtenColors {
   // ===== 品牌主色 =====
@@ -36,12 +38,12 @@ abstract final class UtenColors {
   /// 强调色（= teal500）
   static const Color accent = teal500;
 
-  // ===== 中性灰阶（slate）=====
-  static const Color background = Color(0xFFF8FAFC);
+  // ===== 中性灰阶（slate，微调加深以增强卡片分层）=====
+  static const Color background = Color(0xFFF5F7FA);
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surfaceLow = Color(0xFFF8FAFC);
-  static const Color surfaceMid = Color(0xFFF1F5F9);
-  static const Color surfaceHigh = Color(0xFFE2E8F0);
+  static const Color surfaceMid = Color(0xFFEEF1F5);
+  static const Color surfaceHigh = Color(0xFFE3E8EF);
 
   /// 文字（三档建立清晰层级）
   static const Color textPrimary = Color(0xFF0F172A);
@@ -71,12 +73,26 @@ abstract final class UtenColors {
   static const Color errorBg = Color(0xFFFEE2E2);
   static const Color info = Color(0xFF3B82F6);
 
+  /// 语义色柔和底色（徽章、提示条、浅色高亮块）
+  static const Color successBg = Color(0xFFECFDF5);
+  static const Color warningBg = Color(0xFFFFFBEB);
+  static const Color infoBg = Color(0xFFEFF6FF);
+
+  /// 品牌青绿柔和底色（= teal50），用于选中态、高亮块
+  static const Color tealSurface = teal50;
+
+  /// 语义色深档文字色（配合 *Bg 底色使用，保证对比度）
+  static const Color successText = Color(0xFF047857);
+  static const Color warningText = Color(0xFFB45309);
+  static const Color infoText = Color(0xFF1D4ED8);
+  static const Color errorText = Color(0xFFB91C1C);
+
   // ===== 深色主题专用 =====
   static const Color darkBackground = Color(0xFF0B1120);
-  static const Color darkSurface = Color(0xFF111827);
+  static const Color darkSurface = Color(0xFF101A2C);
   static const Color darkSurfaceLow = Color(0xFF1E293B);
   static const Color darkSurfaceHigh = Color(0xFF334155);
-  static const Color darkBorder = Color(0xFF1E293B);
+  static const Color darkBorder = Color(0xFF1F2A3D);
   static const Color darkBorderStrong = Color(0xFF334155);
 
   /// 深色文字
@@ -84,34 +100,16 @@ abstract final class UtenColors {
   static const Color darkTextSecondary = Color(0xFF94A3B8);
   static const Color darkTextTertiary = Color(0xFF64748B);
 
-  // ===== 阴影 token =====
-  static List<BoxShadow> cardShadow({bool isDark = false}) => [
-    BoxShadow(
-      color: isDark
-          ? const Color(0xFF000000).withValues(alpha: 0.3)
-          : const Color(0xFF0F172A).withValues(alpha: 0.04),
-      blurRadius: 1,
-      offset: const Offset(0, 1),
-    ),
-  ];
+  // ===== 阴影 token（已收敛到 UtenElevation 双层柔和阴影，此处保留兼容签名）=====
+  /// 常规卡片阴影（= UtenElevation.low）
+  static List<BoxShadow> cardShadow({bool isDark = false}) =>
+      UtenElevation.low(isDark: isDark);
 
-  static List<BoxShadow> cardShadowLg({bool isDark = false}) => [
-    BoxShadow(
-      color: isDark
-          ? const Color(0xFF000000).withValues(alpha: 0.4)
-          : const Color(0xFF0F172A).withValues(alpha: 0.08),
-      blurRadius: 8,
-      offset: const Offset(0, 2),
-    ),
-  ];
+  /// 悬浮卡片阴影（= UtenElevation.mid）
+  static List<BoxShadow> cardShadowLg({bool isDark = false}) =>
+      UtenElevation.mid(isDark: isDark);
 
-  static List<BoxShadow> popoverShadow({bool isDark = false}) => [
-    BoxShadow(
-      color: isDark
-          ? const Color(0xFF000000).withValues(alpha: 0.5)
-          : const Color(0xFF0F172A).withValues(alpha: 0.12),
-      blurRadius: 16,
-      offset: const Offset(0, 8),
-    ),
-  ];
+  /// 弹层/对话框阴影（= UtenElevation.high）
+  static List<BoxShadow> popoverShadow({bool isDark = false}) =>
+      UtenElevation.high(isDark: isDark);
 }

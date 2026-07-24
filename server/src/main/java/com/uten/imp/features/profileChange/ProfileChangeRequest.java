@@ -1,4 +1,4 @@
-package com.uten.imp.features.profileChange;
+package com.uten.imp.features.profilechange;
 
 import com.uten.imp.common.domain.BaseEntity;
 import com.uten.imp.features.org.employee.Employee;
@@ -91,11 +91,4 @@ public class ProfileChangeRequest extends BaseEntity {
 
     @Column(name = "idem_key", nullable = false, length = 64, unique = true)
     private String idemKey;
-
-    /**
-     * 便捷状态判断（替代散落的字符串字面量）。
-     */
-    public boolean isPending() {
-        return "pending".equals(status);
-    }
 }

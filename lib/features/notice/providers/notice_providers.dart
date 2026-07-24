@@ -14,9 +14,9 @@ enum NoticeFilter { all, unread }
 
 extension NoticeFilterValue on NoticeFilter {
   String get label => switch (this) {
-        NoticeFilter.all => '全部',
-        NoticeFilter.unread => '未读',
-      };
+    NoticeFilter.all => '全部',
+    NoticeFilter.unread => '未读',
+  };
 }
 
 final noticeFilterProvider = StateProvider<NoticeFilter>((ref) {
@@ -25,8 +25,8 @@ final noticeFilterProvider = StateProvider<NoticeFilter>((ref) {
 
 final noticeListProvider =
     AsyncNotifierProvider.autoDispose<NoticeListNotifier, List<Notice>>(
-  NoticeListNotifier.new,
-);
+      NoticeListNotifier.new,
+    );
 
 class NoticeListNotifier extends AutoDisposeAsyncNotifier<List<Notice>> {
   @override
@@ -47,10 +47,11 @@ class NoticeListNotifier extends AutoDisposeAsyncNotifier<List<Notice>> {
   }
 }
 
-final noticeDetailProvider =
-    FutureProvider.autoDispose.family<Notice?, String>((ref, id) async {
-  return ref.watch(noticeRepositoryProvider).getById(id);
-});
+final noticeDetailProvider = FutureProvider.autoDispose.family<Notice?, String>(
+  (ref, id) async {
+    return ref.watch(noticeRepositoryProvider).getById(id);
+  },
+);
 
 /// 未读数（用于 Dashboard / 徽章）
 final unreadNoticeCountProvider = FutureProvider.autoDispose<int>((ref) async {

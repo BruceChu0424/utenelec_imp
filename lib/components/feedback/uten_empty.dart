@@ -46,7 +46,10 @@ class UtenEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = isError ? UtenColors.error : theme.colorScheme.onSurfaceVariant;
+    final isDark = theme.brightness == Brightness.dark;
+    final iconColor = isError
+        ? UtenColors.error
+        : (isDark ? UtenColors.darkTextTertiary : UtenColors.textTertiary);
 
     return Center(
       child: Padding(
@@ -58,17 +61,17 @@ class UtenEmpty extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
+                color: iconColor.withValues(alpha: isError ? 0.1 : 0.08),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: color, size: 32),
+              child: Icon(icon, color: iconColor, size: 32),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Text(
               message,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
             ),
@@ -77,13 +80,16 @@ class UtenEmpty extends StatelessWidget {
               Text(
                 description!,
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: isDark
+                      ? UtenColors.darkTextTertiary
+                      : UtenColors.textTertiary,
+                  height: 1.5,
                 ),
                 textAlign: TextAlign.center,
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
               OutlinedButton(
                 onPressed: onAction,
                 style: OutlinedButton.styleFrom(

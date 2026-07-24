@@ -1,16 +1,20 @@
 // 员工档案列表页（真实后端 + 组件库）
 // 卡片化展示（UtenPersonCard），状态走 EmployeeStatusBadge，空/错走 UtenEmpty。
+// 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 文档：docs/03-页面/员工列表页.md
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_person_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
@@ -25,9 +29,7 @@ class EmployeeListPage extends ConsumerStatefulWidget {
 class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   static const _statusKeys = ['active', 'probation', 'onLeave', 'resigned'];
 
-  final _searchCtl = TextEditingController();
   String _search = '';
-  Timer? _debounce;
   final Set<String> _statuses = {};
   final List<EmployeeSummary> _items = [];
   int _page = 1;
@@ -39,26 +41,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   @override
   void initState() {
     super.initState();
-    _searchCtl.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _searchCtl.removeListener(_onSearchChanged);
-    _searchCtl.dispose();
-    super.dispose();
-  }
-
-  void _onSearchChanged() {
-    final v = _searchCtl.text.trim();
-    if (v != _search) {
-      _search = v;
-      // 防抖：停止输入 300ms 后再请求，避免乱序与抖动
-      _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 300), _reload);
-    }
   }
 
   Future<void> _reload() async {
@@ -135,8 +118,57 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+
+    Widget body = Column(
+      children: [
+        // 搜索框：UtenSearchBar 自带 300ms 防抖 + 清除按钮
+        Padding(
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s12,
+            bottom: UtenSpacing.s8,
+          ),
+          child: UtenSearchBar(
+            hint: l10n.employeeSearchHint,
+            onChanged: (v) {
+              final t = v.trim();
+              if (t != _search) {
+                _search = t;
+                _reload();
+              }
+            },
+          ),
+        ),
+        SizedBox(
+          height: 38,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+            children: _statusKeys.map((key) {
+              final selected = _statuses.contains(key);
+              return Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s4,
+                ),
+                child: FilterChip(
+                  label: Text(_statusLabel(l10n, key)),
+                  selected: selected,
+                  onSelected: (_) => _toggleStatus(key),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s4),
+        Expanded(child: _body()),
+      ],
+    );
+    // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.employeeTitle)),
+      appBar: UtenAppBar(title: l10n.employeeTitle, showBackButton: true),
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.person_add_rounded),
         label: Text(l10n.employeeFabOnboard),
@@ -145,48 +177,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
           _reload();
         },
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _searchCtl,
-              decoration: InputDecoration(
-                hintText: l10n.employeeSearchHint,
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                isDense: true,
-                border: const OutlineInputBorder(),
-                suffixIcon: _search.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 18),
-                        onPressed: _searchCtl.clear,
-                      ),
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 38,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: _statusKeys.map((key) {
-                final selected = _statuses.contains(key);
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: FilterChip(
-                    label: Text(_statusLabel(l10n, key)),
-                    selected: selected,
-                    onSelected: (_) => _toggleStatus(key),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Expanded(child: _body()),
-        ],
-      ),
+      body: body,
     );
   }
 
@@ -221,7 +212,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
         if (i == _items.length) {
           if (_page < _totalPages) {
             return Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(UtenSpacing.s16),
               child: Center(
                 child: _loadingMore
                     ? const CircularProgressIndicator()
@@ -232,10 +223,12 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
               ),
             );
           }
+          // 底部留白：避免最后一项被悬浮导航 / FAB 遮挡
           return const SizedBox(height: 80);
         }
         final e = _items[i];
         return UtenPersonCard(
+          margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
           title: e.fullName,
           subtitle:
               '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',

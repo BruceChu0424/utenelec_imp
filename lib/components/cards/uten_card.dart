@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/performance/performance_tier.dart';
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../../shared/providers/performance_provider.dart';
 
 class UtenCard extends ConsumerWidget {
@@ -24,9 +25,9 @@ class UtenCard extends ConsumerWidget {
     this.margin,
     this.onTap,
     this.onLongPress,
-    this.borderRadius = 12,
+    this.borderRadius = 14,
     this.showBorder = true,
-    this.elevation = UtenCardElevation.low,
+    this.elevation = UtenCardElevation.none,
   });
 
   final Widget child;
@@ -74,8 +75,8 @@ class UtenCard extends ConsumerWidget {
 
     final shadows = switch (elevation) {
       UtenCardElevation.none => null,
-      UtenCardElevation.low => UtenColors.cardShadow(isDark: isDark),
-      UtenCardElevation.high => UtenColors.cardShadowLg(isDark: isDark),
+      UtenCardElevation.low => UtenElevation.low(isDark: isDark),
+      UtenCardElevation.high => UtenElevation.high(isDark: isDark),
     };
 
     // 关键：把卡片视觉（背景色 + 边框）放到 Material 本身，让 Material
@@ -88,7 +89,7 @@ class UtenCard extends ConsumerWidget {
     // - 边框：   Material.shape (RoundedRectangleBorder + side)
     // - 圆角裁剪：Material.clipBehavior（替换 Container 的 BoxDecoration.borderRadius）
     // - 阴影：   外层 DecoratedBox（Material 3 elevation 走的是 surface tint
-    //          而非传统阴影，不能直接复刻 UtenColors.cardShadow 的极轻效果）
+    //          而非传统阴影，不能直接复刻 UtenElevation 的极轻双层阴影）
     Widget content = Padding(padding: padding, child: child);
 
     // 卡片自带的 onTap/onLongPress：InkWell 必须放在 Material 内部，

@@ -10,8 +10,6 @@ import java.util.UUID;
 
 public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> {
 
-    List<UserRole> findByIdUserId(UUID userId);
-
     @Query(value = """
             SELECT r.code
             FROM user_roles ur

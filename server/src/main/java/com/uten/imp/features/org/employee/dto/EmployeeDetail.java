@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.UUID;
 
 // NestedDtos 内嵌类（同包，需显式导入）
+import com.uten.imp.features.org.employee.dto.NestedDtos.CredentialDto;
+import com.uten.imp.features.org.employee.dto.NestedDtos.EducationDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EmergencyContactDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EmploymentHistoryDto;
 
@@ -74,4 +76,6 @@ public class EmployeeDetail {
     // 嵌套
     private List<EmergencyContactDto> emergencyContacts;
     private List<EmploymentHistoryDto> history;
+    private List<CredentialDto> certificates;
+    private List<EducationDto> educations;
 }

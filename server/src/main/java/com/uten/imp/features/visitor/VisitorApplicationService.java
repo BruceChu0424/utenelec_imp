@@ -19,9 +19,12 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static com.uten.imp.common.util.Strings.isBlank;
+import static com.uten.imp.common.util.Strings.last4;
+
 /**
  * 访客来访申请：提交 / 查我的 / 详情（访客主体）。
- * 提交时手机号/身份证走 pgcrypto 加密；审批/核验见 {@link VisitorApprovalService}。
+ * 提交时手机号/身份证走 pgcrypto 加密；审批见 {@link VisitorHrApprovalService}，核验见 {@link VisitorGateService}。
  */
 @Service
 @RequiredArgsConstructor
@@ -30,7 +33,7 @@ public class VisitorApplicationService {
     private final VisitorApplicationRepository appRepo;
     private final VisitorApprovalStepRepository stepRepo;
     private final VisitorAccountRepository accountRepo;
-    private final com.uten.imp.features.org.employee.EmployeeRepository employeeRepo;
+    private final VisitorApplicationMapper mapper;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
 
@@ -79,7 +82,7 @@ public class VisitorApplicationService {
             return p;
         };
         return appRepo.findAll(spec, Sort.by(Sort.Direction.DESC, "appliedAt")).stream()
-                .map(this::toListItem)
+                .map(mapper::toListItem)
                 .toList();
     }
 
@@ -108,16 +111,6 @@ public class VisitorApplicationService {
         stepRepo.save(s);
     }
 
-    private VisitorListItem toListItem(VisitorApplication a) {
-        String[] host = hostInfo(a);
-        return new VisitorListItem(
-                a.getId(), a.getVisitorName(), a.getCompany(), a.getVisitPurpose(),
-                host[0], host[1],
-                a.getPlannedVisitAt(), a.getPlannedLeaveAt(),
-                a.getStatus(), a.getAppliedAt(), a.getApprovedAt(),
-                a.isHasVehicle(), a.getPlateNo());
-    }
-
     VisitorDetail toDetail(VisitorApplication a, VisitorAccount acc) {
         List<VisitorApprovalStepDto> steps = stepRepo.findByApplicationIdOrderByActedAtAsc(a.getId()).stream()
                 .map(s -> new VisitorApprovalStepDto(
@@ -135,7 +128,7 @@ public class VisitorApplicationService {
                 phone = tx.decrypt(a.getPhoneEnc());
             }
         } catch (Exception ignored) { }
-        String[] host = hostInfo(a);
+        String[] host = mapper.hostInfo(a);
         return new VisitorDetail(
                 a.getId(), a.getVisitorName(), phone, a.getIdCardLast4(),
                 a.getCompany(), a.getVisitPurpose(), a.isHasVehicle(), tx.decrypt(a.getPlateNoEnc()),
@@ -150,19 +143,14 @@ public class VisitorApplicationService {
         return currentUser.id().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
     }
 
-    private String[] hostInfo(VisitorApplication a) {
-        if (a.getHostEmployeeId() == null) return new String[]{null, null};
-        return employeeRepo.findById(a.getHostEmployeeId())
-                .map(e -> new String[]{e.getFullName(),
-                        e.getDepartment() == null ? null : e.getDepartment().getName()})
-                .orElse(new String[]{null, null});
+    /** 按 id 载入申请（staff 侧各 Service 共用）。 */
+    VisitorApplication load(UUID id) {
+        return appRepo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.VISITOR_NOT_FOUND));
     }
 
-    static boolean isBlank(String s) {
-        return s == null || s.isBlank();
-    }
-
-    static String last4(String s) {
-        return (s == null || s.length() < 4) ? null : s.substring(s.length() - 4);
+    /** 申请对应的访客账号（可空）。 */
+    VisitorAccount accountOf(VisitorApplication a) {
+        return a.getVisitorAccountId() == null ? null
+                : accountRepo.findById(a.getVisitorAccountId()).orElse(null);
     }
 }

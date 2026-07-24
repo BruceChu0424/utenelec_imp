@@ -1,6 +1,7 @@
 // 部门管理页（真实后端 + 响应式 + 组件库）
-// compact：部门树作为抽屉，点部门看详情/员工
-// medium/expanded：左侧部门树（DepartmentTree）+ 右侧详情与员工卡片（UtenPersonCard）
+// compact：部门树作为抽屉，点部门看详情/员工（内容套 UtenContentContainer）
+// medium/expanded：左侧部门树（DepartmentTree）+ 右侧详情与员工卡片（UtenPersonCard），
+//   宽度收敛由 MainShell 统一处理
 // 文档：docs/03-页面/部门管理页.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +10,14 @@ import 'package:go_router/go_router.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/cards/uten_person_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../employee/models/employee_api_models.dart';
@@ -19,7 +25,8 @@ import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/employee_status_badge.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
-import '../widgets/department_tree.dart';
+import '../widgets/position_manager_sheet.dart';
+import '../widgets/uten_department_tree_view.dart';
 
 class DepartmentPage extends ConsumerStatefulWidget {
   const DepartmentPage({super.key});
@@ -121,14 +128,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
                     hintText: l10n.departmentFieldCodeHint,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   controller: nameCtl,
                   decoration: InputDecoration(
                     labelText: l10n.departmentFieldName,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: UtenSpacing.s12),
                 DropdownButtonFormField<String>(
                   initialValue: level,
                   decoration: InputDecoration(
@@ -196,7 +203,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             child: Text(l10n.commonCancel),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(l10n.departmentDelete),
           ),
@@ -217,6 +224,67 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   void _toastSuccess(String msg) {
     if (!mounted) return;
     context.appSuccess(msg);
+  }
+
+  /// 打开部门岗位管理（仅可选层级节点提供入口，trailingBuilder 里控制）。
+  void _showPositions(DepartmentNode node) {
+    showPositionManagerSheet(context, node);
+  }
+
+  /// 全站共享组织树（管理模式）：公司根可见、全部节点可点、选中高亮。
+  /// onSelect：桌面分栏只切选中；compact 抽屉额外负责关闭抽屉。
+  Widget _buildTree(
+    AppLocalizations l10n, {
+    required void Function(String id) onSelect,
+  }) {
+    final theme = Theme.of(context);
+    return UtenDepartmentTreeView(
+      nodes: _tree ?? const <DepartmentNode>[],
+      showCompanyRoot: true,
+      nodeEnabledPredicate: (_) => true,
+      selectedIds: {?_selectedId},
+      onNodeTap: (node) => onSelect(node.id),
+      header: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        color: theme.colorScheme.surface,
+        child: Text(
+          l10n.departmentTreeTitle,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      trailingBuilder: (node) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (node.headcount != null && node.headcount! > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
+                '${node.headcount}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+          if (kSelectableDepartmentLevels.contains(node.level))
+            InkWell(
+              onTap: () => _showPositions(node),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.badge_outlined, size: 16, color: Colors.grey),
+              ),
+            ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _delete(node),
+            child: const Padding(
+              padding: EdgeInsets.all(2),
+              child: Icon(Icons.delete_outline, size: 16, color: Colors.grey),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _toastError(String msg) {
@@ -248,21 +316,22 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               message: l10n.departmentEmpty,
               description: l10n.departmentEmptyHint,
             )
-          : _DetailPane(
-              ref: ref,
-              nodeId: selected.id,
-              onDelete: () => _delete(selected),
+          // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
+          : UtenContentContainer(
+              child: _DetailPane(
+                ref: ref,
+                nodeId: selected.id,
+                onDelete: () => _delete(selected),
+              ),
             );
     } else {
       body = Row(
         children: [
           SizedBox(
             width: 300,
-            child: DepartmentTree(
-              nodes: tree,
-              selectedId: _selectedId,
+            child: _buildTree(
+              l10n,
               onSelect: (id) => setState(() => _selectedId = id),
-              onDelete: _delete,
             ),
           ),
           Container(width: 1, color: theme.colorScheme.outlineVariant),
@@ -280,8 +349,9 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.departmentTitle),
+      appBar: UtenAppBar(
+        title: l10n.departmentTitle,
+        showBackButton: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.add_rounded),
@@ -306,14 +376,12 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       endDrawer: bp == UtenBreakpoint.compact
           ? Drawer(
               child: SafeArea(
-                child: DepartmentTree(
-                  nodes: tree,
-                  selectedId: _selectedId,
+                child: _buildTree(
+                  l10n,
                   onSelect: (id) {
                     setState(() => _selectedId = id);
                     Navigator.of(context).pop();
                   },
-                  onDelete: _delete,
                 ),
               ),
             )
@@ -405,8 +473,13 @@ class _DetailPaneState extends State<_DetailPane> {
       );
     }
     final info = _info;
+    // compact：容器 gutter 已提供水平留白；medium+：详情面板在树右侧，需自带水平内边距
+    final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(
+        horizontal: hPad,
+        vertical: UtenSpacing.s16,
+      ),
       children: [
         if (info != null) ...[
           UtenCard(
@@ -419,17 +492,17 @@ class _DetailPaneState extends State<_DetailPane> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: UtenSpacing.s4),
                 Text(
                   l10n.departmentLevelAndCode(info.level, info.code),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: UtenSpacing.s12),
                 Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
+                  spacing: UtenSpacing.s12,
+                  runSpacing: UtenSpacing.s8,
                   children: [
                     _stat(
                       l10n,
@@ -446,15 +519,13 @@ class _DetailPaneState extends State<_DetailPane> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: UtenSpacing.s16),
         ],
-        Text(
-          l10n.departmentEmployeesHeader(_employees.length),
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        UtenSectionHeader(
+          title: l10n.departmentEmployeesHeader(_employees.length),
+          icon: Icons.people_outline_rounded,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: UtenSpacing.s8),
         if (_employees.isEmpty)
           UtenEmpty(
             icon: Icons.people_outline_rounded,
@@ -463,6 +534,7 @@ class _DetailPaneState extends State<_DetailPane> {
         else
           for (final e in _employees)
             UtenPersonCard(
+              margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
               title: e.fullName,
               subtitle:
                   '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
@@ -470,7 +542,7 @@ class _DetailPaneState extends State<_DetailPane> {
               trailing: EmployeeStatusBadge(status: e.status),
               onTap: () => context.push('/employee/${e.id}'),
             ),
-        const SizedBox(height: 24),
+        const SizedBox(height: UtenSpacing.s24),
       ],
     );
   }
@@ -478,10 +550,13 @@ class _DetailPaneState extends State<_DetailPane> {
   Widget _stat(AppLocalizations l10n, String label, Object? value) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s12,
+        vertical: UtenSpacing.s4,
+      ),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: UtenRadius.mdAll,
       ),
       child: Text(
         l10n.departmentStatValue(label, value ?? '—'),

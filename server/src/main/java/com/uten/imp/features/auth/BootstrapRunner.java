@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.BootstrapProperties;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.auth.model.*;
 import com.uten.imp.features.rbac.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +22,7 @@ import org.springframework.stereotype.Component;
  * <ul>
  *   <li>{@code users.is_super_admin = true}（V16 字段）</li>
  *   <li>不设置 position（V08 INSERT 不写）</li>
- *   <li>不依赖 role_permissions 是否齐全——AuthService.permsOf() 在 isSuperAdmin=true 时
+ *   <li>不依赖 role_permissions 是否齐全——PermissionResolver.permsOf() 在 isSuperAdmin=true 时
  *       直接返回 permissions 表全量</li>
  * </ul>
  * 密码取自 BOOTSTRAP_ADMIN_PASSWORD，Argon2id 哈希入库，must_change_password=true。

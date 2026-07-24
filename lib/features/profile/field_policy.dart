@@ -146,14 +146,15 @@ abstract final class ProfileFieldPolicy {
     return null;
   }
 
-  static bool isDirectEdit(String code) =>
-      selfEditableFields.any((f) => f.code == code && f.kind == FieldPolicyKind.directEdit);
+  static bool isDirectEdit(String code) => selfEditableFields.any(
+    (f) => f.code == code && f.kind == FieldPolicyKind.directEdit,
+  );
 
-  static bool isRequiresReview(String code) =>
-      selfEditableFields.any((f) => f.code == code && f.kind == FieldPolicyKind.requiresReview);
+  static bool isRequiresReview(String code) => selfEditableFields.any(
+    (f) => f.code == code && f.kind == FieldPolicyKind.requiresReview,
+  );
 
-  static bool isHrOnly(String code) =>
-      hrOnlyFields.any((f) => f.code == code);
+  static bool isHrOnly(String code) => hrOnlyFields.any((f) => f.code == code);
 
   /// 当前用户至少有一个可编辑字段（不论直改还是需审核）。
   static bool hasAnyEditable() => selfEditableFields.isNotEmpty;

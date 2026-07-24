@@ -1,5 +1,8 @@
 // 异常告警页（Phase 5）
 // 文档：docs/03-页面/异常告警页.md
+//
+// 响应式：compact 自套 UtenContentContainer 收敛（medium+ 外壳已收敛）；
+// 告警级别统一为 UtenStatusBadge（深浅色安全的柔和底 + 深档文字）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +12,12 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/alert.dart';
@@ -35,54 +41,62 @@ class AlertsPage extends ConsumerWidget {
                 ? AlertFilter.all
                 : AlertFilter.pending;
 
+    final isCompact = context.breakpoint.isCompact;
+    final hPad = isCompact ? 0.0 : UtenSpacing.s16;
+
+    Widget body = Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+              hPad, UtenSpacing.s12, hPad, UtenSpacing.s8),
+          child: UtenSegmentedFilter<AlertFilter>(
+            selected: seg,
+            onChanged: (v) {
+              ref.read(alertStatusFilterProvider.notifier).state = switch (v) {
+                AlertFilter.all => null,
+                AlertFilter.pending => AlertStatus.pending,
+                AlertFilter.processing => AlertStatus.processing,
+                AlertFilter.resolved => AlertStatus.resolved,
+              };
+            },
+            segments: const [
+              UtenSegment(value: AlertFilter.pending, label: '未处理'),
+              UtenSegment(value: AlertFilter.processing, label: '处理中'),
+              UtenSegment(value: AlertFilter.resolved, label: '已解决'),
+              UtenSegment(value: AlertFilter.all, label: '全部'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: listAsync.when(
+            loading: () => const UtenSkeletonList(itemCount: 4),
+            error: (e, _) => UtenEmpty.error(message: '加载失败：$e'),
+            data: (list) {
+              if (list.isEmpty) {
+                return ListView(children: const [
+                  SizedBox(height: 80),
+                  UtenEmpty(icon: Icons.check_circle_outline_rounded, message: '暂无异常告警 🎉'),
+                ]);
+              }
+              return SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                    horizontal: hPad, vertical: UtenSpacing.s16),
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: UtenResponsiveGrid(
+                  itemCount: list.length,
+                  itemBuilder: (context, i, _) => _AlertCard(alert: list[i]),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+    if (isCompact) body = UtenContentContainer(child: body);
+
     return Scaffold(
       appBar: const UtenAppBar(title: '异常告警', showBackButton: true),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: UtenSegmentedFilter<AlertFilter>(
-              selected: seg,
-              onChanged: (v) {
-                ref.read(alertStatusFilterProvider.notifier).state = switch (v) {
-                  AlertFilter.all => null,
-                  AlertFilter.pending => AlertStatus.pending,
-                  AlertFilter.processing => AlertStatus.processing,
-                  AlertFilter.resolved => AlertStatus.resolved,
-                };
-              },
-              segments: const [
-                UtenSegment(value: AlertFilter.pending, label: '未处理'),
-                UtenSegment(value: AlertFilter.processing, label: '处理中'),
-                UtenSegment(value: AlertFilter.resolved, label: '已解决'),
-                UtenSegment(value: AlertFilter.all, label: '全部'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: listAsync.when(
-              loading: () => const UtenSkeletonList(itemCount: 4),
-              error: (e, _) => UtenEmpty.error(message: '加载失败：$e'),
-              data: (list) {
-                if (list.isEmpty) {
-                  return ListView(children: const [
-                    SizedBox(height: 80),
-                    UtenEmpty(icon: Icons.check_circle_outline_rounded, message: '暂无异常告警 🎉'),
-                  ]);
-                }
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: UtenResponsiveGrid(
-                    itemCount: list.length,
-                    itemBuilder: (context, i, _) => _AlertCard(alert: list[i]),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
+      body: body,
     );
   }
 }
@@ -114,7 +128,7 @@ class _AlertCard extends StatelessWidget {
                 ),
                 child: Icon(alert.type.icon, color: levelColor, size: 20),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: UtenSpacing.s12),
               Expanded(
                 child: Wrap(
                   crossAxisAlignment: WrapCrossAlignment.center,
@@ -124,14 +138,14 @@ class _AlertCard extends StatelessWidget {
                         label: alert.type.label,
                         type: UtenStatusBadgeType.neutral,
                         size: UtenStatusBadgeSize.small),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: levelColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text('${alert.level.label}级',
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                    UtenStatusBadge(
+                      label: '${alert.level.label}级',
+                      type: switch (alert.level) {
+                        AlertLevel.high => UtenStatusBadgeType.danger,
+                        AlertLevel.medium => UtenStatusBadgeType.warning,
+                        AlertLevel.low => UtenStatusBadgeType.neutral,
+                      },
+                      size: UtenStatusBadgeSize.small,
                     ),
                   ],
                 ),
@@ -147,13 +161,13 @@ class _AlertCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           Text(alert.content, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           Row(
             children: [
               Icon(Icons.location_on_outlined, size: 13, color: theme.colorScheme.onSurfaceVariant),
-              const SizedBox(width: 4),
+              const SizedBox(width: UtenSpacing.s4),
               Expanded(
                 child: Text(alert.source ?? '—',
                     maxLines: 1,
@@ -166,9 +180,9 @@ class _AlertCard extends StatelessWidget {
             ],
           ),
           if (alert.status == AlertStatus.pending) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: UtenSpacing.s12),
             const Divider(),
-            const SizedBox(height: 4),
+            const SizedBox(height: UtenSpacing.s4),
             Align(
               alignment: Alignment.centerRight,
               child: UtenActionButton(

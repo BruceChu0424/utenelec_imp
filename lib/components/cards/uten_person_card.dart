@@ -18,7 +18,7 @@ class UtenPersonCard extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.margin = const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-    this.elevation = UtenCardElevation.low,
+    this.elevation = UtenCardElevation.none,
   });
 
   final String title;

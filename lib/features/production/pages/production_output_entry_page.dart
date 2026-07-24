@@ -1,14 +1,20 @@
 // 产量录入页（Phase 4）
 // 文档：docs/03-页面/产量录入页.md
+//
+// 响应式：全断点套 UtenContentContainer.narrow（maxWidth 1120）——
+// 外壳只收敛到 1600，表单页需自行钳窄居中
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/production.dart';
 import '../providers/production_providers.dart';
@@ -77,14 +83,18 @@ class _ProductionOutputEntryPageState
         child: Row(
           children: [
             Expanded(
-              child: OutlinedButton(
+              child: UtenButton(
+                type: UtenButtonType.ghost,
+                isExpanded: true,
                 onPressed: _saving ? null : () => _save(keepGoing: true),
                 child: const Text('保存并继续'),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: UtenSpacing.s12),
             Expanded(
-              child: FilledButton(
+              child: UtenButton(
+                isExpanded: true,
+                isLoading: _saving,
                 onPressed: _saving ? null : () => _save(keepGoing: false),
                 child: const Text('保存'),
               ),
@@ -92,16 +102,15 @@ class _ProductionOutputEntryPageState
           ],
         ),
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+      // narrow 容器：compact 提供 gutter，medium+ 把表单钳到 1120 居中
+      body: UtenContentContainer.narrow(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 UtenCard(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
                   child: Column(
                     children: [
                       _Dropdown(
@@ -115,7 +124,7 @@ class _ProductionOutputEntryPageState
                       Row(
                         children: [
                           const Text('班次'),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: UtenSpacing.s12),
                           SegmentedButton<Shift>(
                             selected: {_shift},
                             onSelectionChanged: (s) =>
@@ -127,7 +136,7 @@ class _ProductionOutputEntryPageState
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: UtenSpacing.s12),
                       Row(
                         children: [
                           Expanded(
@@ -140,7 +149,7 @@ class _ProductionOutputEntryPageState
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: UtenSpacing.s12),
                           Expanded(
                             child: TextField(
                               controller: _unqualified,
@@ -156,12 +165,12 @@ class _ProductionOutputEntryPageState
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: UtenSpacing.s20),
                 const UtenSectionHeader(title: '今日已录入'),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 if (outputs.isEmpty)
                   const Padding(
-                    padding: EdgeInsets.all(16),
+                    padding: EdgeInsets.all(UtenSpacing.s16),
                     child: Text('暂无记录', style: TextStyle(color: UtenColors.slate400)),
                   )
                 else
@@ -187,7 +196,6 @@ class _ProductionOutputEntryPageState
               ],
             ),
           ),
-        ),
       ),
     );
   }
@@ -207,7 +215,7 @@ class _Dropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
         child: DropdownButtonFormField<String>(
           initialValue: value,
           decoration: InputDecoration(

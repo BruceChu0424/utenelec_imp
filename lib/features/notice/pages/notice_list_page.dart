@@ -1,4 +1,5 @@
 // 通知列表页（卡片网格版）
+// 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 文档：docs/03-页面/通知列表页.md
 
 import 'package:flutter/material.dart';
@@ -8,10 +9,13 @@ import 'package:go_router/go_router.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
@@ -25,82 +29,95 @@ class NoticeListPage extends ConsumerWidget {
     final list = ref.watch(noticeListProvider);
     final filter = ref.watch(noticeFilterProvider);
 
-    return Scaffold(
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: UtenSegmentedFilter<NoticeFilter>(
-              selected: filter,
-              onChanged: (v) =>
-                  ref.read(noticeFilterProvider.notifier).state = v,
-              segments: const [
-                UtenSegment(value: NoticeFilter.all, label: '全部'),
-                UtenSegment(value: NoticeFilter.unread, label: '未读'),
-              ],
+    Widget body = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s12,
+            bottom: UtenSpacing.s8,
+          ),
+          child: UtenSegmentedFilter<NoticeFilter>(
+            selected: filter,
+            onChanged: (v) =>
+                ref.read(noticeFilterProvider.notifier).state = v,
+            segments: const [
+              UtenSegment(value: NoticeFilter.all, label: '全部'),
+              UtenSegment(value: NoticeFilter.unread, label: '未读'),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(
+            right: UtenSpacing.s8,
+            bottom: UtenSpacing.s4,
+          ),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: UtenActionButton(
+              type: UtenActionButtonType.ghost,
+              size: UtenActionButtonSize.small,
+              label: const Text('全部已读'),
+              onAction: () async {
+                await markAllNoticeRead(ref);
+                if (context.mounted) {
+                  context.appSuccess('全部已读');
+                }
+              },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: UtenActionButton(
-                type: UtenActionButtonType.ghost,
-                size: UtenActionButtonSize.small,
-                label: const Text('全部已读'),
-                onAction: () async {
-                  await markAllNoticeRead(ref);
-                  if (context.mounted) {
-                    context.appSuccess('全部已读');
-                  }
-                },
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => ref.read(noticeListProvider.notifier).refresh(),
+            child: list.when(
+              loading: () => const UtenSkeletonList(itemCount: 6),
+              error: (e, _) => UtenEmpty.error(
+                message: '加载失败：$e',
+                onAction: () => ref.invalidate(noticeListProvider),
               ),
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => ref.read(noticeListProvider.notifier).refresh(),
-              child: list.when(
-                loading: () => const UtenSkeletonList(itemCount: 6),
-                error: (e, _) => UtenEmpty.error(
-                  message: '加载失败：$e',
-                  onAction: () => ref.invalidate(noticeListProvider),
-                ),
-                data: (notices) {
-                  if (notices.isEmpty) {
-                    return ListView(
-                      children: const [
-                        SizedBox(height: 80),
-                        UtenEmpty(
-                          icon: Icons.notifications_none_rounded,
-                          message: '暂无通知',
-                        ),
-                      ],
-                    );
-                  }
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    child: UtenResponsiveGrid(
-                      itemCount: notices.length,
-                      itemBuilder: (context, i, _) => _NoticeCard(
-                        notice: notices[i],
-                        onTap: () {
-                          if (!notices[i].isRead) {
-                            markNoticeRead(ref, notices[i].id);
-                          }
-                          context.push(RoutePath.noticeDetail(notices[i].id));
-                        },
+              data: (notices) {
+                if (notices.isEmpty) {
+                  return ListView(
+                    children: const [
+                      SizedBox(height: UtenSpacing.s48),
+                      UtenEmpty(
+                        icon: Icons.notifications_none_rounded,
+                        message: '暂无通知',
                       ),
-                    ),
+                    ],
                   );
-                },
-              ),
+                }
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(
+                    top: UtenSpacing.s16,
+                    bottom: 96, // 底部悬浮胶囊导航留白
+                  ),
+                  child: UtenResponsiveGrid(
+                    itemCount: notices.length,
+                    itemBuilder: (context, i, _) => _NoticeCard(
+                      notice: notices[i],
+                      onTap: () {
+                        if (!notices[i].isRead) {
+                          markNoticeRead(ref, notices[i].id);
+                        }
+                        context.push(RoutePath.noticeDetail(notices[i].id));
+                      },
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+    // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
+    return Scaffold(body: body);
   }
 }
 
@@ -116,7 +133,7 @@ class _NoticeCard extends StatelessWidget {
 
     return UtenCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(UtenSpacing.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -126,18 +143,19 @@ class _NoticeCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s8,
+                  vertical: UtenSpacing.s4,
+                ),
                 decoration: BoxDecoration(
                   color: notice.type.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: UtenRadius.smAll,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(notice.type.icon,
-                        size: 12, color: notice.type.color),
-                    const SizedBox(width: 4),
+                    Icon(notice.type.icon, size: 12, color: notice.type.color),
+                    const SizedBox(width: UtenSpacing.s4),
                     Text(
                       notice.type.label,
                       style: TextStyle(
@@ -154,9 +172,12 @@ class _NoticeCard extends StatelessWidget {
                 children: [
                   if (notice.topPriority)
                     const Padding(
-                      padding: EdgeInsets.only(right: 6),
-                      child: Icon(Icons.push_pin_rounded,
-                          size: 14, color: UtenColors.warning),
+                      padding: EdgeInsets.only(right: UtenSpacing.s4),
+                      child: Icon(
+                        Icons.push_pin_rounded,
+                        size: 14,
+                        color: UtenColors.warning,
+                      ),
                     ),
                   if (!notice.isRead)
                     Container(
@@ -171,7 +192,7 @@ class _NoticeCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: UtenSpacing.s12),
           // 标题
           Text(
             notice.title,
@@ -181,7 +202,7 @@ class _NoticeCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           // 摘要
           Text(
             notice.content,
@@ -192,9 +213,9 @@ class _NoticeCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: UtenSpacing.s12),
           const Divider(),
-          const SizedBox(height: 10),
+          const SizedBox(height: UtenSpacing.s12),
           // 底部：发布人 + 时间
           Row(
             children: [
@@ -203,7 +224,7 @@ class _NoticeCard extends StatelessWidget {
                 size: 16,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: UtenSpacing.s4),
               Flexible(
                 child: Text(
                   notice.publisher,
@@ -214,7 +235,7 @@ class _NoticeCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: UtenSpacing.s8),
               Text(
                 _fmt(notice.publishedAt),
                 style: theme.textTheme.bodySmall?.copyWith(

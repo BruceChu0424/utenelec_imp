@@ -2,7 +2,6 @@ package com.uten.imp;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Uten IMP 后端入口。
@@ -15,7 +14,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * 用 Argon2id 哈希创建，首登强制改密。
  */
 @SpringBootApplication
-@EnableScheduling
 public class UtenImpApplication {
 
     public static void main(String[] args) {

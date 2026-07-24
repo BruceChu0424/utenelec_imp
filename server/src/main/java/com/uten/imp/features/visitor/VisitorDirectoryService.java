@@ -33,13 +33,19 @@ public class VisitorDirectoryService {
 
     public List<DepartmentDirectoryItem> listDepartments() {
         return departmentRepo.findAll().stream()
+                // 软删部门不泄露给访客（与 DepartmentService.tree 的过滤一致）
+                .filter(d -> !d.isDeleted())
                 // 排除公司根节点：访客接待必须选到下属部门，否则按部门查员工会得到空集。
                 .filter(d -> !COMPANY_LEVEL.equals(d.getLevel()))
+                // 与部门管理页一致：sortOrder 优先（null 兜底排最后），同级按名称。
+                .sorted(Comparator
+                        .comparing(Department::getSortOrder, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(Department::getName))
                 .map(d -> new DepartmentDirectoryItem(
                         d.getId(),
                         d.getName(),
+                        d.getLevel(),
                         d.getParent() == null ? null : d.getParent().getId()))
-                .sorted(Comparator.comparing(DepartmentDirectoryItem::name))
                 .toList();
     }
 

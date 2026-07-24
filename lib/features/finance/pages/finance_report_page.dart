@@ -1,14 +1,19 @@
 // 财务报表页（Phase 3）
 // 文档：docs/03-页面/财务报表页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
 
 import 'package:flutter/material.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../components/buttons/click_guard.dart';
 
@@ -18,6 +23,63 @@ class FinanceReportPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wide = context.breakpoint.atLeastMedium;
+
+    // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+    Widget body = SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 筛选行
+          UtenCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s16,
+              vertical: 10,
+            ),
+            child: Row(
+              children: [
+                const Text('2026年7月',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(width: 6),
+                const Text('· 全公司',
+                    style: TextStyle(color: UtenColors.slate500)),
+                const Spacer(),
+                TextButton(
+                  onPressed: () {},
+                  child: const Text('切换'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          // KPI 矩阵（响应式列数）
+          UtenResponsiveGrid(
+            itemCount: _kpi.length,
+            columns: const UtenResponsiveColumns(compact: 2),
+            itemBuilder: (context, i, _) => _KpiCard(data: _kpi[i]),
+          ),
+          const SizedBox(height: UtenSpacing.s24),
+          // 图表区（大屏并排，小屏堆叠）
+          if (wide)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _TrendChart()),
+                const SizedBox(width: UtenSpacing.s16),
+                Expanded(child: _CostChart()),
+              ],
+            )
+          else ...[
+            _TrendChart(),
+            const SizedBox(height: UtenSpacing.s16),
+            _CostChart(),
+          ],
+        ],
+      ),
+    );
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -37,62 +99,7 @@ class FinanceReportPage extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1100),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 筛选行
-                UtenCard(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(
-                    children: [
-                      const Text('2026年7月',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(width: 6),
-                      const Text('· 全公司',
-                          style: TextStyle(color: UtenColors.slate500)),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text('切换'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // KPI 矩阵（响应式列数）
-                UtenResponsiveGrid(
-                  itemCount: _kpi.length,
-                  columns: const UtenResponsiveColumns(
-                      compact: 2),
-                  itemBuilder: (context, i, _) => _KpiCard(data: _kpi[i]),
-                ),
-                const SizedBox(height: 24),
-                // 图表区（大屏并排，小屏堆叠）
-                if (wide)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _TrendChart()),
-                      const SizedBox(width: 16),
-                      Expanded(child: _CostChart()),
-                    ],
-                  )
-                else ...[
-                  _TrendChart(),
-                  const SizedBox(height: 16),
-                  _CostChart(),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+      body: body,
     );
   }
 }

@@ -11,6 +11,8 @@
 //   2) 若含 requiresReview 字段 → 弹密码框 → verify-password → 提交
 //   3) 后端原子处理（直改立即生效，需审核进 pending 批次）
 //   4) 成功通知 → 跳回 /profile
+//
+// 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,12 +20,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -133,11 +139,13 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       final newValue = ctrl.text.trim();
       final oldValue = _initialValue(def.code);
       if (newValue == (oldValue ?? '')) continue;
-      dirty.add(ProfileFieldChange(
-        fieldCode: def.code,
-        fieldLabel: _labelOf(def.code),
-        newValue: newValue,
-      ));
+      dirty.add(
+        ProfileFieldChange(
+          fieldCode: def.code,
+          fieldLabel: _labelOf(def.code),
+          newValue: newValue,
+        ),
+      );
     }
     return dirty;
   }
@@ -196,12 +204,9 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     setState(() => _saving = true);
     try {
       final idem = DateTime.now().microsecondsSinceEpoch.toString();
-      await ref.read(profileChangeRepositoryProvider).submit(
-            SubmitProfileChangeRequest(
-              changes: dirty,
-              idemKey: idem,
-            ),
-          );
+      await ref
+          .read(profileChangeRepositoryProvider)
+          .submit(SubmitProfileChangeRequest(changes: dirty, idemKey: idem));
       if (!mounted) return;
       final onlyDirect = dirty.every(
         (c) => ProfileFieldPolicy.isDirectEdit(c.fieldCode),
@@ -240,7 +245,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
               l10n.profileChangePasswordHint,
               style: Theme.of(ctx).textTheme.bodySmall,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: UtenSpacing.s12),
             UtenInput(
               label: l10n.profileChangePasswordLabel,
               isPassword: true,
@@ -287,17 +292,16 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.profileChangeEditTitle),
+      appBar: UtenAppBar(title: l10n.profileChangeEditTitle, showBackButton: true),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(_error!, style: theme.textTheme.bodyMedium),
-                  ),
-                )
-              : _buildForm(context, l10n, theme),
+          ? UtenEmpty.error(
+              message: _error,
+              actionLabel: l10n.commonRetry,
+              onAction: _load,
+            )
+          : _buildForm(context, l10n, theme),
       bottomNavigationBar: _loading || _error != null
           ? null
           : UtenBottomActionBar(
@@ -311,7 +315,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
                       child: Text(l10n.profileChangeCancel2),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: UtenSpacing.s12),
                   Expanded(
                     flex: 2,
                     child: UtenButton(
@@ -328,7 +332,11 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     );
   }
 
-  Widget _buildForm(BuildContext context, AppLocalizations l10n, ThemeData theme) {
+  Widget _buildForm(
+    BuildContext context,
+    AppLocalizations l10n,
+    ThemeData theme,
+  ) {
     final basic = ProfileFieldPolicy.selfEditableFields
         .where((f) => f.kind == FieldPolicyKind.directEdit)
         .toList();
@@ -336,43 +344,45 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         .where((f) => f.kind == FieldPolicyKind.requiresReview)
         .toList();
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
+    return UtenContentContainer.narrow(
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        children: [
         UtenSectionHeader(title: l10n.profileChangeSectionBasic),
-        const SizedBox(height: 8),
+        const SizedBox(height: UtenSpacing.s8),
         UtenCard(
-          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (int i = 0; i < basic.length; i++) ...[
                 _buildField(basic[i], l10n, review: false),
-                if (i < basic.length - 1) const SizedBox(height: 12),
+                if (i < basic.length - 1)
+                  const SizedBox(height: UtenSpacing.s12),
               ],
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: UtenSpacing.s24),
         UtenSectionHeader(title: l10n.profileChangeSectionReview),
-        const SizedBox(height: 8),
+        const SizedBox(height: UtenSpacing.s8),
         UtenCard(
-          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (int i = 0; i < review.length; i++) ...[
                 _buildField(review[i], l10n, review: true),
-                if (i < review.length - 1) const SizedBox(height: 12),
+                if (i < review.length - 1)
+                  const SizedBox(height: UtenSpacing.s12),
               ],
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: UtenSpacing.s24),
         UtenSectionHeader(title: l10n.profileChangeEditHrOnlyHint),
-        const SizedBox(height: 8),
+        const SizedBox(height: UtenSpacing.s8),
         UtenCard(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
           child: Column(
             children: [
               for (final def in ProfileFieldPolicy.hrOnlyFields)
@@ -389,12 +399,17 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
             ],
           ),
         ),
-        const SizedBox(height: 80),
-      ],
+        const SizedBox(height: 80), // 底部固定操作栏留白
+        ],
+      ),
     );
   }
 
-  Widget _buildField(ProfileFieldDef def, AppLocalizations l10n, {required bool review}) {
+  Widget _buildField(
+    ProfileFieldDef def,
+    AppLocalizations l10n, {
+    required bool review,
+  }) {
     final theme = Theme.of(context);
     final ctrl = _ctrls[def.code] ?? TextEditingController();
     return Column(
@@ -410,36 +425,28 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
                 ),
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: review
-                    ? theme.colorScheme.tertiaryContainer
-                    : theme.colorScheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                review ? l10n.profileChangeFieldReview : l10n.profileChangeFieldDirect,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: review
-                      ? theme.colorScheme.onTertiaryContainer
-                      : theme.colorScheme.onSecondaryContainer,
-                ),
-              ),
+            // 字段策略徽章：需审核 = 警告色，直改生效 = 成功色
+            UtenStatusBadge(
+              label: review
+                  ? l10n.profileChangeFieldReview
+                  : l10n.profileChangeFieldDirect,
+              type: review
+                  ? UtenStatusBadgeType.warning
+                  : UtenStatusBadgeType.success,
+              size: UtenStatusBadgeSize.small,
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: UtenSpacing.s8),
         UtenInput(
           controller: ctrl,
-          keyboardType: def.code == ProfileFieldPolicy.phone ||
+          keyboardType:
+              def.code == ProfileFieldPolicy.phone ||
                   def.code == ProfileFieldPolicy.officePhone
               ? TextInputType.phone
               : def.code == ProfileFieldPolicy.email
-                  ? TextInputType.emailAddress
-                  : TextInputType.text,
+              ? TextInputType.emailAddress
+              : TextInputType.text,
           validator: _validatorFor(def.code),
         ),
       ],

@@ -1,4 +1,7 @@
 // 访客预约详情：状态 + 信息 + 已批准显示二维码凭证 + 审批轨迹。
+//
+// 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer.narrow
+//（详情页宜窄，宽屏居中不拉宽，水平 gutter 由容器提供）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,10 +11,12 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/scale.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/visitor_application.dart';
 import '../providers/visitor_providers.dart';
 import '../widgets/visitor_qr_widget.dart';
@@ -32,7 +37,7 @@ class VisitorApplicationDetailPage extends ConsumerWidget {
         showBackButton: true,
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh_rounded),
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.invalidate(visitorApplicationDetailProvider(applicationId)),
           ),
         ],
@@ -47,76 +52,80 @@ class VisitorApplicationDetailPage extends ConsumerWidget {
         data: (d) {
           final app = d.application;
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _StatusCard(app: app),
-                const SizedBox(height: 16),
-                if (app.status == VisitorApplicationStatus.approved &&
-                    app.qrToken != null && app.qrToken!.isNotEmpty) ...[
-                  UtenCard(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        UtenSectionHeader(title: l10n.visitorDetailQr, icon: Icons.qr_code_2_rounded),
-                        const SizedBox(height: 16),
-                        Center(child: VisitorQrWidget(token: app.qrToken!)),
-                        const SizedBox(height: 12),
-                        Text(l10n.visitorDetailQrHint,
-                            style: Theme.of(context).textTheme.bodySmall,
-                            textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        Text(l10n.visitorPasscodeLabel,
-                            style: Theme.of(context).textTheme.bodySmall),
-                        const SizedBox(height: 4),
-                        Text(app.passcode ?? '',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.w800, letterSpacing: 6)),
-                      ],
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+            // 详情窄收敛（全断点）：水平 gutter 由容器提供
+            child: UtenContentContainer.narrow(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _StatusCard(app: app),
+                  const SizedBox(height: UtenSpacing.s16),
+                  if (app.status == VisitorApplicationStatus.approved &&
+                      app.qrToken != null && app.qrToken!.isNotEmpty) ...[
+                    UtenCard(
+                      padding: const EdgeInsets.all(UtenSpacing.s20),
+                      child: Column(
+                        children: [
+                          UtenSectionHeader(title: l10n.visitorDetailQr, icon: Icons.qr_code_2_rounded),
+                          const SizedBox(height: UtenSpacing.s16),
+                          Center(child: VisitorQrWidget(token: app.qrToken!)),
+                          const SizedBox(height: UtenSpacing.s12),
+                          Text(l10n.visitorDetailQrHint,
+                              style: Theme.of(context).textTheme.bodySmall,
+                              textAlign: TextAlign.center),
+                          const SizedBox(height: UtenSpacing.s16),
+                          Text(l10n.visitorPasscodeLabel,
+                              style: Theme.of(context).textTheme.bodySmall),
+                          const SizedBox(height: UtenSpacing.s4),
+                          Text(app.passcode ?? '',
+                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 6,
+                                  fontFeatures: const [FontFeature.tabularFigures()])),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                UtenCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      UtenSectionHeader(title: l10n.visitorDetailPurpose, icon: Icons.description_outlined),
-                      UtenInfoRow(label: l10n.visitorApplyName, value: app.visitorName),
-                      UtenInfoRow(
-                          label: l10n.visitorDetailHost,
-                          value: app.hostName ?? app.hostDepartment ?? '—'),
-                      UtenInfoRow(
-                          label: l10n.visitorDetailVisitTime, value: fmtDateTime(app.plannedVisitAt)),
-                      if (app.hasVehicle && app.plateNo != null)
-                        UtenInfoRow(label: l10n.securityPlate, value: app.plateNo),
-                      UtenInfoRow(label: l10n.visitorDetailAppliedAt, value: fmtDateTime(app.appliedAt)),
-                      if (app.approvedAt != null)
-                        UtenInfoRow(
-                            label: l10n.visitorDetailApprovedAt, value: fmtDateTime(app.approvedAt!)),
-                      if (app.rejectReason != null && app.rejectReason!.isNotEmpty)
-                        UtenInfoRow(label: l10n.visitorDetailRejectReason, value: app.rejectReason),
-                    ],
-                  ),
-                ),
-                if (d.steps.isNotEmpty) ...[
-                  const SizedBox(height: 16),
+                    const SizedBox(height: UtenSpacing.s16),
+                  ],
                   UtenCard(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        UtenSectionHeader(title: l10n.visitorDetailTimeline, icon: Icons.timeline_rounded),
-                        const SizedBox(height: 12),
-                        for (final s in d.steps) _StepRow(step: s),
+                        UtenSectionHeader(title: l10n.visitorDetailPurpose, icon: Icons.description_outlined),
+                        UtenInfoRow(label: l10n.visitorApplyName, value: app.visitorName),
+                        UtenInfoRow(
+                            label: l10n.visitorDetailHost,
+                            value: app.hostName ?? app.hostDepartment ?? '—'),
+                        UtenInfoRow(
+                            label: l10n.visitorDetailVisitTime, value: fmtDateTime(app.plannedVisitAt)),
+                        if (app.hasVehicle && app.plateNo != null)
+                          UtenInfoRow(label: l10n.securityPlate, value: app.plateNo),
+                        UtenInfoRow(label: l10n.visitorDetailAppliedAt, value: fmtDateTime(app.appliedAt)),
+                        if (app.approvedAt != null)
+                          UtenInfoRow(
+                              label: l10n.visitorDetailApprovedAt, value: fmtDateTime(app.approvedAt!)),
+                        if (app.rejectReason != null && app.rejectReason!.isNotEmpty)
+                          UtenInfoRow(label: l10n.visitorDetailRejectReason, value: app.rejectReason),
                       ],
                     ),
                   ),
+                  if (d.steps.isNotEmpty) ...[
+                    const SizedBox(height: UtenSpacing.s16),
+                    UtenCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          UtenSectionHeader(title: l10n.visitorDetailTimeline, icon: Icons.timeline_rounded),
+                          const SizedBox(height: UtenSpacing.s12),
+                          for (final s in d.steps) _StepRow(step: s),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: UtenSpacing.s24),
                 ],
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           );
         },
@@ -134,7 +143,7 @@ class _StatusCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return UtenCard(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(UtenSpacing.s20),
       child: Row(
         children: [
           Container(
@@ -146,7 +155,7 @@ class _StatusCard extends StatelessWidget {
             ),
             child: Icon(visitorStatusIcon(app.status), color: visitorStatusColor(app.status), size: context.scaled(28)),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: UtenSpacing.s16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,9 +163,8 @@ class _StatusCard extends StatelessWidget {
                 UtenStatusBadge(
                   label: visitorStatusLabel(app.status, l10n),
                   type: visitorBadgeType(app.status),
-                  size: UtenStatusBadgeSize.medium,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 Text(app.visitPurpose,
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                     maxLines: 2,
@@ -178,12 +186,12 @@ class _StepRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(_actionIcon(step.action), size: 18, color: UtenColors.teal600),
-          const SizedBox(width: 10),
+          const SizedBox(width: UtenSpacing.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -1,5 +1,8 @@
 // 出入库记录页（Phase 4）
 // 文档：docs/03-页面/出入库记录页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +12,12 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/inventory.dart';
 import '../providers/inventory_providers.dart';
 
@@ -33,12 +39,14 @@ class InventoryMovementPage extends ConsumerWidget {
                 ? MovementFilter.transfer
                 : MovementFilter.all;
 
-    return Scaffold(
-      appBar: const UtenAppBar(title: '出入库记录', showBackButton: true),
-      body: Column(
+    // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+    Widget body = Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.only(
+              top: UtenSpacing.s12,
+              bottom: UtenSpacing.s8,
+            ),
             child: UtenSegmentedFilter<MovementFilter>(
               selected: seg,
               onChanged: (v) {
@@ -70,7 +78,9 @@ class InventoryMovementPage extends ConsumerWidget {
                   ]);
                 }
                 return SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s16,
+                  ),
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: UtenResponsiveGrid(
                     itemCount: list.length,
@@ -81,7 +91,14 @@ class InventoryMovementPage extends ConsumerWidget {
             ),
           ),
         ],
-      ),
+      );
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
+    return Scaffold(
+      appBar: const UtenAppBar(title: '出入库记录', showBackButton: true),
+      body: body,
     );
   }
 }
@@ -119,7 +136,7 @@ class _MovementCard extends StatelessWidget {
               color: color,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: UtenSpacing.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -138,7 +155,7 @@ class _MovementCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: UtenSpacing.s4),
                 Text('${m.warehouse} · ${m.operatorName} · ${m.ref ?? '—'}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

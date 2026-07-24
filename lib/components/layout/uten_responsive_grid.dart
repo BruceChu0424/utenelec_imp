@@ -22,13 +22,14 @@ import 'package:flutter/material.dart';
 /// - 500-800: 2 列（手机横屏 / 小平板）
 /// - 800-1100: 3 列（平板）
 /// - 1100-1500: 4 列（桌面）
-/// - > 1500: 5 列（超宽屏）
+/// - 1500-1900: 5 列（宽屏）
+/// - >= 1900: 6 列（超宽屏）
 class UtenResponsiveGrid extends StatelessWidget {
   const UtenResponsiveGrid({
     super.key,
     required this.itemCount,
     required this.itemBuilder,
-    this.spacing = 14,
+    this.spacing = 16,
     this.runSpacing,
     this.padding,
     this.columns,
@@ -108,7 +109,8 @@ class UtenResponsiveGrid extends StatelessWidget {
     if (width < 800) return 2;
     if (width < 1100) return 3;
     if (width < 1500) return 4;
-    return 5;
+    if (width < 1900) return 5;
+    return 6;
   }
 }
 

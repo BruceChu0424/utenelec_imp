@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 
 class HrPendingBadge extends ConsumerWidget {
@@ -15,31 +16,10 @@ class HrPendingBadge extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(pendingReviewCountProvider);
-    if (count <= 0) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final label = count > 99 ? '99+' : count.toString();
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: showLabel ? 8 : (size / 4),
-        vertical: showLabel ? 2 : 0,
-      ),
-      constraints: BoxConstraints(minWidth: size, minHeight: size),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.error,
-        borderRadius: BorderRadius.circular(size),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: theme.colorScheme.onError,
-          fontSize: showLabel ? 11 : 10,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+    return UtenNotificationBadge(
+      count: count,
+      size: size,
+      showLabel: showLabel,
     );
   }
 }

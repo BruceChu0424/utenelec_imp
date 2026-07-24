@@ -22,8 +22,4 @@ public class DataAccessPolicy {
     public boolean canSeeSalary(Set<String> roles) {
         return roles.contains("hr") || roles.contains("finance") || roles.contains("admin");
     }
-
-    public boolean isAdmin(Set<String> roles) {
-        return roles.contains("admin");
-    }
 }

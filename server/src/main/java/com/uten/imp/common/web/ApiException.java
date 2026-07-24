@@ -22,10 +22,4 @@ public class ApiException extends RuntimeException {
         this.code = code;
         this.fieldErrors = null;
     }
-
-    public ApiException(ErrorCode code, String message, List<ApiError.FieldError> fieldErrors) {
-        super(message);
-        this.code = code;
-        this.fieldErrors = fieldErrors;
-    }
 }

@@ -10,8 +10,6 @@ import java.util.UUID;
 
 public interface VisitorApplicationRepository
         extends JpaRepository<VisitorApplication, UUID>, JpaSpecificationExecutor<VisitorApplication> {
-    Optional<VisitorApplication> findByQrToken(String qrToken);
-
     Optional<VisitorApplication> findByPasscode(String passcode);
 
     /** M2：悲观锁查询（SELECT ... FOR UPDATE），防 checkIn 并发重复签到。 */

@@ -3,12 +3,14 @@
 //
 // 包含：主题切换 / 语言切换 / 字号调节 / 性能档切换 / 关于 / 退出登录
 // 外观 + 性能 + 关于 三段与 VisitorSettingsPage 共享 SettingsSection 布局。
+// 全断点套 UtenContentContainer.narrow：长列表行在宽屏下收敛到 1120，保证可读性。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/settings/uten_font_scaler.dart';
 import '../../../components/settings/uten_locale_switcher.dart';
 import '../../../components/settings/uten_performance_switcher.dart';
@@ -16,6 +18,7 @@ import '../../../components/settings/uten_theme_switcher.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/settings_section.dart';
 
@@ -28,112 +31,127 @@ class SettingsPage extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 外观区
-            SettingsSection(
-              title: l10n.settingsSectionAppearance,
-              children: [
-                SettingsItem(
-                  title: l10n.settingsThemeMode,
-                  child: const UtenThemeSwitcher(),
+      body: UtenContentContainer.narrow(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s16,
+            bottom: 96, // 底部悬浮胶囊导航留白
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 外观区
+              SettingsSection(
+                title: l10n.settingsSectionAppearance,
+                children: [
+                  SettingsItem(
+                    title: l10n.settingsThemeMode,
+                    child: const UtenThemeSwitcher(),
+                  ),
+                  SettingsItem(
+                    title: l10n.settingsLanguage,
+                    child: const UtenLocaleSwitcher(),
+                  ),
+                  SettingsItem(
+                    title: l10n.settingsFontSize,
+                    child: const UtenFontScaler(),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: UtenSpacing.s24),
+
+              // 性能区
+              SettingsSection(
+                title: l10n.settingsSectionPerformance,
+                children: [
+                  SettingsItem(
+                    title: l10n.settingsPerformanceTier,
+                    subtitle: l10n.settingsPerformanceHint,
+                    child: const UtenPerformanceTierSwitcher(),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: UtenSpacing.s24),
+
+              // 关于
+              SettingsSection(
+                title: l10n.settingsSectionAbout,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.info_outline, size: 20),
+                    title: Text(l10n.settingsVersion),
+                    trailing: const Text('0.1.0 (Phase 0)'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: UtenSpacing.s24),
+
+              // 账号
+              SettingsSection(
+                title: '账号',
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: ListTile(
+                      leading: const Icon(Icons.lock_outline_rounded, size: 20),
+                      title: const Text('修改密码'),
+                      subtitle: const Text('修改登录密码'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => context.go(RouteName.changePassword),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s8,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: UtenSpacing.s24),
+
+              // 退出登录
+              UtenCard(
+                padding: const EdgeInsets.symmetric(
+                  vertical: UtenSpacing.s4,
+                  horizontal: UtenSpacing.s8,
                 ),
-                SettingsItem(
-                  title: l10n.settingsLanguage,
-                  child: const UtenLocaleSwitcher(),
-                ),
-                SettingsItem(
-                  title: l10n.settingsFontSize,
-                  child: const UtenFontScaler(),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // 性能区
-            SettingsSection(
-              title: l10n.settingsSectionPerformance,
-              children: [
-                SettingsItem(
-                  title: l10n.settingsPerformanceTier,
-                  subtitle: l10n.settingsPerformanceHint,
-                  child: const UtenPerformanceTierSwitcher(),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // 关于
-            SettingsSection(
-              title: l10n.settingsSectionAbout,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.info_outline, size: 20),
-                  title: Text(l10n.settingsVersion),
-                  trailing: const Text('0.1.0 (Phase 0)'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // 账号
-            SettingsSection(
-              title: '账号',
-              children: [
-                Material(
+                child: Material(
                   color: Colors.transparent,
                   child: ListTile(
-                    leading: const Icon(Icons.lock_outline_rounded, size: 20),
-                    title: const Text('修改密码'),
-                    subtitle: const Text('修改登录密码'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.go(RouteName.changePassword),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    leading: const Icon(
+                      Icons.logout,
+                      color: UtenColors.error,
+                      size: 20,
+                    ),
+                    title: const Text(
+                      '退出登录',
+                      style: TextStyle(color: UtenColors.error),
+                    ),
+                    onTap: () => _confirmLogout(context, ref),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s8,
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: UtenSpacing.s32),
 
-            // 退出登录
-            UtenCard(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-              child: Material(
-                color: Colors.transparent,
-                child: ListTile(
-                  leading: const Icon(Icons.logout,
-                      color: UtenColors.error, size: 20),
-                  title: const Text(
-                    '退出登录',
-                    style: TextStyle(color: UtenColors.error),
+              // 页脚信息
+              Center(
+                child: Text(
+                  'Phase 0 地基 Demo\n完整功能将在 Phase 1+ 陆续开放',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  onTap: () => _confirmLogout(context, ref),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  textAlign: TextAlign.center,
                 ),
               ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // 页脚信息
-            Center(
-              child: Text(
-                'Phase 0 地基 Demo\n完整功能将在 Phase 1+ 陆续开放',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

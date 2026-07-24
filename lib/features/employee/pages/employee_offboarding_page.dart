@@ -1,4 +1,5 @@
 // 离职流程页（Phase 2）
+// 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 // 文档：docs/03-页面/离职流程页.md
 
 import 'package:flutter/material.dart';
@@ -6,7 +7,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 
 enum ResignType { voluntary, dismissed, contractEnd, retire }
@@ -61,7 +65,7 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(UtenSpacing.s16),
           child: Row(
             children: [
               if (_step > 0)
@@ -71,11 +75,11 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
                     child: Text(l10n.employeeOffboardBack),
                   ),
                 ),
-              if (_step > 0) const SizedBox(width: 12),
+              if (_step > 0) const SizedBox(width: UtenSpacing.s12),
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFEF4444),
+                    backgroundColor: UtenColors.error,
                   ),
                   onPressed: _submitting ? null : _next,
                   child: _submitting
@@ -95,7 +99,9 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
           ),
         ),
       ),
-      body: Stepper(
+      // 表单页全断点窄版收敛（1120），避免宽屏 Stepper 被拉得过长
+      body: UtenContentContainer.narrow(
+        child: Stepper(
         currentStep: _step,
         onStepContinue: _next,
         onStepCancel: () => setState(() => _step > 0 ? _step-- : null),
@@ -120,7 +126,7 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
                   ],
                   onChanged: (v) => setState(() => _type = v!),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: UtenSpacing.s12),
                 InkWell(
                   onTap: () async {
                     final d = await showDatePicker(
@@ -140,7 +146,7 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: UtenSpacing.s12),
                 TextField(
                   controller: _reason,
                   maxLines: 2,
@@ -179,6 +185,7 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

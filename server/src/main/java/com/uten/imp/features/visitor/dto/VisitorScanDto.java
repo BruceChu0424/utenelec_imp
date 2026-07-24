@@ -20,5 +20,5 @@ public final class VisitorScanDto {
     /** 被访人候选（排除离职，仅 id/姓名/部门）。 */
     public record EmployeeDirectoryItem(UUID id, String name, String departmentName) {}
 
-    public record DepartmentDirectoryItem(UUID id, String name, UUID parentId) {}
+    public record DepartmentDirectoryItem(UUID id, String name, String level, UUID parentId) {}
 }

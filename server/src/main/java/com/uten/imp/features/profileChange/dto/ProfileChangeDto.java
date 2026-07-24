@@ -1,4 +1,4 @@
-package com.uten.imp.features.profileChange.dto;
+package com.uten.imp.features.profilechange.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 

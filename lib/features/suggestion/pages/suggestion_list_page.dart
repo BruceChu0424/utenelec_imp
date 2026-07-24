@@ -1,4 +1,5 @@
 // 建议箱列表页（含广场 + 我的）
+// 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,10 +11,13 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
 
@@ -25,8 +29,91 @@ class SuggestionListPage extends ConsumerWidget {
     final list = ref.watch(suggestionListProvider);
     final scope = ref.watch(suggestionScopeProvider);
 
+    Widget body = Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s12,
+            bottom: UtenSpacing.s8,
+          ),
+          child: UtenSegmentedFilter<SuggestionScope>(
+            selected: scope,
+            onChanged: (v) =>
+                ref.read(suggestionScopeProvider.notifier).state = v,
+            segments: const [
+              UtenSegment(value: SuggestionScope.square, label: '建议广场'),
+              UtenSegment(value: SuggestionScope.mine, label: '我的建议'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () =>
+                ref.read(suggestionListProvider.notifier).refresh(),
+            child: list.when(
+              loading: () => const UtenSkeletonList(itemCount: 6),
+              error: (e, _) => UtenEmpty.error(
+                message: '加载失败：$e',
+                onAction: () => ref.invalidate(suggestionListProvider),
+              ),
+              data: (suggestions) {
+                if (suggestions.isEmpty) {
+                  return ListView(
+                    children: [
+                      const SizedBox(height: UtenSpacing.s48),
+                      UtenEmpty(
+                        icon: Icons.lightbulb_outline_rounded,
+                        message: scope == SuggestionScope.mine
+                            ? '您还没有提交过建议'
+                            : '暂无建议',
+                        description: '点右下角按钮提交一条建议吧',
+                      ),
+                      const SizedBox(height: UtenSpacing.s24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s40,
+                        ),
+                        child: UtenButton(
+                          isExpanded: true,
+                          icon: Icons.edit_rounded,
+                          onPressed: () =>
+                              context.go(RouteName.suggestionNew),
+                          child: const Text('提交建议'),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(
+                    top: UtenSpacing.s8,
+                    bottom: 80, // 底部悬浮胶囊导航 / FAB 留白
+                  ),
+                  child: UtenResponsiveGrid(
+                    itemCount: suggestions.length,
+                    itemBuilder: (context, i, _) => _SuggestionCard(
+                      suggestion: suggestions[i],
+                      onTap: () => context
+                          .push(RoutePath.suggestionDetail(suggestions[i].id)),
+                      onLike: () =>
+                          toggleSuggestionLike(ref, suggestions[i].id),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+    // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '建议箱', showBackButton: true),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(RouteName.suggestionNew),
         backgroundColor: UtenColors.primary,
@@ -34,76 +121,7 @@ class SuggestionListPage extends ConsumerWidget {
         icon: const Icon(Icons.edit_rounded),
         label: const Text('提建议'),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: UtenSegmentedFilter<SuggestionScope>(
-              selected: scope,
-              onChanged: (v) =>
-                  ref.read(suggestionScopeProvider.notifier).state = v,
-              segments: const [
-                UtenSegment(value: SuggestionScope.square, label: '建议广场'),
-                UtenSegment(value: SuggestionScope.mine, label: '我的建议'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () =>
-                  ref.read(suggestionListProvider.notifier).refresh(),
-              child: list.when(
-                loading: () => const UtenSkeletonList(itemCount: 6),
-                error: (e, _) => UtenEmpty.error(
-                  message: '加载失败：$e',
-                  onAction: () => ref.invalidate(suggestionListProvider),
-                ),
-                data: (suggestions) {
-                  if (suggestions.isEmpty) {
-                    return ListView(
-                      children: [
-                        const SizedBox(height: 60),
-                        UtenEmpty(
-                          icon: Icons.lightbulb_outline_rounded,
-                          message: scope == SuggestionScope.mine
-                              ? '您还没有提交过建议'
-                              : '暂无建议',
-                          description: '点右下角按钮提交一条建议吧',
-                        ),
-                        const SizedBox(height: 24),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 40),
-                          child: UtenButton(
-                            isExpanded: true,
-                            icon: Icons.edit_rounded,
-                            onPressed: () =>
-                                context.go(RouteName.suggestionNew),
-                            child: const Text('提交建议'),
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                    child: UtenResponsiveGrid(
-                      itemCount: suggestions.length,
-                      itemBuilder: (context, i, _) => _SuggestionCard(
-                        suggestion: suggestions[i],
-                        onTap: () => context
-                            .push(RoutePath.suggestionDetail(suggestions[i].id)),
-                        onLike: () =>
-                            toggleSuggestionLike(ref, suggestions[i].id),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: body,
     );
   }
 }
@@ -132,18 +150,20 @@ class _SuggestionCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s8,
+                  vertical: UtenSpacing.s4,
+                ),
                 decoration: BoxDecoration(
                   color: suggestion.category.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: UtenRadius.smAll,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(suggestion.category.icon,
                         size: 12, color: suggestion.category.color),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: UtenSpacing.s4),
                     Text(
                       suggestion.category.label,
                       style: TextStyle(
@@ -163,7 +183,7 @@ class _SuggestionCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           // 标题
           Text(
             suggestion.title,
@@ -173,7 +193,7 @@ class _SuggestionCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: UtenSpacing.s4),
           // 摘要
           Text(
             suggestion.content,
@@ -184,9 +204,9 @@ class _SuggestionCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: UtenSpacing.s12),
           const Divider(),
-          const SizedBox(height: 10),
+          const SizedBox(height: UtenSpacing.s12),
           // 底部：提交人 + 点赞
           Row(
             children: [
@@ -195,7 +215,7 @@ class _SuggestionCard extends StatelessWidget {
                 size: 16,
                 color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: UtenSpacing.s4),
               Flexible(
                 child: Text(
                   suggestion.displayName,
@@ -206,7 +226,7 @@ class _SuggestionCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: UtenSpacing.s8),
               Text(
                 _fmt(suggestion.submittedAt),
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -220,20 +240,22 @@ class _SuggestionCard extends StatelessWidget {
                   size: 14,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: UtenSpacing.s4),
                 Text(
                   '${suggestion.replies.length}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: UtenSpacing.s12),
               ],
               InkWell(
                 onTap: onLike,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: UtenRadius.lgAll,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s4,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -246,7 +268,7 @@ class _SuggestionCard extends StatelessWidget {
                             ? UtenColors.error
                             : theme.colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: UtenSpacing.s4),
                       Text(
                         '${suggestion.likes}',
                         style: TextStyle(

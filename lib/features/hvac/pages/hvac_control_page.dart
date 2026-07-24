@@ -1,13 +1,20 @@
 // 空调控制页（Phase 4）
 // 文档：docs/03-页面/空调控制页.md
+//
+// 响应式：详情/控制页走窄收敛——compact 自套 UtenContentContainer.narrow；
+// medium+ 外壳已收敛，内容再限宽 560 居中。Hero 为圆角面板（不做全幅色块）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/hvac_device.dart';
@@ -39,16 +46,17 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
         data: (d) {
           if (d == null) return const Center(child: Text('设备不存在'));
           _device ??= d;
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Hero(device: _device!),
-                    const SizedBox(height: 20),
+          final isCompact = context.breakpoint.isCompact;
+          Widget content = SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 0 : UtenSpacing.s16,
+              vertical: UtenSpacing.s16,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Hero(device: _device!),
+                const SizedBox(height: UtenSpacing.s20),
                     UtenCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -77,7 +85,11 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
                               const Spacer(),
                               Text('${_device!.targetTemp.toStringAsFixed(0)}°C',
                                   style: const TextStyle(
-                                      fontSize: 20, fontWeight: FontWeight.w700)),
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                      fontFeatures: [
+                                        FontFeature.tabularFigures()
+                                      ])),
                             ],
                           ),
                           Slider(
@@ -139,27 +151,33 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    const UtenSectionHeader(title: '指令历史'),
-                    const SizedBox(height: 8),
-                    UtenCard(
-                      child: _history.isEmpty
-                          ? const Text('暂无指令',
-                              style: TextStyle(color: UtenColors.slate400))
-                          : Column(
-                              children: [
-                                for (var i = 0; i < _history.length; i++) ...[
-                                  _HistoryItem(cmd: _history[i]),
-                                  if (i != _history.length - 1)
-                                    const Divider(height: 16),
-                                ],
-                              ],
-                            ),
-                    ),
-                    const SizedBox(height: 32),
-                  ],
+                const SizedBox(height: UtenSpacing.s20),
+                const UtenSectionHeader(title: '指令历史'),
+                const SizedBox(height: UtenSpacing.s8),
+                UtenCard(
+                  child: _history.isEmpty
+                      ? const Text('暂无指令',
+                          style: TextStyle(color: UtenColors.slate400))
+                      : Column(
+                          children: [
+                            for (var i = 0; i < _history.length; i++) ...[
+                              _HistoryItem(cmd: _history[i]),
+                              if (i != _history.length - 1)
+                                const Divider(height: 16),
+                            ],
+                          ],
+                        ),
                 ),
-              ),
+                const SizedBox(height: UtenSpacing.s32),
+              ],
+            ),
+          );
+          if (isCompact) content = UtenContentContainer.narrow(child: content);
+          // medium+：外壳已收敛到 1600，内容再限宽 560 居中（控制页宜窄）
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: content,
             ),
           );
         },
@@ -212,14 +230,15 @@ class _Hero extends StatelessWidget {
   Widget build(BuildContext context) {
     final online = device.online;
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(UtenSpacing.s24),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [UtenColors.teal500, UtenColors.teal600],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        // 与卡片同档圆角（宽度收敛布局内不做全幅色块）
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         children: [
@@ -227,28 +246,35 @@ class _Hero extends StatelessWidget {
             children: [
               Icon(device.mode.icon, color: Colors.white70),
               const SizedBox(width: 6),
-              Text(device.name,
-                  style: const TextStyle(
-                      color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: online ? Colors.greenAccent : Colors.redAccent,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(online ? '在线' : '离线',
-                    style: const TextStyle(color: Colors.white, fontSize: 11)),
+              Expanded(
+                child: Text(device.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              UtenStatusBadge(
+                label: online ? '在线' : '离线',
+                type: online
+                    ? UtenStatusBadgeType.success
+                    : UtenStatusBadgeType.danger,
+                size: UtenStatusBadgeSize.small,
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           Text(
             online ? '${device.currentTemp.toStringAsFixed(0)}°' : '--',
             style: const TextStyle(
-                color: Colors.white, fontSize: 56, fontWeight: FontWeight.w300),
+                color: Colors.white,
+                fontSize: 56,
+                fontWeight: FontWeight.w300,
+                fontFeatures: [FontFeature.tabularFigures()]),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: UtenSpacing.s4),
           Text(
             device.power
                 ? '${device.mode.label} · 目标 ${device.targetTemp.toStringAsFixed(0)}°'

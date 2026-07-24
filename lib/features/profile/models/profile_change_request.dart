@@ -199,10 +199,10 @@ class MyProfileChangeListItem {
           ? null
           : DateTime.parse(json['reviewedAt'] as String),
       reviewComment: json['reviewComment'] as String?,
-      fieldCodes:
-          (json['fieldCodes'] as List<dynamic>? ?? const []).cast<String>(),
-      fieldLabels:
-          (json['fieldLabels'] as List<dynamic>? ?? const []).cast<String>(),
+      fieldCodes: (json['fieldCodes'] as List<dynamic>? ?? const [])
+          .cast<String>(),
+      fieldLabels: (json['fieldLabels'] as List<dynamic>? ?? const [])
+          .cast<String>(),
     );
   }
 }
@@ -244,8 +244,8 @@ class HrProfileChangeListItem {
       departmentName: json['departmentName'] as String?,
       status: _parseStatus(json['status'] as String?),
       itemCount: (json['itemCount'] as int?) ?? 0,
-      fieldCodes:
-          (json['fieldCodes'] as List<dynamic>? ?? const []).cast<String>(),
+      fieldCodes: (json['fieldCodes'] as List<dynamic>? ?? const [])
+          .cast<String>(),
       submittedAt: DateTime.parse(json['submittedAt'] as String),
       reviewedAt: json['reviewedAt'] == null
           ? null
@@ -292,11 +292,10 @@ class ProfileChangePage<T> {
 PagedResult<T> toPagedResult<T>(
   ProfileChangePage<T> p,
   T Function(Map<String, dynamic>) fromJson,
-) =>
-    PagedResult<T>(
-      items: p.items,
-      page: p.page,
-      size: p.size,
-      total: p.total,
-      totalPages: p.totalPages,
-    );
+) => PagedResult<T>(
+  items: p.items,
+  page: p.page,
+  size: p.size,
+  total: p.total,
+  totalPages: p.totalPages,
+);

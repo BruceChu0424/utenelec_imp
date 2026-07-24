@@ -1,4 +1,4 @@
-package com.uten.imp.features.profileChange;
+package com.uten.imp.features.profilechange;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -68,14 +68,12 @@ public final class ProfileFieldPolicy {
             Field.SEAT_NO
     );
 
-    /** 需审核字段（生成申请，HR 通过后合并到 Employee）。 */
+    /** 需审核字段（生成申请，HR 通过后合并到 Employee）。
+     *  紧急联系人按 emergencyContact.N.xxx 编码，由 isEmergencyContactSubfield 覆盖，不在此枚举。 */
     public static final Set<String> REQUIRES_REVIEW = Set.of(
             Field.FULL_NAME,
             Field.HUJI_ADDRESS,
-            Field.PHONE,
-            Field.EMERGENCY_CONTACT_PREFIX + "name",
-            Field.EMERGENCY_CONTACT_PREFIX + "phone",
-            Field.EMERGENCY_CONTACT_PREFIX + "relationship"
+            Field.PHONE
     );
 
     /** HR 专属（员工不可自助申请；服务端拒绝并抛 422）。 */
@@ -94,7 +92,7 @@ public final class ProfileFieldPolicy {
         if (fieldCode == null || fieldCode.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "字段不能为空");
         }
-        if (HR_ONLY.contains(fieldCode) || isHrOnly(fieldCode)) {
+        if (isHrOnly(fieldCode)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "该字段需联系 HR 修改：" + fieldCode);
         }
         if (!DIRECT_EDIT.contains(fieldCode)

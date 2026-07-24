@@ -1,5 +1,6 @@
 // 员工详情页（真实后端 + 组件库）。敏感字段由后端按当前角色脱敏后返回。
-// 分组用 UtenCard，键值用 UtenInfoRow，状态用 EmployeeStatusBadge，空/错用 UtenEmpty。
+// 分组用 UtenSectionHeader + UtenCard，键值用 UtenInfoRow，状态用 EmployeeStatusBadge，
+// 空/错用 UtenEmpty。详情页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 // 文档：docs/03-页面/员工详情页.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,8 +10,12 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
@@ -71,8 +76,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.employeeDetailTitle),
+      appBar: UtenAppBar(
+        title: l10n.employeeDetailTitle,
+        showBackButton: true,
         actions: [
           if (ref.watch(currentPermissionsProvider).contains(Perm.employeeEdit))
             IconButton(
@@ -95,12 +101,16 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
             )
           : RefreshIndicator(
               onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _header(theme, l10n),
-                  ProfileChangePendingSection(employeeId: widget.employeeId),
-                  const SizedBox(height: 12),
+              // 详情页全断点窄版收敛（1120），避免宽屏信息行被拉得过长
+              child: UtenContentContainer.narrow(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s16,
+                  ),
+                  children: [
+                    _header(theme, l10n),
+                    ProfileChangePendingSection(employeeId: widget.employeeId),
+                    const SizedBox(height: UtenSpacing.s16),
                   _section(l10n.employeeDetailBasic, [
                     UtenInfoRow(
                       label: l10n.employeeFieldCode,
@@ -277,38 +287,44 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                           showDivider: c != _p.emergencyContacts.last,
                         ),
                     ]),
-                  if (_p.history.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    UtenCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            l10n.employeeDetailHistory,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
+                    if (_p.history.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s24,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            UtenSectionHeader(
+                              title: l10n.employeeDetailHistory,
+                              icon: Icons.history_rounded,
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          for (final h in _p.history)
-                            ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(
-                                Icons.history_rounded,
-                                size: 20,
+                            const SizedBox(height: UtenSpacing.s8),
+                            UtenCard(
+                              child: Column(
+                                children: [
+                                  for (final h in _p.history)
+                                    ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: const Icon(
+                                        Icons.history_rounded,
+                                        size: 20,
+                                      ),
+                                      title: Text(_historyTitle(l10n, h)),
+                                      subtitle: h.eventDate == null
+                                          ? null
+                                          : Text(h.eventDate!),
+                                    ),
+                                ],
                               ),
-                              title: Text(_historyTitle(l10n, h)),
-                              subtitle: h.eventDate == null
-                                  ? null
-                                  : Text(h.eventDate!),
                             ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
+                    const SizedBox(height: UtenSpacing.s24),
                   ],
-                  const SizedBox(height: 24),
-                ],
+                ),
               ),
             ),
     );
@@ -327,7 +343,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
             foregroundColor: theme.colorScheme.onPrimaryContainer,
             child: Text((p.fullName ?? '?').characters.first),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: UtenSpacing.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -353,23 +369,22 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
     );
   }
 
+  /// 分组：UtenSectionHeader（卡外标题）+ UtenCard（键值行），区块间距 24。
   Widget _section(String title, List<Widget> rows) {
-    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 8),
-      child: UtenCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          UtenSectionHeader(title: title),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rows,
             ),
-            ...rows,
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

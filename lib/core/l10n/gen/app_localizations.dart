@@ -296,6 +296,12 @@ abstract class AppLocalizations {
   /// **'工作台'**
   String get navDashboard;
 
+  /// No description provided for @navNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知'**
+  String get navNotice;
+
   /// No description provided for @navProfile.
   ///
   /// In zh, this message translates to:

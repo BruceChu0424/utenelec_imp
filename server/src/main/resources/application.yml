@@ -45,6 +45,8 @@ uten:
     lockout-threshold: 5
     lockout-minutes: 15
     password-history-size: 5
+    # swagger 白名单开关：dev 默认放行；prod 在 application-prod.yml 关闭（同时 springdoc 整体禁用）
+    swagger-enabled: ${UTEN_SWAGGER_ENABLED:true}
   crypto:
     # 必填：pgcrypto 主密钥（PII 加密）。走 server/.env 或环境变量；缺省 fail-fast。生产放 Vault/KMS。
     pgp-master-key: ${UTEN_PGP_MASTER_KEY}

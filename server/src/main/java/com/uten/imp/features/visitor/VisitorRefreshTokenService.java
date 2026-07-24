@@ -1,11 +1,10 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.config.props.JwtProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.Base64;
@@ -30,7 +29,7 @@ public class VisitorRefreshTokenService {
         VisitorRefreshToken t = new VisitorRefreshToken();
         t.setVisitorAccountId(visitorId);
         t.setDeviceInfo(deviceInfo);
-        t.setTokenHash(sha256(raw));
+        t.setTokenHash(HashUtil.sha256(raw));
         t.setIssuedAt(OffsetDateTime.now());
         t.setExpiresAt(OffsetDateTime.now().plusDays(props.getRefreshTtlDays()));
         repo.save(t);
@@ -43,24 +42,9 @@ public class VisitorRefreshTokenService {
         repo.save(token);
     }
 
-    /** 撤销某访客全部有效令牌（重用检测）。TODO 生产改批量 update。 */
+    /** 撤销某访客全部有效令牌（重用检测）。批量 UPDATE，对齐员工侧 revokeAllByUserId。 */
     public void revokeAllByVisitor(UUID visitorId) {
-        repo.findAll().stream()
-                .filter(t -> visitorId.equals(t.getVisitorAccountId()) && t.getRevokedAt() == null)
-                .forEach(t -> {
-                    t.setRevokedAt(OffsetDateTime.now());
-                    repo.save(t);
-                });
-    }
-
-    public static String sha256(String raw) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] h = md.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(h);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
+        repo.revokeAllByVisitorAccountId(visitorId);
     }
 
     private static String rawToken() {

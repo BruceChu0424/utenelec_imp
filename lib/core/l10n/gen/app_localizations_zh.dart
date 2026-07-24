@@ -108,6 +108,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get navDashboard => '工作台';
 
   @override
+  String get navNotice => '通知';
+
+  @override
   String get navProfile => '我的';
 
   @override

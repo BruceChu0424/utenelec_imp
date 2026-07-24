@@ -9,6 +9,7 @@ import 'core/l10n/gen/app_localizations.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/dark_theme.dart';
 import 'core/theme/light_theme.dart';
+import 'core/theme/uten_scroll_behavior.dart';
 import 'core/ui/app_notification.dart';
 import 'shared/providers/font_scale_provider.dart';
 import 'shared/providers/locale_provider.dart';
@@ -36,6 +37,9 @@ class UtenApp extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: themeMode,
+
+      // 全局滚动行为：隐藏所有页面滚动条（桌面端默认会自动加右侧滚动条）
+      scrollBehavior: const UtenScrollBehavior(),
 
       // 国际化
       locale: locale,

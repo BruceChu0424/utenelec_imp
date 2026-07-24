@@ -1,4 +1,7 @@
 // 保安扫码核验页：mobile_scanner 扫码 + 手动输入兜底（Web/无摄像头场景）。
+//
+// 视觉：相机预览保持沉浸式全幅（仅打磨周边 chrome——扫描框圆角 token、
+// 提示文字加深色胶囊底保证在任意取景画面上可读、底部手动输入卡间距 token）。
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +13,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/theme/uten_tokens.dart';
 import 'visitor_check_result_page.dart';
 
 class SecurityScanPage extends ConsumerStatefulWidget {
@@ -80,26 +84,39 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
               height: 240,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.white70, width: 2),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: UtenRadius.xlAll,
               ),
             ),
           ),
           Align(
             alignment: Alignment.topCenter,
             child: Padding(
-              padding: const EdgeInsets.only(top: 24),
-              child: Text(l10n.securityScanHint,
-                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.white)),
+              padding: const EdgeInsets.only(top: UtenSpacing.s24),
+              // 深色胶囊底：提示文字在任意取景画面上都可读
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: UtenRadius.pillAll,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12, vertical: UtenSpacing.s4),
+                  child: Text(l10n.securityScanHint,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: Colors.white)),
+                ),
+              ),
             ),
           ),
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16, 0, UtenSpacing.s16, UtenSpacing.s24),
               child: SafeArea(
                 top: false,
                 child: UtenCard(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
                   child: Row(
                     children: [
                       Expanded(
@@ -110,7 +127,7 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
                           prefixIcon: Icons.password_rounded,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: UtenSpacing.s8),
                       UtenButton(onPressed: _manualGo, child: Text(l10n.commonConfirm)),
                     ],
                   ),

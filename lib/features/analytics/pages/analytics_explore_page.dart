@@ -1,12 +1,20 @@
 // 多维分析页（Phase 5）
 // 文档：docs/03-页面/多维分析页.md
+//
+// 响应式：compact 自套 UtenContentContainer 收敛（medium+ 外壳已收敛到
+// 1600，不再叠加 1000 限宽，宽屏下图表/透视表自然铺开）；
+// 维度/指标下拉统一为 UtenSelect（与 UtenInput 同视觉）。
 
 import 'package:flutter/material.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/inputs/uten_select.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 
 class AnalyticsExplorePage extends StatefulWidget {
   const AnalyticsExplorePage({super.key});
@@ -51,123 +59,145 @@ class _AnalyticsExplorePageState extends State<AnalyticsExplorePage> {
     final data = _data;
     final max = data.values.fold<num>(1, (a, b) => a > b ? a : b);
     final unit = _metric == '产量' ? '件' : _metric == '合格率' ? '%' : '万';
+    final isCompact = context.breakpoint.isCompact;
 
-    return Scaffold(
-      appBar: const UtenAppBar(title: '多维分析', subtitle: '本月 · 全公司', showBackButton: true),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 维度/指标选择
-                UtenCard(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
+    Widget body = SingleChildScrollView(
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 0 : UtenSpacing.s16,
+        vertical: UtenSpacing.s16,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 维度/指标选择
+          UtenCard(
+              child: isCompact
+                // 窄屏上下排，避免两个下拉挤在一行
+                ? Column(
+                    children: [
+                      UtenSelect<String>(
+                        label: '维度',
+                        value: _dim,
+                        prefixIcon: Icons.dashboard_customize_outlined,
+                        items: [for (final d in _dims) DropdownMenuItem(value: d, child: Text(d))],
+                        onChanged: (v) => setState(() => _dim = v!),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      UtenSelect<String>(
+                        label: '指标',
+                        value: _metric,
+                        prefixIcon: Icons.query_stats_rounded,
+                        items: [for (final m in _metrics) DropdownMenuItem(value: m, child: Text(m))],
+                        onChanged: (v) => setState(() => _metric = v!),
+                      ),
+                    ],
+                  )
+                : Row(
                     children: [
                       Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _dim,
-                          decoration: const InputDecoration(
-                              labelText: '维度', border: OutlineInputBorder(), isDense: true),
+                        child: UtenSelect<String>(
+                          label: '维度',
+                          value: _dim,
+                          prefixIcon: Icons.dashboard_customize_outlined,
                           items: [for (final d in _dims) DropdownMenuItem(value: d, child: Text(d))],
                           onChanged: (v) => setState(() => _dim = v!),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: UtenSpacing.s12),
                       Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _metric,
-                          decoration: const InputDecoration(
-                              labelText: '指标', border: OutlineInputBorder(), isDense: true),
+                        child: UtenSelect<String>(
+                          label: '指标',
+                          value: _metric,
+                          prefixIcon: Icons.query_stats_rounded,
                           items: [for (final m in _metrics) DropdownMenuItem(value: m, child: Text(m))],
                           onChanged: (v) => setState(() => _metric = v!),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                UtenSectionHeader(title: '$_dim × $_metric'),
-                const SizedBox(height: 8),
-                UtenCard(
-                  child: Column(
+          ),
+          const SizedBox(height: UtenSpacing.s20),
+          UtenSectionHeader(title: '$_dim × $_metric'),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              children: [
+                for (final e in data.entries) ...[
+                  Row(
                     children: [
-                      for (final e in data.entries) ...[
-                        Row(
-                          children: [
-                            SizedBox(width: 70, child: Text(e.key, style: theme.textTheme.bodyMedium)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: (e.value / max).clamp(0.01, 1),
-                                child: Container(
-                                  height: 16,
-                                  decoration: BoxDecoration(
-                                    color: UtenColors.teal600,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ),
+                      SizedBox(width: 70, child: Text(e.key, style: theme.textTheme.bodyMedium)),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: (e.value / max).clamp(0.01, 1),
+                          child: Container(
+                            height: 16,
+                            decoration: const BoxDecoration(
+                              color: UtenColors.teal600,
+                              borderRadius: UtenRadius.xsAll,
                             ),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 70,
-                              child: Text('${e.value.toStringAsFixed(1)} $unit',
-                                  textAlign: TextAlign.right,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      fontFeatures: const [FontFeature.tabularFigures()])),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const UtenSectionHeader(title: '透视表'),
-                const SizedBox(height: 8),
-                UtenCard(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        color: theme.colorScheme.surfaceContainerHigh,
-                        child: Row(
-                          children: [
-                            Expanded(child: Text(_dim, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                            SizedBox(
-                                width: 100,
-                                child: Text(_metric,
-                                    textAlign: TextAlign.right,
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                          ],
+                          ),
                         ),
                       ),
-                      for (final e in data.entries) ...[
-                        ListTile(
-                          dense: true,
-                          title: Text(e.key),
-                          trailing: Text('${e.value.toStringAsFixed(1)} $unit',
-                              style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
-                        ),
-                        if (e.key != data.keys.last)
-                          Divider(height: 1, color: theme.colorScheme.outlineVariant),
-                      ],
+                      const SizedBox(width: UtenSpacing.s8),
+                      SizedBox(
+                        width: 70,
+                        child: Text('${e.value.toStringAsFixed(1)} $unit',
+                            textAlign: TextAlign.right,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                fontFeatures: const [FontFeature.tabularFigures()])),
+                      ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
               ],
             ),
           ),
-        ),
+          const SizedBox(height: UtenSpacing.s20),
+          const UtenSectionHeader(title: '透视表'),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  color: theme.colorScheme.surfaceContainerHigh,
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(_dim, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+                      SizedBox(
+                          width: 100,
+                          child: Text(_metric,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+                    ],
+                  ),
+                ),
+                for (final e in data.entries) ...[
+                  ListTile(
+                    dense: true,
+                    title: Text(e.key),
+                    trailing: Text('${e.value.toStringAsFixed(1)} $unit',
+                        style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+                  ),
+                  if (e.key != data.keys.last)
+                    Divider(height: 1, color: theme.colorScheme.outlineVariant),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+    if (isCompact) body = UtenContentContainer(child: body);
+
+    return Scaffold(
+      appBar: const UtenAppBar(title: '多维分析', subtitle: '本月 · 全公司', showBackButton: true),
+      body: body,
     );
   }
 }

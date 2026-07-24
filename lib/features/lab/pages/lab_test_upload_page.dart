@@ -1,5 +1,8 @@
 // 检测上传页（Phase 4）
 // 文档：docs/03-页面/检测上传页.md
+//
+// 响应式：表单页走窄收敛——compact 自套 UtenContentContainer.narrow；
+// medium+ 外壳已收敛，内容再限宽 720 居中。输入框统一为 UtenInput。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,9 +10,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/lab_test.dart';
 import '../providers/lab_providers.dart';
@@ -73,6 +80,54 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = context.breakpoint.isCompact;
+
+    Widget form = SingleChildScrollView(
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 0 : UtenSpacing.s16,
+        vertical: UtenSpacing.s16,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const UtenSectionHeader(title: '样品信息'),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              children: [
+                UtenInput(controller: _sampleCode, label: '样品编号 *'),
+                const SizedBox(height: UtenSpacing.s12),
+                UtenInput(controller: _sampleName, label: '样品名称 *'),
+                const SizedBox(height: UtenSpacing.s12),
+                UtenInput(controller: _project, label: '检测项目 *'),
+              ],
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s20),
+          const UtenSectionHeader(title: '检测结果'),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              children: [
+                UtenInput(controller: _result, label: '检测结果 *'),
+                const SizedBox(height: UtenSpacing.s12),
+                UtenInput(controller: _standard, label: '标准值'),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('合格判定'),
+                  value: _qualified,
+                  onChanged: (v) => setState(() => _qualified = v),
+                ),
+                UtenInput(controller: _tester, label: '检测员'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (isCompact) form = UtenContentContainer.narrow(child: form);
+
     return Scaffold(
       appBar: const UtenAppBar(title: '上传检测数据', showBackButton: true),
       bottomNavigationBar: UtenBottomActionBar(
@@ -84,69 +139,13 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
           child: const Text('提交'),
         ),
       ),
+      // medium+：外壳已收敛到 1600，表单再限宽 720 居中
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const UtenSectionHeader(title: '样品信息'),
-                const SizedBox(height: 8),
-                UtenCard(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      _F(_sampleCode, '样品编号 *'),
-                      _F(_sampleName, '样品名称 *'),
-                      _F(_project, '检测项目 *'),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const UtenSectionHeader(title: '检测结果'),
-                const SizedBox(height: 8),
-                UtenCard(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      _F(_result, '检测结果 *'),
-                      _F(_standard, '标准值'),
-                      SwitchListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('合格判定'),
-                        value: _qualified,
-                        onChanged: (v) => setState(() => _qualified = v),
-                      ),
-                      _F(_tester, '检测员'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          child: form,
         ),
       ),
     );
   }
-}
-
-class _F extends StatelessWidget {
-  const _F(this.controller, this.label);
-  final TextEditingController controller;
-  final String label;
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
-            isDense: true,
-          ),
-        ),
-      );
 }

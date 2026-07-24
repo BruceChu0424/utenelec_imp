@@ -81,30 +81,35 @@ ThemeData buildLightTheme() {
         fontWeight: FontWeight.w700,
         color: UtenColors.textPrimary,
         height: 1.2,
+        letterSpacing: -0.2,
       ),
       headlineLarge: TextStyle(
         fontSize: 24,
         fontWeight: FontWeight.w700,
         color: UtenColors.textPrimary,
         height: 1.3,
+        letterSpacing: -0.3,
       ),
       headlineMedium: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.w600,
         color: UtenColors.textPrimary,
         height: 1.35,
+        letterSpacing: -0.2,
       ),
       headlineSmall: TextStyle(
         fontSize: 18,
         fontWeight: FontWeight.w600,
         color: UtenColors.textPrimary,
         height: 1.4,
+        letterSpacing: -0.2,
       ),
       titleLarge: TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w600,
         color: UtenColors.textPrimary,
         height: 1.4,
+        letterSpacing: -0.2,
       ),
       titleMedium: TextStyle(
         fontSize: 14,
@@ -171,13 +176,13 @@ ThemeData buildLightTheme() {
       systemOverlayStyle: SystemUiOverlayStyle.dark,
     ),
 
-    // ===== Card：白底 + 细边框 + 极轻阴影 =====
+    // ===== Card：白底 + 细边框 + 更柔和的 14 圆角 =====
     cardTheme: CardThemeData(
       color: UtenColors.surface,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         side: const BorderSide(color: UtenColors.border),
       ),
     ),
@@ -190,12 +195,15 @@ ThemeData buildLightTheme() {
 
     // ===== 按钮：克制、清晰 =====
     // 浅色模式按钮主色统一为深色模式用的 teal500（青绿），保持两模式一致
+    // 叠加态（overlayColor）：框架按 hover 8% / pressed 10% 自动派生透明度，
+    // 实心按钮叠 teal700（深一档，在 teal500 底上可见），线框/文字按钮叠 teal600
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: UtenColors.teal500,
         foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
+        overlayColor: UtenColors.teal700,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -209,6 +217,7 @@ ThemeData buildLightTheme() {
         foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
+        overlayColor: UtenColors.teal700,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -221,6 +230,7 @@ ThemeData buildLightTheme() {
         foregroundColor: UtenColors.textPrimary,
         backgroundColor: UtenColors.surface,
         disabledForegroundColor: UtenColors.slate400,
+        overlayColor: UtenColors.teal600,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -230,7 +240,8 @@ ThemeData buildLightTheme() {
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: UtenColors.teal400,
+        foregroundColor: UtenColors.teal600,
+        overlayColor: UtenColors.teal600,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         minimumSize: const Size(0, 40),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -282,7 +293,7 @@ ThemeData buildLightTheme() {
     ),
 
     // ===== 导航 =====
-    // 浅色模式下选中态统一为 teal400，跟深色模式一致
+    // 选中态：teal100 浅底指示器 + teal600 图标/文字（比 teal400 对比度更高，符合 WCAG AA）
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: UtenColors.surface,
       elevation: 0,
@@ -296,14 +307,14 @@ ThemeData buildLightTheme() {
         return TextStyle(
           fontSize: 11,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          color: selected ? UtenColors.teal400 : UtenColors.textTertiary,
+          color: selected ? UtenColors.teal600 : UtenColors.textTertiary,
         );
       }),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
         return IconThemeData(
           size: 22,
-          color: selected ? UtenColors.teal400 : UtenColors.textTertiary,
+          color: selected ? UtenColors.teal600 : UtenColors.textTertiary,
         );
       }),
     ),
@@ -315,7 +326,7 @@ ThemeData buildLightTheme() {
         borderRadius: BorderRadius.circular(10),
       ),
       selectedIconTheme: const IconThemeData(
-        color: UtenColors.teal400,
+        color: UtenColors.teal600,
         size: 22,
       ),
       unselectedIconTheme: const IconThemeData(
@@ -323,7 +334,7 @@ ThemeData buildLightTheme() {
         size: 22,
       ),
       selectedLabelTextStyle: const TextStyle(
-        color: UtenColors.teal400,
+        color: UtenColors.teal600,
         fontSize: 12,
         fontWeight: FontWeight.w600,
       ),
@@ -343,7 +354,7 @@ ThemeData buildLightTheme() {
         color: UtenColors.textSecondary,
       ),
       side: const BorderSide(color: UtenColors.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
 
@@ -351,7 +362,7 @@ ThemeData buildLightTheme() {
       backgroundColor: UtenColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         side: const BorderSide(color: UtenColors.border),
       ),
       titleTextStyle: const TextStyle(
@@ -368,7 +379,7 @@ ThemeData buildLightTheme() {
       backgroundColor: UtenColors.slate900,
       contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
 
     listTileTheme: const ListTileThemeData(

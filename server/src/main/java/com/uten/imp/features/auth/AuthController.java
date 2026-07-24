@@ -13,38 +13,40 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final AuthService authService;
+    private final LoginService loginService;
+    private final PasswordService passwordService;
+    private final TokenIssuer tokenIssuer;
     private final SecurityContextCurrentUser currentUser;
     private final AuditService audit;
 
     @PostMapping("/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest req, HttpServletRequest http) {
         // 限流键用连接 IP（getRemoteAddr，不可被 X-Forwarded-For 伪造）；审计 IP 仍由 AuditService 取 XFF
-        return authService.login(req, http.getRemoteAddr());
+        return loginService.login(req, http.getRemoteAddr());
     }
 
     @PostMapping("/refresh")
     public TokenResponse refresh(@Valid @RequestBody RefreshRequest req) {
-        return authService.refresh(req.refreshToken());
+        return tokenIssuer.refresh(req.refreshToken());
     }
 
     @PostMapping("/logout")
     public void logout(@RequestBody(required = false) RefreshRequest req) {
         String raw = req == null ? null : req.refreshToken();
-        authService.logout(raw);
-        currentUser.id().ifPresent(id ->
-                audit.log("logout", "users", id.toString(), "success"));
+        tokenIssuer.logout(raw);
+        currentUser.get().ifPresent(u ->
+                audit.logExplicit(u.getId(), u.getLoginAccount(), "logout", "users", u.getId().toString(), "success"));
     }
 
     @PostMapping("/change-password")
     public TokenResponse changePassword(@Valid @RequestBody ChangePasswordRequest req) {
         // 返回新令牌：当前设备保持登录（其他设备刷新令牌已失效）
-        return authService.changePassword(req);
+        return passwordService.changePassword(req);
     }
 
     @GetMapping("/me")
     public TokenResponse.UserProfile me() {
-        return authService.me(currentUser::requireId);
+        return tokenIssuer.me(currentUser::requireId);
     }
 
     /**
@@ -54,14 +56,6 @@ public class AuthController {
      */
     @PostMapping("/verify-password")
     public void verifyPassword(@Valid @RequestBody VerifyPasswordRequest req) {
-        authService.verifyPassword(req.password());
-    }
-
-    private String clientIp(HttpServletRequest req) {
-        String xff = req.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
-        }
-        return req.getRemoteAddr();
+        passwordService.verifyPassword(req.password());
     }
 }

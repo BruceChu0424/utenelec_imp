@@ -1,4 +1,4 @@
-package com.uten.imp.features.profileChange;
+package com.uten.imp.features.profilechange;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

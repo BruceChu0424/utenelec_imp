@@ -20,6 +20,7 @@ abstract final class Perm {
   static const expenseApprove = 'expense:approve';
   static const visitorView = 'visitor:view';
   static const visitorApprove = 'visitor:approve';
+  static const visitorHostConfirm = 'visitor:host-confirm';
   static const visitorCheckIn = 'visitor:check-in';
 
   // 个人信息自助修改（Phase 6）
@@ -28,6 +29,10 @@ abstract final class Perm {
   /// 查看员工薪资/补偿字段（HR/finance/admin）；
   /// 渐进替代 DataAccessPolicy 里按角色名硬编码的判断。
   static const employeeCompensationView = 'employee:compensation:view';
+
+  /// 决策支持（经营 Dashboard/多维分析/异常告警）。默认仅 manager/admin，
+  /// 其他人由超管在权限管理页显式授予（V25，与 viewcontext:scoped 解耦）。
+  static const analyticsView = 'analytics:view';
 }
 
 /// 当前用户的功能权限集合。
@@ -55,10 +60,12 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.expenseApprove,
       Perm.visitorView,
       Perm.visitorApprove,
+      Perm.visitorHostConfirm,
       Perm.visitorCheckIn,
       Perm.profileEditSelf,
       Perm.profileReview,
       Perm.employeeCompensationView,
+      Perm.analyticsView,
       ...user.permissions,
     };
   }

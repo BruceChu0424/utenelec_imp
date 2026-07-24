@@ -23,12 +23,63 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
 
 ## 数据库
 - schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`）。
-- 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统（5 表 + security 角色 + visitor 权限点）。
-- 机密 PII（身份证/手机/银行卡/薪资）用 pgcrypto 字段级加密；主密钥走环境变量 `UTEN_PGP_MASTER_KEY`，每事务 `SET LOCAL app.pgp_key`。
-- 审计：敏感表挂 `AFTER` 触发器写 `audit_log`，actor 从会话变量 `app.actor_id` 取（由后端 AOP 每事务绑定）。
+- 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统 → `V13` 访客权限拆分 → `V14` 车牌加密 → `V15` 访客通行码 → `V16` 超管 → `V17` 种子 admin 文档 → `V18` 个人信息修改申请 → `V19` 修改审批权限点 → `V20` 修改申请审计列 → `V21` 权限管理体系（部门默认角色 `department_roles` + 个人权限覆盖 `user_permission_overrides`，见 [ADR-007](../docs/99-决策记录-ADR/ADR-007-导航重构与三层权限模型.md)）→ `V22` 审计覆盖扩展（部门角色/权限覆盖/紧急联系人补触发器）→ `V23` 修复 V18 坏审计触发器（个人信息修改链路的部署级阻断 bug，见 [ADR-009](../docs/99-决策记录-ADR/ADR-009-后端安全加固与功能补全.md)）→ `V24` 岗位模板种子（ADR-010）→ `V25` 决策支持独立权限点 `analytics:view`（默认 manager/admin，与 viewcontext 解耦）。
+- 机密 PII（身份证/手机/银行卡/薪资/车牌）用 pgcrypto 字段级加密；主密钥走环境变量 `UTEN_PGP_MASTER_KEY`，每事务 `SET LOCAL app.pgp_key`。
+- 审计：敏感表挂 `AFTER` 触发器写 `audit_log`，actor 从会话变量 `app.actor_id` 取（由后端每事务绑定）。
+- 并发：员工档案写路径全量手动递增 `version`，修改申请审批时版本不符 → 409 防丢更新（ADR-009 §1）。
+
+## 包结构（2026-07-23 重构后，见 [ADR-008](../docs/99-决策记录-ADR/ADR-008-后端代码结构重构.md)）
+
+```
+com.uten.imp
+├─ config/                 Security 配置 + 配置属性（SecurityProperties 等）
+├─ common/                 跨域公共件
+│  ├─ domain/                 通用领域基座
+│  ├─ util/                   HashUtil(sha256) · Strings(isBlank/maskPhone/last4) · IdCardUtil
+│  └─ web/                    ApiException · ErrorCode · PageResponse · Pageables · 全局异常处理
+├─ security/               安全基础设施：JwtService · JwtAuthFilter · AuthUser · TxSessionVars
+│                             （事务会话变量+pgcrypto 加解密）· AdminGrantGuard · DataAccessPolicy
+├─ audit/                  审计写入（AuditService · AuditLog 实体/仓库）
+└─ features/               业务域
+   ├─ auth/                   员工认证：AuthController · LoginService · PasswordService ·
+   │  │                        TokenIssuer · PermissionResolver（权限三层合成）· RefreshTokenService
+   │  └─ model/                 UserAccount · RefreshToken · PasswordHistory（实体+仓库）
+   ├─ rbac/                   纯 RBAC 模型：Role · Permission · UserRole · RolePermission ·
+   │                             DepartmentRole · UserPermissionOverride（实体+仓库，无 API）
+   ├─ admin/                  后台管理 API（/api/admin）：AdminUserController ·
+   │  │                        UserAccountAdminService（账号状态/重置密码）·
+   │  │                        RoleAdminService（角色/部门默认角色）· PermissionOverrideAdminService
+   │  └─ dto/                  UserSummary · RoleDto · PermissionDto · 各请求/响应 DTO
+   ├─ org/                   组织域
+   │  ├─ department/           部门树 CRUD
+   │  ├─ position/             岗位（实体+仓库，无独立 API）
+   │  └─ employee/             员工：EmployeeQueryService（列表/详情脱敏）·
+   │                             EmployeeOnboardingService（入职）· EmployeeCommandService（编辑/生命周期）
+   ├─ profilechange/          个人信息修改：Submit/Query/Review 三 Service +
+   │                             ProfileFieldApplier（字段读写映射表）· ProfileChangeMapper
+   └─ visitor/                访客系统：VisitorAuthService · VisitorApplicationService ·
+                                  VisitorHrApprovalService · VisitorHostConfirmService ·
+                                  VisitorGateService（保安核验/QR）· VisitorApplicationMapper
+```
+
+约定：
+- **Controller 不直接注入 Repository**，一律走 Service；跨域共享的小逻辑用包私有 Support 组件（如 AdminUserSupport / ProfileChangeAccess / VisitorGuard），不复制。
+- 实体/RBAC 模型包不放 API；`admin` 包只放超管/HR 管理端接口。
+- 死代码零容忍：无调用的方法/字段/构造器即删（2026-07-23 大清理基线）。
+
+## 账号状态语义（2026-07-23 修正）
+
+| 状态 | 含义 | 登录行为 |
+|---|---|---|
+| `active` | 正常 | 放行（登录成功不再回写 status，避免冲掉人工状态） |
+| `locked` + `lockedUntil` 未到期 | 暴力破解临时锁（5 次失败 / 15 分钟） | 拒绝「请稍后再试」，到期后登录成功自动恢复 |
+| `locked` + `lockedUntil=null` | 管理员手动锁（权限管理页「锁定」） | 拒绝「账号已被管理员锁定」，仅管理端 unlock 可解 |
+| `disabled` | 停用 | 拒绝 |
+
+锁定检查同时覆盖登录（LoginService）与令牌刷新（TokenIssuer.refresh），防止被锁用户持 refresh token 续期。
 
 ## 安全要点（见顶层计划文档 §四、§十三）
-Argon2id 密码 · 短 access JWT(15min) + 不透明轮换 refresh(7d, 哈希入库, 重用检测) · 登录限流 5/min/IP · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按角色脱敏 · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露。
+Argon2id 密码 · 短 access JWT(15min) + 不透明轮换 refresh(7d, 哈希入库, 重用检测) · 登录限流 5/min/IP · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按角色脱敏 · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露 · **每请求主键级账号状态复查**（锁定/停用立即 401，ADR-009 §4）· **prod 关闭 swagger**（404 + 白名单回落认证，ADR-009 §3）。
 
 ## 密钥与敏感配置（务必专业）
 

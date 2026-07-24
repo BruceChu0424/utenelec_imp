@@ -1,5 +1,8 @@
 // 工资条审核页（Phase 3）
 // 文档：docs/03-页面/工资条审核页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,8 +12,11 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../employee/models/employee.dart';
 import '../../employee/providers/employee_providers.dart';
@@ -45,44 +51,20 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
     final batch = _batches[_selected];
     final isPending = batch.status == '待审核';
 
-    return Scaffold(
-      appBar: const UtenAppBar(title: '工资条审核', showBackButton: true),
-      bottomNavigationBar: isPending
-          ? UtenBottomActionBar(
-              child: Row(
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.ghost,
-                    isLoading: _acting,
-                    icon: Icons.close_rounded,
-                    onPressed: () => _act(false),
-                    child: const Text('驳回'),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: UtenButton(
-                      isLoading: _acting,
-                      isExpanded: true,
-                      icon: Icons.check_rounded,
-                      onPressed: () => _act(true),
-                      child: const Text('审核通过'),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          : null,
-      body: Column(
+    // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+    Widget body = Column(
         children: [
           // 批次选择
           SizedBox(
             height: 56,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                vertical: UtenSpacing.s8,
+              ),
               children: [
                 for (var i = 0; i < _batches.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 8),
+                  if (i > 0) const SizedBox(width: UtenSpacing.s8),
                   _BatchChip(
                     batch: _batches[i],
                     selected: i == _selected,
@@ -96,50 +78,79 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
           // 明细
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 900),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      UtenCard(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${batch.month} · ${batch.department}',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(fontWeight: FontWeight.w700)),
-                                  const SizedBox(height: 4),
-                                  Text('${batch.headcount} 人',
-                                      style: theme.textTheme.bodySmall),
-                                ],
-                              ),
-                            ),
-                            UtenStatusBadge(
-                              label: batch.status,
-                              type: isPending
-                                  ? UtenStatusBadgeType.warning
-                                  : UtenStatusBadgeType.success,
-                            ),
-                          ],
+              padding: const EdgeInsets.symmetric(
+                vertical: UtenSpacing.s16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  UtenCard(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${batch.month} · ${batch.department}',
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700)),
+                              const SizedBox(height: UtenSpacing.s4),
+                              Text('${batch.headcount} 人',
+                                  style: theme.textTheme.bodySmall),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      const UtenSectionHeader(title: '员工明细预览'),
-                      const SizedBox(height: 8),
-                      _BatchDetail(department: batch.department),
-                    ],
+                        UtenStatusBadge(
+                          label: batch.status,
+                          type: isPending
+                              ? UtenStatusBadgeType.warning
+                              : UtenStatusBadgeType.success,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: UtenSpacing.s16),
+                  const UtenSectionHeader(title: '员工明细预览'),
+                  const SizedBox(height: UtenSpacing.s8),
+                  _BatchDetail(department: batch.department),
+                ],
               ),
             ),
           ),
         ],
-      ),
+      );
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
+    return Scaffold(
+      appBar: const UtenAppBar(title: '工资条审核', showBackButton: true),
+      bottomNavigationBar: isPending
+          ? UtenBottomActionBar(
+              child: Row(
+                children: [
+                  UtenButton(
+                    type: UtenButtonType.ghost,
+                    isLoading: _acting,
+                    icon: Icons.close_rounded,
+                    onPressed: () => _act(false),
+                    child: const Text('驳回'),
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: UtenButton(
+                      isLoading: _acting,
+                      isExpanded: true,
+                      icon: Icons.check_rounded,
+                      onPressed: () => _act(true),
+                      child: const Text('审核通过'),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : null,
+      body: body,
     );
   }
 
@@ -269,7 +280,10 @@ class _BatchDetail extends ConsumerWidget {
                     Text('¥ ${total.toStringAsFixed(0)}',
                         style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w700,
-                            color: theme.colorScheme.primary)),
+                            color: theme.colorScheme.primary,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ])),
                   ],
                 ),
               ),

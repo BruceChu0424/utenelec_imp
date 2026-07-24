@@ -1,15 +1,23 @@
 // 流水线看板页（Phase 4）
 // 文档：docs/03-页面/流水线看板页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区（1600），
+// 内部 UtenResponsiveGrid 按容器宽度自动扩列，超宽屏可看更多产线
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/production.dart';
 import '../providers/production_providers.dart';
 
@@ -36,13 +44,18 @@ class ProductionLineBoardPage extends ConsumerWidget {
             return const UtenEmpty(
                 icon: Icons.view_module_outlined, message: '暂无产线数据');
           }
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+          // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+          Widget board = SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
             child: UtenResponsiveGrid(
               itemCount: lines.length,
               itemBuilder: (context, i, _) => _LineCard(line: lines[i]),
             ),
           );
+          if (context.breakpoint.isCompact) {
+            board = UtenContentContainer(child: board);
+          }
+          return board;
         },
       ),
     );
@@ -56,10 +69,10 @@ class _LineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final statusColor = switch (line.status) {
-      LineStatus.running => UtenColors.success,
-      LineStatus.changeover => UtenColors.warning,
-      LineStatus.stopped => UtenColors.error,
+    final (statusColor, badgeType) = switch (line.status) {
+      LineStatus.running => (UtenColors.success, UtenStatusBadgeType.success),
+      LineStatus.changeover => (UtenColors.warning, UtenStatusBadgeType.warning),
+      LineStatus.stopped => (UtenColors.error, UtenStatusBadgeType.danger),
     };
     return UtenCard(
       child: Column(
@@ -72,21 +85,24 @@ class _LineCard extends StatelessWidget {
                 width: 10, height: 10,
                 decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(line.name,
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.w700)),
               ),
-              Text(line.status.label,
-                  style: TextStyle(color: statusColor, fontWeight: FontWeight.w600, fontSize: 12)),
+              UtenStatusBadge(
+                label: line.status.label,
+                type: badgeType,
+                size: UtenStatusBadgeSize.small,
+              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           Text('工单 ${line.order}',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           // 进度
           Row(
             children: [
@@ -107,9 +123,9 @@ class _LineCard extends StatelessWidget {
                       fontSize: 12, fontWeight: FontWeight.w600)),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: UtenSpacing.s12),
           const Divider(),
-          const SizedBox(height: 10),
+          const SizedBox(height: UtenSpacing.s8),
           Row(
             children: [
               Expanded(

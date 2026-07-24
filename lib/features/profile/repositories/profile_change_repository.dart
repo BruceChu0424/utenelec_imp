@@ -36,7 +36,11 @@ abstract interface class ProfileChangeRepository {
   Future<ProfileChangeBatch> hrBatchDetail(String batchId);
 
   /// HR 审批（approve / reject）。
-  Future<ProfileChangeBatch> review(String batchId, String action, String? comment);
+  Future<ProfileChangeBatch> review(
+    String batchId,
+    String action,
+    String? comment,
+  );
 
   /// HR 全局待办数（导航徽章）。
   Future<int> hrPendingCount();
@@ -59,10 +63,10 @@ class SubmitProfileChangeRequest {
   final String idemKey;
 
   Map<String, dynamic> toJson() => {
-        if (batchId != null) 'batchId': batchId,
-        'changes': changes.map((c) => c.toJson()).toList(),
-        'idemKey': idemKey,
-      };
+    if (batchId != null) 'batchId': batchId,
+    'changes': changes.map((c) => c.toJson()).toList(),
+    'idemKey': idemKey,
+  };
 }
 
 class ProfileFieldChange {
@@ -76,10 +80,10 @@ class ProfileFieldChange {
   final String newValue;
 
   Map<String, dynamic> toJson() => {
-        'fieldCode': fieldCode,
-        'fieldLabel': fieldLabel,
-        'newValue': newValue,
-      };
+    'fieldCode': fieldCode,
+    'fieldLabel': fieldLabel,
+    'newValue': newValue,
+  };
 }
 
 class SubmitProfileChangeResponse {
@@ -95,7 +99,8 @@ class SubmitProfileChangeResponse {
   factory SubmitProfileChangeResponse.fromJson(Map<String, dynamic> json) {
     return SubmitProfileChangeResponse(
       batchId: json['batchId'] as String,
-      requestIds: (json['requestIds'] as List<dynamic>? ?? const []).cast<String>(),
+      requestIds: (json['requestIds'] as List<dynamic>? ?? const [])
+          .cast<String>(),
       count: (json['count'] as int?) ?? 0,
     );
   }
@@ -106,8 +111,13 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
   final ApiClient api;
 
   @override
-  Future<SubmitProfileChangeResponse> submit(SubmitProfileChangeRequest req) async {
-    final json = await api.post(ApiEndpoints.profileMyChanges, body: req.toJson());
+  Future<SubmitProfileChangeResponse> submit(
+    SubmitProfileChangeRequest req,
+  ) async {
+    final json = await api.post(
+      ApiEndpoints.profileMyChanges,
+      body: req.toJson(),
+    );
     return SubmitProfileChangeResponse.fromJson(json);
   }
 
@@ -161,7 +171,11 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
   }
 
   @override
-  Future<ProfileChangeBatch> review(String batchId, String action, String? comment) async {
+  Future<ProfileChangeBatch> review(
+    String batchId,
+    String action,
+    String? comment,
+  ) async {
     final json = await api.post(
       ApiEndpoints.hrProfileChangeReview(batchId),
       body: {'action': action, if (comment != null) 'comment': comment},
@@ -177,13 +191,18 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
 
   @override
   Future<int> hrPendingCountFor(String employeeId) async {
-    final json = await api.get(ApiEndpoints.hrProfileChangesPendingCountFor(employeeId));
+    final json = await api.get(
+      ApiEndpoints.hrProfileChangesPendingCountFor(employeeId),
+    );
     return (json['count'] as num?)?.toInt() ?? 0;
   }
 
   @override
   Future<void> verifyPassword(String password) async {
-    await api.post(ApiEndpoints.authVerifyPassword, body: {'password': password});
+    await api.post(
+      ApiEndpoints.authVerifyPassword,
+      body: {'password': password},
+    );
   }
 }
 

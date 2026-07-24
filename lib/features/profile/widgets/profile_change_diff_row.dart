@@ -66,11 +66,26 @@ class ProfileChangeDiffRow extends StatelessWidget {
 
   Widget _statusBadge(ThemeData theme, AppLocalizations l10n) {
     final (text, color) = switch (item.status) {
-      ProfileChangeStatus.pending => (l10n.profileChangeStatusPending, theme.colorScheme.tertiary),
-      ProfileChangeStatus.applied => (l10n.profileChangeStatusApplied, theme.colorScheme.primary),
-      ProfileChangeStatus.approved => (l10n.profileChangeStatusApproved, theme.colorScheme.primary),
-      ProfileChangeStatus.rejected => (l10n.profileChangeStatusRejected, theme.colorScheme.error),
-      ProfileChangeStatus.cancelled => (l10n.profileChangeStatusCancelled, theme.colorScheme.onSurfaceVariant),
+      ProfileChangeStatus.pending => (
+        l10n.profileChangeStatusPending,
+        theme.colorScheme.tertiary,
+      ),
+      ProfileChangeStatus.applied => (
+        l10n.profileChangeStatusApplied,
+        theme.colorScheme.primary,
+      ),
+      ProfileChangeStatus.approved => (
+        l10n.profileChangeStatusApproved,
+        theme.colorScheme.primary,
+      ),
+      ProfileChangeStatus.rejected => (
+        l10n.profileChangeStatusRejected,
+        theme.colorScheme.error,
+      ),
+      ProfileChangeStatus.cancelled => (
+        l10n.profileChangeStatusCancelled,
+        theme.colorScheme.onSurfaceVariant,
+      ),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -80,14 +95,22 @@ class ProfileChangeDiffRow extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }
 }
 
 class _ValueBox extends StatelessWidget {
-  const _ValueBox({required this.label, required this.value, required this.muted});
+  const _ValueBox({
+    required this.label,
+    required this.value,
+    required this.muted,
+  });
   final String label;
   final String? value;
   final bool muted;

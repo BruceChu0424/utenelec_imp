@@ -1,5 +1,8 @@
 // 工资条详情页
 // 文档：docs/03-页面/工资条详情页.md（待写）
+//
+// 响应式：全断点套 UtenContentContainer.narrow（maxWidth 1120）——
+// 外壳只收敛到 1600，详情页需自行钳窄居中
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,8 +15,10 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/payroll_item.dart';
 import '../models/payroll_slip.dart';
@@ -84,12 +89,16 @@ class _DetailContent extends ConsumerWidget {
               ref.invalidate(payrollDetailProvider(slip.id));
               await ref.read(payrollDetailProvider(slip.id).future);
             },
-            child: ListView(
-              padding: const EdgeInsets.all(16),
+            // narrow 容器：compact 提供 gutter，medium+ 把内容钳到 1120 居中
+            child: UtenContentContainer.narrow(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                  vertical: UtenSpacing.s16,
+                ),
               children: [
                 // 头部 - 大金额展示
                 _buildHero(theme),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
 
                 // 状态信息
                 UtenCard(
@@ -112,14 +121,14 @@ class _DetailContent extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
 
                 // 应发明细
                 const UtenSectionHeader(
                   title: '应发明细',
                   icon: Icons.add_circle_outline_rounded,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 UtenCard(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
@@ -133,14 +142,14 @@ class _DetailContent extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
 
                 // 扣除明细
                 const UtenSectionHeader(
                   title: '扣除明细',
                   icon: Icons.remove_circle_outline_rounded,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 UtenCard(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
@@ -155,11 +164,11 @@ class _DetailContent extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
 
                 // 合计
                 const UtenSectionHeader(title: '合计', icon: Icons.calculate_outlined),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 UtenCard(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
@@ -181,7 +190,7 @@ class _DetailContent extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
 
                 // 备注
                 if (slip.remark != null) ...[
@@ -206,15 +215,15 @@ class _DetailContent extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: UtenSpacing.s16),
                 ],
 
                 // 声明
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: UtenRadius.lgAll,
                   ),
                   child: Row(
                     children: [
@@ -235,8 +244,9 @@ class _DetailContent extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
               ],
+              ),
             ),
           ),
         ),
@@ -263,7 +273,7 @@ class _DetailContent extends ConsumerWidget {
 
   Widget _buildHero(ThemeData theme) {
     return UtenCard(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(UtenSpacing.s24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -322,9 +332,9 @@ class _DetailContent extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: UtenSpacing.s16),
           const Divider(),
-          const SizedBox(height: 16),
+          const SizedBox(height: UtenSpacing.s16),
           // 应发 / 扣除
           Row(
             children: [

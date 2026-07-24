@@ -1,4 +1,7 @@
 // 访客审批详情（HR）：查看 + 批准/拒绝/转接待人确认。
+//
+// 响应式：详情页走窄收敛——compact 自套 UtenContentContainer.narrow
+//（medium+ 外壳已收敛，不叠加 gutter）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,17 +12,20 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../visitor/models/visitor_application.dart';
-import '../../visitor/repositories/visitor_repository.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
+import '../providers/visitor_pending_count_provider.dart';
 
 class VisitorApprovalDetailPage extends ConsumerWidget {
   const VisitorApprovalDetailPage({super.key, required this.applicationId});
@@ -31,6 +37,8 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
       await ref.read(visitorStaffRepositoryProvider).action(applicationId,
           action: action, comment: comment, rejectReason: rejectReason);
       ref.invalidate(visitorApprovalDetailProvider(applicationId));
+      // 审批动作改变待办数，立即刷新徽章
+      ref.read(visitorPendingCountProvider.notifier).refresh();
     } on ApiException catch (e) {
       ref.context.appApiError(e, fallback: AppLocalizations.of(ref.context).commonError);
     } catch (_) {
@@ -93,36 +101,40 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
           final canApprove = app.status == VisitorApplicationStatus.pending ||
               app.status == VisitorApplicationStatus.hostReviewing;
           final canForward = app.status == VisitorApplicationStatus.pending;
-          return Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+          final isCompact = context.breakpoint.isCompact;
+          Widget content = SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 0 : UtenSpacing.s16,
+              vertical: UtenSpacing.s16,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                UtenCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      UtenCard(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            UtenSectionHeader(title: l10n.visitorDetailPurpose, icon: Icons.description_outlined),
-                            UtenInfoRow(label: l10n.visitorApplyName, value: app.visitorName, isImportant: true),
-                            UtenInfoRow(
-                                label: l10n.visitorDetailHost,
-                                value: app.hostName ?? app.hostDepartment ?? '—'),
-                            UtenInfoRow(
-                                label: l10n.visitorDetailVisitTime, value: fmtDateTime(app.plannedVisitAt)),
-                            if (app.hasVehicle && app.plateNo != null)
-                              UtenInfoRow(label: l10n.securityPlate, value: app.plateNo),
-                            UtenInfoRow(label: l10n.visitorDetailAppliedAt, value: fmtDateTime(app.appliedAt)),
-                          ],
-                        ),
-                      ),
+                      UtenSectionHeader(title: l10n.visitorDetailPurpose, icon: Icons.description_outlined),
+                      UtenInfoRow(label: l10n.visitorApplyName, value: app.visitorName, isImportant: true),
+                      UtenInfoRow(
+                          label: l10n.visitorDetailHost,
+                          value: app.hostName ?? app.hostDepartment ?? '—'),
+                      UtenInfoRow(
+                          label: l10n.visitorDetailVisitTime, value: fmtDateTime(app.plannedVisitAt)),
+                      if (app.hasVehicle && app.plateNo != null)
+                        UtenInfoRow(label: l10n.securityPlate, value: app.plateNo),
+                      UtenInfoRow(label: l10n.visitorDetailAppliedAt, value: fmtDateTime(app.appliedAt)),
                     ],
                   ),
                 ),
-              ),
+              ],
+            ),
+          );
+          if (isCompact) content = UtenContentContainer.narrow(child: content);
+          return Column(
+            children: [
+              Expanded(child: content),
               if (canApprove || canForward)
                 UtenBottomActionBar(
                   child: Row(
@@ -135,7 +147,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
                             child: Text(l10n.visitorApprovalForward),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: UtenSpacing.s12),
                       ],
                       Expanded(
                         child: UtenButton(
@@ -144,7 +156,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
                           child: Text(l10n.visitorApprovalReject),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: UtenSpacing.s12),
                       Expanded(
                         child: UtenButton(
                           onPressed: canApprove ? () => _approve(context, ref, l10n) : null,

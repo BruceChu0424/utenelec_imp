@@ -1,372 +1,223 @@
-// MainShellPage - App 响应式外壳（多角色分组导航）
-// 文档：docs/03-页面/App外壳.md · docs/05-架构/全局机制.md（按角色显隐）
+// MainShellPage - App 外壳 v4（响应式导航：compact 悬浮胶囊 / medium+ 左侧 Rail）
+// 文档：docs/03-页面/App外壳.md
 //
-// compact (<600dp)：底部 NavigationBar（4 项：工作台/通知/我的/设置）
-// medium (600-840dp)：折叠 NavigationRail（只图标）
-// expanded (>840dp)：展开侧栏（分组导航 + 业务模块）
+// 断点策略：
+//   - compact（<600dp）：底部悬浮胶囊导航，4 项：工作台 / 通知 / 我的 / 设置，
+//     布局与 v3 完全一致（overlay 悬浮、不占布局空间）
+//   - medium+（≥600dp）：全高左侧 NavigationRail（surface 底 + 右侧发丝边框），
+//     屏宽 ≥1280dp 时 extended 常驻标签，否则纯图标 + Tooltip；
+//     内容区套 UtenContentContainer（maxWidth 1600 居中），超宽屏不再无限拉宽
+//
+// 主 Tab 承载（全断点一致）：
+//   - 四个主 Tab 由内部 PageView 承载，支持左右跟手滑动（桌面端可鼠标拖拽），
+//     四页 KeepAlive 保活；compact 下胶囊滑块高亮随 PageController.page 连续位置联动
+//   - 业务子页面（工资条/报销/人事…）照常通过 go_router 进入，
+//     外壳仅保留导航（高亮归属 Tab），不提供页间滑动
+//
+// 路由同步：
+//   - 滑动停稳 → onPageChanged → context.go(tab 路由)，URL 与页一致
+//   - 深链 / 外部 go() 进 tab 路由 → build 检测页码不一致 → animateToPage
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/assets.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
-import '../../../shared/models/role.dart';
-import '../../../shared/providers/session_provider.dart';
-import '../../hr_profile/widgets/hr_pending_badge.dart';
+import '../../../core/theme/uten_anim.dart';
+import '../../dashboard/pages/dashboard_page.dart';
+import '../../notice/pages/notice_list_page.dart';
+import '../../notice/providers/notice_providers.dart';
+import '../../profile/pages/profile_page.dart';
+import '../../settings/pages/settings_page.dart';
+import '../widgets/floating_capsule_nav_bar.dart';
+import '../widgets/uten_side_nav_rail.dart';
 
-class MainShellPage extends ConsumerWidget {
+class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key, required this.child});
 
+  /// ShellRoute 传入的当前路由页面。
+  /// 四个主 Tab 路由时忽略它（由内部 PageView 承载，保证滑动 + 状态保留）。
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
+  ConsumerState<MainShellPage> createState() => _MainShellPageState();
+}
+
+class _MainShellPageState extends ConsumerState<MainShellPage> {
+  /// 主 Tab 路由（顺序 = PageView 页序 = 导航项序）
+  static const _tabLocations = <String>[
+    RouteName.dashboard,
+    RouteName.notice,
+    RouteName.profile,
+    RouteName.settings,
+  ];
+
+  /// Rail 展开（常驻标签）的最小屏宽
+  static const double _railExtendedWidth = 1280;
+
+  late final PageController _pageController;
+
+  /// 连续页位置（喂胶囊滑块跟手）
+  late final ValueNotifier<double> _position;
+
+  @override
+  void initState() {
+    super.initState();
+    // initState 不能用 dependOnInheritedWidget 读路由，
+    // 先按 0 创建；首次 didChangeDependencies 若初始路由非 0 会立即跳正。
+    _pageController = PageController();
+    _position = ValueNotifier<double>(0);
+    _pageController.addListener(_syncPositionFromController);
+  }
+
+  void _syncPositionFromController() {
+    if (!_pageController.hasClients) return;
+    final page = _pageController.page;
+    if (page != null) _position.value = page;
+  }
+
+  @override
+  void dispose() {
+    _pageController.removeListener(_syncPositionFromController);
+    _pageController.dispose();
+    _position.dispose();
+    super.dispose();
+  }
+
+  /// location 恰好是某主 Tab 根路由 → 返回页码；否则 null（业务子页面）
+  int? _exactTabIndex(String location) {
+    for (var i = 0; i < _tabLocations.length; i++) {
+      if (location == _tabLocations[i]) return i;
+    }
+    return null;
+  }
+
+  /// 导航高亮归属：前缀匹配（如 /notice/123 → 通知 tab），无匹配回 0
+  int _capsuleIndex(String location) {
+    for (var i = 0; i < _tabLocations.length; i++) {
+      final root = _tabLocations[i];
+      if (location == root || location.startsWith('$root/')) return i;
+    }
+    return 0;
+  }
+
+  void _onPageChanged(int index) {
+    _position.value = index.toDouble();
     final location = GoRouterState.of(context).matchedLocation;
+    if (location != _tabLocations[index]) {
+      context.go(_tabLocations[index]);
+    }
+  }
 
-    final primaryDestinations = <_NavDestination>[
-      _NavDestination(
-        icon: Icons.dashboard_outlined,
-        selectedIcon: Icons.dashboard_rounded,
-        label: l10n.navDashboard,
-        location: RouteName.dashboard,
-      ),
-      const _NavDestination(
-        icon: Icons.notifications_none_rounded,
-        selectedIcon: Icons.notifications_rounded,
-        label: '通知',
-        location: RouteName.notice,
-      ),
-      _NavDestination(
-        icon: Icons.person_outline_rounded,
-        selectedIcon: Icons.person_rounded,
-        label: l10n.navProfile,
-        location: RouteName.profile,
-      ),
-      _NavDestination(
-        icon: Icons.settings_outlined,
-        selectedIcon: Icons.settings_rounded,
-        label: l10n.navSettings,
-        location: RouteName.settings,
-      ),
-    ];
+  void _onTabTap(int index) {
+    // 收起键盘/焦点，避免切页后键盘残留
+    FocusManager.instance.primaryFocus?.unfocus();
+    final location = GoRouterState.of(context).matchedLocation;
+    if (location == _tabLocations[index]) return;
+    context.go(_tabLocations[index]);
+  }
 
-    // 角色分组（按角色显隐）
-    final allGroups = <_NavGroup>[
-      _NavGroup(
-        title: '业务模块',
-        roles: null,
-        items: [
-          const _NavDestination(
-            icon: Icons.account_balance_wallet_outlined,
-            selectedIcon: Icons.account_balance_wallet_rounded,
-            label: '工资条',
-            location: '/payroll/slip',
-          ),
-          const _NavDestination(
-            icon: Icons.receipt_long_outlined,
-            selectedIcon: Icons.receipt_long_rounded,
-            label: '我的报销',
-            location: '/expense',
-          ),
-          const _NavDestination(
-            icon: Icons.lightbulb_outline_rounded,
-            selectedIcon: Icons.lightbulb_rounded,
-            label: '建议箱',
-            location: '/suggestion',
-          ),
-          _NavDestination(
-            icon: Icons.person_search_outlined,
-            selectedIcon: Icons.person_search_rounded,
-            label: l10n.myVisitorsTitle,
-            location: RouteName.myVisitors,
-          ),
-        ],
-      ),
-      _NavGroup(
-        title: l10n.navHrGroup,
-        roles: [Role.hr, Role.admin, Role.manager],
-        items: [
-          _NavDestination(
-            icon: Icons.badge_outlined,
-            selectedIcon: Icons.badge_rounded,
-            label: l10n.navHrEmployees,
-            location: '/employee',
-          ),
-          _NavDestination(
-            icon: Icons.account_tree_outlined,
-            selectedIcon: Icons.account_tree_rounded,
-            label: l10n.navHrDepartments,
-            location: '/department',
-          ),
-          _NavDestination(
-            icon: Icons.person_add_outlined,
-            selectedIcon: Icons.person_add_rounded,
-            label: l10n.navHrOnboarding,
-            location: '/employee/onboarding',
-          ),
-          _NavDestination(
-            icon: Icons.request_quote_outlined,
-            selectedIcon: Icons.request_quote_rounded,
-            label: l10n.navHrPayrollGenerate,
-            location: '/payroll/generate',
-          ),
-          _NavDestination(
-            icon: Icons.campaign_outlined,
-            selectedIcon: Icons.campaign_rounded,
-            label: l10n.navHrNoticePublish,
-            location: '/notice/publish',
-          ),
-          _NavDestination(
-            icon: Icons.how_to_reg_outlined,
-            selectedIcon: Icons.how_to_reg_rounded,
-            label: l10n.visitorApprovalTitle,
-            location: RouteName.visitorApproval,
-            showPendingBadge: true,
-          ),
-          _NavDestination(
-            icon: Icons.assignment_late_outlined,
-            selectedIcon: Icons.assignment_late_rounded,
-            label: l10n.profileChangeHrQueueTitle,
-            location: RouteName.hrProfileChanges,
-            showPendingBadge: true,
-          ),
-        ],
-      ),
-      const _NavGroup(
-        title: '财务管理',
-        roles: [Role.finance, Role.admin, Role.manager],
-        items: [
-          _NavDestination(
-            icon: Icons.fact_check_outlined,
-            selectedIcon: Icons.fact_check_rounded,
-            label: '报销审批',
-            location: '/expense/approval',
-          ),
-          _NavDestination(
-            icon: Icons.rate_review_outlined,
-            selectedIcon: Icons.rate_review_rounded,
-            label: '工资条审核',
-            location: '/payroll/review',
-          ),
-          _NavDestination(
-            icon: Icons.bar_chart_outlined,
-            selectedIcon: Icons.bar_chart_rounded,
-            label: '财务报表',
-            location: '/finance/report',
-          ),
-        ],
-      ),
-      const _NavGroup(
-        title: '生产管理',
-        roles: [Role.production, Role.admin, Role.manager],
-        items: [
-          _NavDestination(
-            icon: Icons.science_outlined,
-            selectedIcon: Icons.science_rounded,
-            label: '检测记录',
-            location: '/lab/test',
-          ),
-          _NavDestination(
-            icon: Icons.hvac_outlined,
-            selectedIcon: Icons.hvac_rounded,
-            label: '空调控制',
-            location: '/hvac',
-          ),
-          _NavDestination(
-            icon: Icons.view_timeline_outlined,
-            selectedIcon: Icons.view_timeline_rounded,
-            label: '流水线看板',
-            location: '/production/line',
-          ),
-          _NavDestination(
-            icon: Icons.edit_note_outlined,
-            selectedIcon: Icons.edit_note_rounded,
-            label: '产量录入',
-            location: '/production/output/entry',
-          ),
-          _NavDestination(
-            icon: Icons.insights_outlined,
-            selectedIcon: Icons.insights_rounded,
-            label: '产量统计',
-            location: '/production/output',
-          ),
-          _NavDestination(
-            icon: Icons.inventory_2_outlined,
-            selectedIcon: Icons.inventory_2_rounded,
-            label: '库存查询',
-            location: '/inventory',
-          ),
-          _NavDestination(
-            icon: Icons.swap_vert_rounded,
-            selectedIcon: Icons.swap_vert_rounded,
-            label: '出入库记录',
-            location: '/inventory/movement',
-          ),
-        ],
-      ),
-      const _NavGroup(
-        title: '决策支持',
-        roles: [Role.manager, Role.admin],
-        items: [
-          _NavDestination(
-            icon: Icons.space_dashboard_outlined,
-            selectedIcon: Icons.space_dashboard_rounded,
-            label: '经营 Dashboard',
-            location: '/analytics/dashboard',
-          ),
-          _NavDestination(
-            icon: Icons.query_stats_outlined,
-            selectedIcon: Icons.query_stats_rounded,
-            label: '多维分析',
-            location: '/analytics/explore',
-          ),
-          _NavDestination(
-            icon: Icons.notifications_active_outlined,
-            selectedIcon: Icons.notifications_active_rounded,
-            label: '异常告警',
-            location: '/analytics/alerts',
-          ),
-        ],
-      ),
-      _NavGroup(
-        title: l10n.securityTitle,
-        roles: [Role.security, Role.admin],
-        items: [
-          _NavDestination(
-            icon: Icons.qr_code_scanner_rounded,
-            selectedIcon: Icons.qr_code_scanner_rounded,
-            label: l10n.securityTitle,
-            location: RouteName.securityScan,
-          ),
-        ],
-      ),
-    ];
-
-    final userRoles = ref.watch(
-      sessionProvider.select((s) => s.user?.roles ?? const <Role>[]),
-    );
-    final groups = allGroups
-        .where((g) => g.roles == null || g.roles!.any(userRoles.contains))
-        .toList();
-
-    final breakpoint = context.breakpoint;
-
-    // 所有 destination 的 location，用于 _isActive 的最长前缀匹配
-    final allLocations = <String>[
-      for (final d in primaryDestinations) d.location,
-      for (final g in groups)
-        for (final d in g.items) d.location,
-    ];
-
-    return Scaffold(
-      body: switch (breakpoint) {
-        UtenBreakpoint.compact => _CompactShell(
-          destinations: primaryDestinations,
-          currentLocation: location,
-          child: child,
-        ),
-        UtenBreakpoint.medium || UtenBreakpoint.expanded => _ExpandedShell(
-          primaryDestinations: primaryDestinations,
-          groups: groups,
-          currentLocation: location,
-          allLocations: allLocations,
-          expanded: breakpoint.isExpanded,
-          child: child,
-        ),
-      },
+  /// 四页保活 PageView（两个断点分支共用同一份定义）
+  Widget _tabPageView() {
+    return PageView(
+      controller: _pageController,
+      onPageChanged: _onPageChanged,
+      children: const [
+        _KeepAlivePage(child: DashboardPage()),
+        _KeepAlivePage(child: NoticeListPage()),
+        _KeepAlivePage(child: ProfilePage()),
+        _KeepAlivePage(child: SettingsPage()),
+      ],
     );
   }
-}
-
-class _NavDestination {
-  const _NavDestination({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
-    required this.location,
-    this.showPendingBadge = false,
-  });
-
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
-  final String location;
-
-  /// 是否在右侧挂 HR 待审红色徽章（>0 才渲染）。
-  final bool showPendingBadge;
-}
-
-class _NavGroup {
-  const _NavGroup({
-    required this.title,
-    required this.roles,
-    required this.items,
-  });
-  final String title;
-  final List<Role>? roles;
-  final List<_NavDestination> items;
-}
-
-bool _isActive(String current, String target, List<String> allLocations) {
-  // 必须自身能匹配（精确或前缀）
-  final selfHit = current == target || current.startsWith('$target/');
-  if (!selfHit) return false;
-  // 但如果存在更具体的 sibling 也匹配，则让位给 sibling
-  for (final loc in allLocations) {
-    if (loc.length <= target.length) continue;
-    if (current == loc || current.startsWith('$loc/')) return false;
-  }
-  return true;
-}
-
-int _primaryIndex(String location, List<_NavDestination> all) {
-  final allLocs = [for (final d in all) d.location];
-  for (var i = 0; i < all.length; i++) {
-    if (_isActive(location, all[i].location, allLocs)) return i;
-  }
-  return 0;
-}
-
-class _CompactShell extends StatelessWidget {
-  const _CompactShell({
-    required this.destinations,
-    required this.currentLocation,
-    required this.child,
-  });
-
-  final List<_NavDestination> destinations;
-  final String currentLocation;
-  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _primaryIndex(currentLocation, destinations);
+    final l10n = AppLocalizations.of(context);
+    final location = GoRouterState.of(context).matchedLocation;
+    final labels = <String>[
+      l10n.navDashboard,
+      l10n.navNotice,
+      l10n.navProfile,
+      l10n.navSettings,
+    ];
+    final unread = ref.watch(unreadNoticeCountProvider).valueOrNull ?? 0;
 
-    // 自适应底部 tab bar（放弃 NavigationBar 因为它会强制撑满父容器宽度）：
-    //   - 整条 bar 宽度 = 各 tab 的 intrinsic 宽度之和 + padding，不强制 100% 屏宽
-    //   - tab 越多 → bar 越宽；tab 越少 → bar 越窄
-    //   - 选中态：teal500 主色背景 + 白色 icon / label（与主按钮一致）
-    //   - 未选中：透明 + onSurfaceVariant
-    //   - 居中悬浮在底部，外包 SafeArea(top:false) 处理 home indicator 安全区
+    final tabIndex = _exactTabIndex(location);
+
+    if (tabIndex != null) {
+      // 深链 / 点导航 / 权限重定向进入某 tab：
+      // PageView 页码不一致时动画切到目标页（滑动停稳触发的 go() 到这里
+      // 页码已一致，天然跳过，不会和手势打架）。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        final current = _pageController.page?.round() ?? tabIndex;
+        if (current != tabIndex) {
+          _pageController.animateToPage(
+            tabIndex,
+            duration: UtenAnim.normal,
+            curve: UtenAnim.standard,
+          );
+        }
+      });
+    } else {
+      // 业务子页面：导航停在归属 tab（无滑动手势，位置固定）
+      _position.value = _capsuleIndex(location).toDouble();
+    }
+
+    // compact 保留悬浮胶囊；medium+ 切换为左侧 Rail + 内容收敛
+    if (context.breakpoint.isCompact) {
+      return _buildCompactShell(tabIndex: tabIndex, labels: labels, unread: unread);
+    }
+    return _buildRailShell(
+      tabIndex: tabIndex,
+      location: location,
+      labels: labels,
+      unread: unread,
+    );
+  }
+
+  /// compact 外壳：底部悬浮胶囊 overlay（与 v3 完全一致）
+  Widget _buildCompactShell({
+    required int? tabIndex,
+    required List<String> labels,
+    required int unread,
+  }) {
     return Scaffold(
-      body: Column(
+      // 胶囊导航不随键盘升起；body 不被键盘压缩
+      resizeToAvoidBottomInset: false,
+      // 悬浮 overlay 布局：胶囊不占布局空间。
+      // - 主 Tab 页：内容全高直通屏底，胶囊浮在玻璃层上，
+      //   各 Tab 页自带底部留白（滚到底内容可越过胶囊）
+      // - 业务子页面：不少页面自带底部固定操作栏（bottomNavigationBar），
+      //   底部预留胶囊高度，保证按钮/列表最后一项不被遮挡
+      body: Stack(
         children: [
-          Expanded(child: SafeArea(child: child)),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Center(
-                child: _AdaptiveNavBar(
-                  destinations: destinations,
-                  currentIndex: currentIndex,
-                  onTap: (i) => context.go(destinations[i].location),
-                ),
+          Positioned.fill(
+            child: SafeArea(
+              bottom: false,
+              child: tabIndex != null
+                  ? _tabPageView()
+                  : Padding(
+                      padding: EdgeInsets.only(bottom: _navReserve(context)),
+                      child: widget.child,
+                    ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 6,
+            child: SafeArea(
+              top: false,
+              child: FloatingCapsuleNavBar(
+                position: _position,
+                onTap: _onTabTap,
+                labels: labels,
+                badgeCounts: [0, unread, 0, 0],
               ),
             ),
           ),
@@ -374,382 +225,69 @@ class _CompactShell extends StatelessWidget {
       ),
     );
   }
-}
 
-/// 自适应宽度底部 tab bar：放弃 NavigationBar（它会撑满父容器宽度），
-/// 自己用 Row(mainAxisSize: min) + StadiumBorder 容器实现，
-/// 宽度由各 tab 内容 intrinsic 计算，tab 多则宽、tab 少则窄。
-class _AdaptiveNavBar extends StatelessWidget {
-  const _AdaptiveNavBar({
-    required this.destinations,
-    required this.currentIndex,
-    required this.onTap,
-  });
-
-  final List<_NavDestination> destinations;
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surface,
-      shape: StadiumBorder(
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(6),
+  /// medium+ 外壳：左侧 Rail + UtenContentContainer 收敛内容区
+  Widget _buildRailShell({
+    required int? tabIndex,
+    required String location,
+    required List<String> labels,
+    required int unread,
+  }) {
+    return Scaffold(
+      // 与 compact 保持一致：键盘弹起不压缩页面（桌面端影响可忽略）
+      resizeToAvoidBottomInset: false,
+      body: SafeArea(
+        bottom: false,
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (var i = 0; i < destinations.length; i++)
-              _AdaptiveTab(
-                destination: destinations[i],
-                isSelected: i == currentIndex,
-                onTap: () => onTap(i),
+            UtenSideNavRail(
+              extended: context.screenWidth >= _railExtendedWidth,
+              // 主 Tab 页高亮当前页；业务子页面高亮归属 tab（前缀匹配）
+              selectedIndex: tabIndex ?? _capsuleIndex(location),
+              onTap: _onTabTap,
+              labels: labels,
+              badgeCounts: [0, unread, 0, 0],
+            ),
+            Expanded(
+              // 超宽屏内容居中收敛（maxWidth 1600 + 响应式 gutter）；
+              // 主 Tab 页与业务子页面统一收敛，无胶囊因此不再需要底部预留
+              child: UtenContentContainer(
+                child: tabIndex != null ? _tabPageView() : widget.child,
               ),
+            ),
           ],
         ),
       ),
     );
   }
-}
 
-/// 单个 tab：胶囊形背景，选中态 teal500 + 白字白 icon。
-class _AdaptiveTab extends StatelessWidget {
-  const _AdaptiveTab({
-    required this.destination,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final _NavDestination destination;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final bg = isSelected ? UtenColors.teal500 : Colors.transparent;
-    final fg = isSelected
-        ? Colors.white
-        : theme.colorScheme.onSurfaceVariant;
-
-    return Material(
-      color: bg,
-      shape: const StadiumBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const StadiumBorder(),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isSelected ? destination.selectedIcon : destination.icon,
-                size: 22,
-                color: fg,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                destination.label,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  /// 业务子页面底部预留高度 = 胶囊高 + 上下间距 + 系统手势条高度（仅 compact）
+  static double _navReserve(BuildContext context) {
+    return FloatingCapsuleNavBar.navHeight +
+        10 +
+        MediaQuery.paddingOf(context).bottom;
   }
 }
 
-class _ExpandedShell extends StatelessWidget {
-  const _ExpandedShell({
-    required this.primaryDestinations,
-    required this.groups,
-    required this.currentLocation,
-    required this.allLocations,
-    required this.child,
-    required this.expanded,
-  });
+/// PageView 子页保活：滑过的页常驻，滚动位置 / 页面状态不丢。
+class _KeepAlivePage extends StatefulWidget {
+  const _KeepAlivePage({required this.child});
 
-  final List<_NavDestination> primaryDestinations;
-  final List<_NavGroup> groups;
-  final String currentLocation;
-  final List<String> allLocations;
   final Widget child;
-  final bool expanded;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      body: Row(
-        children: [
-          Container(
-            width: expanded ? 240 : 72,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              border: Border(
-                right: BorderSide(color: theme.colorScheme.outlineVariant),
-              ),
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 24,
-                    horizontal: 16,
-                  ),
-                  child: _Logo(expanded: expanded),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    children: [
-                      for (final d in primaryDestinations)
-                        _NavItem(
-                          destination: d,
-                          expanded: expanded,
-                          isSelected: _isActive(
-                            currentLocation,
-                            d.location,
-                            allLocations,
-                          ),
-                          onTap: () => context.go(d.location),
-                        ),
-                      for (final g in groups) ...[
-                        if (expanded)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-                            child: Text(
-                              g.title,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          )
-                        else ...[
-                          const SizedBox(height: 12),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Divider(
-                              height: 1,
-                              color: theme.colorScheme.outlineVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                        ],
-                        for (final d in g.items)
-                          _NavItem(
-                            destination: d,
-                            expanded: expanded,
-                            isSelected: _isActive(
-                              currentLocation,
-                              d.location,
-                              allLocations,
-                            ),
-                            onTap: () => context.go(d.location),
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(child: SafeArea(left: false, child: child)),
-        ],
-      ),
-    );
-  }
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
 }
 
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.destination,
-    required this.expanded,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final _NavDestination destination;
-  final bool expanded;
-  final bool isSelected;
-  final VoidCallback onTap;
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // 选中态：文字/icon 用品牌主色（teal500，与按钮背景同色）；
-    // 背景用同色系的浅绿（teal50 / teal100），建立「主色文字 + 主色淡底」的语义对。
-    const selectedFg = UtenColors.teal500;
-    final iconColor = isSelected ? selectedFg : theme.colorScheme.onSurfaceVariant;
-    final textColor = isSelected ? selectedFg : theme.colorScheme.onSurface;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Material(
-        color: isSelected
-            ? (theme.brightness == Brightness.dark
-                  ? UtenColors.teal900.withValues(alpha: 0.35)
-                  : UtenColors.teal50)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              vertical: 10,
-              horizontal: expanded ? 12 : 0,
-            ),
-            child: expanded
-                ? Row(
-                    children: [
-                      Icon(
-                        isSelected
-                            ? destination.selectedIcon
-                            : destination.icon,
-                        size: 20,
-                        color: iconColor,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          destination.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: textColor,
-                            fontWeight: isSelected
-                                ? FontWeight.w600
-                                : FontWeight.w500,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      if (destination.showPendingBadge)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 8),
-                          child: HrPendingBadge(showLabel: true),
-                        ),
-                    ],
-                  )
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(
-                            isSelected
-                                ? destination.selectedIcon
-                                : destination.icon,
-                            size: 22,
-                            color: iconColor,
-                          ),
-                          if (destination.showPendingBadge)
-                            const Positioned(
-                              right: -8,
-                              top: -4,
-                              child: HrPendingBadge(),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        destination.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 10,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Logo extends StatelessWidget {
-  const _Logo({required this.expanded});
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final logoSize = expanded ? 42.0 : 40.0;
-
-    final logo = Container(
-      width: logoSize,
-      height: logoSize,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Image.asset(
-        UtenAssets.logoIp,
-        fit: BoxFit.cover,
-        semanticLabel: l10n.appTitle,
-      ),
-    );
-
-    if (!expanded) return logo;
-
-    return Row(
-      children: [
-        logo,
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                l10n.appTitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  height: 1.25,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                l10n.appName,
-                maxLines: 1,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.1,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    super.build(context);
+    return widget.child;
   }
 }

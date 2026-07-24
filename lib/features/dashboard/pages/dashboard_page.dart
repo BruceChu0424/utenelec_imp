@@ -1,4 +1,4 @@
-// DashboardPage - 工作台首页（v2 - 大厂仪表盘范）
+// DashboardPage - 工作台首页（v3 - 响应式收敛 + 区块化视觉）
 // 文档：docs/03-页面/工作台首页.md
 //
 // 设计原则（ui-ux-pro-max）：
@@ -6,6 +6,13 @@
 // - KPI 卡片网格 + 待办清单 + 快捷操作
 // - 区块靠卡片分隔，不靠渐变
 // - 颜色克制：中性为主，品牌色仅点缀
+//
+// 响应式：
+// - compact：页面自带 UtenContentContainer（水平 gutter 16），
+//   底部留白 96，滚到底内容可越过悬浮胶囊导航
+// - medium+：外壳（MainShellPage）已提供 UtenContentContainer
+//   （maxWidth 1600 居中 + gutter 24/32），页面不再叠加，避免双重 gutter；
+//   无胶囊遮挡，底部留白 32
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,13 +21,17 @@ import 'package:go_router/go_router.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/cards/uten_stat_card.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
-import '../../../features/notice/providers/notice_providers.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../widgets/workbench_module_area.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -103,41 +114,49 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     _stats[3].title = l10n.statPendingTodos;
 
     final name = session.user?.name ?? 'Uten';
-    final unreadCount = ref.watch(unreadNoticeCountProvider).valueOrNull ?? 0;
+    final isCompact = context.breakpoint.isCompact;
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildPageHeader(theme, name),
+        const SizedBox(height: UtenSpacing.s24),
+        // 今日统计
+        UtenSectionHeader(title: l10n.dashboardTodayStats),
+        const SizedBox(height: UtenSpacing.s12),
+        _buildStatGrid(theme),
+        const SizedBox(height: UtenSpacing.s24),
+        // 待办事项
+        const UtenSectionHeader(title: '待办事项'),
+        const SizedBox(height: UtenSpacing.s12),
+        _buildTodoList(theme),
+        const SizedBox(height: UtenSpacing.s24),
+        // 功能模块区：原侧边栏全部分组迁入，按权限点显隐（各组可折叠）
+        const WorkbenchModuleArea(),
+      ],
+    );
 
     return Scaffold(
+      // 底部留白：compact 96（悬浮胶囊 overlay 不占布局，滚到底可越过胶囊）；
+      // medium+ 无胶囊，32 即可
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1280),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildPageHeader(theme, name, unreadCount),
-              const SizedBox(height: 24),
-              _buildSectionHeader(theme, l10n.dashboardTodayStats),
-              const SizedBox(height: 12),
-              _buildStatGrid(theme),
-              const SizedBox(height: 28),
-              _buildSectionHeader(theme, l10n.dashboardQuickActions),
-              const SizedBox(height: 12),
-              _buildQuickActions(theme),
-              const SizedBox(height: 28),
-              _buildSectionHeader(theme, '待办事项'),
-              const SizedBox(height: 12),
-              _buildTodoList(theme),
-            ],
-          ),
+        padding: EdgeInsets.only(
+          top: UtenSpacing.s20,
+          bottom: isCompact ? 96 : UtenSpacing.s32,
         ),
+        // compact 由页面自行收敛宽度；medium+ 外壳已套 UtenContentContainer，
+        // 再套一层会叠加 gutter，故按断点取舍
+        child: isCompact ? UtenContentContainer(child: content) : content,
       ),
     );
   }
 
-  Widget _buildPageHeader(ThemeData theme, String name, int unreadCount) {
+  /// 页头：问候语 20px w600 为主层级，日期 13px 三级文字为辅
+  Widget _buildPageHeader(ThemeData theme, String name) {
     return Row(
       children: [
         UtenUserAvatar(name: name),
-        const SizedBox(width: 14),
+        const SizedBox(width: UtenSpacing.s12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,48 +164,26 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
             children: [
               Text(
                 '你好，$name',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                  color: theme.colorScheme.onSurface,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: UtenSpacing.s4),
               Text(
                 _formatDate(DateTime.now()),
-                style: theme.textTheme.bodySmall?.copyWith(
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.3,
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 8),
-        Badge(
-          label: Text(unreadCount > 99 ? '99+' : '$unreadCount'),
-          isLabelVisible: unreadCount > 0,
-          child: IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: () => context.go(RouteName.notice),
-            tooltip: unreadCount > 0 ? '通知 · $unreadCount 条未读' : '通知',
-          ),
-        ),
       ],
-    );
-  }
-
-  Widget _buildSectionHeader(ThemeData theme, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Row(
-        children: [
-          Text(
-            text,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.onSurface,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -226,42 +223,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     );
   }
 
-  Widget _buildQuickActions(ThemeData theme) {
-    final actions = <_QuickAction>[
-      const _QuickAction(
-        icon: Icons.receipt_long_rounded,
-        label: '我的报销',
-        color: UtenColors.teal600,
-        path: RouteName.expense,
-      ),
-      const _QuickAction(
-        icon: Icons.account_balance_wallet_rounded,
-        label: '工资条',
-        color: UtenColors.info,
-        path: RouteName.payrollSlipList,
-      ),
-      const _QuickAction(
-        icon: Icons.campaign_rounded,
-        label: '公司通知',
-        color: UtenColors.warning,
-        path: RouteName.notice,
-      ),
-      const _QuickAction(
-        icon: Icons.lightbulb_outline_rounded,
-        label: '建议箱',
-        color: UtenColors.success,
-        path: RouteName.suggestion,
-      ),
-    ];
-
-    return UtenResponsiveGrid(
-      itemCount: actions.length,
-      spacing: 12,
-      itemBuilder: (context, i, itemWidth) =>
-          _QuickActionTile(action: actions[i]),
-    );
-  }
-
   Widget _buildTodoList(ThemeData theme) {
     final todos = <_Todo>[
       const _Todo(
@@ -288,7 +249,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     ];
 
     return UtenCard(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
       child: Column(
         children: [
           for (var i = 0; i < todos.length; i++) ...[
@@ -328,74 +289,6 @@ class _StatData {
   final Color color;
 }
 
-class _QuickAction {
-  const _QuickAction({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.path,
-  });
-  final IconData icon;
-  final String label;
-  final Color color;
-  final String path;
-}
-
-class _QuickActionTile extends StatelessWidget {
-  const _QuickActionTile({required this.action});
-  final _QuickAction action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      type: MaterialType.transparency,
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => context.go(action.path),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: action.color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(action.icon, color: action.color, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  action.label,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: theme.colorScheme.onSurfaceVariant,
-                size: 18,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _Todo {
   const _Todo({
     required this.title,
@@ -423,7 +316,10 @@ class _TodoTile extends StatelessWidget {
       child: InkWell(
         onTap: () => context.go(todo.path),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s16,
+            vertical: UtenSpacing.s12,
+          ),
           child: Row(
             children: [
               Container(
@@ -431,11 +327,11 @@ class _TodoTile extends StatelessWidget {
                 height: 32,
                 decoration: BoxDecoration(
                   color: todo.statusColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: UtenRadius.mdAll,
                 ),
                 child: Icon(Icons.circle, color: todo.statusColor, size: 8),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: UtenSpacing.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -461,12 +357,15 @@ class _TodoTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: UtenSpacing.s12),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s8,
+                  vertical: 3,
+                ),
                 decoration: BoxDecoration(
                   color: todo.statusColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: UtenRadius.smAll,
                 ),
                 child: Text(
                   todo.status,

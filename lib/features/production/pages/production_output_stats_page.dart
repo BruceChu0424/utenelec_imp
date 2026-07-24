@@ -1,5 +1,8 @@
 // 产量统计页（Phase 4）
 // 文档：docs/03-页面/产量统计页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,10 +11,12 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/production.dart';
@@ -63,55 +68,55 @@ class ProductionOutputStatsPage extends ConsumerWidget {
           }
           final maxProd = byProduct.values.fold<int>(1, (a, b) => a > b ? a : b);
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    UtenResponsiveGrid(
-                      itemCount: 3,
-                      columns: const UtenResponsiveColumns(
-                          medium: 3, expanded: 3),
-                      itemBuilder: (context, i, _) {
-                        const items = [
-                          ('总产量', null),
-                          ('合格率', null),
-                          ('不良数', null),
-                        ];
-                        return _Kpi(
-                          label: items[i].$1,
-                          value: switch (i) {
-                            0 => '$totalQ',
-                            1 => '${rate.toStringAsFixed(1)}%',
-                            _ => '$totalUq',
-                          },
-                          color: i == 2 && totalUq > 0 ? UtenColors.error : null,
-                        );
+          // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+          Widget content = SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                UtenResponsiveGrid(
+                  itemCount: 3,
+                  columns: const UtenResponsiveColumns(
+                      medium: 3, expanded: 3),
+                  itemBuilder: (context, i, _) {
+                    const items = [
+                      ('总产量', null),
+                      ('合格率', null),
+                      ('不良数', null),
+                    ];
+                    return _Kpi(
+                      label: items[i].$1,
+                      value: switch (i) {
+                        0 => '$totalQ',
+                        1 => '${rate.toStringAsFixed(1)}%',
+                        _ => '$totalUq',
                       },
-                    ),
-                    const SizedBox(height: 24),
-                    if (wide)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: _ProductChart(byProduct: byProduct, max: maxProd)),
-                          const SizedBox(width: 16),
-                          Expanded(child: _DetailList(outputs: outputs)),
-                        ],
-                      )
-                    else ...[
-                      _ProductChart(byProduct: byProduct, max: maxProd),
-                      const SizedBox(height: 16),
-                      _DetailList(outputs: outputs),
-                    ],
-                  ],
+                      color: i == 2 && totalUq > 0 ? UtenColors.error : null,
+                    );
+                  },
                 ),
-              ),
+                const SizedBox(height: UtenSpacing.s24),
+                if (wide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _ProductChart(byProduct: byProduct, max: maxProd)),
+                      const SizedBox(width: UtenSpacing.s16),
+                      Expanded(child: _DetailList(outputs: outputs)),
+                    ],
+                  )
+                else ...[
+                  _ProductChart(byProduct: byProduct, max: maxProd),
+                  const SizedBox(height: UtenSpacing.s16),
+                  _DetailList(outputs: outputs),
+                ],
+              ],
             ),
           );
+          if (context.breakpoint.isCompact) {
+            content = UtenContentContainer(child: content);
+          }
+          return content;
         },
       ),
     );

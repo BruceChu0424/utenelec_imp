@@ -1,4 +1,5 @@
 // HR 个人修改审批详情（/hr/profile-changes/:id）
+// 详情页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 // 文档：docs/03-页面/我的页.md（§HR 端：员工修改审批 — 详情）
 
 import 'package:flutter/material.dart';
@@ -12,8 +13,10 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../profile/models/profile_change_request.dart';
 import '../../profile/providers/profile_change_providers.dart';
@@ -72,7 +75,7 @@ class _HrProfileChangeDetailPageState
                         child: Text(l10n.profileChangeReviewReject),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: UtenSpacing.s12),
                     Expanded(
                       flex: 2,
                       child: UtenButton(
@@ -94,15 +97,17 @@ class _HrProfileChangeDetailPageState
 
   Widget _buildBody(BuildContext context, AppLocalizations l10n, ProfileChangeBatch batch) {
     final theme = Theme.of(context);
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    // 详情页全断点窄版收敛（1120），避免宽屏 diff 行被拉得过长
+    return UtenContentContainer.narrow(
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+        children: [
         // 员工摘要卡
         UtenCard(
           child: Row(
             children: [
               UtenUserAvatar(name: batch.employeeName, size: 44),
-              const SizedBox(width: 12),
+              const SizedBox(width: UtenSpacing.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,7 +130,7 @@ class _HrProfileChangeDetailPageState
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: UtenSpacing.s12),
 
         // 提交信息
         UtenCard(
@@ -137,26 +142,26 @@ class _HrProfileChangeDetailPageState
                 style: theme.textTheme.bodySmall,
               ),
               if (batch.submittedByName != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: UtenSpacing.s4),
                 Text(
                   '${l10n.profileChangeReviewer}：${batch.submittedByName!}',
                   style: theme.textTheme.bodySmall,
                 ),
               ],
               if (batch.reviewedAt != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: UtenSpacing.s4),
                 Text(
                   '${l10n.profileChangeReviewer}：${batch.reviewedByName ?? '—'} · ${_formatTime(batch.reviewedAt!)}',
                   style: theme.textTheme.bodySmall,
                 ),
               ],
               if (batch.reviewComment != null && batch.reviewComment!.isNotEmpty) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainer,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: UtenRadius.mdAll,
                   ),
                   child: Text(
                     '${l10n.profileChangeReviewComment}：${batch.reviewComment!}',
@@ -167,7 +172,7 @@ class _HrProfileChangeDetailPageState
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: UtenSpacing.s12),
 
         // 字段 diff 列表
         UtenCard(
@@ -194,8 +199,9 @@ class _HrProfileChangeDetailPageState
             ],
           ),
         ),
-        const SizedBox(height: 80),
-      ],
+        const SizedBox(height: 80), // 底部固定操作栏留白
+        ],
+      ),
     );
   }
 
@@ -260,7 +266,7 @@ class _HrProfileChangeDetailPageState
                 l10n.profileChangeRejectReasonHint,
                 style: Theme.of(ctx).textTheme.bodySmall,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: UtenSpacing.s12),
               UtenInput(
                 label: l10n.profileChangeReviewComment,
                 controller: ctrl,

@@ -108,6 +108,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navDashboard => 'Dashboard';
 
   @override
+  String get navNotice => 'Notices';
+
+  @override
   String get navProfile => 'Me';
 
   @override

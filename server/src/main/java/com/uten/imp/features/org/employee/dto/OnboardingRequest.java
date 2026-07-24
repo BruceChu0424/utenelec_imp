@@ -14,6 +14,8 @@ public record OnboardingRequest(
         Compensation compensation,
         Contract contract,
         List<EmergencyContactInput> emergencyContacts,
+        List<CredentialInput> certificates,
+        List<EducationInput> educations,
         Account account
 ) {
     public record Profile(
@@ -41,6 +43,14 @@ public record OnboardingRequest(
 
     public record EmergencyContactInput(
             String name, String phone, String relationship, Integer sortOrder
+    ) {}
+
+    public record CredentialInput(
+            String type, String name, String certNo, LocalDate issuedAt, LocalDate expiresAt
+    ) {}
+
+    public record EducationInput(
+            String degree, String school, String major, LocalDate startDate, LocalDate endDate
     ) {}
 
     /** roles 默认 [employee]；loginAccount 默认 = 工号（不填则用 profile.code）。 */

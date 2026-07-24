@@ -1,12 +1,19 @@
 // 工资条生成页（Phase 2）
 // 文档：docs/03-页面/工资条生成页.md · 审批流见 docs/05-架构/全局机制.md §3.4
+//
+// 响应式：全断点套 UtenContentContainer.narrow（maxWidth 1120）——
+// 外壳只收敛到 1600，表单页需自行钳窄居中
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../employee/models/employee.dart';
 import '../../employee/providers/employee_providers.dart';
@@ -52,40 +59,35 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
         title: l10n.payrollGenerateTitle,
         showBackButton: true,
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              if (_step > 0)
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => setState(() => _step--),
-                    child: Text(l10n.payrollBack),
-                  ),
-                ),
-              if (_step > 0) const SizedBox(width: 12),
+      bottomNavigationBar: UtenBottomActionBar(
+        child: Row(
+          children: [
+            if (_step > 0)
               Expanded(
-                child: FilledButton(
-                  onPressed: _submitting ? null : _next,
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          _step == 3
-                              ? l10n.payrollSubmitButton
-                              : l10n.payrollNext,
-                        ),
+                child: UtenButton(
+                  type: UtenButtonType.ghost,
+                  isExpanded: true,
+                  onPressed: () => setState(() => _step--),
+                  child: Text(l10n.payrollBack),
                 ),
               ),
-            ],
-          ),
+            if (_step > 0) const SizedBox(width: UtenSpacing.s12),
+            Expanded(
+              child: UtenButton(
+                isExpanded: true,
+                isLoading: _submitting,
+                onPressed: _submitting ? null : _next,
+                child: Text(
+                  _step == 3 ? l10n.payrollSubmitButton : l10n.payrollNext,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      body: Stepper(
+      // narrow 容器：compact 提供 gutter，medium+ 把表单钳到 1120 居中
+      body: UtenContentContainer.narrow(
+        child: Stepper(
         currentStep: _step,
         onStepContinue: _next,
         onStepCancel: () => setState(() => _step > 0 ? _step-- : null),
@@ -106,7 +108,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
                   ),
                   child: Text(_month),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: UtenSpacing.s12),
                 DropdownButtonFormField<String>(
                   initialValue: _department,
                   decoration: InputDecoration(
@@ -185,11 +187,12 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage> {
             isActive: _step >= 3,
             state: _step == 3 ? StepState.indexed : StepState.disabled,
             content: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
               child: Text(l10n.payrollSubmitNote),
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -316,7 +319,8 @@ class _HeaderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final t = Theme.of(context).textTheme.bodySmall!;
+    final theme = Theme.of(context);
+    final t = theme.textTheme.bodySmall!;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
@@ -325,13 +329,13 @@ class _HeaderRow extends StatelessWidget {
             flex: 2,
             child: Text(
               l10n.payrollTableHeaderName,
-              style: t.copyWith(color: Colors.grey),
+              style: t.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ),
           Expanded(
             child: Text(
               l10n.payrollTableHeaderNet,
-              style: t.copyWith(color: Colors.grey),
+              style: t.copyWith(color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.right,
             ),
           ),

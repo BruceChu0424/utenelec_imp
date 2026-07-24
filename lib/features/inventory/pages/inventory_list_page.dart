@@ -1,5 +1,8 @@
 // 库存查询页（Phase 4）
 // 文档：docs/03-页面/库存列表页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
 
 import 'package:flutter/material.dart' hide Material, MaterialType;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,10 +11,14 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/inventory.dart';
 import '../providers/inventory_providers.dart';
 
@@ -24,7 +31,6 @@ class InventoryListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(inventoryStatusFilterProvider);
     final listAsync = ref.watch(inventoryListProvider);
-    final theme = Theme.of(context);
 
     final segValue = filter == StockStatus.low
         ? InventoryFilter.low
@@ -32,28 +38,23 @@ class InventoryListPage extends ConsumerWidget {
             ? InventoryFilter.out
             : InventoryFilter.all;
 
-    return Scaffold(
-      appBar: const UtenAppBar(title: '库存查询', showBackButton: true),
-      body: Column(
+    // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+    Widget body = Column(
         children: [
+          // 搜索（UtenSearchBar 自带 300ms 防抖 + 清除按钮）
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
+            padding: const EdgeInsets.only(
+              top: UtenSpacing.s12,
+              bottom: UtenSpacing.s8,
+            ),
+            child: UtenSearchBar(
+              hint: '搜索物料编码 / 名称',
               onChanged: (v) =>
                   ref.read(inventorySearchProvider.notifier).state = v,
-              decoration: InputDecoration(
-                hintText: '搜索物料编码 / 名称',
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                isDense: true, filled: true,
-                fillColor: theme.colorScheme.surface,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: theme.colorScheme.outline)),
-              ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: UtenSegmentedFilter<InventoryFilter>(
               selected: segValue,
               onChanged: (v) {
@@ -83,7 +84,9 @@ class InventoryListPage extends ConsumerWidget {
                   ]);
                 }
                 return SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s16,
+                  ),
                   physics: const AlwaysScrollableScrollPhysics(),
                   child: UtenResponsiveGrid(
                     itemCount: list.length,
@@ -94,7 +97,14 @@ class InventoryListPage extends ConsumerWidget {
             ),
           ),
         ],
-      ),
+      );
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
+    return Scaffold(
+      appBar: const UtenAppBar(title: '库存查询', showBackButton: true),
+      body: body,
     );
   }
 }
@@ -145,9 +155,9 @@ class _MaterialCard extends StatelessWidget {
               UtenStatusBadge(label: label, type: type, size: UtenStatusBadgeSize.small),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: UtenSpacing.s12),
           const Divider(),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -162,7 +172,7 @@ class _MaterialCard extends StatelessWidget {
                       fontFeatures: const [FontFeature.tabularFigures()])),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: UtenSpacing.s4),
           Text('安全库存 ${m.safetyStock} ${m.unit}',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),

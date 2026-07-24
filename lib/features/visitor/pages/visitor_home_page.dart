@@ -1,4 +1,7 @@
 // 访客首页：我的预约列表(按状态筛选)+ 新建预约入口。
+//
+// 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer 收敛
+//（列表页 maxWidth 1600，宽屏居中不拉宽，水平 gutter 由容器提供）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,10 +11,12 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/visitor_application.dart';
 import '../providers/visitor_providers.dart';
 import '../providers/visitor_session_provider.dart';
@@ -71,61 +76,66 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
         icon: const Icon(Icons.add_rounded),
         label: Text(l10n.visitorApplyNew),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: UtenSegmentedFilter<VisitorFilter>(
-              selected: _filter,
-              onChanged: (v) => setState(() => _filter = v),
-              segments: [
-                UtenSegment(value: VisitorFilter.all, label: l10n.visitorFilterAll),
-                UtenSegment(value: VisitorFilter.pending, label: l10n.visitorFilterPending),
-                UtenSegment(value: VisitorFilter.approved, label: l10n.visitorFilterApproved),
-                UtenSegment(value: VisitorFilter.rejected, label: l10n.visitorFilterRejected),
-              ],
-            ),
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async => ref.invalidate(visitorApplicationsProvider(_status)),
-              child: apps.when(
-                loading: () => const UtenSkeletonList(itemCount: 6),
-                error: (e, _) => UtenEmpty.error(
-                  message: '$e',
-                  actionLabel: l10n.commonRetry,
-                  onAction: () => ref.invalidate(visitorApplicationsProvider(_status)),
-                ),
-                data: (list) {
-                  if (list.isEmpty) {
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        const SizedBox(height: 80),
-                        UtenEmpty(
-                          icon: Icons.event_available_outlined,
-                          message: l10n.commonNoData,
-                          description: l10n.visitorApplyNew,
-                        ),
-                      ],
-                    );
-                  }
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    child: UtenResponsiveGrid(
-                      itemCount: list.length,
-                      itemBuilder: (context, i, _) => _VisitorAppCard(
-                        app: list[i],
-                        onTap: () => context.go('/visitor/apply/${list[i].id}'),
-                      ),
-                    ),
-                  );
-                },
+      // 全断点收敛：水平 gutter 由容器提供，页面自身水平 padding 让位
+      body: UtenContentContainer(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(
+                  top: UtenSpacing.s12, bottom: UtenSpacing.s8),
+              child: UtenSegmentedFilter<VisitorFilter>(
+                selected: _filter,
+                onChanged: (v) => setState(() => _filter = v),
+                segments: [
+                  UtenSegment(value: VisitorFilter.all, label: l10n.visitorFilterAll),
+                  UtenSegment(value: VisitorFilter.pending, label: l10n.visitorFilterPending),
+                  UtenSegment(value: VisitorFilter.approved, label: l10n.visitorFilterApproved),
+                  UtenSegment(value: VisitorFilter.rejected, label: l10n.visitorFilterRejected),
+                ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async => ref.invalidate(visitorApplicationsProvider(_status)),
+                child: apps.when(
+                  loading: () => const UtenSkeletonList(itemCount: 6),
+                  error: (e, _) => UtenEmpty.error(
+                    message: '$e',
+                    actionLabel: l10n.commonRetry,
+                    onAction: () => ref.invalidate(visitorApplicationsProvider(_status)),
+                  ),
+                  data: (list) {
+                    if (list.isEmpty) {
+                      return ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          const SizedBox(height: 80),
+                          UtenEmpty(
+                            icon: Icons.event_available_outlined,
+                            message: l10n.commonNoData,
+                            description: l10n.visitorApplyNew,
+                          ),
+                        ],
+                      );
+                    }
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: UtenSpacing.s16),
+                      child: UtenResponsiveGrid(
+                        itemCount: list.length,
+                        itemBuilder: (context, i, _) => _VisitorAppCard(
+                          app: list[i],
+                          onTap: () => context.go('/visitor/apply/${list[i].id}'),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -142,7 +152,6 @@ class _VisitorAppCard extends StatelessWidget {
     final theme = Theme.of(context);
     return UtenCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -167,12 +176,12 @@ class _VisitorAppCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           Text(app.visitPurpose,
               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               maxLines: 2,
               overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 6),
+          const SizedBox(height: UtenSpacing.s4),
           Text(
             app.hostName != null
                 ? '${l10n.visitorDetailHost}: ${app.hostName}'
@@ -182,7 +191,7 @@ class _VisitorAppCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: UtenSpacing.s4),
           Text(fmtDateTime(app.plannedVisitAt),
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),

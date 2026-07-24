@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SmsProperties;
@@ -44,7 +45,7 @@ public class VisitorSmsService {
         String code = String.format("%06d", RNG.nextInt(1_000_000));
         VisitorSmsCode entity = new VisitorSmsCode();
         entity.setPhone(phone);
-        entity.setCodeHash(sha256(code));
+        entity.setCodeHash(HashUtil.sha256(code));
         entity.setScene(scene);
         entity.setAttempts(0);
         entity.setExpiresAt(OffsetDateTime.now().plusMinutes(props.getCodeTtlMinutes()));
@@ -66,7 +67,7 @@ public class VisitorSmsService {
         if (latest.getAttempts() > MAX_ATTEMPTS) {
             throw new ApiException(ErrorCode.SMS_CODE_INVALID);
         }
-        if (!MessageDigest.isEqual(sha256(code).getBytes(StandardCharsets.UTF_8),
+        if (!MessageDigest.isEqual(HashUtil.sha256(code).getBytes(StandardCharsets.UTF_8),
                 latest.getCodeHash().getBytes(StandardCharsets.UTF_8))) {
             throw new ApiException(ErrorCode.SMS_CODE_INVALID);
         }
@@ -79,15 +80,5 @@ public class VisitorSmsService {
 
     public int codeTtlSeconds() {
         return props.getCodeTtlMinutes() * 60;
-    }
-
-    private static String sha256(String raw) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] h = md.digest(raw.getBytes(StandardCharsets.UTF_8));
-            return java.util.Base64.getEncoder().encodeToString(h);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
     }
 }

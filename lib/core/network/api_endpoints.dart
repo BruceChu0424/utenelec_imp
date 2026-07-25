@@ -98,6 +98,20 @@ abstract final class ApiEndpoints {
   static String purchaseApprove(String doc, String id) => '/purchase/$doc/$id/approve';
   static String purchaseReverse(String doc, String id) => '/purchase/$doc/$id/reverse';
 
+  // 采购报表（采购管理）：月度汇总（MV 上卷）+ 待交货订货汇总。明细报表复用 4 单据列表。
+  static const purchaseReportMonthly = '/purchase/reports/monthly';
+  static const purchaseReportPending = '/purchase/reports/pending';
+
+  // 库存查询（库存管理）：当前余额 + 出入库流水。
+  static const stockBalances = '/stock/balances';
+  static const stockMovements = '/stock/movements';
+
+  // 仓库管理单据（8 类统一，端点 /api/stock/docs，docType 区分）：CRUD + 审核 + 红冲。
+  static const stockDocsBase = '/stock/docs';
+  static String stockDoc(String id) => '/stock/docs/$id';
+  static String stockDocApprove(String id) => '/stock/docs/$id/approve';
+  static String stockDocReverse(String id) => '/stock/docs/$id/reverse';
+
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
       '/org/departments/$deptId/positions';

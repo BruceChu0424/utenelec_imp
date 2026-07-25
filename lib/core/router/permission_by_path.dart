@@ -59,6 +59,15 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.purchaseReturnView,
     ];
   }
+  if (location == '/purchase/report') return const [Perm.purchaseReportView];
+  // 库存查询（余额 + 流水）
+  if (location.startsWith('/stock/')) return const [Perm.stockView];
+  // 仓库管理（8 单据，stock_doc:view 全员 / edit 归 PMC）
+  if (location == RouteName.warehouse) return const [Perm.stockDocView];
+  if (location.startsWith('/warehouse/')) {
+    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
+    return [isEdit ? Perm.stockDocEdit : Perm.stockDocView];
+  }
   if (location.startsWith('/purchase/')) {
     final seg = location.split('/'); // ['', 'purchase', doc, ...]
     final doc = seg.length > 2 ? seg[2] : '';

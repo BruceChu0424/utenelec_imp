@@ -270,14 +270,8 @@ const _allGroups = <_ModuleGroup>[
     title: '财税部',
     color: UtenColors.success,
     items: [
-      // 采购管理 → 采购 hub（4 单据入口）
-      _ModuleItem(
-        icon: Icons.shopping_cart_outlined,
-        label: '采购管理',
-        location: RouteName.purchase,
-      ),
-      // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier），
-      // 财税部组不再保留占位入口（2026-07-24）。
+      // 采购管理已归 PMC 运营部（本组原占位入口移除，避免重复）。
+      // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier）。
 
       _ModuleItem(
         icon: Icons.account_balance_outlined,
@@ -349,32 +343,28 @@ const _allGroups = <_ModuleGroup>[
       _ModuleItem(
         icon: Icons.inventory_2_outlined,
         label: '库存查询',
-        location: '/inventory',
+        location: RouteName.stockBalance,
       ),
       _ModuleItem(
         icon: Icons.swap_vert_rounded,
-        label: '出入库记录',
-        location: '/inventory/movement',
+        label: '出入库流水',
+        location: RouteName.stockMovement,
       ),
       _ModuleItem(
-        icon: Icons.request_page_outlined,
-        label: '采购申请',
-        location: RouteName.purchaseRequestList,
+        icon: Icons.warehouse_outlined,
+        label: '仓库管理',
+        location: RouteName.warehouse,
       ),
       _ModuleItem(
-        icon: Icons.shopping_cart_checkout_outlined,
-        label: '采购订货',
-        location: RouteName.purchaseOrderList,
+        icon: Icons.assessment_outlined,
+        label: '仓库报表',
+        location: RouteName.warehouseReport,
       ),
+      // 采购管理 → hub（hub 内分「采购管理」4 单据卡片 + 「采购报表」卡片）
       _ModuleItem(
-        icon: Icons.inbox_outlined,
-        label: '采购收货',
-        location: RouteName.purchaseReceiptList,
-      ),
-      _ModuleItem(
-        icon: Icons.outbound_outlined,
-        label: '采购退货',
-        location: RouteName.purchaseReturnList,
+        icon: Icons.shopping_cart_outlined,
+        label: '采购管理',
+        location: RouteName.purchase,
       ),
     ],
   ),

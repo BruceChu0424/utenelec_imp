@@ -87,6 +87,15 @@ abstract final class RouteName {
   static const String purchaseOrderList = '/purchase/orders';
   static const String purchaseReceiptList = '/purchase/receipts';
   static const String purchaseReturnList = '/purchase/returns';
+  static const String purchaseReport = '/purchase/report';
+
+  // 库存查询（库存管理）：余额 + 出入库流水。
+  static const String stockBalance = '/stock/balance';
+  static const String stockMovement = '/stock/movement';
+
+  // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
+  static const String warehouse = '/warehouse';
+  static const String warehouseReport = '/warehouse/report';
 }
 
 /// 路径拼接工具（带参数的路由）
@@ -108,6 +117,12 @@ abstract final class RoutePath {
   static String purchaseDocNew(String doc) => '/purchase/$doc/new';
   static String purchaseDocDetail(String doc, String id) => '/purchase/$doc/$id';
   static String purchaseDocEdit(String doc, String id) => '/purchase/$doc/$id/edit';
+
+  /// 仓库单据：列表 / 新建 / 详情 / 编辑。[code] = TRANSFER|OTHER_IN|...|CHECK。
+  static String stockDocList(String code) => '/warehouse/$code';
+  static String stockDocNew(String code) => '/warehouse/$code/new';
+  static String stockDocDetail(String code, String id) => '/warehouse/$code/$id';
+  static String stockDocEdit(String code, String id) => '/warehouse/$code/$id/edit';
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

@@ -348,6 +348,26 @@ class _FilterCellState extends State<_FilterCell> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final s = _sanitized;
+    // 无 facets 的列（如采购/仓库单据列表）→ 纯标签列头，不渲染下拉箭头/菜单。
+    // 这样文档页可直接复用 MasterDataTableView，与基础资料布局完全一致。
+    final interactive =
+        widget.buckets.isNotEmpty || widget.nullCount > 0 || s != null;
+    if (!interactive) {
+      return Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+        alignment: Alignment.centerLeft,
+        child: Text(
+          widget.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
     final filtered = s != null;
     // 选中值用对应桶的展示名（颜色/单位 legacy id → 名称）；找不到回落原值。
     String display;

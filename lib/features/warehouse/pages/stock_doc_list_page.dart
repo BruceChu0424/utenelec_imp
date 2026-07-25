@@ -1,9 +1,8 @@
-// 采购单据列表页（按 docType 参数化）。
+// 仓库单据列表页（按 docType 参数化）：标题行 + 状态筛选 + 主档表格（tap→详情）。
 //
-// 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
-// (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
-// 过滤由本页自带的状态 ChoiceChip + 关键词搜索承担（facets 传空，表头降级为纯标签）。
-// 名称解析（供应商/仓库）通过 MasterNameService。编辑按 edit 权限显隐「新建」。
+// 与 basic_data/pages/color_page.dart 同款布局：UtenAppBar + UtenContentContainer +
+// 标题行(Icon+label+(N)+搜索+新建) + 状态 ChoiceChip Wrap + Expanded(MasterDataTableView)。
+// 文档页无 facet → 表头渲染纯标签（MasterDataTableView 在 facets 为空时自动降级）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,27 +18,25 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../config/purchase_doc_config.dart';
-import '../models/purchase_doc.dart';
-import '../providers/master_name_provider.dart';
-import '../repositories/purchase_repository.dart';
+import '../../purchase/providers/master_name_provider.dart';
+import '../models/stock_doc.dart';
+import '../repositories/stock_doc_repository.dart';
 
-class PurchaseDocListPage extends ConsumerStatefulWidget {
-  const PurchaseDocListPage({super.key, required this.docType});
-  final PurchaseDocType docType;
+class StockDocListPage extends ConsumerStatefulWidget {
+  const StockDocListPage({super.key, required this.docType});
+  final StockDocType docType;
 
   @override
-  ConsumerState<PurchaseDocListPage> createState() => _PurchaseDocListPageState();
+  ConsumerState<StockDocListPage> createState() => _StockDocListPageState();
 }
 
-class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
-  PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
-  PagedResult<PurchaseDocListItem>? _page;
+class _StockDocListPageState extends ConsumerState<StockDocListPage> {
+  PagedResult<StockDocListItem>? _page;
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
   String _keyword = '';
-  int? _statusFilter; // null=全部
+  int? _status; // null=全部
 
   @override
   void initState() {
@@ -51,7 +48,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
   }
 
   bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocEdit);
 
   Future<void> _load(int page) async {
     if (_loading) return;
@@ -61,14 +58,11 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
       _pageNum = page;
     });
     try {
-      final r = await ref
-          .read(purchaseRepositoryProvider(widget.docType))
-          .list(
+      final r = await ref.read(stockDocRepositoryProvider(widget.docType)).list(
             page: page,
-            filter: PurchaseDocFilter(
-              keyword: _keyword.trim().isEmpty ? null : _keyword,
-              status: _statusFilter,
-            ),
+            filter: StockDocFilter(
+                keyword: _keyword.trim().isEmpty ? null : _keyword,
+                status: _status),
           );
       if (!mounted) return;
       setState(() {
@@ -90,31 +84,39 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     }
   }
 
-  void _onStatus(int? s) {
-    setState(() => _statusFilter = s);
-    _load(1);
-  }
+  // ---- 列定义 -----------------------------------------------------------
 
-  List<MasterColumnDef<PurchaseDocListItem>> _columns(MasterNameService names) {
-    return <MasterColumnDef<PurchaseDocListItem>>[
+  List<MasterColumnDef<StockDocListItem>> get _columns {
+    final isTransfer = widget.docType == StockDocType.transfer;
+    return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
-          key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
+          key: 'billNo',
+          label: '单据号',
+          width: 160,
+          value: (it) => it.billNo),
       MasterColumnDef(
           key: 'billDate',
           label: '日期',
           width: 120,
-          value: (it) => (it.billDate ?? '').substring(0, 10)),
-      if (_cfg.hasSupplier)
-        MasterColumnDef(
-            key: 'supplier',
-            label: '供应商',
-            width: 200,
-            value: (it) => names.supplier(it.supplierId)),
+          value: (it) => it.billDate == null
+              ? null
+              : (it.billDate!.length >= 10
+                  ? it.billDate!.substring(0, 10)
+                  : it.billDate)),
       MasterColumnDef(
           key: 'warehouse',
           label: '仓库',
           width: 160,
-          value: (it) => names.warehouse(it.warehouseId)),
+          value: (it) =>
+              ref.read(masterNameServiceProvider).warehouse(it.warehouseId)),
+      if (isTransfer)
+        MasterColumnDef(
+            key: 'toWarehouse',
+            label: '调入仓',
+            width: 160,
+            value: (it) => ref
+                .read(masterNameServiceProvider)
+                .warehouse(it.toWarehouseId)),
       MasterColumnDef(
           key: 'total',
           label: '合计',
@@ -124,21 +126,21 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
           key: 'status',
           label: '状态',
           width: 100,
-          value: (it) => purchaseStatusLabel(it.status)),
+          value: (it) => stockStatusLabel(it.status)),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final names = ref.watch(masterNameServiceProvider);
     final total = _page?.total ?? 0;
+    // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
+    ref.watch(masterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
-        title: _cfg.label,
+        title: widget.docType.label,
         leading: UtenBackButton(
-          onPressed: () => context.go(RouteName.purchase),
-        ),
+            onPressed: () => context.go(RouteName.warehouse)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -160,10 +162,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                       right: UtenSpacing.s4),
                   child: Row(
                     children: [
-                      Icon(_cfg.icon,
+                      Icon(iconFor(widget.docType),
                           size: 18, color: theme.colorScheme.primary),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('${_cfg.shortLabel} ($total)',
+                      Text('${widget.docType.label} ($total)',
                           style: theme.textTheme.titleSmall
                               ?.copyWith(fontWeight: FontWeight.w600)),
                       const SizedBox(width: UtenSpacing.s12),
@@ -182,8 +184,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
-                          onPressed: () => context.push(
-                              RoutePath.purchaseDocNew(_cfg.type.pathSegment)),
+                          onPressed: () =>
+                              context.push(RoutePath.stockDocNew(widget.docType.code)),
                           child: const Text('新建'), // TODO(l10n): 补 arb
                         ),
                       ],
@@ -193,31 +195,38 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                 Padding(
                   padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8, left: UtenSpacing.s4),
-                  child: Wrap(
-                    spacing: 6,
-                    children: [
-                      _statusChip('全部', null),
-                      _statusChip('草稿', kPurchaseStatusDraft),
-                      _statusChip('已审', kPurchaseStatusApproved),
-                      _statusChip('红冲', kPurchaseStatusReversed),
-                    ],
-                  ),
+                  child: Wrap(spacing: 6, children: [
+                    for (final e in const [
+                      ('全部', null),
+                      ('草稿', 0),
+                      ('已审', 1),
+                      ('红冲', -1)
+                    ])
+                      ChoiceChip(
+                        label: Text(e.$1),
+                        selected: _status == e.$2,
+                        onSelected: (_) {
+                          setState(() => _status = e.$2);
+                          _load(1);
+                        },
+                      ),
+                  ]),
                 ),
                 Expanded(
-                  child: MasterDataTableView<PurchaseDocListItem>(
-                    columns: _columns(names),
+                  child: MasterDataTableView<StockDocListItem>(
+                    columns: _columns,
                     items: _page?.items ?? const [],
                     facets: const {},
                     nullCounts: const {},
                     filters: const {},
                     onFilterChanged: (_, _) {},
                     onRowTap: (it) => context.push(
-                        RoutePath.purchaseDocDetail(_cfg.type.pathSegment, it.id)),
+                        RoutePath.stockDocDetail(widget.docType.code, it.id)),
                     isLoading: _loading && _page == null,
                     loadingMore: _loading && _page != null,
                     error: _error,
                     onRetry: () => _load(_pageNum),
-                    emptyMessage: '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
+                    emptyMessage: '暂无${widget.docType.label}', // TODO(l10n): 补 arb
                     currentPage: _page?.page ?? 1,
                     totalPages: _page?.totalPages ?? 1,
                     onPageChange: (p) => _load(p),
@@ -228,15 +237,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _statusChip(String label, int? value) {
-    final selected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _onStatus(value),
     );
   }
 }

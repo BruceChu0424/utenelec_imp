@@ -47,7 +47,16 @@ import '../../features/purchase/pages/purchase_doc_detail_page.dart';
 import '../../features/purchase/pages/purchase_doc_edit_page.dart';
 import '../../features/purchase/pages/purchase_doc_list_page.dart';
 import '../../features/purchase/pages/purchase_hub_page.dart';
+import '../../features/purchase/pages/purchase_report_page.dart';
 import '../../features/purchase/models/purchase_doc.dart';
+import '../../features/stock/pages/stock_balance_page.dart';
+import '../../features/stock/pages/stock_movement_page.dart';
+import '../../features/warehouse/models/stock_doc.dart';
+import '../../features/warehouse/pages/stock_doc_detail_page.dart';
+import '../../features/warehouse/pages/stock_doc_edit_page.dart';
+import '../../features/warehouse/pages/stock_doc_list_page.dart';
+import '../../features/warehouse/pages/warehouse_hub_page.dart';
+import '../../features/warehouse/pages/warehouse_report_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/payroll/pages/payroll_generate_page.dart';
@@ -463,6 +472,62 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               id: s.pathParameters['id']!,
             ),
+          ),
+          GoRoute(
+            path: '/purchase/report',
+            name: 'purchase-report',
+            builder: (_, _) => const PurchaseReportPage(),
+          ),
+
+          // —— 库存查询（余额 + 流水）——
+          GoRoute(
+            path: RouteName.stockBalance,
+            name: 'stock-balance',
+            builder: (_, _) => const StockBalancePage(),
+          ),
+          GoRoute(
+            path: RouteName.stockMovement,
+            name: 'stock-movement',
+            builder: (_, _) => const StockMovementPage(),
+          ),
+
+          // —— 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）——
+          GoRoute(
+            path: RouteName.warehouse,
+            name: 'warehouse-hub',
+            builder: (_, _) => const WarehouseHubPage(),
+          ),
+          // 报表（静态段，需在 /warehouse/:code 之前声明以免被当作 :code 匹配）
+          GoRoute(
+            path: RouteName.warehouseReport,
+            name: 'warehouse-report',
+            builder: (_, _) => const WarehouseReportPage(),
+          ),
+          GoRoute(
+            path: '/warehouse/:code/new',
+            name: 'stock-doc-new',
+            builder: (_, s) => StockDocEditPage(docType: StockDocType.byCode(s.pathParameters['code']!)),
+          ),
+          GoRoute(
+            path: '/warehouse/:code/:id/edit',
+            name: 'stock-doc-edit',
+            builder: (_, s) => StockDocEditPage(
+              docType: StockDocType.byCode(s.pathParameters['code']!),
+              id: s.pathParameters['id'],
+            ),
+          ),
+          GoRoute(
+            path: '/warehouse/:code/:id',
+            name: 'stock-doc-detail',
+            builder: (_, s) => StockDocDetailPage(
+              docType: StockDocType.byCode(s.pathParameters['code']!),
+              id: s.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/warehouse/:code',
+            name: 'stock-doc-list',
+            builder: (_, s) => StockDocListPage(docType: StockDocType.byCode(s.pathParameters['code']!)),
           ),
 
           // —— 实验室（upload 在 :id 前）——

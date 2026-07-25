@@ -118,6 +118,10 @@ abstract final class Perm {
   /// 库存查看（V45 种子化，全员；本轮采购审核联动库存，库存页未接入）
   static const stockView = 'stock:view';
 
+  /// 仓库管理单据（V48 种子化，view 全员 / edit 归 PMC）
+  static const stockDocView = 'stock_doc:view';
+  static const stockDocEdit = 'stock_doc:edit';
+
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
   // 后端 V38 以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
 }
@@ -171,6 +175,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.warehouseView,
       Perm.warehouseEdit,
       Perm.stockView,
+      Perm.stockDocView,
+      Perm.stockDocEdit,
       Perm.customerViewSelf,
       Perm.customerViewDepartment,
       Perm.customerViewAll,

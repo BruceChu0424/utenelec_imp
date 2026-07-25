@@ -22,6 +22,8 @@ abstract final class RouteName {
   static const String basicinfoSupplier = '/basicinfo/supplier';
   static const String basicinfoColor = '/basicinfo/color';
   static const String basicinfoUnit = '/basicinfo/unit';
+  static const String basicinfoCurrency = '/basicinfo/currency';
+  static const String basicinfoWarehouse = '/basicinfo/warehouse';
 
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
@@ -74,10 +76,17 @@ abstract final class RouteName {
   static const String adminPermissions = '/admin/permissions';
 
   // 财税部新模块（页面未接入前由占位页承接，权限点已种子化）
-  static const String financePurchase = '/finance/purchase';
   static const String financeCustomers = '/finance/customers';
   static const String financeSuppliers = '/finance/suppliers';
   static const String financeAccounts = '/finance/accounts';
+
+  // 采购管理（PMC 运营部）：hub + 4 单据列表。
+  // new/detail/edit 走 RoutePath.purchaseDoc*(doc,id) 带参；doc=requests|orders|receipts|returns。
+  static const String purchase = '/purchase';
+  static const String purchaseRequestList = '/purchase/requests';
+  static const String purchaseOrderList = '/purchase/orders';
+  static const String purchaseReceiptList = '/purchase/receipts';
+  static const String purchaseReturnList = '/purchase/returns';
 }
 
 /// 路径拼接工具（带参数的路由）
@@ -94,6 +103,11 @@ abstract final class RoutePath {
   static String suggestionDetail(String id) => '/suggestion/$id';
   static String employeeDetail(String id) => '/employee/$id';
   static String employeeEdit(String id) => '/employee/$id/edit';
+
+  /// 采购单据：新建 / 详情 / 编辑。[doc] = requests|orders|receipts|returns。
+  static String purchaseDocNew(String doc) => '/purchase/$doc/new';
+  static String purchaseDocDetail(String doc, String id) => '/purchase/$doc/$id';
+  static String purchaseDocEdit(String doc, String id) => '/purchase/$doc/$id/edit';
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

@@ -270,11 +270,11 @@ const _allGroups = <_ModuleGroup>[
     title: '财税部',
     color: UtenColors.success,
     items: [
-      // 以下四项为新模块（占位页），权限点已种子化
+      // 采购管理 → 采购 hub（4 单据入口）
       _ModuleItem(
         icon: Icons.shopping_cart_outlined,
         label: '采购管理',
-        location: RouteName.financePurchase,
+        location: RouteName.purchase,
       ),
       // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier），
       // 财税部组不再保留占位入口（2026-07-24）。
@@ -355,6 +355,26 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.swap_vert_rounded,
         label: '出入库记录',
         location: '/inventory/movement',
+      ),
+      _ModuleItem(
+        icon: Icons.request_page_outlined,
+        label: '采购申请',
+        location: RouteName.purchaseRequestList,
+      ),
+      _ModuleItem(
+        icon: Icons.shopping_cart_checkout_outlined,
+        label: '采购订货',
+        location: RouteName.purchaseOrderList,
+      ),
+      _ModuleItem(
+        icon: Icons.inbox_outlined,
+        label: '采购收货',
+        location: RouteName.purchaseReceiptList,
+      ),
+      _ModuleItem(
+        icon: Icons.outbound_outlined,
+        label: '采购退货',
+        location: RouteName.purchaseReturnList,
       ),
     ],
   ),

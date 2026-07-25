@@ -7,7 +7,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -19,6 +21,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/profile_change_request.dart';
@@ -41,7 +44,6 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
   @override
   void initState() {
     super.initState();
-    debugPrint('[my-changes] initState — page created');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(myProfileChangesProvider);
     });
@@ -81,7 +83,13 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     }
 
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.profileChangeListTitle, showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.profileChangeListTitle,
+        // go 进入（非 push），栈被替换；返回显式回"我的"页
+        leading: UtenBackButton(
+          onPressed: () => context.go(RouteName.profile),
+        ),
+      ),
       body: body,
     );
   }

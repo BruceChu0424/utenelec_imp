@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -29,6 +30,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -57,7 +59,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   @override
   void initState() {
     super.initState();
-    debugPrint('[profile-edit] initState — page created');
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -175,55 +176,74 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   }
 
   Future<void> _submit() async {
+    // 防连续点击：重入直接返回；_saving 全程覆盖（提交按钮 loading + disabled）
+    if (_saving) {
+      debugPrint('[submit] REENTRY blocked');
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     final dirty = _collectDirty();
+    debugPrint('[submit] dirty=${dirty.length} codes=${dirty.map((c) => c.fieldCode).toList()}');
     if (dirty.isEmpty) {
       context.appInfo(l10n.profileChangeSubmitApplied);
-      context.pop();
+      context.go(RouteName.profile);
       return;
     }
     final hasReview = dirty.any(
       (c) => ProfileFieldPolicy.isRequiresReview(c.fieldCode),
     );
-
-    if (hasReview) {
-      final pwd = await _askPassword();
-      if (pwd == null || pwd.isEmpty) return;
-      try {
-        await ref.read(profileChangeRepositoryProvider).verifyPassword(pwd);
-      } on ApiException catch (e) {
-        if (!mounted) return;
-        context.appError(_mapVerifyError(e));
-        return;
-      } catch (_) {
-        if (!mounted) return;
-        context.appError(l10n.profileChangePasswordWrong);
-        return;
-      }
-    }
+    debugPrint('[submit] hasReview=$hasReview');
 
     setState(() => _saving = true);
     try {
+      if (hasReview) {
+        final pwd = await _askPassword();
+        debugPrint('[submit] pwd empty=${pwd == null || pwd.isEmpty}');
+        if (pwd == null || pwd.isEmpty) return;
+        try {
+          await ref.read(profileChangeRepositoryProvider).verifyPassword(pwd);
+          debugPrint('[submit] verifyPassword OK');
+        } on ApiException catch (e) {
+          debugPrint('[submit] verifyPassword ApiException: ${e.code} ${e.message}');
+          if (!mounted) return;
+          context.appError(_mapVerifyError(e));
+          return;
+        } catch (e) {
+          debugPrint('[submit] verifyPassword threw: $e');
+          if (!mounted) return;
+          context.appError(l10n.profileChangePasswordWrong);
+          return;
+        }
+      }
+
       final idem = DateTime.now().microsecondsSinceEpoch.toString();
+      debugPrint('[submit] calling submit API...');
       await ref
           .read(profileChangeRepositoryProvider)
           .submit(SubmitProfileChangeRequest(changes: dirty, idemKey: idem));
+      debugPrint('[submit] submit API returned, mounted=$mounted');
       if (!mounted) return;
       final onlyDirect = dirty.every(
         (c) => ProfileFieldPolicy.isDirectEdit(c.fieldCode),
       );
-      if (onlyDirect) {
-        context.appSuccess(l10n.profileChangeSubmitApplied);
-      } else {
-        context.appSuccess(l10n.profileChangeSubmitSuccess);
-      }
-      // 失效一下 pending 计数，便于 /profile 的"我的修改申请"快捷入口刷新
+      debugPrint('[submit] onlyDirect=$onlyDirect → ${onlyDirect ? "go /profile" : "go /profile/me/changes"}');
+      // 失效申请列表 + pending 计数，让"我的修改申请"页与 /profile 快捷入口刷新
       ref.invalidate(myProfileChangesProvider);
-      context.pop();
+      if (onlyDirect) {
+        // 纯直改：已即时生效，回"我的"页
+        context.appSuccess(l10n.profileChangeSubmitApplied);
+        context.go(RouteName.profile);
+      } else {
+        // 含需审核字段：跳"我的修改申请"，看到刚提交的 pending 批次
+        context.appSuccess(l10n.profileChangeSubmitSuccess);
+        context.go(RouteName.profileMyChanges);
+      }
     } on ApiException catch (e) {
+      debugPrint('[submit] submit ApiException: ${e.code} ${e.message}');
       if (!mounted) return;
       context.appError(_mapSubmitError(e));
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[submit] submit threw: $e');
       if (!mounted) return;
       context.appError(l10n.profileChangeSubmitFailed);
     } finally {
@@ -293,7 +313,13 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: UtenAppBar(title: l10n.profileChangeEditTitle, showBackButton: true),
+      appBar: UtenAppBar(
+        title: l10n.profileChangeEditTitle,
+        // go 进入（非 push），栈被替换；返回显式回"我的"页
+        leading: UtenBackButton(
+          onPressed: () => context.go(RouteName.profile),
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -312,7 +338,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
                     child: UtenButton(
                       type: UtenButtonType.ghost,
                       isExpanded: true,
-                      onPressed: _saving ? null : () => context.pop(),
+                      onPressed: _saving ? null : () => context.go(RouteName.profile),
                       child: Text(l10n.profileChangeCancel2),
                     ),
                   ),

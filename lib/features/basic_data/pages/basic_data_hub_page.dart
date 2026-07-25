@@ -58,6 +58,20 @@ class BasicDataHubPage extends StatelessWidget {
       location: RouteName.basicinfoUnit,
       color: _C.teal,
     ),
+    _BasicResource(
+      icon: Icons.attach_money_rounded,
+      label: '币种资料',
+      description: '币种主档（编号/名称/参考汇率/状态）',
+      location: RouteName.basicinfoCurrency,
+      color: _C.green,
+    ),
+    _BasicResource(
+      icon: Icons.warehouse_outlined,
+      label: '仓库资料',
+      description: '仓库主档（编号/名称/位置/核算）',
+      location: RouteName.basicinfoWarehouse,
+      color: _C.teal,
+    ),
   ];
 
   @override

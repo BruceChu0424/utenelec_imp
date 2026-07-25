@@ -14,10 +14,12 @@ import '../../features/auth/pages/login_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
 import '../../features/basic_data/pages/color_page.dart';
+import '../../features/basic_data/pages/currency_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
 import '../../features/basic_data/pages/product_category_page.dart';
 import '../../features/basic_data/pages/supplier_category_page.dart';
 import '../../features/basic_data/pages/unit_page.dart';
+import '../../features/basic_data/pages/warehouse_page.dart';
 import '../../features/dashboard/pages/dashboard_page.dart';
 import '../../features/department/pages/department_page.dart';
 import '../../features/employee/pages/employee_detail_page.dart';
@@ -41,6 +43,11 @@ import '../../features/lab/pages/lab_test_list_page.dart';
 import '../../features/lab/pages/lab_test_report_page.dart';
 import '../../features/lab/pages/lab_test_upload_page.dart';
 import '../../features/notice/pages/notice_detail_page.dart';
+import '../../features/purchase/pages/purchase_doc_detail_page.dart';
+import '../../features/purchase/pages/purchase_doc_edit_page.dart';
+import '../../features/purchase/pages/purchase_doc_list_page.dart';
+import '../../features/purchase/pages/purchase_hub_page.dart';
+import '../../features/purchase/models/purchase_doc.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/payroll/pages/payroll_generate_page.dart';
@@ -83,9 +90,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final session = ref.read(sessionProvider);
       final vSession = ref.read(visitorSessionProvider);
       final loc = state.matchedLocation;
-      if (loc.contains('profile')) {
-        debugPrint('[router] redirect loc=$loc status=${session.status}');
-      }
       final isEntry = loc == RouteName.entry;
       final isLogin = loc == RouteName.login;
       final isChangePw = loc == RouteName.changePassword;
@@ -124,23 +128,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         case AuthStatus.authenticated:
           // 注意：isChangePw 不在此重定向——"我的→修改密码"是已登录用户的合法入口。
           // 强制改密（mustChangePassword）由前两个分支独立处理。
-          if (isLogin) {
-            if (loc.contains('profile')) {
-              debugPrint('[router] → redirect→dashboard (isLogin) loc=$loc');
-            }
-            return RouteName.dashboard;
-          }
+          if (isLogin) return RouteName.dashboard;
           // "多级权限任一满足即可"的路径（如客户资料）返回列表，任一命中即放行
           final requiredAny = requiredAnyPermFor(loc);
           if (requiredAny != null &&
               !(session.user?.canAny(requiredAny) ?? false)) {
-            if (loc.contains('profile')) {
-              debugPrint('[router] → redirect→dashboard (perm denied) loc=$loc requiredAny=$requiredAny');
-            }
             return RouteName.dashboard;
-          }
-          if (loc.contains('profile')) {
-            debugPrint('[router] → RETURN null (pass) loc=$loc requiredAny=$requiredAny');
           }
           return null;
       }
@@ -248,14 +241,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
 
           // —— 财税部新模块（占位页：权限已可配置，功能规划接入中）——
-          GoRoute(
-            path: RouteName.financePurchase,
-            name: 'finance-purchase',
-            builder: (_, _) => const FeaturePlaceholderPage(
-              title: '采购管理',
-              icon: Icons.shopping_cart_outlined,
-            ),
-          ),
           GoRoute(
             path: RouteName.financeCustomers,
             name: 'finance-customers',
@@ -421,6 +406,64 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'basicinfo-unit',
             builder: (_, _) => const UnitPage(),
           ),
+          GoRoute(
+            path: RouteName.basicinfoCurrency,
+            name: 'basicinfo-currency',
+            builder: (_, _) => const CurrencyPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoWarehouse,
+            name: 'basicinfo-warehouse',
+            builder: (_, _) => const WarehousePage(),
+          ),
+
+          // —— 采购管理（hub + 4 单据 list + new/detail/edit）——
+          GoRoute(
+            path: RouteName.purchase,
+            name: 'purchase-hub',
+            builder: (_, _) => const PurchaseHubPage(),
+          ),
+          GoRoute(
+            path: RouteName.purchaseRequestList,
+            name: 'purchase-request-list',
+            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.request),
+          ),
+          GoRoute(
+            path: RouteName.purchaseOrderList,
+            name: 'purchase-order-list',
+            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.order),
+          ),
+          GoRoute(
+            path: RouteName.purchaseReceiptList,
+            name: 'purchase-receipt-list',
+            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.receipt),
+          ),
+          GoRoute(
+            path: RouteName.purchaseReturnList,
+            name: 'purchase-return-list',
+            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.returnDoc),
+          ),
+          GoRoute(
+            path: '/purchase/:doc/new',
+            name: 'purchase-doc-new',
+            builder: (_, s) => PurchaseDocEditPage(docType: PurchaseDocType.byPath(s.pathParameters['doc']!)),
+          ),
+          GoRoute(
+            path: '/purchase/:doc/:id/edit',
+            name: 'purchase-doc-edit',
+            builder: (_, s) => PurchaseDocEditPage(
+              docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
+              id: s.pathParameters['id'],
+            ),
+          ),
+          GoRoute(
+            path: '/purchase/:doc/:id',
+            name: 'purchase-doc-detail',
+            builder: (_, s) => PurchaseDocDetailPage(
+              docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
+              id: s.pathParameters['id']!,
+            ),
+          ),
 
           // —— 实验室（upload 在 :id 前）——
           GoRoute(
@@ -527,18 +570,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.profileEdit,
             name: 'profile-edit',
-            builder: (_, _) {
-              debugPrint('[router] profile-edit BUILDER called');
-              return const ProfileEditPage();
-            },
+            builder: (_, _) => const ProfileEditPage(),
           ),
           GoRoute(
             path: RouteName.profileMyChanges,
             name: 'profile-my-changes',
-            builder: (_, _) {
-              debugPrint('[router] profile-my-changes BUILDER called');
-              return const MyProfileChangesPage();
-            },
+            builder: (_, _) => const MyProfileChangesPage(),
           ),
 
           // —— HR 端：员工个人信息修改审批 ——

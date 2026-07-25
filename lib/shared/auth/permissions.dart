@@ -34,8 +34,24 @@ abstract final class Perm {
   /// 其他人由超管在权限管理页显式授予（V25，与 viewcontext:scoped 解耦）。
   static const analyticsView = 'analytics:view';
 
+  // ===== 采购管理（PMC 运营部；后端 V44 细粒度种子化）=====
+  /// 采购申请单
+  static const purchaseRequestView = 'purchase_request:view';
+  static const purchaseRequestEdit = 'purchase_request:edit';
+  /// 采购订货单
+  static const purchaseOrderView = 'purchase_order:view';
+  static const purchaseOrderEdit = 'purchase_order:edit';
+  /// 采购收货单
+  static const purchaseReceiptView = 'purchase_receipt:view';
+  static const purchaseReceiptEdit = 'purchase_receipt:edit';
+  /// 采购退货单
+  static const purchaseReturnView = 'purchase_return:view';
+  static const purchaseReturnEdit = 'purchase_return:edit';
+  /// 采购报表（本轮未接入页面，权限点已种子化）
+  static const purchaseReportView = 'purchase_report:view';
+
   // ===== 财税部新模块（后端已种子化；页面未接入前由占位页承接）=====
-  /// 采购管理
+  /// 采购管理（旧粗粒度占位，已被上方细分 purchase_* 取代；保留常量以免破坏旧引用）
   static const purchaseView = 'purchase:view';
   static const purchaseEdit = 'purchase:edit';
 
@@ -91,6 +107,17 @@ abstract final class Perm {
   static const unitView = 'unit:view';
   static const unitEdit = 'unit:edit';
 
+  /// 币种主档（基础资料；扁平结构，V42 种子化，view 全员 / edit 归 PMC）
+  static const currencyView = 'currency:view';
+  static const currencyEdit = 'currency:edit';
+
+  /// 仓库主档（基础资料；扁平结构，V43 种子化，view 全员 / edit 归 PMC）
+  static const warehouseView = 'warehouse:view';
+  static const warehouseEdit = 'warehouse:edit';
+
+  /// 库存查看（V45 种子化，全员；本轮采购审核联动库存，库存页未接入）
+  static const stockView = 'stock:view';
+
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
   // 后端 V38 以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
 }
@@ -129,6 +156,21 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       // 财税部新模块（超管兜底，后端漏推也能 work）
       Perm.purchaseView,
       Perm.purchaseEdit,
+      // 采购管理细分（V44 种子化）
+      Perm.purchaseRequestView,
+      Perm.purchaseRequestEdit,
+      Perm.purchaseOrderView,
+      Perm.purchaseOrderEdit,
+      Perm.purchaseReceiptView,
+      Perm.purchaseReceiptEdit,
+      Perm.purchaseReturnView,
+      Perm.purchaseReturnEdit,
+      Perm.purchaseReportView,
+      Perm.currencyView,
+      Perm.currencyEdit,
+      Perm.warehouseView,
+      Perm.warehouseEdit,
+      Perm.stockView,
       Perm.customerViewSelf,
       Perm.customerViewDepartment,
       Perm.customerViewAll,

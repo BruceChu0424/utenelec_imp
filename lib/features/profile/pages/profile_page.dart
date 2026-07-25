@@ -310,15 +310,9 @@ class _HeroCard extends StatelessWidget {
                 child: UtenButton(
                   size: UtenButtonSize.small,
                   icon: Icons.edit_outlined,
-                  onPressed: () {
-                    debugPrint('[profile] edit tapped → GO ${RouteName.profileEdit}');
-                    try {
-                      context.go(RouteName.profileEdit);
-                      debugPrint('[profile] edit go call returned ok');
-                    } catch (e, s) {
-                      debugPrint('[profile] edit go THREW: $e\n$s');
-                    }
-                  },
+                  // go_router 14：从 /profile（ShellRoute 主 Tab）push /profile/edit 会静默失效
+                  // （redirect 放行但路由未构造），改用 go；返回靠 AppBar ← 与提交后 pop。
+                  onPressed: () => context.go(RouteName.profileEdit),
                   child: Text(l10n.profileChangeEditCta),
                 ),
               ),
@@ -523,14 +517,8 @@ class _MyChangesShortcut extends ConsumerWidget {
           ),
         ),
         trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-        onTap: () {
-          debugPrint('[profile] my-changes tapped → GO ${RouteName.profileMyChanges}');
-          try {
-            context.go(RouteName.profileMyChanges);
-          } catch (e, s) {
-            debugPrint('[profile] my-changes go THREW: $e\n$s');
-          }
-        },
+        // 同上：主 Tab 前缀子路由用 go 不用 push。
+        onTap: () => context.go(RouteName.profileMyChanges),
       ),
     );
   }

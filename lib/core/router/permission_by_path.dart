@@ -5,6 +5,7 @@
 // "多级权限任一满足即可"的路径（如客户资料 self/department/all）
 // 用 requiredAnyPermFor() 返回列表，任一命中即放行。
 import '../../shared/auth/permissions.dart';
+import 'route_names.dart';
 
 /// 返回某路径所需的权限点列表（任一满足即可）；不需要权限返回 null。
 ///
@@ -34,10 +35,6 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/payroll/review') return const [Perm.payrollReview];
   if (location == '/payroll/generate') return const [Perm.payrollGenerate];
   if (location == '/finance/report') return const [Perm.payrollViewAll];
-  // 财税部新模块（占位页阶段；权限点已种子化）
-  if (location.startsWith('/finance/purchase')) {
-    return const [Perm.purchaseView];
-  }
   // 客户资料：self/department/all 三级数据范围，任一即达最低门槛
   if (location.startsWith('/finance/customers')) {
     return const [
@@ -51,6 +48,37 @@ List<String>? requiredAnyPermFor(String location) {
   }
   if (location.startsWith('/finance/accounts')) {
     return const [Perm.accountView];
+  }
+  // 采购管理（PMC 运营部；V44 细粒度：view 全员、edit 归 PMC）
+  if (location == RouteName.purchase) {
+    // hub：任一采购单据 view 即可见
+    return const [
+      Perm.purchaseRequestView,
+      Perm.purchaseOrderView,
+      Perm.purchaseReceiptView,
+      Perm.purchaseReturnView,
+    ];
+  }
+  if (location.startsWith('/purchase/')) {
+    final seg = location.split('/'); // ['', 'purchase', doc, ...]
+    final doc = seg.length > 2 ? seg[2] : '';
+    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
+    switch (doc) {
+      case 'requests':
+        return [isEdit ? Perm.purchaseRequestEdit : Perm.purchaseRequestView];
+      case 'orders':
+        return [isEdit ? Perm.purchaseOrderEdit : Perm.purchaseOrderView];
+      case 'receipts':
+        return [isEdit ? Perm.purchaseReceiptEdit : Perm.purchaseReceiptView];
+      case 'returns':
+        return [isEdit ? Perm.purchaseReturnEdit : Perm.purchaseReturnView];
+    }
+    return const [
+      Perm.purchaseRequestView,
+      Perm.purchaseOrderView,
+      Perm.purchaseReceiptView,
+      Perm.purchaseReturnView,
+    ];
   }
   // 通知发布
   if (location == '/notice/publish') return const ['notice:publish'];

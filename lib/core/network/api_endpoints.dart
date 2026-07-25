@@ -73,6 +73,31 @@ abstract final class ApiEndpoints {
   static const unitsDict = '$units/dict';
   static String unit(String id) => '/master/units/$id';
 
+  // 币种主档（基础资料 / master-data）—— 扁平结构，无分类：分页 + 详情 + 字段 facet + 字典
+  static const currencies = '/master/currencies';
+  static const currenciesFacets = '$currencies/facets';
+  static const currenciesDict = '$currencies/dict';
+  static String currency(String id) => '/master/currencies/$id';
+
+  // 仓库主档（基础资料 / master-data）—— 扁平结构，无分类：分页 + 详情 + 字段 facet + 字典
+  static const warehouses = '/master/warehouses';
+  static const warehousesFacets = '$warehouses/facets';
+  static const warehousesDict = '$warehouses/dict';
+  static String warehouse(String id) => '/master/warehouses/$id';
+
+  // 供应商字典（采购单据页按 id 解析供应商名用，全量约 386 条）
+  static const suppliersDict = '/master/suppliers/dict';
+
+  // 货品按 id 批量解析名（采购明细展示用；ids 经 repository 以 query 传入）
+  static const goodsLookup = '/master/goods/lookup';
+
+  // 采购单据（采购管理 / purchase）—— 4 单据 CRUD + 审核 + 红冲。
+  // [doc] = requests | orders | receipts | returns（与后端 @RequestMapping 对齐）。
+  static String purchaseBase(String doc) => '/purchase/$doc';
+  static String purchaseDoc(String doc, String id) => '/purchase/$doc/$id';
+  static String purchaseApprove(String doc, String id) => '/purchase/$doc/$id/approve';
+  static String purchaseReverse(String doc, String id) => '/purchase/$doc/$id/reverse';
+
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
       '/org/departments/$deptId/positions';

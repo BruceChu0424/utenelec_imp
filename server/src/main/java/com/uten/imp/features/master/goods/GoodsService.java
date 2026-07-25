@@ -8,6 +8,7 @@ import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.FacetBucket;
 import com.uten.imp.features.master.goods.dto.GoodsDetail;
+import com.uten.imp.features.master.goods.dto.GoodsDictItem;
 import com.uten.imp.features.master.goods.dto.GoodsFacets;
 import com.uten.imp.features.master.goods.dto.GoodsListItem;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
@@ -254,6 +255,19 @@ public class GoodsService {
     }
 
     // ===== 详情 / CRUD（不变） =====
+
+    /**
+     * 按 id 批量解析货品名（采购单据明细展示用）。货品约 3.5 万条不能全量拉，
+     * 故仅按传入的 id 集合查 id/编号/名称；软删的过滤掉。
+     */
+    @Transactional(readOnly = true)
+    public List<GoodsDictItem> lookup(Set<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return repo.findAllById(ids).stream()
+                .filter(g -> !g.isDeleted())
+                .map(g -> new GoodsDictItem(g.getId(), g.getCode(), g.getName()))
+                .toList();
+    }
 
     @Transactional(readOnly = true)
     public GoodsDetail detail(UUID id) {

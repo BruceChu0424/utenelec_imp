@@ -2,6 +2,7 @@ package com.uten.imp.features.master.supplier;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.supplier.dto.SupplierDetail;
+import com.uten.imp.features.master.supplier.dto.SupplierDictItem;
 import com.uten.imp.features.master.supplier.dto.SupplierFacets;
 import com.uten.imp.features.master.supplier.dto.SupplierListItem;
 import com.uten.imp.features.master.supplier.dto.SupplierQueryFilter;
@@ -80,6 +81,13 @@ public class SupplierController {
     @PreAuthorize("hasAuthority('supplier:view')")
     public SupplierFacets facets(@RequestParam UUID categoryId) {
         return service.facets(categoryId);
+    }
+
+    /** 全量字典（采购单据页选/解析供应商用；supplier:view 全员有）。 */
+    @GetMapping("/dict")
+    @PreAuthorize("hasAuthority('supplier:view')")
+    public java.util.List<SupplierDictItem> dict() {
+        return service.dict();
     }
 
     @GetMapping("/{id}")

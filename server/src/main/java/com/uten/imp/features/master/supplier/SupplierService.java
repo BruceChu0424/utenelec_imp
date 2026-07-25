@@ -6,6 +6,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.supplier.dto.FacetBucket;
 import com.uten.imp.features.master.supplier.dto.SupplierDetail;
+import com.uten.imp.features.master.supplier.dto.SupplierDictItem;
 import com.uten.imp.features.master.supplier.dto.SupplierFacets;
 import com.uten.imp.features.master.supplier.dto.SupplierListItem;
 import com.uten.imp.features.master.supplier.dto.SupplierQueryFilter;
@@ -192,6 +193,15 @@ public class SupplierService {
     }
 
     // ===== 详情 / CRUD（不变） =====
+
+    /** 全量字典（采购单据页按 id 解析供应商名用）：全部未软删供应商，按名称排序。 */
+    @Transactional(readOnly = true)
+    public List<SupplierDictItem> dict() {
+        Specification<Supplier> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
+        return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
+                .map(m -> new SupplierDictItem(m.getId(), m.getCode(), m.getName()))
+                .toList();
+    }
 
     @Transactional(readOnly = true)
     public SupplierDetail detail(UUID id) {

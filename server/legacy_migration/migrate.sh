@@ -9,8 +9,11 @@
 #   bash server/legacy_migration/migrate.sh --goods      # 只迁货品分类
 #   bash server/legacy_migration/migrate.sh --mould      # 只迁模具分类
 #   bash server/legacy_migration/migrate.sh --mould-data # 只迁模具主档
+#   bash server/legacy_migration/migrate.sh --purchase   # 只迁采购四单据
+#   bash server/legacy_migration/migrate.sh --stock-docs # 只迁仓库管理 9 单据 + 台账余额
 #
-# 当前已实现：货品（分类+主档）、模具（分类+主档）。新增模块时在下方加 case + 对应 .sql。
+# 当前已实现：货品/模具/客户/供应商（分类+主档）、颜色/单位/币种/仓库主档、采购四单据、
+#   仓库管理 9 单据（统一 stock_documents + 台账余额 + 流水）。新增模块时在下方加 case + 对应 .sql。
 #
 # 依赖：docker（PG 容器在跑）。CSV 是老库快照（更新老库数据后重新导出 CSV 即可）。
 # =====================================================================
@@ -101,6 +104,52 @@ migrate_unit_data () {
     run_sql migrate_unit.sql
 }
 
+migrate_currency_data () {
+    echo "→ [币种主档] 复制 CSV..."
+    copy_csv currency.csv
+    echo "→ [币种主档] 执行迁移 SQL..."
+    run_sql migrate_currency.sql
+}
+
+migrate_warehouse_data () {
+    echo "→ [仓库主档] 复制 CSV..."
+    copy_csv warehouse.csv
+    echo "→ [仓库主档] 执行迁移 SQL..."
+    run_sql migrate_warehouse.sql
+}
+
+migrate_purchase () {
+    echo "→ [采购四单据] 复制 CSV（8 个）..."
+    for f in purchase_applications purchase_application_items \
+             purchase_orders purchase_order_items \
+             purchase_receipts purchase_receipt_items \
+             purchase_returns purchase_return_items; do
+        copy_csv "$f.csv"
+    done
+    echo "→ [采购四单据] 执行迁移 SQL..."
+    run_sql migrate_purchase.sql
+}
+
+# 仓库管理 9 单据（统一 stock_documents）+ StockGoods 台账余额 + 仓库流水回填。
+# 依赖：主档（goods/colors/units/suppliers/clients/warehouses）+ 采购已迁（采购单据可选，
+#   本脚本独立清/建 stock_documents + stock_balances，与采购表无外键耦合）。
+migrate_stock_docs () {
+    echo "→ [仓库单据] 复制 CSV（17 个：8 单据主/明 + StockGoods）..."
+    for f in stock_transfer_m stock_transfer_i \
+             stock_other_in_m stock_other_in_i \
+             stock_other_out_m stock_other_out_i \
+             stock_draw_m stock_draw_i \
+             stock_wdraw_m stock_wdraw_i \
+             stock_finished_in_m stock_finished_in_i \
+             stock_finished_out_m stock_finished_out_i \
+             stock_check_m stock_check_i \
+             stock_goods; do
+        copy_csv "$f.csv"
+    done
+    echo "→ [仓库单据] 执行迁移 SQL（统一表 + 余额 + 流水）..."
+    run_sql migrate_stock_docs.sql
+}
+
 case "$TARGET" in
     --goods|-g) migrate_goods ;;
     --goods-data) migrate_goods_data ;;
@@ -112,6 +161,10 @@ case "$TARGET" in
     --supplier-data) migrate_supplier_data ;;
     --color-data) migrate_color_data ;;
     --unit-data) migrate_unit_data ;;
+    --currency-data) migrate_currency_data ;;
+    --warehouse-data) migrate_warehouse_data ;;
+    --purchase) migrate_purchase ;;
+    --stock-docs) migrate_stock_docs ;;
     --all|-a|*)
         migrate_goods
         migrate_goods_data
@@ -123,6 +176,10 @@ case "$TARGET" in
         migrate_supplier_data
         migrate_color_data
         migrate_unit_data
+        migrate_currency_data
+        migrate_warehouse_data
+        migrate_purchase
+        migrate_stock_docs
         ;;
 esac
 

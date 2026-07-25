@@ -2,6 +2,7 @@ package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.goods.dto.GoodsDetail;
+import com.uten.imp.features.master.goods.dto.GoodsDictItem;
 import com.uten.imp.features.master.goods.dto.GoodsFacets;
 import com.uten.imp.features.master.goods.dto.GoodsListItem;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
@@ -70,6 +71,13 @@ public class GoodsController {
     @PreAuthorize("hasAuthority('goods:view')")
     public GoodsFacets facets(@RequestParam UUID categoryId) {
         return service.facets(categoryId);
+    }
+
+    /** 按 id 批量解析货品名（采购单据明细展示用；goods:view 全员有）。 */
+    @GetMapping("/lookup")
+    @PreAuthorize("hasAuthority('goods:view')")
+    public java.util.List<GoodsDictItem> lookup(@RequestParam("ids") Set<UUID> ids) {
+        return service.lookup(ids);
     }
 
     @GetMapping("/{id}")

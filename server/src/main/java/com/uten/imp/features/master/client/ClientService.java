@@ -5,60 +5,201 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.client.dto.ClientDetail;
+import com.uten.imp.features.master.client.dto.ClientFacets;
 import com.uten.imp.features.master.client.dto.ClientListItem;
+import com.uten.imp.features.master.client.dto.ClientQueryFilter;
 import com.uten.imp.features.master.client.dto.ClientSaveRequest;
+import com.uten.imp.features.master.client.dto.FacetBucket;
 import com.uten.imp.features.master.clientcategory.ClientCategory;
 import com.uten.imp.features.master.clientcategory.ClientCategoryRepository;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * 客户主档：分类下分页列表（子树汇总）+ 详情 + 新建/编辑/删除（client:edit）。
+ * 客户主档：子树范围列表（动态筛选）+ facets + 详情 + 新建/编辑/删除（client:edit）。
  *
- * <p>list 按 categoryId 查**子树全部**分类的客户——客户主档会直接挂在有子分类
- * 的分组节点上（如「外贸(钟)」既有子分类又直接挂 17 个客户），子树汇总才能一次看全。
+ * <p>范式照抄 {@code GoodsService}：list 用 {@link Specification}（子树 id 集合 +
+ * keyword 多字段 OR + 字段精确等值 + {@code nullFields} 空值白名单），facets 用原生 SQL
+ * 聚合（字段→列名硬编码白名单，防注入；列名非用户输入）。
+ *
+ * <p>子树汇总由 {@link ClientCategoryRepository#findSubtree} 递归 CTE 实现——客户主档会
+ * 直接挂在有子分类的节点上（如「外贸(钟)」既有子分类又直接挂客户），子树才能一次看全。
  */
 @Service
 @RequiredArgsConstructor
 public class ClientService {
 
+    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。主结账方式 / 总监 无对应列，不在内。 */
+    private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
+            "code", "name", "fullName", "clientXz", "tday", "region", "placeId",
+            "empId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
+            "postcode", "address", "bank", "bankAccount", "taxId", "credit", "website");
+
+    /** facet 截断阈值（高基数列取前 N）。 */
+    private static final int FACET_LIMIT = 50;
+
+    /**
+     * facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
+     * 与 {@link #ALLOWED_NULL_FIELDS} 同步：21 个有 DB 列的字段。
+     */
+    private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
+    static {
+        FACET_COLUMNS.put("code", "code");
+        FACET_COLUMNS.put("name", "name");
+        FACET_COLUMNS.put("fullName", "full_name");
+        FACET_COLUMNS.put("clientXz", "client_xz");
+        FACET_COLUMNS.put("tday", "tday");
+        FACET_COLUMNS.put("region", "region");
+        FACET_COLUMNS.put("placeId", "place_id");
+        FACET_COLUMNS.put("empId", "emp_id");
+        FACET_COLUMNS.put("legalPerson", "legal_person");
+        FACET_COLUMNS.put("linkman", "linkman");
+        FACET_COLUMNS.put("mobile", "mobile");
+        FACET_COLUMNS.put("phone", "phone");
+        FACET_COLUMNS.put("phone2", "phone2");
+        FACET_COLUMNS.put("fax", "fax");
+        FACET_COLUMNS.put("postcode", "postcode");
+        FACET_COLUMNS.put("address", "address");
+        FACET_COLUMNS.put("bank", "bank");
+        FACET_COLUMNS.put("bankAccount", "bank_account");
+        FACET_COLUMNS.put("taxId", "tax_id");
+        FACET_COLUMNS.put("credit", "credit");
+        FACET_COLUMNS.put("website", "website");
+    }
+
     private final ClientRepository repo;
     private final ClientCategoryRepository categoryRepo;
     private final TxSessionVars tx;
+    private final EntityManager em;
 
-    /**
-     * 分类下客户分页（categoryId 为 null 时返回全部未软删客户）。
-     * categoryId 非空时返回该分类及其所有后代分类下的客户（子树汇总）。
-     */
+    // ===== 列表（Specification 动态筛选） =====
+
     @Transactional(readOnly = true)
-    public PageResponse<ClientListItem> list(UUID categoryId, int page, int size) {
-        Pageable pageable = Pageables.of(page, size);
-        Page<Client> p;
-        if (categoryId == null) {
-            p = repo.findByDeletedFalseOrderById(pageable);
-        } else {
-            List<UUID> subtreeIds = categoryRepo.findSubtree(categoryId).stream()
-                    .map(ClientCategory::getId)
-                    .toList();
-            p = repo.findByCategoryIdInAndDeletedFalseOrderById(subtreeIds, pageable);
-        }
+    public PageResponse<ClientListItem> list(ClientQueryFilter f, int page, int size) {
+        List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
+        Specification<Client> spec = (Root<Client> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+                                      CriteriaBuilder cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(cb.isFalse(root.get("deleted")));
+            if (subtreeIds != null) {
+                ps.add(root.get("category").get("id").in(subtreeIds));
+            }
+            if (f.keyword() != null && !f.keyword().isBlank()) {
+                String like = "%" + f.keyword().toLowerCase() + "%";
+                ps.add(cb.or(
+                        cb.like(cb.lower(root.get("name")), like),
+                        cb.like(cb.lower(root.get("code")), like),
+                        cb.like(cb.lower(root.get("fullName")), like),
+                        cb.like(cb.lower(root.get("linkman")), like),
+                        cb.like(cb.lower(root.get("mobile")), like)));
+            }
+            addEq(ps, cb, root, "code", f.code());
+            addEq(ps, cb, root, "name", f.name());
+            addEq(ps, cb, root, "fullName", f.fullName());
+            addEq(ps, cb, root, "clientXz", f.clientXz());
+            addEq(ps, cb, root, "region", f.region());
+            addEq(ps, cb, root, "placeId", f.placeId());
+            addEq(ps, cb, root, "empId", f.empId());
+            addEq(ps, cb, root, "legalPerson", f.legalPerson());
+            addEq(ps, cb, root, "linkman", f.linkman());
+            addEq(ps, cb, root, "mobile", f.mobile());
+            addEq(ps, cb, root, "phone", f.phone());
+            addEq(ps, cb, root, "phone2", f.phone2());
+            addEq(ps, cb, root, "fax", f.fax());
+            addEq(ps, cb, root, "postcode", f.postcode());
+            addEq(ps, cb, root, "address", f.address());
+            addEq(ps, cb, root, "bank", f.bank());
+            addEq(ps, cb, root, "bankAccount", f.bankAccount());
+            addEq(ps, cb, root, "taxId", f.taxId());
+            addEq(ps, cb, root, "website", f.website());
+            if (f.tday() != null) ps.add(cb.equal(root.get("tday"), f.tday()));
+            if (f.credit() != null) ps.add(cb.equal(root.get("credit"), f.credit()));
+            if (f.nullFields() != null) {
+                for (String fld : f.nullFields()) {
+                    if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
+                }
+            }
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
+        Page<Client> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
-                p.map(this::toList).getContent(),
-                page,
-                size,
-                p.getTotalElements(),
-                p.getTotalPages());
+                p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }
 
-    /** 客户详情（含 category_id/category_name）。open-in-view=false，LAZY category 需在本事务内取。 */
+    private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Client> root,
+                              String field, String value) {
+        if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    private List<UUID> resolveSubtreeIds(UUID categoryId) {
+        return categoryRepo.findSubtree(categoryId).stream().map(ClientCategory::getId).toList();
+    }
+
+    // ===== facets（子树范围内各字段 distinct + 空值计数） =====
+
+    @Transactional(readOnly = true)
+    public ClientFacets facets(UUID categoryId) {
+        if (categoryId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
+        }
+        List<UUID> ids = resolveSubtreeIds(categoryId);
+        Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
+        Map<String, Long> nullCounts = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
+            String field = e.getKey();
+            // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
+            String col = e.getValue();
+            List<Object[]> rows = em.createNativeQuery(
+                    "select " + col + " as v, count(*) as c from clients "
+                            + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
+                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
+                    .setParameter("ids", ids)
+                    .getResultList();
+            List<FacetBucket> bucketList = new ArrayList<>(rows.size());
+            for (Object[] row : rows) {
+                bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
+            }
+            buckets.put(field, bucketList);
+            Long nc = ((Number) em.createNativeQuery(
+                    "select count(*) from clients "
+                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null")
+                    .setParameter("ids", ids)
+                    .getSingleResult()).longValue();
+            nullCounts.put(field, nc);
+        }
+        return new ClientFacets(
+                buckets.get("code"), buckets.get("name"), buckets.get("fullName"),
+                buckets.get("clientXz"), buckets.get("tday"), buckets.get("region"),
+                buckets.get("placeId"), buckets.get("empId"), buckets.get("legalPerson"),
+                buckets.get("linkman"), buckets.get("mobile"), buckets.get("phone"),
+                buckets.get("phone2"), buckets.get("fax"), buckets.get("postcode"),
+                buckets.get("address"), buckets.get("bank"), buckets.get("bankAccount"),
+                buckets.get("taxId"), buckets.get("credit"), buckets.get("website"),
+                nullCounts);
+    }
+
+    // ===== 详情 / CRUD（不变） =====
+
     @Transactional(readOnly = true)
     public ClientDetail detail(UUID id) {
         return toDetail(requireClient(id));
@@ -138,8 +279,11 @@ public class ClientService {
 
     private ClientListItem toList(Client m) {
         return new ClientListItem(
-                m.getId(), m.getCode(), m.getName(), m.getStatus(), m.getRegion(),
-                m.getLinkman(), m.getLegacyId());
+                m.getId(), m.getCode(), m.getName(), m.getFullName(), m.getClientXz(),
+                m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
+                m.getLinkman(), m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(),
+                m.getPostcode(), m.getAddress(), m.getBank(), m.getBankAccount(), m.getTaxId(),
+                m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId());
     }
 
     private ClientCategory requireCategory(UUID id) {
@@ -150,7 +294,7 @@ public class ClientService {
 
     private Client requireClient(UUID id) {
         return repo.findById(id)
-                .filter(m -> !m.isDeleted())
+                .filter(c -> !c.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "客户不存在"));
     }
 }

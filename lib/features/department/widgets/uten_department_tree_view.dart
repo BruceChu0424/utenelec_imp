@@ -53,7 +53,12 @@ class UtenDepartmentTreeView extends StatefulWidget {
     this.header,
     this.searchHint = '搜索部门名称',
     this.emptySearchText,
+    this.expandOnRowTap = false,
   });
+
+  /// 点击节点文字行时是否同时展开/收起子部门（有子节点才生效）。
+  /// 查看类页面（如部门管理）设 true：点部门既选中又展开，不必只点 chevron 图标。
+  final bool expandOnRowTap;
 
   /// 树数据（调用方给，组件不自己拉）。
   final List<DepartmentNode> nodes;
@@ -189,6 +194,7 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
 
   void _onRowTap(DepartmentNode node) {
     if (_enabled(node)) {
+      if (widget.expandOnRowTap && node.hasChildren) _toggleExpand(node);
       switch (widget.mode) {
         case UtenDepartmentTreeMode.none:
           widget.onNodeTap?.call(node);

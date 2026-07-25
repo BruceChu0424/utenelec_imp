@@ -83,6 +83,14 @@ abstract final class Perm {
   static const supplierCategoryView = 'supplier_category:view';
   static const supplierCategoryEdit = 'supplier_category:edit';
 
+  /// 颜色主档（基础资料；扁平结构，无分类树）
+  static const colorView = 'color:view';
+  static const colorEdit = 'color:edit';
+
+  /// 基本单位主档（基础资料；扁平结构，无分类树）
+  static const unitView = 'unit:view';
+  static const unitEdit = 'unit:edit';
+
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
   // 后端 V38 以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
 }
@@ -143,6 +151,10 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.clientEdit,
       Perm.supplierCategoryView,
       Perm.supplierCategoryEdit,
+      Perm.colorView,
+      Perm.colorEdit,
+      Perm.unitView,
+      Perm.unitEdit,
       ...user.permissions,
     };
   }

@@ -1,9 +1,10 @@
 // 模具资料分类树管理页（基础资料）
 //
 // 与 product_category_page.dart（货品资料）同构：
-// - 详情面板调 mouldCategoryRepository.detail + mouldRepository 分类下分页；
+// - 详情面板调 mouldCategoryRepository.detail + mouldRepository 分类下分页（子树范围）；
 // - 编辑类按钮（新增/编辑/删除）按 mould_category:edit 权限显隐；查看全员可见（路由不设守卫）；
-// - 复用 UtenCategoryTreeView / CategoryEditDialog / ProductCategoryNode（分类节点形状一致）。
+// - 复用 UtenCategoryTreeView / CategoryEditDialog / ProductCategoryNode（分类节点形状一致）；
+// - 右侧用通用 MasterDataTableView（Excel 风格：搜索 + 横排 autofilter + 列对齐 + 分页）。
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/数据迁移/05-模具资料-新库与迁移.md。
@@ -12,12 +13,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/cards/uten_card.dart';
-import '../../../components/cards/uten_list_item.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -30,7 +30,10 @@ import '../models/mould_node.dart';
 import '../models/product_category_node.dart';
 import '../repositories/mould_category_repository.dart';
 import '../repositories/mould_repository.dart';
+import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/master_data_table_view.dart';
+import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/uten_category_tree_view.dart';
 
@@ -96,6 +99,15 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
     return perms.contains(Perm.mouldCategoryEdit);
   }
 
+  /// 新建分类时的常用名称建议（降低起名门槛；模具类常用维度）。
+  static const _categorySuggestions = [
+    '注塑模具',
+    '冲压模具',
+    '压铸模具',
+    '锻压模具',
+    '夹具工装',
+  ];
+
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -104,6 +116,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
+        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );
@@ -216,6 +229,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       nodes: _tree ?? const <ProductCategoryNode>[],
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
+      expandOnRowTap: true,
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
@@ -269,7 +283,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       body = UtenEmpty(
         icon: Icons.precision_manufacturing_outlined,
         message: '暂无模具分类', // TODO(l10n): 补 arb
-        description: canEdit ? '点击右上角「+」新建第一个分类' : null, // TODO(l10n): 补 arb
+        description: canEdit ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
+        actionLabel: canEdit ? '新建分类' : null, // TODO(l10n): 补 arb
+        onAction: canEdit ? () => _showCreateDialog() : null,
       );
     } else if (bp == UtenBreakpoint.compact) {
       body = selected == null
@@ -328,12 +344,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
           onPressed: () => context.go(RouteName.basicinfo),
         ),
         actions: [
-          if (canEdit)
-            IconButton(
-              icon: const Icon(Icons.add_rounded),
-              tooltip: '新增顶级分类', // TODO(l10n): 补 arb
-              onPressed: () => _showCreateDialog(),
-            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
@@ -366,7 +376,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
   }
 }
 
-/// 模具分类详情面板：只调 detail（分类信息）+ 该分类下的模具分页。
+/// 模具分类详情面板：分类信息卡 + 该分类（子树）下的模具 Excel 表格。
 class _DetailPane extends StatefulWidget {
   const _DetailPane({
     required this.ref,
@@ -393,11 +403,16 @@ class _DetailPaneState extends State<_DetailPane> {
   bool _loading = true;
   String? _error;
 
-  // 该分类下的模具分页（仅叶子分类加载；分组节点提示用户选具体子分类）。
+  // 该分类（子树）下的模具分页；父分类也加载（子树汇总）。
   PagedResult<MouldListItem>? _mouldPage;
   int _mouldPageNum = 1;
   bool _mouldLoading = false;
   String? _mouldError;
+
+  // 字段筛选 + 搜索 + facet（筛选栏用）。切换分类时重置。
+  Map<String, String?> _filters = {};
+  String _keyword = '';
+  MouldFacets? _facets;
 
   /// 详情弹窗加载中（防并发）。
   /// 注意：与 [_mouldLoading]（模具分页列表的加载状态）是两回事，不可混用——
@@ -429,13 +444,16 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _detail = d;
         _loading = false;
+        // 切换分类时重置模具分页 + 筛选状态 + facet。
         _mouldPage = null;
         _mouldPageNum = 1;
         _mouldError = null;
+        _filters = {};
+        _keyword = '';
+        _facets = null;
       });
-      if (d.childCount == 0) {
-        await _loadMoulds(1);
-      }
+      // 父分类也加载（后端按子树汇总）；并行拉模具列表与字段 facet。
+      await Future.wait([_loadMoulds(1), _loadFacets()]);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -461,9 +479,12 @@ class _DetailPaneState extends State<_DetailPane> {
       _mouldPageNum = page;
     });
     try {
-      final result = await widget.ref
-          .read(mouldRepositoryProvider)
-          .list(widget.nodeId, page: page);
+      final result = await widget.ref.read(mouldRepositoryProvider).list(
+            widget.nodeId,
+            page: page,
+            keyword: _keyword.trim().isEmpty ? null : _keyword,
+            filters: _filters,
+          );
       if (!mounted) return;
       setState(() {
         _mouldPage = result;
@@ -484,18 +505,56 @@ class _DetailPaneState extends State<_DetailPane> {
     }
   }
 
+  /// 拉字段 facet（筛选栏下拉选项）。失败不阻塞列表，静默降级为空下拉。
+  Future<void> _loadFacets() async {
+    try {
+      final f =
+          await widget.ref.read(mouldRepositoryProvider).facets(widget.nodeId);
+      if (!mounted) return;
+      setState(() => _facets = f);
+    } on ApiException catch (e) {
+      // facet 拉取失败：列表仍可用，仅下拉为空；不强提示打扰用户。
+      debugPrint('mould facets load failed: ${e.message}');
+    } catch (_) {
+      debugPrint('mould facets load failed');
+    }
+  }
+
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      final next = Map<String, String?>.from(_filters);
+      if (value == null) {
+        next.remove(key); // 选"所有"= 不筛
+      } else {
+        next[key] = value; // 具体值 或 kMasterFilterNullValue（空值）
+      }
+      _filters = next;
+    });
+    _loadMoulds(1); // 任一筛选变化回到第 1 页
+  }
+
+  void _onKeywordChanged(String kw) {
+    setState(() => _keyword = kw);
+    _loadMoulds(1);
+  }
+
   // 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
   static const _mouldFields = [
-    MasterFieldDef(key: 'name', label: '名称', required: true),
-    MasterFieldDef(key: 'code', label: '编号'),
-    MasterFieldDef(key: 'mnumber', label: '备用编号'),
-    MasterFieldDef(key: 'qty', label: '数量'),
-    MasterFieldDef(key: 'tqty', label: '总数量', type: MasterFieldType.money),
-    MasterFieldDef(key: 'mstatus', label: '制造年月'),
-    MasterFieldDef(key: 'status', label: '状态'),
-    MasterFieldDef(key: 'place', label: '车间'),
-    MasterFieldDef(key: 'keeper', label: '保管人'),
-    MasterFieldDef(key: 'remark', label: '备注'),
+    MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+    MasterFieldDef(key: 'code', label: '编号', group: '基础'),
+    MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
+    MasterFieldDef(key: 'status', label: '状态', group: '基础'),
+    MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
+    MasterFieldDef(
+      key: 'tqty',
+      label: '总数量',
+      type: MasterFieldType.money,
+      group: '制造',
+    ),
+    MasterFieldDef(key: 'mstatus', label: '制造年月', group: '制造'),
+    MasterFieldDef(key: 'place', label: '车间', group: '制造'),
+    MasterFieldDef(key: 'keeper', label: '保管人', group: '制造'),
+    MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
   ];
 
   bool get _canEditMaster =>
@@ -504,14 +563,12 @@ class _DetailPaneState extends State<_DetailPane> {
   // ---- 模具 新建/编辑/删除 ------------------------------------------------
 
   void _showMouldCreate() {
-    showDialog<void>(
+    showMasterEditDialog(
       context: context,
-      builder: (_) => MasterEditDialog(
-        title: '新增模具', // TODO(l10n): 补 arb
-        fields: _mouldFields,
-        fixedValues: {'categoryId': widget.nodeId},
-        onSubmit: _doCreateMould,
-      ),
+      title: '新增模具', // TODO(l10n): 补 arb
+      fields: _mouldFields,
+      fixedValues: {'categoryId': widget.nodeId},
+      onSubmit: _doCreateMould,
     );
   }
 
@@ -534,26 +591,24 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   void _showMouldEdit(MouldDetail d) {
-    showDialog<void>(
+    showMasterEditDialog(
       context: context,
-      builder: (_) => MasterEditDialog(
-        title: '编辑模具', // TODO(l10n): 补 arb
-        fields: _mouldFields,
-        initialValues: {
-          'name': d.name ?? '',
-          'code': d.code ?? '',
-          'mnumber': d.mnumber ?? '',
-          'qty': d.qty ?? '',
-          'tqty': d.tqty?.toString() ?? '',
-          'mstatus': d.mstatus ?? '',
-          'status': d.status ?? '',
-          'place': d.place ?? '',
-          'keeper': d.keeper ?? '',
-          'remark': d.remark ?? '',
-        },
-        fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
-        onSubmit: (body) => _doUpdateMould(d.id, body),
-      ),
+      title: '编辑模具', // TODO(l10n): 补 arb
+      fields: _mouldFields,
+      initialValues: {
+        'name': d.name ?? '',
+        'code': d.code ?? '',
+        'mnumber': d.mnumber ?? '',
+        'qty': d.qty ?? '',
+        'tqty': d.tqty?.toString() ?? '',
+        'mstatus': d.mstatus ?? '',
+        'status': d.status ?? '',
+        'place': d.place ?? '',
+        'keeper': d.keeper ?? '',
+        'remark': d.remark ?? '',
+      },
+      fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
+      onSubmit: (body) => _doUpdateMould(d.id, body),
     );
   }
 
@@ -657,90 +712,37 @@ class _DetailPaneState extends State<_DetailPane> {
       _detailLoading = false; // 失败：loading 已关，复位
       return;
     }
-    // 成功：开详情对话框，关闭后再复位 flag（对话框期间继续禁止并发）。
-    await _openMouldDialog(d);
+    // 成功：开详情面板，关闭后再复位 flag（面板期间继续禁止并发）。
+    // 用局部 detail 捕获 non-null：d 是 nullable，跨闭包边界不再提升，
+    // 直接在 onEdit/onDelete 里用 d 会报类型错。
+    final detail = d;
+    await showMasterDetailSheet(
+      context: context,
+      title: detail.name?.isNotEmpty == true
+          ? detail.name!
+          : (detail.code ?? '模具详情'),
+      rows: _mouldDetailRows(detail),
+      canEdit: _canEditMaster,
+      onEdit: () => _showMouldEdit(detail),
+      onDelete: () => _deleteMould(detail),
+    );
     if (mounted) _detailLoading = false;
   }
 
-  Future<void> _openMouldDialog(MouldDetail d) {
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(d.name?.isNotEmpty == true ? d.name! : (d.code ?? '模具详情')),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _mouldRow('编号', d.code),
-              _mouldRow('名称', d.name),
-              _mouldRow('备用编号', d.mnumber),
-              _mouldRow('数量', d.qty),
-              _mouldRow('总数量', d.tqty?.toStringAsFixed(0)),
-              _mouldRow('状态', d.status),
-              _mouldRow('车间', d.place),
-              _mouldRow('保管人', d.keeper),
-              _mouldRow('制造年月', d.mstatus),
-              _mouldRow('分类', d.categoryName),
-              _mouldRow('备注', d.remark),
-              _mouldRow('旧编码', d.legacyId?.toString()),
-            ],
-          ),
-        ),
-        actions: [
-          if (_canEditMaster)
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _showMouldEdit(d);
-              },
-              child: const Text('编辑'), // TODO(l10n): 补 arb
-            ),
-          if (_canEditMaster)
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: UtenColors.error),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _deleteMould(d);
-              },
-              child: const Text('删除'), // TODO(l10n): 补 arb
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _mouldRow(String label, String? value) {
-    final theme = Theme.of(context);
-    final hasValue = value != null && value.isNotEmpty;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 70,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              hasValue ? value : '—',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  List<MasterDetailRow> _mouldDetailRows(MouldDetail d) => [
+        MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
+        MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
+        MasterDetailRow('备用编号', d.mnumber), // TODO(l10n): 补 arb
+        MasterDetailRow('数量', d.qty), // TODO(l10n): 补 arb
+        MasterDetailRow('总数量', d.tqty?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+        MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
+        MasterDetailRow('车间', d.place), // TODO(l10n): 补 arb
+        MasterDetailRow('保管人', d.keeper), // TODO(l10n): 补 arb
+        MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
+        MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
+        MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
+        MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -766,261 +768,124 @@ class _DetailPaneState extends State<_DetailPane> {
     }
     // compact：容器 gutter 已提供水平留白；medium+：详情面板需自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
-    return ListView(
-      padding: EdgeInsets.symmetric(
-        horizontal: hPad,
-        vertical: UtenSpacing.s16,
-      ),
-      children: [
-        UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                d.name,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  _stat(theme, '子分类数', '${d.childCount}'), // TODO(l10n): 补 arb
-                  if (d.parentName != null)
-                    _stat(theme, '父级', d.parentName!), // TODO(l10n): 补 arb
-                  if (d.legacyId != null)
-                    _stat(theme, '旧编码', '${d.legacyId}'), // TODO(l10n): 补 arb
-                ],
-              ),
-              if (d.path.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  '路径：${d.path}', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        if (widget.canEdit)
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: widget.onAddChild,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('新增子分类'), // TODO(l10n): 补 arb
-              ),
-              FilledButton.tonalIcon(
-                onPressed: () {
-                  if (_detail != null) widget.onEdit(_detail!);
-                },
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('编辑'), // TODO(l10n): 补 arb
-              ),
-              FilledButton.tonalIcon(
-                onPressed: widget.onDelete,
-                style: FilledButton.styleFrom(
-                  foregroundColor: theme.colorScheme.error,
-                ),
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text('删除'), // TODO(l10n): 补 arb
-              ),
-            ],
-          ),
-        if (_canEditMaster && _detail != null && _detail!.childCount == 0)
+    final total = _mouldPage?.total ?? 0;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: hPad),
+      child: Column(
+        children: [
+          // 固定：分类信息卡（含编辑按钮）
           Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s12),
-            child: FilledButton.icon(
-              onPressed: _showMouldCreate,
-              icon: const Icon(Icons.precision_manufacturing_outlined, size: 18),
-              label: const Text('添加模具'), // TODO(l10n): 补 arb
+            padding:
+                const EdgeInsets.fromLTRB(0, UtenSpacing.s16, 0, UtenSpacing.s12),
+            child: MasterDetailCard(
+              title: d.name,
+              icon: Icons.precision_manufacturing_outlined,
+              subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
+              stats: [
+                MasterDetailStat('子分类数', '${d.childCount}'), // TODO(l10n): 补 arb
+                MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
+                MasterDetailStat('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+              ],
+              path: d.path.isEmpty ? null : d.path,
+              canEdit: widget.canEdit,
+              onAddChild: widget.onAddChild,
+              onEdit: () {
+                if (_detail != null) widget.onEdit(_detail!);
+              },
+              onDelete: widget.onDelete,
             ),
           ),
-        const SizedBox(height: UtenSpacing.s20),
-        _buildMouldSection(theme),
-        const SizedBox(height: UtenSpacing.s24),
-      ],
-    );
-  }
-
-  // ---- 模具列表区块 -------------------------------------------------------
-
-  /// 分类信息卡下方的模具分页列表。
-  /// 分组节点（childCount>0）提示用户选具体子分类；叶子分类展示其模具 + 上一页/下一页。
-  Widget _buildMouldSection(ThemeData theme) {
-    final detail = _detail;
-    if (detail == null) return const SizedBox.shrink();
-
-    // 分组节点：提示选具体子分类。
-    if (detail.childCount > 0) {
-      return const UtenEmpty(
-        icon: Icons.precision_manufacturing_outlined,
-        message: '该分类下含子分类，请在左侧选择具体子分类查看模具', // TODO(l10n): 补 arb
-      );
-    }
-
-    final total = _mouldPage?.total ?? 0;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        UtenSectionHeader(
-          title: '模具 ($total)', // TODO(l10n): 补 arb
-          icon: Icons.precision_manufacturing_outlined,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        _buildMouldBody(theme),
-        if (_mouldPage != null && _mouldPage!.totalPages > 1)
-          _buildMouldPager(theme),
-      ],
-    );
-  }
-
-  Widget _buildMouldBody(ThemeData theme) {
-    if (_mouldLoading && _mouldPage == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2.5),
-          ),
-        ),
-      );
-    }
-    if (_mouldError != null) {
-      return UtenEmpty.error(
-        message: _mouldError,
-        actionLabel: '重试', // TODO(l10n): 补 arb
-        onAction: () => _loadMoulds(_mouldPageNum),
-      );
-    }
-    final items = _mouldPage?.items ?? const <MouldListItem>[];
-    if (items.isEmpty) {
-      return const UtenEmpty(
-        icon: Icons.precision_manufacturing_outlined,
-        message: '该分类暂无模具', // TODO(l10n): 补 arb
-      );
-    }
-    return Column(
-      children: [
-        for (final m in items)
+          // 固定：模具标题 + 添加按钮
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: UtenListItem(
-              leadingIcon: Icons.precision_manufacturing_outlined,
-              title: m.name?.isNotEmpty == true ? m.name! : (m.code ?? '(未命名)'),
-              subtitle: _mouldSubtitle(m),
-              trailing: m.status == null || m.status!.isEmpty
-                  ? null
-                  : _statusChip(theme, m.status!),
-              showChevron: true,
-              onTap: () => _showMouldDetail(m.id),
+            child: Row(
+              children: [
+                Icon(Icons.precision_manufacturing_outlined,
+                    size: 18, color: theme.colorScheme.primary),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '模具 ($total)', // TODO(l10n): 补 arb
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(
+                  child: UtenSearchBar(
+                    hint: '搜索模具（名称/编号/位置/备注）', // TODO(l10n): 补 arb
+                    initialValue: _keyword,
+                    onChanged: _onKeywordChanged,
+                  ),
+                ),
+                if (_canEditMaster) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.add_rounded,
+                    onPressed: _showMouldCreate,
+                    child: const Text('添加模具'), // TODO(l10n): 补 arb
+                  ),
+                ],
+              ],
             ),
           ),
-        if (_mouldLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+          // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
+          Expanded(
+            child: MasterDataTableView<MouldListItem>(
+              columns: _mouldColumns,
+              items: _mouldPage?.items ?? const [],
+              facets: _facets?.fields ?? const {},
+              nullCounts: _facets?.nullCounts ?? const {},
+              filters: _filters,
+              onFilterChanged: _onFilterChanged,
+              onRowTap: (m) => _showMouldDetail(m.id),
+              isLoading: _mouldLoading && _mouldPage == null,
+              loadingMore: _mouldLoading && _mouldPage != null,
+              error: _mouldError,
+              onRetry: () => _loadMoulds(_mouldPageNum),
+              emptyMessage: '该分类暂无模具', // TODO(l10n): 补 arb
+              currentPage: _mouldPage?.page ?? 1,
+              totalPages: _mouldPage?.totalPages ?? 1,
+              onPageChange: (p) => _loadMoulds(p),
             ),
-          ),
-      ],
-    );
-  }
-
-  String _mouldSubtitle(MouldListItem m) {
-    final parts = <String>[
-      if (m.code != null && m.code!.isNotEmpty) m.code!,
-      if (m.place != null && m.place!.isNotEmpty) m.place!,
-      if (m.keeper != null && m.keeper!.isNotEmpty) m.keeper!,
-    ];
-    return parts.isEmpty ? '—' : parts.join(' · ');
-  }
-
-  /// 状态小徽标：使用=绿、禁用=灰。
-  Widget _statusChip(ThemeData theme, String status) {
-    final inUse = status == '使用';
-    final color = inUse ? UtenColors.success : theme.colorScheme.outline;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: UtenRadius.smAll,
-      ),
-      child: Text(
-        status,
-        style: theme.textTheme.labelSmall?.copyWith(color: color),
-      ),
-    );
-  }
-
-  /// 简单分页：上一页 / 下一页（页码从 1 起，与后端 Pageables 约定一致）。
-  Widget _buildMouldPager(ThemeData theme) {
-    final page = _mouldPage!;
-    final canPrev = page.page > 1 && !_mouldLoading;
-    final canNext = page.page < page.totalPages && !_mouldLoading;
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TextButton.icon(
-            onPressed: canPrev ? () => _loadMoulds(page.page - 1) : null,
-            icon: const Icon(Icons.chevron_left_rounded, size: 20),
-            label: const Text('上一页'), // TODO(l10n): 补 arb
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-            child: Text(
-              '${page.page} / ${page.totalPages}', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: canNext ? () => _loadMoulds(page.page + 1) : null,
-            icon: const Text('下一页'), // TODO(l10n): 补 arb
-            label: const Icon(Icons.chevron_right_rounded, size: 20),
           ),
         ],
       ),
     );
   }
 
-  Widget _stat(ThemeData theme, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s12,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Text(
-        '$label：$value',
-        style: theme.textTheme.bodySmall,
-      ),
-    );
-  }
+  // ---- 模具列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
+
+  /// 模具表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
+  /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
+  ///
+  /// 列顺序按产品定义的 10 列。其中：
+  /// - 有数据列（key 与后端 query/facet 字段对齐）：模具编号/模具名称/存放位置/制造日期/备注/状态。
+  /// - 无数据列（V34 表无对应字段；模数/套数语义与 qty/tqty 不符按需求当无数据处理）：
+  ///   模数/套数/模具类型/制造商——单元格取 null（表格显"—"），不进 FACET_COLUMNS 白名单
+  ///   （下拉只显示"所有"），后端忽略其 query 参数。
+  static final _mouldColumns = <MasterColumnDef<MouldListItem>>[
+    MasterColumnDef(
+        key: 'code', label: '模具编号', width: 120, value: (m) => m.code),
+    MasterColumnDef(
+        key: 'name', label: '模具名称', width: 180, value: (m) => m.name),
+    MasterColumnDef(
+        key: 'cavities', label: '模数', width: 80, value: (_) => null),
+    MasterColumnDef(
+        key: 'sets', label: '套数', width: 80, value: (_) => null),
+    MasterColumnDef(
+        key: 'mouldType', label: '模具类型', width: 120, value: (_) => null),
+    MasterColumnDef(
+        key: 'place', label: '存放位置', width: 140, value: (m) => m.place),
+    MasterColumnDef(
+        key: 'manufacturer', label: '制造商', width: 140, value: (_) => null),
+    MasterColumnDef(
+        key: 'mstatus',
+        label: '制造日期',
+        width: 110,
+        value: (m) => m.mstatus),
+    MasterColumnDef(
+        key: 'remark', label: '备注', width: 200, value: (m) => m.remark),
+    MasterColumnDef(
+        key: 'status', label: '状态', width: 80, value: (m) => m.status),
+  ];
 }

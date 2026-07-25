@@ -2,23 +2,37 @@ package com.uten.imp.features.master.supplier;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.supplier.dto.SupplierDetail;
+import com.uten.imp.features.master.supplier.dto.SupplierFacets;
 import com.uten.imp.features.master.supplier.dto.SupplierListItem;
+import com.uten.imp.features.master.supplier.dto.SupplierQueryFilter;
 import com.uten.imp.features.master.supplier.dto.SupplierSaveRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * 供应商主档 API（基础资料-供应商资料）。
  *
- * - GET  /api/master/suppliers?categoryId=&page=1&size=20 → 分页（子树汇总）
- * - GET  /api/master/suppliers/{id}                       → 详情
- * - POST /api/master/suppliers                            → 新建（supplier:edit）
- * - PUT  /api/master/suppliers/{id}                       → 编辑（supplier:edit）
- * - DEL  /api/master/suppliers/{id}                       → 删除（supplier:edit，软删）
+ * <p>列表与 facets 均按 {@code categoryId} 的<b>子树</b>范围（含子分类）查询，动态字段筛选。
+ *
+ * - GET  /api/master/suppliers?categoryId=&keyword=&nullFields=&name=...&page=1&size=20 → 分页
+ * - GET  /api/master/suppliers/facets?categoryId=                                       → 各字段可选值 + 空值计数
+ * - GET  /api/master/suppliers/{id}                                                     → 详情
+ * - POST /api/master/suppliers                                                          → 新建（supplier:edit）
+ * - PUT  /api/master/suppliers/{id}                                                     → 编辑（supplier:edit）
+ * - DEL  /api/master/suppliers/{id}                                                     → 删除（supplier:edit，软删）
  *
  * 权限点 supplier:view 由 V38 种子化（全部部门）；supplier:edit 授 PMC 运营部（超管恒有）。
  */
@@ -33,9 +47,39 @@ public class SupplierController {
     @PreAuthorize("hasAuthority('supplier:view')")
     public PageResponse<SupplierListItem> list(
             @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Set<String> nullFields,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String description,
+            @RequestParam(required = false) Integer tday,
+            @RequestParam(required = false) String place,
+            @RequestParam(name = "empId", required = false) String empId,
+            @RequestParam(name = "legalPerson", required = false) String legalPerson,
+            @RequestParam(required = false) String linkman,
+            @RequestParam(required = false) String mobile,
+            @RequestParam(required = false) String phone,
+            @RequestParam(name = "phone2", required = false) String phone2,
+            @RequestParam(required = false) String fax,
+            @RequestParam(required = false) String postcode,
+            @RequestParam(required = false) String address,
+            @RequestParam(required = false) String bank,
+            @RequestParam(name = "bankAccount", required = false) String bankAccount,
+            @RequestParam(name = "taxId", required = false) String taxId,
+            @RequestParam(required = false) String website,
+            @RequestParam(name = "shipVia", required = false) String shipVia,
+            @RequestParam(name = "shipAddress", required = false) String shipAddress,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return service.list(categoryId, page, size);
+        return service.list(new SupplierQueryFilter(categoryId, keyword, nullFields,
+                name, description, tday, place, empId, legalPerson, linkman, mobile,
+                phone, phone2, fax, postcode, address, bank, bankAccount, taxId,
+                website, shipVia, shipAddress), page, size);
+    }
+
+    @GetMapping("/facets")
+    @PreAuthorize("hasAuthority('supplier:view')")
+    public SupplierFacets facets(@RequestParam UUID categoryId) {
+        return service.facets(categoryId);
     }
 
     @GetMapping("/{id}")

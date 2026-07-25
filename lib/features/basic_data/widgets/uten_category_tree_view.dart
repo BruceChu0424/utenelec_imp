@@ -29,7 +29,14 @@ class UtenCategoryTreeView extends StatefulWidget {
     this.header,
     this.searchHint = '搜索分类名称', // TODO(l10n): 补 arb
     this.emptySearchText,
+    this.expandOnRowTap = false,
   });
+
+  /// 点击节点文字行时是否同时展开/收起子类（有子节点才生效）。
+  ///
+  /// 查看类页面（货品/模具/客户/供应商资料）设 true：点分类既选中又展开，
+  /// 不必只点 chevron 图标。管理页（分类 CRUD）保持 false，行点击仅选中。
+  final bool expandOnRowTap;
 
   /// 树数据（调用方给，组件不自己拉）。
   final List<ProductCategoryNode> nodes;
@@ -155,6 +162,8 @@ class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
 
   void _onRowTap(ProductCategoryNode node) {
     if (_enabled(node)) {
+      // 查看页：点有子节点的行先展开/收起，再走选中/勾选语义。
+      if (widget.expandOnRowTap && node.hasChildren) _toggleExpand(node);
       switch (widget.mode) {
         case UtenCategoryTreeMode.none:
           widget.onNodeTap?.call(node);

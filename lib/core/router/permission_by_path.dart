@@ -73,10 +73,9 @@ List<String>? requiredAnyPermFor(String location) {
   }
   // 管理层：决策支持（V25 起独立权限点 analytics:view，默认仅 manager/admin）
   if (location.startsWith('/analytics/')) return const [Perm.analyticsView];
-  // 个人信息自助修改（员工侧）
-  if (location == '/profile/edit' || location == '/profile/me/changes') {
-    return const [Perm.profileEditSelf];
-  }
+  // 个人信息自助修改（员工侧）：全员入口——任何登录员工都能查看/修改自己的信息。
+  // 能改什么由编辑页 + 后端 ProfileFieldPolicy 的字段策略（直改即时生效 / 需审核走 HR /
+  // HR 专属只读）控制，不在这里挂权限点守卫。后端用当前用户 employeeId 落库，无越权风险。
   // HR 端：员工修改审批
   if (location == '/hr/profile-changes' ||
       location.startsWith('/hr/profile-changes/')) {

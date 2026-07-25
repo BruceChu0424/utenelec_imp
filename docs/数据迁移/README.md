@@ -28,7 +28,7 @@ curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
 **增量同步**：老库新增数据后，**再调一次同一端点**即可——按 `legacy_id` 幂等 upsert，已存在的更新、新增的插入。
 
 单模块排错（分类）：`POST /api/admin/legacy-migration/{material-category|client-category|supplier-category|mould-category}`。
-主档排错（shell）：`bash server/legacy_migration/migrate.sh --{goods|mould|client|supplier}-data`。
+主档排错（shell）：`bash server/legacy_migration/migrate.sh --{goods|mould|client|supplier}-data`（颜色/单位：`--color-data` / `--unit-data`，扁平无分类）。
 
 > **⚠️ 数据坑（已修，迁其他含地址/备注的表时复用）**：老库 varchar 字段（地址、收货地址、备注）
 > 可能含管道符 `|`。`export_legacy.ps1` 的 `Export-Query` 已做 RFC4180 引号转义（字段含
@@ -45,7 +45,8 @@ curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
 | **货品主档** | ✅ 已实现 | `B_Goods`（35750 条，全 78 字段，image 留空） | `goods` | `migrate.sh --goods-data` | （字段映射见 V32__goods.sql） |
 | **模具分类** | ✅ 已实现 | `SystemItem` (ItemclassID=18，65 扁平根) | `mould_categories` | `migrate.sh --mould` | [04-老库溯源](04-模具资料-老库溯源.md) · [05-新库与迁移](05-模具资料-新库与迁移.md) |
 | **模具主档** | ✅ 已实现 | `B_Mould`（1605 条，12 字段） | `moulds` | `migrate.sh --mould-data` | （字段映射见 V34__mould.sql） |
-| 颜色 | ⏳ 待做 | `B_Color`（自引用树，151 行） | `colour_categories`（仿模具走独立表） | 待 | — |
+| **颜色** | ✅ 已实现 | `B_Color`（151 条，**实测扁平**非树；`B_Goods.MColorID` 引用） | `colors` | `migrate.sh --color-data` | [10-老库溯源](10-颜色资料-老库溯源.md) · [11-新库与迁移](11-颜色资料-新库与迁移.md) |
+| **基本单位** | ✅ 已实现 | `B_Unit`（66 条，扁平，与 B_Color 同构；`B_Goods.UnitID` 引用） | `units` | `migrate.sh --unit-data` | [12-老库溯源](12-基本单位-老库溯源.md) · [13-新库与迁移](13-基本单位-新库与迁移.md) |
 | 模具 | ✅ 见上 | — | — | — | （已拆为「模具分类 + 模具主档」两行） |
 | 员工 | ⏳ 待做 | `B_Worker` | `employees` | 待 | — |
 | **客户分类** | ✅ 已实现 | `SystemItem` (ItemclassID=2，10根/40节点/深3) | `client_categories` | `migrate.sh --client` | [06-老库溯源](06-客户资料-老库溯源.md) · [07-新库与迁移](07-客户资料-新库与迁移.md) |
@@ -104,8 +105,9 @@ server/legacy_migration/                        ← shell 离线迁移（不依�
 ├─ migrate_mould.sql / migrate_mould_data.sql   （模具分类 / 主档）
 ├─ migrate_client.sql / migrate_client_data.sql （客户分类[递归CTE] / 主档）
 ├─ migrate_supplier.sql / migrate_supplier_data.sql （供应商分类[扁平根] / 主档）
+├─ migrate_color.sql / migrate_unit.sql        （颜色 / 基本单位 主档[扁平，无分类]）
 ├─ export_legacy.ps1                            （老库→UTF-8 CSV；含 RFC4180 管道符转义，见下）
-└─ data/                                        ← 离线 CSV（goods/mould/client/supplier 分类+主档，未进 git）
+└─ data/                                        ← 离线 CSV（goods/mould/client/supplier 分类+主档 + color/unit，未进 git）
 
 server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classpath CSV（分类树快照）
 ├─ goods_categories.csv
@@ -133,4 +135,4 @@ server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classp
 
 ---
 
-**最后更新**：2026-07-24 · **已实现模块**：货品（分类+主档）+ 模具（分类+主档）+ 客户（分类+主档）+ 供应商（分类+主档）—— 8/∞
+**最后更新**：2026-07-25 · **已实现模块**：货品（分类+主档）+ 模具（分类+主档）+ 客户（分类+主档）+ 供应商（分类+主档）+ 颜色 + 基本单位 —— 10/∞

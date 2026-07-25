@@ -35,23 +35,6 @@ class ExpenseListPage extends ConsumerWidget {
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
     Widget body = Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.only(
-              top: UtenSpacing.s12,
-              bottom: UtenSpacing.s8,
-            ),
-            child: UtenSegmentedFilter<ExpenseFilter>(
-              selected: filter,
-              onChanged: (v) =>
-                  ref.read(expenseFilterProvider.notifier).state = v,
-              segments: const [
-                UtenSegment(value: ExpenseFilter.all, label: '全部'),
-                UtenSegment(value: ExpenseFilter.draft, label: '草稿'),
-                UtenSegment(value: ExpenseFilter.processing, label: '处理中'),
-                UtenSegment(value: ExpenseFilter.finished, label: '已完成'),
-              ],
-            ),
-          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => ref.read(expenseListProvider.notifier).refresh(),
@@ -113,7 +96,21 @@ class ExpenseListPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: const UtenAppBar(title: '报销', showBackButton: true),
+      appBar: UtenAppBar(
+        title: '报销',
+        showBackButton: true,
+        centerWidget: UtenSegmentedFilter<ExpenseFilter>(
+          selected: filter,
+          onChanged: (v) =>
+              ref.read(expenseFilterProvider.notifier).state = v,
+          segments: const [
+            UtenSegment(value: ExpenseFilter.all, label: '全部'),
+            UtenSegment(value: ExpenseFilter.draft, label: '草稿'),
+            UtenSegment(value: ExpenseFilter.processing, label: '处理中'),
+            UtenSegment(value: ExpenseFilter.finished, label: '已完成'),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(RouteName.expenseNew),
         backgroundColor: Theme.of(context).colorScheme.primary,

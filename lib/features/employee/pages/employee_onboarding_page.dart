@@ -23,7 +23,10 @@ import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 
 class EmployeeOnboardingPage extends ConsumerStatefulWidget {
-  const EmployeeOnboardingPage({super.key});
+  const EmployeeOnboardingPage({super.key, this.initialDepartmentId});
+
+  /// 由「部门管理 → 添加员工」传入，预填所属部门；其余入口为 null。
+  final String? initialDepartmentId;
 
   @override
   ConsumerState<EmployeeOnboardingPage> createState() =>
@@ -59,6 +62,12 @@ class _EmployeeOnboardingPageState
   String? _departmentId;
   Position? _position;
   bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _departmentId = widget.initialDepartmentId;
+  }
 
   @override
   void dispose() {
@@ -247,6 +256,16 @@ class _EmployeeOnboardingPageState
                 UtenDepartmentPicker(
                   mode: UtenDepartmentPickerMode.single,
                   label: '${l10n.employeeFieldDepartment}*',
+                  initialSelection: _departmentId == null
+                      ? const []
+                      : [
+                          DeptSelection(
+                            id: _departmentId!,
+                            name: '',
+                            fullPath: '',
+                            level: '',
+                          ),
+                        ],
                   onChanged: (sel) => setState(() {
                     _departmentId = sel.isEmpty ? null : sel.first.id;
                     _position = null;

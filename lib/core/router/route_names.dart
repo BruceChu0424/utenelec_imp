@@ -20,6 +20,8 @@ abstract final class RouteName {
   static const String basicinfoMould = '/basicinfo/mould';
   static const String basicinfoClient = '/basicinfo/client';
   static const String basicinfoSupplier = '/basicinfo/supplier';
+  static const String basicinfoColor = '/basicinfo/color';
+  static const String basicinfoUnit = '/basicinfo/unit';
 
   // 工资条
   static const String payrollSlipList = '/payroll/slip';

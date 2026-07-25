@@ -21,7 +21,7 @@
 # Output lands in ./data/ (next to goods_categories.csv / goods.csv).
 # =====================================================================
 param(
-    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'All')]
+    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'All')]
     [string]$Target = 'All'
 )
 
@@ -103,6 +103,12 @@ $supplierCatSql = 'SELECT ItemID AS legacy_id, ISNULL(ParentID,0) AS parent_lega
 # Supplier master: B_Provider (386 rows, 29 cols). Column order MUST match migrate_supplier_data.sql supplier_stage.
 $supplierDataSql = 'SELECT ID AS legacy_id, ISNULL(ParentID,0) AS parent_legacy, Vend_Name AS name, Number AS code, Vend_Desc AS description, Vend_Place AS place, Emp_ID AS emp_id, Juri_Per AS legal_person, Link_Man AS linkman, Mobile AS mobile, Phone AS phone, Phone2 AS phone2, Fax AS fax, Post AS postcode, Link_Addr AS address, Email AS email, Http AS website, Shipvia AS ship_via, Ship_Addr AS ship_address, Vend_Bank AS bank, Vend_BankNo AS bank_account, Tax_ID AS tax_id, InitTotal AS init_total, InitTotal2 AS init_total2, CRate AS exchange_rate, TDay AS tday, PStyle AS price_style, [Status] AS status, Remark AS remark FROM B_Provider ORDER BY ID'
 
+# Color master: B_Color (151 rows, flat table — ParentID all 0, NOT a tree). 4 cols match migrate_color.sql color_stage.
+$colorDataSql = 'SELECT ID AS legacy_id, Number AS code, ColorName AS name, Status AS status FROM B_Color ORDER BY ID'
+
+# Unit master: B_Unit (66 rows, same shape as B_Color, flat). 4 cols match migrate_unit.sql unit_stage.
+$unitDataSql = 'SELECT ID AS legacy_id, Number AS code, Unit_Name AS name, Status AS status FROM B_Unit ORDER BY ID'
+
 switch ($Target) {
     'MouldCategory'   { Export-Query -Sql $mouldCatSql    -OutPath (Join-Path $dataDir 'mould_categories.csv') }
     'MouldData'       { Export-Query -Sql $mouldDataSql   -OutPath (Join-Path $dataDir 'mould.csv') }
@@ -111,6 +117,8 @@ switch ($Target) {
     'ClientData'      { Export-Query -Sql $clientDataSql  -OutPath (Join-Path $dataDir 'client.csv') }
     'SupplierCategory' { Export-Query -Sql $supplierCatSql  -OutPath (Join-Path $dataDir 'supplier_categories.csv') }
     'SupplierData'    { Export-Query -Sql $supplierDataSql -OutPath (Join-Path $dataDir 'supplier.csv') }
+    'ColorData'       { Export-Query -Sql $colorDataSql    -OutPath (Join-Path $dataDir 'color.csv') }
+    'UnitData'        { Export-Query -Sql $unitDataSql     -OutPath (Join-Path $dataDir 'unit.csv') }
     'All' {
         Export-Query -Sql $goodsCatSql     -OutPath (Join-Path $dataDir 'goods_categories.csv')
         Export-Query -Sql $mouldCatSql     -OutPath (Join-Path $dataDir 'mould_categories.csv')
@@ -119,5 +127,7 @@ switch ($Target) {
         Export-Query -Sql $clientDataSql   -OutPath (Join-Path $dataDir 'client.csv')
         Export-Query -Sql $supplierCatSql  -OutPath (Join-Path $dataDir 'supplier_categories.csv')
         Export-Query -Sql $supplierDataSql -OutPath (Join-Path $dataDir 'supplier.csv')
+        Export-Query -Sql $colorDataSql    -OutPath (Join-Path $dataDir 'color.csv')
+        Export-Query -Sql $unitDataSql     -OutPath (Join-Path $dataDir 'unit.csv')
     }
 }

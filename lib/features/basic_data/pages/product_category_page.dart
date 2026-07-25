@@ -12,12 +12,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/cards/uten_card.dart';
-import '../../../components/cards/uten_list_item.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -28,9 +27,14 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
 import '../models/product_category_node.dart';
+import '../repositories/color_repository.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
+import '../repositories/unit_repository.dart';
+import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/master_data_table_view.dart';
+import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/uten_category_tree_view.dart';
 
@@ -97,6 +101,16 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     return perms.contains(Perm.materialCategoryEdit);
   }
 
+  /// 新建分类时的常用名称建议（降低起名门槛；货品类常用维度）。
+  static const _categorySuggestions = [
+    '原材料',
+    '半成品',
+    '成品',
+    '辅料',
+    '包装材料',
+    '五金配件',
+  ];
+
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -105,6 +119,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
+        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );
@@ -217,6 +232,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       nodes: _tree ?? const <ProductCategoryNode>[],
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
+      expandOnRowTap: true,
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
@@ -270,7 +286,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       body = UtenEmpty(
         icon: Icons.category_outlined,
         message: '暂无货品分类', // TODO(l10n): 补 arb
-        description: canEdit ? '点击右上角「+」新建第一个分类' : null, // TODO(l10n): 补 arb
+        description: canEdit ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
+        actionLabel: canEdit ? '新建分类' : null, // TODO(l10n): 补 arb
+        onAction: canEdit ? () => _showCreateDialog() : null,
       );
     } else if (bp == UtenBreakpoint.compact) {
       body = selected == null
@@ -330,12 +348,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
           onPressed: () => context.go(RouteName.basicinfo),
         ),
         actions: [
-          if (canEdit)
-            IconButton(
-              icon: const Icon(Icons.add_rounded),
-              tooltip: '新增顶级分类', // TODO(l10n): 补 arb
-              onPressed: () => _showCreateDialog(),
-            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
@@ -395,11 +407,20 @@ class _DetailPaneState extends State<_DetailPane> {
   bool _loading = true;
   String? _error;
 
-  // 该分类下的货品分页（仅叶子分类加载；分组节点提示用户选具体子分类）。
+  // 该分类（子树）下的货品分页；父分类也加载（子树汇总）。
   PagedResult<GoodsListItem>? _goodsPage;
   int _goodsPageNum = 1;
   bool _goodsLoading = false;
   String? _goodsError;
+
+  // 字段筛选 + 搜索 + facet（筛选栏用）。切换分类时重置。
+  Map<String, String?> _filters = {};
+  String _keyword = '';
+  GoodsFacets? _facets;
+
+  // 颜色/单位字典（货品编辑表单下拉选项）。全局，不随分类切换。
+  List<MasterSelectOption> _colorOptions = const [];
+  List<MasterSelectOption> _unitOptions = const [];
 
   /// 详情弹窗加载中（防并发）。
   /// 注意：与 [_goodsLoading]（货品分页列表的加载状态）是两回事，不可混用——
@@ -410,12 +431,46 @@ class _DetailPaneState extends State<_DetailPane> {
   void initState() {
     super.initState();
     _load();
+    _loadDicts();
   }
 
   @override
   void didUpdateWidget(_DetailPane old) {
     super.didUpdateWidget(old);
     if (old.nodeId != widget.nodeId) _load();
+  }
+
+  /// 加载颜色/单位字典（货品编辑表单下拉选项；全局，失败静默降级为空下拉）。
+  Future<void> _loadDicts() async {
+    try {
+      final colors = await widget.ref.read(colorRepositoryProvider).dict();
+      final units = await widget.ref.read(unitRepositoryProvider).dict();
+      if (!mounted) return;
+      setState(() {
+        _colorOptions = [
+          for (final c in colors)
+            if (c.legacyId != null)
+              MasterSelectOption(
+                value: c.legacyId.toString(),
+                label:
+                    (c.name != null && c.name!.isNotEmpty) ? c.name! : '#${c.legacyId}',
+              ),
+        ];
+        _unitOptions = [
+          for (final u in units)
+            if (u.legacyId != null)
+              MasterSelectOption(
+                value: u.legacyId.toString(),
+                label:
+                    (u.name != null && u.name!.isNotEmpty) ? u.name! : '#${u.legacyId}',
+              ),
+        ];
+      });
+    } on ApiException catch (e) {
+      debugPrint('color/unit dict load failed: ${e.message}');
+    } catch (_) {
+      debugPrint('color/unit dict load failed');
+    }
   }
 
   Future<void> _load() async {
@@ -431,14 +486,16 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _detail = d;
         _loading = false;
-        // 切换分类时重置货品分页；叶子分类才拉货品。
+        // 切换分类时重置货品分页 + 筛选状态 + facet。
         _goodsPage = null;
         _goodsPageNum = 1;
         _goodsError = null;
+        _filters = {};
+        _keyword = '';
+        _facets = null;
       });
-      if (d.childCount == 0) {
-        await _loadGoods(1);
-      }
+      // 父分类也加载（后端按子树汇总）；并行拉货品列表与字段 facet。
+      await Future.wait([_loadGoods(1), _loadFacets()]);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -464,9 +521,12 @@ class _DetailPaneState extends State<_DetailPane> {
       _goodsPageNum = page;
     });
     try {
-      final result = await widget.ref
-          .read(goodsRepositoryProvider)
-          .list(widget.nodeId, page: page);
+      final result = await widget.ref.read(goodsRepositoryProvider).list(
+            widget.nodeId,
+            page: page,
+            keyword: _keyword.trim().isEmpty ? null : _keyword,
+            filters: _filters,
+          );
       if (!mounted) return;
       setState(() {
         _goodsPage = result;
@@ -487,20 +547,87 @@ class _DetailPaneState extends State<_DetailPane> {
     }
   }
 
+  /// 拉字段 facet（筛选栏下拉选项）。失败不阻塞列表，静默降级为空下拉。
+  Future<void> _loadFacets() async {
+    try {
+      final f =
+          await widget.ref.read(goodsRepositoryProvider).facets(widget.nodeId);
+      if (!mounted) return;
+      setState(() => _facets = f);
+    } on ApiException catch (e) {
+      // facet 拉取失败：列表仍可用，仅下拉为空；不强提示打扰用户。
+      debugPrint('goods facets load failed: ${e.message}');
+    } catch (_) {
+      debugPrint('goods facets load failed');
+    }
+  }
+
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      final next = Map<String, String?>.from(_filters);
+      if (value == null) {
+        next.remove(key); // 选"所有"= 不筛
+      } else {
+        next[key] = value; // 具体值 或 kMasterFilterNullValue（空值）
+      }
+      _filters = next;
+    });
+    _loadGoods(1); // 任一筛选变化回到第 1 页
+  }
+
+  void _onKeywordChanged(String kw) {
+    setState(() => _keyword = kw);
+    _loadGoods(1);
+  }
+
   // 货品主档可编辑字段（与后端 GoodsSaveRequest 对齐；老库 78 字段里只维护核心）。
-  static const _goodsFields = [
-    MasterFieldDef(key: 'name', label: '名称', required: true),
-    MasterFieldDef(key: 'code', label: '编号'),
-    MasterFieldDef(key: 'shortName', label: '简称'),
-    MasterFieldDef(key: 'model', label: '型号'),
-    MasterFieldDef(key: 'spec', label: '规格'),
-    MasterFieldDef(key: 'price', label: '价格', type: MasterFieldType.money),
-    MasterFieldDef(key: 'material', label: '材质'),
-    MasterFieldDef(key: 'thickness', label: '厚度', type: MasterFieldType.money),
-    MasterFieldDef(key: 'mWeight', label: '单重', type: MasterFieldType.money),
-    MasterFieldDef(key: 'pack', label: '包装'),
-    MasterFieldDef(key: 'pieces', label: '件数', type: MasterFieldType.integer),
-    MasterFieldDef(key: 'status', label: '状态'),
+  /// 货品可编辑字段（颜色/单位为下拉，选项来自字典；与后端 GoodsSaveRequest 对齐）。
+  List<MasterFieldDef> get _goodsFields => [
+    const MasterFieldDef(
+        key: 'name', label: '名称', required: true, group: '基础'),
+    const MasterFieldDef(key: 'code', label: '编号', group: '基础'),
+    const MasterFieldDef(key: 'shortName', label: '简称', group: '基础'),
+    const MasterFieldDef(key: 'status', label: '状态', group: '基础'),
+    const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
+    const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
+    const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
+    const MasterFieldDef(
+      key: 'thickness',
+      label: '厚度',
+      type: MasterFieldType.money,
+      group: '规格',
+    ),
+    const MasterFieldDef(
+      key: 'mWeight',
+      label: '单重',
+      type: MasterFieldType.money,
+      group: '规格',
+    ),
+    MasterFieldDef(
+      key: 'colorLegacyId',
+      label: '主颜色',
+      type: MasterFieldType.select,
+      options: _colorOptions,
+      selectInteger: true,
+      group: '规格',
+    ),
+    const MasterFieldDef(
+      key: 'price', label: '价格', type: MasterFieldType.money, group: '商务'),
+    const MasterFieldDef(key: 'pack', label: '包装', group: '商务'),
+    MasterFieldDef(
+      key: 'unitLegacyId',
+      label: '单位',
+      type: MasterFieldType.select,
+      options: _unitOptions,
+      selectInteger: true,
+      group: '商务',
+    ),
+    const MasterFieldDef(
+      key: 'pieces',
+      label: '件数',
+      type: MasterFieldType.integer,
+      group: '商务',
+    ),
   ];
 
   bool get _canEditMaster =>
@@ -509,14 +636,12 @@ class _DetailPaneState extends State<_DetailPane> {
   // ---- 货品 新建/编辑/删除 ------------------------------------------------
 
   void _showGoodsCreate() {
-    showDialog<void>(
+    showMasterEditDialog(
       context: context,
-      builder: (_) => MasterEditDialog(
-        title: '新增货品', // TODO(l10n): 补 arb
-        fields: _goodsFields,
-        fixedValues: {'categoryId': widget.nodeId},
-        onSubmit: _doCreateGoods,
-      ),
+      title: '新增货品', // TODO(l10n): 补 arb
+      fields: _goodsFields,
+      fixedValues: {'categoryId': widget.nodeId},
+      onSubmit: _doCreateGoods,
     );
   }
 
@@ -539,28 +664,28 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   void _showGoodsEdit(GoodsDetail d) {
-    showDialog<void>(
+    showMasterEditDialog(
       context: context,
-      builder: (_) => MasterEditDialog(
-        title: '编辑货品', // TODO(l10n): 补 arb
-        fields: _goodsFields,
-        initialValues: {
-          'name': d.name ?? '',
-          'code': d.code ?? '',
-          'shortName': d.shortName ?? '',
-          'model': d.model ?? '',
-          'spec': d.spec ?? '',
-          'price': d.price?.toString() ?? '',
-          'material': d.material ?? '',
-          'thickness': d.thickness?.toString() ?? '',
-          'mWeight': d.mWeight?.toString() ?? '',
-          'pack': d.pack ?? '',
-          'pieces': d.pieces?.toString() ?? '',
-          'status': d.status ?? '',
-        },
-        fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
-        onSubmit: (body) => _doUpdateGoods(d.id, body),
-      ),
+      title: '编辑货品', // TODO(l10n): 补 arb
+      fields: _goodsFields,
+      initialValues: {
+        'name': d.name ?? '',
+        'code': d.code ?? '',
+        'shortName': d.shortName ?? '',
+        'model': d.model ?? '',
+        'spec': d.spec ?? '',
+        'price': d.price?.toString() ?? '',
+        'material': d.material ?? '',
+        'thickness': d.thickness?.toString() ?? '',
+        'mWeight': d.mWeight?.toString() ?? '',
+        'pack': d.pack ?? '',
+        'pieces': d.pieces?.toString() ?? '',
+        'status': d.status ?? '',
+        'colorLegacyId': d.colorLegacyId?.toString() ?? '',
+        'unitLegacyId': d.unitLegacyId?.toString() ?? '',
+      },
+      fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
+      onSubmit: (body) => _doUpdateGoods(d.id, body),
     );
   }
 
@@ -664,91 +789,40 @@ class _DetailPaneState extends State<_DetailPane> {
       _detailLoading = false; // 失败：loading 已关，复位
       return;
     }
-    // 成功：开详情对话框，关闭后再复位 flag（对话框期间继续禁止并发）。
-    await _openGoodsDialog(d);
+    // 成功：开详情面板，关闭后再复位 flag（面板期间继续禁止并发）。
+    // 用局部 detail 捕获 non-null：d 是 nullable，跨闭包边界不再提升，
+    // 直接在 onEdit/onDelete 里用 d 会报类型错。
+    final detail = d;
+    await showMasterDetailSheet(
+      context: context,
+      title: detail.name?.isNotEmpty == true
+          ? detail.name!
+          : (detail.code ?? '货品详情'),
+      rows: _goodsDetailRows(detail),
+      canEdit: _canEditMaster,
+      onEdit: () => _showGoodsEdit(detail),
+      onDelete: () => _deleteGoods(detail),
+    );
     if (mounted) _detailLoading = false;
   }
 
-  Future<void> _openGoodsDialog(GoodsDetail d) {
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(d.name?.isNotEmpty == true ? d.name! : (d.code ?? '货品详情')),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _goodsRow('编码', d.code),
-              _goodsRow('型号', d.model),
-              _goodsRow('规格', d.spec),
-              _goodsRow('简称', d.shortName),
-              _goodsRow('价格', d.price?.toStringAsFixed(2)),
-              _goodsRow('材质', d.material),
-              _goodsRow('厚度', d.thickness?.toStringAsFixed(2)),
-              _goodsRow('包装', d.pack),
-              _goodsRow('单重', d.mWeight?.toStringAsFixed(2)),
-              _goodsRow('件数', d.pieces?.toString()),
-              _goodsRow('分类', d.categoryName),
-              _goodsRow('状态', d.status),
-              _goodsRow('旧编码', d.legacyId?.toString()),
-            ],
-          ),
-        ),
-        actions: [
-          if (_canEditMaster)
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _showGoodsEdit(d);
-              },
-              child: const Text('编辑'), // TODO(l10n): 补 arb
-            ),
-          if (_canEditMaster)
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: UtenColors.error),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _deleteGoods(d);
-              },
-              child: const Text('删除'), // TODO(l10n): 补 arb
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _goodsRow(String label, String? value) {
-    final theme = Theme.of(context);
-    final hasValue = value != null && value.isNotEmpty;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 56,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              hasValue ? value : '—',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  List<MasterDetailRow> _goodsDetailRows(GoodsDetail d) => [
+        MasterDetailRow('编码', d.code), // TODO(l10n): 补 arb
+        MasterDetailRow('型号', d.model), // TODO(l10n): 补 arb
+        MasterDetailRow('规格', d.spec), // TODO(l10n): 补 arb
+        MasterDetailRow('简称', d.shortName), // TODO(l10n): 补 arb
+        MasterDetailRow('价格', d.price?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+        MasterDetailRow('材质', d.material), // TODO(l10n): 补 arb
+        MasterDetailRow('厚度', d.thickness?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+        MasterDetailRow('包装', d.pack), // TODO(l10n): 补 arb
+        MasterDetailRow('单重', d.mWeight?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+        MasterDetailRow('件数', d.pieces?.toString()), // TODO(l10n): 补 arb
+        MasterDetailRow('主颜色', d.colorName), // TODO(l10n): 补 arb
+        MasterDetailRow('单位', d.unitName), // TODO(l10n): 补 arb
+        MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
+        MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
+        MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -774,250 +848,132 @@ class _DetailPaneState extends State<_DetailPane> {
     }
     // compact：容器 gutter 已提供水平留白；medium+：详情面板需自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
-    return ListView(
-      padding: EdgeInsets.symmetric(
-        horizontal: hPad,
-        vertical: UtenSpacing.s16,
-      ),
-      children: [
-        UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                d.name,
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  _stat(theme, '子分类数', '${d.childCount}'), // TODO(l10n): 补 arb
-                  if (d.parentName != null)
-                    _stat(theme, '父级', d.parentName!), // TODO(l10n): 补 arb
-                  if (d.legacyId != null)
-                    _stat(theme, '旧编码', '${d.legacyId}'), // TODO(l10n): 补 arb
-                ],
-              ),
-              if (d.path.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  '路径：${d.path}', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        if (widget.canEdit)
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              FilledButton.tonalIcon(
-                onPressed: widget.onAddChild,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('新增子分类'), // TODO(l10n): 补 arb
-              ),
-              FilledButton.tonalIcon(
-                onPressed: () {
-                  if (_detail != null) widget.onEdit(_detail!);
-                },
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('编辑'), // TODO(l10n): 补 arb
-              ),
-              FilledButton.tonalIcon(
-                onPressed: widget.onDelete,
-                style: FilledButton.styleFrom(
-                  foregroundColor: theme.colorScheme.error,
-                ),
-                icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text('删除'), // TODO(l10n): 补 arb
-              ),
-            ],
-          ),
-        if (_canEditMaster && _detail != null && _detail!.childCount == 0)
+    final total = _goodsPage?.total ?? 0;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: hPad),
+      child: Column(
+        children: [
+          // 固定：分类信息卡（含编辑按钮）
           Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s12),
-            child: FilledButton.icon(
-              onPressed: _showGoodsCreate,
-              icon: const Icon(Icons.inventory_2_outlined, size: 18),
-              label: const Text('添加货品'), // TODO(l10n): 补 arb
+            padding:
+                const EdgeInsets.fromLTRB(0, UtenSpacing.s16, 0, UtenSpacing.s12),
+            child: MasterDetailCard(
+              title: d.name,
+              icon: Icons.inventory_2_outlined,
+              subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
+              stats: [
+                MasterDetailStat('子分类数', '${d.childCount}'), // TODO(l10n): 补 arb
+                MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
+                MasterDetailStat('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+              ],
+              path: d.path.isEmpty ? null : d.path,
+              canEdit: widget.canEdit,
+              onAddChild: widget.onAddChild,
+              onEdit: () {
+                if (_detail != null) widget.onEdit(_detail!);
+              },
+              onDelete: widget.onDelete,
             ),
           ),
-        const SizedBox(height: UtenSpacing.s20),
-        _buildGoodsSection(theme),
-        const SizedBox(height: UtenSpacing.s24),
-      ],
-    );
-  }
-
-  // ---- 货品列表区块 -------------------------------------------------------
-
-  /// 分类信息卡下方的货品分页列表。
-  /// 分组节点（childCount>0）提示用户选具体子分类；叶子分类展示其货品 + 上一页/下一页。
-  Widget _buildGoodsSection(ThemeData theme) {
-    final detail = _detail;
-    if (detail == null) return const SizedBox.shrink();
-
-    // 分组节点：老库分类树的中间层通常不直接挂货品，提示选具体子分类。
-    if (detail.childCount > 0) {
-      return const UtenEmpty(
-        icon: Icons.inventory_2_outlined,
-        message: '该分类下含子分类，请在左侧选择具体子分类查看货品', // TODO(l10n): 补 arb
-      );
-    }
-
-    final total = _goodsPage?.total ?? 0;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        UtenSectionHeader(
-          title: '货品 ($total)', // TODO(l10n): 补 arb
-          icon: Icons.inventory_2_outlined,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        _buildGoodsBody(theme),
-        if (_goodsPage != null && _goodsPage!.totalPages > 1)
-          _buildGoodsPager(theme),
-      ],
-    );
-  }
-
-  Widget _buildGoodsBody(ThemeData theme) {
-    if (_goodsLoading && _goodsPage == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2.5),
-          ),
-        ),
-      );
-    }
-    if (_goodsError != null) {
-      return UtenEmpty.error(
-        message: _goodsError,
-        actionLabel: '重试', // TODO(l10n): 补 arb
-        onAction: () => _loadGoods(_goodsPageNum),
-      );
-    }
-    final items = _goodsPage?.items ?? const <GoodsListItem>[];
-    if (items.isEmpty) {
-      return const UtenEmpty(
-        icon: Icons.inventory_2_outlined,
-        message: '该分类暂无货品', // TODO(l10n): 补 arb
-      );
-    }
-    return Column(
-      children: [
-        for (final g in items)
+          // 固定：货品标题 + 添加按钮
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: UtenListItem(
-              leadingIcon: Icons.inventory_2_outlined,
-              title: g.name?.isNotEmpty == true ? g.name! : (g.code ?? '(未命名)'),
-              subtitle: _goodsSubtitle(g),
-              trailing: g.price == null
-                  ? null
-                  : Text(
-                      g.price!.toStringAsFixed(2),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-              showChevron: true,
-              onTap: () => _showGoodsDetail(g.id),
+            child: Row(
+              children: [
+                Icon(Icons.inventory_2_outlined,
+                    size: 18, color: theme.colorScheme.primary),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '货品 ($total)', // TODO(l10n): 补 arb
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(
+                  child: UtenSearchBar(
+                    hint: '搜索货品（名称/编号/型号/规格/系列）', // TODO(l10n): 补 arb
+                    initialValue: _keyword,
+                    onChanged: _onKeywordChanged,
+                  ),
+                ),
+                if (_canEditMaster) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.add_rounded,
+                    onPressed: _showGoodsCreate,
+                    child: const Text('添加货品'), // TODO(l10n): 补 arb
+                  ),
+                ],
+              ],
             ),
           ),
-        if (_goodsLoading)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+          // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
+          Expanded(
+            child: MasterDataTableView<GoodsListItem>(
+              columns: _goodsColumns,
+              items: _goodsPage?.items ?? const [],
+              facets: _facets?.fields ?? const {},
+              nullCounts: _facets?.nullCounts ?? const {},
+              filters: _filters,
+              onFilterChanged: _onFilterChanged,
+              onRowTap: (g) => _showGoodsDetail(g.id),
+              isLoading: _goodsLoading && _goodsPage == null,
+              loadingMore: _goodsLoading && _goodsPage != null,
+              error: _goodsError,
+              onRetry: () => _loadGoods(_goodsPageNum),
+              emptyMessage: '该分类暂无货品', // TODO(l10n): 补 arb
+              currentPage: _goodsPage?.page ?? 1,
+              totalPages: _goodsPage?.totalPages ?? 1,
+              onPageChange: (p) => _loadGoods(p),
             ),
-          ),
-      ],
-    );
-  }
-
-  String _goodsSubtitle(GoodsListItem g) {
-    final parts = <String>[
-      if (g.code != null && g.code!.isNotEmpty) g.code!,
-      if (g.spec != null && g.spec!.isNotEmpty) g.spec!,
-      if (g.model != null && g.model!.isNotEmpty) g.model!,
-    ];
-    return parts.isEmpty ? '—' : parts.join(' · ');
-  }
-
-  /// 简单分页：上一页 / 下一页（页码从 1 起，与后端 Pageables 约定一致）。
-  Widget _buildGoodsPager(ThemeData theme) {
-    final page = _goodsPage!;
-    final canPrev = page.page > 1 && !_goodsLoading;
-    final canNext = page.page < page.totalPages && !_goodsLoading;
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TextButton.icon(
-            onPressed: canPrev ? () => _loadGoods(page.page - 1) : null,
-            icon: const Icon(Icons.chevron_left_rounded, size: 20),
-            label: const Text('上一页'), // TODO(l10n): 补 arb
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-            child: Text(
-              '${page.page} / ${page.totalPages}', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: canNext ? () => _loadGoods(page.page + 1) : null,
-            icon: const Text('下一页'), // TODO(l10n): 补 arb
-            label: const Icon(Icons.chevron_right_rounded, size: 20),
           ),
         ],
       ),
     );
   }
 
-  Widget _stat(ThemeData theme, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s12,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Text(
-        '$label：$value',
-        style: theme.textTheme.bodySmall,
-      ),
-    );
-  }
+  // ---- 货品列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
+
+  /// 货品表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
+  /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
+  /// 颜色/单位只有老库 legacy id → 单元格显 #id；价格作为末列。
+  static final _goodsColumns = <MasterColumnDef<GoodsListItem>>[
+    MasterColumnDef(
+        key: 'code', label: '编号', width: 120, value: (g) => g.code),
+    MasterColumnDef(
+        key: 'series', label: '系列', width: 90, value: (g) => g.series),
+    MasterColumnDef(
+        key: 'model', label: '型号', width: 120, value: (g) => g.model),
+    MasterColumnDef(
+        key: 'name', label: '货品名称', width: 200, value: (g) => g.name),
+    MasterColumnDef(
+        key: 'spec', label: '规格', width: 150, value: (g) => g.spec),
+    MasterColumnDef(
+        key: 'colorLegacyId',
+        label: '主颜色',
+        width: 90,
+        value: (g) =>
+            g.colorName ?? (g.colorLegacyId == null ? null : '#${g.colorLegacyId}')),
+    MasterColumnDef(
+        key: 'requireRemark',
+        label: '备注',
+        width: 180,
+        value: (g) => g.requireRemark),
+    MasterColumnDef(
+        key: 'cNumber', label: '客户型号', width: 120, value: (g) => g.cNumber),
+    MasterColumnDef(
+        key: 'unitLegacyId',
+        label: '单位',
+        width: 70,
+        value: (g) =>
+            g.unitName ?? (g.unitLegacyId == null ? null : '#${g.unitLegacyId}')),
+    MasterColumnDef(
+        key: 'material', label: '材质', width: 120, value: (g) => g.material),
+    MasterColumnDef(
+        key: 'price',
+        label: '价格',
+        width: 100,
+        value: (g) => g.price?.toStringAsFixed(2)),
+  ];
 }

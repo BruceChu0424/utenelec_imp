@@ -13,7 +13,7 @@ import java.util.function.Supplier;
  * <p>串行调用各模块 Migrator（各自独立 {@code @Transactional} 事务，互不影响），
  * 汇总每个模块的报告；某模块失败不中断其他模块，失败信息记入报告。
  *
- * <p><b>新增模块</b>（颜色 / 模具 / 员工 / 工资…）：
+ * <p><b>新增分类树模块</b>（员工 / 工资…；扁平主档如颜色/单位走 shell，不经本类）：
  * <ol>
  *   <li>实现对应 Migrator（仿 {@link MaterialCategoryMigrator}，按 {@code legacy_id} 幂等 upsert）；</li>
  *   <li>在 {@link #migrateAll()} 注册一行 {@code run(...)}；</li>
@@ -32,8 +32,8 @@ public class LegacyMigrationOrchestrator {
     private final ClientCategoryMigrator clientCategoryMigrator;
     private final SupplierCategoryMigrator supplierCategoryMigrator;
 
-    // —— 后续模块在此注入（实现各自 Migrator 后取消注释） ——
-    // private final ColourMigrator colourMigrator;
+    // 注：颜色(colors)/单位(units)为扁平字典，不走 Java Migrator（本类只迁 SystemItem 分类树），
+    // 其主档由 shell 批量灌入（migrate.sh --color-data / --unit-data，见 docs/数据迁移/11、13）。
 
     /** 一键迁移结果：各模块报告 + 整体是否成功 + 失败汇总。 */
     public record FullMigrationReport(Map<String, Object> modules, boolean success, String error) {}
@@ -47,7 +47,6 @@ public class LegacyMigrationOrchestrator {
         run("mould.category", mouldCategoryMigrator::migrateMoulds, modules, err);
         run("client.category", clientCategoryMigrator::migrateClients, modules, err);
         run("supplier.category", supplierCategoryMigrator::migrateSuppliers, modules, err);
-        // run("colour", colourMigrator::migrate, modules, err);
 
         return new FullMigrationReport(modules, err.length() == 0, err.length() == 0 ? null : err.toString());
     }

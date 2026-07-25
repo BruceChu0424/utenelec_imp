@@ -185,6 +185,10 @@ class _UtenButtonState extends State<UtenButton> {
         isDark
             ? (UtenColors.darkSurfaceLow, UtenColors.darkTextPrimary, null)
             : (UtenColors.surfaceMid, UtenColors.textPrimary, null),
+      // 品牌色调次要按钮：浅青绿底 + 深绿字（与分类树选中态视觉一致）。
+      UtenButtonType.tonal => isDark
+          ? (UtenColors.teal900, UtenColors.teal100, null)
+          : (UtenColors.teal50, UtenColors.teal700, null),
       // 幽灵按钮：透明 + 细边框
       UtenButtonType.ghost => (
         Colors.transparent,
@@ -197,6 +201,6 @@ class _UtenButtonState extends State<UtenButton> {
   }
 }
 
-enum UtenButtonType { primary, secondary, ghost, danger }
+enum UtenButtonType { primary, secondary, tonal, ghost, danger }
 
 enum UtenButtonSize { small, medium, large }

@@ -1,21 +1,31 @@
-// 客户主档仓库：分类下分页列表 + 详情。
+// 客户主档仓库：分类（子树）下分页列表（动态筛选）+ 字段 facets + 详情。
 //
-// 仿 DioMouldRepository，端点走 ApiEndpoints.clients 系列；
+// 仿 DioGoodsRepository，端点走 ApiEndpoints.clients 系列；
 // 分页结果复用 PagedResult（对应后端 PageResponse）。
+// filters 中值 == kMasterFilterNullValue 的字段名收集进 nullFields（空值筛选）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/client_node.dart';
+import '../models/master_facet.dart';
 
 abstract interface class ClientRepository {
-  /// 某分类下的客户分页（page 从 1 起，与后端 Pageables 约定一致）。
+  /// 某分类（子树）下的客户分页。
+  ///
+  /// [keyword] 模糊匹配名称/编码/全称/联系人/手机；[filters] 字段精确筛选，
+  /// 值为 [kMasterFilterNullValue] 表示筛该字段为空。page 从 1 起。
   Future<PagedResult<ClientListItem>> list(
     String categoryId, {
     int page = 1,
     int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
   });
+
+  /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
+  Future<ClientFacets> facets(String categoryId);
 
   Future<ClientDetail> detail(String id);
 
@@ -35,16 +45,38 @@ class DioClientRepository implements ClientRepository {
     String categoryId, {
     int page = 1,
     int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
   }) async {
-    final json = await api.get(
-      ApiEndpoints.clients,
-      query: {
-        'categoryId': categoryId,
-        'page': page,
-        'size': size,
-      },
-    );
+    final query = <String, dynamic>{
+      'categoryId': categoryId,
+      'page': page,
+      'size': size,
+      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+    };
+    // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
+    // 其余按 字段=值 发送。
+    final nullFields = <String>[];
+    filters.forEach((k, v) {
+      if (v == kMasterFilterNullValue) {
+        nullFields.add(k);
+      } else {
+        query[k] = v;
+      }
+    });
+    if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
+
+    final json = await api.get(ApiEndpoints.clients, query: query);
     return PagedResult.fromJson(json, ClientListItem.fromJson);
+  }
+
+  @override
+  Future<ClientFacets> facets(String categoryId) async {
+    final json = await api.get(
+      ApiEndpoints.clientsFacets,
+      query: {'categoryId': categoryId},
+    );
+    return ClientFacets.fromJson(json);
   }
 
   @override

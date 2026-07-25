@@ -20,8 +20,9 @@ abstract final class ApiEndpoints {
       '$materialCategories/$id/subtree';
   static String materialCategory(String id) => '$materialCategories/$id';
 
-  // 货品主档（基础资料 / master-data）—— 分类下货品分页 + 详情
+  // 货品主档（基础资料 / master-data）—— 分类下货品分页 + 详情 + 字段 facet
   static const goods = '/master/goods';
+  static const goodsFacets = '$goods/facets';
   static String good(String id) => '/master/goods/$id';
 
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
@@ -31,8 +32,9 @@ abstract final class ApiEndpoints {
       '$mouldCategories/$id/subtree';
   static String mouldCategory(String id) => '$mouldCategories/$id';
 
-  // 模具主档（基础资料 / master-data）—— 分类下模具分页 + 详情
+  // 模具主档（基础资料 / master-data）—— 分类下模具分页 + 详情 + 字段 facet
   static const moulds = '/master/moulds';
+  static const mouldsFacets = '$moulds/facets';
   static String mould(String id) => '/master/moulds/$id';
 
   // 客户资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
@@ -42,8 +44,9 @@ abstract final class ApiEndpoints {
       '$clientCategories/$id/subtree';
   static String clientCategory(String id) => '$clientCategories/$id';
 
-  // 客户主档（基础资料 / master-data）—— 分类下客户分页 + 详情
+  // 客户主档（基础资料 / master-data）—— 分类下客户分页 + 详情 + 字段 facet
   static const clients = '/master/clients';
+  static const clientsFacets = '$clients/facets';
   static String client(String id) => '/master/clients/$id';
 
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
@@ -53,9 +56,22 @@ abstract final class ApiEndpoints {
       '$supplierCategories/$id/subtree';
   static String supplierCategory(String id) => '$supplierCategories/$id';
 
-  // 供应商主档（基础资料 / master-data）—— 分类下供应商分页 + 详情
+  // 供应商主档（基础资料 / master-data）—— 分类下供应商分页 + 详情 + 字段 facet
   static const suppliers = '/master/suppliers';
+  static const suppliersFacets = '$suppliers/facets';
   static String supplier(String id) => '/master/suppliers/$id';
+
+  // 颜色主档（基础资料 / master-data）—— 扁平结构，无分类：分页 + 详情 + 字段 facet + 字典
+  static const colors = '/master/colors';
+  static const colorsFacets = '$colors/facets';
+  static const colorsDict = '$colors/dict';
+  static String color(String id) => '/master/colors/$id';
+
+  // 基本单位主档（基础资料 / master-data）—— 扁平结构，无分类：分页 + 详情 + 字段 facet + 字典
+  static const units = '/master/units';
+  static const unitsFacets = '$units/facets';
+  static const unitsDict = '$units/dict';
+  static String unit(String id) => '/master/units/$id';
 
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>

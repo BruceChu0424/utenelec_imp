@@ -41,6 +41,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[my-changes] initState — page created');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(myProfileChangesProvider);
     });

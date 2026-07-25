@@ -31,6 +31,8 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.flexibleSpace,
     this.showBottomBorder = true,
     this.blurred = false,
+    this.centerWidget,
+    this.titleWidget,
   });
 
   final String? title;
@@ -43,6 +45,14 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Color? foregroundColor;
   final PreferredSizeWidget? bottom;
   final Widget? flexibleSpace;
+
+  /// 标题区内「居中」部件（如列表页的 [UtenSegmentedFilter]）。
+  /// 与 [title] 共存：[title] 文字靠最左，[centerWidget] 在标题区水平居中；
+  /// 空间不足时自动等比缩小（FittedBox），不会溢出报错。
+  final Widget? centerWidget;
+
+  /// 完全自定义标题区（整体替换 [title] / [centerWidget]，优先级最高）。
+  final Widget? titleWidget;
 
   /// 是否显示底部发丝级分隔线（带 TabBar 等 bottom 时可关闭）
   final bool showBottomBorder;
@@ -69,38 +79,7 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
         (isDark ? UtenColors.darkBorder : UtenColors.divider);
 
     final appBar = AppBar(
-      title: title != null
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title!,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
-                    color: foregroundColor ?? theme.colorScheme.onSurface,
-                  ),
-                ),
-                if (subtitle != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      subtitle!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.3,
-                        color: foregroundColor?.withValues(alpha: 0.7) ??
-                            (isDark
-                                ? UtenColors.darkTextTertiary
-                                : UtenColors.textTertiary),
-                      ),
-                    ),
-                  ),
-              ],
-            )
-          : null,
+      title: _buildTitleArea(theme, isDark),
       leading:
           leading ?? (showBackButton ? const UtenBackButton() : const SizedBox.shrink()),
       automaticallyImplyLeading: false,
@@ -124,6 +103,63 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: appBar,
       ),
+    );
+  }
+
+  /// 组合标题区，优先级：[titleWidget] > [title]+[centerWidget] > [title]。
+  Widget? _buildTitleArea(ThemeData theme, bool isDark) {
+    if (titleWidget != null) return titleWidget;
+
+    final titleCol = title != null ? _titleColumn(theme, isDark) : null;
+    if (centerWidget == null) return titleCol;
+
+    // title 文字靠最左；centerWidget 在标题右侧的剩余空间内水平居中，
+    // FittedBox.scaleDown 保证空间不足时整体缩小——不溢出、不与标题重叠。
+    return Row(
+      children: [
+        ?titleCol,
+        Expanded(
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: centerWidget!,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _titleColumn(ThemeData theme, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title!,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.2,
+            color: foregroundColor ?? theme.colorScheme.onSurface,
+          ),
+        ),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              subtitle!,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.3,
+                color: foregroundColor?.withValues(alpha: 0.7) ??
+                    (isDark
+                        ? UtenColors.darkTextTertiary
+                        : UtenColors.textTertiary),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

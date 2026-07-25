@@ -40,4 +40,6 @@ public class GoodsSaveRequest {
     private String pack;         // Pack 包装
     private Integer pieces;      // Pieces 件数
     private String status;       // Status（使用/禁用）
+    private Integer colorLegacyId;  // MColorID（→ colors.legacy_id；编辑表单颜色下拉选）
+    private Integer unitLegacyId;   // UnitID（→ units.legacy_id；编辑表单单位下拉选）
 }

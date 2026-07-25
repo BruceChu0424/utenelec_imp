@@ -34,23 +34,6 @@ class PayrollSlipListPage extends ConsumerWidget {
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
     Widget body = Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.only(
-              top: UtenSpacing.s12,
-              bottom: UtenSpacing.s8,
-            ),
-            child: UtenSegmentedFilter<PayrollFilter>(
-              selected: filter,
-              onChanged: (v) =>
-                  ref.read(payrollFilterProvider.notifier).state = v,
-              segments: const [
-                UtenSegment(value: PayrollFilter.all, label: '全部'),
-                UtenSegment(value: PayrollFilter.published, label: '已发布'),
-                UtenSegment(value: PayrollFilter.viewed, label: '已查看'),
-                UtenSegment(value: PayrollFilter.downloaded, label: '已下载'),
-              ],
-            ),
-          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
@@ -101,7 +84,21 @@ class PayrollSlipListPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: const UtenAppBar(title: '工资条', showBackButton: true),
+      appBar: UtenAppBar(
+        title: '工资条',
+        showBackButton: true,
+        centerWidget: UtenSegmentedFilter<PayrollFilter>(
+          selected: filter,
+          onChanged: (v) =>
+              ref.read(payrollFilterProvider.notifier).state = v,
+          segments: const [
+            UtenSegment(value: PayrollFilter.all, label: '全部'),
+            UtenSegment(value: PayrollFilter.published, label: '已发布'),
+            UtenSegment(value: PayrollFilter.viewed, label: '已查看'),
+            UtenSegment(value: PayrollFilter.downloaded, label: '已下载'),
+          ],
+        ),
+      ),
       body: body,
     );
   }

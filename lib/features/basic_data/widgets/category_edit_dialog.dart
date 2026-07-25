@@ -1,8 +1,9 @@
-// CategoryEditDialog - 货品分类 新增/编辑 对话框。
+// CategoryEditDialog - 货品/模具/客户/供应商 分类 新增/编辑 对话框。
 //
 // 仿 department_page._showCreateDialog 的 AlertDialog 范式，但抽成独立组件：
 // - 字段：编码（新建可填 / 编辑只读）、名称、父级（默认传入，可清空=顶级）；
 // - 父级通过树形选择子弹层挑选，预校验「不能选自己 / 不能选自己的后代」；
+// - 新增态在「名称」下提供常用分类建议（[suggestions]），一键填入，降低起名门槛；
 // - 提交按钮用 UtenActionButton（自带 loading + 防连点）。
 //
 // 提交通过 onSubmit 回调上抛，由页面执行真正的仓储调用并返回是否成功；
@@ -10,6 +11,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/widgets/uten_location_field.dart';
 import '../models/product_category_node.dart';
@@ -35,6 +37,7 @@ class CategoryEditDialog extends StatefulWidget {
     required this.onSubmit,
     this.initialParent,
     this.editing,
+    this.suggestions = const <String>[],
   });
 
   /// 全树，用于父级挑选子弹层。
@@ -45,6 +48,9 @@ class CategoryEditDialog extends StatefulWidget {
 
   /// 编辑模式：传入现有详情。非 null 时为编辑态（code 只读）。
   final ProductCategoryDetail? editing;
+
+  /// 新建模式下展示的常用分类名称建议，点击即填入「名称」。编辑态忽略。
+  final List<String> suggestions;
 
   /// 提交回调：返回 true 表示成功（对话框关闭），false 表示失败（保持打开）。
   final Future<bool> Function(CategoryEditResult result) onSubmit;
@@ -141,6 +147,13 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
     if (ok) Navigator.of(context).pop();
   }
 
+  void _applySuggestion(String s) {
+    setState(() {
+      _nameCtl.text = s;
+      _nameCtl.selection = TextSelection.collapsed(offset: s.length);
+    });
+  }
+
   Future<void> _pickParent() async {
     final selfId = widget.editing?.id;
     final result = await showUtenPickerSheet<ProductCategoryNode>(
@@ -175,6 +188,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             UtenLocationField(
               pathLabel: _parent?.name,
@@ -198,6 +212,26 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 labelText: '名称', // TODO(l10n): 补 arb
               ),
             ),
+            if (!_isEdit && widget.suggestions.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Text(
+                '常用分类名称，点击填入', // TODO(l10n): 补 arb
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: UtenSpacing.s4),
+              Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s4,
+                children: [
+                  for (final s in widget.suggestions)
+                    ActionChip(
+                      label: Text(s),
+                      onPressed: () => _applySuggestion(s),
+                    ),
+                ],
+              ),
+            ],
             if (_formError != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(
@@ -209,8 +243,10 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
           ],
         ),
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
-        TextButton(
+        UtenButton(
+          type: UtenButtonType.secondary,
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'), // TODO(l10n): 补 arb
         ),

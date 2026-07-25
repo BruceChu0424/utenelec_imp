@@ -13,9 +13,11 @@ import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
+import '../../features/basic_data/pages/color_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
 import '../../features/basic_data/pages/product_category_page.dart';
 import '../../features/basic_data/pages/supplier_category_page.dart';
+import '../../features/basic_data/pages/unit_page.dart';
 import '../../features/dashboard/pages/dashboard_page.dart';
 import '../../features/department/pages/department_page.dart';
 import '../../features/employee/pages/employee_detail_page.dart';
@@ -81,6 +83,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final session = ref.read(sessionProvider);
       final vSession = ref.read(visitorSessionProvider);
       final loc = state.matchedLocation;
+      if (loc.contains('profile')) {
+        debugPrint('[router] redirect loc=$loc status=${session.status}');
+      }
       final isEntry = loc == RouteName.entry;
       final isLogin = loc == RouteName.login;
       final isChangePw = loc == RouteName.changePassword;
@@ -93,16 +98,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // 2) 访客自助流程（/visitor/*）：员工不进，由访客 session 守卫
       if (isVisitorPath) {
-        if (session.status == AuthStatus.authenticated)
+        if (session.status == AuthStatus.authenticated) {
           return RouteName.dashboard;
+        }
         if (vSession.isLoggedIn) return null;
         return loc == RouteName.visitorLogin ? null : RouteName.visitorLogin;
       }
 
       // 3) 入口选择页：两端都未登录才显示
       if (isEntry) {
-        if (session.status == AuthStatus.authenticated)
+        if (session.status == AuthStatus.authenticated) {
           return RouteName.dashboard;
+        }
         if (vSession.isLoggedIn) return RouteName.visitorHome;
         return null;
       }
@@ -117,12 +124,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         case AuthStatus.authenticated:
           // 注意：isChangePw 不在此重定向——"我的→修改密码"是已登录用户的合法入口。
           // 强制改密（mustChangePassword）由前两个分支独立处理。
-          if (isLogin) return RouteName.dashboard;
+          if (isLogin) {
+            if (loc.contains('profile')) {
+              debugPrint('[router] → redirect→dashboard (isLogin) loc=$loc');
+            }
+            return RouteName.dashboard;
+          }
           // "多级权限任一满足即可"的路径（如客户资料）返回列表，任一命中即放行
           final requiredAny = requiredAnyPermFor(loc);
           if (requiredAny != null &&
               !(session.user?.canAny(requiredAny) ?? false)) {
+            if (loc.contains('profile')) {
+              debugPrint('[router] → redirect→dashboard (perm denied) loc=$loc requiredAny=$requiredAny');
+            }
             return RouteName.dashboard;
+          }
+          if (loc.contains('profile')) {
+            debugPrint('[router] → RETURN null (pass) loc=$loc requiredAny=$requiredAny');
           }
           return null;
       }
@@ -337,7 +355,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/employee/onboarding',
             name: 'employee-onboarding',
-            builder: (_, _) => const EmployeeOnboardingPage(),
+            builder: (_, s) => EmployeeOnboardingPage(
+              initialDepartmentId: s.uri.queryParameters['departmentId'],
+            ),
           ),
           GoRoute(
             path: '/employee/:id/edit',
@@ -390,6 +410,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.basicinfoSupplier,
             name: 'basicinfo-supplier',
             builder: (_, _) => const SupplierCategoryPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoColor,
+            name: 'basicinfo-color',
+            builder: (_, _) => const ColorPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoUnit,
+            name: 'basicinfo-unit',
+            builder: (_, _) => const UnitPage(),
           ),
 
           // —— 实验室（upload 在 :id 前）——
@@ -497,12 +527,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.profileEdit,
             name: 'profile-edit',
-            builder: (_, _) => const ProfileEditPage(),
+            builder: (_, _) {
+              debugPrint('[router] profile-edit BUILDER called');
+              return const ProfileEditPage();
+            },
           ),
           GoRoute(
             path: RouteName.profileMyChanges,
             name: 'profile-my-changes',
-            builder: (_, _) => const MyProfileChangesPage(),
+            builder: (_, _) {
+              debugPrint('[router] profile-my-changes BUILDER called');
+              return const MyProfileChangesPage();
+            },
           ),
 
           // —— HR 端：员工个人信息修改审批 ——

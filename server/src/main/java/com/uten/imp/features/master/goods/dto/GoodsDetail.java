@@ -35,4 +35,7 @@ public class GoodsDetail {
     @JsonProperty("mWeight")
     private BigDecimal mWeight;      // MWeight 单重（防 Jackson 连续大写 quirk，显式锁定键名）
     private Integer pieces;
+    private String colorName;        // 主颜色名（color_legacy_id → colors.name 解析）
+    private String unitName;         // 单位名（unit_legacy_id → units.name 解析）
+    private Integer colorLegacyId;   // 主颜色 legacy id（编辑表单回显选中用；unitLegacyId 已在上方）
 }

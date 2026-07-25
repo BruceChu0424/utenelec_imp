@@ -1,10 +1,12 @@
-// 货品主档模型（对应后端 GoodsListItem / GoodsDetail）。
+// 货品主档模型（对应后端 GoodsListItem / GoodsDetail / GoodsFacets）。
 //
 // 数值字段一律走 (json['x'] as num?)?.toInt()/toDouble()，避免 int/double 被后端
 // 序列化成 String（或 null）时直接 cast 崩溃——老库迁移常踩这个坑。
 // price 为后端 BigDecimal（DOUBLE PRECISION 列转 BigDecimal），前端按 double 解析。
 
-/// 货品列表项（轻量摘要）。
+import 'master_facet.dart';
+
+/// 货品列表项（含筛选/展示所需的核心字段）。
 class GoodsListItem {
   const GoodsListItem({
     required this.id,
@@ -15,6 +17,14 @@ class GoodsListItem {
     this.price,
     this.status,
     this.legacyId,
+    this.series,
+    this.material,
+    this.cNumber,
+    this.requireRemark,
+    this.colorLegacyId,
+    this.unitLegacyId,
+    this.colorName,
+    this.unitName,
   });
 
   final String id;
@@ -25,6 +35,14 @@ class GoodsListItem {
   final double? price;
   final String? status;
   final int? legacyId;
+  final String? series;
+  final String? material;
+  final String? cNumber;
+  final String? requireRemark;
+  final int? colorLegacyId;
+  final int? unitLegacyId;
+  final String? colorName;
+  final String? unitName;
 
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
         id: json['id'] as String,
@@ -35,6 +53,15 @@ class GoodsListItem {
         price: (json['price'] as num?)?.toDouble(),
         status: json['status'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        series: json['series'] as String?,
+        material: json['material'] as String?,
+        // 后端 @JsonProperty("cNumber") 输出 cNumber；兼容小写兜底。
+        cNumber: (json['cNumber'] ?? json['cnumber']) as String?,
+        requireRemark: json['requireRemark'] as String?,
+        colorLegacyId: (json['colorLegacyId'] as num?)?.toInt(),
+        unitLegacyId: (json['unitLegacyId'] as num?)?.toInt(),
+        colorName: json['colorName'] as String?,
+        unitName: json['unitName'] as String?,
       );
 }
 
@@ -58,6 +85,9 @@ class GoodsDetail {
     this.unitLegacyId,
     this.mWeight,
     this.pieces,
+    this.colorName,
+    this.unitName,
+    this.colorLegacyId,
   });
 
   final String id;
@@ -77,6 +107,9 @@ class GoodsDetail {
   final int? unitLegacyId;
   final double? mWeight;
   final int? pieces;
+  final String? colorName;
+  final String? unitName;
+  final int? colorLegacyId;
 
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
         id: json['id'] as String,
@@ -98,5 +131,52 @@ class GoodsDetail {
         // 与字段名不符；兼容两种写法，避免"单重"始终取不到值。
         mWeight: ((json['mWeight'] ?? json['mweight']) as num?)?.toDouble(),
         pieces: (json['pieces'] as num?)?.toInt(),
+        colorName: json['colorName'] as String?,
+        unitName: json['unitName'] as String?,
+        colorLegacyId: (json['colorLegacyId'] as num?)?.toInt(),
       );
+}
+
+/// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
+///
+/// fields 以字段 key（与 query 参数名一致：code/series/model/name/spec/material/
+/// requireRemark/colorLegacyId/unitLegacyId）索引，便于 [MasterDataTableView] 通用查找。
+class GoodsFacets {
+  const GoodsFacets({required this.fields, required this.nullCounts});
+
+  final Map<String, List<MasterFacetBucket>> fields;
+  final Map<String, int> nullCounts;
+
+  static const _keys = [
+    'code',
+    'series',
+    'model',
+    'name',
+    'spec',
+    'material',
+    'requireRemark',
+    'colorLegacyId',
+    'unitLegacyId',
+  ];
+
+  factory GoodsFacets.fromJson(Map<String, dynamic> json) {
+    final fields = <String, List<MasterFacetBucket>>{};
+    for (final k in _keys) {
+      final list = json[k];
+      fields[k] = list is List
+          ? list
+              .map((e) =>
+                  MasterFacetBucket.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : const [];
+    }
+    final ncRaw = json['nullCounts'];
+    final nullCounts = <String, int>{};
+    if (ncRaw is Map) {
+      ncRaw.forEach((k, v) {
+        nullCounts[k.toString()] = (v is num ? v.toInt() : 0);
+      });
+    }
+    return GoodsFacets(fields: fields, nullCounts: nullCounts);
+  }
 }

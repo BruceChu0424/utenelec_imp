@@ -57,6 +57,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[profile-edit] initState — page created');
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 

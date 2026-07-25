@@ -31,21 +31,6 @@ class SuggestionListPage extends ConsumerWidget {
 
     Widget body = Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(
-            top: UtenSpacing.s12,
-            bottom: UtenSpacing.s8,
-          ),
-          child: UtenSegmentedFilter<SuggestionScope>(
-            selected: scope,
-            onChanged: (v) =>
-                ref.read(suggestionScopeProvider.notifier).state = v,
-            segments: const [
-              UtenSegment(value: SuggestionScope.square, label: '建议广场'),
-              UtenSegment(value: SuggestionScope.mine, label: '我的建议'),
-            ],
-          ),
-        ),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () =>
@@ -113,7 +98,19 @@ class SuggestionListPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: const UtenAppBar(title: '建议箱', showBackButton: true),
+      appBar: UtenAppBar(
+        title: '建议箱',
+        showBackButton: true,
+        centerWidget: UtenSegmentedFilter<SuggestionScope>(
+          selected: scope,
+          onChanged: (v) =>
+              ref.read(suggestionScopeProvider.notifier).state = v,
+          segments: const [
+            UtenSegment(value: SuggestionScope.square, label: '建议广场'),
+            UtenSegment(value: SuggestionScope.mine, label: '我的建议'),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go(RouteName.suggestionNew),
         backgroundColor: UtenColors.primary,

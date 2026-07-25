@@ -29,7 +29,6 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/role.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -44,9 +43,6 @@ class ProfilePage extends ConsumerWidget {
     final session = ref.watch(sessionProvider);
     final user = session.user;
     final theme = Theme.of(context);
-    final canEdit = ref
-        .watch(currentPermissionsProvider)
-        .contains(Perm.profileEditSelf);
 
     if (user == null) {
       return const Scaffold(
@@ -69,7 +65,6 @@ class ProfilePage extends ConsumerWidget {
       theme,
       l10n,
       user,
-      canEdit,
     );
     final profileGroup = _buildProfileGroup(context, theme, l10n, user);
 
@@ -177,10 +172,9 @@ class ProfilePage extends ConsumerWidget {
     ThemeData theme,
     AppLocalizations l10n,
     AppUser user,
-    bool canEdit,
   ) {
     return _IdentityGroup(
-      hero: _HeroCard(user: user, theme: theme, l10n: l10n, canEdit: canEdit),
+      hero: _HeroCard(user: user, theme: theme, l10n: l10n),
       shortcut: _MyChangesShortcut(l10n: l10n),
     );
   }
@@ -249,13 +243,11 @@ class _HeroCard extends StatelessWidget {
     required this.user,
     required this.theme,
     required this.l10n,
-    required this.canEdit,
   });
 
   final AppUser user;
   final ThemeData theme;
   final AppLocalizations l10n;
-  final bool canEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -311,19 +303,26 @@ class _HeroCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: UtenSpacing.s16),
-          // CTA：修改我的信息 + 修改密码
+          // CTA：修改我的信息 + 修改密码（全员可见；能改什么由编辑页字段策略定）
           Row(
             children: [
-              if (canEdit)
-                Expanded(
-                  child: UtenButton(
-                    size: UtenButtonSize.small,
-                    icon: Icons.edit_outlined,
-                    onPressed: () => context.push(RouteName.profileEdit),
-                    child: Text(l10n.profileChangeEditCta),
-                  ),
+              Expanded(
+                child: UtenButton(
+                  size: UtenButtonSize.small,
+                  icon: Icons.edit_outlined,
+                  onPressed: () {
+                    debugPrint('[profile] edit tapped → GO ${RouteName.profileEdit}');
+                    try {
+                      context.go(RouteName.profileEdit);
+                      debugPrint('[profile] edit go call returned ok');
+                    } catch (e, s) {
+                      debugPrint('[profile] edit go THREW: $e\n$s');
+                    }
+                  },
+                  child: Text(l10n.profileChangeEditCta),
                 ),
-              if (canEdit) const SizedBox(width: UtenSpacing.s8),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: UtenButton(
                   type: UtenButtonType.secondary,
@@ -524,7 +523,14 @@ class _MyChangesShortcut extends ConsumerWidget {
           ),
         ),
         trailing: const Icon(Icons.chevron_right_rounded, size: 18),
-        onTap: () => context.push(RouteName.profileMyChanges),
+        onTap: () {
+          debugPrint('[profile] my-changes tapped → GO ${RouteName.profileMyChanges}');
+          try {
+            context.go(RouteName.profileMyChanges);
+          } catch (e, s) {
+            debugPrint('[profile] my-changes go THREW: $e\n$s');
+          }
+        },
       ),
     );
   }

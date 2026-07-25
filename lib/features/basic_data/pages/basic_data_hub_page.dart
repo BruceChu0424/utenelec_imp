@@ -44,6 +44,20 @@ class BasicDataHubPage extends StatelessWidget {
       location: RouteName.basicinfoSupplier,
       color: _C.teal,
     ),
+    _BasicResource(
+      icon: Icons.palette_outlined,
+      label: '颜色资料',
+      description: '颜色主档（编号/名称/状态）',
+      location: RouteName.basicinfoColor,
+      color: _C.green,
+    ),
+    _BasicResource(
+      icon: Icons.straighten_outlined,
+      label: '基本单位',
+      description: '计量单位主档（编号/名称/状态）',
+      location: RouteName.basicinfoUnit,
+      color: _C.teal,
+    ),
   ];
 
   @override

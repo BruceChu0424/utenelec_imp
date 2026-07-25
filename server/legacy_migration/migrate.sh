@@ -87,6 +87,20 @@ migrate_supplier_data () {
     run_sql migrate_supplier_data.sql
 }
 
+migrate_color_data () {
+    echo "→ [颜色主档] 复制 CSV..."
+    copy_csv color.csv
+    echo "→ [颜色主档] 执行迁移 SQL..."
+    run_sql migrate_color.sql
+}
+
+migrate_unit_data () {
+    echo "→ [基本单位主档] 复制 CSV..."
+    copy_csv unit.csv
+    echo "→ [基本单位主档] 执行迁移 SQL..."
+    run_sql migrate_unit.sql
+}
+
 case "$TARGET" in
     --goods|-g) migrate_goods ;;
     --goods-data) migrate_goods_data ;;
@@ -96,6 +110,8 @@ case "$TARGET" in
     --client-data) migrate_client_data ;;
     --supplier) migrate_supplier ;;
     --supplier-data) migrate_supplier_data ;;
+    --color-data) migrate_color_data ;;
+    --unit-data) migrate_unit_data ;;
     --all|-a|*)
         migrate_goods
         migrate_goods_data
@@ -105,7 +121,8 @@ case "$TARGET" in
         migrate_client_data
         migrate_supplier
         migrate_supplier_data
-        # 迁其他模块时在此追加：migrate_colour; ...
+        migrate_color_data
+        migrate_unit_data
         ;;
 esac
 

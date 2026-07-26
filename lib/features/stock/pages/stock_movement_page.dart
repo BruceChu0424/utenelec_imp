@@ -1,14 +1,20 @@
 // 出入库流水查询页（库存管理，stock:view）：仓库筛选 + 流水列表（类型/方向/货品/仓库名解析）。
+//
+// 改为统一主档表格（MasterDataTableView）+ 桌面左筛选/右表格两栏（UtenListTwoPane），
+// 与基础资料/单据列表同款；手机垂直堆叠。原手搓 ListTile + 手动分页已移除（复用统一组件）。
+// 收支方向以 +/- 前缀体现（与仓库报表同款；表格单元格不支持逐行着色）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../purchase/providers/master_name_provider.dart';
 import '../models/stock_query.dart';
 import '../repositories/stock_query_repository.dart';
@@ -22,7 +28,9 @@ class StockMovementPage extends ConsumerStatefulWidget {
 
 class _StockMovementPageState extends ConsumerState<StockMovementPage> {
   PagedResult<MovementRow>? _page;
+  int _pageNum = 1;
   bool _loading = false;
+  String? _error;
   String? _warehouseId;
 
   @override
@@ -35,119 +43,157 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
 
   Future<void> _load(int page) async {
     if (_loading) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+      _pageNum = page;
+    });
     try {
       final r = await ref.read(stockQueryRepositoryProvider).movements(
             page: page,
             warehouseId: _warehouseId,
           );
-      final goodsIds = r.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final goodsIds =
+          r.items.map((e) => e.goodsId).whereType<String>().toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
       setState(() => _page = r);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('加载失败')));
+      setState(() => _error = '加载失败'); // TODO(l10n): 补 arb
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  List<MasterColumnDef<MovementRow>> get _columns {
+    final names = ref.read(masterNameServiceProvider);
+    return <MasterColumnDef<MovementRow>>[
+      MasterColumnDef(
+          key: 'date',
+          label: '日期', // TODO(l10n): 补 arb
+          width: 120,
+          value: (m) => m.transactionDate == null
+              ? null
+              : (m.transactionDate!.length >= 10
+                  ? m.transactionDate!.substring(0, 10)
+                  : m.transactionDate)),
+      MasterColumnDef(
+          key: 'type',
+          label: '类型', // TODO(l10n): 补 arb
+          width: 120,
+          value: (m) => movementTypeLabel(m.movementType)),
+      MasterColumnDef(
+          key: 'goods',
+          label: '货品', // TODO(l10n): 补 arb
+          width: 220,
+          value: (m) => names.goods(m.goodsId)),
+      MasterColumnDef(
+          key: 'warehouse',
+          label: '仓库', // TODO(l10n): 补 arb
+          width: 160,
+          value: (m) => names.warehouse(m.warehouseId)),
+      MasterColumnDef(
+          key: 'qty',
+          label: '数量', // TODO(l10n): 补 arb
+          width: 120,
+          value: (m) {
+            if (m.qty == null) return null;
+            final sign = m.direction == 1 ? '+' : '-';
+            return '$sign${m.qty!.toStringAsFixed(2)}';
+          }),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    final items = _page?.items ?? const [];
+    final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
-        title: '出入库流水',
+        title: '出入库流水', // TODO(l10n): 补 arb
         leading: UtenBackButton(
             onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
       ),
       body: SafeArea(
-        child: UtenContentContainer(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Row(children: [
-                  const Text('仓库：'),
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      initialValue: _warehouseId,
-                      isDense: true,
-                      items: [
-                        const DropdownMenuItem<String?>(child: Text('全部仓库')),
-                        for (final e in names.warehouseEntries.entries)
-                          DropdownMenuItem<String?>(value: e.key, child: Text(e.value)),
-                      ],
-                      onChanged: (v) {
-                        setState(() => _warehouseId = v);
-                        _load(1);
-                      },
+        child: UtenContentContainer.wide(
+          child: Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Column(
+              children: [
+                // 页面头：Icon + 标题 + 计数
+                Padding(
+                  padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.swap_vert_outlined,
+                          size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Text('流水 ($total)',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                // 桌面：左筛选侧栏（仓库）+ 右表格；手机：垂直堆叠
+                Expanded(
+                  child: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: DropdownButtonFormField<String?>(
+                              initialValue: _warehouseId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                  isDense: true, labelText: '仓库'),
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                    child: Text('全部仓库')),
+                                for (final e in names.warehouseEntries.entries)
+                                  DropdownMenuItem<String?>(
+                                      value: e.key, child: Text(e.value)),
+                              ],
+                              onChanged: (v) {
+                                setState(() => _warehouseId = v);
+                                _load(1);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    tablePane: MasterDataTableView<MovementRow>(
+                      columns: _columns,
+                      items: _page?.items ?? const [],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      onRowTap: (_) {},
+                      isLoading: _loading && _page == null,
+                      loadingMore: _loading && _page != null,
+                      error: _error,
+                      onRetry: () => _load(_pageNum),
+                      emptyMessage: '暂无流水', // TODO(l10n): 补 arb
+                      currentPage: _page?.page ?? 1,
+                      totalPages: _page?.totalPages ?? 1,
+                      onPageChange: (p) => _load(p),
                     ),
                   ),
-                ]),
-              ),
-              Expanded(
-                child: _loading && _page == null
-                    ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-                    : ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final m = items[i];
-                          final isIn = m.direction == 1;
-                          return ListTile(
-                            title: Text(names.goods(m.goodsId)),
-                            subtitle: Text(
-                              [
-                                movementTypeLabel(m.movementType),
-                                names.warehouse(m.warehouseId),
-                                (m.transactionDate ?? '').substring(0, 10),
-                              ].join('  ·  '),
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            trailing: Text(
-                              '${isIn ? '+' : '-'}${(m.qty ?? 0).toStringAsFixed(2)}',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: isIn ? Colors.green : Colors.red,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              if ((_page?.totalPages ?? 1) > 1) _pager(),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _pager() {
-    return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TextButton(
-            onPressed: (_page?.page ?? 1) > 1 ? () => _load(_page!.page - 1) : null,
-            child: const Text('上一页'),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-            child: Text('${_page?.page ?? 1} / ${_page?.totalPages ?? 1}'),
-          ),
-          TextButton(
-            onPressed: (_page?.page ?? 1) < (_page?.totalPages ?? 1)
-                ? () => _load(_page!.page + 1)
-                : null,
-            child: const Text('下一页'),
-          ),
-        ],
       ),
     );
   }

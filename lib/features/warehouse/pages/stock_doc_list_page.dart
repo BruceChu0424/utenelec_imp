@@ -12,6 +12,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -92,7 +93,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   Future<int> _countStatus(int? s) async {
     try {
       final r = await ref.read(stockDocRepositoryProvider(widget.docType))
-          .list(page: 1, size: 1, filter: StockDocFilter(status: s));
+          .list(size: 1, filter: StockDocFilter(status: s));
       return r.total;
     } catch (_) {
       return 0;
@@ -163,11 +164,12 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
         ],
       ),
       body: SafeArea(
-        child: UtenContentContainer(
+        child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: Column(
               children: [
+                // 页面头：Icon + 标题 + 计数 + 新建（搜索挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8,
@@ -181,19 +183,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                       Text('${widget.docType.label} ($total)',
                           style: theme.textTheme.titleSmall
                               ?.copyWith(fontWeight: FontWeight.w600)),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenSearchBar(
-                          hint: '搜索单据号', // TODO(l10n): 补 arb
-                          initialValue: _keyword,
-                          onChanged: (v) {
-                            setState(() => _keyword = v);
-                            _load(1);
-                          },
-                        ),
-                      ),
-                      if (_canEdit) ...[
-                        const SizedBox(width: UtenSpacing.s8),
+                      const Spacer(),
+                      if (_canEdit)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
@@ -201,10 +192,10 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                               context.push(RoutePath.stockDocNew(widget.docType.code)),
                           child: const Text('新建'), // TODO(l10n): 补 arb
                         ),
-                      ],
                     ],
                   ),
                 ),
+                // KPI 状态条：全宽常驻（在两栏上方，滚动表不丢总览）
                 Padding(
                   padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8, left: UtenSpacing.s4),
@@ -217,24 +208,47 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                     },
                   ),
                 ),
+                // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
                 Expanded(
-                  child: MasterDataTableView<StockDocListItem>(
-                    columns: _columns,
-                    items: _page?.items ?? const [],
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    onRowTap: (it) => context.push(
-                        RoutePath.stockDocDetail(widget.docType.code, it.id)),
-                    isLoading: _loading && _page == null,
-                    loadingMore: _loading && _page != null,
-                    error: _error,
-                    onRetry: () => _load(_pageNum),
-                    emptyMessage: '暂无${widget.docType.label}', // TODO(l10n): 补 arb
-                    currentPage: _page?.page ?? 1,
-                    totalPages: _page?.totalPages ?? 1,
-                    onPageChange: (p) => _load(p),
+                  child: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: UtenSearchBar(
+                              hint: '搜索单据号', // TODO(l10n): 补 arb
+                              initialValue: _keyword,
+                              onChanged: (v) {
+                                setState(() => _keyword = v);
+                                _load(1);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    tablePane: MasterDataTableView<StockDocListItem>(
+                      columns: _columns,
+                      items: _page?.items ?? const [],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      onRowTap: (it) => context.push(
+                          RoutePath.stockDocDetail(widget.docType.code, it.id)),
+                      isLoading: _loading && _page == null,
+                      loadingMore: _loading && _page != null,
+                      error: _error,
+                      onRetry: () => _load(_pageNum),
+                      emptyMessage: '暂无${widget.docType.label}', // TODO(l10n): 补 arb
+                      currentPage: _page?.page ?? 1,
+                      totalPages: _page?.totalPages ?? 1,
+                      onPageChange: (p) => _load(p),
+                    ),
                   ),
                 ),
               ],

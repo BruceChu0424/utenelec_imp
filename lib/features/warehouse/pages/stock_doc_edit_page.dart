@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -136,26 +137,21 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(UtenSpacing.s12),
-                      child: Column(children: [
-                        TextField(controller: _billNo, decoration: const InputDecoration(labelText: '单据号 *')),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('日期'),
-                          subtitle: Text(_fmt(_billDate)),
-                          trailing: const Icon(Icons.calendar_today_outlined, size: 18),
-                          onTap: () async {
-                            final p = await showDatePicker(
-                              context: context, initialDate: _billDate,
-                              firstDate: DateTime(2010), lastDate: DateTime(2100),
-                            );
-                            if (p != null) setState(() => _billDate = p);
-                          },
-                        ),
-                        _dd('仓库', _warehouseId, names.warehouseEntries, (v) => setState(() => _warehouseId = v)),
-                        if (widget.docType == StockDocType.transfer)
-                          _dd('调入仓', _toWarehouseId, names.warehouseEntries, (v) => setState(() => _toWarehouseId = v)),
-                        TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注'), maxLines: 2),
-                      ]),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 主表字段：桌面多列（UtenFormGrid 自适应 1/2/3 列），手机单列。
+                          UtenFormGrid(children: [
+                            TextField(controller: _billNo, decoration: const InputDecoration(labelText: '单据号 *')),
+                            _dateField(),
+                            _dd('仓库', _warehouseId, names.warehouseEntries, (v) => setState(() => _warehouseId = v)),
+                            if (widget.docType == StockDocType.transfer)
+                              _dd('调入仓', _toWarehouseId, names.warehouseEntries, (v) => setState(() => _toWarehouseId = v)),
+                          ]),
+                          const SizedBox(height: UtenSpacing.s12),
+                          TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注'), maxLines: 2),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
@@ -189,19 +185,35 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     );
   }
 
-  Widget _dd(String label, String? value, Map<String, String> entries, ValueChanged<String?> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: DropdownButtonFormField<String?>(
-        initialValue: value,
-        decoration: InputDecoration(labelText: label),
-        items: [
-          const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-          for (final e in entries.entries)
-            DropdownMenuItem<String?>(value: e.key, child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis)),
-        ],
-        onChanged: onChanged,
+  /// 日期选择字段（与同行 TextField/下拉等高的可点 InputDecorator）。
+  Widget _dateField() {
+    return InkWell(
+      onTap: () async {
+        final p = await showDatePicker(
+          context: context,
+          initialDate: _billDate,
+          firstDate: DateTime(2010),
+          lastDate: DateTime(2100),
+        );
+        if (p != null) setState(() => _billDate = p);
+      },
+      child: InputDecorator(
+        decoration: const InputDecoration(labelText: '日期'),
+        child: Text(_fmt(_billDate)),
       ),
+    );
+  }
+
+  Widget _dd(String label, String? value, Map<String, String> entries, ValueChanged<String?> onChanged) {
+    return DropdownButtonFormField<String?>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label),
+      items: [
+        const DropdownMenuItem<String?>(child: Text('— 不选 —')),
+        for (final e in entries.entries)
+          DropdownMenuItem<String?>(value: e.key, child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      ],
+      onChanged: onChanged,
     );
   }
 
@@ -218,10 +230,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                 if (g != null) setState(() => r.goods = g);
               },
               child: InputDecorator(
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: '货品',
                   isDense: true,
-                  suffixIcon: const Icon(Icons.search_rounded, size: 18),
+                  suffixIcon: Icon(Icons.search_rounded, size: 18),
                 ),
                 child: Text(r.goods?.name ?? '点击选择',
                     style: TextStyle(

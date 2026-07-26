@@ -7,14 +7,21 @@
 //
 // docType 取值与后端 SubcontractReportService 对齐：INQUIRY/APPLICATION/ORDER/RECEIPT/
 // RETURN/MATERIAL_ISSUE/MATERIAL_RETURN/WASTE。
+//
+// 布局：桌面分栏（左筛选 / 右表格）+ SegmentedButton 切换月度汇总/出入状况表。
+// 数据渲染为 MasterDataTableView（Excel 风格横排列头），不再用 ListTile/Cards。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/subcontract_doc_config.dart';
 import '../repositories/subcontract_repository.dart';
 import '../../../features/purchase/providers/master_name_provider.dart'
@@ -57,6 +64,7 @@ class _SubcontractReportPageState
   DateTime _from = DateTime(DateTime.now().year);
   DateTime _to = DateTime.now();
   String? _supplierId; // 出入状况表的委外商过滤
+  int _view = 0; // 0=月度汇总，1=出入状况
 
   List<_Monthly> _monthly = const [];
   List<_InOut> _inOut = const [];
@@ -114,10 +122,15 @@ class _SubcontractReportPageState
             .toList();
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('加载报表失败')));
+      debugPrint('subcontract report load failed: $e');
+      // 原先 catch(_) 吞异常只弹通用文案，无法定位 403/500/解析错。
+      // 现把真实 code + message 透出（ApiException.code=FORBIDDEN/INTERNAL/NETWORK/...）。
+      final msg = e is ApiException
+          ? '${e.code} · ${e.message}'
+          : '加载报表失败：$e';
+      context.appError(msg);
       setState(() => _loading = false);
     }
   }
@@ -137,6 +150,21 @@ class _SubcontractReportPageState
       }[t] ??
       t;
 
+  Widget _filterLabel(String text) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+      child: Text(
+        text,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -150,175 +178,287 @@ class _SubcontractReportPageState
                     backTo(context, defaultPath: SubcontractRoute.hub)),
       ),
       body: SafeArea(
-        child: UtenContentContainer(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    // 筛选条：单据类型 + 日期范围 + 查询
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        for (final t in [
-                          'INQUIRY',
-                          'APPLICATION',
-                          'ORDER',
-                          'RECEIPT',
-                          'RETURN',
-                          'MATERIAL_ISSUE',
-                          'MATERIAL_RETURN',
-                          'WASTE'
-                        ])
-                          ChoiceChip(
-                            label: Text(_docLabel(t)),
-                            selected: _docType == t,
-                            onSelected: (_) => setState(() => _docType = t),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _from,
-                              firstDate: DateTime(2010),
-                              lastDate: DateTime(2100),
-                            );
-                            if (p != null) setState(() => _from = p);
-                          },
-                          icon: const Icon(Icons.event_outlined, size: 18),
-                          label: Text('起 ${_fmt(_from)}'),
-                        ),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _to,
-                              firstDate: DateTime(2010),
-                              lastDate: DateTime(2100),
-                            );
-                            if (p != null) setState(() => _to = p);
-                          },
-                          icon: const Icon(Icons.event_outlined, size: 18),
-                          label: Text('止 ${_fmt(_to)}'),
-                        ),
-                        // 出入状况表：委外商过滤
-                        _supplierDropdown(names),
-                        FilledButton.tonalIcon(
-                          onPressed: _load,
-                          icon: const Icon(Icons.search_rounded, size: 18),
-                          label: const Text('查询'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Text('月度汇总（${_docLabel(_docType)}）',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    Card(
-                      child: _monthly.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text('暂无数据'),
-                            )
-                          : ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _monthly.length,
-                              separatorBuilder: (_, _) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (ctx, i) {
-                                final r = _monthly[i];
-                                return ListTile(
-                                  dense: true,
-                                  title: Text(names.goods(r.goodsId)),
-                                  subtitle: Text(
-                                    '${r.ym.substring(0, r.ym.length >= 10 ? 10 : r.ym.length)}  ·  ${names.supplier(r.supplierId)}',
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                  trailing: Text(
-                                      '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}'),
-                                );
-                              },
-                            ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Text('委外出入状况表（综合 O）',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    Card(
-                      child: _inOut.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text('暂无数据'),
-                            )
-                          : ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _inOut.length,
-                              separatorBuilder: (_, _) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (ctx, i) {
-                                final r = _inOut[i];
-                                return ListTile(
-                                  dense: true,
-                                  title: Text(names.goods(r.goodsId)),
-                                  subtitle: Text(names.supplier(r.supplierId),
-                                      style: const TextStyle(fontSize: 11)),
-                                  trailing: SizedBox(
-                                    width: 220,
-                                    child: Text(
-                                      [
-                                        '发${_fmt2(r.issueQty)}',
-                                        '退${_fmt2(r.mReturnQty)}',
-                                        '收${_fmt2(r.receiptQty)}',
-                                        '成退${_fmt2(r.returnQty)}',
-                                        '损${_fmt2(r.wasteQty)}',
-                                      ].join(' '),
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(fontSize: 11),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
+        child: UtenContentContainer.wide(
+          child: Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Column(
+              children: [
+                // 页面头：Icon + 标题
+                Padding(
+                  padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.assessment_outlined,
+                          size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Text('委外报表',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
                 ),
+                // 桌面：左筛选（单据类型/日期/委外商/查询）+ 右报表内容；手机：垂直堆叠
+                Expanded(
+                  child: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _filterLabel('单据类型'),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              for (final t in [
+                                'INQUIRY',
+                                'APPLICATION',
+                                'ORDER',
+                                'RECEIPT',
+                                'RETURN',
+                                'MATERIAL_ISSUE',
+                                'MATERIAL_RETURN',
+                                'WASTE'
+                              ])
+                                ChoiceChip(
+                                  label: Text(_docLabel(t)),
+                                  selected: _docType == t,
+                                  onSelected: (_) =>
+                                      setState(() => _docType = t),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _filterLabel('日期范围'),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () async {
+                                  final p = await showDatePicker(
+                                    context: context,
+                                    initialDate: _from,
+                                    firstDate: DateTime(2010),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (p != null) setState(() => _from = p);
+                                },
+                                icon: const Icon(Icons.event_outlined,
+                                    size: 18),
+                                label: Text('起 ${_fmt(_from)}'),
+                              ),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  final p = await showDatePicker(
+                                    context: context,
+                                    initialDate: _to,
+                                    firstDate: DateTime(2010),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (p != null) setState(() => _to = p);
+                                },
+                                icon: const Icon(Icons.event_outlined,
+                                    size: 18),
+                                label: Text('止 ${_fmt(_to)}'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _filterLabel('委外商'),
+                          SizedBox(
+                            width: double.infinity,
+                            child: DropdownButtonFormField<String?>(
+                              initialValue: _supplierId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: '委外商',
+                              ),
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                    child: Text('全部委外商')),
+                                ...names.supplierEntries.entries.map(
+                                    (e) => DropdownMenuItem<String?>(
+                                          value: e.key,
+                                          child: Text(e.value,
+                                              maxLines: 1,
+                                              overflow:
+                                                  TextOverflow.ellipsis),
+                                        )),
+                              ],
+                              onChanged: (v) =>
+                                  setState(() => _supplierId = v),
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonalIcon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.search_rounded, size: 18),
+                              label: const Text('查询'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    tablePane: _buildReportArea(theme, names),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  /// 委外商下拉过滤（出入状况表用）。从 MasterNameService 缓存取 entries。
-  Widget _supplierDropdown(mn.MasterNameService names) {
-    return SizedBox(
-      width: 200,
-      child: DropdownButtonFormField<String?>(
-        initialValue: _supplierId,
-        decoration: const InputDecoration(
-            isDense: true,
-            labelText: '委外商',
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-        items: [
-          const DropdownMenuItem<String?>(child: Text('全部委外商')),
-          ...names.supplierEntries.entries.map((e) => DropdownMenuItem<String?>(
-                value: e.key,
-                child: Text(e.value,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              )),
-        ],
-        onChanged: (v) => setState(() => _supplierId = v),
-      ),
+  /// 报表内容区：加载中居中转圈，否则 SegmentedButton 切换 + Expanded(表格)。
+  Widget _buildReportArea(ThemeData theme, mn.MasterNameService names) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s12, UtenSpacing.s8, UtenSpacing.s12, UtenSpacing.s4),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(
+                  value: 0,
+                  icon: Icon(Icons.bar_chart_outlined),
+                  label: Text('月度汇总'),
+                ),
+                ButtonSegment(
+                  value: 1,
+                  icon: Icon(Icons.swap_vert_outlined),
+                  label: Text('出入状况'),
+                ),
+              ],
+              selected: {_view},
+              onSelectionChanged: (s) => setState(() => _view = s.first),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _view == 0 ? _monthlyTable(names) : _inOutTable(names),
+        ),
+      ],
+    );
+  }
+
+  Widget _monthlyTable(mn.MasterNameService names) {
+    return MasterDataTableView<_Monthly>(
+      columns: [
+        MasterColumnDef<_Monthly>(
+          key: 'ym',
+          label: '月份',
+          width: 110,
+          value: (r) =>
+              r.ym.substring(0, r.ym.length >= 10 ? 10 : r.ym.length),
+        ),
+        MasterColumnDef<_Monthly>(
+          key: 'goods',
+          label: '货品',
+          width: 200,
+          value: (r) => names.goods(r.goodsId),
+        ),
+        MasterColumnDef<_Monthly>(
+          key: 'supplier',
+          label: '委外商',
+          width: 160,
+          value: (r) => names.supplier(r.supplierId),
+        ),
+        MasterColumnDef<_Monthly>(
+          key: 'docType',
+          label: '类型',
+          width: 90,
+          value: (r) => r.docType,
+        ),
+        MasterColumnDef<_Monthly>(
+          key: 'qty',
+          label: '数量',
+          width: 100,
+          value: (r) => r.qty.toStringAsFixed(2),
+        ),
+        MasterColumnDef<_Monthly>(
+          key: 'amt',
+          label: '金额',
+          width: 120,
+          value: (r) => r.amt.toStringAsFixed(2),
+        ),
+      ],
+      items: _monthly,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      onRowTap: (_) {},
+      emptyMessage: '暂无汇总数据',
+    );
+  }
+
+  Widget _inOutTable(mn.MasterNameService names) {
+    return MasterDataTableView<_InOut>(
+      columns: [
+        MasterColumnDef<_InOut>(
+          key: 'goods',
+          label: '货品',
+          width: 200,
+          value: (r) => names.goods(r.goodsId),
+        ),
+        MasterColumnDef<_InOut>(
+          key: 'supplier',
+          label: '委外商',
+          width: 160,
+          value: (r) => names.supplier(r.supplierId),
+        ),
+        MasterColumnDef<_InOut>(
+          key: 'issueQty',
+          label: '发料',
+          width: 90,
+          value: (r) => _fmt2(r.issueQty),
+        ),
+        MasterColumnDef<_InOut>(
+          key: 'mReturnQty',
+          label: '材料退',
+          width: 90,
+          value: (r) => _fmt2(r.mReturnQty),
+        ),
+        MasterColumnDef<_InOut>(
+          key: 'receiptQty',
+          label: '收回成品',
+          width: 100,
+          value: (r) => _fmt2(r.receiptQty),
+        ),
+        MasterColumnDef<_InOut>(
+          key: 'returnQty',
+          label: '成品退',
+          width: 90,
+          value: (r) => _fmt2(r.returnQty),
+        ),
+        MasterColumnDef<_InOut>(
+          key: 'wasteQty',
+          label: '损耗',
+          width: 90,
+          value: (r) => _fmt2(r.wasteQty),
+        ),
+      ],
+      items: _inOut,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      onRowTap: (_) {},
     );
   }
 

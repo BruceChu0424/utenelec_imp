@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -117,7 +118,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     return Scaffold(
       appBar: UtenAppBar(title: '${widget.docType.label}详情'),
       body: SafeArea(
-        child: UtenContentContainer(
+        child: UtenContentContainer.narrow(
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _d == null
@@ -128,8 +129,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(UtenSpacing.s12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: UtenFormGrid(
                               children: [
                                 _kv('单据号', _d!.billNo, theme),
                                 _kv('日期', _d!.billDate, theme),
@@ -184,16 +184,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     );
   }
 
-  Widget _kv(String label, String? value, ThemeData theme) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget _kv(String label, String? value, ThemeData theme) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           SizedBox(
-              width: 80,
+              width: 84,
               child: Text(label,
-                  style: theme.textTheme.bodySmall
+                  style: theme.textTheme.labelMedium
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant))),
+          const SizedBox(width: UtenSpacing.s8),
           Expanded(child: Text(value ?? '—')),
-        ]),
+        ],
       );
 
   Widget _actions(ThemeData theme) {

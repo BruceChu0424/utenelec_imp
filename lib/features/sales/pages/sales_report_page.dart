@@ -7,7 +7,7 @@
 //    （月度汇总 MonthlySummaryRow；MV 上卷：货品 × 客户 × 类型 × 月）
 //  - /pending?clientId=&limit= （待交货订货汇总 PendingRow）
 //
-// UI：参数条（单据类型 ChoiceChip + 起止日期 + 查询）→ 明细/汇总切换（Tab）→ 列表展示。
+// UI：左筛选侧栏（单据类型 + 日期 + 查询）+ 右 Excel 风格表格（明细/汇总/待交货 切换）。
 // RETURN（退货）的月度 qty/amt 在库为正数，前端按 docType=RETURN 取负展示。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,9 +15,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/sales_doc_config.dart';
 import '../providers/master_name_provider.dart';
 
@@ -75,7 +78,7 @@ class SalesReportPage extends ConsumerStatefulWidget {
 class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   /// 当前选中 docType（用于明细 + 月度过滤）。null = 全部（仅月度支持）。
   String? _docType = 'ORDER';
-  DateTime _from = DateTime(DateTime.now().year, 1, 1);
+  DateTime _from = DateTime(DateTime.now().year);
   DateTime _to = DateTime.now();
 
   List<_DetailRow> _detail = const [];
@@ -187,14 +190,16 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       setState(() => _loading = false);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('加载报表失败')));
+      context.appError('加载报表失败'); // TODO(l10n): 补 arb
       setState(() => _loading = false);
     }
   }
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String _ym10(String s) =>
+      s.isEmpty ? '' : (s.length >= 10 ? s.substring(0, 10) : s);
 
   String _docLabel(String? t) => {
         'QUOTE': '报价',
@@ -208,7 +213,6 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final names = ref.watch(salesMasterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
         title: '销售报表',
@@ -216,234 +220,323 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
             onPressed: () => backTo(context, defaultPath: SalesRoutePath.hub)),
       ),
       body: SafeArea(
-        child: UtenContentContainer(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-              : ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    // 筛选条：单据类型 + 起止日期 + 查询
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        for (final t in const [
-                          null,
-                          'QUOTE',
-                          'ORDER',
-                          'SHIPMENT',
-                          'OTHER_SHIPMENT',
-                          'RETURN'
-                        ])
-                          ChoiceChip(
-                            label: Text(_docLabel(t)),
-                            selected: _docType == t,
-                            onSelected: (_) =>
-                                setState(() => _docType = t),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Wrap(
-                      spacing: 12,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _from,
-                              firstDate: DateTime(2010),
-                              lastDate: DateTime(2100),
-                            );
-                            if (p != null) setState(() => _from = p);
-                          },
-                          icon: const Icon(Icons.event_outlined, size: 18),
-                          label: Text('起 ${_fmt(_from)}'),
-                        ),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final p = await showDatePicker(
-                              context: context,
-                              initialDate: _to,
-                              firstDate: DateTime(2010),
-                              lastDate: DateTime(2100),
-                            );
-                            if (p != null) setState(() => _to = p);
-                          },
-                          icon: const Icon(Icons.event_outlined, size: 18),
-                          label: Text('止 ${_fmt(_to)}'),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: _load,
-                          icon: const Icon(Icons.search_rounded, size: 18),
-                          label: const Text('查询'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    // Tab：明细 / 汇总 / 待交货
-                    SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment(
-                            value: 0, label: Text('明细'),
-                            icon: Icon(Icons.list_alt_outlined, size: 18)),
-                        ButtonSegment(
-                            value: 1, label: Text('汇总'),
-                            icon: Icon(Icons.bar_chart_outlined, size: 18)),
-                        ButtonSegment(
-                            value: 2, label: Text('待交货'),
-                            icon: Icon(Icons.local_shipping_outlined, size: 18)),
-                      ],
-                      selected: {_tab},
-                      onSelectionChanged: (s) =>
-                          setState(() => _tab = s.first),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    if (_tab == 0)
-                      _detailCard(theme, names)
-                    else if (_tab == 1)
-                      _monthlyCard(theme, names)
-                    else
-                      _pendingCard(theme, names),
-                  ],
+        child: UtenContentContainer.wide(
+          child: Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Column(
+              children: [
+                // 页面头：Icon + 标题
+                Padding(
+                  padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.assessment_outlined,
+                          size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Text('销售报表',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
                 ),
+                // 桌面：左筛选侧栏（单据类型 + 日期 + 查询）+ 右 Excel 表格（明细/汇总/待交货）；手机：垂直堆叠
+                Expanded(
+                  child: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _filterLabel('单据类型'),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              for (final t in const [
+                                null,
+                                'QUOTE',
+                                'ORDER',
+                                'SHIPMENT',
+                                'OTHER_SHIPMENT',
+                                'RETURN'
+                              ])
+                                ChoiceChip(
+                                  label: Text(_docLabel(t)),
+                                  selected: _docType == t,
+                                  onSelected: (_) =>
+                                      setState(() => _docType = t),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          _filterLabel('日期范围'),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () async {
+                                  final p = await showDatePicker(
+                                    context: context,
+                                    initialDate: _from,
+                                    firstDate: DateTime(2010),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (p != null) setState(() => _from = p);
+                                },
+                                icon: const Icon(Icons.event_outlined, size: 18),
+                                label: Text('起 ${_fmt(_from)}'),
+                              ),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  final p = await showDatePicker(
+                                    context: context,
+                                    initialDate: _to,
+                                    firstDate: DateTime(2010),
+                                    lastDate: DateTime(2100),
+                                  );
+                                  if (p != null) setState(() => _to = p);
+                                },
+                                icon: const Icon(Icons.event_outlined, size: 18),
+                                label: Text('止 ${_fmt(_to)}'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: UtenSpacing.s8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonalIcon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.search_rounded, size: 18),
+                              label: const Text('查询'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    tablePane: _buildReportArea(),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _detailCard(ThemeData theme, SalesMasterNameService names) {
-    if (_docType == null) {
-      return _hint(theme, '请在上方选择具体单据类型后再查明细（明细按类型分表，不支持全部）。');
+  /// 报表内容区：加载中居中转圈；否则 SegmentedButton(明细/汇总/待交货) + Expanded(当前 Excel 表)。
+  /// MasterDataTableView 内部含 Expanded，必须放进有界高度的 Expanded 父级。
+  Widget _buildReportArea() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            child: Text(
-                '明细（${_docLabel(_docType)}）· 共 $_detailTotal 行',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600)),
-          ),
-          const Divider(height: 1),
-          if (_detail.isEmpty)
-            _empty(theme)
-          else
-            for (final r in _detail) ...[
-              ListTile(
-                dense: true,
-                title: Text(names.goods(r.goodsId)),
-                subtitle: Text(
-                  [
-                    (r.billDate ?? '').substring(0, 10),
-                    r.billNo ?? '',
-                    names.client(r.clientId),
-                    names.color(r.colorId),
-                  ].join('  ·  '),
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: Text(
-                    '¥${r.amountLocal?.toStringAsFixed(0) ?? '—'} · ${r.qty?.toStringAsFixed(1) ?? '—'}'),
-              ),
-              const Divider(height: 1),
+    final Widget active = switch (_tab) {
+      0 => _detailTable(),
+      1 => _monthlyTable(),
+      _ => _pendingTable(),
+    };
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s12, UtenSpacing.s4, UtenSpacing.s12, UtenSpacing.s4),
+          child: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(
+                  value: 0,
+                  label: Text('明细'),
+                  icon: Icon(Icons.list_alt_outlined, size: 18)),
+              ButtonSegment(
+                  value: 1,
+                  label: Text('汇总'),
+                  icon: Icon(Icons.bar_chart_outlined, size: 18)),
+              ButtonSegment(
+                  value: 2,
+                  label: Text('待交货'),
+                  icon: Icon(Icons.local_shipping_outlined, size: 18)),
             ],
-        ],
+            selected: {_tab},
+            onSelectionChanged: (s) => setState(() => _tab = s.first),
+          ),
+        ),
+        Expanded(child: active),
+      ],
+    );
+  }
+
+  Widget _filterLabel(String text) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+      child: Text(
+        text,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
 
-  Widget _monthlyCard(ThemeData theme, SalesMasterNameService names) {
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            child: Text(
-                '月度汇总（${_docLabel(_docType)}）',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600)),
-          ),
-          const Divider(height: 1),
-          if (_monthly.isEmpty)
-            _empty(theme)
-          else
-            for (final r in _monthly) ...[
-              ListTile(
-                dense: true,
-                title: Text(names.goods(r.goodsId)),
-                subtitle: Text(
-                  '${r.ym.substring(0, 10)}  ·  ${names.client(r.clientId)}  ·  ${r.docType}',
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: Text(
-                    '${r.qty >= 0 ? '' : ''}¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}'),
-              ),
-              const Divider(height: 1),
-            ],
-        ],
-      ),
+  /// 明细表（需选定具体单据类型；全部类型时不支持明细）。
+  Widget _detailTable() {
+    final names = ref.watch(salesMasterNameServiceProvider);
+    if (_docType == null) {
+      return _hint('请先在左侧选择具体单据类型后再查明细（明细按类型分表，不支持全部）。');
+    }
+    return MasterDataTableView<_DetailRow>(
+      columns: <MasterColumnDef<_DetailRow>>[
+        MasterColumnDef(
+            key: 'date', label: '日期', width: 110, value: (r) => _ym10(r.billDate ?? '')),
+        MasterColumnDef(
+            key: 'billNo', label: '单据号', width: 140, value: (r) => r.billNo),
+        MasterColumnDef(
+            key: 'client',
+            label: '客户',
+            width: 160,
+            value: (r) => names.client(r.clientId)),
+        MasterColumnDef(
+            key: 'goods',
+            label: '货品',
+            width: 200,
+            value: (r) => names.goods(r.goodsId)),
+        MasterColumnDef(
+            key: 'color',
+            label: '颜色',
+            width: 90,
+            value: (r) => names.color(r.colorId)),
+        MasterColumnDef(
+            key: 'qty',
+            label: '数量',
+            width: 90,
+            value: (r) => r.qty?.toStringAsFixed(2)),
+        MasterColumnDef(
+            key: 'price',
+            label: '单价',
+            width: 90,
+            value: (r) => r.price?.toStringAsFixed(2)),
+        MasterColumnDef(
+            key: 'amount',
+            label: '金额',
+            width: 120,
+            value: (r) => r.amountLocal?.toStringAsFixed(2)),
+      ],
+      items: _detail,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      onRowTap: (_) {},
+      emptyMessage: '暂无明细数据（共 $_detailTotal 行，仅展示前 50 行）',
     );
   }
 
-  Widget _pendingCard(ThemeData theme, SalesMasterNameService names) {
-    return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            child: Text('待交货订货汇总',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600)),
-          ),
-          const Divider(height: 1),
-          if (_pending.isEmpty)
-            _empty(theme)
-          else
-            for (final r in _pending) ...[
-              ListTile(
-                dense: true,
-                title: Text(names.goods(r.goodsId)),
-                subtitle: Text(
-                  [
-                    names.color(r.colorId),
-                    names.client(r.clientId),
-                  ].join('  ·  '),
-                  style: const TextStyle(fontSize: 11),
-                ),
-                trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
-              ),
-              const Divider(height: 1),
-            ],
-        ],
-      ),
+  /// 月度汇总表。
+  Widget _monthlyTable() {
+    final names = ref.watch(salesMasterNameServiceProvider);
+    return MasterDataTableView<_Monthly>(
+      columns: <MasterColumnDef<_Monthly>>[
+        MasterColumnDef(
+            key: 'ym', label: '月份', width: 110, value: (r) => _ym10(r.ym)),
+        MasterColumnDef(
+            key: 'goods',
+            label: '货品',
+            width: 200,
+            value: (r) => names.goods(r.goodsId)),
+        MasterColumnDef(
+            key: 'client',
+            label: '客户',
+            width: 160,
+            value: (r) => names.client(r.clientId)),
+        MasterColumnDef(
+            key: 'type', label: '类型', width: 90, value: (r) => r.docType),
+        MasterColumnDef(
+            key: 'qty',
+            label: '数量',
+            width: 100,
+            value: (r) => r.qty.toStringAsFixed(2)),
+        MasterColumnDef(
+            key: 'amt',
+            label: '金额',
+            width: 120,
+            value: (r) => r.amt.toStringAsFixed(2)),
+      ],
+      items: _monthly,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      onRowTap: (_) {},
+      emptyMessage: '暂无汇总数据',
     );
   }
 
-  Widget _empty(ThemeData theme) => Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Text('暂无数据',
-            style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-      );
+  /// 待交货汇总表。
+  Widget _pendingTable() {
+    final names = ref.watch(salesMasterNameServiceProvider);
+    return MasterDataTableView<_Pending>(
+      columns: <MasterColumnDef<_Pending>>[
+        MasterColumnDef(
+            key: 'goods',
+            label: '货品',
+            width: 200,
+            value: (r) => names.goods(r.goodsId)),
+        MasterColumnDef(
+            key: 'color',
+            label: '颜色',
+            width: 100,
+            value: (r) => names.color(r.colorId)),
+        MasterColumnDef(
+            key: 'client',
+            label: '客户',
+            width: 160,
+            value: (r) => names.client(r.clientId)),
+        MasterColumnDef(
+            key: 'qty',
+            label: '待交数',
+            width: 110,
+            value: (r) => r.qty.toStringAsFixed(2)),
+        MasterColumnDef(
+            key: 'amt',
+            label: '待交额',
+            width: 120,
+            value: (r) => r.amt.toStringAsFixed(2)),
+      ],
+      items: _pending,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      onRowTap: (_) {},
+      emptyMessage: '暂无待交货数据',
+    );
+  }
 
-  Widget _hint(ThemeData theme, String text) => Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
+  Widget _hint(String text) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.info_outline,
                 size: 18, color: theme.colorScheme.primary),
             const SizedBox(width: UtenSpacing.s8),
-            Expanded(
+            Flexible(
               child: Text(text,
-                  style: TextStyle(
-                      color: theme.colorScheme.onSurfaceVariant)),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
             ),
           ],
         ),
-      );
+      ),
+    );
+  }
 }

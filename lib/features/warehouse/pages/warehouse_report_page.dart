@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -209,7 +210,7 @@ class _WarehouseReportPageState extends ConsumerState<WarehouseReportPage> {
         ],
       ),
       body: SafeArea(
-        child: UtenContentContainer(
+        child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: Column(
@@ -231,108 +232,108 @@ class _WarehouseReportPageState extends ConsumerState<WarehouseReportPage> {
                     ],
                   ),
                 ),
-                // 筛选行
-                Padding(
-                  padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
-                  child: Wrap(
-                    spacing: UtenSpacing.s12,
-                    runSpacing: UtenSpacing.s8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      // 仓库下拉
-                      SizedBox(
-                        width: 180,
-                        child: DropdownButtonFormField<String?>(
-                          key: ValueKey('wh-$_filterEpoch'),
-                          initialValue: _warehouseId,
-                          decoration: const InputDecoration(
-                            labelText: '仓库', // TODO(l10n): 补 arb
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                          ),
-                          items: <DropdownMenuItem<String?>>[
-                            const DropdownMenuItem<String?>(
-                                child: Text('全部仓库')), // TODO(l10n): 补 arb
-                            for (final e in names.warehouseEntries.entries)
-                              DropdownMenuItem<String?>(
-                                  value: e.key, child: Text(e.value)),
-                          ],
-                          onChanged: (v) => setState(() => _warehouseId = v),
-                        ),
-                      ),
-                      // 类型下拉
-                      SizedBox(
-                        width: 160,
-                        child: DropdownButtonFormField<int?>(
-                          key: ValueKey('mt-$_filterEpoch'),
-                          initialValue: _movementType,
-                          decoration: const InputDecoration(
-                            labelText: '类型', // TODO(l10n): 补 arb
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                          ),
-                          items: <DropdownMenuItem<int?>>[
-                            const DropdownMenuItem<int?>(
-                                child: Text('全部类型')), // TODO(l10n): 补 arb
-                            for (final opt in _movementOptions)
-                              DropdownMenuItem<int?>(
-                                  value: opt.$2, child: Text(opt.$1)),
-                          ],
-                          onChanged: (v) => setState(() => _movementType = v),
-                        ),
-                      ),
-                      // 起始日期
-                      TextButton.icon(
-                        onPressed: () => _pickDate(true),
-                        icon: const Icon(Icons.event_outlined, size: 18),
-                        label: Text(_dateFrom == null
-                            ? '起始日期' // TODO(l10n): 补 arb
-                            : '起 ${_fmt(_dateFrom!)}'),
-                      ),
-                      // 结束日期
-                      TextButton.icon(
-                        onPressed: () => _pickDate(false),
-                        icon: const Icon(Icons.event_outlined, size: 18),
-                        label: Text(_dateTo == null
-                            ? '结束日期' // TODO(l10n): 补 arb
-                            : '止 ${_fmt(_dateTo!)}'),
-                      ),
-                      // 清除
-                      TextButton(
-                        onPressed: _clearFilters,
-                        child: const Text('清除'), // TODO(l10n): 补 arb
-                      ),
-                      // 查询
-                      FilledButton.tonalIcon(
-                        onPressed: () => _load(1),
-                        icon: const Icon(Icons.search_rounded, size: 18),
-                        label: const Text('查询'), // TODO(l10n): 补 arb
-                      ),
-                    ],
-                  ),
-                ),
+                // 桌面：左筛选侧栏（仓库/类型/日期/查询）+ 右表格；手机：垂直堆叠
                 Expanded(
-                  child: MasterDataTableView<MovementRow>(
-                    columns: _columns,
-                    items: _page?.items ?? const [],
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    onRowTap: (_) {},
-                    isLoading: _loading && _page == null,
-                    loadingMore: _loading && _page != null,
-                    error: _error,
-                    onRetry: () => _load(_pageNum),
-                    emptyMessage: '暂无流水记录', // TODO(l10n): 补 arb
-                    currentPage: _page?.page ?? 1,
-                    totalPages: _page?.totalPages ?? 1,
-                    onPageChange: (p) => _load(p),
+                  child: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          DropdownButtonFormField<String?>(
+                            key: ValueKey('wh-$_filterEpoch'),
+                            initialValue: _warehouseId,
+                            decoration: const InputDecoration(
+                              labelText: '仓库', // TODO(l10n): 补 arb
+                              isDense: true,
+                            ),
+                            items: <DropdownMenuItem<String?>>[
+                              const DropdownMenuItem<String?>(
+                                  child: Text('全部仓库')), // TODO(l10n): 补 arb
+                              for (final e in names.warehouseEntries.entries)
+                                DropdownMenuItem<String?>(
+                                    value: e.key, child: Text(e.value)),
+                            ],
+                            onChanged: (v) => setState(() => _warehouseId = v),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          DropdownButtonFormField<int?>(
+                            key: ValueKey('mt-$_filterEpoch'),
+                            initialValue: _movementType,
+                            decoration: const InputDecoration(
+                              labelText: '类型', // TODO(l10n): 补 arb
+                              isDense: true,
+                            ),
+                            items: <DropdownMenuItem<int?>>[
+                              const DropdownMenuItem<int?>(
+                                  child: Text('全部类型')), // TODO(l10n): 补 arb
+                              for (final opt in _movementOptions)
+                                DropdownMenuItem<int?>(
+                                    value: opt.$2, child: Text(opt.$1)),
+                            ],
+                            onChanged: (v) => setState(() => _movementType = v),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: () => _pickDate(true),
+                                  icon:
+                                      const Icon(Icons.event_outlined, size: 18),
+                                  label: Text(_dateFrom == null
+                                      ? '起始日期' // TODO(l10n): 补 arb
+                                      : '起 ${_fmt(_dateFrom!)}'),
+                                ),
+                              ),
+                              Expanded(
+                                child: TextButton.icon(
+                                  onPressed: () => _pickDate(false),
+                                  icon:
+                                      const Icon(Icons.event_outlined, size: 18),
+                                  label: Text(_dateTo == null
+                                      ? '结束日期' // TODO(l10n): 补 arb
+                                      : '止 ${_fmt(_dateTo!)}'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: UtenSpacing.s4),
+                          Row(
+                            children: [
+                              TextButton(
+                                onPressed: _clearFilters,
+                                child: const Text('清除'), // TODO(l10n): 补 arb
+                              ),
+                              const Spacer(),
+                              FilledButton.tonalIcon(
+                                onPressed: () => _load(1),
+                                icon: const Icon(Icons.search_rounded, size: 18),
+                                label: const Text('查询'), // TODO(l10n): 补 arb
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    tablePane: MasterDataTableView<MovementRow>(
+                      columns: _columns,
+                      items: _page?.items ?? const [],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      onRowTap: (_) {},
+                      isLoading: _loading && _page == null,
+                      loadingMore: _loading && _page != null,
+                      error: _error,
+                      onRetry: () => _load(_pageNum),
+                      emptyMessage: '暂无流水记录', // TODO(l10n): 补 arb
+                      currentPage: _page?.page ?? 1,
+                      totalPages: _page?.totalPages ?? 1,
+                      onPageChange: (p) => _load(p),
+                    ),
                   ),
                 ),
               ],

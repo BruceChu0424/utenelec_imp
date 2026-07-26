@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -168,7 +169,7 @@ class _SubcontractDocDetailPageState
     return Scaffold(
       appBar: UtenAppBar(title: '${_cfg.label}详情'),
       body: SafeArea(
-        child: UtenContentContainer(
+        child: UtenContentContainer.narrow(
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
@@ -220,31 +221,26 @@ class _SubcontractDocDetailPageState
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final r in rows) _kvRow(theme, r),
-          ],
+        child: UtenFormGrid(
+          children: [for (final r in rows) _kvRow(theme, r)],
         ),
       ),
     );
   }
 
   Widget _kvRow(ThemeData theme, _KV r) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(r.label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          ),
-          Expanded(child: r.badge ?? Text(r.value ?? '—')),
-        ],
-      ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 84,
+          child: Text(r.label,
+              style: theme.textTheme.labelMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        ),
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(child: r.badge ?? Text(r.value ?? '—')),
+      ],
     );
   }
 

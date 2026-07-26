@@ -18,6 +18,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/widgets/doc_kpi_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
@@ -193,14 +194,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                 Padding(
                   padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8, left: UtenSpacing.s4),
-                  child: Wrap(
-                    spacing: 6,
-                    children: [
-                      _statusChip('全部', null),
-                      _statusChip('草稿', kPurchaseStatusDraft),
-                      _statusChip('已审', kPurchaseStatusApproved),
-                      _statusChip('红冲', kPurchaseStatusReversed),
-                    ],
+                  child: DocKpiBar(
+                    counter: _countStatus,
+                    selected: _statusFilter,
+                    onSelect: _onStatus,
                   ),
                 ),
                 Expanded(
@@ -231,12 +228,15 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     );
   }
 
-  Widget _statusChip(String label, int? value) {
-    final selected = _statusFilter == value;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => _onStatus(value),
-    );
+  /// 各状态单据数（KPI 条用，并行 4 次 list size=1 取 total）。
+  Future<int> _countStatus(int? s) async {
+    try {
+      final r = await ref
+          .read(purchaseRepositoryProvider(widget.docType))
+          .list(page: 1, size: 1, filter: PurchaseDocFilter(status: s));
+      return r.total;
+    } catch (_) {
+      return 0;
+    }
   }
 }

@@ -17,6 +17,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/widgets/doc_kpi_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../purchase/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
@@ -85,6 +86,17 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   }
 
   // ---- 列定义 -----------------------------------------------------------
+
+  /// 各状态单据数（KPI 条用，并行 4 次 list size=1 取 total）。
+  Future<int> _countStatus(int? s) async {
+    try {
+      final r = await ref.read(stockDocRepositoryProvider(widget.docType))
+          .list(page: 1, size: 1, filter: StockDocFilter(status: s));
+      return r.total;
+    } catch (_) {
+      return 0;
+    }
+  }
 
   List<MasterColumnDef<StockDocListItem>> get _columns {
     final isTransfer = widget.docType == StockDocType.transfer;
@@ -195,22 +207,14 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                 Padding(
                   padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8, left: UtenSpacing.s4),
-                  child: Wrap(spacing: 6, children: [
-                    for (final e in const [
-                      ('全部', null),
-                      ('草稿', 0),
-                      ('已审', 1),
-                      ('红冲', -1)
-                    ])
-                      ChoiceChip(
-                        label: Text(e.$1),
-                        selected: _status == e.$2,
-                        onSelected: (_) {
-                          setState(() => _status = e.$2);
-                          _load(1);
-                        },
-                      ),
-                  ]),
+                  child: DocKpiBar(
+                    counter: _countStatus,
+                    selected: _status,
+                    onSelect: (s) {
+                      setState(() => _status = s);
+                      _load(1);
+                    },
+                  ),
                 ),
                 Expanded(
                   child: MasterDataTableView<StockDocListItem>(

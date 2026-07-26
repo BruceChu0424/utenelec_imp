@@ -21,9 +21,21 @@ class WarehouseHubPage extends StatelessWidget {
       appBar: const UtenAppBar(title: '仓库管理', leading: UtenBackButton()),
       body: SafeArea(
         child: UtenContentContainer(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenResponsiveGrid(
+          child: ListView(
+            padding: const EdgeInsets.only(top: UtenSpacing.s12),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: UtenSpacing.s4, bottom: UtenSpacing.s4),
+                child: Text('出入库单据',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: UtenSpacing.s4, bottom: UtenSpacing.s8),
+                child: Text('调拨 / 其它出入库 / 领退料 / 产成品进出仓 / 盘点',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              ),
+              UtenResponsiveGrid(
               itemCount: StockDocType.values.length,
               spacing: UtenSpacing.s12,
               columns: const UtenResponsiveColumns(compact: 2, medium: 4),
@@ -67,6 +79,7 @@ class WarehouseHubPage extends StatelessWidget {
                 );
               },
             ),
+            ],
           ),
         ),
       ),

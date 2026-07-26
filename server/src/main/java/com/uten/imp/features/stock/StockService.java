@@ -27,6 +27,13 @@ public class StockService {
     public static final short TYPE_PURCHASE_RETURN = 2;
     public static final short TYPE_SALES_OUT = 3;
     public static final short TYPE_SALES_RETURN = 4;
+    // 5–14 生产领退料/调拨/盘点/其它/产成品（仓库模块用，见 V45 注释）
+    public static final short TYPE_SUBCONTRACT_MATERIAL_ISSUE = 15;  // 委外材料出仓 E_SOut
+    public static final short TYPE_SUBCONTRACT_MATERIAL_RETURN = 16; // 委外材料退回 E_SWithDraw
+    public static final short TYPE_SUBCONTRACT_RECEIPT = 17;         // 委外成品进仓 E_In（正向入库）
+    public static final short TYPE_SUBCONTRACT_RETURN = 18;          // 委外成品退 E_WithDraw
+    public static final short TYPE_SUBCONTRACT_WASTE = 19;           // 委外材料损耗 E_SWaste
+    public static final short TYPE_SALES_OTHER_OUT = 20;             // 销售其它出库 S_OtherOut
 
     /** direction 字典。 */
     public static final short DIR_IN = 1;
@@ -35,6 +42,14 @@ public class StockService {
     /** 来源单据类型（source_doc_type）。 */
     public static final String SRC_PURCHASE_RECEIPT = "PURCHASE_RECEIPT";
     public static final String SRC_PURCHASE_RETURN = "PURCHASE_RETURN";
+    public static final String SRC_SALES_SHIPMENT = "SALES_SHIPMENT";
+    public static final String SRC_SALES_RETURN = "SALES_RETURN";
+    public static final String SRC_SALES_OTHER_SHIPMENT = "SALES_OTHER_SHIPMENT";
+    public static final String SRC_SUBCONTRACT_RECEIPT = "SUBCONTRACT_RECEIPT";
+    public static final String SRC_SUBCONTRACT_RETURN = "SUBCONTRACT_RETURN";
+    public static final String SRC_SUBCONTRACT_MATERIAL_ISSUE = "SUBCONTRACT_MATERIAL_ISSUE";
+    public static final String SRC_SUBCONTRACT_MATERIAL_RETURN = "SUBCONTRACT_MATERIAL_RETURN";
+    public static final String SRC_SUBCONTRACT_WASTE = "SUBCONTRACT_WASTE";
 
     private final StockMovementRepository movementRepo;
     private final StockBalanceRepository balanceRepo;

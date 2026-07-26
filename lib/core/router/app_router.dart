@@ -6,16 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/analytics/pages/alerts_page.dart';
-import '../../features/analytics/pages/analytics_explore_page.dart';
-import '../../features/analytics/pages/business_dashboard_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
 import '../../features/basic_data/pages/color_page.dart';
+import '../../features/basic_data/pages/account_page.dart';
 import '../../features/basic_data/pages/currency_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
+import '../../features/basic_data/pages/payment_style_page.dart';
 import '../../features/basic_data/pages/product_category_page.dart';
 import '../../features/basic_data/pages/supplier_category_page.dart';
 import '../../features/basic_data/pages/unit_page.dart';
@@ -32,6 +31,13 @@ import '../../features/expense/pages/expense_approval_list_page.dart';
 import '../../features/expense/pages/expense_detail_page.dart';
 import '../../features/expense/pages/expense_list_page.dart';
 import '../../features/expense/pages/expense_new_page.dart';
+import '../../features/finance/models/finance_doc.dart';
+import '../../features/finance/pages/finance_ar_ap_page.dart';
+import '../../features/finance/pages/finance_doc_detail_page.dart';
+import '../../features/finance/pages/finance_doc_edit_page.dart';
+import '../../features/finance/pages/finance_doc_list_page.dart';
+import '../../features/finance/pages/finance_hub_page.dart';
+import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_page.dart';
 import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
@@ -64,9 +70,16 @@ import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/placeholder/pages/feature_placeholder_page.dart';
-import '../../features/production/pages/production_line_board_page.dart';
-import '../../features/production/pages/production_output_entry_page.dart';
-import '../../features/production/pages/production_output_stats_page.dart';
+import '../../features/production/models/production_report.dart';
+import '../../features/production/pages/production_daily_report_detail_page.dart';
+import '../../features/production/pages/production_daily_report_edit_page.dart';
+import '../../features/production/pages/production_daily_report_list_page.dart';
+import '../../features/production/pages/production_hub_page.dart';
+import '../../features/production/pages/production_plan_cost_page.dart';
+import '../../features/production/pages/production_plan_detail_page.dart';
+import '../../features/production/pages/production_plan_edit_page.dart';
+import '../../features/production/pages/production_plan_list_page.dart';
+import '../../features/production/pages/production_report_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
@@ -75,6 +88,18 @@ import '../../features/shell/pages/main_shell_page.dart';
 import '../../features/suggestion/pages/suggestion_detail_page.dart';
 import '../../features/suggestion/pages/suggestion_list_page.dart';
 import '../../features/suggestion/pages/suggestion_new_page.dart';
+import '../../features/sales/models/sales_doc.dart';
+import '../../features/sales/pages/sales_doc_detail_page.dart';
+import '../../features/sales/pages/sales_doc_edit_page.dart';
+import '../../features/sales/pages/sales_doc_list_page.dart';
+import '../../features/sales/pages/sales_hub_page.dart';
+import '../../features/sales/pages/sales_report_page.dart';
+import '../../features/subcontract/models/subcontract_doc.dart';
+import '../../features/subcontract/pages/subcontract_doc_detail_page.dart';
+import '../../features/subcontract/pages/subcontract_doc_edit_page.dart';
+import '../../features/subcontract/pages/subcontract_doc_list_page.dart';
+import '../../features/subcontract/pages/subcontract_hub_page.dart';
+import '../../features/subcontract/pages/subcontract_report_page.dart';
 import '../../features/security/pages/security_scan_page.dart';
 import '../../features/visitor_approval/pages/my_visitors_page.dart';
 import '../../features/visitor_approval/pages/visitor_approval_detail_page.dart';
@@ -243,11 +268,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'payroll-review',
             builder: (_, _) => const PayrollReviewPage(),
           ),
-          GoRoute(
-            path: '/finance/report',
-            name: 'finance-report',
-            builder: (_, _) => const FinanceReportPage(),
-          ),
+          // /finance/report 在下方「钱流管理」段统一注册（与 /finance hub 同段）。
 
           // —— 财税部新模块（占位页：权限已可配置，功能规划接入中）——
           GoRoute(
@@ -425,6 +446,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'basicinfo-warehouse',
             builder: (_, _) => const WarehousePage(),
           ),
+          GoRoute(
+            path: RouteName.basicinfoAccount,
+            name: 'basicinfo-account',
+            builder: (_, _) => const AccountPage(),
+          ),
+          GoRoute(
+            path: RouteName.basicinfoPaymentStyle,
+            name: 'basicinfo-payment-style',
+            builder: (_, _) => const PaymentStylePage(),
+          ),
 
           // —— 采购管理（hub + 4 单据 list + new/detail/edit）——
           GoRoute(
@@ -561,21 +592,228 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 HvacControlPage(deviceId: s.pathParameters['id']!),
           ),
 
-          // —— 生产 ——
+          // —— 销售管理（综合营销部；静态段 /sales/report 在 :seg 参数路由前）——
           GoRoute(
-            path: '/production/line',
-            name: 'production-board',
-            builder: (_, _) => const ProductionLineBoardPage(),
+            path: RouteName.sales,
+            name: 'sales-hub',
+            builder: (_, _) => const SalesHubPage(),
           ),
           GoRoute(
-            path: '/production/output/entry',
-            name: 'production-output-entry',
-            builder: (_, _) => const ProductionOutputEntryPage(),
+            path: RouteName.salesReport,
+            name: 'sales-report',
+            builder: (_, _) => const SalesReportPage(),
           ),
           GoRoute(
-            path: '/production/output',
-            name: 'production-output-stats',
-            builder: (_, _) => const ProductionOutputStatsPage(),
+            path: '/sales/:seg/new',
+            name: 'sales-doc-new',
+            builder: (_, s) => SalesDocEditPage(
+              docType: SalesDocType.byPath(s.pathParameters['seg']!),
+            ),
+          ),
+          GoRoute(
+            path: '/sales/:seg/:id/edit',
+            name: 'sales-doc-edit',
+            builder: (_, s) => SalesDocEditPage(
+              docType: SalesDocType.byPath(s.pathParameters['seg']!),
+              id: s.pathParameters['id'],
+            ),
+          ),
+          GoRoute(
+            path: '/sales/:seg/:id',
+            name: 'sales-doc-detail',
+            builder: (_, s) => SalesDocDetailPage(
+              docType: SalesDocType.byPath(s.pathParameters['seg']!),
+              id: s.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/sales/:seg',
+            name: 'sales-doc-list',
+            builder: (_, s) => SalesDocListPage(
+              docType: SalesDocType.byPath(s.pathParameters['seg']!),
+            ),
+          ),
+
+          // —— 委外管理（综合营销部；静态段 /subcontract/report 在 :seg 参数路由前）——
+          GoRoute(
+            path: RouteName.subcontract,
+            name: 'subcontract-hub',
+            builder: (_, _) => const SubcontractHubPage(),
+          ),
+          GoRoute(
+            path: RouteName.subcontractReport,
+            name: 'subcontract-report',
+            builder: (_, _) => const SubcontractReportPage(),
+          ),
+          GoRoute(
+            path: '/subcontract/:seg/new',
+            name: 'subcontract-doc-new',
+            builder: (_, s) => SubcontractDocEditPage(
+              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+            ),
+          ),
+          GoRoute(
+            path: '/subcontract/:seg/:id/edit',
+            name: 'subcontract-doc-edit',
+            builder: (_, s) => SubcontractDocEditPage(
+              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+              id: s.pathParameters['id'],
+            ),
+          ),
+          GoRoute(
+            path: '/subcontract/:seg/:id',
+            name: 'subcontract-doc-detail',
+            builder: (_, s) => SubcontractDocDetailPage(
+              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+              id: s.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/subcontract/:seg',
+            name: 'subcontract-doc-list',
+            builder: (_, s) => SubcontractDocListPage(
+              docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+            ),
+          ),
+
+          // —— 生产管理（生产部；静态段在 :id 参数路由前）——
+          GoRoute(
+            path: RouteName.production,
+            name: 'production-hub',
+            builder: (_, _) => const ProductionHubPage(),
+          ),
+          GoRoute(
+            path: '/production/plans/new',
+            name: 'production-plan-new',
+            builder: (_, _) => const ProductionPlanEditPage(),
+          ),
+          GoRoute(
+            path: '/production/plans/:id/edit',
+            name: 'production-plan-edit',
+            builder: (_, s) =>
+                ProductionPlanEditPage(id: s.pathParameters['id']),
+          ),
+          GoRoute(
+            path: '/production/plans/:id',
+            name: 'production-plan-detail',
+            builder: (_, s) =>
+                ProductionPlanDetailPage(id: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: RouteName.productionPlanList,
+            name: 'production-plan-list',
+            builder: (_, _) => const ProductionPlanListPage(),
+          ),
+          GoRoute(
+            path: RouteName.productionPlanCost,
+            name: 'production-plan-cost',
+            builder: (_, _) => const ProductionPlanCostPage(),
+          ),
+          GoRoute(
+            path: '/production/daily-reports/new',
+            name: 'production-daily-report-new',
+            builder: (_, _) => const ProductionDailyReportEditPage(),
+          ),
+          GoRoute(
+            path: '/production/daily-reports/:id/edit',
+            name: 'production-daily-report-edit',
+            builder: (_, s) =>
+                ProductionDailyReportEditPage(id: s.pathParameters['id']),
+          ),
+          GoRoute(
+            path: '/production/daily-reports/:id',
+            name: 'production-daily-report-detail',
+            builder: (_, s) =>
+                ProductionDailyReportDetailPage(id: s.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: RouteName.productionDailyReportList,
+            name: 'production-daily-report-list',
+            builder: (_, _) => const ProductionDailyReportListPage(),
+          ),
+          // 4 报表入口（静态段，无 :id 冲突）
+          GoRoute(
+            path: RoutePath.productionReport('plan-detail'),
+            name: 'production-report-plan-detail',
+            builder: (_, _) => const ProductionReportPage(
+                reportType: ProductionReportType.planDetail),
+          ),
+          GoRoute(
+            path: RoutePath.productionReport('plan-summary'),
+            name: 'production-report-plan-summary',
+            builder: (_, _) => const ProductionReportPage(
+                reportType: ProductionReportType.planSummary),
+          ),
+          GoRoute(
+            path: RoutePath.productionReport('daily-detail'),
+            name: 'production-report-daily-detail',
+            builder: (_, _) => const ProductionReportPage(
+                reportType: ProductionReportType.dailyDetail),
+          ),
+          GoRoute(
+            path: RoutePath.productionReport('daily-summary'),
+            name: 'production-report-daily-summary',
+            builder: (_, _) => const ProductionReportPage(
+                reportType: ProductionReportType.dailySummary),
+          ),
+
+          // —— 钱流管理（财税部；静态段 /finance/{report|ar-ap|reconciliations|checks|
+          //    customers|suppliers|accounts} 必须在 :seg 参数路由前声明）——
+          GoRoute(
+            path: RouteName.finance,
+            name: 'finance-hub',
+            builder: (_, _) => const FinanceHubPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeReport,
+            name: 'finance-report',
+            builder: (_, _) => const FinanceReportPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeArAp,
+            name: 'finance-ar-ap',
+            builder: (_, _) => const FinanceArApPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeReconciliations,
+            name: 'finance-reconciliations',
+            builder: (_, _) => const FinanceReconciliationPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeChecks,
+            name: 'finance-checks',
+            builder: (_, _) => const AccountPage(
+                initialAccountTypeFilter: 'CHECK'),
+          ),
+          GoRoute(
+            path: '/finance/:seg/new',
+            name: 'finance-doc-new',
+            builder: (_, s) => FinanceDocEditPage(
+              docType: FinanceDocType.byPath(s.pathParameters['seg']!),
+            ),
+          ),
+          GoRoute(
+            path: '/finance/:seg/:id/edit',
+            name: 'finance-doc-edit',
+            builder: (_, s) => FinanceDocEditPage(
+              docType: FinanceDocType.byPath(s.pathParameters['seg']!),
+              id: s.pathParameters['id'],
+            ),
+          ),
+          GoRoute(
+            path: '/finance/:seg/:id',
+            name: 'finance-doc-detail',
+            builder: (_, s) => FinanceDocDetailPage(
+              docType: FinanceDocType.byPath(s.pathParameters['seg']!),
+              id: s.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/finance/:seg',
+            name: 'finance-doc-list',
+            builder: (_, s) => FinanceDocListPage(
+              docType: FinanceDocType.byPath(s.pathParameters['seg']!),
+            ),
           ),
 
           // —— 库存 ——
@@ -588,23 +826,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/inventory/movement',
             name: 'inventory-movement',
             builder: (_, _) => const InventoryMovementPage(),
-          ),
-
-          // —— 管理层分析 ——
-          GoRoute(
-            path: '/analytics/dashboard',
-            name: 'analytics-dashboard',
-            builder: (_, _) => const BusinessDashboardPage(),
-          ),
-          GoRoute(
-            path: '/analytics/explore',
-            name: 'analytics-explore',
-            builder: (_, _) => const AnalyticsExplorePage(),
-          ),
-          GoRoute(
-            path: '/analytics/alerts',
-            name: 'analytics-alerts',
-            builder: (_, _) => const AlertsPage(),
           ),
 
           // —— 访客审批 / 被访人 / 保安扫码 ——

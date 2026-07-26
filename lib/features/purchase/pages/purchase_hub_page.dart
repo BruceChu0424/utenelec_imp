@@ -3,12 +3,12 @@
 //  ② 采购报表：报表卡片（明细/汇总/待交货）
 // 点卡片进对应列表/报表页。布局对齐基础资料 hub 的卡片风格。
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../config/purchase_doc_config.dart';
@@ -20,7 +20,12 @@ class PurchaseHubPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: const UtenAppBar(title: '采购管理', leading: UtenBackButton()),
+      appBar: UtenAppBar(
+        title: '采购管理',
+        leading: UtenBackButton(
+          onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
+        ),
+      ),
       body: SafeArea(
         child: UtenContentContainer(
           child: ListView(
@@ -106,7 +111,7 @@ class _EntryTile extends StatelessWidget {
       borderRadius: UtenRadius.lgAll,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => context.go(entry.location),
+        onTap: () => goFrom(context, entry.location),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(

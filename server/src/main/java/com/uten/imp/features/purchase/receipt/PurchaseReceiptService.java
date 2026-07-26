@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemDto;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
@@ -49,6 +50,7 @@ public class PurchaseReceiptService {
     private final PurchaseReceiptRepository receiptRepo;
     private final PurchaseReceiptItemRepository itemRepo;
     private final StockService stockService;
+    private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
 
@@ -149,10 +151,20 @@ public class PurchaseReceiptService {
         }
         r.setStatus(STATUS_APPROVED);
         receiptRepo.save(r);
+        // 立应付（AP, PURCHASE_RECEIPT）：取代老库 P_In 触发器 TRI_PIStockItem 的 M_out 立帐分支。
+        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+                "AP", StockService.SRC_PURCHASE_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
+                null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
+                r.getTotalLocal(), (short) 1, null));
         return detail(id);
     }
 
-    /** 红冲：status 1→-1，库存反向出库 + 回减订货 received_qty + 结案重算。 */
+    /**
+     * 红冲：status 1→-1，库存反向出库 + 回减订货 received_qty + 结案重算 + 反立应付。
+     *
+     * <p>顺序遵循 28-Java后端契约 §五：先 {@code reverseArAp}（若有核销 amount_settled&lt;&gt;0 抛
+     * "此单已经存在收/付款，请先反审"），再做反向库存/回写。purchase_receipts 无 ar_posted 列，只调 Service。
+     */
     @Transactional
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
@@ -160,11 +172,12 @@ public class PurchaseReceiptService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         OffsetDateTime now = OffsetDateTime.now();
+        // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (PurchaseReceiptItem it : items) {
-            BigDecimal negAmt = it.getAmountLocal() == null ? null : it.getAmountLocal().negate();
-            applyMovement(r, it, StockService.DIR_OUT, now, negAmt);
+            applyMovement(r, it, StockService.DIR_OUT, now, null);
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE purchase_order_items SET received_qty = COALESCE(received_qty,0) - :q WHERE id = :id")

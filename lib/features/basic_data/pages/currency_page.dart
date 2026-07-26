@@ -5,7 +5,6 @@
 // 查看全员可见（路由不设守卫），编辑按 currency:edit 显隐。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -13,6 +12,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -308,7 +308,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       appBar: UtenAppBar(
         title: '币种资料',
         leading: UtenBackButton(
-          onPressed: () => context.go(RouteName.basicinfo),
+          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
           IconButton(

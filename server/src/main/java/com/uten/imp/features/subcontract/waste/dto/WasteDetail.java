@@ -1,0 +1,32 @@
+package com.uten.imp.features.subcontract.waste.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+/** 委外损耗单详情（主表全字段 + 明细列表）。 */
+@Getter
+@AllArgsConstructor
+public class WasteDetail {
+    private UUID id;
+    private Integer legacyId;
+    private String billNo;
+    private LocalDate billDate;
+    private UUID supplierId;
+    private UUID warehouseId;
+    private UUID workerId;
+    private UUID makerId;
+    private UUID approverId;
+    private BigDecimal totalWeight;
+    private String remark;
+    private BigDecimal totalOriginal;
+    private BigDecimal totalLocal;
+    private Short status;
+    private boolean closed;
+    private String sourceDocNo;
+    private List<WasteItemDto> items;
+}

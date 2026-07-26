@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemDto;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemLine;
@@ -47,6 +48,7 @@ public class PurchaseReturnService {
     private final PurchaseReturnRepository returnRepo;
     private final PurchaseReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
 
@@ -130,15 +132,28 @@ public class PurchaseReturnService {
         }
         r.setStatus(STATUS_APPROVED);
         returnRepo.save(r);
+        // 立红字应付（AP, PURCHASE_RETURN，金额取负 = 红冲 AP）：取代老库 P_Withdraw 触发器的 M_out 立帐分支。
+        // 退货后 supplier 净应付 = 原收货应付 - 退货应付；报表 GROUP BY supplier 自动得出净额。
+        BigDecimal returnLocal = r.getTotalLocal() == null ? BigDecimal.ZERO : r.getTotalLocal().negate();
+        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+                "AP", StockService.SRC_PURCHASE_RETURN, r.getId(), r.getBillNo(), r.getBillDate(),
+                null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
+                returnLocal, (short) 17, null));
         return detail(id);
     }
 
+    /**
+     * 红冲：status 1→-1，反向入库 + 回减 returned_qty + 结案重算 + 反立红字应付。
+     *
+     * <p>顺序遵循 28-Java后端契约 §五：先 {@code reverseArAp}（核销校验），再反向库存/回写。
+     */
     @Transactional
     public ReturnDetail reverse(UUID id) {
         tx.bind();
         PurchaseReturn r = requireReturn(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReturnItem it : itemRepo.findByReturnIdOrderByLineNoAsc(id)) {
             applyMovement(r, it, StockService.DIR_IN, now, null);

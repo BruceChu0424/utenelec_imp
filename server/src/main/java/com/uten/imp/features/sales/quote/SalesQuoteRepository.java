@@ -1,0 +1,14 @@
+package com.uten.imp.features.sales.quote;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+
+import java.util.Optional;
+import java.util.UUID;
+
+/** 销售报价单主表仓库。 */
+public interface SalesQuoteRepository
+        extends JpaRepository<SalesQuote, UUID>, JpaSpecificationExecutor<SalesQuote> {
+
+    Optional<SalesQuote> findByLegacyId(Integer legacyId);
+}

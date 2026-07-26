@@ -13,6 +13,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -152,7 +153,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
       appBar: UtenAppBar(
         title: widget.docType.label,
         leading: UtenBackButton(
-            onPressed: () => context.go(RouteName.warehouse)),
+            onPressed: () => backTo(context, defaultPath: RouteName.warehouse)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),

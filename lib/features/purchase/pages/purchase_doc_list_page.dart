@@ -13,7 +13,9 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
@@ -138,7 +140,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
       appBar: UtenAppBar(
         title: _cfg.label,
         leading: UtenBackButton(
-          onPressed: () => context.go(RouteName.purchase),
+          onPressed: () => backTo(context, defaultPath: RouteName.purchase),
         ),
         actions: [
           IconButton(
@@ -149,11 +151,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         ],
       ),
       body: SafeArea(
-        child: UtenContentContainer(
+        child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: Column(
               children: [
+                // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8,
@@ -167,19 +170,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                       Text('${_cfg.shortLabel} ($total)',
                           style: theme.textTheme.titleSmall
                               ?.copyWith(fontWeight: FontWeight.w600)),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: UtenSearchBar(
-                          hint: '搜索单据号', // TODO(l10n): 补 arb
-                          initialValue: _keyword,
-                          onChanged: (v) {
-                            setState(() => _keyword = v);
-                            _load(1);
-                          },
-                        ),
-                      ),
-                      if (_canEdit) ...[
-                        const SizedBox(width: UtenSpacing.s8),
+                      const Spacer(),
+                      if (_canEdit)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
@@ -187,10 +179,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                               RoutePath.purchaseDocNew(_cfg.type.pathSegment)),
                           child: const Text('新建'), // TODO(l10n): 补 arb
                         ),
-                      ],
                     ],
                   ),
                 ),
+                // KPI 条：状态过滤 + 概览（横向 4 卡，桌面常驻表格上方，全宽）
                 Padding(
                   padding: const EdgeInsets.only(
                       bottom: UtenSpacing.s8, left: UtenSpacing.s4),
@@ -200,24 +192,42 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                     onSelect: _onStatus,
                   ),
                 ),
+                // 桌面：左筛选侧栏（搜索）+ 右表格；手机：垂直堆叠
                 Expanded(
-                  child: MasterDataTableView<PurchaseDocListItem>(
-                    columns: _columns(names),
-                    items: _page?.items ?? const [],
-                    facets: const {},
-                    nullCounts: const {},
-                    filters: const {},
-                    onFilterChanged: (_, _) {},
-                    onRowTap: (it) => context.push(
-                        RoutePath.purchaseDocDetail(_cfg.type.pathSegment, it.id)),
-                    isLoading: _loading && _page == null,
-                    loadingMore: _loading && _page != null,
-                    error: _error,
-                    onRetry: () => _load(_pageNum),
-                    emptyMessage: '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
-                    currentPage: _page?.page ?? 1,
-                    totalPages: _page?.totalPages ?? 1,
-                    onPageChange: (p) => _load(p),
+                  child: UtenListTwoPane(
+                    filterPane: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s4),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: UtenSearchBar(
+                          hint: '搜索单据号', // TODO(l10n): 补 arb
+                          initialValue: _keyword,
+                          onChanged: (v) {
+                            setState(() => _keyword = v);
+                            _load(1);
+                          },
+                        ),
+                      ),
+                    ),
+                    tablePane: MasterDataTableView<PurchaseDocListItem>(
+                      columns: _columns(names),
+                      items: _page?.items ?? const [],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      onRowTap: (it) => context.push(RoutePath.purchaseDocDetail(
+                          _cfg.type.pathSegment, it.id)),
+                      isLoading: _loading && _page == null,
+                      loadingMore: _loading && _page != null,
+                      error: _error,
+                      onRetry: () => _load(_pageNum),
+                      emptyMessage: '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
+                      currentPage: _page?.page ?? 1,
+                      totalPages: _page?.totalPages ?? 1,
+                      onPageChange: (p) => _load(p),
+                    ),
                   ),
                 ),
               ],

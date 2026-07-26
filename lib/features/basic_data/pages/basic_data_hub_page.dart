@@ -4,11 +4,11 @@
 // 全员可见（登录即可，不设路由守卫）；卡片风格对齐工作台 _ModuleTile。
 // 新增资料类型（如颜色资料）时在 _resources 加一条即可。
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 
@@ -72,6 +72,20 @@ class BasicDataHubPage extends StatelessWidget {
       location: RouteName.basicinfoWarehouse,
       color: _C.teal,
     ),
+    _BasicResource(
+      icon: Icons.account_balance_outlined,
+      label: '账户资料',
+      description: '账户主档（编号/类型/币种/期初/余额）',
+      location: RouteName.basicinfoAccount,
+      color: _C.green,
+    ),
+    _BasicResource(
+      icon: Icons.category_outlined,
+      label: '收付款类别',
+      description: '6 大类（资产负债权益费用收入方法）',
+      location: RouteName.basicinfoPaymentStyle,
+      color: _C.teal,
+    ),
   ];
 
   @override
@@ -110,7 +124,7 @@ class _ResourceTile extends StatelessWidget {
       borderRadius: UtenRadius.lgAll,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => context.go(item.location),
+        onTap: () => goFrom(context, item.location),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(

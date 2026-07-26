@@ -1,7 +1,7 @@
 // WorkbenchModuleArea - 工作台功能模块区（按部门分区，可折叠、可拖动排序）
 //
 // 分区重划说明：
-// - 旧「决策支持」组取消，三项并入「系统管理」；
+// - 决策支持（经营 Dashboard/多维分析/异常告警）模块已下线，「系统管理」仅留权限管理；
 // - 旧「访客核验」组先并入行政与人力资源部，后应要求独立为「安保部」分区（访客核验）；
 // - 「生产管理」拆分为 生产部 / PMC运营部 / 品质管理部；
 // - 「财务管理」扩为「财税部」，新增 采购/客户/供应商/账户（占位页，权限已种子化）；
@@ -23,11 +23,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/permission_by_path.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -272,11 +272,15 @@ const _allGroups = <_ModuleGroup>[
     items: [
       // 采购管理已归 PMC 运营部（本组原占位入口移除，避免重复）。
       // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier）。
-
       _ModuleItem(
         icon: Icons.account_balance_outlined,
         label: '账户资料',
-        location: RouteName.financeAccounts,
+        location: RouteName.basicinfoAccount,
+      ),
+      _ModuleItem(
+        icon: Icons.payments_outlined,
+        label: '钱流管理',
+        location: RouteName.finance,
       ),
       _ModuleItem(
         icon: Icons.fact_check_outlined,
@@ -306,20 +310,11 @@ const _allGroups = <_ModuleGroup>[
     title: '生产部',
     color: UtenColors.warning,
     items: [
+      // 旧流水线看板/产量录入/产量统计（mock 数据）已下线，收敛为生产管理 hub 单卡。
       _ModuleItem(
-        icon: Icons.view_timeline_outlined,
-        label: '流水线看板',
-        location: '/production/line',
-      ),
-      _ModuleItem(
-        icon: Icons.edit_note_outlined,
-        label: '产量录入',
-        location: '/production/output/entry',
-      ),
-      _ModuleItem(
-        icon: Icons.insights_outlined,
-        label: '产量统计',
-        location: '/production/output',
+        icon: Icons.factory_outlined,
+        label: '生产管理',
+        location: RouteName.production,
       ),
       _ModuleItem(
         icon: Icons.hvac_outlined,
@@ -380,12 +375,23 @@ const _allGroups = <_ModuleGroup>[
       ),
     ],
   ),
-  // 以下三个事业部暂无卡片（空分组，超管可见占位）
+  // 综合营销部：销售 + 委外
   _ModuleGroup(
     key: 'sales',
     title: '综合营销部',
     color: UtenColors.teal800,
-    items: [],
+    items: [
+      _ModuleItem(
+        icon: Icons.point_of_sale_outlined,
+        label: '销售管理',
+        location: RouteName.sales,
+      ),
+      _ModuleItem(
+        icon: Icons.precision_manufacturing_outlined,
+        label: '委外管理',
+        location: RouteName.subcontract,
+      ),
+    ],
   ),
   _ModuleGroup(
     key: 'newmedia',
@@ -421,22 +427,6 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.admin_panel_settings_outlined,
         label: '权限管理',
         location: RouteName.adminPermissions,
-      ),
-      // 旧「决策支持」独立分组取消，三项并入本组
-      _ModuleItem(
-        icon: Icons.space_dashboard_outlined,
-        label: '经营 Dashboard',
-        location: '/analytics/dashboard',
-      ),
-      _ModuleItem(
-        icon: Icons.query_stats_outlined,
-        label: '多维分析',
-        location: '/analytics/explore',
-      ),
-      _ModuleItem(
-        icon: Icons.notifications_active_outlined,
-        label: '异常告警',
-        location: '/analytics/alerts',
       ),
     ],
   ),
@@ -490,7 +480,7 @@ class _ModuleTile extends StatelessWidget {
       borderRadius: UtenRadius.lgAll,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => context.go(item.location),
+        onTap: () => goFrom(context, item.location),
         child: Stack(
           children: [
             Container(

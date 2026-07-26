@@ -10,7 +10,6 @@
 // 文档：见 docs/数据迁移/05-模具资料-新库与迁移.md。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -19,6 +18,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -341,7 +341,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
         title: '模具资料', // TODO(l10n): 补 arb
         // 显式返回到基础资料 hub（默认返回会因 context.go 不压栈而兜底回工作台）。
         leading: UtenBackButton(
-          onPressed: () => context.go(RouteName.basicinfo),
+          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
           IconButton(

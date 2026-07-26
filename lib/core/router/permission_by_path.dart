@@ -34,7 +34,7 @@ List<String>? requiredAnyPermFor(String location) {
   }
   if (location == '/payroll/review') return const [Perm.payrollReview];
   if (location == '/payroll/generate') return const [Perm.payrollGenerate];
-  if (location == '/finance/report') return const [Perm.payrollViewAll];
+  if (location == '/finance/report') return const [Perm.financeReportView];
   // 客户资料：self/department/all 三级数据范围，任一即达最低门槛
   if (location.startsWith('/finance/customers')) {
     return const [
@@ -93,10 +93,175 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/notice/publish') return const ['notice:publish'];
   // 实验室
   if (location.startsWith('/lab/')) return const ['lab:test:view'];
-  // 生产 / 库存
-  if (location.startsWith('/production/') ||
-      location.startsWith('/inventory') ||
-      location.startsWith('/hvac')) {
+
+  // ===== 销售管理（综合营销部；V51 seed：sales_<quote|order|shipment|other_shipment|return>:view/edit）=====
+  if (location == RouteName.sales) {
+    // hub：任一销售单据 view 即可见
+    return const [
+      Perm.salesQuoteView,
+      Perm.salesOrderView,
+      Perm.salesShipmentView,
+      Perm.salesOtherShipmentView,
+      Perm.salesReturnView,
+    ];
+  }
+  if (location == RouteName.salesReport) return const [Perm.salesReportView];
+  if (location.startsWith('/sales/')) {
+    final seg = location.split('/'); // ['', 'sales', seg, ...]
+    final doc = seg.length > 2 ? seg[2] : '';
+    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
+    switch (doc) {
+      case 'quotes':
+        return [isEdit ? Perm.salesQuoteEdit : Perm.salesQuoteView];
+      case 'orders':
+        return [isEdit ? Perm.salesOrderEdit : Perm.salesOrderView];
+      case 'shipments':
+        return [isEdit ? Perm.salesShipmentEdit : Perm.salesShipmentView];
+      case 'other-shipments':
+        return [
+          isEdit ? Perm.salesOtherShipmentEdit : Perm.salesOtherShipmentView
+        ];
+      case 'returns':
+        return [isEdit ? Perm.salesReturnEdit : Perm.salesReturnView];
+    }
+    return const [Perm.salesReportView];
+  }
+
+  // ===== 委外管理（综合营销部；V53 seed：subcontract_<...>:view/edit）=====
+  if (location == RouteName.subcontract) {
+    return const [
+      Perm.subcontractInquiryView,
+      Perm.subcontractApplicationView,
+      Perm.subcontractOrderView,
+      Perm.subcontractReceiptView,
+      Perm.subcontractMaterialIssueView,
+      Perm.subcontractReturnView,
+      Perm.subcontractMaterialReturnView,
+      Perm.subcontractWasteView,
+    ];
+  }
+  if (location == RouteName.subcontractReport) {
+    return const [Perm.subcontractReportView];
+  }
+  if (location.startsWith('/subcontract/')) {
+    final seg = location.split('/');
+    final doc = seg.length > 2 ? seg[2] : '';
+    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
+    switch (doc) {
+      case 'inquiries':
+        return [
+          isEdit ? Perm.subcontractInquiryEdit : Perm.subcontractInquiryView
+        ];
+      case 'applications':
+        return [
+          isEdit
+              ? Perm.subcontractApplicationEdit
+              : Perm.subcontractApplicationView
+        ];
+      case 'orders':
+        return [
+          isEdit ? Perm.subcontractOrderEdit : Perm.subcontractOrderView
+        ];
+      case 'receipts':
+        return [
+          isEdit ? Perm.subcontractReceiptEdit : Perm.subcontractReceiptView
+        ];
+      case 'material-issues':
+        return [
+          isEdit
+              ? Perm.subcontractMaterialIssueEdit
+              : Perm.subcontractMaterialIssueView
+        ];
+      case 'returns':
+        return [
+          isEdit ? Perm.subcontractReturnEdit : Perm.subcontractReturnView
+        ];
+      case 'material-returns':
+        return [
+          isEdit
+              ? Perm.subcontractMaterialReturnEdit
+              : Perm.subcontractMaterialReturnView
+        ];
+      case 'wastes':
+        return [isEdit ? Perm.subcontractWasteEdit : Perm.subcontractWasteView];
+    }
+    return const [Perm.subcontractReportView];
+  }
+
+  // ===== 生产管理（生产部；V55 seed 细粒度）=====
+  if (location == RouteName.production) {
+    // hub：任一生产 view 即可见
+    return const [
+      Perm.productionPlanView,
+      Perm.productionPlanCostView,
+      Perm.productionDailyReportView,
+      Perm.productionReportView,
+    ];
+  }
+  if (location.startsWith('/production/reports')) {
+    return const [Perm.productionReportView];
+  }
+  if (location == RouteName.productionPlanCost) {
+    return const [Perm.productionPlanCostView];
+  }
+  if (location.startsWith('/production/plans')) {
+    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
+    return [isEdit ? Perm.productionPlanEdit : Perm.productionPlanView];
+  }
+  if (location.startsWith('/production/daily-reports')) {
+    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
+    return [
+      isEdit ? Perm.productionDailyReportEdit : Perm.productionDailyReportView
+    ];
+  }
+
+  // ===== 钱流管理（财税部；V57 seed：finance_<...>:view/edit + ar_ap_ledger/finance_reconciliation）=====
+  if (location == RouteName.finance) {
+    // hub：任一钱流单据 view 即可见
+    return const [
+      Perm.financeReceiptView,
+      Perm.financePaymentView,
+      Perm.financeExpenseView,
+      Perm.financeOtherIncomeView,
+      Perm.financeBankTransferView,
+    ];
+  }
+  if (location == RouteName.financeReport) return const [Perm.financeReportView];
+  if (location == RouteName.financeArAp) {
+    return const [Perm.arApLedgerView];
+  }
+  if (location == RouteName.financeReconciliations) {
+    return const [Perm.financeReconciliationView];
+  }
+  if (location == RouteName.financeChecks) {
+    return const [Perm.accountView];
+  }
+  if (location.startsWith('/finance/')) {
+    final seg = location.split('/');
+    final doc = seg.length > 2 ? seg[2] : '';
+    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
+    switch (doc) {
+      case 'receipts':
+        return [isEdit ? Perm.financeReceiptEdit : Perm.financeReceiptView];
+      case 'payments':
+        return [isEdit ? Perm.financePaymentEdit : Perm.financePaymentView];
+      case 'expenses':
+        return [isEdit ? Perm.financeExpenseEdit : Perm.financeExpenseView];
+      case 'incomes':
+        return [
+          isEdit ? Perm.financeOtherIncomeEdit : Perm.financeOtherIncomeView
+        ];
+      case 'bank-transfers':
+        return [
+          isEdit ? Perm.financeBankTransferEdit : Perm.financeBankTransferView
+        ];
+    }
+    // 其它已上面的字面量段处理；兜底放行（占位页：客户/供应商资料走 self/department/all）
+    return null;
+  }
+
+  // 生产辅助：库存 / 空调（保留旧 broad 守卫）
+  if (location.startsWith('/inventory') || location.startsWith('/hvac')) {
     return const ['production:view'];
   }
   // 访客审批 / 被访人 / 保安
@@ -108,8 +273,6 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/security/scan' || location.startsWith('/security/')) {
     return const [Perm.visitorCheckIn];
   }
-  // 管理层：决策支持（V25 起独立权限点 analytics:view，默认仅 manager/admin）
-  if (location.startsWith('/analytics/')) return const [Perm.analyticsView];
   // 个人信息自助修改（员工侧）：全员入口——任何登录员工都能查看/修改自己的信息。
   // 能改什么由编辑页 + 后端 ProfileFieldPolicy 的字段策略（直改即时生效 / 需审核走 HR /
   // HR 专属只读）控制，不在这里挂权限点守卫。后端用当前用户 employeeId 落库，无越权风险。

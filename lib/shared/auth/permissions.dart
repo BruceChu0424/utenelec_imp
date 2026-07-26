@@ -30,10 +30,6 @@ abstract final class Perm {
   /// 渐进替代 DataAccessPolicy 里按角色名硬编码的判断。
   static const employeeCompensationView = 'employee:compensation:view';
 
-  /// 决策支持（经营 Dashboard/多维分析/异常告警）。默认仅 manager/admin，
-  /// 其他人由超管在权限管理页显式授予（V25，与 viewcontext:scoped 解耦）。
-  static const analyticsView = 'analytics:view';
-
   // ===== 采购管理（PMC 运营部；后端 V44 细粒度种子化）=====
   /// 采购申请单
   static const purchaseRequestView = 'purchase_request:view';
@@ -122,6 +118,67 @@ abstract final class Perm {
   static const stockDocView = 'stock_doc:view';
   static const stockDocEdit = 'stock_doc:edit';
 
+  // ===== 销售管理（综合营销部；V51 seed）=====
+  static const salesQuoteView = 'sales_quote:view';
+  static const salesQuoteEdit = 'sales_quote:edit';
+  static const salesOrderView = 'sales_order:view';
+  static const salesOrderEdit = 'sales_order:edit';
+  static const salesShipmentView = 'sales_shipment:view';
+  static const salesShipmentEdit = 'sales_shipment:edit';
+  static const salesOtherShipmentView = 'sales_other_shipment:view';
+  static const salesOtherShipmentEdit = 'sales_other_shipment:edit';
+  static const salesReturnView = 'sales_return:view';
+  static const salesReturnEdit = 'sales_return:edit';
+  static const salesReportView = 'sales_report:view';
+
+  // ===== 委外管理（综合营销部；V53 seed）=====
+  static const subcontractInquiryView = 'subcontract_inquiry:view';
+  static const subcontractInquiryEdit = 'subcontract_inquiry:edit';
+  static const subcontractApplicationView = 'subcontract_application:view';
+  static const subcontractApplicationEdit = 'subcontract_application:edit';
+  static const subcontractOrderView = 'subcontract_order:view';
+  static const subcontractOrderEdit = 'subcontract_order:edit';
+  static const subcontractReceiptView = 'subcontract_receipt:view';
+  static const subcontractReceiptEdit = 'subcontract_receipt:edit';
+  static const subcontractMaterialIssueView = 'subcontract_material_issue:view';
+  static const subcontractMaterialIssueEdit = 'subcontract_material_issue:edit';
+  static const subcontractReturnView = 'subcontract_return:view';
+  static const subcontractReturnEdit = 'subcontract_return:edit';
+  static const subcontractMaterialReturnView =
+      'subcontract_material_return:view';
+  static const subcontractMaterialReturnEdit =
+      'subcontract_material_return:edit';
+  static const subcontractWasteView = 'subcontract_waste:view';
+  static const subcontractWasteEdit = 'subcontract_waste:edit';
+  static const subcontractReportView = 'subcontract_report:view';
+
+  // ===== 生产管理（生产部；V55 seed 细粒度）=====
+  static const productionPlanView = 'production_plan:view';
+  static const productionPlanEdit = 'production_plan:edit';
+  static const productionPlanCostView = 'production_plan_cost:view';
+  static const productionDailyReportView = 'production_daily_report:view';
+  static const productionDailyReportEdit = 'production_daily_report:edit';
+  static const productionReportView = 'production_report:view';
+
+  // ===== 钱流管理（财税部；V57 seed）=====
+  static const financeReceiptView = 'finance_receipt:view';
+  static const financeReceiptEdit = 'finance_receipt:edit';
+  static const financePaymentView = 'finance_payment:view';
+  static const financePaymentEdit = 'finance_payment:edit';
+  static const financeExpenseView = 'finance_expense:view';
+  static const financeExpenseEdit = 'finance_expense:edit';
+  static const financeOtherIncomeView = 'finance_other_income:view';
+  static const financeOtherIncomeEdit = 'finance_other_income:edit';
+  static const financeBankTransferView = 'finance_bank_transfer:view';
+  static const financeBankTransferEdit = 'finance_bank_transfer:edit';
+  static const financeReportView = 'finance_report:view';
+  static const arApLedgerView = 'ar_ap_ledger:view';
+  static const financeReconciliationView = 'finance_reconciliation:view';
+
+  // ===== 收付款类别（基础资料）=====
+  /// 收付款类别：view 全员可见（路由不挂守卫），edit 归财务。
+  static const paymentStyleEdit = 'payment_style:edit';
+
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
   // 后端 V38 以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
 }
@@ -156,7 +213,6 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.profileEditSelf,
       Perm.profileReview,
       Perm.employeeCompensationView,
-      Perm.analyticsView,
       // 财税部新模块（超管兜底，后端漏推也能 work）
       Perm.purchaseView,
       Perm.purchaseEdit,
@@ -203,6 +259,39 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.colorEdit,
       Perm.unitView,
       Perm.unitEdit,
+      // 销售管理（V51）
+      Perm.salesQuoteView, Perm.salesQuoteEdit,
+      Perm.salesOrderView, Perm.salesOrderEdit,
+      Perm.salesShipmentView, Perm.salesShipmentEdit,
+      Perm.salesOtherShipmentView, Perm.salesOtherShipmentEdit,
+      Perm.salesReturnView, Perm.salesReturnEdit,
+      Perm.salesReportView,
+      // 委外管理（V53）
+      Perm.subcontractInquiryView, Perm.subcontractInquiryEdit,
+      Perm.subcontractApplicationView, Perm.subcontractApplicationEdit,
+      Perm.subcontractOrderView, Perm.subcontractOrderEdit,
+      Perm.subcontractReceiptView, Perm.subcontractReceiptEdit,
+      Perm.subcontractMaterialIssueView, Perm.subcontractMaterialIssueEdit,
+      Perm.subcontractReturnView, Perm.subcontractReturnEdit,
+      Perm.subcontractMaterialReturnView, Perm.subcontractMaterialReturnEdit,
+      Perm.subcontractWasteView, Perm.subcontractWasteEdit,
+      Perm.subcontractReportView,
+      // 生产管理（V55）
+      Perm.productionPlanView, Perm.productionPlanEdit,
+      Perm.productionPlanCostView,
+      Perm.productionDailyReportView, Perm.productionDailyReportEdit,
+      Perm.productionReportView,
+      // 钱流管理（V57）
+      Perm.financeReceiptView, Perm.financeReceiptEdit,
+      Perm.financePaymentView, Perm.financePaymentEdit,
+      Perm.financeExpenseView, Perm.financeExpenseEdit,
+      Perm.financeOtherIncomeView, Perm.financeOtherIncomeEdit,
+      Perm.financeBankTransferView, Perm.financeBankTransferEdit,
+      Perm.financeReportView,
+      Perm.arApLedgerView,
+      Perm.financeReconciliationView,
+      // 收付款类别
+      Perm.paymentStyleEdit,
       ...user.permissions,
     };
   }

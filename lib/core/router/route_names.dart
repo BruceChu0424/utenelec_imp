@@ -24,6 +24,8 @@ abstract final class RouteName {
   static const String basicinfoUnit = '/basicinfo/unit';
   static const String basicinfoCurrency = '/basicinfo/currency';
   static const String basicinfoWarehouse = '/basicinfo/warehouse';
+  static const String basicinfoAccount = '/basicinfo/account';
+  static const String basicinfoPaymentStyle = '/basicinfo/payment-style';
 
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
@@ -96,6 +98,31 @@ abstract final class RouteName {
   // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
   static const String warehouse = '/warehouse';
   static const String warehouseReport = '/warehouse/report';
+
+  // 销售管理（综合营销部）：hub + 5 单据 + 报表。
+  // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
+  static const String sales = '/sales';
+  static const String salesReport = '/sales/report';
+
+  // 委外管理（综合营销部）：hub + 8 单据 + 报表。
+  // seg = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
+  static const String subcontract = '/subcontract';
+  static const String subcontractReport = '/subcontract/report';
+
+  // 生产管理（生产部）：hub + 计划单 + BOM 成本 + 日报 + 4 报表入口。
+  static const String production = '/production';
+  static const String productionPlanList = '/production/plans';
+  static const String productionPlanCost = '/production/plan-cost';
+  static const String productionDailyReportList = '/production/daily-reports';
+  // /production/reports/{plan-detail|plan-summary|daily-detail|daily-summary} 用 RoutePath 助手。
+
+  // 钱流管理（财税部）：hub + 5 单据 + AR/AP 台账 + 对账 + 支票 + 报表。
+  // seg = receipts|payments|expenses|incomes|bank-transfers。
+  static const String finance = '/finance';
+  static const String financeArAp = '/finance/ar-ap';
+  static const String financeReconciliations = '/finance/reconciliations';
+  static const String financeChecks = '/finance/checks';
+  static const String financeReport = '/finance/report';
 }
 
 /// 路径拼接工具（带参数的路由）
@@ -126,4 +153,42 @@ abstract final class RoutePath {
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
+
+  /// 销售单据：列表 / 新建 / 详情 / 编辑。
+  /// [seg] = quotes|orders|shipments|other-shipments|returns。
+  static String salesDocList(String seg) => '/sales/$seg';
+  static String salesDocNew(String seg) => '/sales/$seg/new';
+  static String salesDocDetail(String seg, String id) => '/sales/$seg/$id';
+  static String salesDocEdit(String seg, String id) => '/sales/$seg/$id/edit';
+
+  /// 委外单据：列表 / 新建 / 详情 / 编辑。
+  /// [seg] = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
+  static String subcontractDocList(String seg) => '/subcontract/$seg';
+  static String subcontractDocNew(String seg) => '/subcontract/$seg/new';
+  static String subcontractDocDetail(String seg, String id) =>
+      '/subcontract/$seg/$id';
+  static String subcontractDocEdit(String seg, String id) =>
+      '/subcontract/$seg/$id/edit';
+
+  /// 生产计划单 / 日报表：新建 / 详情 / 编辑。
+  static String productionPlanNew() => '/production/plans/new';
+  static String productionPlanDetail(String id) => '/production/plans/$id';
+  static String productionPlanEdit(String id) => '/production/plans/$id/edit';
+  static String productionDailyReportNew() => '/production/daily-reports/new';
+  static String productionDailyReportDetail(String id) =>
+      '/production/daily-reports/$id';
+  static String productionDailyReportEdit(String id) =>
+      '/production/daily-reports/$id/edit';
+
+  /// 生产报表（4 入口）。
+  /// [seg] = plan-detail|plan-summary|daily-detail|daily-summary。
+  static String productionReport(String seg) => '/production/reports/$seg';
+
+  /// 钱流单据：列表 / 新建 / 详情 / 编辑。
+  /// [seg] = receipts|payments|expenses|incomes|bank-transfers。
+  static String financeDocList(String seg) => '/finance/$seg';
+  static String financeDocNew(String seg) => '/finance/$seg/new';
+  static String financeDocDetail(String seg, String id) => '/finance/$seg/$id';
+  static String financeDocEdit(String seg, String id) =>
+      '/finance/$seg/$id/edit';
 }

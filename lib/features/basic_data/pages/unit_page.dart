@@ -7,7 +7,6 @@
 // 文档：见 docs/03-页面/基础资料页.md。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -15,6 +14,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -304,7 +304,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       appBar: UtenAppBar(
         title: '基本单位', // TODO(l10n): 补 arb
         leading: UtenBackButton(
-          onPressed: () => context.go(RouteName.basicinfo),
+          onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
           IconButton(

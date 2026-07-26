@@ -1,0 +1,224 @@
+// 账户流水页（只读查询，finance_reconciliation:view）。
+//
+// 账户下拉过滤 + 关键词 + 来源单据类型。列表展示：单据号/账户/对手方/收入/支出/日期/摘要。
+// 名称解析：账户用 FinanceNameService；账户下拉选项来自 FinanceNameService.accountEntries。
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../models/finance_doc.dart';
+import '../providers/finance_name_provider.dart';
+import '../repositories/finance_repository.dart';
+
+class FinanceReconciliationPage extends ConsumerStatefulWidget {
+  const FinanceReconciliationPage({super.key});
+
+  @override
+  ConsumerState<FinanceReconciliationPage> createState() =>
+      _FinanceReconciliationPageState();
+}
+
+class _FinanceReconciliationPageState
+    extends ConsumerState<FinanceReconciliationPage> {
+  PagedResult<ReconciliationItem>? _page;
+  int _pageNum = 1;
+  bool _loading = false;
+  String? _error;
+  String _keyword = '';
+  String? _accountId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(financeNameServiceProvider).ensureLoaded();
+      _load(1);
+    });
+  }
+
+  Future<void> _load(int page) async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+      _pageNum = page;
+    });
+    try {
+      final r = await ref.read(reconciliationRepositoryProvider).list(
+            page: page,
+            filter: ReconciliationFilter(
+              keyword: _keyword.trim().isEmpty ? null : _keyword,
+              accountId: _accountId,
+            ),
+          );
+      if (!mounted) return;
+      setState(() {
+        _page = r;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = '加载流水失败';
+        _loading = false;
+      });
+    }
+  }
+
+  List<MasterColumnDef<ReconciliationItem>> _columns(FinanceNameService names) {
+    return <MasterColumnDef<ReconciliationItem>>[
+      MasterColumnDef(
+          key: 'billDate',
+          label: '日期',
+          width: 160,
+          value: (it) => (it.billDate ?? '').substring(0, 16)),
+      MasterColumnDef(
+          key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
+      MasterColumnDef(
+          key: 'accountId',
+          label: '账户',
+          width: 180,
+          value: (it) => names.account(it.accountId)),
+      MasterColumnDef(
+          key: 'counterpartName',
+          label: '对手方',
+          width: 160,
+          value: (it) => it.counterpartName),
+      MasterColumnDef(
+          key: 'inAmount',
+          label: '收入',
+          width: 120,
+          value: (it) => it.inAmount == 0 ? null : it.inAmount?.toStringAsFixed(2)),
+      MasterColumnDef(
+          key: 'outAmount',
+          label: '支出',
+          width: 120,
+          value: (it) =>
+              it.outAmount == 0 ? null : it.outAmount?.toStringAsFixed(2)),
+      MasterColumnDef(
+          key: 'sourceDocType',
+          label: '来源',
+          width: 120,
+          value: (it) => it.sourceDocType),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final names = ref.watch(financeNameServiceProvider);
+    final total = _page?.total ?? 0;
+    return Scaffold(
+      appBar: UtenAppBar(
+        title: '账户流水',
+        leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.finance)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: '刷新',
+            onPressed: () => _load(_pageNum),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: UtenContentContainer(
+          child: Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.list_alt_outlined,
+                          size: 18, color: theme.colorScheme.primary),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Text('流水 ($total)',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: UtenSearchBar(
+                          hint: '搜索单据号/对手方/支票号',
+                          initialValue: _keyword,
+                          onChanged: (v) {
+                            setState(() => _keyword = v);
+                            _load(1);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8, left: UtenSpacing.s4),
+                  child: SizedBox(
+                    width: 280,
+                    child: DropdownButtonFormField<String?>(
+                      initialValue: _accountId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                          isDense: true, labelText: '账户'),
+                      items: [
+                        const DropdownMenuItem<String?>(child: Text('全部账户')),
+                        for (final e in names.accountEntries.entries)
+                          DropdownMenuItem<String?>(
+                            value: e.key,
+                            child: Text(e.value,
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: (v) {
+                        setState(() => _accountId = v);
+                        _load(1);
+                      },
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: MasterDataTableView<ReconciliationItem>(
+                    columns: _columns(names),
+                    items: _page?.items ?? const [],
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    onRowTap: (_) {},
+                    isLoading: _loading && _page == null,
+                    loadingMore: _loading && _page != null,
+                    error: _error,
+                    onRetry: () => _load(_pageNum),
+                    emptyMessage: '暂无流水',
+                    currentPage: _page?.page ?? 1,
+                    totalPages: _page?.totalPages ?? 1,
+                    onPageChange: (p) => _load(p),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

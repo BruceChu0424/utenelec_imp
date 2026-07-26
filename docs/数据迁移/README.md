@@ -53,7 +53,14 @@ curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
 | **客户主档** | ✅ 已实现 | `B_Client`（260 条，34 字段） | `clients` | `migrate.sh --client-data` | （字段映射见 V36__client.sql） |
 | **供应商分类** | ✅ 已实现 | `SystemItem` (ItemclassID=3，15 扁平根) | `supplier_categories` | `migrate.sh --supplier` | [08-老库溯源](08-供应商资料-老库溯源.md) · [09-新库与迁移](09-供应商资料-新库与迁移.md) |
 | **供应商主档** | ✅ 已实现 | `B_Provider`（386 条，29 字段） | `suppliers` | `migrate.sh --supplier-data` | （字段映射见 V38__supplier.sql） |
-| 工资 / 报销 / 库存 / 检测 / 生产 | ⏳ 待做 | `W_*` / `B_*` / `Stock*` / `C_*` / `F_*` | 待 | 待 | — |
+| **币种 / 仓库** | ✅ 已实现 | `B_Currency`(3) / `B_Storage`(6) | `currencies` / `warehouses` | `migrate.sh --currency-data` / `--warehouse-data` | [15-采购 §三](15-采购模块-新库与迁移.md)（归基础资料） |
+| **采购管理** | ✅ 已实现 | `P_Application`/`P_Order`/`P_In`/`P_Withdraw`（主+明，十几万行） | `purchase_requests/orders/receipts/returns(+_items)` | `migrate.sh --purchase` | [14-老库溯源](14-采购模块-老库溯源.md) · [15-新库与迁移](15-采购模块-新库与迁移.md) |
+| **库存（流水+余额）** | ✅ 已实现 | `StockGoods`(45万) + 9 类 `O_*` 单据 | `stock_movements` / `stock_balances` / `stock_documents(+_items)` | `migrate.sh --stock-docs` | [16-老库溯源](16-仓库管理-老库溯源.md) · [17-新库与迁移](17-仓库管理-新库与迁移.md) |
+| **销售管理** | ✅ 已实现 | `S_Order`(10653)/`S_Out`(12124)/`S_OtherOut`(1558)/`S_Withdraw`(221)（在用）+`S_Quote`(0) | `sales_orders/shipments/other_shipments/returns(+_items)` | `migrate.sh --sales` | [18-总路线图](18-业务四模块-总路线图.md) · [19-老库溯源](19-销售管理-老库溯源.md) · [20-新库与迁移](20-销售管理-新库与迁移.md) |
+| **委外管理** | ✅ 已实现 | `E_` 前缀（**确认是委外**）：`E_In`(10732)/`E_SOut`(10627)/`E_WithDraw`/`E_SWithDraw`/`E_SWaste` | `subcontract_*`（8 单据） | `migrate.sh --subcontract` | [18] · [21-老库溯源](21-委外管理-老库溯源.md) · [22-新库与迁移](22-委外管理-新库与迁移.md) |
+| **生产管理** | ✅ 已实现 | `F_Plan`(7235)+Item(73388) / **`F_PlanCostItem`(1359892)** / `F_DateReport`(0) | `production_plans(+items/+costs 按年分区)` / `production_daily_reports` | `migrate.sh --production` | [18] · [23-老库溯源](23-生产管理-老库溯源.md) · [24-新库与迁移](24-生产管理-新库与迁移.md) |
+| **钱流管理** | ✅ 已实现 | `M_Get`/`M_In`(42489)/`M_Paid`/`M_Out`(44525)/`M_DPaid`/`M_OGet`/`M_Acc`(27)/`M_Style`(124)/`M_AllCheck` | `finance_receipts/payments/expenses/...(+_lines)` + 统一 `ar_ap_ledger`(87014) + `accounts`/`payment_styles` 主档 | `migrate.sh --finance` | [18] · [25-老库溯源](25-钱流管理-老库溯源.md) · [26-新库与迁移](26-钱流管理-新库与迁移.md) |
+| 工资 / 报销 / 检测 | ⏳ 待做 | `W_*` / `B_*` / `C_*` | 待 | 待 | — |
 
 > 模块对应的完整老库结构见 [01-YTDQ老库总览](01-YTDQ老库总览.md)。
 
@@ -135,4 +142,4 @@ server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classp
 
 ---
 
-**最后更新**：2026-07-25 · **已实现模块**：货品（分类+主档）+ 模具（分类+主档）+ 客户（分类+主档）+ 供应商（分类+主档）+ 颜色 + 基本单位 —— 10/∞
+**最后更新**：2026-07-26 · **已实现模块**：货品/模具/客户/供应商（分类+主档）+ 颜色/单位/币种/仓库 + 采购（4 单据）+ 库存（流水+余额+仓库 9 单据）+ **销售/委外/生产/钱流（4 业务模块，全链路打通：DDL V50-V63 + 数据 100% 迁移 + Java 后端 + Flutter 前端 + e2e 验证 + UI 屏幕利用率优化）** —— 见 [18-总路线图](18-业务四模块-总路线图.md) · [27-DDL契约](27-DDL一致性契约.md) · [28-Java契约](28-Java后端契约.md) · [29-后续TODO路线图](29-后续优化与待办路线图.md) · [30-UI优化方案](30-UI屏幕利用率优化方案.md)

@@ -1,11 +1,11 @@
 // 出入库流水查询页（库存管理，stock:view）：仓库筛选 + 流水列表（类型/方向/货品/仓库名解析）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
@@ -61,7 +61,8 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '出入库流水',
-        leading: UtenBackButton(onPressed: () => context.go(RouteName.purchase)),
+        leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
       ),
       body: SafeArea(
         child: UtenContentContainer(

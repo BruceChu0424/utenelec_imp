@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -326,95 +327,100 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(children: [
-                          TextField(
-                            controller: _billNo,
-                            decoration: const InputDecoration(labelText: '单据号 *'),
-                          ),
-                          const SizedBox(height: UtenSpacing.s8),
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text('单据日期'),
-                            subtitle: Text(_fmt(_billDate)),
-                            trailing: const Icon(Icons.calendar_today_outlined, size: 18),
-                            onTap: () => _pickDate(
-                              current: _billDate,
-                              onPicked: (d) => _billDate = d,
-                            ),
-                          ),
-                          if (_cfg.hasSupplier)
-                            _dropdown('供应商', _supplierId, names.supplierEntries,
-                                (v) => setState(() => _supplierId = v),
-                                required: _cfg.supplierRequired),
-                          _dropdown('仓库', _warehouseId, names.warehouseEntries,
-                              (v) => setState(() => _warehouseId = v)),
-                          if (_cfg.hasCurrency) ...[
-                            _dropdown('币种', _currencyId, names.currencyEntries,
-                                (v) => setState(() => _currencyId = v)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            UtenFormGrid(children: [
+                              TextField(
+                                controller: _billNo,
+                                decoration: const InputDecoration(labelText: '单据号 *'),
+                              ),
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text('单据日期'),
+                                subtitle: Text(_fmt(_billDate)),
+                                trailing: const Icon(Icons.calendar_today_outlined, size: 18),
+                                onTap: () => _pickDate(
+                                  current: _billDate,
+                                  onPicked: (d) => _billDate = d,
+                                ),
+                              ),
+                              if (_cfg.hasSupplier)
+                                _dropdown('供应商', _supplierId, names.supplierEntries,
+                                    (v) => setState(() => _supplierId = v),
+                                    required: _cfg.supplierRequired),
+                              _dropdown('仓库', _warehouseId, names.warehouseEntries,
+                                  (v) => setState(() => _warehouseId = v)),
+                              if (_cfg.hasCurrency) ...[
+                                _dropdown('币种', _currencyId, names.currencyEntries,
+                                    (v) => setState(() => _currencyId = v)),
+                                TextField(
+                                  controller: _rate,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(labelText: '汇率'),
+                                ),
+                              ],
+                              // 人员字段（按 config 显隐）
+                              if (_cfg.hasApplicant)
+                                _employeePicker(
+                                  label: '申请人',
+                                  currentId: _applicantId,
+                                  onChanged: (id) => setState(() => _applicantId = id),
+                                ),
+                              if (_cfg.hasPurchaser)
+                                _employeePicker(
+                                  label: '采购员',
+                                  currentId: _purchaserId,
+                                  onChanged: (id) => setState(() => _purchaserId = id),
+                                ),
+                              if (_cfg.hasSender)
+                                _employeePicker(
+                                  label: '交货人',
+                                  currentId: _senderId,
+                                  onChanged: (id) => setState(() => _senderId = id),
+                                ),
+                              if (_cfg.hasReceiver)
+                                _employeePicker(
+                                  label: '收货人',
+                                  currentId: _receiverId,
+                                  onChanged: (id) => setState(() => _receiverId = id),
+                                ),
+                              // 日期字段（按 config 显隐）
+                              if (_cfg.hasNeedDate)
+                                ListTile(
+                                  contentPadding: const EdgeInsets.only(top: UtenSpacing.s8),
+                                  title: const Text('需求日期'),
+                                  subtitle: Text(_needDate == null
+                                      ? '未选择'
+                                      : _fmt(_needDate!)),
+                                  trailing: const Icon(Icons.event_outlined, size: 18),
+                                  onTap: () => _pickDate(
+                                    current: _needDate,
+                                    onPicked: (d) => _needDate = d,
+                                  ),
+                                ),
+                              if (_cfg.hasDeliverDate)
+                                ListTile(
+                                  contentPadding: const EdgeInsets.only(top: UtenSpacing.s8),
+                                  title: const Text('交货日期'),
+                                  subtitle: Text(_deliverDate == null
+                                      ? '未选择'
+                                      : _fmt(_deliverDate!)),
+                                  trailing: const Icon(Icons.event_outlined, size: 18),
+                                  onTap: () => _pickDate(
+                                    current: _deliverDate,
+                                    onPicked: (d) => _deliverDate = d,
+                                  ),
+                                ),
+                            ]),
+                            const SizedBox(height: UtenSpacing.s12),
                             TextField(
-                              controller: _rate,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(labelText: '汇率'),
+                              controller: _remark,
+                              decoration: const InputDecoration(labelText: '备注'),
+                              maxLines: 2,
                             ),
                           ],
-                          // 人员字段（按 config 显隐）
-                          if (_cfg.hasApplicant)
-                            _employeePicker(
-                              label: '申请人',
-                              currentId: _applicantId,
-                              onChanged: (id) => setState(() => _applicantId = id),
-                            ),
-                          if (_cfg.hasPurchaser)
-                            _employeePicker(
-                              label: '采购员',
-                              currentId: _purchaserId,
-                              onChanged: (id) => setState(() => _purchaserId = id),
-                            ),
-                          if (_cfg.hasSender)
-                            _employeePicker(
-                              label: '交货人',
-                              currentId: _senderId,
-                              onChanged: (id) => setState(() => _senderId = id),
-                            ),
-                          if (_cfg.hasReceiver)
-                            _employeePicker(
-                              label: '收货人',
-                              currentId: _receiverId,
-                              onChanged: (id) => setState(() => _receiverId = id),
-                            ),
-                          // 日期字段（按 config 显隐）
-                          if (_cfg.hasNeedDate)
-                            ListTile(
-                              contentPadding: const EdgeInsets.only(top: UtenSpacing.s8),
-                              title: const Text('需求日期'),
-                              subtitle: Text(_needDate == null
-                                  ? '未选择'
-                                  : _fmt(_needDate!)),
-                              trailing: const Icon(Icons.event_outlined, size: 18),
-                              onTap: () => _pickDate(
-                                current: _needDate,
-                                onPicked: (d) => _needDate = d,
-                              ),
-                            ),
-                          if (_cfg.hasDeliverDate)
-                            ListTile(
-                              contentPadding: const EdgeInsets.only(top: UtenSpacing.s8),
-                              title: const Text('交货日期'),
-                              subtitle: Text(_deliverDate == null
-                                  ? '未选择'
-                                  : _fmt(_deliverDate!)),
-                              trailing: const Icon(Icons.event_outlined, size: 18),
-                              onTap: () => _pickDate(
-                                current: _deliverDate,
-                                onPicked: (d) => _deliverDate = d,
-                              ),
-                            ),
-                          TextField(
-                            controller: _remark,
-                            decoration: const InputDecoration(labelText: '备注'),
-                            maxLines: 2,
-                          ),
-                        ]),
+                        ),
                       ),
                     ),
                     const SizedBox(height: UtenSpacing.s12),

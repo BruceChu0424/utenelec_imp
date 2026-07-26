@@ -32,9 +32,9 @@ public class PurchaseReportService {
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
                 FROM purchase_monthly_mv
                 WHERE (:docType IS NULL OR doc_type = :docType)
-                  AND (:from IS NULL OR ym >= :from)
-                  AND (:to IS NULL OR ym <= :to)
-                GROUP BY doc_type, goods_id, supplier_id
+                  AND (CAST(:from AS date) IS NULL OR ym >= :from)
+                  AND (CAST(:to AS date) IS NULL OR ym <= :to)
+                GROUP BY doc_type, ym, goods_id, supplier_id
                 ORDER BY amt DESC NULLS LAST
                 LIMIT :limit
                 """);

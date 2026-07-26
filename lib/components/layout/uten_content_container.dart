@@ -12,6 +12,7 @@
 // 用法：
 //   UtenContentContainer(child: 页面内容)          // 列表/工作台等宽页面
 //   UtenContentContainer.narrow(child: 表单)       // 表单/详情等窄页面（maxWidth 1120）
+//   UtenContentContainer.wide(child: 列表/报表)    // 数据页全宽（不钳制、靠左顶满侧栏右沿）
 
 import 'dart:math' as math;
 
@@ -48,8 +49,29 @@ class UtenContentContainer extends StatelessWidget {
     );
   }
 
+  /// 宽内容变体：列表 / 报表页专用（实质不钳制最大宽度、靠左顶满侧栏右沿）
+  ///
+  /// 用于以表格为主的"数据页"，让表顶到导航侧栏右沿，避免超宽屏两侧大留白。
+  /// 仍保留响应式水平 gutter（<600:16 / <840:24 / >=840:32）。
+  factory UtenContentContainer.wide({
+    Key? key,
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return UtenContentContainer(
+      key: key,
+      maxWidth: wideMaxWidth,
+      padding: padding,
+      center: false,
+      child: child,
+    );
+  }
+
   /// 窄内容变体的最大宽度（表单 / 详情页）
   static const double narrowMaxWidth = 1120;
+
+  /// 宽内容变体的最大宽度（实质不钳制：超过任何常见显示器宽度即可）
+  static const double wideMaxWidth = 4000;
 
   /// 内容
   final Widget child;

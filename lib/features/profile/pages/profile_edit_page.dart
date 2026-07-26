@@ -30,6 +30,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -317,7 +318,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         title: l10n.profileChangeEditTitle,
         // go 进入（非 push），栈被替换；返回显式回"我的"页
         leading: UtenBackButton(
-          onPressed: () => context.go(RouteName.profile),
+          onPressed: () => backTo(context, defaultPath: RouteName.profile),
         ),
       ),
       body: _loading

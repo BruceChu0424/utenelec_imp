@@ -6,12 +6,12 @@
 // 流水无 facet → 表头渲染纯标签。货品名按当页 id 批量 lookup 后解析。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
@@ -199,7 +199,7 @@ class _WarehouseReportPageState extends ConsumerState<WarehouseReportPage> {
       appBar: UtenAppBar(
         title: '仓库报表', // TODO(l10n): 补 arb
         leading: UtenBackButton(
-            onPressed: () => context.go(RouteName.warehouse)),
+            onPressed: () => backTo(context, defaultPath: RouteName.warehouse)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),

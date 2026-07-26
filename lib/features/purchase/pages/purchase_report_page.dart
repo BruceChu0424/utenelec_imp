@@ -2,13 +2,13 @@
 // + 待交货订货汇总。明细报表复用 4 单据列表页（带日期/供应商/状态过滤）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../providers/master_name_provider.dart';
@@ -116,7 +116,8 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '采购报表',
-        leading: UtenBackButton(onPressed: () => context.go(RouteName.purchase)),
+        leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
       ),
       body: SafeArea(
         child: UtenContentContainer(

@@ -21,7 +21,7 @@
 # Output lands in ./data/ (next to goods_categories.csv / goods.csv).
 # =====================================================================
 param(
-    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'All')]
+    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
     [string]$Target = 'All'
 )
 
@@ -168,6 +168,78 @@ $whCheckItem = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goo
 # StockGoods ledger (rebuild stock_balances opening; sg_stage: stock_legacy,goods_legacy,color_legacy,year,qty,total)
 $whStockGoods = 'SELECT StockID AS stock_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, Year AS year, QTY AS qty, Total AS total FROM StockGoods ORDER BY StockID, GoodsID, ColorID, Year'
 
+# ---- Sales documents (5 doc mains + 5 item tables + 1 BOM cost). Cols match migrate_sales.sql staging. ----
+# S_Quote (0 rows in legacy; structure-only export keeps \copy idempotent).
+$salesQuoteSql      = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, ClientID AS client_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, [Stop] AS stop_bit, Remark AS remark, Total AS total_original, Status AS status, Status2 AS status2 FROM S_Quote ORDER BY ID'
+$salesQuoteItemSql  = 'SELECT ID AS legacy_id, BillID AS bill_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, UnitID AS unit_legacy, URate AS unit_rate, BQTY AS qty, Price AS price, SPrice AS sprice, Summary AS remark FROM S_QuoteItem ORDER BY ID'
+# S_Order / S_OrderItem / S_OrderCostItem. SStyle -> ship_addr (SStyle = shipping place). [Level]/[Stop] bracketed.
+$salesOrderSql      = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, ClientID AS client_legacy, SendDate AS deliver_date, LinkPhone AS link_phone, SignAddr AS sign_addr, ContractNo AS contract_no, SellerID AS seller_legacy, PStyle AS p_style, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, Fulfill AS fulfill_bit, [Stop] AS stop_bit, SStyle AS ship_addr, Deposit AS deposit, CurID AS cur_legacy, TRate AS tax_rate, CRate AS exchange_rate, Cancel AS cancel_bit FROM S_Order ORDER BY ID'
+$salesOrderItemSql  = 'SELECT ID AS legacy_id, BillID AS bill_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, QTY AS qty, Price AS price, Total AS amount_original, RQTY AS shipped_qty, WQTY AS returned_qty, FlagQTY AS flag_qty, Discount AS discount, TTotal AS tax_amount, UnitID AS unit_legacy, URate AS unit_rate, Weight AS weight, NULL AS client_no, CNumber AS client_model, InNo AS in_no, PlanNo AS plan_no, OutNo AS out_no, SWDrawNo AS swdraw_no, Summary AS remark FROM S_OrderItem ORDER BY ID'
+$salesOrderCostSql  = 'SELECT ID AS legacy_id, BillID AS bill_legacy, ParentID AS parent_legacy, [Level] AS level, Class AS class_code, GoodsID AS goods_legacy, ColorID AS color_legacy, MGoodsID AS alt_goods_legacy, MColorID AS alt_color_legacy, QTY AS qty, Price AS price, Total AS amount_original, OrderQTY AS order_qty, INQTY AS received_qty, PDrawQTY AS draw_qty, PWDrawQTY AS purge_qty, OWDrawQTY AS other_draw_qty, VendID AS supplier_legacy, LStatus AS l_status, POrderNo AS porder_no, PDrawNo AS pdraw_no, PInNo AS pin_no, PWDrawNo AS pwdraw_no, OWDrawNo AS owdraw_no, Summary AS remark FROM S_OrderCostItem ORDER BY ID'
+# S_Out / S_OutItem (main volume). KQTY -> parcel_qty, Boxs -> carton_count, STotal -> cost_amount.
+$salesOutSql        = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, ClientID AS client_legacy, StockID AS warehouse_legacy, LinkPhone AS link_phone, PCount AS p_count, SenderID AS sender_legacy, ShipAddr AS ship_addr, PStyle AS p_style, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, PrintTable AS print_count, Last_Date AS last_date, TRate AS tax_rate, CurID AS cur_legacy, CRate AS exchange_rate, SellerID AS seller_legacy, Cancel AS cancel_bit FROM S_Out ORDER BY ID'
+$salesOutItemSql    = 'SELECT ID AS legacy_id, BillID AS bill_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, QTY AS qty, Price AS price, Total AS amount_original, OrderID AS order_item_legacy, STotal AS cost_amount, WQTY AS returned_qty, SWDrawNo AS swdraw_no, OrderNo AS order_no, UnitID AS unit_legacy, URate AS unit_rate, SWTotal AS returned_amount, Discount AS discount, TTotal AS tax_amount, Boxs AS carton_count, KQTY AS parcel_qty, Weight AS weight, ClientNo AS client_no, CNumber AS client_model, Summary AS remark FROM S_OutItem ORDER BY ID'
+# S_OtherOut / S_OtherOutItem (same column shape as S_Out / S_OutItem).
+$salesOtherOutSql   = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, ClientID AS client_legacy, StockID AS warehouse_legacy, LinkPhone AS link_phone, PCount AS p_count, SenderID AS sender_legacy, ShipAddr AS ship_addr, PStyle AS p_style, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, PrintTable AS print_count, Last_Date AS last_date, TRate AS tax_rate, CurID AS cur_legacy, CRate AS exchange_rate, SellerID AS seller_legacy, Cancel AS cancel_bit FROM S_OtherOut ORDER BY ID'
+$salesOtherOutItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, QTY AS qty, Price AS price, Total AS amount_original, OrderID AS order_item_legacy, STotal AS cost_amount, WQTY AS returned_qty, SWDrawNo AS swdraw_no, OrderNo AS order_no, UnitID AS unit_legacy, URate AS unit_rate, SWTotal AS returned_amount, Discount AS discount, TTotal AS tax_amount, Boxs AS carton_count, KQTY AS parcel_qty, Weight AS weight, ClientNo AS client_no, CNumber AS client_model, Summary AS remark FROM S_OtherOutItem ORDER BY ID'
+# S_Withdraw / S_WithdrawItem (no TRate / SendDate / ShipAddr / SenderID).
+$salesWithdrawSql   = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, ClientID AS client_legacy, StockID AS warehouse_legacy, PStyle AS p_style, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, Last_Date AS last_date, CurID AS cur_legacy, CRate AS exchange_rate, SellerID AS seller_legacy, Cancel AS cancel_bit FROM S_Withdraw ORDER BY ID'
+$salesWithdrawItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, QTY AS qty, Price AS price, Total AS amount_original, OutNo AS out_no, OutID AS out_item_legacy, OrderID AS order_item_legacy, SOrderNo AS sorder_no, UnitID AS unit_legacy, URate AS unit_rate, Weight AS weight, KQTY AS parcel_qty, Boxs AS carton_count, Discount AS discount, STotal AS cost_amount, CNumber AS client_model, qlfa AS solution, zrdw AS responsible, Summary AS remark FROM S_WithdrawItem ORDER BY ID'
+
+# ---- Subcontract (E_*) 8 docs + 8 items + 1 BOM cost (17 tables). Cols match migrate_subcontract.sql staging. ----
+# Multi-value source columns (BomItemID / EOrderNo / SOrderNo / PlanNo / ... ) merged via CONCAT_WS into source_doc_no.
+$subAskSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, MakeID AS maker_legacy, ApproverID AS approver_legacy, [Status] AS status, Total AS total_original, [Stop] AS stop_bit, Cancel AS cancel_bit, Remark AS remark FROM E_Ask ORDER BY ID'
+$subAskItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, Price AS price, Summary AS summary FROM E_AskItem ORDER BY ID'
+$subApplicationSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, SenderID AS sender_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, Last_Date AS last_date, CurID AS currency_legacy_id, CRate AS exchange_rate, TRate AS tax_rate, [Status] AS status, Total AS total_original, Cancel AS cancel_bit, Remark AS remark FROM E_Application ORDER BY ID'
+$subApplicationItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS amount_original, OrderID AS order_item_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, CQTY AS check_qty, Weight AS weight, NULLIF(CONCAT_WS('' | '', NULLIF(SOrderNo, ''''), NULLIF(PlanNo, ''''), NULLIF(BomItemID, ''''), NULLIF(OrderNo, '''')), '''') AS source_doc_no FROM E_ApplicationItem ORDER BY ID'
+$subOrderSql         = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, SendDate AS deliver_date, SendID AS send_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, Fulfill AS fulfill_bit, [Stop] AS stop_bit, CurID AS currency_legacy_id, CRate AS exchange_rate, TRate AS tax_rate, Total AS total_original, [Status] AS status, Cancel AS cancel_bit, Remark AS remark FROM E_Order ORDER BY ID'
+$subOrderItemSql     = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, QTY AS qty, Price AS price, Total AS amount_original, IQTY AS received_qty, OQTY AS issued_qty, WQTY AS returned_qty, Weight AS weight, NULLIF(CONCAT_WS('' | '', NULLIF(ESONo, ''''), NULLIF(ESWNo, ''''), NULLIF(EInNo, ''''), NULLIF(SWDrawNo, ''''), NULLIF(SOrderNo, ''''), NULLIF(PlanNo, ''''), NULLIF(BomItemID, '''')), '''') AS source_doc_no FROM E_OrderItem ORDER BY ID'
+$subOrderCostItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, MGoodsID AS m_goods_legacy_id, MColorID AS m_color_legacy_id, ParentID AS parent_legacy_id, DQTY AS unit_qty, SQTY AS issued_qty, WQTY AS returned_qty, [Class] AS line_class, [Level] AS bom_level, NULLIF(CONCAT_WS('' | '', NULLIF(SendNo, ''''), NULLIF(WDrawNo, '''')), '''') AS source_doc_no FROM E_OrderCostItem ORDER BY ID'
+$subInSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, SenderID AS sender_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, Last_Date AS last_date, CurID AS currency_legacy_id, CRate AS exchange_rate, TRate AS tax_rate, Total AS total_original, [Status] AS status, Cancel AS cancel_bit, Remark AS remark FROM E_In ORDER BY ID'
+$subInItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS amount_original, OrderID AS order_item_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, STotal AS amount_local, CQTY AS check_qty, OrderQTY AS order_qty, WQTY AS returned_qty, Weight AS weight, NULLIF(CONCAT_WS('' | '', NULLIF(EWDrawNo, ''''), NULLIF(OrderNo, ''''), NULLIF(SOrderNo, ''''), NULLIF(PlanNo, ''''), NULLIF(BomItemID, '''')), '''') AS source_doc_no FROM E_InItem ORDER BY ID'
+$subSOutSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, WorkID AS worker_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, SendDate AS deliver_date, [Status] AS status, Cancel AS cancel_bit, Remark AS remark FROM E_SOut ORDER BY ID'
+$subSOutItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, QTY AS qty, STQTY AS stqty, EOrderID AS order_item_legacy_id, STotal AS amount_local, WQTY AS returned_qty, MGoodsID AS parent_goods_legacy_id, MColorID AS parent_color_legacy_id, Weight AS weight, NULLIF(CONCAT_WS('' | '', NULLIF(BomItemID, ''''), NULLIF(EOrderNo, ''''), NULLIF(WDrawNo, '''')), '''') AS source_doc_no FROM E_SOutItem ORDER BY ID'
+$subWithdrawSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, MakeID AS maker_legacy, ApproverID AS approver_legacy, Last_Date AS last_date, CurID AS currency_legacy_id, CRate AS exchange_rate, Total AS total_original, [Status] AS status, Cancel AS cancel_bit, Remark AS remark FROM E_WithDraw ORDER BY ID'
+$subWithdrawItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS amount_original, InID AS receipt_item_legacy_id, OrderID AS order_item_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, STotal AS amount_local, Weight AS weight, NULLIF(CONCAT_WS('' | '', NULLIF(InNo, ''''), NULLIF(OrderNo, ''''), NULLIF(SOrderNo, ''''), NULLIF(PlanNo, ''''), NULLIF(BomItemID, '''')), '''') AS source_doc_no FROM E_WithDrawItem ORDER BY ID'
+$subSWithdrawSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, WorkID AS worker_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, BStyle AS b_style, [Status] AS status, Cancel AS cancel_bit, Remark AS remark FROM E_SWithDraw ORDER BY ID'
+$subSWithdrawItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, QTY AS qty, EOutID AS material_issue_item_legacy_id, EOrderID AS order_item_legacy_id, STotal AS amount_local, MGoodsID AS parent_goods_legacy_id, MColorID AS parent_color_legacy_id, Weight AS weight, NULLIF(CONCAT_WS('' | '', NULLIF(EOutNo, ''''), NULLIF(EOrderNo, ''''), NULLIF(BomItemID, ''''), NULLIF(SWasteNo, '''')), '''') AS source_doc_no FROM E_SWithDrawItem ORDER BY ID'
+$subSWasteSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, WorkerID AS worker_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, Weight AS total_weight, [Status] AS status, Cancel AS cancel_bit, Remark AS remark FROM E_SWaste ORDER BY ID'
+$subSWasteItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, QTY AS qty, FQTY AS ending_qty, OQTY AS standard_qty, WRate AS waste_rate, Cause AS cause, OutID AS material_issue_item_legacy_id, STotal AS amount_local, Weight AS weight, NULLIF(CONCAT_WS('' | '', NULLIF(OutNo, ''''), NULLIF(WDrawNo, ''''), NULLIF(EOrderNo, '''')), '''') AS source_doc_no FROM E_SWasteItem ORDER BY ID'
+
+# ---- Production (F_*) 5 tables. Cols match migrate_production.sql staging. ----
+# F_PlanCostItem merges 9 multi-value source-doc cols into source_doc_no with PO:/PI:/... prefixes.
+$planSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, FStyle AS f_style, DDate AS delivery_date, WorkShop AS workshop_name, WorkerID AS worker_name, Seller AS seller_name, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Status AS status, Fulfill AS fulfill_bit, Stop AS stop_bit, Cancel AS cancel_bit FROM F_Plan ORDER BY ID'
+$planItemSql = 'SELECT ID AS legacy_id, BillID AS plan_legacy_id, ProductNo AS product_no, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, MGoodsID AS mgoods_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, S_OrderID AS s_order_item_legacy, S_OrderNo AS sales_order_no, Client AS client_name, ClientNo AS client_no, OQTY AS oqty, QTY AS qty, LQTY AS lqty, IQTY AS iqty, FQTY AS fqty, RQTY AS rqty, BQTY AS bqty, TQTY AS tqty, PAQTY AS paqty, ISRQTY AS isrqty, CPQTY AS cpqty, POQTY AS poqty, PIQTY AS piqty, OderDate AS order_date, OutDate AS outbound_date, PBeginDate AS plan_begin_date, PEndDate AS plan_end_date, FWeight AS finished_weight, IWeight AS inbound_weight, LStatus AS lstatus, CStatus AS cstatus, StepID AS step_legacy_id, VeilID AS veil_legacy_id, AssTeamID AS ass_team_legacy_id, Fittings AS fittings, Request AS request_note, CNumber AS customer_model, Discount AS discount, LabelNo AS label_no, PAppNo AS plan_app_no, InNo AS in_no, TranNo AS tran_no, Summary AS remark FROM F_PlanItem ORDER BY ID'
+$planCostSql = 'SELECT ID AS legacy_id, BillID AS bill_item_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS total, Summary AS summary, VendID AS supplier_legacy_id, OrderQTY AS order_qty, PDrawQTY AS pdraw_qty, Class AS node_class, MGoodsID AS mgoods_legacy_id, MColorID AS mcolor_legacy_id, AssTeamID AS ass_team_legacy_id, ParentID AS parent_legacy_id, DQTY AS dqty, INQTY AS in_qty, PWDrawQTY AS pwdraw_qty, SOCItemID AS soc_item_legacy_id, OWDrawQTY AS owdraw_qty, LQTY AS lqty, PQTY AS pqty, SLQTY AS slqty, RQTY AS rqty, LStatus AS lstatus, MQTY AS mqty, EOQTY AS eo_qty, EIQTY AS ei_qty, EWQTY AS ew_qty, Level AS level, PAQTY AS pa_qty, NULLIF(CONCAT_WS('' | '', CASE WHEN NULLIF(POrderNo,'''') IS NULL THEN NULL ELSE ''PO:'' + POrderNo END, CASE WHEN NULLIF(PInNo,'''') IS NULL THEN NULL ELSE ''PI:'' + PInNo END, CASE WHEN NULLIF(PWDrawNo,'''') IS NULL THEN NULL ELSE ''PW:'' + PWDrawNo END, CASE WHEN NULLIF(PDrawNo,'''') IS NULL THEN NULL ELSE ''PD:'' + PDrawNo END, CASE WHEN NULLIF(OWDrawNo,'''') IS NULL THEN NULL ELSE ''OW:'' + OWDrawNo END, CASE WHEN NULLIF(EONo,'''') IS NULL THEN NULL ELSE ''EO:'' + EONo END, CASE WHEN NULLIF(EINo,'''') IS NULL THEN NULL ELSE ''EI:'' + EINo END, CASE WHEN NULLIF(EWNo,'''') IS NULL THEN NULL ELSE ''EW:'' + EWNo END, CASE WHEN NULLIF(PAppNo,'''') IS NULL THEN NULL ELSE ''PA:'' + PAppNo END), '''') AS source_doc_no FROM F_PlanCostItem ORDER BY ID'
+$drSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, StockID AS warehouse_legacy_id, WorkerID AS worker_legacy_id, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Status AS status, VendID AS supplier_legacy_id, Cancel AS cancel_bit, WorkShop AS workshop_legacy_id FROM F_DateReport ORDER BY ID'
+$driSql = 'SELECT ID AS legacy_id, BillID AS report_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Summary AS remark, OrderNo AS sales_order_no, PlanNo AS plan_no, OrderID AS sales_order_item_legacy, PlanID AS plan_item_legacy_id, Price AS price, Total AS total, Client AS client_name, UnitID AS unit_legacy_id, URate AS unit_rate, Boxs AS boxes, KQTY AS per_box_qty, STotal AS stotal, Weight AS weight, OrderDate AS order_date, OrderQTY AS order_qty, OutQTY AS outbound_qty, OutNo AS outbound_no, StepID AS step_legacy_id FROM F_DateReportItem ORDER BY ID'
+
+# ---- Finance (M_*) 12 money-flow tables. Cols match migrate_finance.sql staging. ----
+# M_Acc (27 rows) -> accounts. AStyle kept for reference (discarded in migrate).
+$mAccSql = 'SELECT ID AS legacy_id, Number AS code, AccName AS name, AccNode AS bank_account_no, InitTotal AS init_balance, GetTotal AS receipts_total, PaidTotal AS payments_total, ISNULL(FactTotal,0) AS balance_current, ISNULL(Remark,'''') AS remark, ISNULL(ParentID,0) AS parent_legacy_id, ISNULL(Status,'''') AS status, ISNULL(StyleID,0) AS style_legacy_id, ISNULL(AStyle,1) AS a_style FROM M_Acc ORDER BY ID'
+# M_Style (124 rows) -> payment_styles. Status/DeptStatus/QStatus/OrientStatus1/OrientStatus2 bit -> True/False.
+$mStyleSql = 'SELECT ID AS legacy_id, StyleClassid AS style_class_id, StyleNumber AS code, StyleName AS name, ISNULL(Parentid,0) AS parent_legacy, ISNULL(Remark,'''') AS remark, ISNULL(Status,0) AS status, ISNULL(DeptStatus,0) AS dept_status, ISNULL(NextNumber,'''') AS next_number, InitTotal AS init_total, ISNULL(QStatus,0) AS q_status, ISNULL(OrientStatus1,0) AS orient_status1, ISNULL(OrientStatus2,0) AS orient_status2, ISNULL(Unit,'''') AS unit, ISNULL(ItemID,0) AS item_id FROM M_Style ORDER BY ID'
+# M_in (42,489 rows) -> ar_ap_ledger direction=AR. [M_In] bracket-quoted (column shares table name).
+$mInSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, ISNULL(ClientID,0) AS client_legacy_id, MIn_Date AS bill_date, Last_Date AS due_date, Total AS total, [M_In] AS settled, M_Rare AS balance, ISNULL(Note,'''') AS note, Paid AS paid_bit, PaidDate AS paid_date, ISNULL(BStyle,0) AS b_style, ISNULL(PStyle,0) AS p_style, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(CurID,0) AS currency_legacy_id, ISNULL(CRate,1) AS exchange_rate FROM M_In ORDER BY ID'
+# M_out (44,534 rows) -> ar_ap_ledger direction=AP. Symmetric to M_in.
+$mOutSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, ISNULL(VendID,0) AS supplier_legacy_id, MOut_Date AS bill_date, Last_Date AS due_date, Total AS total, [M_Out] AS settled, M_Rare AS balance, ISNULL(Note,'''') AS note, Paid AS paid_bit, PaidDate AS paid_date, ISNULL(BStyle,0) AS b_style, ISNULL(PStyle,0) AS p_style, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(CurID,0) AS currency_legacy_id, ISNULL(CRate,1) AS exchange_rate FROM M_Out ORDER BY ID'
+# M_Get (7,804 rows) -> finance_receipts.
+$mGetSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, GetDate AS bill_date, ISNULL(ClientID,0) AS client_legacy_id, WorkID AS work_id, RecStyle AS rec_style, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(RecAcc,0) AS rec_acc, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(InvoicesNo,'''') AS invoices_no, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, ISNULL(StepID,0) AS step_id, Cancel AS cancel, ISNULL(slf,0) AS slf, ISNULL(qtfy,0) AS qtfy, ISNULL(qtfymc,0) AS qtfymc, ISNULL(dfch,0) AS dfch FROM M_Get ORDER BY ID'
+# M_Paid (4,545 rows) -> finance_payments. Symmetric to M_Get (VendID/PaidAcc/dfzh/jsr).
+$mPaidSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, PaidDate AS bill_date, ISNULL(VendID,0) AS supplier_legacy_id, WorkID AS work_id, PaidStyle AS paid_style, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(PaidAcc,0) AS paid_acc, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(InvoicesNo,'''') AS invoices_no, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, ISNULL(StepID,0) AS step_id, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh, ISNULL(jsr,'''') AS jsr FROM M_Paid ORDER BY ID'
+# M_DPaid (1,125 rows) -> finance_expenses.
+$mDpaidSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, PaidDate AS bill_date, WorkID AS work_id, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(PaidAcc,0) AS paid_acc, ISNULL(InvoicesNo,'''') AS invoices_no, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(PaidStyle,0) AS paid_style, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh FROM M_DPaid ORDER BY ID'
+# M_DPaidItem (8,537 rows) -> finance_expense_items.
+$mDpaidItemSql = 'SELECT ID AS legacy_id, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(StyleID,0) AS style_legacy_id, Total AS total, ISNULL(Summary,'''') AS summary, DeptID AS dept_legacy_id, CTotal AS ctotal, ISNULL(dfmc,'''') AS dfmc, QTY AS qty, Price AS price, ISNULL(AccID,0) AS acc_id FROM M_DPaidItem ORDER BY ID'
+# M_OGet (1,552 rows) -> finance_other_incomes.
+$mOgetSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, GetDate AS bill_date, WorkID AS work_id, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(RecAcc,0) AS rec_acc, ISNULL(InvoicesNo,'''') AS invoices_no, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(RecStyle,0) AS rec_style, MTotal AS mtotal, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, Cancel AS cancel, ISNULL(dfzh,0) AS dfzh FROM M_OGet ORDER BY ID'
+# M_OGetItem (1,551 rows) -> finance_other_income_items. NO QTY/Price in old schema.
+$mOgetItemSql = 'SELECT ID AS legacy_id, ISNULL(BillID,0) AS bill_legacy_id, ISNULL(StyleID,0) AS style_legacy_id, Total AS total, ISNULL(Summary,'''') AS summary, DeptID AS dept_legacy_id, CTotal AS ctotal, ISNULL(df,'''') AS df FROM M_OGetItem ORDER BY ID'
+# M_Bank (0 rows) -> empty CSV. migrate_finance.sql skips ingest; structure in V57 finance_bank_transfers.
+$mBankSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, ISNULL(OutAcc,0) AS out_acc, WorkID AS work_id, Total AS total, MakeID AS make_id, ApproverID AS approver_id, Status AS status, Status2 AS status2, ISNULL(Remark,'''') AS remark, ISNULL(InvoicesNo,'''') AS invoices_no, CancelDate AS cancel_date, ISNULL(Source,'''') AS source, ISNULL(CurID,0) AS cur_id, ISNULL(CRate,1) AS crate, Cancel AS cancel FROM M_Bank ORDER BY ID'
+# M_AllCheck (30,626 rows) -> finance_reconciliations.
+$mAllcheckSql = 'SELECT ID AS legacy_id, ISNULL(BillNo,'''') AS bill_no, ISNULL(CheckNo,'''') AS check_no, ISNULL(Remark,'''') AS remark, ISNULL(Company,'''') AS company, InTotal AS in_total, OutTotal AS out_total, BillDate AS bill_date, OutDate AS out_date, ISNULL(AccID,0) AS acc_id, ISNULL(Source,'''') AS source, ISNULL(BStyle,0) AS b_style, ISNULL(BillID,0) AS bill_id FROM M_AllCheck ORDER BY ID'
+
 switch ($Target) {
     'MouldCategory'   { Export-Query -Sql $mouldCatSql    -OutPath (Join-Path $dataDir 'mould_categories.csv') }
     'MouldData'       { Export-Query -Sql $mouldDataSql   -OutPath (Join-Path $dataDir 'mould.csv') }
@@ -216,6 +288,81 @@ switch ($Target) {
         Export-Query -Sql $whCheckItem        -OutPath (Join-Path $dataDir 'stock_check_i.csv')
         Export-Query -Sql $whStockGoods       -OutPath (Join-Path $dataDir 'stock_goods.csv')
     }
+    'SalesQuote' {
+        Export-Query -Sql $salesQuoteSql     -OutPath (Join-Path $dataDir 'sales_quotes.csv')
+        Export-Query -Sql $salesQuoteItemSql -OutPath (Join-Path $dataDir 'sales_quote_items.csv')
+    }
+    'SalesOrder' {
+        Export-Query -Sql $salesOrderSql     -OutPath (Join-Path $dataDir 'sales_orders.csv')
+        Export-Query -Sql $salesOrderItemSql -OutPath (Join-Path $dataDir 'sales_order_items.csv')
+        Export-Query -Sql $salesOrderCostSql -OutPath (Join-Path $dataDir 'sales_order_cost_items.csv')
+    }
+    'SalesShipment' {
+        Export-Query -Sql $salesOutSql     -OutPath (Join-Path $dataDir 'sales_shipments.csv')
+        Export-Query -Sql $salesOutItemSql -OutPath (Join-Path $dataDir 'sales_shipment_items.csv')
+    }
+    'SalesOtherShipment' {
+        Export-Query -Sql $salesOtherOutSql     -OutPath (Join-Path $dataDir 'sales_other_shipments.csv')
+        Export-Query -Sql $salesOtherOutItemSql -OutPath (Join-Path $dataDir 'sales_other_shipment_items.csv')
+    }
+    'SalesReturn' {
+        Export-Query -Sql $salesWithdrawSql     -OutPath (Join-Path $dataDir 'sales_returns.csv')
+        Export-Query -Sql $salesWithdrawItemSql -OutPath (Join-Path $dataDir 'sales_return_items.csv')
+    }
+    'SalesDocs' {
+        # All 11 sales CSVs in one go (matches migrate.sh --sales expected set).
+        Export-Query -Sql $salesQuoteSql         -OutPath (Join-Path $dataDir 'sales_quotes.csv')
+        Export-Query -Sql $salesQuoteItemSql     -OutPath (Join-Path $dataDir 'sales_quote_items.csv')
+        Export-Query -Sql $salesOrderSql         -OutPath (Join-Path $dataDir 'sales_orders.csv')
+        Export-Query -Sql $salesOrderItemSql     -OutPath (Join-Path $dataDir 'sales_order_items.csv')
+        Export-Query -Sql $salesOrderCostSql     -OutPath (Join-Path $dataDir 'sales_order_cost_items.csv')
+        Export-Query -Sql $salesOutSql           -OutPath (Join-Path $dataDir 'sales_shipments.csv')
+        Export-Query -Sql $salesOutItemSql       -OutPath (Join-Path $dataDir 'sales_shipment_items.csv')
+        Export-Query -Sql $salesOtherOutSql      -OutPath (Join-Path $dataDir 'sales_other_shipments.csv')
+        Export-Query -Sql $salesOtherOutItemSql  -OutPath (Join-Path $dataDir 'sales_other_shipment_items.csv')
+        Export-Query -Sql $salesWithdrawSql      -OutPath (Join-Path $dataDir 'sales_returns.csv')
+        Export-Query -Sql $salesWithdrawItemSql  -OutPath (Join-Path $dataDir 'sales_return_items.csv')
+    }
+    'SubcontractData' {
+        # 8 main + 8 items + 1 BOM cost = 17 CSVs. Filenames match migrate_subcontract.sql \copy paths.
+        Export-Query -Sql $subAskSql              -OutPath (Join-Path $dataDir 'subcontract_ask_m.csv')
+        Export-Query -Sql $subAskItemSql          -OutPath (Join-Path $dataDir 'subcontract_ask_i.csv')
+        Export-Query -Sql $subApplicationSql      -OutPath (Join-Path $dataDir 'subcontract_application_m.csv')
+        Export-Query -Sql $subApplicationItemSql  -OutPath (Join-Path $dataDir 'subcontract_application_i.csv')
+        Export-Query -Sql $subOrderSql            -OutPath (Join-Path $dataDir 'subcontract_order_m.csv')
+        Export-Query -Sql $subOrderItemSql        -OutPath (Join-Path $dataDir 'subcontract_order_i.csv')
+        Export-Query -Sql $subOrderCostItemSql    -OutPath (Join-Path $dataDir 'subcontract_order_cost_i.csv')
+        Export-Query -Sql $subInSql               -OutPath (Join-Path $dataDir 'subcontract_in_m.csv')
+        Export-Query -Sql $subInItemSql           -OutPath (Join-Path $dataDir 'subcontract_in_i.csv')
+        Export-Query -Sql $subSOutSql             -OutPath (Join-Path $dataDir 'subcontract_sout_m.csv')
+        Export-Query -Sql $subSOutItemSql         -OutPath (Join-Path $dataDir 'subcontract_sout_i.csv')
+        Export-Query -Sql $subWithdrawSql         -OutPath (Join-Path $dataDir 'subcontract_withdraw_m.csv')
+        Export-Query -Sql $subWithdrawItemSql     -OutPath (Join-Path $dataDir 'subcontract_withdraw_i.csv')
+        Export-Query -Sql $subSWithdrawSql        -OutPath (Join-Path $dataDir 'subcontract_swithdraw_m.csv')
+        Export-Query -Sql $subSWithdrawItemSql    -OutPath (Join-Path $dataDir 'subcontract_swithdraw_i.csv')
+        Export-Query -Sql $subSWasteSql           -OutPath (Join-Path $dataDir 'subcontract_swaste_m.csv')
+        Export-Query -Sql $subSWasteItemSql       -OutPath (Join-Path $dataDir 'subcontract_swaste_i.csv')
+    }
+    'ProductionData' {
+        # 5 production CSVs (F_Plan / F_PlanItem / F_PlanCostItem / F_DateReport / F_DateReportItem).
+        Export-Query -Sql $planSql     -OutPath (Join-Path $dataDir 'production_plans.csv')
+        Export-Query -Sql $planItemSql -OutPath (Join-Path $dataDir 'production_plan_items.csv')
+        Export-Query -Sql $planCostSql -OutPath (Join-Path $dataDir 'production_plan_costs.csv')
+        Export-Query -Sql $drSql       -OutPath (Join-Path $dataDir 'production_daily_reports.csv')
+        Export-Query -Sql $driSql      -OutPath (Join-Path $dataDir 'production_daily_report_items.csv')
+    }
+    'M_Acc'        { Export-Query -Sql $mAccSql        -OutPath (Join-Path $dataDir 'm_acc.csv') }
+    'M_Style'      { Export-Query -Sql $mStyleSql      -OutPath (Join-Path $dataDir 'm_style.csv') }
+    'M_in'         { Export-Query -Sql $mInSql         -OutPath (Join-Path $dataDir 'm_in.csv') }
+    'M_out'        { Export-Query -Sql $mOutSql        -OutPath (Join-Path $dataDir 'm_out.csv') }
+    'M_Get'        { Export-Query -Sql $mGetSql        -OutPath (Join-Path $dataDir 'm_get.csv') }
+    'M_Paid'       { Export-Query -Sql $mPaidSql       -OutPath (Join-Path $dataDir 'm_paid.csv') }
+    'M_DPaid'      { Export-Query -Sql $mDpaidSql      -OutPath (Join-Path $dataDir 'm_dpaid.csv') }
+    'M_DPaidItem'  { Export-Query -Sql $mDpaidItemSql  -OutPath (Join-Path $dataDir 'm_dpaid_item.csv') }
+    'M_OGet'       { Export-Query -Sql $mOgetSql       -OutPath (Join-Path $dataDir 'm_oget.csv') }
+    'M_OGetItem'   { Export-Query -Sql $mOgetItemSql   -OutPath (Join-Path $dataDir 'm_oget_item.csv') }
+    'M_Bank'       { Export-Query -Sql $mBankSql       -OutPath (Join-Path $dataDir 'm_bank.csv') }
+    'M_AllCheck'   { Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv') }
     'All' {
         Export-Query -Sql $goodsCatSql     -OutPath (Join-Path $dataDir 'goods_categories.csv')
         Export-Query -Sql $mouldCatSql     -OutPath (Join-Path $dataDir 'mould_categories.csv')
@@ -254,5 +401,54 @@ switch ($Target) {
         Export-Query -Sql $whCheckMain        -OutPath (Join-Path $dataDir 'stock_check_m.csv')
         Export-Query -Sql $whCheckItem        -OutPath (Join-Path $dataDir 'stock_check_i.csv')
         Export-Query -Sql $whStockGoods       -OutPath (Join-Path $dataDir 'stock_goods.csv')
+        # sales 5 docs + items + BOM cost (11 CSVs)
+        Export-Query -Sql $salesQuoteSql         -OutPath (Join-Path $dataDir 'sales_quotes.csv')
+        Export-Query -Sql $salesQuoteItemSql     -OutPath (Join-Path $dataDir 'sales_quote_items.csv')
+        Export-Query -Sql $salesOrderSql         -OutPath (Join-Path $dataDir 'sales_orders.csv')
+        Export-Query -Sql $salesOrderItemSql     -OutPath (Join-Path $dataDir 'sales_order_items.csv')
+        Export-Query -Sql $salesOrderCostSql     -OutPath (Join-Path $dataDir 'sales_order_cost_items.csv')
+        Export-Query -Sql $salesOutSql           -OutPath (Join-Path $dataDir 'sales_shipments.csv')
+        Export-Query -Sql $salesOutItemSql       -OutPath (Join-Path $dataDir 'sales_shipment_items.csv')
+        Export-Query -Sql $salesOtherOutSql      -OutPath (Join-Path $dataDir 'sales_other_shipments.csv')
+        Export-Query -Sql $salesOtherOutItemSql  -OutPath (Join-Path $dataDir 'sales_other_shipment_items.csv')
+        Export-Query -Sql $salesWithdrawSql      -OutPath (Join-Path $dataDir 'sales_returns.csv')
+        Export-Query -Sql $salesWithdrawItemSql  -OutPath (Join-Path $dataDir 'sales_return_items.csv')
+        # subcontract 8 docs + items + BOM cost (17 CSVs)
+        Export-Query -Sql $subAskSql              -OutPath (Join-Path $dataDir 'subcontract_ask_m.csv')
+        Export-Query -Sql $subAskItemSql          -OutPath (Join-Path $dataDir 'subcontract_ask_i.csv')
+        Export-Query -Sql $subApplicationSql      -OutPath (Join-Path $dataDir 'subcontract_application_m.csv')
+        Export-Query -Sql $subApplicationItemSql  -OutPath (Join-Path $dataDir 'subcontract_application_i.csv')
+        Export-Query -Sql $subOrderSql            -OutPath (Join-Path $dataDir 'subcontract_order_m.csv')
+        Export-Query -Sql $subOrderItemSql        -OutPath (Join-Path $dataDir 'subcontract_order_i.csv')
+        Export-Query -Sql $subOrderCostItemSql    -OutPath (Join-Path $dataDir 'subcontract_order_cost_i.csv')
+        Export-Query -Sql $subInSql               -OutPath (Join-Path $dataDir 'subcontract_in_m.csv')
+        Export-Query -Sql $subInItemSql           -OutPath (Join-Path $dataDir 'subcontract_in_i.csv')
+        Export-Query -Sql $subSOutSql             -OutPath (Join-Path $dataDir 'subcontract_sout_m.csv')
+        Export-Query -Sql $subSOutItemSql         -OutPath (Join-Path $dataDir 'subcontract_sout_i.csv')
+        Export-Query -Sql $subWithdrawSql         -OutPath (Join-Path $dataDir 'subcontract_withdraw_m.csv')
+        Export-Query -Sql $subWithdrawItemSql     -OutPath (Join-Path $dataDir 'subcontract_withdraw_i.csv')
+        Export-Query -Sql $subSWithdrawSql        -OutPath (Join-Path $dataDir 'subcontract_swithdraw_m.csv')
+        Export-Query -Sql $subSWithdrawItemSql    -OutPath (Join-Path $dataDir 'subcontract_swithdraw_i.csv')
+        Export-Query -Sql $subSWasteSql           -OutPath (Join-Path $dataDir 'subcontract_swaste_m.csv')
+        Export-Query -Sql $subSWasteItemSql       -OutPath (Join-Path $dataDir 'subcontract_swaste_i.csv')
+        # production 5 tables (F_Plan / F_PlanItem / F_PlanCostItem / F_DateReport / F_DateReportItem)
+        Export-Query -Sql $planSql     -OutPath (Join-Path $dataDir 'production_plans.csv')
+        Export-Query -Sql $planItemSql -OutPath (Join-Path $dataDir 'production_plan_items.csv')
+        Export-Query -Sql $planCostSql -OutPath (Join-Path $dataDir 'production_plan_costs.csv')
+        Export-Query -Sql $drSql       -OutPath (Join-Path $dataDir 'production_daily_reports.csv')
+        Export-Query -Sql $driSql      -OutPath (Join-Path $dataDir 'production_daily_report_items.csv')
+        # finance 12 money-flow tables (m_bank.csv exported but skipped by migrate_finance.sql)
+        Export-Query -Sql $mAccSql        -OutPath (Join-Path $dataDir 'm_acc.csv')
+        Export-Query -Sql $mStyleSql      -OutPath (Join-Path $dataDir 'm_style.csv')
+        Export-Query -Sql $mInSql         -OutPath (Join-Path $dataDir 'm_in.csv')
+        Export-Query -Sql $mOutSql        -OutPath (Join-Path $dataDir 'm_out.csv')
+        Export-Query -Sql $mGetSql        -OutPath (Join-Path $dataDir 'm_get.csv')
+        Export-Query -Sql $mPaidSql       -OutPath (Join-Path $dataDir 'm_paid.csv')
+        Export-Query -Sql $mDpaidSql      -OutPath (Join-Path $dataDir 'm_dpaid.csv')
+        Export-Query -Sql $mDpaidItemSql  -OutPath (Join-Path $dataDir 'm_dpaid_item.csv')
+        Export-Query -Sql $mOgetSql       -OutPath (Join-Path $dataDir 'm_oget.csv')
+        Export-Query -Sql $mOgetItemSql   -OutPath (Join-Path $dataDir 'm_oget_item.csv')
+        Export-Query -Sql $mBankSql       -OutPath (Join-Path $dataDir 'm_bank.csv')
+        Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv')
     }
 }

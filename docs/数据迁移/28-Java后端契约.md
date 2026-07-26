@@ -148,6 +148,7 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 3. movement_type 用 StockService 常量（勿硬编码数字）。
 4. 金额 BigDecimal，禁 double/float。
 5. 命名/包结构与采购一致，便于前端统一调用。
+6. **原生 SQL 可空参数必须 CAST**：`em.createNativeQuery` 写 `WHERE (:param IS NULL OR col = :param)` 时，当 `:param` 绑定为 null，Hibernate `ObjectNullResolvingJdbcType` 会调 `getParameterMetaData()`，PG 对「裸 `? IS NULL`（无类型上下文）」报 `could not determine data type of parameter $N` → 500。**所有可空 param 的 IS NULL 侧一律 `CAST(:param AS <type>) IS NULL`**（type 取 `text`/`uuid`/`date`/`timestamptz`/`smallint`/`boolean`；CAST 只服务于 null 判定，真实比较仍用原 param，类型安全）。排查：后端堆栈见 `PSQLException: could not determine data type` + `ObjectNullResolvingJdbcType.doBindNull` 即此坑。
 
 ---
 
@@ -173,6 +174,6 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 - **ArApLedgerService 契约确认**：接口 `postArAp(ArApPostingRequest)→void` / `reverseArAp(UUID,String)→void`（void 返回、自包含），实现 `ArApLedgerServiceImpl`（@Transactional MANDATORY）。销售/委外/采购审核注入调用。**销售 [20] 早期称 `AccountReceivableService.postReceivable`，已统一为 `postArAp`**。
 - **Flyway 增量**：V50-V63（V50 账户+收付款类别主档 / V51-52 销售 / V53-54 委外 / V55-56 生产含 F_PlanCostItem 按年分区 / V57-58 钱流 ar_ap_ledger / V59 库存字典 / **V60 明细表补 created_by/updated_by**（契约 §二订正：明细也需审计列，BaseEntity 要求）/ V61 钱流明细 remark / V62 销售 cost_items UNIQUE+return 列 / V63 清 finance_check_register 悬空权限）。
-- **核验后修复的 bug**（见 [29] §接手清单 + 各 Service）：① 库存金额方向（reverse 不取反 amountLocal，7 处，e2e 实测红冲金额净归 0）② 月报 SQL（GROUP BY 漏 ym + Hibernate 命名参数类型推断，5 report service）③ 核销超核/负应收同号校验 ④ 委外进仓 supplier 非空校验 ⑤ legacy_bstyle=30。
+- **核验后修复的 bug**（见 [29] §接手清单 + 各 Service）：① 库存金额方向（reverse 不取反 amountLocal，7 处，e2e 实测红冲金额净归 0）② 月报 SQL（GROUP BY 漏 ym + **Hibernate 原生 SQL null 参数类型坑**：`(:param IS NULL OR col=:param)` 当 param=null 时 PG 报 `could not determine data type of parameter $N` → 报表页"加载失败"；**已对全部可空 param 加 `CAST(:param AS 类型) IS NULL`，6 处全修**——`FinanceReportService` / `SubcontractReportService` / `ProductionReportService` / `ProductionPlanCostService` / `PurchaseReportService` / `SalesReportService`，全仓 grep `:[A-Za-z_]+\s+IS\s+(NOT\s+)?NULL` 零残留；铁律见 §七-6）③ 核销超核/负应收同号校验 ④ 委外进仓 supplier 非空校验 ⑤ legacy_bstyle=30。
 - **来源感知导航**：前端跨页用 `goFrom`/`backTo`（`lib/core/router/nav_helpers.dart`），主 Tab 用 go（push 失效）+ KeepAlive 保滚动；列表→详情用 push/pop。见记忆 go-router-origin-aware-nav + [30]。
 - **StockService 常量** 15-20 已加（agent 勿改 StockService.java）。

@@ -24,6 +24,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/payment_style_repository.dart';
+import '../widgets/uten_category_tree_view.dart';
 
 class PaymentStylePage extends ConsumerStatefulWidget {
   const PaymentStylePage({super.key});
@@ -223,80 +224,43 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   // ---- 树渲染 -------------------------------------------------------------
 
-  Widget _buildTree() {
+  Widget _buildTree({required void Function(String id) onSelect}) {
     final theme = Theme.of(context);
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-      children: [
-        for (final n in _tree) _treeTile(n, 0, theme),
-      ],
+    // 复用 UtenCategoryTreeView<PaymentStyleNode>：与货品/模具/客户/供应商左树
+    // 完全一致（搜索 / 点行展开 / 选中高亮 / code 排序 / 子节点数徽标），
+    // 不再自带递归树渲染。顶部 6 大类切换条由本页 build 维护（页面级过滤）。
+    return UtenCategoryTreeView<PaymentStyleNode>(
+      nodes: _tree,
+      selectedIds: {?_selectedId},
+      expandOnRowTap: true,
+      onNodeTap: (node) => onSelect(node.id),
+      trailingBuilder: (node) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (node.hasChildren)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
+                '${node.children.length}',
+                style: TextStyle(
+                    fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          if (_canEdit)
+            InkWell(
+              onTap: () => _delete(node),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(Icons.delete_outline,
+                    size: 16, color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _treeTile(PaymentStyleNode n, int depth, ThemeData theme) {
-    final selected = n.id == _selectedId;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkWell(
-          onTap: () => setState(() {
-            _selectedId = n.id;
-          }),
-          child: Container(
-            color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.08)
-                : null,
-            padding: EdgeInsets.only(
-              left: UtenSpacing.s8 + depth * 14.0,
-              top: 6,
-              bottom: 6,
-              right: UtenSpacing.s4,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  n.hasChildren
-                      ? Icons.subdirectory_arrow_right_rounded
-                      : Icons.circle_outlined,
-                  size: 14,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(n.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight:
-                                selected ? FontWeight.w600 : FontWeight.w400)),
-                      Text('${n.code} · ${PaymentStyleCategory.labelOf(n.category)}',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: theme.colorScheme.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                if (_canEdit)
-                  InkWell(
-                    onTap: () => _delete(n),
-                    child: Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: Icon(Icons.delete_outline,
-                          size: 16, color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        for (final c in n.children) _treeTile(c, depth + 1, theme),
-      ],
-    );
-  }
+  // _treeTile 已移除：树渲染改由 UtenCategoryTreeView<PaymentStyleNode> 统一负责。
 
   @override
   Widget build(BuildContext context) {
@@ -360,7 +324,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                                 icon: Icons.account_tree_outlined,
                                 message: '暂无类别',
                               )
-                            : _buildTree(),
+                            : _buildTree(
+                                onSelect: (id) =>
+                                    setState(() => _selectedId = id),
+                              ),
                       ),
                       Container(
                           width: 1,

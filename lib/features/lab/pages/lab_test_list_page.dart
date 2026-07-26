@@ -15,7 +15,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -80,16 +80,16 @@ class LabTestListPage extends ConsumerWidget {
                   ],
                 );
               }
-              return SingleChildScrollView(
+              return UtenPagedGrid(
+                // 检测记录年累积可达数千~数万，客户端按页切片防一次性渲染卡顿。
+                // 目前 mock 8 条；后端尚未建，建后端时直接做服务端 page/size 分页。
+                items: list,
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.symmetric(
                     horizontal: hPad, vertical: UtenSpacing.s16),
-                child: UtenResponsiveGrid(
-                  itemCount: list.length,
-                  itemBuilder: (context, i, _) => _LabCard(
-                    test: list[i],
-                    onTap: () => context.go('/lab/test/${list[i].id}'),
-                  ),
+                itemBuilder: (context, i, _) => _LabCard(
+                  test: list[i],
+                  onTap: () => context.go('/lab/test/${list[i].id}'),
                 ),
               );
             },

@@ -55,11 +55,11 @@ public class ProductionReportService {
                 JOIN production_plans p ON p.id = i.plan_id
                 WHERE COALESCE(i.is_deleted, false) = false
                   AND COALESCE(p.is_deleted, false) = false
-                  AND (:from    IS NULL OR i.bill_date >= :from)
-                  AND (:to      IS NULL OR i.bill_date <= :to)
-                  AND (:goodsId IS NULL OR i.goods_id = :goodsId)
-                  AND (:status  IS NULL OR p.status   = :status)
-                  AND (:billNo  IS NULL OR i.bill_no  = :billNo)
+                  AND (CAST(:from AS date) IS NULL OR i.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR i.bill_date <= :to)
+                  AND (CAST(:goodsId AS uuid) IS NULL OR i.goods_id = :goodsId)
+                  AND (CAST(:status AS smallint) IS NULL OR p.status   = :status)
+                  AND (CAST(:billNo AS text) IS NULL OR i.bill_no  = :billNo)
                 ORDER BY i.bill_date DESC, i.line_no ASC
                 LIMIT :limit OFFSET :offset
                 """);
@@ -130,7 +130,7 @@ public class ProductionReportService {
                        SUM(inbound_qty_sum)   AS inbound_qty,
                        SUM(line_cnt)          AS lines
                 FROM production_monthly_mv
-                WHERE (:docType IS NULL OR doc_type = :docType)
+                WHERE (CAST(:docType AS text) IS NULL OR doc_type = :docType)
                   AND (CAST(:from AS date) IS NULL OR ym >= :from)
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
                 GROUP BY doc_type, ym, goods_id, client_id
@@ -174,11 +174,11 @@ public class ProductionReportService {
                 JOIN production_daily_reports h ON h.id = i.report_id
                 WHERE COALESCE(i.is_deleted, false) = false
                   AND COALESCE(h.is_deleted, false) = false
-                  AND (:from    IS NULL OR i.bill_date >= :from)
-                  AND (:to      IS NULL OR i.bill_date <= :to)
-                  AND (:goodsId IS NULL OR i.goods_id = :goodsId)
-                  AND (:status  IS NULL OR h.status   = :status)
-                  AND (:billNo  IS NULL OR i.bill_no  = :billNo)
+                  AND (CAST(:from AS date) IS NULL OR i.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR i.bill_date <= :to)
+                  AND (CAST(:goodsId AS uuid) IS NULL OR i.goods_id = :goodsId)
+                  AND (CAST(:status AS smallint) IS NULL OR h.status   = :status)
+                  AND (CAST(:billNo AS text) IS NULL OR i.bill_no  = :billNo)
                 ORDER BY i.bill_date DESC, i.line_no ASC
                 LIMIT :limit OFFSET :offset
                 """);

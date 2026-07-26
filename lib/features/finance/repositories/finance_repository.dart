@@ -262,7 +262,7 @@ class FinanceReportRepository {
     String? dateTo,
     int limit = 500,
   }) async {
-    final list = await api.getList('$FinanceEndpoints.reports/ar-ap/summary',
+    final list = await api.getList('${FinanceEndpoints.reports}/ar-ap/summary',
         query: {
             if (direction != null) 'direction': direction,
             if (partyId != null) 'partyId': partyId,
@@ -285,7 +285,7 @@ class FinanceReportRepository {
     String? dateTo,
     int limit = 500,
   }) async {
-    final list = await api.getList('$FinanceEndpoints.reports/$kind/detail',
+    final list = await api.getList('${FinanceEndpoints.reports}/$kind/detail',
         query: {
             if (clientId != null) 'clientId': clientId,
             if (supplierId != null) 'supplierId': supplierId,
@@ -310,7 +310,7 @@ class FinanceReportRepository {
     String? dateTo,
     int limit = 500,
   }) async {
-    final list = await api.getList('$FinanceEndpoints.reports/$kind/summary',
+    final list = await api.getList('${FinanceEndpoints.reports}/$kind/summary',
         query: {
             if (clientId != null) 'clientId': clientId,
             if (supplierId != null) 'supplierId': supplierId,
@@ -331,7 +331,7 @@ class FinanceReportRepository {
     int limit = 1000,
   }) async {
     final list = await api.getList(
-        '$FinanceEndpoints.reports/accounts/statement',
+        '${FinanceEndpoints.reports}/accounts/statement',
         query: {
           'accountId': accountId,
           if (dateFrom != null) 'dateFrom': dateFrom,

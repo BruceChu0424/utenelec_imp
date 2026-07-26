@@ -15,6 +15,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -39,6 +40,7 @@ class MyProfileChangesPage extends ConsumerStatefulWidget {
 
 class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
   String? _status; // null = 全部
+  int _page = 1; // 当前页（服务端真分页：翻页/换筛选都从后端按页拉取）
   final List<UtenSegment<String?>> _segments = [];
 
   @override
@@ -62,7 +64,8 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         UtenSegment(value: 'rejected', label: l10n.profileChangeFilterRejected),
       ]);
 
-    final async = ref.watch(myProfileChangesProvider(_status));
+    final async = ref
+        .watch(myProfileChangesProvider((status: _status, page: _page)));
 
     Widget body = Column(
       children: [
@@ -71,7 +74,10 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
           child: UtenSegmentedFilter<String?>(
             segments: _segments,
             selected: _status,
-            onChanged: (v) => setState(() => _status = v),
+            onChanged: (v) => setState(() {
+              _status = v;
+              _page = 1; // 换筛选回到第 1 页
+            }),
           ),
         ),
         Expanded(child: _buildBody(context, l10n, async)),
@@ -107,18 +113,44 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
             message: l10n.profileChangeListEmpty,
           );
         }
-        return RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(myProfileChangesProvider);
-            await ref.read(myProfileChangesProvider(_status).future);
-          },
-          child: UtenResponsiveGrid(
-            itemCount: page.items.length,
-            itemBuilder: (context, index, width) {
-              final item = page.items[index];
-              return _MyBatchCard(item: item);
-            },
-          ),
+        return Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(myProfileChangesProvider);
+                  await ref.read(
+                    myProfileChangesProvider((status: _status, page: _page))
+                        .future,
+                  );
+                },
+                // 服务端按页拉取：当页 items 铺进网格，外层 SingleChildScrollView
+                // 让当页可竖向滚动（修原先 Wrap 不可滚、卡片多会溢出的问题）。
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: UtenResponsiveGrid(
+                    itemCount: page.items.length,
+                    itemBuilder: (context, index, width) {
+                      final item = page.items[index];
+                      return _MyBatchCard(item: item);
+                    },
+                  ),
+                ),
+              ),
+            ),
+            if (page.totalPages > 1)
+              UtenGridPager(
+                currentPage: page.page,
+                totalPages: page.totalPages,
+                totalItems: page.total,
+                onPrev: page.page > 1
+                    ? () => setState(() => _page = page.page - 1)
+                    : null,
+                onNext: page.page < page.totalPages
+                    ? () => setState(() => _page = page.page + 1)
+                    : null,
+              ),
+          ],
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),

@@ -10,7 +10,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
@@ -87,23 +87,24 @@ class NoticeListPage extends ConsumerWidget {
                     ],
                   );
                 }
-                return SingleChildScrollView(
+                return UtenPagedGrid(
+                  // 通知是公司广播型累积数据（无时间窗/上限），客户端按页切片：
+                  // Wrap 恒只构建当页 ~20 张卡片，避免一次性铺全部致卡顿。
+                  // 数据真正海量（接真后端）时改服务端 page/size 真分页。
+                  items: notices,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.only(
                     top: UtenSpacing.s16,
                     bottom: 96, // 底部悬浮胶囊导航留白
                   ),
-                  child: UtenResponsiveGrid(
-                    itemCount: notices.length,
-                    itemBuilder: (context, i, _) => _NoticeCard(
-                      notice: notices[i],
-                      onTap: () {
-                        if (!notices[i].isRead) {
-                          markNoticeRead(ref, notices[i].id);
-                        }
-                        context.push(RoutePath.noticeDetail(notices[i].id));
-                      },
-                    ),
+                  itemBuilder: (context, i, _) => _NoticeCard(
+                    notice: notices[i],
+                    onTap: () {
+                      if (!notices[i].isRead) {
+                        markNoticeRead(ref, notices[i].id);
+                      }
+                      context.push(RoutePath.noticeDetail(notices[i].id));
+                    },
                   ),
                 );
               },

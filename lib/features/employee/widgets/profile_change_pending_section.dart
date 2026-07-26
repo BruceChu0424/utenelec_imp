@@ -29,7 +29,9 @@ class ProfileChangePendingSection extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final async = ref.watch(hrProfileChangesProvider('pending'));
+    final async = ref.watch(
+      hrProfileChangesProvider((status: 'pending', page: 1)),
+    );
     final items = <HrProfileChangeListItem>[];
     async.whenData((page) {
       items.addAll(page.items.where((i) => i.employeeId == employeeId));

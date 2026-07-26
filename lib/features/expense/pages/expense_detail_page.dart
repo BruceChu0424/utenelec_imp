@@ -127,6 +127,7 @@ class _Content extends ConsumerWidget {
               // 明细（瀑布流网格：手机 1 列、平板 2 列、桌面 3-4 列）
               const UtenSectionHeader(title: '报销明细'),
               const SizedBox(height: UtenSpacing.s8),
+              // 单张报销单的明细行，天然 1-20 条（受单据本身约束），无需分页。
               UtenResponsiveGrid(
                 itemCount: claim.items.length,
                 spacing: UtenSpacing.s12,

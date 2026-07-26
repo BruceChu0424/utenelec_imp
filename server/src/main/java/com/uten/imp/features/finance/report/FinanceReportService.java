@@ -59,8 +59,8 @@ public class FinanceReportService {
                     UNION ALL
                     SELECT id, name FROM suppliers WHERE COALESCE(is_deleted, false) = false
                 ) p ON p.id = m.party_id
-                WHERE (:dir IS NULL OR m.direction = :dir)
-                  AND (:src IS NULL OR m.source_doc_type = :src)
+                WHERE (CAST(:dir AS text) IS NULL OR m.direction = :dir)
+                  AND (CAST(:src AS text) IS NULL OR m.source_doc_type = :src)
                   AND (CAST(:pid AS uuid) IS NULL OR m.party_id = :pid)
                   AND (CAST(:from AS date) IS NULL OR m.ym >= :from)
                   AND (CAST(:to AS date) IS NULL OR m.ym <= :to)
@@ -107,14 +107,14 @@ public class FinanceReportService {
                     SELECT id, name FROM suppliers WHERE COALESCE(is_deleted, false) = false
                 ) p ON p.id = COALESCE(l.client_id, l.supplier_id)
                 WHERE l.is_deleted = false
-                  AND (:dir IS NULL OR l.direction = :dir)
-                  AND (:src IS NULL OR l.source_doc_type = :src)
-                  AND (:pid IS NULL OR COALESCE(l.client_id, l.supplier_id) = :pid)
-                  AND (:cid IS NULL OR l.client_id = :cid)
-                  AND (:sid IS NULL OR l.supplier_id = :sid)
-                  AND (:stl IS NULL OR l.is_settled = :stl)
-                  AND (:from IS NULL OR l.bill_date >= :from)
-                  AND (:to IS NULL OR l.bill_date <= :to)
+                  AND (CAST(:dir AS text) IS NULL OR l.direction = :dir)
+                  AND (CAST(:src AS text) IS NULL OR l.source_doc_type = :src)
+                  AND (CAST(:pid AS uuid) IS NULL OR COALESCE(l.client_id, l.supplier_id) = :pid)
+                  AND (CAST(:cid AS uuid) IS NULL OR l.client_id = :cid)
+                  AND (CAST(:sid AS uuid) IS NULL OR l.supplier_id = :sid)
+                  AND (CAST(:stl AS boolean) IS NULL OR l.is_settled = :stl)
+                  AND (CAST(:from AS date) IS NULL OR l.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR l.bill_date <= :to)
                 ORDER BY l.bill_date DESC, l.bill_no
                 LIMIT :limit
                 """);
@@ -170,7 +170,7 @@ public class FinanceReportService {
                   "0, pl.amount_local FROM finance_payment_lines pl " +
                   "JOIN finance_payments pm ON pm.id = pl.payment_id " +
                   "WHERE pl.supplier_id=:pid AND pm.status=1 AND pm.is_deleted=false";
-        String filter = " AND (:from IS NULL OR t.bill_date >= :from) AND (:to IS NULL OR t.bill_date <= :to) ";
+        String filter = " AND (CAST(:from AS date) IS NULL OR t.bill_date >= :from) AND (CAST(:to AS date) IS NULL OR t.bill_date <= :to) ";
         String wrapped = "SELECT * FROM (" + postedSql + " UNION ALL " + settledSql + ") t WHERE TRUE "
                 + filter + "ORDER BY t.bill_date ASC, t.bill_no ASC LIMIT :limit";
 
@@ -268,11 +268,11 @@ public class FinanceReportService {
                 LEFT JOIN %ptbl% p ON p.id = r.%col%
                 LEFT JOIN accounts a ON a.id = r.account_id
                 WHERE r.is_deleted = false
-                  AND (:pv IS NULL OR r.%col% = :pv)
-                  AND (:acc IS NULL OR r.account_id = :acc)
-                  AND (:st IS NULL OR r.status = :st)
-                  AND (:from IS NULL OR r.bill_date >= :from)
-                  AND (:to IS NULL OR r.bill_date <= :to)
+                  AND (CAST(:pv AS uuid) IS NULL OR r.%col% = :pv)
+                  AND (CAST(:acc AS uuid) IS NULL OR r.account_id = :acc)
+                  AND (CAST(:st AS smallint) IS NULL OR r.status = :st)
+                  AND (CAST(:from AS date) IS NULL OR r.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR r.bill_date <= :to)
                 ORDER BY r.bill_date DESC, r.bill_no
                 LIMIT :limit
                 """.replace("%tbl%", table).replace("%col%", partyCol).replace("%ptbl%", partyTable);
@@ -317,9 +317,9 @@ public class FinanceReportService {
                        COUNT(*) AS cnt, SUM(r.amount_original), SUM(r.amount_local)
                 FROM %tbl% r LEFT JOIN %ptbl% p ON p.id = r.%col%
                 WHERE r.is_deleted = false
-                  AND (:pv IS NULL OR r.%col% = :pv)
-                  AND (:from IS NULL OR r.bill_date >= :from)
-                  AND (:to IS NULL OR r.bill_date <= :to)
+                  AND (CAST(:pv AS uuid) IS NULL OR r.%col% = :pv)
+                  AND (CAST(:from AS date) IS NULL OR r.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR r.bill_date <= :to)
                 GROUP BY 1, 2, 3
                 ORDER BY 1 DESC, 2
                 LIMIT :limit
@@ -352,10 +352,10 @@ public class FinanceReportService {
                        e.account_id, a.name AS account_name, e.amount_original, e.amount_local, e.status, e.remark
                 FROM finance_expenses e LEFT JOIN accounts a ON a.id = e.account_id
                 WHERE e.is_deleted = false
-                  AND (:acc IS NULL OR e.account_id = :acc)
-                  AND (:st IS NULL OR e.status = :st)
-                  AND (:from IS NULL OR e.bill_date >= :from)
-                  AND (:to IS NULL OR e.bill_date <= :to)
+                  AND (CAST(:acc AS uuid) IS NULL OR e.account_id = :acc)
+                  AND (CAST(:st AS smallint) IS NULL OR e.status = :st)
+                  AND (CAST(:from AS date) IS NULL OR e.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR e.bill_date <= :to)
                 ORDER BY e.bill_date DESC, e.bill_no
                 LIMIT :limit
                 """;
@@ -377,10 +377,10 @@ public class FinanceReportService {
                        o.account_id, a.name AS account_name, o.amount_original, o.amount_local, o.status, o.remark
                 FROM finance_other_incomes o LEFT JOIN accounts a ON a.id = o.account_id
                 WHERE o.is_deleted = false
-                  AND (:acc IS NULL OR o.account_id = :acc)
-                  AND (:st IS NULL OR o.status = :st)
-                  AND (:from IS NULL OR o.bill_date >= :from)
-                  AND (:to IS NULL OR o.bill_date <= :to)
+                  AND (CAST(:acc AS uuid) IS NULL OR o.account_id = :acc)
+                  AND (CAST(:st AS smallint) IS NULL OR o.status = :st)
+                  AND (CAST(:from AS date) IS NULL OR o.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR o.bill_date <= :to)
                 ORDER BY o.bill_date DESC, o.bill_no
                 LIMIT :limit
                 """;
@@ -433,10 +433,10 @@ public class FinanceReportService {
                 LEFT JOIN departments d ON d.id = i.department_id
                 LEFT JOIN payment_styles ps ON ps.id = i.%style%
                 WHERE COALESCE(i.is_deleted, false) = false
-                  AND (:dept IS NULL OR i.department_id = :dept)
-                  AND (:style IS NULL OR i.%style% = :style)
-                  AND (:from IS NULL OR i.bill_date >= :from)
-                  AND (:to IS NULL OR i.bill_date <= :to)
+                  AND (CAST(:dept AS uuid) IS NULL OR i.department_id = :dept)
+                  AND (CAST(:style AS uuid) IS NULL OR i.%style% = :style)
+                  AND (CAST(:from AS date) IS NULL OR i.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR i.bill_date <= :to)
                 GROUP BY 1, 2, 3, 4, 5
                 ORDER BY 1 DESC, 2, 4
                 LIMIT :limit
@@ -472,8 +472,8 @@ public class FinanceReportService {
                 FROM finance_reconciliations r
                 WHERE r.is_deleted = false
                   AND r.account_id = :acc
-                  AND (:from IS NULL OR r.bill_date >= :from)
-                  AND (:to IS NULL OR r.bill_date <= :to)
+                  AND (CAST(:from AS date) IS NULL OR r.bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR r.bill_date <= :to)
                 ORDER BY r.bill_date ASC, r.bill_no ASC
                 LIMIT :limit
                 """)

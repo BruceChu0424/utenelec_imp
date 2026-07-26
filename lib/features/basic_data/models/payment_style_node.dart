@@ -4,6 +4,11 @@
 // ACCOUNT/LIABILITY/EQUITY/EXPENSE/INCOME/METHOD（必填，新建后不可改）。
 // 收/付款类别用于钱流单据（费用/收入分摊项目、收/付款方式等），direction flags：
 // receipt/payment/departmental。linkedAccountLegacyId 关联账户老 id（仅展示）。
+//
+// 实现 UtenTreeNode<PaymentStyleNode>：复用 UtenCategoryTreeView<PaymentStyleNode>
+// 统一分类树外观（与货品资料左树一致），无需各自手搓递归树。
+
+import 'uten_tree_node.dart';
 
 /// 收付款类别大类（与后端 PaymentStyleCategory 对齐）。
 enum PaymentStyleCategory {
@@ -33,7 +38,7 @@ enum PaymentStyleCategory {
 }
 
 /// 收付款类别树节点（递归 children）。
-class PaymentStyleNode {
+class PaymentStyleNode implements UtenTreeNode<PaymentStyleNode> {
   PaymentStyleNode({
     required this.id,
     required this.code,
@@ -53,8 +58,11 @@ class PaymentStyleNode {
     this.legacyId,
   });
 
+  @override
   final String id;
+  @override
   final String code;
+  @override
   final String name;
   final String? category;
   final int? level;
@@ -68,8 +76,10 @@ class PaymentStyleNode {
   final double? initBalance;
   final String? status;
   final int? legacyId;
+  @override
   final List<PaymentStyleNode> children;
 
+  @override
   bool get hasChildren => children.isNotEmpty;
 
   factory PaymentStyleNode.fromJson(Map<String, dynamic> json) {

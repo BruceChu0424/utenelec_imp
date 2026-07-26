@@ -57,6 +57,8 @@ class PayrollSlipListPage extends ConsumerWidget {
                     );
                   }
                   // 卡片网格
+                  // 工资条为个人按月数据（mock 固定 12 条/最近 12 个月），天然有界且量小，
+                  // 无需分页；若产品改为暴露多年历史（>~50）再考虑客户端切片或服务端分页。
                   return SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.symmetric(

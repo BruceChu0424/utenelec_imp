@@ -14,7 +14,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -70,17 +70,16 @@ class ExpenseApprovalListPage extends ConsumerWidget {
                     ],
                   );
                 }
-                return SingleChildScrollView(
+                return UtenPagedGrid(
+                  // 审批队列是公司维度聚合（"全部" tab 无上限），客户端按页切片。
+                  items: list,
                   padding: const EdgeInsets.symmetric(
                     vertical: UtenSpacing.s16,
                   ),
                   physics: const AlwaysScrollableScrollPhysics(),
-                  child: UtenResponsiveGrid(
-                    itemCount: list.length,
-                    itemBuilder: (context, i, _) => _ApprovalCard(
-                      claim: list[i],
-                      onTap: () => context.go('/expense/approval/${list[i].id}'),
-                    ),
+                  itemBuilder: (context, i, _) => _ApprovalCard(
+                    claim: list[i],
+                    onTap: () => context.go('/expense/approval/${list[i].id}'),
                   ),
                 );
               },

@@ -76,6 +76,8 @@ class ExpenseListPage extends ConsumerWidget {
                       top: UtenSpacing.s16,
                       bottom: 96,
                     ),
+                    // 个人报销历史（mock 4 条，生产为单员工几十量级），天然有界且量小，
+                    // 无需分页；若产品要求跨年归档查询（>~50）再考虑客户端切片。
                     child: UtenResponsiveGrid(
                       itemCount: claims.length,
                       itemBuilder: (context, i, _) => _ClaimCard(

@@ -477,7 +477,9 @@ class _MyChangesShortcut extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final async = ref.watch(myProfileChangesProvider('pending'));
+    final async = ref.watch(
+      myProfileChangesProvider((status: 'pending', page: 1)),
+    );
     final count = async.maybeWhen(data: (page) => page.total, orElse: () => 0);
 
     return UtenCard(

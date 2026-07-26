@@ -13,6 +13,10 @@
 //     四页 KeepAlive 保活；compact 下胶囊滑块高亮随 PageController.page 连续位置联动
 //   - 业务子页面（工资条/报销/人事…）照常通过 go_router 进入，
 //     外壳仅保留导航（高亮归属 Tab），不提供页间滑动
+//   - 保活覆盖子页面：进入业务子页面（tabIndex==null）时 PageView 不从树移除，
+//     仅以 Offstage 隐藏（仍 layout、保留 State 与滚动位置），子页面叠在上层；
+//     故从任一 Tab 进子页再返回，各 Tab 滚动位置/状态不丢（不回顶部）。
+//     见 _buildCompactShell / _buildRailShell 的 Stack+Offstage 结构。
 //
 // 路由同步：
 //   - 滑动停稳 → onPageChanged → context.go(tab 路由)，URL 与页一致
@@ -199,12 +203,27 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
           Positioned.fill(
             child: SafeArea(
               bottom: false,
-              child: tabIndex != null
-                  ? _tabPageView()
-                  : Padding(
-                      padding: EdgeInsets.only(bottom: _navReserve(context)),
-                      child: widget.child,
+              // PageView 常驻保活：进业务子页面（tabIndex==null）时不移除 PageView，
+              // 仅以 Offstage 隐藏；否则各 Tab 的滚动位置/状态随 PageView 卸载而丢失
+              // （从 Tab 进子页再返回会回到顶部）。Offstage 仍 layout 子树、保留 element
+              // 与 State，PageView 的 widget 树位置恒定，切回 Tab 原样恢复位置。
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Offstage(
+                      offstage: tabIndex == null,
+                      child: _tabPageView(),
                     ),
+                  ),
+                  if (tabIndex == null)
+                    Positioned.fill(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: _navReserve(context)),
+                        child: widget.child,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           Positioned(
@@ -253,7 +272,20 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
               // 超宽屏内容居中收敛（maxWidth 1600 + 响应式 gutter）；
               // 主 Tab 页与业务子页面统一收敛，无胶囊因此不再需要底部预留
               child: UtenContentContainer(
-                child: tabIndex != null ? _tabPageView() : widget.child,
+                // PageView 常驻保活（同 compact 分支理由）：进业务子页面时仅 Offstage
+                // 隐藏 PageView、子页面叠上层，切回 Tab 时滚动位置不丢
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Offstage(
+                        offstage: tabIndex == null,
+                        child: _tabPageView(),
+                      ),
+                    ),
+                    if (tabIndex == null)
+                      Positioned.fill(child: widget.child),
+                  ],
+                ),
               ),
             ),
           ],

@@ -1,20 +1,21 @@
-// UtenCategoryTreeView - 货品分类树组件。
+// UtenCategoryTreeView - 通用分类树组件（泛型 T extends UtenTreeNode<T>）。
+//
+// 由原货品分类树泛化：任何实现 UtenTreeNode 的节点都可复用，统一树外观
+// （搜索 / 展开折叠 / 搜索命中路径自动展开 / 选中高亮 / code 排序 /
+//   点行展开 / 子节点数徽标 / trailing 插槽）。
+// 现有复用方：货品/模具/客户/供应商（ProductCategoryNode）、收付款类别（PaymentStyleNode）。
 //
 // 拷贝自 UtenDepartmentTreeView，去掉部门特有的 level 徽标逻辑
 // （kSelectableDepartmentLevels / departmentLevelTag / kCompanyDepartmentLevel /
-//   showCompanyRoot 参数及相关分支），保留递归渲染 / 展开折叠 / 搜索命中路径自动展开 /
-// 单·多·无选择语义 / trailing 插槽。
-//
-// TODO(architecture): 未来可泛化为 UtenTreeView<T>，由 Department/Category 共享，
-// 目前两棵树差异（level 徽标 vs 无徽标）尚小，先各保留一份避免抽象过早。
+//   showCompanyRoot 参数及相关分支）。
 import 'package:flutter/material.dart';
 
-import '../models/product_category_node.dart';
+import '../models/uten_tree_node.dart';
 
 /// 树的选择语义。
 enum UtenCategoryTreeMode { none, single, multi }
 
-class UtenCategoryTreeView extends StatefulWidget {
+class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   const UtenCategoryTreeView({
     super.key,
     required this.nodes,
@@ -34,12 +35,12 @@ class UtenCategoryTreeView extends StatefulWidget {
 
   /// 点击节点文字行时是否同时展开/收起子类（有子节点才生效）。
   ///
-  /// 查看类页面（货品/模具/客户/供应商资料）设 true：点分类既选中又展开，
+  /// 查看类页面（货品/模具/客户/供应商/收付款类别资料）设 true：点分类既选中又展开，
   /// 不必只点 chevron 图标。管理页（分类 CRUD）保持 false，行点击仅选中。
   final bool expandOnRowTap;
 
   /// 树数据（调用方给，组件不自己拉）。
-  final List<ProductCategoryNode> nodes;
+  final List<T> nodes;
 
   /// 选择语义：none（纯浏览/管理）/ single / multi。
   final UtenCategoryTreeMode mode;
@@ -48,13 +49,13 @@ class UtenCategoryTreeView extends StatefulWidget {
   final Set<String> selectedIds;
 
   /// single/multi 模式下可选节点被点击。
-  final void Function(ProductCategoryNode node)? onToggleSelect;
+  final void Function(T node)? onToggleSelect;
 
   /// none 模式下的行点击（如管理页选中查看）。
-  final void Function(ProductCategoryNode node)? onNodeTap;
+  final void Function(T node)? onNodeTap;
 
   /// 节点是否可点/可选。默认全部可点（分类无骨架层级概念）。
-  final bool Function(ProductCategoryNode node)? nodeEnabledPredicate;
+  final bool Function(T node)? nodeEnabledPredicate;
 
   /// 是否显示顶部搜索框。
   final bool showSearch;
@@ -63,7 +64,7 @@ class UtenCategoryTreeView extends StatefulWidget {
   final int initiallyExpandDepth;
 
   /// 节点尾部操作插槽（在内置选择控件之前）。
-  final Widget? Function(ProductCategoryNode node)? trailingBuilder;
+  final Widget? Function(T node)? trailingBuilder;
 
   /// 顶部标题区。
   final Widget? header;
@@ -74,18 +75,22 @@ class UtenCategoryTreeView extends StatefulWidget {
   final String? emptySearchText;
 
   @override
-  State<UtenCategoryTreeView> createState() => _UtenCategoryTreeViewState();
+  State<UtenCategoryTreeView<T>> createState() =>
+      _UtenCategoryTreeViewState<T>();
 }
 
-class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
+class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
+    extends State<UtenCategoryTreeView<T>> {
   final _searchCtl = TextEditingController();
   late Set<String> _expanded;
   String _query = '';
 
   bool get _searching => _query.trim().isNotEmpty;
 
-  bool _enabled(ProductCategoryNode node) =>
-      (widget.nodeEnabledPredicate ?? (_) => true).call(node);
+  bool _enabled(T node) {
+    final p = widget.nodeEnabledPredicate;
+    return p != null ? p(node) : true;
+  }
 
   @override
   void initState() {
@@ -95,7 +100,7 @@ class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
   }
 
   @override
-  void didUpdateWidget(UtenCategoryTreeView oldWidget) {
+  void didUpdateWidget(UtenCategoryTreeView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.nodes != oldWidget.nodes ||
         widget.initiallyExpandDepth != oldWidget.initiallyExpandDepth) {
@@ -112,7 +117,7 @@ class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
 
   Set<String> _defaultExpanded() {
     final out = <String>{};
-    void walk(List<ProductCategoryNode> nodes, int depth) {
+    void walk(List<T> nodes, int depth) {
       for (final n in nodes) {
         if (n.hasChildren && depth < widget.initiallyExpandDepth) out.add(n.id);
         walk(n.children, depth + 1);
@@ -127,7 +132,7 @@ class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
   Set<String> _visibleIds() {
     final q = _query.trim();
     final visible = <String>{};
-    bool walk(List<ProductCategoryNode> nodes, List<String> ancestors) {
+    bool walk(List<T> nodes, List<String> ancestors) {
       var anyHit = false;
       for (final n in nodes) {
         final selfHit = n.name.contains(q);
@@ -146,10 +151,10 @@ class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
   }
 
   /// 按 code 字母序排序子节点（A-Z；空编码排前，中文按 Unicode 序排后）。
-  List<ProductCategoryNode> _sortedChildren(List<ProductCategoryNode> ns) =>
+  List<T> _sortedChildren(List<T> ns) =>
       [...ns]..sort((a, b) => a.code.compareTo(b.code));
 
-  void _toggleExpand(ProductCategoryNode node) {
+  void _toggleExpand(T node) {
     if (_searching) return;
     setState(() {
       if (_expanded.contains(node.id)) {
@@ -160,7 +165,7 @@ class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
     });
   }
 
-  void _onRowTap(ProductCategoryNode node) {
+  void _onRowTap(T node) {
     if (_enabled(node)) {
       // 查看页：点有子节点的行先展开/收起，再走选中/勾选语义。
       if (widget.expandOnRowTap && node.hasChildren) _toggleExpand(node);
@@ -176,11 +181,7 @@ class _UtenCategoryTreeViewState extends State<UtenCategoryTreeView> {
     }
   }
 
-  Widget _buildNode(
-    ProductCategoryNode node,
-    int depth,
-    Set<String>? visibleFilter,
-  ) {
+  Widget _buildNode(T node, int depth, Set<String>? visibleFilter) {
     if (visibleFilter != null && !visibleFilter.contains(node.id)) {
       return const SizedBox.shrink();
     }

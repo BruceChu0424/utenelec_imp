@@ -65,6 +65,8 @@ class MyVisitorsPage extends ConsumerWidget {
               );
             }
             final isCompact = context.breakpoint.isCompact;
+            // 被访人待确认是个人 + 瞬态（status=hostReviewing，确认后即脱离），
+            // 常态 0-3 条，无需分页。
             Widget grid = UtenResponsiveGrid(
               itemCount: items.length,
               itemBuilder: (context, i, itemWidth) {

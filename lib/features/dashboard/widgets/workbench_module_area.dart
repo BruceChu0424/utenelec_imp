@@ -197,16 +197,7 @@ const _allGroups = <_ModuleGroup>[
     title: '常用功能',
     color: UtenColors.teal600,
     items: [
-      _ModuleItem(
-        icon: Icons.account_balance_wallet_outlined,
-        label: '工资条',
-        location: RouteName.payrollSlipList,
-      ),
-      _ModuleItem(
-        icon: Icons.receipt_long_outlined,
-        label: '我的报销',
-        location: RouteName.expense,
-      ),
+      // 已落地（真实后端）排前面
       _ModuleItem(
         icon: Icons.person_search_outlined,
         label: '我的访客',
@@ -219,10 +210,24 @@ const _allGroups = <_ModuleGroup>[
         label: '基础资料',
         location: RouteName.basicinfo,
       ),
+      // 以下仍为前端 Mock、未接后端：置灰放最后，名字追加「（功能规划接入中）」、暂不跳转
+      _ModuleItem(
+        icon: Icons.account_balance_wallet_outlined,
+        label: '工资条',
+        location: RouteName.payrollSlipList,
+        comingSoon: true,
+      ),
+      _ModuleItem(
+        icon: Icons.receipt_long_outlined,
+        label: '我的报销',
+        location: RouteName.expense,
+        comingSoon: true,
+      ),
       _ModuleItem(
         icon: Icons.lightbulb_outline_rounded,
         label: '意见箱',
         location: RouteName.suggestion,
+        comingSoon: true,
       ),
     ],
   ),
@@ -272,6 +277,7 @@ const _allGroups = <_ModuleGroup>[
     items: [
       // 采购管理已归 PMC 运营部（本组原占位入口移除，避免重复）。
       // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier）。
+      // 已落地（真实后端）排前面
       _ModuleItem(
         icon: Icons.account_balance_outlined,
         label: '账户资料',
@@ -283,25 +289,29 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.finance,
       ),
       _ModuleItem(
+        icon: Icons.bar_chart_outlined,
+        label: '财务报表',
+        location: '/finance/report',
+      ),
+      // 以下仍为前端 Mock、未接后端：置灰放最后，名字追加「（功能规划接入中）」、暂不跳转
+      _ModuleItem(
         icon: Icons.fact_check_outlined,
         label: '报销审批',
         location: '/expense/approval',
+        comingSoon: true,
       ),
       // 工资条生成归属财务（payroll:generate 仅 finance/admin 持有）
       _ModuleItem(
         icon: Icons.request_quote_outlined,
         label: '工资条生成',
         location: '/payroll/generate',
+        comingSoon: true,
       ),
       _ModuleItem(
         icon: Icons.rate_review_outlined,
         label: '工资条审核',
         location: '/payroll/review',
-      ),
-      _ModuleItem(
-        icon: Icons.bar_chart_outlined,
-        label: '财务报表',
-        location: '/finance/report',
+        comingSoon: true,
       ),
     ],
   ),
@@ -333,7 +343,7 @@ const _allGroups = <_ModuleGroup>[
   _ModuleGroup(
     key: 'pmc',
     title: 'PMC运营部',
-    color: UtenColors.slate700,
+    color: UtenColors.teal600,
     items: [
       _ModuleItem(
         icon: Icons.inventory_2_outlined,
@@ -346,7 +356,7 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.stockMovement,
       ),
       _ModuleItem(
-        icon: Icons.warehouse_outlined,
+        icon: Icons.warehouse,
         label: '仓库管理',
         location: RouteName.warehouse,
       ),
@@ -368,10 +378,12 @@ const _allGroups = <_ModuleGroup>[
     title: '品质管理部',
     color: UtenColors.teal500,
     items: [
+      // 仍为前端 Mock、未接后端：置灰，名字追加「（功能规划接入中）」、暂不跳转
       _ModuleItem(
         icon: Icons.science_outlined,
         label: '检测记录',
         location: '/lab/test',
+        comingSoon: true,
       ),
     ],
   ),
@@ -438,6 +450,7 @@ class _ModuleItem {
     required this.label,
     required this.location,
     this.badge,
+    this.comingSoon = false,
   });
 
   final IconData icon;
@@ -446,6 +459,10 @@ class _ModuleItem {
 
   /// 右上角待办徽章（如 HrPendingBadge / VisitorPendingBadge；>0 自动显示）
   final Widget? badge;
+
+  /// 功能规划接入中：置灰、名字追加「（功能规划接入中）」、不跳转（对应页面待开发）。
+  /// 各分组内已落地模块排前面、comingSoon 卡片排末尾。
+  final bool comingSoon;
 }
 
 class _ModuleGroup {
@@ -475,12 +492,17 @@ class _ModuleTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 功能规划接入中的卡片：置灰、名字追加「（功能规划接入中）」、不响应点击。
+    final comingSoon = item.comingSoon;
+    final accent = comingSoon ? theme.disabledColor : color;
     return Material(
       type: MaterialType.transparency,
       borderRadius: UtenRadius.lgAll,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => goFrom(context, item.location),
+        // comingSoon 的卡片先不跳转（对应页面待开发，入口见 item.location）：
+        //   onTap: () => goFrom(context, item.location),
+        onTap: comingSoon ? null : () => goFrom(context, item.location),
         child: Stack(
           children: [
             Container(
@@ -500,17 +522,19 @@ class _ModuleTile extends StatelessWidget {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
+                      color: accent.withValues(alpha: 0.1),
                       borderRadius: UtenRadius.mdAll,
                     ),
-                    child: Icon(item.icon, color: color, size: 19),
+                    child: Icon(item.icon, color: accent, size: 19),
                   ),
                   const SizedBox(width: UtenSpacing.s12),
                   Expanded(
                     child: Text(
-                      item.label,
+                      comingSoon ? '${item.label}（功能规划接入中）' : item.label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w500,
+                        color:
+                            comingSoon ? theme.colorScheme.onSurfaceVariant : null,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

@@ -12,7 +12,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
@@ -69,21 +69,21 @@ class SuggestionListPage extends ConsumerWidget {
                     ],
                   );
                 }
-                return SingleChildScrollView(
+                return UtenPagedGrid(
+                  // 建议广场是公司全员流（默认 tab=square，无上限、卡片重），
+                  // 客户端按页切片，Wrap 恒只构建当页 ~20 张。接真后端后改服务端分页。
+                  items: suggestions,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.only(
                     top: UtenSpacing.s8,
                     bottom: 80, // 底部悬浮胶囊导航 / FAB 留白
                   ),
-                  child: UtenResponsiveGrid(
-                    itemCount: suggestions.length,
-                    itemBuilder: (context, i, _) => _SuggestionCard(
-                      suggestion: suggestions[i],
-                      onTap: () => context
-                          .push(RoutePath.suggestionDetail(suggestions[i].id)),
-                      onLike: () =>
-                          toggleSuggestionLike(ref, suggestions[i].id),
-                    ),
+                  itemBuilder: (context, i, _) => _SuggestionCard(
+                    suggestion: suggestions[i],
+                    onTap: () => context
+                        .push(RoutePath.suggestionDetail(suggestions[i].id)),
+                    onLike: () =>
+                        toggleSuggestionLike(ref, suggestions[i].id),
                   ),
                 );
               },

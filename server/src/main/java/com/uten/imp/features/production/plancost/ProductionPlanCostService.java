@@ -95,10 +95,10 @@ public class ProductionPlanCostService {
                        COUNT(*)                AS line_cnt
                 FROM production_plan_costs
                 WHERE COALESCE(is_deleted, false) = false
-                  AND (:master IS NULL OR master_goods_id = :master)
-                  AND (:planItem IS NULL OR bill_item_id = :planItem)
-                  AND (:from IS NULL OR bill_date >= :from)
-                  AND (:to   IS NULL OR bill_date <= :to)
+                  AND (CAST(:master AS uuid) IS NULL OR master_goods_id = :master)
+                  AND (CAST(:planItem AS uuid) IS NULL OR bill_item_id = :planItem)
+                  AND (CAST(:from AS date) IS NULL OR bill_date >= :from)
+                  AND (CAST(:to AS date) IS NULL OR bill_date <= :to)
                 GROUP BY 1, 2
                 ORDER BY total_sum DESC NULLS LAST
                 LIMIT :limit

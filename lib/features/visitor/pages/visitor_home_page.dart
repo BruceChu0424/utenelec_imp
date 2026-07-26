@@ -122,6 +122,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(
                           vertical: UtenSpacing.s16),
+                      // 个人视角（仅当前访客自己的预约），天然几十以内，无需分页。
                       child: UtenResponsiveGrid(
                         itemCount: list.length,
                         itemBuilder: (context, i, _) => _VisitorAppCard(

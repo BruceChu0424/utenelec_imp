@@ -135,7 +135,7 @@ public class SalesReportService {
                 SELECT doc_type, ym, goods_id, client_id,
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
                 FROM sales_monthly_mv
-                WHERE (:docType IS NULL OR doc_type = :docType)
+                WHERE (CAST(:docType AS text) IS NULL OR doc_type = :docType)
                   AND (CAST(:from AS date) IS NULL OR ym >= :from)
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
                   AND (CAST(:clientId AS uuid) IS NULL OR client_id = :clientId)

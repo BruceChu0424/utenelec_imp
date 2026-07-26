@@ -12,7 +12,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -81,16 +81,16 @@ class _VisitorApprovalListPageState extends ConsumerState<VisitorApprovalListPag
                     ],
                   );
                 }
-                return SingleChildScrollView(
+                return UtenPagedGrid(
+                  // "已批准/已拒绝" tab 是公司全员历史、无界累积，客户端按页切片。
+                  // 后端目前返回裸 List（无 page/size）；真分页需后端补 Pageable。
+                  items: items,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.symmetric(
                       horizontal: hPad, vertical: UtenSpacing.s16),
-                  child: UtenResponsiveGrid(
-                    itemCount: items.length,
-                    itemBuilder: (context, i, _) => _ApprovalCard(
-                      app: items[i],
-                      onTap: () => context.go('/visitor-approval/${items[i].id}'),
-                    ),
+                  itemBuilder: (context, i, _) => _ApprovalCard(
+                    app: items[i],
+                    onTap: () => context.go('/visitor-approval/${items[i].id}'),
                   ),
                 );
               },

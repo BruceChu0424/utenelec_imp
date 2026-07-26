@@ -13,7 +13,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -77,15 +77,16 @@ class InventoryMovementPage extends ConsumerWidget {
                     UtenEmpty(icon: Icons.swap_vert_rounded, message: '暂无出入库记录'),
                   ]);
                 }
-                return SingleChildScrollView(
+                return UtenPagedGrid(
+                  // 出入库流水天然数十万行（最高危）。后端 /api/stock/movements 已支持
+                  // page/size 返回 PageResponse，但本页仍用 MockInventoryRepository；当前
+                  // mock 6 条，客户端切片先防一次性渲染。接真后端时务必改服务端真分页。
+                  items: list,
                   padding: const EdgeInsets.symmetric(
                     vertical: UtenSpacing.s16,
                   ),
                   physics: const AlwaysScrollableScrollPhysics(),
-                  child: UtenResponsiveGrid(
-                    itemCount: list.length,
-                    itemBuilder: (context, i, _) => _MovementCard(m: list[i]),
-                  ),
+                  itemBuilder: (context, i, _) => _MovementCard(m: list[i]),
                 );
               },
             ),

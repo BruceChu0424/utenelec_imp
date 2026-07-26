@@ -63,6 +63,8 @@ class HvacOverviewPage extends ConsumerWidget {
               return SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
                     horizontal: hPad, vertical: UtenSpacing.s16),
+                // 物理空调设备，按厂房分区，全公司几十量级且受设备数硬约束，无需分页。
+                // 接真后端且设备数膨胀（>~30）时再评估服务端分页。
                 child: UtenResponsiveGrid(
                   itemCount: list.length,
                   itemBuilder: (context, i, _) => _DeviceCard(

@@ -171,49 +171,42 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                       ],
                     ),
                     const SizedBox(height: UtenSpacing.s12),
-                    Text('月度汇总（${_docLabel(_docType!)}）',
+                    Text('月度汇总（${_docLabel(_docType!)}，共 ${_monthly.length} 条）',
                         style: theme.textTheme.titleSmall
                             ?.copyWith(fontWeight: FontWeight.w600)),
-                    Card(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _monthly.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final r = _monthly[i];
-                          return ListTile(
-                            dense: true,
-                            title: Text(names.goods(r.goodsId)),
-                            subtitle: Text(
-                              '${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            trailing: Text('¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}'),
-                          );
-                        },
+                    if (_monthly.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('暂无数据'),
                       ),
-                    ),
+                    for (final r in _monthly)
+                      ListTile(
+                        dense: true,
+                        title: Text(names.goods(r.goodsId)),
+                        subtitle: Text(
+                          '${r.ym.substring(0, 10)}  ·  ${names.supplier(r.supplierId)}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        trailing: Text(
+                            '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}'),
+                      ),
                     const SizedBox(height: UtenSpacing.s12),
-                    Text('待交货订货汇总', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                    Card(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _pending.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final r = _pending[i];
-                          return ListTile(
-                            dense: true,
-                            title: Text(names.goods(r.goodsId)),
-                            subtitle: Text(names.color(r.colorId),
-                                style: const TextStyle(fontSize: 11)),
-                            trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
-                          );
-                        },
+                    Text('待交货订货汇总（共 ${_pending.length} 条）',
+                        style: theme.textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    if (_pending.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text('暂无数据'),
                       ),
-                    ),
+                    for (final r in _pending)
+                      ListTile(
+                        dense: true,
+                        title: Text(names.goods(r.goodsId)),
+                        subtitle: Text(names.color(r.colorId),
+                            style: const TextStyle(fontSize: 11)),
+                        trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
+                      ),
                   ],
                 ),
         ),

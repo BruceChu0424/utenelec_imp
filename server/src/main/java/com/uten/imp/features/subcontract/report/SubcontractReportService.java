@@ -45,7 +45,7 @@ public class SubcontractReportService {
                 SELECT doc_type, ym, goods_id, supplier_id,
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
                 FROM subcontract_monthly_mv
-                WHERE (:docType IS NULL OR doc_type = :docType)
+                WHERE (CAST(:docType AS text) IS NULL OR doc_type = :docType)
                   AND (CAST(:from AS date) IS NULL OR ym >= :from)
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
                 GROUP BY doc_type, ym, goods_id, supplier_id
@@ -102,9 +102,9 @@ public class SubcontractReportService {
                     ) d ON d.id = m.source_doc_id
                     WHERE m.movement_type BETWEEN 15 AND 19
                 ) s
-                WHERE (:supplierId IS NULL OR supplier_id = :supplierId)
-                  AND (:from IS NULL OR transaction_date >= CAST(:from AS timestamptz))
-                  AND (:to   IS NULL OR transaction_date <  CAST(:to AS timestamptz) + interval '1 day')
+                WHERE (CAST(:supplierId AS uuid) IS NULL OR supplier_id = :supplierId)
+                  AND (CAST(:from AS timestamptz) IS NULL OR transaction_date >= CAST(:from AS timestamptz))
+                  AND (CAST(:to AS timestamptz) IS NULL OR transaction_date <  CAST(:to AS timestamptz) + interval '1 day')
                 GROUP BY supplier_id, goods_id
                 ORDER BY issue_qty DESC NULLS LAST, receipt_qty DESC NULLS LAST
                 LIMIT :limit

@@ -4,9 +4,14 @@
 // - level 是 int（层级深度），不再是部门那套字符串枚举（公司/决策层/...）；
 // - 去掉 manager/headcount（分类不挂人）；
 // - 新增 legacyId（旧系统编码，迁移用）。
+//
+// 实现 UtenTreeNode<ProductCategoryNode>：货品/模具/客户/供应商四份分类主档
+// 节点形状一致，共用本类型，统一喂给 UtenCategoryTreeView<ProductCategoryNode>。
+
+import 'uten_tree_node.dart';
 
 /// 货品分类树节点（递归 children）。
-class ProductCategoryNode {
+class ProductCategoryNode implements UtenTreeNode<ProductCategoryNode> {
   ProductCategoryNode({
     required this.id,
     required this.code,
@@ -18,8 +23,11 @@ class ProductCategoryNode {
     this.legacyId,
   });
 
+  @override
   final String id;
+  @override
   final String code;
+  @override
   final String name;
 
   /// 层级深度（0 = 顶级）。
@@ -27,8 +35,10 @@ class ProductCategoryNode {
   final String? parentId;
   final int? sortOrder;
   final int? legacyId;
+  @override
   final List<ProductCategoryNode> children;
 
+  @override
   bool get hasChildren => children.isNotEmpty;
 
   factory ProductCategoryNode.fromJson(Map<String, dynamic> json) {

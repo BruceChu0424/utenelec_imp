@@ -294,6 +294,11 @@ public class SalesShipmentService {
             it.setCartonCount(l.getCartonCount());
             it.setClientNo(l.getClientNo());
             it.setClientModel(l.getClientModel());
+            it.setMaterialPrice(l.getMaterialPrice());
+            it.setDieCastPrice(l.getDieCastPrice());
+            it.setMachiningPrice(l.getMachiningPrice());
+            it.setCircumference(l.getCircumference());
+            it.setDiscount(l.getDiscount());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
@@ -325,7 +330,9 @@ public class SalesShipmentService {
                 it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getReturnedQty(),
                 it.getReturnedAmount(), it.getWeight(), it.getParcelQty(), it.getCartonCount(),
-                it.getClientNo(), it.getClientModel(), it.getSourceDocNo(), it.getRemark());
+                it.getClientNo(), it.getClientModel(), it.getMaterialPrice(), it.getDieCastPrice(),
+                it.getMachiningPrice(), it.getCircumference(), it.getDiscount(), it.getSourceDocNo(),
+                it.getRemark());
     }
 
     private ShipmentDetail toDetail(SalesShipment s, List<ShipmentItemDto> items) {

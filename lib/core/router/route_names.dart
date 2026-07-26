@@ -98,11 +98,15 @@ abstract final class RouteName {
   // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
   static const String warehouse = '/warehouse';
   static const String warehouseReport = '/warehouse/report';
+  static const String warehouseReportDetail = '/warehouse/report/detail';
+  static const String warehouseReportSummary = '/warehouse/report/summary';
 
   // 销售管理（综合营销部）：hub + 5 单据 + 报表。
   // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
   static const String sales = '/sales';
   static const String salesReport = '/sales/report';
+  static const String salesReportDetail = '/sales/report/detail';
+  static const String salesReportSummary = '/sales/report/summary';
 
   // 委外管理（综合营销部）：hub + 8 单据 + 报表。
   // seg = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
@@ -144,6 +148,7 @@ abstract final class RoutePath {
   static String purchaseDocNew(String doc) => '/purchase/$doc/new';
   static String purchaseDocDetail(String doc, String id) => '/purchase/$doc/$id';
   static String purchaseDocEdit(String doc, String id) => '/purchase/$doc/$id/edit';
+  static String purchaseReportTable(String kind) => '/purchase/report/$kind';
 
   /// 仓库单据：列表 / 新建 / 详情 / 编辑。[code] = TRANSFER|OTHER_IN|...|CHECK。
   static String stockDocList(String code) => '/warehouse/$code';

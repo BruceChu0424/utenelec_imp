@@ -312,6 +312,7 @@ public class SalesReturnService {
             it.setClientModel(l.getClientModel());
             it.setSolution(l.getSolution());
             it.setResponsible(l.getResponsible());
+            it.setDiscount(l.getDiscount());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
@@ -343,7 +344,7 @@ public class SalesReturnService {
                 it.getGoodsId(), it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getWeight(),
                 it.getClientNo(), it.getClientModel(), it.getSolution(), it.getResponsible(),
-                it.getSourceDocNo(), it.getRemark());
+                it.getDiscount(), it.getSourceDocNo(), it.getRemark());
     }
 
     private ReturnDetail toDetail(SalesReturn r, List<ReturnItemDto> items) {

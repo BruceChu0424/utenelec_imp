@@ -32,4 +32,10 @@ public class ReturnDetail {
     private boolean closed;
     private String sourceDocNo;
     private List<ReturnItemDto> items;
+
+    private Integer settlementStyleLegacy;
+    private Integer makerLegacyId;
+    private String makerName;
+    private Integer approverLegacyId;
+    private String approverName;
 }

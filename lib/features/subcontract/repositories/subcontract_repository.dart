@@ -96,6 +96,8 @@ class SubcontractReportRepository {
   final ApiClient api;
 
   /// 月度汇总（MV 上卷；docType 取值见 kSubcontractReportDocTypes）。
+  /// 注：前端已改用 9 张参数化报表（/reports/{doc}/{view} + /in-out-status，返回 ReportTableResponse），
+  /// 本 monthly 兜底保留，不再在 UI 暴露入口。
   Future<List<Map<String, dynamic>>> monthly({
     String? docType,
     String? dateFrom,
@@ -104,22 +106,6 @@ class SubcontractReportRepository {
   }) async {
     final list = await api.getList('/subcontract/reports/monthly', query: {
       if (docType != null) 'docType': docType,
-      if (dateFrom != null) 'dateFrom': dateFrom,
-      if (dateTo != null) 'dateTo': dateTo,
-      'limit': limit,
-    });
-    return list;
-  }
-
-  /// 委外出入状况表（综合 O：发料/材料退/收回成品/成品退/损耗 × 委外商×货品）。
-  Future<List<Map<String, dynamic>>> inOutStatus({
-    String? supplierId,
-    String? dateFrom,
-    String? dateTo,
-    int limit = 200,
-  }) async {
-    final list = await api.getList('/subcontract/reports/in-out-status', query: {
-      if (supplierId != null) 'supplierId': supplierId,
       if (dateFrom != null) 'dateFrom': dateFrom,
       if (dateTo != null) 'dateTo': dateTo,
       'limit': limit,

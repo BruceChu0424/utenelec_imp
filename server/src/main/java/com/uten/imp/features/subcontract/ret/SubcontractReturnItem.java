@@ -81,5 +81,21 @@ public class SubcontractReturnItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** 围数（E_WithDrawItem.KQTY）。 */
+    @Column(name = "girth_qty", precision = 18, scale = 4)
+    private BigDecimal girthQty;
+
+    /** 工序 legacy id（E_WithDrawItem.StepID → B_Step；B_Step 未迁，暂空白）。 */
+    @Column(name = "step_legacy_id")
+    private Integer stepLegacyId;
+
+    /** 委外进仓单号（E_WithDrawItem.InNo，多值 varchar 原样）。 */
+    @Column(name = "receipt_no")
+    private String receiptNo;
+
+    /** 委外订货单号（E_WithDrawItem.OrderNo，多值 varchar 原样）。 */
+    @Column(name = "order_no")
+    private String orderNo;
+
     private String remark;
 }

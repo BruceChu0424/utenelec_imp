@@ -31,6 +31,14 @@ public class ReceiptSaveRequest {
     private LocalDate lastDate;
     private String remark;
 
+    private Integer settlementStyleLegacy;
+    private Integer receiverLegacyId;
+    private String receiverName;
+    private Integer makerLegacyId;
+    private String makerName;
+    private Integer approverLegacyId;
+    private String approverName;
+
     @Valid
     @NotNull
     private List<ReceiptItemLine> items;

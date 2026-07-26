@@ -30,4 +30,8 @@ public class MaterialIssueItemDto {
     private BigDecimal weight;
     private String sourceDocNo;
     private String remark;
+
+    private BigDecimal boxQty;
+    private String returnNo;
+    private String orderNo;
 }

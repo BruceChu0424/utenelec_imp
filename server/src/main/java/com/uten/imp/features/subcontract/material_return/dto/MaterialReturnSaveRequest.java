@@ -30,6 +30,13 @@ public class MaterialReturnSaveRequest {
     private Integer bStyle;
     private String remark;
 
+    private Integer operatorLegacyId;
+    private String operatorName;
+    private Integer makerLegacyId;
+    private String makerName;
+    private Integer approverLegacyId;
+    private String approverName;
+
     @Valid
     @NotNull
     private List<MaterialReturnItemLine> items;

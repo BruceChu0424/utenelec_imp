@@ -32,5 +32,10 @@ public class PurchaseReturnItem extends BaseEntity {
     @Column(name = "amount_local", precision = 18, scale = 4) private BigDecimal amountLocal;
     @Column(name = "weight", precision = 18, scale = 4) private BigDecimal weight;
     @Column(name = "source_doc_no") private String sourceDocNo;
+    /** 老库交叉引用文本（软关联，报表按列展示，不强 FK）。 */
+    @Column(name = "receipt_no") private String receiptNo;
+    @Column(name = "sales_order_no") private String salesOrderNo;
+    @Column(name = "production_plan_no") private String productionPlanNo;
+    @Column(name = "order_no") private String orderNo;
     private String remark;
 }

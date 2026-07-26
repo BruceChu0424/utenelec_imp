@@ -37,10 +37,17 @@ class SalesHubPage extends ConsumerWidget {
 
     final reportEntries = <_Entry>[
       _Entry(
+        icon: Icons.list_alt_outlined,
+        label: '销售明细报表',
+        description: '订货 / 出货 / 退货 / 其它出货',
+        location: SalesRoutePath.reportDetail,
+        listPerm: SalesPerm.reportView,
+      ),
+      _Entry(
         icon: Icons.bar_chart_outlined,
-        label: '销售报表',
-        description: '明细 / 汇总 / 待交货',
-        location: SalesRoutePath.report,
+        label: '销售汇总报表',
+        description: '订货 / 出货 / 退货 / 其它出货',
+        location: SalesRoutePath.reportSummary,
         listPerm: SalesPerm.reportView,
       ),
     ].where((e) => perms.contains(e.listPerm)).toList();

@@ -225,6 +225,12 @@ public class SubcontractMaterialIssueService {
         r.setWorkerId(req.getWorkerId());
         r.setDeliverDate(req.getDeliverDate());
         r.setRemark(req.getRemark());
+        r.setOperatorLegacyId(req.getOperatorLegacyId());
+        r.setOperatorName(req.getOperatorName());
+        r.setMakerLegacyId(req.getMakerLegacyId());
+        r.setMakerName(req.getMakerName());
+        r.setApproverLegacyId(req.getApproverLegacyId());
+        r.setApproverName(req.getApproverName());
     }
 
     private List<MaterialIssueItemDto> saveItems(SubcontractMaterialIssue r, List<MaterialIssueItemLine> lines) {
@@ -250,6 +256,9 @@ public class SubcontractMaterialIssueService {
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
+            it.setBoxQty(l.getBoxQty());
+            it.setReturnNo(l.getReturnNo());
+            it.setOrderNo(l.getOrderNo());
             itemRepo.save(it);
             out.add(toItemDto(it));
             autoLine++;
@@ -278,14 +287,16 @@ public class SubcontractMaterialIssueService {
         return new MaterialIssueItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReturnedQty(), it.getWastedQty(), it.getOrderItemId(),
-                it.getParentGoodsId(), it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
+                it.getParentGoodsId(), it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
+                it.getBoxQty(), it.getReturnNo(), it.getOrderNo());
     }
 
     private MaterialIssueDetail toDetail(SubcontractMaterialIssue r, List<MaterialIssueItemDto> items) {
         return new MaterialIssueDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
                 r.getDeliverDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), items);
+                r.isClosed(), r.getSourceDocNo(), items, r.getOperatorLegacyId(), r.getOperatorName(),
+                r.getMakerLegacyId(), r.getMakerName(), r.getApproverLegacyId(), r.getApproverName());
     }
 
     private SubcontractMaterialIssue requireIssue(UUID id) {

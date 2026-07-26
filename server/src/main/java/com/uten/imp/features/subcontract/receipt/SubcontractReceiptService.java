@@ -268,6 +268,13 @@ public class SubcontractReceiptService {
         r.setSenderId(req.getSenderId());
         r.setLastDate(req.getLastDate());
         r.setRemark(req.getRemark());
+        r.setSettlementStyleLegacy(req.getSettlementStyleLegacy());
+        r.setReceiverLegacyId(req.getReceiverLegacyId());
+        r.setReceiverName(req.getReceiverName());
+        r.setMakerLegacyId(req.getMakerLegacyId());
+        r.setMakerName(req.getMakerName());
+        r.setApproverLegacyId(req.getApproverLegacyId());
+        r.setApproverName(req.getApproverName());
     }
 
     private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines) {
@@ -293,6 +300,11 @@ public class SubcontractReceiptService {
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
+            it.setGirthQty(l.getGirthQty());
+            it.setStepLegacyId(l.getStepLegacyId());
+            it.setReturnAmount(l.getReturnAmount());
+            it.setReturnNo(l.getReturnNo());
+            it.setOrderNo(l.getOrderNo());
             itemRepo.save(it);
             out.add(toItemDto(it));
             autoLine++;
@@ -321,14 +333,17 @@ public class SubcontractReceiptService {
         return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getCheckQty(), it.getOrderQty(), it.getReturnedQty(), it.getWeight(),
-                it.getOrderItemId(), it.getSourceDocNo(), it.getRemark());
+                it.getOrderItemId(), it.getSourceDocNo(), it.getRemark(), it.getGirthQty(), it.getStepLegacyId(),
+                it.getReturnAmount(), it.getReturnNo(), it.getOrderNo());
     }
 
     private ReceiptDetail toDetail(SubcontractReceipt r, List<ReceiptItemDto> items) {
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getSenderId(), r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items);
+                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
+                r.getSettlementStyleLegacy(), r.getReceiverLegacyId(), r.getReceiverName(),
+                r.getMakerLegacyId(), r.getMakerName(), r.getApproverLegacyId(), r.getApproverName());
     }
 
     private SubcontractReceipt requireReceipt(UUID id) {

@@ -15,14 +15,14 @@ def b64(b): return base64.urlsafe_b64encode(b).rstrip(b'=')
 def sign(p):
     h=b64(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode()); pl=b64(json.dumps(p,separators=(',',':')).encode())
     return (h+b'.'+pl+b'.'+b64(hmac.new(SECRET,h+pl,hashlib.sha256).digest())).decode()
-now=int(time.time()); tok=sign({'sub':str(UID),'typ':'staff','acc':ACC,'perms':['stock:view','purchase_report:view','goods:view','supplier:view','warehouses:view'],'roles':[],'mcp':False,'iss':'uten-imp','iat':now,'exp':now+3600})
+now=int(time.time()); tok=sign({'sub':str(UID),'typ':'staff','acc':ACC,'perms':['stock:view','stock_report:view','purchase_report:view','goods:view','supplier:view','warehouses:view'],'roles':[],'mcp':False,'iss':'uten-imp','iat':now,'exp':now+3600})
 BASE='http://localhost:8080/api'
 def get(p):
     req=urllib.request.Request(BASE+p,headers={'Authorization':'Bearer '+tok})
     try:
         r=urllib.request.urlopen(req,timeout=30); return r.status, json.loads(r.read().decode() or 'null')
     except urllib.error.HTTPError as e: return e.code, e.read().decode()
-for ep in ['/stock/balances?size=3','/stock/movements?size=3','/purchase/reports/monthly?docType=ORDER&limit=5','/purchase/reports/pending?limit=5']:
+for ep in ['/stock/balances?size=3','/stock/movements?size=3','/purchase/reports/monthly?docType=ORDER&limit=5','/purchase/reports/pending?limit=5','/stock/reports/TRANSFER/detail?size=3','/stock/reports/OTHER_IN/detail?size=3','/stock/reports/DRAW/summary?size=3','/stock/reports/CHECK/detail?size=3','/stock/reports/FINISHED_IN/summary?size=3']:
     s,r=get(ep); n = (len(r.get('items')) if isinstance(r,dict) and r.get('items') else (len(r) if isinstance(r,list) else r)) if s==200 else r
     print(f'{ep} -> {s} | {n}')
 c.close()

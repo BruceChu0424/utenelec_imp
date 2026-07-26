@@ -27,6 +27,13 @@ public class OtherShipmentItemDto {
     private BigDecimal cartonCount;
     private String clientNo;
     private String clientModel;
+    private BigDecimal materialPrice;
+    private BigDecimal dieCastPrice;
+    private BigDecimal machiningPrice;
+    private BigDecimal circumference;
+    private BigDecimal discount;
+    private BigDecimal returnedQty;
+    private BigDecimal returnedAmount;
     private String sourceDocNo;
     private String remark;
 }

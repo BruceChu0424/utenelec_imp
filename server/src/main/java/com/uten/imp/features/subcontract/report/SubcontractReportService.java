@@ -7,25 +7,38 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 委外报表查询（design doc 22 §6.1，17 张老库报表收敛为参数化查询）。
+ * 委外报表查询（委外管理 / 委外报表）。
  *
+ * <p>三类入口：
+ * <ol>
+ *   <li>{@link #execute}/{@link #receiptDetail} 等 8 张：进仓/退货/材料出/材料退 各明细+汇总。
+ *       <b>服务端 JOIN 出"显示就绪"行</b>（委外商/仓库/货品/颜色/单位/人员名/结帐方式均已解析），
+ *       支持日期/委外商/仓库/状态/关键字过滤 + 关键列 facet 表头筛选 + 分页。</li>
+ *   <li>{@link #inOutStatus}：委外出入状况表（按 委外商×货品×颜色 汇总发胚/收货/退成品/退原胚/退不良品
+ *       + 期初/期末结存 + 订货数量 + 单价/金额）。</li>
+ *   <li>{@link #monthly}：月度汇总（MV 上卷，保留兜底；前端不再暴露入口）。</li>
+ * </ol>
+ *
+ * <p>人员名（Option A，见迁移 V66/计划）：
  * <ul>
- *   <li>月度汇总（{@link #monthly}）：查 {@code subcontract_monthly_mv} 按维度上卷（涵盖 8 类单据）。
- *       覆盖老库"汇总报表 ×8"。docType 取值：INQUIRY/APPLICATION/ORDER/RECEIPT/RETURN/
- *       MATERIAL_ISSUE/MATERIAL_RETURN/WASTE。</li>
- *   <li>委外出入状况表（{@link #inOutStatus}）：按 委外商×货品 汇总发料/收回/退/损耗/净额
- *       （design doc 22 §6.3，复刻老库 View_E_InOutStatus）。</li>
+ *   <li>收货人(receiver)/经办人(operator)：老库 B_Worker → employees stub（legacy_id=B_Worker.ID）。
+ *       报表 COALESCE(em.full_name, o.*_name)，em 走 *_legacy_id。</li>
+ *   <li>制单员(maker)/审核员(approver)：老库 Sys_Operator → 迁移冻结 o.*_name 文本；新单据走 *_id→employees。
+ *       报表 COALESCE(em.full_name, o.*_name)，em 走 *_id。</li>
  * </ul>
  *
- * <p><b>明细报表 ×8</b> 复用 {@code /api/subcontract/{doc}} 列表（已支持日期/供应商/状态过滤），
- * 不在本服务重复。MV 由 V54 建，需定期 REFRESH MATERIALIZED VIEW CONCURRENTLY
- * （{@code refresh_subcontract_monthly_mv()}）；数据非严格实时，明细列表兜底实时。
+ * <p>结帐方式：{@code settlement_style_legacy}（B_PStyle.ID），按 {@link SubcontractSettlementStyle} 字典渲染。
  *
- * <p>权限点：{@code subcontract_report:view}（V53 seed，全员可查）。
+ * <p>结构/执行器与 {@code PurchaseReportService} 同构（复制，避免跨 feature 依赖）。
+ * _null 参数类型坑_：可选过滤用 {@code CAST(:param AS 类型) IS NULL OR ...}（见 MEMORY）。
  */
 @Service
 @RequiredArgsConstructor
@@ -35,10 +48,613 @@ public class SubcontractReportService {
 
     private final EntityManager em;
 
+    // ======================== 通用执行器（8 张明细/汇总共用） ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
+                                       WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
+                                       Map<String, String> activeFacets, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 500);
+        long offset = (long) (safePage - 1) * safeSize;
+
+        List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
+        if (activeFacets != null) {
+            for (Map.Entry<String, String> e : activeFacets.entrySet()) {
+                FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
+                if (spec != null && e.getValue() != null && !e.getValue().isBlank()) {
+                    facetClauses.add(facetClause(spec, e.getValue()));
+                }
+            }
+        }
+        WhereBuilder.Built full = mainWhere.build(facetClauses);
+        WhereBuilder.Built baseB = mainWhere.build(null);
+
+        var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
+                + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+        full.params().forEach(dataQ::setParameter);
+        dataQ.setParameter("__limit", safeSize);
+        dataQ.setParameter("__offset", offset);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = dataQ.getResultList();
+        List<Map<String, Object>> items = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            for (int i = 0; i < columns.size(); i++) m.put(columns.get(i).key(), norm(r[i], columns.get(i)));
+            items.add(m);
+        }
+
+        var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
+        full.params().forEach(countQ::setParameter);
+        long total = ((Number) countQ.getSingleResult()).longValue();
+        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+
+        Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
+        for (FacetSpec spec : specs) {
+            var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
+                    + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
+            baseB.params().forEach(fq::setParameter);
+            @SuppressWarnings("unchecked")
+            List<Object[]> frs = fq.getResultList();
+            List<ReportFacet> buckets = new ArrayList<>();
+            for (Object[] fr : frs) {
+                Object v = fr[0];
+                String val = (v == null) ? ReportTableResponse.NULL_FACET : Objects.toString(v);
+                String lbl = (v == null) ? "(空)" : (fr[1] == null ? null : fr[1].toString());
+                if ("style".equals(spec.filterType()) && v != null) {
+                    lbl = SubcontractSettlementStyle.label(toInt(v));
+                }
+                long cnt = ((Number) fr[2]).longValue();
+                buckets.add(new ReportFacet(val, lbl, cnt));
+            }
+            facets.put(spec.key(), buckets);
+        }
+
+        return new ReportTableResponse(columns, items, facets, safePage, safeSize, total, totalPages);
+    }
+
+    private static int toInt(Object v) {
+        if (v instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(Objects.toString(v)); } catch (NumberFormatException e) { return 0; }
+    }
+
+    private static Object norm(Object v, ReportColumn col) {
+        if (v == null) return null;
+        if ("style".equals(col.type())) return SubcontractSettlementStyle.label(toInt(v));
+        if (v instanceof java.sql.Date d) return d.toLocalDate().toString();
+        if (v instanceof java.sql.Timestamp t) return t.toLocalDateTime().toLocalDate().toString();
+        if (v instanceof BigDecimal || v instanceof Boolean || v instanceof Number) return v;
+        if (v instanceof UUID u) return u.toString();
+        return v.toString();
+    }
+
+    private static WhereBuilder.Clause facetClause(FacetSpec spec, String value) {
+        String p = "facet_" + spec.key();
+        if (ReportTableResponse.NULL_FACET.equals(value)) {
+            return new WhereBuilder.Clause("(" + spec.filterExpr() + ") IS NULL", null, null);
+        }
+        return switch (spec.filterType()) {
+            case "uuid"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS uuid)", p, UUID.fromString(value));
+            case "int", "style" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS int)", p, Integer.valueOf(value));
+            case "bool"  -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, Boolean.valueOf(value));
+            default      -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
+        };
+    }
+
+    // ======================== 主过滤构造（公共） ========================
+
+    private static void addCommonDocFilters(WhereBuilder w, String billNo, UUID supplierId, UUID warehouseId,
+                                            Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
+                                            String billNoCol, String dateCol) {
+        if (billNo != null && !billNo.isBlank()) {
+            w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
+        }
+        if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
+        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
+        if (status != null) w.add("o.status = :status", "status", status);
+        if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
+        if (kw != null && !kw.isBlank()) {
+            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id AND (LOWER(gg.name) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))))",
+                    "kw", "%" + kw.toLowerCase() + "%");
+        }
+    }
+
+    private static void addSummaryKw(WhereBuilder w, String kw, String billNoCol) {
+        if (kw != null && !kw.isBlank()) w.add("LOWER(" + billNoCol + ") LIKE LOWER(:kw)", "kw", "%" + kw.toLowerCase() + "%");
+    }
+
+    // ======================== ① 委外进仓明细 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse receiptDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                             LocalDate dateFrom, LocalDate dateTo, String kw,
+                                             Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                new ReportColumn("settlementStyle", "结帐方式", "style", 100),
+                ReportColumn.text("receiverName", "收货人", 100),
+                ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.number("weight", "重量"), ReportColumn.number("girth", "围数"),
+                ReportColumn.number("qty", "数量"), ReportColumn.text("unitName", "单位", 70),
+                ReportColumn.text("step", "工序", 80),
+                ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
+                ReportColumn.number("returnedQty", "退货数量"), ReportColumn.money("returnedAmount", "退货金额"),
+                ReportColumn.text("returnNo", "委外退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140));
+        String dataSelect = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       o.settlement_style_legacy AS "settlementStyle",
+                       COALESCE(em_rec.full_name, o.receiver_name) AS "receiverName",
+                       o.total_local AS "totalAmount", (o.status = 1) AS "approved",
+                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       g.spec AS "spec", col.name AS "colorName", i.weight AS "weight", i.girth_qty AS "girth",
+                       i.qty AS "qty", un.name AS "unitName", NULL AS "step",
+                       i.price AS "price", i.amount_local AS "amount",
+                       i.returned_qty AS "returnedQty", i.return_amount AS "returnedAmount",
+                       i.return_no AS "returnNo", i.order_no AS "orderNo"
+                """;
+        String fromJoin = """
+                FROM subcontract_receipt_items i
+                JOIN subcontract_receipts o ON o.id = i.receipt_id
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_rec ON em_rec.legacy_id = o.receiver_legacy_id OR em_rec.id = o.sender_id
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units un ON un.id = i.unit_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        List<FacetSpec> specs = List.of(
+                facetSupplier(), facetWarehouse(),
+                new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+    }
+
+    // ======================== ② 委外进仓汇总 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse receiptSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                              LocalDate dateFrom, LocalDate dateTo, String kw,
+                                              Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 150), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                new ReportColumn("settlementStyle", "结帐方式", "style", 100),
+                ReportColumn.text("receiverName", "收货人", 100), ReportColumn.text("makerName", "制单员", 100));
+        String dataSelect = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       o.settlement_style_legacy AS "settlementStyle",
+                       COALESCE(em_rec.full_name, o.receiver_name) AS "receiverName",
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName"
+                """;
+        String fromJoin = """
+                FROM subcontract_receipts o
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_rec ON em_rec.legacy_id = o.receiver_legacy_id OR em_rec.id = o.sender_id
+                LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
+        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
+        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
+        if (status != null) w.add("o.status = :status", "status", status);
+        if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
+        addSummaryKw(w, kw, "o.bill_no");
+        List<FacetSpec> specs = List.of(
+                facetSupplier(), facetWarehouse(),
+                new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+    }
+
+    // ======================== ③ 委外退货明细 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse returnDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                            LocalDate dateFrom, LocalDate dateTo, String kw,
+                                            Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                new ReportColumn("settlementStyle", "结帐方式", "style", 100),
+                ReportColumn.text("makerName", "制单员", 100),
+                ReportColumn.bool("approved", "是否审核"), ReportColumn.money("totalAmount", "总额"),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.number("weight", "重量"), ReportColumn.number("girth", "围数"),
+                ReportColumn.number("qty", "数量"), ReportColumn.text("unitName", "单位", 70),
+                ReportColumn.text("step", "工序", 80),
+                ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
+                ReportColumn.text("receiptNo", "委外进仓单号", 140));
+        String dataSelect = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       o.settlement_style_legacy AS "settlementStyle",
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
+                       (o.status = 1) AS "approved", o.total_local AS "totalAmount",
+                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       g.spec AS "spec", col.name AS "colorName", i.weight AS "weight", i.girth_qty AS "girth",
+                       i.qty AS "qty", un.name AS "unitName", NULL AS "step",
+                       i.price AS "price", i.amount_local AS "amount", i.receipt_no AS "receiptNo"
+                """;
+        String fromJoin = """
+                FROM subcontract_return_items i
+                JOIN subcontract_returns o ON o.id = i.return_id
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units un ON un.id = i.unit_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        List<FacetSpec> specs = List.of(
+                facetSupplier(), facetWarehouse(),
+                new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+    }
+
+    // ======================== ④ 委外退货汇总 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse returnSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                             LocalDate dateFrom, LocalDate dateTo, String kw,
+                                             Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 150), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                new ReportColumn("settlementStyle", "结帐方式", "style", 100),
+                ReportColumn.text("makerName", "制单员", 100), ReportColumn.text("approverName", "审核员", 100));
+        String dataSelect = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       o.settlement_style_legacy AS "settlementStyle",
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
+                       COALESCE(em_ap.full_name, o.approver_name) AS "approverName"
+                """;
+        String fromJoin = """
+                FROM subcontract_returns o
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+                LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
+        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
+        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
+        if (status != null) w.add("o.status = :status", "status", status);
+        if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
+        addSummaryKw(w, kw, "o.bill_no");
+        List<FacetSpec> specs = List.of(
+                facetSupplier(), facetWarehouse(),
+                new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+    }
+
+    // ======================== ⑤ 委外材料出仓明细 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse materialIssueDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                                   LocalDate dateFrom, LocalDate dateTo, String kw,
+                                                   Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("unitName", "单位", 70), ReportColumn.number("weight", "重量"),
+                ReportColumn.number("boxQty", "胶箱数量"), ReportColumn.number("qty", "数量"),
+                ReportColumn.number("returnedQty", "退货数量"),
+                ReportColumn.text("returnNo", "材料退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140));
+        String dataSelect = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
+                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       g.spec AS "spec", col.name AS "colorName", un.name AS "unitName", i.weight AS "weight",
+                       i.box_qty AS "boxQty", i.qty AS "qty", i.returned_qty AS "returnedQty",
+                       i.return_no AS "returnNo", i.order_no AS "orderNo"
+                """;
+        String fromJoin = """
+                FROM subcontract_material_issue_items i
+                JOIN subcontract_material_issues o ON o.id = i.issue_id
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units un ON un.id = i.unit_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        List<FacetSpec> specs = List.of(
+                facetSupplier(), facetWarehouse(),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+    }
+
+    // ======================== ⑥ 委外材料出仓汇总 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse materialIssueSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                                    LocalDate dateFrom, LocalDate dateTo, String kw,
+                                                    Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.number("docSeq", "编号", 70), ReportColumn.text("billNo", "单号", 150),
+                ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"));
+        String dataSelect = """
+                SELECT ROW_NUMBER() OVER (ORDER BY o.bill_date DESC, o.bill_no) AS "docSeq",
+                       o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved"
+                """;
+        String fromJoin = """
+                FROM subcontract_material_issues o
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
+        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
+        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
+        if (status != null) w.add("o.status = :status", "status", status);
+        if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
+        addSummaryKw(w, kw, "o.bill_no");
+        List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+    }
+
+    // ======================== ⑦ 委外材料退货明细 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse materialReturnDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                                    LocalDate dateFrom, LocalDate dateTo, String kw,
+                                                    Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("model", "型号", 100),
+                ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("goodsName", "货品名称", 180),
+                ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.text("unitName", "单位", 70), ReportColumn.number("weight", "重量"),
+                ReportColumn.number("girth", "围数"), ReportColumn.number("qty", "数量"),
+                ReportColumn.text("issueNo", "材料出仓单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140));
+        String dataSelect = """
+                SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
+                       g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
+                       g.spec AS "spec", col.name AS "colorName", un.name AS "unitName", i.weight AS "weight",
+                       i.girth_qty AS "girth", i.qty AS "qty", i.issue_no AS "issueNo", i.order_no AS "orderNo"
+                """;
+        String fromJoin = """
+                FROM subcontract_material_return_items i
+                JOIN subcontract_material_returns o ON o.id = i.material_return_id
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                LEFT JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units un ON un.id = i.unit_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
+        List<FacetSpec> specs = List.of(
+                facetSupplier(), facetWarehouse(),
+                new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+    }
+
+    // ======================== ⑧ 委外材料退货汇总 ========================
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse materialReturnSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
+                                                     LocalDate dateFrom, LocalDate dateTo, String kw,
+                                                     Map<String, String> facets, int page, int size) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.number("docSeq", "编号", 70), ReportColumn.text("billNo", "单号", 150),
+                ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
+                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"));
+        String dataSelect = """
+                SELECT ROW_NUMBER() OVER (ORDER BY o.bill_date DESC, o.bill_no) AS "docSeq",
+                       o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
+                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved"
+                """;
+        String fromJoin = """
+                FROM subcontract_material_returns o
+                LEFT JOIN suppliers sup ON sup.id = o.supplier_id
+                LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
+                LEFT JOIN employees em_op ON em_op.legacy_id = o.operator_legacy_id
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(o.is_deleted,false)=false");
+        if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
+        if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
+        if (status != null) w.add("o.status = :status", "status", status);
+        if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
+        addSummaryKw(w, kw, "o.bill_no");
+        List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+    }
+
+    // ======================== ⑨ 委外出入状况表（综合 · 按 委外商×货品×颜色 聚合） ========================
+
     /**
-     * 月度汇总：按 货品×供应商×类型 上卷，过滤 docType + 日期范围（ym）。
-     * 覆盖老库 8 张汇总报表（按 docType 切换）。
+     * 列：加工单位/品名及规格/型号/系列/编号/颜色/期初结存/订货数量/发胚(15)/退成品(18)/
+     * 退原胚(16)/退不良品(19)/收货(17)/单价/金额/期末结存。
+     *
+     * <p>实现：直接聚合 5 类源明细（不依赖 stock_movements——迁移未回填流水，源明细对迁移数据立即可见）：
+     * 收货=进仓(+in)、退成品=退货(-out)、发胚=发料(-out)、退原胚=材料退(+in)、退不良品=损耗(-out)。
+     * 期初=dateFrom 前 signed 累计；期末=期初+期内净流；订货=期内 subcontract_order_items.qty；
+     * 单价=期内收货均价；金额=期内收货额。
      */
+    @Transactional(readOnly = true)
+    public ReportTableResponse inOutStatus(UUID supplierId, LocalDate dateFrom, LocalDate dateTo, String kw,
+                                           int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 500);
+        long offset = (long) (safePage - 1) * safeSize;
+
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("supplierName", "加工单位", 160),
+                ReportColumn.text("goodsDesc", "品名及规格", 200),
+                ReportColumn.text("model", "型号", 100), ReportColumn.text("series", "系列", 90),
+                ReportColumn.text("goodsCode", "编号", 110), ReportColumn.text("colorName", "颜色", 80),
+                ReportColumn.number("openingQty", "期初结存"), ReportColumn.number("orderQty", "订货数量"),
+                ReportColumn.number("issueQty", "发胚数量"), ReportColumn.number("returnQty", "退成品"),
+                ReportColumn.number("mReturnQty", "退原胚"), ReportColumn.number("wasteQty", "退不良品"),
+                ReportColumn.number("receiptQty", "收货数量"),
+                ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
+                ReportColumn.number("closingQty", "期末结存"));
+
+        // flow：5 类源明细 UNION，带 signed_qty（方向）+ movement_type + 日期 + 单价/金额
+        String sql = """
+                WITH flow AS (
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date AS d, i.qty AS signed_qty, 17 AS mt, i.price, i.amount_local AS amt
+                    FROM subcontract_receipt_items i JOIN subcontract_receipts o ON o.id = i.receipt_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 18, i.price, i.amount_local
+                    FROM subcontract_return_items i JOIN subcontract_returns o ON o.id = i.return_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 15, NULL, i.amount_local
+                    FROM subcontract_material_issue_items i JOIN subcontract_material_issues o ON o.id = i.issue_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, i.qty, 16, NULL, i.amount_local
+                    FROM subcontract_material_return_items i JOIN subcontract_material_returns o ON o.id = i.material_return_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 19, NULL, i.amount_local
+                    FROM subcontract_waste_items i JOIN subcontract_wastes o ON o.id = i.waste_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                ),
+                agg AS (
+                    SELECT supplier_id, goods_id, color_id,
+                           COALESCE(SUM(CASE WHEN d < CAST(:from AS date) THEN signed_qty ELSE 0 END),0) AS opening,
+                           COALESCE(SUM(CASE WHEN mt=15 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS issue_qty,
+                           COALESCE(SUM(CASE WHEN mt=16 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS m_return_qty,
+                           COALESCE(SUM(CASE WHEN mt=17 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS receipt_qty,
+                           COALESCE(SUM(CASE WHEN mt=18 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS return_qty,
+                           COALESCE(SUM(CASE WHEN mt=19 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS waste_qty,
+                           COALESCE(SUM(CASE WHEN d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN signed_qty ELSE 0 END),0) AS net_qty,
+                           AVG(CASE WHEN mt=17 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN price END) AS price,
+                           COALESCE(SUM(CASE WHEN mt=17 AND d >= CAST(:from AS date) AND d <= CAST(:to AS date) THEN amt ELSE 0 END),0) AS amount
+                    FROM flow
+                    WHERE (CAST(:supplierId AS uuid) IS NULL OR supplier_id = :supplierId)
+                    GROUP BY supplier_id, goods_id, color_id
+                ),
+                ord AS (
+                    SELECT o.supplier_id, oi.goods_id, oi.color_id, SUM(oi.qty) AS order_qty
+                    FROM subcontract_order_items oi JOIN subcontract_orders o ON o.id = oi.order_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1
+                      AND oi.bill_date >= CAST(:from AS date) AND oi.bill_date <= CAST(:to AS date)
+                    GROUP BY o.supplier_id, oi.goods_id, oi.color_id
+                )
+                SELECT sup.name AS supplierName,
+                       gg.name || COALESCE(' ' || gg.spec, '') AS goodsDesc,
+                       gg.model AS model, gg.series AS series, gg.code AS goodsCode, col.name AS colorName,
+                       a.opening AS openingQty, COALESCE(od.order_qty, 0) AS orderQty,
+                       a.issue_qty AS issueQty, a.return_qty AS returnQty, a.m_return_qty AS mReturnQty,
+                       a.waste_qty AS wasteQty, a.receipt_qty AS receiptQty,
+                       a.price AS price, a.amount AS amount,
+                       a.opening + a.net_qty AS closingQty
+                FROM agg a
+                LEFT JOIN suppliers sup ON sup.id = a.supplier_id
+                LEFT JOIN goods gg ON gg.id = a.goods_id
+                LEFT JOIN colors col ON col.id = a.color_id
+                LEFT JOIN ord od ON od.supplier_id = a.supplier_id AND od.goods_id = a.goods_id
+                     AND COALESCE(od.color_id,'00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(a.color_id,'00000000-0000-0000-0000-000000000000'::uuid)
+                WHERE (CAST(:kw AS text) IS NULL OR LOWER(COALESCE(gg.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
+                ORDER BY supplierName NULLS LAST, goodsDesc
+                LIMIT :__limit OFFSET :__offset
+                """;
+        var q = em.createNativeQuery(sql);
+        q.setParameter("supplierId", supplierId);
+        q.setParameter("from", dateFrom);
+        q.setParameter("to", dateTo);
+        q.setParameter("kw", (kw == null || kw.isBlank()) ? null : "%" + kw.toLowerCase() + "%");
+        q.setParameter("__limit", safeSize);
+        q.setParameter("__offset", offset);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = q.getResultList();
+        List<Map<String, Object>> items = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            for (int i = 0; i < cols.size(); i++) m.put(cols.get(i).key(), norm(r[i], cols.get(i)));
+            items.add(m);
+        }
+
+        String countSql = """
+                WITH flow AS (
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date AS d, i.qty AS signed_qty, 17 AS mt
+                    FROM subcontract_receipt_items i JOIN subcontract_receipts o ON o.id = i.receipt_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 18
+                    FROM subcontract_return_items i JOIN subcontract_returns o ON o.id = i.return_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 15
+                    FROM subcontract_material_issue_items i JOIN subcontract_material_issues o ON o.id = i.issue_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, i.qty, 16
+                    FROM subcontract_material_return_items i JOIN subcontract_material_returns o ON o.id = i.material_return_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                    UNION ALL
+                    SELECT o.supplier_id, i.goods_id, i.color_id, i.bill_date, -i.qty, 19
+                    FROM subcontract_waste_items i JOIN subcontract_wastes o ON o.id = i.waste_id
+                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
+                ),
+                agg AS (
+                    SELECT supplier_id, goods_id, color_id
+                    FROM flow
+                    WHERE (CAST(:supplierId AS uuid) IS NULL OR supplier_id = :supplierId)
+                    GROUP BY supplier_id, goods_id, color_id
+                )
+                SELECT COUNT(*) FROM agg a
+                LEFT JOIN goods gg ON gg.id = a.goods_id
+                WHERE (CAST(:kw AS text) IS NULL OR LOWER(COALESCE(gg.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
+                """;
+        var cq = em.createNativeQuery(countSql);
+        cq.setParameter("supplierId", supplierId);
+        cq.setParameter("kw", (kw == null || kw.isBlank()) ? null : "%" + kw.toLowerCase() + "%");
+        long total = ((Number) cq.getSingleResult()).longValue();
+        int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
+
+        return new ReportTableResponse(cols, items, Map.of(), safePage, safeSize, total, totalPages);
+    }
+
+    // ======================== facet 复用 ========================
+
+    private static FacetSpec facetSupplier() {
+        return new FacetSpec("supplierName", "CAST(sup.id AS text) AS v, sup.name AS lbl", "sup.id, sup.name", "o.supplier_id", "uuid");
+    }
+
+    private static FacetSpec facetWarehouse() {
+        return new FacetSpec("warehouseName", "CAST(wh.id AS text) AS v, wh.name AS lbl", "wh.id, wh.name", "o.warehouse_id", "uuid");
+    }
+
+    // ======================== 保留：月度汇总（MV，前端不再暴露入口） ========================
+
     @Transactional(readOnly = true)
     public List<SubcontractMonthlyRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
         var q = em.createNativeQuery("""
@@ -69,60 +685,31 @@ public class SubcontractReportService {
         )).toList();
     }
 
-    /**
-     * 委外出入状况表（综合 O · design doc 22 §6.3）：按 委外商×货品 汇总
-     * 发料(15)/材料退(16)/收回成品(17)/成品退(18)/损耗(19) 数量。
-     *
-     * <p>实现：JOIN stock_movements 与各委外单据主表带出 supplier_id（流水本身不存），
-     * 按 supplier × goods 维度 SUM(CASE WHEN movement_type=N THEN qty ELSE 0 END)。
-     */
-    @Transactional(readOnly = true)
-    public List<SubcontractInOutRow> inOutStatus(UUID supplierId, LocalDate dateFrom, LocalDate dateTo, int limit) {
-        var q = em.createNativeQuery("""
-                SELECT supplier_id, goods_id,
-                       SUM(CASE WHEN movement_type = 15 THEN signed_qty ELSE 0 END) AS issue_qty,
-                       SUM(CASE WHEN movement_type = 16 THEN signed_qty ELSE 0 END) AS m_return_qty,
-                       SUM(CASE WHEN movement_type = 17 THEN signed_qty ELSE 0 END) AS receipt_qty,
-                       SUM(CASE WHEN movement_type = 18 THEN signed_qty ELSE 0 END) AS return_qty,
-                       SUM(CASE WHEN movement_type = 19 THEN signed_qty ELSE 0 END) AS waste_qty
-                FROM (
-                    SELECT m.movement_type, m.goods_id, m.transaction_date,
-                           m.qty * CAST(m.direction AS NUMERIC) AS signed_qty, d.supplier_id
-                    FROM stock_movements m
-                    JOIN (
-                        SELECT id, supplier_id FROM subcontract_material_issues  WHERE COALESCE(is_deleted,false)=false
-                        UNION ALL
-                        SELECT id, supplier_id FROM subcontract_material_returns  WHERE COALESCE(is_deleted,false)=false
-                        UNION ALL
-                        SELECT id, supplier_id FROM subcontract_receipts         WHERE COALESCE(is_deleted,false)=false
-                        UNION ALL
-                        SELECT id, supplier_id FROM subcontract_returns           WHERE COALESCE(is_deleted,false)=false
-                        UNION ALL
-                        SELECT id, supplier_id FROM subcontract_wastes            WHERE COALESCE(is_deleted,false)=false
-                    ) d ON d.id = m.source_doc_id
-                    WHERE m.movement_type BETWEEN 15 AND 19
-                ) s
-                WHERE (CAST(:supplierId AS uuid) IS NULL OR supplier_id = :supplierId)
-                  AND (CAST(:from AS timestamptz) IS NULL OR transaction_date >= CAST(:from AS timestamptz))
-                  AND (CAST(:to AS timestamptz) IS NULL OR transaction_date <  CAST(:to AS timestamptz) + interval '1 day')
-                GROUP BY supplier_id, goods_id
-                ORDER BY issue_qty DESC NULLS LAST, receipt_qty DESC NULLS LAST
-                LIMIT :limit
-                """);
-        q.setParameter("supplierId", supplierId);
-        q.setParameter("from", dateFrom);
-        q.setParameter("to", dateTo);
-        q.setParameter("limit", limit);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = q.getResultList();
-        return rows.stream().map(r -> new SubcontractInOutRow(
-                NIL.equals(r[0]) ? null : (java.util.UUID) r[0],
-                (java.util.UUID) r[1],
-                toBd(r[2]), toBd(r[3]), toBd(r[4]), toBd(r[5]), toBd(r[6])
-        )).toList();
-    }
+    // ======================== 内部结构 ========================
 
-    private static BigDecimal toBd(Object o) {
-        return o == null ? BigDecimal.ZERO : (BigDecimal) o;
+    record FacetSpec(String key, String selectExpr, String groupExpr, String filterExpr, String filterType) {}
+
+    static final class WhereBuilder {
+        private final String base;
+        private final List<Clause> clauses = new ArrayList<>();
+
+        WhereBuilder(String base) { this.base = base; }
+
+        void add(String fragment, String param, Object val) { clauses.add(new Clause(fragment, param, val)); }
+
+        Built build(List<Clause> extra) {
+            StringBuilder sb = new StringBuilder(base);
+            Map<String, Object> params = new LinkedHashMap<>();
+            List<Clause> all = new ArrayList<>(clauses);
+            if (extra != null) all.addAll(extra);
+            for (Clause c : all) {
+                sb.append(" AND ").append(c.fragment);
+                if (c.param != null) params.put(c.param, c.val);
+            }
+            return new Built(sb.toString(), params);
+        }
+
+        record Clause(String fragment, String param, Object val) {}
+        record Built(String sql, Map<String, Object> params) {}
     }
 }

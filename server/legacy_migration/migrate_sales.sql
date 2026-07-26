@@ -12,12 +12,16 @@
 --   四条真 FK 均按 legacy_id 子查询映射到新 UUID；0/null -> NULL。
 -- 幂等：开头一次性 TRUNCATE 11 张销售表（被引用关系，须一起清），重跑安全。
 -- 缺失基础资料自动补录（units/colors/warehouses/currencies/goods/clients，LEGACY- 前缀 + auto_created）。
--- 人员字段（maker/approver/seller/sender）：employees 与 B_Worker/Sys_Operator 未对齐，留 NULL。
+-- 人员字段（maker/approver/seller/sender）：*_id(UUID) 留 NULL，**保留 *_legacy_id(INT)** 源老库
+--   Sys_Operator/B_Worker ID。等员工档案录 employees.legacy_id 后，报表 LEFT JOIN 自动出人名（V66 + V65）。
 -- status：老库 1->1（已审）、-1->-1（红冲），直接照搬（老库无 0 草稿态）。
 -- 金额 float->numeric(18,4)；多币种：total_local = total_original * exchange_rate。
--- 多值溯源（InNo/OutNo/SOrderNo/PlanNo/SWDrawNo/POrderNo/...）-> 明细 source_doc_no TEXT（CONCAT_WS ' | ' 合并）。
+-- 多值溯源：订货明细 InNo/OutNo **分列**（成品进仓单号/销售出货单号，报表要），plan_no/swdraw_no 入 source_doc_no；
+--   出货/其它/退货明细的 order_no/swdraw_no/out_no/sorder_no 仍 CONCAT 进 source_doc_no。
+-- 成本分项（材料价/压铸价/机加价/围数）+ 进仓数量：V66 新列，订货/出货/其它出货明细原值迁入（numeric 修正 float）。
 -- BOM 718 行：先 INSERT 全量 parent_id=NULL，再 UPDATE 自挂 parent_id（避免 FK 顺序依赖）。
 -- 库存历史不在此迁（stock_movements 归库存模块）；应收不在此迁（ar_ap_ledger 归钱流，从 M_in 迁）。
+-- 迁末刷新 sales_monthly_mv（汇总报表数据源，否则汇总报表空）。
 -- =====================================================================
 
 BEGIN;
@@ -47,7 +51,7 @@ CREATE TEMP TABLE order_stage (
     sign_addr text, contract_no text, seller_legacy int, p_style int, maker_legacy int, approver_legacy int,
     remark text, total_original numeric(18,4), status smallint, fulfill_bit boolean, stop_bit boolean,
     ship_addr text, deposit numeric(18,4), cur_legacy int, tax_rate numeric(18,4),
-    exchange_rate numeric(18,6), cancel_bit boolean);
+    exchange_rate numeric(18,6), cancel_bit boolean, client_no text);
 \copy order_stage FROM '/tmp/sales_orders.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 CREATE TEMP TABLE order_item_stage (
@@ -55,7 +59,9 @@ CREATE TEMP TABLE order_item_stage (
     price numeric(18,4), amount_original numeric(18,4), shipped_qty numeric(18,4),
     returned_qty numeric(18,4), flag_qty numeric(18,4), discount numeric(18,4), tax_amount numeric(18,4),
     unit_legacy int, unit_rate numeric(18,6), weight numeric(18,4), client_no text, client_model text,
-    in_no text, plan_no text, out_no text, swdraw_no text, remark text);
+    in_no text, plan_no text, out_no text, swdraw_no text, remark text,
+    inbound_qty numeric(18,4), circumference numeric(18,4), material_price numeric(18,4),
+    die_cast_price numeric(18,4), machining_price numeric(18,4));
 \copy order_item_stage FROM '/tmp/sales_order_items.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 CREATE TEMP TABLE order_cost_stage (
@@ -80,7 +86,9 @@ CREATE TEMP TABLE ship_item_stage (
     returned_qty numeric(18,4), swdraw_no text, order_no text, unit_legacy int, unit_rate numeric(18,6),
     returned_amount numeric(18,4), discount numeric(18,4), tax_amount numeric(18,4),
     carton_count numeric(18,4), parcel_qty numeric(18,4), weight numeric(18,4), client_no text,
-    client_model text, remark text);
+    client_model text, remark text,
+    circumference numeric(18,4), material_price numeric(18,4), die_cast_price numeric(18,4),
+    machining_price numeric(18,4));
 \copy ship_item_stage FROM '/tmp/sales_shipment_items.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 -- S_OtherOut / S_OtherOutItem（字段与 S_Out(S_OutItem) 完全同构）
@@ -205,23 +213,25 @@ INSERT INTO sales_orders (
     legacy_id, bill_no, bill_date, client_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, maker_id, approver_id, deliver_date, contract_no, link_phone,
     sign_addr, ship_addr, deposit, remark, total_original, total_local, status, is_closed,
-    is_stopped, source_doc_no)
+    is_stopped, source_doc_no, seller_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
        COALESCE(s.exchange_rate, 1), s.tax_rate, s.p_style,
-       NULL, NULL, NULL,                              -- 人员字段：maker/approver/seller 留空
+       NULL, NULL, NULL,                              -- *_id(UUID) 留空，待 employees.legacy_id 对齐回填
        s.deliver_date, s.contract_no, s.link_phone, s.sign_addr, s.ship_addr,
        s.deposit, s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), NULL
+       s.status, COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), NULL,
+       s.seller_legacy, s.maker_legacy, s.approver_legacy   -- *_legacy_id 保老库 B_Worker/Sys_Operator ID
 FROM order_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
 INSERT INTO sales_order_items (
     legacy_id, bill_no, bill_date, order_id, line_no, goods_id, color_id, unit_id, unit_rate,
     qty, price, amount_original, amount_local, shipped_qty, returned_qty, flag_qty, discount,
-    tax_amount, weight, client_no, client_model, deliver_date, source_doc_no, remark)
+    tax_amount, weight, client_no, client_model, deliver_date, source_doc_no, remark,
+    machining_price, circumference, inbound_qty, in_no, out_no)
 SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM sales_orders WHERE legacy_id = s.bill_legacy),
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy ORDER BY s.legacy_id),
@@ -232,11 +242,11 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        s.amount_original * COALESCE(o.exchange_rate, 1),
        COALESCE(s.shipped_qty, 0), COALESCE(s.returned_qty, 0), COALESCE(s.flag_qty, 0),
        COALESCE(s.discount, 0), COALESCE(s.tax_amount, 0), s.weight,
-       NULLIF(s.client_no, ''), NULLIF(s.client_model, ''), NULL,  -- S_OrderItem 无 SendDate -> deliver_date 留 NULL
-       NULLIF(CONCAT_WS(' | ',
-                NULLIF(s.in_no, ''), NULLIF(s.plan_no, ''),
-                NULLIF(s.out_no, ''), NULLIF(s.swdraw_no, '')), ''),
-       NULLIF(s.remark, '')
+       NULLIF(o.client_no, ''), NULLIF(s.client_model, ''), NULL,  -- 客户订单号取订单头 S_Order.ClientNo（明细无此列）；deliver_date 留 NULL
+       NULLIF(CONCAT_WS(' | ', NULLIF(s.plan_no, ''), NULLIF(s.swdraw_no, '')), ''),  -- in_no/out_no 已分列
+       NULLIF(s.remark, ''),
+       s.machining_price, s.circumference, COALESCE(s.inbound_qty, 0),
+       NULLIF(s.in_no, ''), NULLIF(s.out_no, '')
 FROM order_item_stage s JOIN order_stage o ON o.legacy_id = s.bill_legacy;
 
 -- BOM 子表：718 行，先 INSERT 全量 parent_id=NULL（避免自挂 FK 顺序依赖），再 UPDATE 自挂 parent_id
@@ -278,24 +288,27 @@ UPDATE sales_order_cost_items c
 INSERT INTO sales_shipments (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, sender_id, maker_id, approver_id, ship_addr, link_phone, parcel_count,
-    print_count, last_date, remark, total_original, total_local, status, is_closed, ar_posted, source_doc_no)
+    print_count, last_date, remark, total_original, total_local, status, is_closed, ar_posted, source_doc_no,
+    seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
        (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
        COALESCE(s.exchange_rate, 1), s.tax_rate, s.p_style,
-       NULL, NULL, NULL, NULL,                       -- 人员：seller/sender/maker/approver 留空
+       NULL, NULL, NULL, NULL,                       -- *_id(UUID) 留空，待 employees.legacy_id 对齐回填
        s.ship_addr, s.link_phone, s.p_count, s.print_count, s.last_date,
        s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, FALSE, FALSE, NULL                  -- ar_posted 默认 false（历史应收在钱流模块独立迁）
+       s.status, FALSE, FALSE, NULL,                 -- ar_posted 默认 false（历史应收在钱流模块独立迁）
+       s.seller_legacy, s.sender_legacy, s.maker_legacy, s.approver_legacy
 FROM ship_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
 INSERT INTO sales_shipment_items (
     legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id, color_id, unit_id,
     unit_rate, qty, price, amount_original, amount_local, cost_amount, returned_qty, returned_amount,
-    weight, parcel_qty, carton_count, client_no, client_model, source_doc_no, remark)
+    weight, parcel_qty, carton_count, client_no, client_model, source_doc_no, remark,
+    material_price, die_cast_price, machining_price, circumference, discount)
 SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM sales_shipments WHERE legacy_id = s.bill_legacy),
        (SELECT id FROM sales_order_items WHERE legacy_id = s.order_item_legacy AND s.order_item_legacy <> 0),
@@ -310,32 +323,36 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        s.weight, s.parcel_qty, s.carton_count,
        NULLIF(s.client_no, ''), NULLIF(s.client_model, ''),
        NULLIF(CONCAT_WS(' | ', NULLIF(s.order_no, ''), NULLIF(s.swdraw_no, '')), ''),
-       NULLIF(s.remark, '')
+       NULLIF(s.remark, ''),
+       s.material_price, s.die_cast_price, s.machining_price, s.circumference, COALESCE(s.discount, 0)
 FROM ship_item_stage s JOIN ship_stage o ON o.legacy_id = s.bill_legacy;
 
 -- ---------------- 4. 其它出货单（S_OtherOut，不挂订单/不立应收） ----------------
 INSERT INTO sales_other_shipments (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, sender_id, maker_id, approver_id, ship_addr, link_phone, parcel_count,
-    print_count, last_date, remark, total_original, total_local, status, is_closed, source_doc_no)
+    print_count, last_date, remark, total_original, total_local, status, is_closed, source_doc_no,
+    seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),  -- client_id 可空（内部领用）
        (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
        COALESCE(s.exchange_rate, 1), s.tax_rate, s.p_style,
-       NULL, NULL, NULL, NULL,                       -- 人员：seller/sender/maker/approver 留空
+       NULL, NULL, NULL, NULL,                       -- *_id(UUID) 留空，待 employees.legacy_id 对齐回填
        s.ship_addr, s.link_phone, s.p_count, s.print_count, s.last_date,
        s.remark, s.total_original,
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, FALSE, NULL
+       s.status, FALSE, NULL,
+       s.seller_legacy, s.sender_legacy, s.maker_legacy, s.approver_legacy
 FROM oship_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
 -- 其它出货明细：order_item_id 业务上不挂单（老库触发器 UPDATE 整段注释），留 NULL
 INSERT INTO sales_other_shipment_items (
     legacy_id, bill_no, bill_date, shipment_id, order_item_id, line_no, goods_id, color_id, unit_id,
-    unit_rate, qty, price, amount_original, amount_local, cost_amount, weight, parcel_qty, carton_count,
-    client_no, client_model, source_doc_no, remark)
+    unit_rate, qty, price, amount_original, amount_local, cost_amount, returned_qty, returned_amount,
+    weight, parcel_qty, carton_count, client_no, client_model, source_doc_no, remark,
+    material_price, die_cast_price, machining_price, circumference, discount)
 SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM sales_other_shipments WHERE legacy_id = s.bill_legacy),
        NULL,                                                              -- 业务不挂单
@@ -345,28 +362,31 @@ SELECT s.legacy_id, o.bill_no, o.bill_date,
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original,
        s.amount_original * COALESCE(o.exchange_rate, 1),
-       s.cost_amount, s.weight, s.parcel_qty, s.carton_count,
+       s.cost_amount, COALESCE(s.returned_qty, 0), COALESCE(s.returned_amount, 0),
+       s.weight, s.parcel_qty, s.carton_count,
        NULLIF(s.client_no, ''), NULLIF(s.client_model, ''),
        NULLIF(CONCAT_WS(' | ', NULLIF(s.order_no, ''), NULLIF(s.swdraw_no, '')), ''),
-       NULLIF(s.remark, '')
+       NULLIF(s.remark, ''),
+       s.material_price, s.die_cast_price, s.machining_price, s.circumference, COALESCE(s.discount, 0)
 FROM oship_item_stage s JOIN oship_stage o ON o.legacy_id = s.bill_legacy;
 
 -- ---------------- 5. 销售退货单（S_Withdraw，221 行） ----------------
 INSERT INTO sales_returns (
     legacy_id, bill_no, bill_date, client_id, warehouse_id, currency_id, exchange_rate, tax_rate,
     payment_style_id, seller_id, maker_id, approver_id, last_date, remark, total_original, total_local,
-    status, is_closed, ar_posted, source_doc_no)
+    status, is_closed, ar_posted, source_doc_no, seller_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
        (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
        COALESCE(s.exchange_rate, 1), NULL,            -- S_Withdraw 无 TRate
        s.p_style,
-       NULL, NULL, NULL,                              -- 人员：seller/maker/approver 留空
+       NULL, NULL, NULL,                              -- *_id(UUID) 留空，待 employees.legacy_id 对齐回填
        s.last_date, s.remark,
        s.total_original,                              -- 退货 total 主表保持原值（红字在 ar_ap_ledger 取负）
        s.total_original * COALESCE(s.exchange_rate, 1),
-       s.status, FALSE, FALSE, NULL
+       s.status, FALSE, FALSE, NULL,
+       s.seller_legacy, s.maker_legacy, s.approver_legacy
 FROM return_stage s
 ON CONFLICT (legacy_id) DO NOTHING;
 
@@ -374,7 +394,7 @@ ON CONFLICT (legacy_id) DO NOTHING;
 INSERT INTO sales_return_items (
     legacy_id, bill_no, bill_date, return_id, out_item_id, order_item_id, line_no, goods_id, color_id,
     unit_id, unit_rate, qty, price, amount_original, amount_local, cost_amount, weight, parcel_qty,
-    carton_count, client_no, client_model, solution, responsible, source_doc_no, remark)
+    carton_count, client_no, client_model, solution, responsible, source_doc_no, remark, discount)
 SELECT s.legacy_id, r.bill_no, r.bill_date,
        (SELECT id FROM sales_returns WHERE legacy_id = s.bill_legacy),
        (SELECT id FROM sales_shipment_items WHERE legacy_id = s.out_item_legacy AND s.out_item_legacy <> 0),
@@ -390,10 +410,15 @@ SELECT s.legacy_id, r.bill_no, r.bill_date,
        NULLIF(s.client_model, ''),
        NULLIF(s.solution, ''), NULLIF(s.responsible, ''),
        NULLIF(CONCAT_WS(' | ', NULLIF(s.out_no, ''), NULLIF(s.sorder_no, '')), ''),
-       NULLIF(s.remark, '')
+       NULLIF(s.remark, ''),
+       COALESCE(s.discount, 0)
 FROM return_item_stage s JOIN return_stage r ON r.legacy_id = s.bill_legacy;
 
 COMMIT;
+
+-- ---------------- 刷新销售月度物化视图（CONCURRENTLY 不能在事务内，置 COMMIT 后） ----------------
+-- 修汇总报表空数据根因：V52 sales_monthly_mv 迁完必须刷新才有数据。
+SELECT refresh_sales_monthly_mv();
 
 -- ---------------- 校验 ----------------
 SELECT '报价 '         || (SELECT count(*) FROM sales_quotes)            || ' / ' || (SELECT count(*) FROM sales_quote_items) AS r
@@ -403,6 +428,10 @@ UNION ALL SELECT '出货 '         || (SELECT count(*) FROM sales_shipments)    
 UNION ALL SELECT '其它出货 '     || (SELECT count(*) FROM sales_other_shipments)   || ' / ' || (SELECT count(*) FROM sales_other_shipment_items)
 UNION ALL SELECT '退货 '         || (SELECT count(*) FROM sales_returns)           || ' / ' || (SELECT count(*) FROM sales_return_items)
 UNION ALL SELECT '已审出货 '     || (SELECT count(*) FROM sales_shipments WHERE status = 1)
+UNION ALL SELECT 'MV行数 '       || (SELECT count(*) FROM sales_monthly_mv)
+UNION ALL SELECT '订货 机加价非空 ' || (SELECT count(*) FROM sales_order_items WHERE machining_price IS NOT NULL)
+UNION ALL SELECT '订货 进仓数非空 ' || (SELECT count(*) FROM sales_order_items WHERE inbound_qty <> 0)
+UNION ALL SELECT '订货 in_no非空 '  || (SELECT count(*) FROM sales_order_items WHERE in_no IS NOT NULL AND in_no <> '')
 UNION ALL SELECT '出货挂订单明细 ' || (SELECT count(*) FROM sales_shipment_items WHERE order_item_id IS NOT NULL)
 UNION ALL SELECT '退货双挂明细 '  || (SELECT count(*) FROM sales_return_items WHERE out_item_id IS NOT NULL AND order_item_id IS NOT NULL)
 UNION ALL SELECT '孤儿 出货明细(无货品) ' || (SELECT count(*) FROM sales_shipment_items WHERE goods_id IS NULL)

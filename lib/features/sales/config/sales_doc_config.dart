@@ -193,6 +193,8 @@ class SalesDocConfig {
 class SalesRoutePath {
   static const hub = '/sales';
   static const report = '/sales/report';
+  static const reportDetail = '/sales/report/detail';
+  static const reportSummary = '/sales/report/summary';
 
   /// [seg] = quotes | orders | shipments | other-shipments | returns
   static String list(String seg) => '/sales/$seg';

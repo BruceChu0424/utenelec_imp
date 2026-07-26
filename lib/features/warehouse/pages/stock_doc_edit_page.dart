@@ -34,6 +34,7 @@ class StockDocEditPage extends ConsumerStatefulWidget {
 class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   final _billNo = TextEditingController();
   final _remark = TextEditingController();
+  final _assTeam = TextEditingController();
   DateTime _billDate = DateTime.now();
   String? _warehouseId;
   String? _toWarehouseId;
@@ -58,6 +59,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
         _remark.text = d.remark ?? '';
+        _assTeam.text = d.assTeam ?? '';
         if (d.billDate != null) _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
         _warehouseId = d.warehouseId;
         _toWarehouseId = d.toWarehouseId;
@@ -103,6 +105,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       'billDate': _fmt(_billDate),
       'warehouseId': _warehouseId,
       if (widget.docType == StockDocType.transfer) 'toWarehouseId': _toWarehouseId,
+      if (widget.docType == StockDocType.draw)
+        'assTeam': _assTeam.text.trim().isEmpty ? null : _assTeam.text.trim(),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'items': items,
     };
@@ -149,6 +153,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                               _dd('调入仓', _toWarehouseId, names.warehouseEntries, (v) => setState(() => _toWarehouseId = v)),
                           ]),
                           const SizedBox(height: UtenSpacing.s12),
+                          if (widget.docType == StockDocType.draw)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                              child: TextField(
+                                  controller: _assTeam,
+                                  decoration: const InputDecoration(labelText: '装配班组')),
+                            ),
                           TextField(controller: _remark, decoration: const InputDecoration(labelText: '备注'), maxLines: 2),
                         ],
                       ),

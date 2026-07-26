@@ -142,7 +142,7 @@ migrate_purchase () {
 # 依赖：主档（goods/colors/units/suppliers/clients/warehouses）+ 采购已迁（采购单据可选，
 #   本脚本独立清/建 stock_documents + stock_balances，与采购表无外键耦合）。
 migrate_stock_docs () {
-    echo "→ [仓库单据] 复制 CSV（17 个：8 单据主/明 + StockGoods）..."
+    echo "→ [仓库单据] 复制 CSV（17 个：8 单据主/明 + StockGoods + 人员参考）..."
     for f in stock_transfer_m stock_transfer_i \
              stock_other_in_m stock_other_in_i \
              stock_other_out_m stock_other_out_i \
@@ -151,10 +151,11 @@ migrate_stock_docs () {
              stock_finished_in_m stock_finished_in_i \
              stock_finished_out_m stock_finished_out_i \
              stock_check_m stock_check_i \
-             stock_goods; do
+             stock_goods \
+             legacy_workers; do
         copy_csv "$f.csv"
     done
-    echo "→ [仓库单据] 执行迁移 SQL（统一表 + 余额 + 流水）..."
+    echo "→ [仓库单据] 执行迁移 SQL（统一表 + 余额 + 流水 + 人员补录）..."
     run_sql migrate_stock_docs.sql
 }
 

@@ -43,11 +43,15 @@ class SubcontractDocConfig {
     this.hasBStyle = false,
     this.hasTotalWeight = false,
     this.hasApPosted = false,
+    this.hasSettlement = false, // 结帐方式（进仓/退货；材料出/退无）
     // 明细列
     this.itemHasPrice = true,
     this.itemHasWeight = false,
     this.itemHasWasteFields = false,
     this.itemHasParent = false,
+    this.itemHasGirth = false, // 围数（进仓/退货/材料退明细）
+    this.itemHasStep = false, // 工序（进仓/退货明细；B_Step 未迁→暂空白）
+    this.itemHasBoxQty = false, // 胶箱数量（材料出明细；老库无源→留空）
     // 明细链路
     this.linkToApplicationItem = false,
     this.linkToOrderItem = false,
@@ -83,12 +87,16 @@ class SubcontractDocConfig {
   final bool hasBStyle; // 材料退
   final bool hasTotalWeight; // 损耗
   final bool hasApPosted; // 进仓/退货（立应付标志）
+  final bool hasSettlement; // 结帐方式（进仓/退货）
 
   // 明细列差异
   final bool itemHasPrice; // false=发料/材料退/损耗（材料按成本，无单价）
   final bool itemHasWeight;
   final bool itemHasWasteFields; // 损耗：ending/standard/waste_rate/cause
   final bool itemHasParent; // 发料/材料退：parent_goods/color（BOM 父件，可选）
+  final bool itemHasGirth; // 围数（进仓/退货/材料退）
+  final bool itemHasStep; // 工序（进仓/退货）
+  final bool itemHasBoxQty; // 胶箱数量（材料出）
 
   // 明细链路差异（编辑页"从上游引入"按钮 + 回写 *ItemId）
   final bool linkToApplicationItem; // 订货 → 申请
@@ -180,7 +188,10 @@ class SubcontractDocConfig {
     hasSender: true,
     hasLastDate: true,
     hasApPosted: true,
+    hasSettlement: true,
     itemHasWeight: true,
+    itemHasGirth: true,
+    itemHasStep: true,
     linkToOrderItem: true,
     approveEffect: '审核将正向入库（成品）+ 回写订货已收 + 立应付。',
   );
@@ -200,6 +211,7 @@ class SubcontractDocConfig {
     itemHasPrice: false,
     itemHasWeight: true,
     itemHasParent: true,
+    itemHasBoxQty: true,
     linkToOrderItem: true,
     showReturned: true,
     showWasted: true,
@@ -220,7 +232,10 @@ class SubcontractDocConfig {
     hasTaxRate: true,
     hasLastDate: true,
     hasApPosted: true,
+    hasSettlement: true,
     itemHasWeight: true,
+    itemHasGirth: true,
+    itemHasStep: true,
     linkToReceiptItem: true,
     linkToOrderItem: true,
     approveEffect: '审核将出库（成品退）+ 反向立应付。',
@@ -241,6 +256,7 @@ class SubcontractDocConfig {
     itemHasPrice: false,
     itemHasWeight: true,
     itemHasParent: true,
+    itemHasGirth: true,
     linkToMaterialIssueItem: true,
     linkToOrderItem: true,
     showReturned: true,
@@ -303,4 +319,7 @@ abstract final class SubcontractRoute {
       '/subcontract/$pathSegment/$id';
   static String edit(String pathSegment, String id) =>
       '/subcontract/$pathSegment/$id/edit';
+
+  /// 9 张委外报表之一（kind = SubcontractReportKind.name）。
+  static String reportTable(String kind) => '/subcontract/report/$kind';
 }

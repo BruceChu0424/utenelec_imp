@@ -88,4 +88,32 @@ public class SubcontractReceipt extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /** 老库结帐方式（E_In.PStyle → B_PStyle 字典 ID）。报表渲染成文字（现金/提货/...）。 */
+    @Column(name = "settlement_style_legacy")
+    private Integer settlementStyleLegacy;
+
+    /** 收货人 legacy id（E_In.SenderID → B_Worker.ID）。报表 LEFT JOIN employees 出名。 */
+    @Column(name = "receiver_legacy_id")
+    private Integer receiverLegacyId;
+
+    /** 收货人名（历史冻结兜底；新单据走 receiver_id JOIN employees）。 */
+    @Column(name = "receiver_name")
+    private String receiverName;
+
+    /** 制单员 legacy id（E_In.MakeID → Sys_Operator.ID）。 */
+    @Column(name = "maker_legacy_id")
+    private Integer makerLegacyId;
+
+    /** 制单员名（迁移期冻结 Sys_Operator.fname）。 */
+    @Column(name = "maker_name")
+    private String makerName;
+
+    /** 审核员 legacy id（E_In.ApproverID → Sys_Operator.ID）。 */
+    @Column(name = "approver_legacy_id")
+    private Integer approverLegacyId;
+
+    /** 审核员名（迁移期冻结 Sys_Operator.fname）。 */
+    @Column(name = "approver_name")
+    private String approverName;
 }

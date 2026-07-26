@@ -88,5 +88,17 @@ public class SubcontractMaterialReturnItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** 围数（E_SWithDrawItem.KQTY）。 */
+    @Column(name = "girth_qty", precision = 18, scale = 4)
+    private BigDecimal girthQty;
+
+    /** 材料出仓单号（E_SWithDrawItem.EOutNo，多值 varchar 原样）。 */
+    @Column(name = "issue_no")
+    private String issueNo;
+
+    /** 委外订货单号（E_SWithDrawItem.EOrderNo，多值 varchar 原样）。 */
+    @Column(name = "order_no")
+    private String orderNo;
+
     private String remark;
 }

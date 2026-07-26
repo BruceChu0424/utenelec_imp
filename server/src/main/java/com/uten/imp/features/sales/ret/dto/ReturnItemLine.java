@@ -39,6 +39,8 @@ public class ReturnItemLine {
     private String clientModel;
     private String solution;
     private String responsible;
+    /** Discount 折扣（V66）。 */
+    private BigDecimal discount;
     private String sourceDocNo;
     private String remark;
 }

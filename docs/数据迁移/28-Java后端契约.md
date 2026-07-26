@@ -166,14 +166,14 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 ---
 
-**最后更新**：2026-07-26 · Java 后端单一事实源。续作先读本文 + [27] + 各 design doc + DDL(V50-V63) + 采购 Java 范本。
+**最后更新**：2026-07-26 · Java 后端单一事实源。续作先读本文 + [27] + 各 design doc + DDL(V50-V68) + 采购 Java 范本。
 
 ---
 
 ## 实施后修订（2026-07-26，落地后回填）
 
 - **ArApLedgerService 契约确认**：接口 `postArAp(ArApPostingRequest)→void` / `reverseArAp(UUID,String)→void`（void 返回、自包含），实现 `ArApLedgerServiceImpl`（@Transactional MANDATORY）。销售/委外/采购审核注入调用。**销售 [20] 早期称 `AccountReceivableService.postReceivable`，已统一为 `postArAp`**。
-- **Flyway 增量**：V50-V63（V50 账户+收付款类别主档 / V51-52 销售 / V53-54 委外 / V55-56 生产含 F_PlanCostItem 按年分区 / V57-58 钱流 ar_ap_ledger / V59 库存字典 / **V60 明细表补 created_by/updated_by**（契约 §二订正：明细也需审计列，BaseEntity 要求）/ V61 钱流明细 remark / V62 销售 cost_items UNIQUE+return 列 / V63 清 finance_check_register 悬空权限）。
+- **Flyway 增量**：V50-V68（V50 账户+收付款类别主档 / V51-52 销售 / V53-54 委外 / V55-56 生产含 F_PlanCostItem 按年分区 / V57-58 钱流 ar_ap_ledger / V59 库存字典 / **V60 明细表补 created_by/updated_by**（契约 §二订正：明细也需审计列，BaseEntity 要求）/ V61 钱流明细 remark / V62 销售 cost_items UNIQUE+return 列 / V63 清 finance_check_register 悬空权限 / V64 删 analytics 权限 / **V65-V68 各模块报表补列**：V65 采购（人员 *_legacy_id + settlement_style_legacy + 明细交叉引用列）、V66 委外（人员 *_legacy_id+*_name + settlement_style_legacy + 围数/工序/胶箱/退货金额/交叉引用单号，详见 [22] §十一）、V67 仓库（stock_documents 人员 *_legacy_id + ass_team）、V68 销售（成本价/围数/进仓/in_no/out_no 等明细列 + 4 主表 *_legacy_id + client_director_v 视图））。
 - **核验后修复的 bug**（见 [29] §接手清单 + 各 Service）：① 库存金额方向（reverse 不取反 amountLocal，7 处，e2e 实测红冲金额净归 0）② 月报 SQL（GROUP BY 漏 ym + **Hibernate 原生 SQL null 参数类型坑**：`(:param IS NULL OR col=:param)` 当 param=null 时 PG 报 `could not determine data type of parameter $N` → 报表页"加载失败"；**已对全部可空 param 加 `CAST(:param AS 类型) IS NULL`，6 处全修**——`FinanceReportService` / `SubcontractReportService` / `ProductionReportService` / `ProductionPlanCostService` / `PurchaseReportService` / `SalesReportService`，全仓 grep `:[A-Za-z_]+\s+IS\s+(NOT\s+)?NULL` 零残留；铁律见 §七-6）③ 核销超核/负应收同号校验 ④ 委外进仓 supplier 非空校验 ⑤ legacy_bstyle=30。
 - **来源感知导航**：前端跨页用 `goFrom`/`backTo`（`lib/core/router/nav_helpers.dart`），主 Tab 用 go（push 失效）+ KeepAlive 保滚动；列表→详情用 push/pop。见记忆 go-router-origin-aware-nav + [30]。
 - **StockService 常量** 15-20 已加（agent 勿改 StockService.java）。

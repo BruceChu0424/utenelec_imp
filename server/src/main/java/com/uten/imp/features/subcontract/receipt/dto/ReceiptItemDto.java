@@ -27,4 +27,10 @@ public class ReceiptItemDto {
     private UUID orderItemId;
     private String sourceDocNo;
     private String remark;
+
+    private BigDecimal girthQty;
+    private Integer stepLegacyId;
+    private BigDecimal returnAmount;
+    private String returnNo;
+    private String orderNo;
 }

@@ -36,6 +36,16 @@ public class ShipmentItemLine {
     private BigDecimal cartonCount;
     private String clientNo;
     private String clientModel;
+    /** SPrice 材料价（V66）。 */
+    private BigDecimal materialPrice;
+    /** WPrice 压铸价（V66）。 */
+    private BigDecimal dieCastPrice;
+    /** JPrice 机加价（V66）。 */
+    private BigDecimal machiningPrice;
+    /** KQTY2 围数（V66）。 */
+    private BigDecimal circumference;
+    /** Discount 折扣（V66）。 */
+    private BigDecimal discount;
     private String sourceDocNo;
     private String remark;
 }

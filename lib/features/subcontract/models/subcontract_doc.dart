@@ -110,6 +110,8 @@ class SubcontractDocItem {
     this.wasteRate,
     this.cause,
     this.weight,
+    this.girthQty,
+    this.boxQty,
     this.parentGoodsId,
     this.parentColorId,
     // 链路 *ItemId
@@ -142,6 +144,9 @@ class SubcontractDocItem {
   final double? wasteRate;
   final String? cause;
   final double? weight;
+  // 围数（进仓/退货/材料退）/ 胶箱数量（材料出）
+  final double? girthQty;
+  final double? boxQty;
   // BOM 父件（发料/材料退）
   final String? parentGoodsId;
   final String? parentColorId;
@@ -175,6 +180,8 @@ class SubcontractDocItem {
         wasteRate: (json['wasteRate'] as num?)?.toDouble(),
         cause: json['cause'] as String?,
         weight: (json['weight'] as num?)?.toDouble(),
+        girthQty: (json['girthQty'] as num?)?.toDouble(),
+        boxQty: (json['boxQty'] as num?)?.toDouble(),
         parentGoodsId: json['parentGoodsId'] as String?,
         parentColorId: json['parentColorId'] as String?,
         applicationItemId: json['applicationItemId'] as String?,
@@ -206,6 +213,7 @@ class SubcontractDocDetail {
     this.lastDate,
     this.bStyle,
     this.totalWeight,
+    this.settlementStyleLegacy,
     this.remark,
     this.totalOriginal,
     this.totalLocal,
@@ -235,6 +243,7 @@ class SubcontractDocDetail {
   final String? lastDate;
   final int? bStyle;
   final double? totalWeight;
+  final int? settlementStyleLegacy; // 结帐方式（进仓/退货；B_PStyle 字典码）
   final String? remark;
   final double? totalOriginal;
   final double? totalLocal;
@@ -265,6 +274,7 @@ class SubcontractDocDetail {
         lastDate: json['lastDate'] as String?,
         bStyle: (json['bStyle'] as num?)?.toInt(),
         totalWeight: (json['totalWeight'] as num?)?.toDouble(),
+        settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
         remark: json['remark'] as String?,
         totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),

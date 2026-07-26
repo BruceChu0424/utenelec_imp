@@ -36,6 +36,7 @@ public class StockDocSaveRequest {
     private UUID workerId;
     private UUID makerId;
     private UUID approverId;
+    private String assTeam;
     private String planNo;
     private String remark;
 

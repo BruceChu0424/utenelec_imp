@@ -40,4 +40,8 @@ public class MaterialIssueItemLine {
 
     private String sourceDocNo;
     private String remark;
+
+    private BigDecimal boxQty;
+    private String returnNo;
+    private String orderNo;
 }

@@ -222,6 +222,12 @@ public class SubcontractMaterialReturnService {
         r.setWorkerId(req.getWorkerId());
         r.setBStyle(req.getBStyle());
         r.setRemark(req.getRemark());
+        r.setOperatorLegacyId(req.getOperatorLegacyId());
+        r.setOperatorName(req.getOperatorName());
+        r.setMakerLegacyId(req.getMakerLegacyId());
+        r.setMakerName(req.getMakerName());
+        r.setApproverLegacyId(req.getApproverLegacyId());
+        r.setApproverName(req.getApproverName());
     }
 
     private List<MaterialReturnItemDto> saveItems(SubcontractMaterialReturn r, List<MaterialReturnItemLine> lines) {
@@ -248,6 +254,9 @@ public class SubcontractMaterialReturnService {
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
+            it.setGirthQty(l.getGirthQty());
+            it.setIssueNo(l.getIssueNo());
+            it.setOrderNo(l.getOrderNo());
             itemRepo.save(it);
             out.add(toItemDto(it));
             autoLine++;
@@ -276,14 +285,16 @@ public class SubcontractMaterialReturnService {
         return new MaterialReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getMaterialIssueItemId(), it.getOrderItemId(),
-                it.getParentGoodsId(), it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
+                it.getParentGoodsId(), it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
+                it.getGirthQty(), it.getIssueNo(), it.getOrderNo());
     }
 
     private MaterialReturnDetail toDetail(SubcontractMaterialReturn r, List<MaterialReturnItemDto> items) {
         return new MaterialReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
                 r.getBStyle(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), items);
+                r.isClosed(), r.getSourceDocNo(), items, r.getOperatorLegacyId(), r.getOperatorName(),
+                r.getMakerLegacyId(), r.getMakerName(), r.getApproverLegacyId(), r.getApproverName());
     }
 
     private SubcontractMaterialReturn requireReturn(UUID id) {

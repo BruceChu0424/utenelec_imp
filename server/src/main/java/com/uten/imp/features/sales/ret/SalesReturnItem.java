@@ -94,6 +94,10 @@ public class SalesReturnItem extends BaseEntity {
     @Column(name = "responsible")
     private String responsible;
 
+    /** Discount 折扣（V66 补列，报表"折扣"+"成交金额"用）。 */
+    @Column(name = "discount", precision = 18, scale = 4)
+    private BigDecimal discount = BigDecimal.ZERO;
+
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 

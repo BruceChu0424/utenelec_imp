@@ -54,6 +54,8 @@ import '../../features/purchase/pages/purchase_doc_edit_page.dart';
 import '../../features/purchase/pages/purchase_doc_list_page.dart';
 import '../../features/purchase/pages/purchase_hub_page.dart';
 import '../../features/purchase/pages/purchase_report_page.dart';
+import '../../features/purchase/pages/purchase_report_table_page.dart';
+import '../../features/purchase/config/purchase_report_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
 import '../../features/stock/pages/stock_balance_page.dart';
 import '../../features/stock/pages/stock_movement_page.dart';
@@ -61,8 +63,9 @@ import '../../features/warehouse/models/stock_doc.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
 import '../../features/warehouse/pages/stock_doc_list_page.dart';
+import '../../features/warehouse/config/warehouse_report_config.dart';
 import '../../features/warehouse/pages/warehouse_hub_page.dart';
-import '../../features/warehouse/pages/warehouse_report_page.dart';
+import '../../features/warehouse/pages/warehouse_report_table_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
 import '../../features/payroll/pages/payroll_generate_page.dart';
@@ -93,13 +96,15 @@ import '../../features/sales/pages/sales_doc_detail_page.dart';
 import '../../features/sales/pages/sales_doc_edit_page.dart';
 import '../../features/sales/pages/sales_doc_list_page.dart';
 import '../../features/sales/pages/sales_hub_page.dart';
+import '../../features/sales/config/sales_report_config.dart';
 import '../../features/sales/pages/sales_report_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_doc_detail_page.dart';
 import '../../features/subcontract/pages/subcontract_doc_edit_page.dart';
 import '../../features/subcontract/pages/subcontract_doc_list_page.dart';
 import '../../features/subcontract/pages/subcontract_hub_page.dart';
-import '../../features/subcontract/pages/subcontract_report_page.dart';
+import '../../features/subcontract/config/subcontract_report_config.dart';
+import '../../features/subcontract/pages/subcontract_report_table_page.dart';
 import '../../features/security/pages/security_scan_page.dart';
 import '../../features/visitor_approval/pages/my_visitors_page.dart';
 import '../../features/visitor_approval/pages/visitor_approval_detail_page.dart';
@@ -483,6 +488,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'purchase-return-list',
             builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.returnDoc),
           ),
+          // 采购报表（9 张，参数化）：必须在 /purchase/:doc/:id 之前，literal "report" 段优先。
+          GoRoute(
+            path: '/purchase/report/:kind',
+            name: 'purchase-report-table',
+            builder: (_, s) => PurchaseReportTablePage(kind: PurchaseReportKind.byName(s.pathParameters['kind']!)),
+          ),
           GoRoute(
             path: '/purchase/:doc/new',
             name: 'purchase-doc-new',
@@ -532,7 +543,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.warehouseReport,
             name: 'warehouse-report',
-            builder: (_, _) => const WarehouseReportPage(),
+            redirect: (_, _) => RouteName.warehouseReportDetail,
+            routes: [
+              GoRoute(
+                path: 'detail',
+                name: 'warehouse-report-detail',
+                builder: (_, _) => const WarehouseReportTablePage(
+                    kind: WarehouseReportKind.detail),
+              ),
+              GoRoute(
+                path: 'summary',
+                name: 'warehouse-report-summary',
+                builder: (_, _) => const WarehouseReportTablePage(
+                    kind: WarehouseReportKind.summary),
+              ),
+            ],
           ),
           GoRoute(
             path: '/warehouse/:code/new',
@@ -601,7 +626,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.salesReport,
             name: 'sales-report',
-            builder: (_, _) => const SalesReportPage(),
+            redirect: (_, _) => RouteName.salesReportDetail,
+            routes: [
+              GoRoute(
+                path: 'detail',
+                name: 'sales-report-detail',
+                builder: (_, _) => const SalesReportPage(kind: SalesReportKind.detail),
+              ),
+              GoRoute(
+                path: 'summary',
+                name: 'sales-report-summary',
+                builder: (_, _) => const SalesReportPage(kind: SalesReportKind.summary),
+              ),
+            ],
           ),
           GoRoute(
             path: '/sales/:seg/new',
@@ -643,7 +680,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.subcontractReport,
             name: 'subcontract-report',
-            builder: (_, _) => const SubcontractReportPage(),
+            builder: (_, _) => const SubcontractHubPage(),
+          ),
+          // 委外报表（3 卡：明细/汇总/出入状况，静态段 report 优先于 :seg 参数路由）
+          GoRoute(
+            path: '/subcontract/report/:kind',
+            name: 'subcontract-report-table',
+            builder: (_, s) => SubcontractReportTablePage(
+                kind: SubcontractReportKind.byRouteSegment(s.pathParameters['kind']!)),
           ),
           GoRoute(
             path: '/subcontract/:seg/new',

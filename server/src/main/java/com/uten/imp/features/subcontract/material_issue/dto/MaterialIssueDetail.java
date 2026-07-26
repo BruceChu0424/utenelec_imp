@@ -29,4 +29,11 @@ public class MaterialIssueDetail {
     private boolean closed;
     private String sourceDocNo;
     private List<MaterialIssueItemDto> items;
+
+    private Integer operatorLegacyId;
+    private String operatorName;
+    private Integer makerLegacyId;
+    private String makerName;
+    private Integer approverLegacyId;
+    private String approverName;
 }

@@ -51,6 +51,8 @@ class _ItemRow {
   final qty = TextEditingController();
   final price = TextEditingController();
   final weight = TextEditingController();
+  final girth = TextEditingController(); // 围数（进仓/退货/材料退）
+  final boxQty = TextEditingController(); // 胶箱数量（材料出）
   // 损耗特有
   final endingQty = TextEditingController();
   final standardQty = TextEditingController();
@@ -76,12 +78,26 @@ class _ItemRow {
     qty.dispose();
     price.dispose();
     weight.dispose();
+    girth.dispose();
+    boxQty.dispose();
     endingQty.dispose();
     standardQty.dispose();
     wasteRate.dispose();
     cause.dispose();
   }
 }
+
+/// 结帐方式字典（源老库 B_PStyle，与后端 SubcontractSettlementStyle 对齐）。
+const Map<int, String> kSubcontractSettlementStyles = {
+  1: '现金',
+  2: '提货',
+  3: '代付',
+  4: '支票',
+  6: '月结',
+  7: '垫付',
+  8: '汇款',
+  10: '代收',
+};
 
 class _SubcontractDocEditPageState
     extends ConsumerState<SubcontractDocEditPage> {
@@ -93,6 +109,9 @@ class _SubcontractDocEditPageState
   final _bStyle = TextEditingController();
   final _totalWeight = TextEditingController();
   DateTime _billDate = DateTime.now();
+
+  // 结帐方式（进仓/退货；B_PStyle 字典码）
+  int? _settlementStyle;
 
   String? _supplierId;
   String? _warehouseId;
@@ -157,6 +176,7 @@ class _SubcontractDocEditPageState
         if (d.taxRate != null) _taxRate.text = d.taxRate.toString();
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
         if (d.totalWeight != null) _totalWeight.text = d.totalWeight.toString();
+        _settlementStyle = d.settlementStyleLegacy;
         _purchaserId = d.purchaserId;
         _senderId = d.senderId;
         _workerId = d.workerId;
@@ -183,6 +203,8 @@ class _SubcontractDocEditPageState
           row.standardQty.text = it.standardQty?.toString() ?? '';
           row.wasteRate.text = it.wasteRate?.toString() ?? '';
           row.cause.text = it.cause ?? '';
+          row.girth.text = it.girthQty?.toString() ?? '';
+          row.boxQty.text = it.boxQty?.toString() ?? '';
           _items.add(row);
         }
       } on ApiException catch (e) {
@@ -285,6 +307,8 @@ class _SubcontractDocEditPageState
           'amountOriginal': qty * price,
         if (_cfg.itemHasPrice && price != null) 'amountLocal': qty * price,
         if (_cfg.itemHasWeight && w != null) 'weight': w,
+        if (_cfg.itemHasGirth) 'girthQty': double.tryParse(r.girth.text),
+        if (_cfg.itemHasBoxQty) 'boxQty': double.tryParse(r.boxQty.text),
         if (_cfg.itemHasWasteFields && ending != null) 'endingQty': ending,
         if (_cfg.itemHasWasteFields && std != null) 'standardQty': std,
         if (_cfg.itemHasWasteFields && wr != null) 'wasteRate': wr,
@@ -311,6 +335,7 @@ class _SubcontractDocEditPageState
       if (_cfg.hasLastDate && _lastDate != null) 'lastDate': _fmt(_lastDate!),
       if (_cfg.hasBStyle) 'bStyle': int.tryParse(_bStyle.text),
       if (_cfg.hasTotalWeight) 'totalWeight': double.tryParse(_totalWeight.text),
+      if (_cfg.hasSettlement) 'settlementStyleLegacy': _settlementStyle,
       'items': itemsBody,
     };
     setState(() => _saving = true);
@@ -547,6 +572,21 @@ class _SubcontractDocEditPageState
                       const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: '总重'),
                 ),
+              if (_cfg.hasSettlement)
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  child: DropdownButtonFormField<int?>(
+                    initialValue: _settlementStyle,
+                    decoration: const InputDecoration(labelText: '结帐方式'),
+                    items: [
+                      const DropdownMenuItem<int?>(child: Text('— 不选 —')),
+                      for (final e in kSubcontractSettlementStyles.entries)
+                        DropdownMenuItem<int?>(
+                            value: e.key, child: Text(e.value)),
+                    ],
+                    onChanged: (v) => setState(() => _settlementStyle = v),
+                  ),
+                ),
             ]),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
@@ -709,6 +749,33 @@ class _SubcontractDocEditPageState
               decoration: const InputDecoration(
                   labelText: '重量', isDense: true),
             ),
+          ],
+          if (_cfg.itemHasGirth || _cfg.itemHasBoxQty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Row(children: [
+              if (_cfg.itemHasGirth)
+                Expanded(
+                  child: TextField(
+                    controller: row.girth,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: '围数', isDense: true),
+                  ),
+                ),
+              if (_cfg.itemHasGirth && _cfg.itemHasBoxQty)
+                const SizedBox(width: UtenSpacing.s8),
+              if (_cfg.itemHasBoxQty)
+                Expanded(
+                  child: TextField(
+                    controller: row.boxQty,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: '胶箱数量', isDense: true),
+                  ),
+                ),
+            ]),
           ],
           if (_cfg.itemHasWasteFields) ...[
             const SizedBox(height: UtenSpacing.s8),

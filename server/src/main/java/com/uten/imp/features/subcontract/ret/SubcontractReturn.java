@@ -89,4 +89,24 @@ public class SubcontractReturn extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /** 老库结帐方式（E_WithDraw.PStyle → B_PStyle 字典 ID）。报表渲染成文字。 */
+    @Column(name = "settlement_style_legacy")
+    private Integer settlementStyleLegacy;
+
+    /** 制单员 legacy id（E_WithDraw.MakeID → Sys_Operator.ID）。 */
+    @Column(name = "maker_legacy_id")
+    private Integer makerLegacyId;
+
+    /** 制单员名（迁移期冻结 Sys_Operator.fname）。 */
+    @Column(name = "maker_name")
+    private String makerName;
+
+    /** 审核员 legacy id（E_WithDraw.ApproverID → Sys_Operator.ID）。 */
+    @Column(name = "approver_legacy_id")
+    private Integer approverLegacyId;
+
+    /** 审核员名（迁移期冻结 Sys_Operator.fname）。 */
+    @Column(name = "approver_name")
+    private String approverName;
 }

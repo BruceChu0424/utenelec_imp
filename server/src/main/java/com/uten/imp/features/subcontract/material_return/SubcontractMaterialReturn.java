@@ -78,4 +78,28 @@ public class SubcontractMaterialReturn extends SoftDeletableEntity {
 
     @Column(name = "source_doc_no")
     private String sourceDocNo;
+
+    /** 经办人 legacy id（E_SWithDraw.WorkID → B_Worker.ID）。报表 LEFT JOIN employees 出名。 */
+    @Column(name = "operator_legacy_id")
+    private Integer operatorLegacyId;
+
+    /** 经办人名（历史冻结兜底；新单据走 worker_id JOIN employees）。 */
+    @Column(name = "operator_name")
+    private String operatorName;
+
+    /** 制单员 legacy id（E_SWithDraw.MakeID → Sys_Operator.ID）。 */
+    @Column(name = "maker_legacy_id")
+    private Integer makerLegacyId;
+
+    /** 制单员名（迁移期冻结 Sys_Operator.fname）。 */
+    @Column(name = "maker_name")
+    private String makerName;
+
+    /** 审核员 legacy id（E_SWithDraw.ApproverID → Sys_Operator.ID）。 */
+    @Column(name = "approver_legacy_id")
+    private Integer approverLegacyId;
+
+    /** 审核员名（迁移期冻结 Sys_Operator.fname）。 */
+    @Column(name = "approver_name")
+    private String approverName;
 }

@@ -33,5 +33,13 @@ public class PurchaseRequestItem extends BaseEntity {
     @Column(name = "gift_qty", precision = 18, scale = 4) private BigDecimal giftQty = BigDecimal.ZERO;
     @Column(name = "weight", precision = 18, scale = 4) private BigDecimal weight;
     @Column(name = "source_doc_no") private String sourceDocNo;
+    /** 老库交叉引用文本（软关联，报表按列展示，不强 FK）。 */
+    @Column(name = "deliver_date") private LocalDate deliverDate;
+    @Column(name = "production_no") private String productionNo;
+    @Column(name = "purchase_order_no") private String purchaseOrderNo;
+    @Column(name = "sales_order_no") private String salesOrderNo;
+    @Column(name = "production_plan_no") private String productionPlanNo;
+    @Column(name = "purchase_reply") private String purchaseReply;
+    @Column(name = "summary") private String summary;
     private String remark;
 }

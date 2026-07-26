@@ -360,11 +360,6 @@ const _allGroups = <_ModuleGroup>[
         label: '仓库管理',
         location: RouteName.warehouse,
       ),
-      _ModuleItem(
-        icon: Icons.assessment_outlined,
-        label: '仓库报表',
-        location: RouteName.warehouseReport,
-      ),
       // 采购管理 → hub（hub 内分「采购管理」4 单据卡片 + 「采购报表」卡片）
       _ModuleItem(
         icon: Icons.shopping_cart_outlined,

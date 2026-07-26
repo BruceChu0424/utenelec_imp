@@ -32,6 +32,13 @@ public class MaterialIssueSaveRequest {
     private LocalDate deliverDate;
     private String remark;
 
+    private Integer operatorLegacyId;
+    private String operatorName;
+    private Integer makerLegacyId;
+    private String makerName;
+    private Integer approverLegacyId;
+    private String approverName;
+
     @Valid
     @NotNull
     private List<MaterialIssueItemLine> items;

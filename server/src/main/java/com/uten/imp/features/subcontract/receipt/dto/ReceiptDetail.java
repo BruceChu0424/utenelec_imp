@@ -33,4 +33,12 @@ public class ReceiptDetail {
     private boolean closed;
     private String sourceDocNo;
     private List<ReceiptItemDto> items;
+
+    private Integer settlementStyleLegacy;
+    private Integer receiverLegacyId;
+    private String receiverName;
+    private Integer makerLegacyId;
+    private String makerName;
+    private Integer approverLegacyId;
+    private String approverName;
 }

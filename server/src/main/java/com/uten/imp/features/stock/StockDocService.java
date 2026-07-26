@@ -236,6 +236,7 @@ public class StockDocService {
         d.setWorkerId(req.getWorkerId());
         d.setMakerId(req.getMakerId());
         d.setApproverId(req.getApproverId());
+        d.setAssTeam(req.getAssTeam());
         d.setPlanNo(req.getPlanNo());
         d.setRemark(req.getRemark());
     }
@@ -307,7 +308,7 @@ public class StockDocService {
     private StockDocDetail toDetail(StockDocument d, List<StockDocItemDto> items) {
         return new StockDocDetail(d.getId(), d.getLegacyId(), d.getDocType(), d.getBillNo(), d.getBillDate(),
                 d.getWarehouseId(), d.getToWarehouseId(), d.getSupplierId(), d.getClientId(),
-                d.getWorkerId(), d.getMakerId(), d.getApproverId(), d.getPlanNo(), d.getRemark(),
+                d.getWorkerId(), d.getMakerId(), d.getApproverId(), d.getAssTeam(), d.getPlanNo(), d.getRemark(),
                 d.getTotalOriginal(), d.getTotalLocal(), d.getStatus(), d.isClosed(),
                 d.getSourceDocNo(), items);
     }

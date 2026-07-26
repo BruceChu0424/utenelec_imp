@@ -15,6 +15,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../config/subcontract_doc_config.dart';
+import '../config/subcontract_report_config.dart';
 
 class SubcontractHubPage extends StatelessWidget {
   const SubcontractHubPage({super.key});
@@ -46,12 +47,13 @@ class SubcontractHubPage extends StatelessWidget {
               ]),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '委外报表', [
-                _Entry(
-                  icon: Icons.bar_chart_outlined,
-                  label: '委外报表',
-                  description: '月度汇总 / 出入状况 / 明细',
-                  location: SubcontractRoute.report,
-                ),
+                for (final k in SubcontractReportKind.values)
+                  _Entry(
+                    icon: k.icon,
+                    label: k.label,
+                    description: k.shortLabel,
+                    location: k.route,
+                  ),
               ]),
             ],
           ),

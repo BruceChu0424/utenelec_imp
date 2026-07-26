@@ -20,6 +20,15 @@
 | **V58** | `V58__finance_report.sql` | 钱流 | `finance_ar_ap_mv` |
 | **V59** | `V59__stock_partition.sql` | 我亲自写 | `stock_movements` 在线转 RANGE 分区 + movement_type 15–20 注释 |
 
+> **V60–V68（后续调整 + 各模块报表补列）未逐一列上表**，按主题归档：
+> - V60 审计列补齐 / V61 实体 DDL 对齐 / V62 `sales_order_cost_items.legacy_id` UNIQUE / V63-V64 权限清理（小调整，无新业务表）。
+> - **报表补列四件套**（同型，均 `ADD COLUMN IF NOT EXISTS` + 报表所需列 + 人员 `*_legacy_id` + `employees.legacy_id` 融合键）：
+>   - **V65** 采购（`purchase_*` + `settlement_style_legacy` SMALLINT + 明细交叉引用列）
+>   - **V66** 委外（`subcontract_*`，详见 [22]/委外 memory）
+>   - **V67** 仓库（`stock_documents` worker/maker/approver_legacy_id + `employees.legacy_category`，详见仓库 memory）
+>   - **V68** 销售（`sales_*_items` 机加价/材料价/压铸价/围数/进仓/in_no/out_no/discount/returned + 4 主表 `*_legacy_id` + `client_director_v` 视图，详见 [20] 附记）
+> - 报表统一走服务端 JOIN + `ReportTableResponse{columns,rows,facets}` 范式（采购/委外/仓库/销售一致），人名 `LEFT JOIN employees ON legacy_id=*_legacy_id OR id=*_id`（employees.legacy_id 未填前显空白）。
+
 > **依赖序**：V50→V51→V53→V55→V57（生产 V55 的 SOCItemID/S_OrderID 映射依赖销售 V51 先落，但 DDL 层面无 FK 跨模块，仅迁移时需序）。各模块 DDL 互不 FK（跨模块联动在 Service 层）。
 
 ---

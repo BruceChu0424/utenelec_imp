@@ -12,6 +12,7 @@ import com.uten.imp.features.purchase.receipt.dto.ReceiptListItem;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptQueryFilter;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -52,6 +53,7 @@ public class PurchaseReceiptService {
     private final StockService stockService;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -88,6 +90,7 @@ public class PurchaseReceiptService {
         tx.bind();
         PurchaseReceipt r = new PurchaseReceipt();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
         receiptRepo.save(r);
         List<ReceiptItemDto> items = saveItems(r, req.getItems());
@@ -150,6 +153,7 @@ public class PurchaseReceiptService {
             }
         }
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireId()); // 审核=当前登录用户
         receiptRepo.save(r);
         // 立应付（AP, PURCHASE_RECEIPT）：取代老库 P_In 触发器 TRI_PIStockItem 的 M_out 立帐分支。
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(

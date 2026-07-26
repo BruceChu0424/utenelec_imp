@@ -31,5 +31,10 @@ public class OrderItemDto {
     private String clientModel;
     private LocalDate deliverDate;
     private String sourceDocNo;
+    private BigDecimal machiningPrice;
+    private BigDecimal circumference;
+    private BigDecimal inboundQty;
+    private String inNo;
+    private String outNo;
     private String remark;
 }

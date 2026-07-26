@@ -38,4 +38,9 @@ public class ReturnItemLine {
 
     private String sourceDocNo;
     private String remark;
+
+    private BigDecimal girthQty;
+    private Integer stepLegacyId;
+    private String receiptNo;
+    private String orderNo;
 }

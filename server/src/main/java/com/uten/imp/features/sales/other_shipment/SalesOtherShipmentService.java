@@ -222,6 +222,11 @@ public class SalesOtherShipmentService {
             it.setCartonCount(l.getCartonCount());
             it.setClientNo(l.getClientNo());
             it.setClientModel(l.getClientModel());
+            it.setMaterialPrice(l.getMaterialPrice());
+            it.setDieCastPrice(l.getDieCastPrice());
+            it.setMachiningPrice(l.getMachiningPrice());
+            it.setCircumference(l.getCircumference());
+            it.setDiscount(l.getDiscount());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
@@ -253,7 +258,9 @@ public class SalesOtherShipmentService {
                 it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getWeight(),
                 it.getParcelQty(), it.getCartonCount(), it.getClientNo(), it.getClientModel(),
-                it.getSourceDocNo(), it.getRemark());
+                it.getMaterialPrice(), it.getDieCastPrice(), it.getMachiningPrice(), it.getCircumference(),
+                it.getDiscount(), it.getReturnedQty(), it.getReturnedAmount(), it.getSourceDocNo(),
+                it.getRemark());
     }
 
     private OtherShipmentDetail toDetail(SalesOtherShipment s, List<OtherShipmentItemDto> items) {

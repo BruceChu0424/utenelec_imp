@@ -34,6 +34,7 @@ class StockDocListItem {
     this.status,
     this.closed = false,
     this.legacyId,
+    this.assTeam,
   });
   final String id;
   final String? docType;
@@ -45,6 +46,7 @@ class StockDocListItem {
   final int? status;
   final bool closed;
   final int? legacyId;
+  final String? assTeam;
 
   factory StockDocListItem.fromJson(Map<String, dynamic> json) => StockDocListItem(
         id: json['id'] as String,
@@ -57,6 +59,7 @@ class StockDocListItem {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        assTeam: json['assTeam'] as String?,
       );
 }
 
@@ -119,6 +122,7 @@ class StockDocDetail {
     this.totalLocal,
     this.status,
     this.closed = false,
+    this.assTeam,
     this.items = const [],
   });
   final String id;
@@ -131,6 +135,7 @@ class StockDocDetail {
   final double? totalLocal;
   final int? status;
   final bool closed;
+  final String? assTeam;
   final List<StockDocItem> items;
 
   factory StockDocDetail.fromJson(Map<String, dynamic> json) => StockDocDetail(
@@ -144,6 +149,7 @@ class StockDocDetail {
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
+        assTeam: json['assTeam'] as String?,
         items: (json['items'] as List?)
                 ?.map((e) => StockDocItem.fromJson(e as Map<String, dynamic>))
                 .toList() ??

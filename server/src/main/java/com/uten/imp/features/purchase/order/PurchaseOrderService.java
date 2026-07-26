@@ -10,6 +10,7 @@ import com.uten.imp.features.purchase.order.dto.OrderItemLine;
 import com.uten.imp.features.purchase.order.dto.OrderListItem;
 import com.uten.imp.features.purchase.order.dto.OrderQueryFilter;
 import com.uten.imp.features.purchase.order.dto.OrderSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -46,6 +47,7 @@ public class PurchaseOrderService {
     private final PurchaseOrderRepository orderRepo;
     private final PurchaseOrderItemRepository itemRepo;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -81,6 +83,7 @@ public class PurchaseOrderService {
         tx.bind();
         PurchaseOrder o = new PurchaseOrder();
         applyHeader(req, o);
+        o.setMakerId(currentUser.requireId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         o.setStatus(STATUS_DRAFT);
         orderRepo.save(o);
         List<OrderItemDto> items = saveItems(o, req.getItems());
@@ -131,6 +134,7 @@ public class PurchaseOrderService {
             }
         }
         o.setStatus(STATUS_APPROVED);
+        o.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         orderRepo.save(o);
         return detail(id);
     }

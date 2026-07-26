@@ -84,5 +84,25 @@ public class SubcontractReceiptItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** 围数（E_InItem.KQTY）。 */
+    @Column(name = "girth_qty", precision = 18, scale = 4)
+    private BigDecimal girthQty;
+
+    /** 工序 legacy id（E_InItem.StepID → B_Step；B_Step 未迁，暂空白）。 */
+    @Column(name = "step_legacy_id")
+    private Integer stepLegacyId;
+
+    /** 退货金额（E_InItem.EWTotal）。 */
+    @Column(name = "return_amount", precision = 18, scale = 4)
+    private BigDecimal returnAmount;
+
+    /** 委外退货单号（E_InItem.EWDrawNo，多值 varchar 原样）。 */
+    @Column(name = "return_no")
+    private String returnNo;
+
+    /** 委外订货单号（E_InItem.OrderNo，多值 varchar 原样）。 */
+    @Column(name = "order_no")
+    private String orderNo;
+
     private String remark;
 }

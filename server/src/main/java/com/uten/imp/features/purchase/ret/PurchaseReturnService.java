@@ -12,6 +12,7 @@ import com.uten.imp.features.purchase.ret.dto.ReturnListItem;
 import com.uten.imp.features.purchase.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -50,6 +51,7 @@ public class PurchaseReturnService {
     private final StockService stockService;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -85,6 +87,7 @@ public class PurchaseReturnService {
         tx.bind();
         PurchaseReturn r = new PurchaseReturn();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -131,6 +134,7 @@ public class PurchaseReturnService {
             writeback(it, +1);
         }
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireId()); // 审核=当前登录用户
         returnRepo.save(r);
         // 立红字应付（AP, PURCHASE_RETURN，金额取负 = 红冲 AP）：取代老库 P_Withdraw 触发器的 M_out 立帐分支。
         // 退货后 supplier 净应付 = 原收货应付 - 退货应付；报表 GROUP BY supplier 自动得出净额。

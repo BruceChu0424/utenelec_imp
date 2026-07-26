@@ -95,5 +95,25 @@ public class SalesOrderItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** JPrice 机加价（V66 补列，销售报表用）。 */
+    @Column(name = "machining_price", precision = 18, scale = 4)
+    private BigDecimal machiningPrice;
+
+    /** KQTY2 围数（V66 补列，包装派生）。 */
+    @Column(name = "circumference", precision = 18, scale = 4)
+    private BigDecimal circumference;
+
+    /** IQTY 进仓数量（V66 补列，仓库回写历史累计；新库不再回写）。 */
+    @Column(name = "inbound_qty", precision = 18, scale = 4)
+    private BigDecimal inboundQty = BigDecimal.ZERO;
+
+    /** InNo 成品进仓单号（V66 补列，分列展示）。 */
+    @Column(name = "in_no")
+    private String inNo;
+
+    /** OutNo 销售出货单号（V66 补列，分列展示）。 */
+    @Column(name = "out_no")
+    private String outNo;
+
     private String remark;
 }

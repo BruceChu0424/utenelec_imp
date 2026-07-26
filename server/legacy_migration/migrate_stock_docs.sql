@@ -18,7 +18,9 @@
 --   staging，JOIN 用 (legacy_id, doc_type) 消歧，因各 O_ 表 IDENTITY 独立、ID 跨表会重复）。
 --   比"每类一段"更 DRY：8 段 INSERT → 2 段。复制本文件改 doc 集合即迁移新单据类型。
 --
--- 【人员字段】worker/maker/approver：B_Worker↔employees 无 legacy_id 对齐，留 NULL（同采购）。
+-- 【人员字段】worker/maker/approver：保留 *_legacy_id INT（worker 源随类型不同：DRAW=GetID 领料人、
+--   WDRAW=ReturnID 退料人、CHECK=CheckID 盘点人/跟单员、其余=WorkerID 经办/跟单）；ass_team=装配班组(DRAW)。
+--   并自动补录 B_Worker→employees stub（legacy_id 融合键），报表 LEFT JOIN employees 出人名；HR 真名单不覆盖。
 -- 【状态】老库历史只有 1（已审）/ -1（红冲），无草稿；照搬。
 -- 【doc_type】TRANSFER/OTHER_IN/OTHER_OUT/DRAW/WDRAW/FINISHED_IN/FINISHED_OUT/CHECK
 --   （WASTE 损耗老库 O_Waste 0 行，跳过；结构/枚举已留位。）
@@ -39,6 +41,7 @@ CREATE TEMP TABLE doc_stage (
     worker_legacy int, maker_legacy int, approver_legacy int,
     plan_no text, bill_type text, remark text,
     total_original numeric(18,4), status smallint, cancel_bit boolean,
+    ass_team text,
     doc_type text);
 
 CREATE TEMP TABLE item_stage (
@@ -55,21 +58,21 @@ CREATE TEMP TABLE sg_stage (
     qty numeric(18,4), total numeric(18,2));
 
 -- ======================== 载入全部 8 类主表（accumulate，标 doc_type） ========================
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_transfer_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_transfer_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='TRANSFER' WHERE doc_type IS NULL;
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_other_in_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_other_in_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='OTHER_IN' WHERE doc_type IS NULL;
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_other_out_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_other_out_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='OTHER_OUT' WHERE doc_type IS NULL;
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_draw_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_draw_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='DRAW' WHERE doc_type IS NULL;
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_wdraw_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_wdraw_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='WDRAW' WHERE doc_type IS NULL;
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_finished_in_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_finished_in_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='FINISHED_IN' WHERE doc_type IS NULL;
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_finished_out_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_finished_out_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='FINISHED_OUT' WHERE doc_type IS NULL;
-\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit) FROM '/tmp/stock_check_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+\copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_check_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 UPDATE doc_stage SET doc_type='CHECK' WHERE doc_type IS NULL;
 
 -- ======================== 载入全部 8 类明细（accumulate，标 doc_type） ========================
@@ -128,17 +131,37 @@ WHERE lid IS NOT NULL AND lid <> 0
   AND NOT EXISTS (SELECT 1 FROM warehouses w WHERE w.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
+-- ======================== 人员补录：B_Worker → employees stub（融合键 legacy_id） ========================
+-- 用户要求：老库有、新库没有就在员工表添加、显示名字（名字后带「（子类）」标记，sub_class 非空时）。
+-- legacy_id = B_Worker.ID（融合键），full_name = Emp_Name，code='LEGACY-W-<id>'，
+-- status='resigned'（老库很多人离职，默认离职；HR 以后在员工档案激活/补全真实信息），
+-- department_id=DEPT_HR（HR 负责后续清理/分配真实部门），hire_date 占位，employment_type='regular'。
+-- NOT EXISTS 守卫：用户已录真员工（同 legacy_id）优先，绝不覆盖；故重跑幂等、与真名单可融合。
+-- sub_class 暂为 NULL（B_Worker 子类字段待 b_worker_columns.csv 确认后回填 SELECT）。
+CREATE TEMP TABLE worker_stage (legacy_id int, name text, sub_class text);
+\copy worker_stage FROM '/tmp/legacy_workers.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+INSERT INTO employees (legacy_id, code, full_name, id_type, department_id, hire_date, status, employment_type, legacy_category)
+SELECT w.legacy_id, 'LEGACY-W-' || w.legacy_id, NULLIF(w.name,''), '其他',
+       (SELECT id FROM departments WHERE code = 'DEPT_HR'), DATE '2000-01-01', 'resigned', 'regular',
+       NULLIF(w.sub_class,'')
+FROM worker_stage w
+WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0 AND NULLIF(w.name,'') IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.legacy_id = w.legacy_id);
+
 -- ======================== 统一单据头（一条 INSERT，全 8 类） ========================
 INSERT INTO stock_documents (
     legacy_id, doc_type, bill_no, bill_date, warehouse_id, to_warehouse_id,
-    supplier_id, client_id, plan_no, remark, total_original, total_local, status, is_closed)
+    supplier_id, client_id, plan_no, remark, total_original, total_local, status, is_closed,
+    worker_legacy_id, maker_legacy_id, approver_legacy_id, ass_team)
 SELECT s.legacy_id, s.doc_type, s.bill_no, s.bill_date,
        (SELECT id FROM warehouses WHERE legacy_id = s.stock_legacy_id),
        (SELECT id FROM warehouses WHERE legacy_id = s.to_stock_legacy_id AND s.to_stock_legacy_id <> 0),
        (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id AND s.supplier_legacy_id <> 0),
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy_id  AND s.client_legacy_id  <> 0),
        NULLIF(s.plan_no,''), NULLIF(s.remark,''),
-       COALESCE(s.total_original,0), COALESCE(s.total_original,0), s.status, FALSE
+       COALESCE(s.total_original,0), COALESCE(s.total_original,0), s.status, FALSE,
+       NULLIF(s.worker_legacy,0), NULLIF(s.maker_legacy,0), NULLIF(s.approver_legacy,0), NULLIF(s.ass_team,'')
 FROM doc_stage s;
 
 -- ======================== 统一明细（一条 INSERT，全 8 类） ========================
@@ -227,11 +250,17 @@ WHERE d.status = 1 AND d.doc_type = 'CHECK' AND i.surplus_qty IS NOT NULL AND i.
 
 COMMIT;
 
+-- ======================== 刷新仓库月度物化视图（防汇总报表空，同 sales 修复） ========================
+REFRESH MATERIALIZED VIEW stock_monthly_mv;
+
 -- ======================== 校验 ========================
 SELECT '✔ 主表合计 ' || (SELECT count(*) FROM stock_documents) || ' / 明细 ' || (SELECT count(*) FROM stock_document_items) AS r
 UNION ALL SELECT '余额行 '   || (SELECT count(*) FROM stock_balances)
 UNION ALL SELECT '仓库流水 ' || (SELECT count(*) FROM stock_movements WHERE source_doc_type='STOCK_DOC')
 UNION ALL SELECT '补录货品 ' || (SELECT count(*) FROM goods WHERE name LIKE '（迁移自动补录%')
+UNION ALL SELECT '补录员工 ' || (SELECT count(*) FROM employees WHERE code LIKE 'LEGACY-W-%')
+UNION ALL SELECT '单据人员覆盖 ' || (SELECT count(*) FROM stock_documents WHERE worker_legacy_id IS NOT NULL OR maker_legacy_id IS NOT NULL OR approver_legacy_id IS NOT NULL)
+UNION ALL SELECT '装配班组 ' || (SELECT count(*) FROM stock_documents WHERE ass_team IS NOT NULL)
 UNION ALL SELECT '孤儿明细(无货品) ' || (SELECT count(*) FROM stock_document_items WHERE goods_id IS NULL)
 UNION ALL SELECT '孤儿明细(无主表) ' || (SELECT count(*) FROM stock_document_items i WHERE NOT EXISTS (SELECT 1 FROM stock_documents d WHERE d.id=i.doc_id))
 UNION ALL SELECT '退料挂领料 ' || (SELECT count(*) FROM stock_document_items WHERE bill_type='WDRAW' AND upstream_item_id IS NOT NULL);

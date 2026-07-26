@@ -201,6 +201,11 @@ public class SalesOrderService {
             it.setClientModel(l.getClientModel());
             it.setDeliverDate(l.getDeliverDate());
             it.setSourceDocNo(l.getSourceDocNo());
+            it.setMachiningPrice(l.getMachiningPrice());
+            it.setCircumference(l.getCircumference());
+            it.setInboundQty(l.getInboundQty());
+            it.setInNo(l.getInNo());
+            it.setOutNo(l.getOutNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
             out.add(toItemDto(it));
@@ -231,7 +236,8 @@ public class SalesOrderService {
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getShippedQty(), it.getReturnedQty(), it.getFlagQty(),
                 it.getDiscount(), it.getTaxAmount(), it.getWeight(), it.getClientNo(), it.getClientModel(),
-                it.getDeliverDate(), it.getSourceDocNo(), it.getRemark());
+                it.getDeliverDate(), it.getSourceDocNo(), it.getMachiningPrice(), it.getCircumference(),
+                it.getInboundQty(), it.getInNo(), it.getOutNo(), it.getRemark());
     }
 
     private OrderCostItemDto toCostDto(SalesOrderCostItem c) {

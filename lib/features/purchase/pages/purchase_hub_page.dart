@@ -12,6 +12,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../config/purchase_doc_config.dart';
+import '../config/purchase_report_config.dart';
 
 class PurchaseHubPage extends StatelessWidget {
   const PurchaseHubPage({super.key});
@@ -39,12 +40,13 @@ class PurchaseHubPage extends StatelessWidget {
               ]),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '采购报表', [
-                _Entry(
-                  icon: Icons.bar_chart_outlined,
-                  label: '采购报表',
-                  description: '明细 / 汇总 / 待交货',
-                  location: RouteName.purchaseReport,
-                ),
+                for (final k in PurchaseReportKind.values)
+                  _Entry(
+                    icon: k.icon,
+                    label: k.label,
+                    description: k.shortLabel,
+                    location: '/purchase/report/${k.name}',
+                  ),
               ]),
             ],
           ),

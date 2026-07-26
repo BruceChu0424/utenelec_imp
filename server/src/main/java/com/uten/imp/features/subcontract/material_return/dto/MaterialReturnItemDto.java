@@ -27,4 +27,8 @@ public class MaterialReturnItemDto {
     private BigDecimal weight;
     private String sourceDocNo;
     private String remark;
+
+    private BigDecimal girthQty;
+    private String issueNo;
+    private String orderNo;
 }

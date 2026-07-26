@@ -156,6 +156,17 @@ class SalesDocItem {
     this.outItemId,
     this.deliverDate,
     this.sourceDocNo,
+    // V66 销售报表补列（明细可录入/系统展示）：
+    //   order: machiningPrice/circumference/inboundQty + inNo/outNo（系统字段，只读）
+    //   shipment/other_shipment: materialPrice/dieCastPrice/machiningPrice/circumference/discount
+    //   return: discount
+    this.machiningPrice,
+    this.circumference,
+    this.inboundQty,
+    this.inNo,
+    this.outNo,
+    this.materialPrice,
+    this.dieCastPrice,
     this.remark,
   });
 
@@ -187,6 +198,14 @@ class SalesDocItem {
   final String? outItemId;
   final String? deliverDate;
   final String? sourceDocNo;
+  // V66 补列字段（详见构造函数注释）
+  final double? machiningPrice;
+  final double? circumference;
+  final double? inboundQty;
+  final String? inNo;
+  final String? outNo;
+  final double? materialPrice;
+  final double? dieCastPrice;
   final String? remark;
 
   factory SalesDocItem.fromJson(Map<String, dynamic> json) => SalesDocItem(
@@ -218,6 +237,13 @@ class SalesDocItem {
         outItemId: json['outItemId'] as String?,
         deliverDate: json['deliverDate'] as String?,
         sourceDocNo: json['sourceDocNo'] as String?,
+        machiningPrice: (json['machiningPrice'] as num?)?.toDouble(),
+        circumference: (json['circumference'] as num?)?.toDouble(),
+        inboundQty: (json['inboundQty'] as num?)?.toDouble(),
+        inNo: json['inNo'] as String?,
+        outNo: json['outNo'] as String?,
+        materialPrice: (json['materialPrice'] as num?)?.toDouble(),
+        dieCastPrice: (json['dieCastPrice'] as num?)?.toDouble(),
         remark: json['remark'] as String?,
       );
 }

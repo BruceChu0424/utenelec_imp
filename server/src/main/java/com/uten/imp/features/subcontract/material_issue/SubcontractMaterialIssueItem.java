@@ -93,5 +93,17 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** 胶箱数量（老库无源 → 留空）。 */
+    @Column(name = "box_qty", precision = 18, scale = 4)
+    private BigDecimal boxQty;
+
+    /** 材料退货单号（E_SOutItem.WDrawNo，多值 varchar 原样）。 */
+    @Column(name = "return_no")
+    private String returnNo;
+
+    /** 委外订货单号（E_SOutItem.EOrderNo，多值 varchar 原样）。 */
+    @Column(name = "order_no")
+    private String orderNo;
+
     private String remark;
 }

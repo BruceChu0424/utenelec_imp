@@ -50,6 +50,17 @@ class _ItemRow {
   String? colorId;
   String? unitId;
 
+  // V66 报表补列：成本分项/包装派生/系统单号。按 docType 在 _itemEditor 中显隐对应输入框。
+  // order：机加价/围数/进仓数量（inNo/outNo 是系统字段，不入录）。
+  // shipment/other_shipment：材料价/压铸价/机加价/围数/折扣。
+  // return：折扣。
+  final machiningPrice = TextEditingController();
+  final circumference = TextEditingController();
+  final inboundQty = TextEditingController();
+  final materialPrice = TextEditingController();
+  final dieCastPrice = TextEditingController();
+  final discount = TextEditingController();
+
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory _ItemRow.fromLinked(SalesLinkedItem li, GoodsOption goods) {
     final r = _ItemRow()
@@ -66,6 +77,12 @@ class _ItemRow {
   void dispose() {
     qty.dispose();
     price.dispose();
+    machiningPrice.dispose();
+    circumference.dispose();
+    inboundQty.dispose();
+    materialPrice.dispose();
+    dieCastPrice.dispose();
+    discount.dispose();
   }
 }
 
@@ -180,6 +197,25 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             ..outItemId = it.outItemId
             ..colorId = it.colorId
             ..unitId = it.unitId;
+          // V66 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
+          if (it.machiningPrice != null) {
+            row.machiningPrice.text = it.machiningPrice.toString();
+          }
+          if (it.circumference != null) {
+            row.circumference.text = it.circumference.toString();
+          }
+          if (it.inboundQty != null) {
+            row.inboundQty.text = it.inboundQty.toString();
+          }
+          if (it.materialPrice != null) {
+            row.materialPrice.text = it.materialPrice.toString();
+          }
+          if (it.dieCastPrice != null) {
+            row.dieCastPrice.text = it.dieCastPrice.toString();
+          }
+          if (it.discount != null) {
+            row.discount.text = it.discount.toString();
+          }
           _items.add(row);
         }
       } on ApiException catch (e) {
@@ -266,7 +302,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text) ?? 0;
       final price = double.tryParse(r.price.text);
-      itemsBody.add({
+      // V66 补列：按 docType 序列化对应字段（空文本不传，后端按 nullable 处理）。
+      double? parseExtra(TextEditingController c) {
+        final t = c.text.trim();
+        return t.isEmpty ? null : double.tryParse(t);
+      }
+
+      final body = <String, dynamic>{
         'goodsId': r.goods!.id,
         'qty': qty,
         if (price != null) 'price': price,
@@ -276,7 +318,37 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         if (r.outItemId != null) 'outItemId': r.outItemId,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-      });
+      };
+      switch (widget.docType) {
+        case SalesDocType.order:
+          final mp = parseExtra(r.machiningPrice);
+          final circ = parseExtra(r.circumference);
+          final inb = parseExtra(r.inboundQty);
+          if (mp != null) body['machiningPrice'] = mp;
+          if (circ != null) body['circumference'] = circ;
+          if (inb != null) body['inboundQty'] = inb;
+          break;
+        case SalesDocType.shipment:
+        case SalesDocType.otherShipment:
+          final mat = parseExtra(r.materialPrice);
+          final dc = parseExtra(r.dieCastPrice);
+          final jp = parseExtra(r.machiningPrice);
+          final circ = parseExtra(r.circumference);
+          final disc = parseExtra(r.discount);
+          if (mat != null) body['materialPrice'] = mat;
+          if (dc != null) body['dieCastPrice'] = dc;
+          if (jp != null) body['machiningPrice'] = jp;
+          if (circ != null) body['circumference'] = circ;
+          if (disc != null) body['discount'] = disc;
+          break;
+        case SalesDocType.returnDoc:
+          final disc = parseExtra(r.discount);
+          if (disc != null) body['discount'] = disc;
+          break;
+        case SalesDocType.quote:
+          break;
+      }
+      itemsBody.add(body);
     }
     final body = <String, dynamic>{
       'billNo': _billNo.text.trim(),
@@ -763,8 +835,84 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                       ?.copyWith(fontWeight: FontWeight.w600)),
             ),
           ]),
+          // V66 补列输入区（按 docType 显隐）：成本分项/包装派生/折扣。
+          //   order：机加价/围数/进仓数量（inNo/outNo 系统字段，不入录）。
+          //   shipment/other_shipment：材料价/压铸价/机加价/围数/折扣。
+          //   return：折扣。
+          if (_extraFields.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                for (final f in _extraFields)
+                  SizedBox(
+                    width: 120,
+                    child: TextField(
+                      controller: f.controller(row),
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      decoration: InputDecoration(
+                          labelText: f.label, isDense: true),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ]),
       ),
     );
+  }
+
+  /// 当前 docType 在明细编辑区追加的 V66 字段描述（与 _save/_init 的字段映射一致）。
+  List<_ExtraField> get _extraFields {
+    switch (widget.docType) {
+      case SalesDocType.order:
+        return const [
+          _ExtraField('机加价', _Field.machiningPrice),
+          _ExtraField('围数', _Field.circumference),
+          _ExtraField('进仓数量', _Field.inboundQty),
+        ];
+      case SalesDocType.shipment:
+      case SalesDocType.otherShipment:
+        return const [
+          _ExtraField('材料价', _Field.materialPrice),
+          _ExtraField('压铸价', _Field.dieCastPrice),
+          _ExtraField('机加价', _Field.machiningPrice),
+          _ExtraField('围数', _Field.circumference),
+          _ExtraField('折扣', _Field.discount),
+        ];
+      case SalesDocType.returnDoc:
+        return const [_ExtraField('折扣', _Field.discount)];
+      case SalesDocType.quote:
+        return const [];
+    }
+  }
+}
+
+/// V66 明细扩展字段描述（label + 在 _ItemRow 上的 controller 选择）。
+enum _Field { machiningPrice, circumference, inboundQty, materialPrice, dieCastPrice, discount }
+
+class _ExtraField {
+  const _ExtraField(this.label, this.field);
+  final String label;
+  final _Field field;
+
+  TextEditingController controller(_ItemRow row) {
+    switch (field) {
+      case _Field.machiningPrice:
+        return row.machiningPrice;
+      case _Field.circumference:
+        return row.circumference;
+      case _Field.inboundQty:
+        return row.inboundQty;
+      case _Field.materialPrice:
+        return row.materialPrice;
+      case _Field.dieCastPrice:
+        return row.dieCastPrice;
+      case _Field.discount:
+        return row.discount;
+    }
   }
 }

@@ -33,6 +33,12 @@ public class ReturnSaveRequest {
     private LocalDate lastDate;
     private String remark;
 
+    private Integer settlementStyleLegacy;
+    private Integer makerLegacyId;
+    private String makerName;
+    private Integer approverLegacyId;
+    private String approverName;
+
     @Valid
     @NotNull
     private List<ReturnItemLine> items;

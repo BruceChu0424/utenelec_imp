@@ -62,6 +62,22 @@ public class StockDocument extends SoftDeletableEntity {
     @Column(name = "approver_id")
     private UUID approverId;
 
+    /** 经办/领料/退料/跟单 人老库 ID→B_Worker.ID；待 employees.legacy_id 对齐回填 worker_id。 */
+    @Column(name = "worker_legacy_id")
+    private Integer legacyWorkerId;
+
+    /** 制单老库 ID→B_Worker.ID；待回填 maker_id。 */
+    @Column(name = "maker_legacy_id")
+    private Integer legacyMakerId;
+
+    /** 审核老库 ID→B_Worker.ID；待回填 approver_id。 */
+    @Column(name = "approver_legacy_id")
+    private Integer legacyApproverId;
+
+    /** 装配班组 O_PDraw.AssTeam（文本，仅 DRAW 领料用）。 */
+    @Column(name = "ass_team")
+    private String assTeam;
+
     @Column(name = "plan_no")
     private String planNo;
 

@@ -10,6 +10,7 @@ import com.uten.imp.features.purchase.request.dto.RequestItemLine;
 import com.uten.imp.features.purchase.request.dto.RequestListItem;
 import com.uten.imp.features.purchase.request.dto.RequestQueryFilter;
 import com.uten.imp.features.purchase.request.dto.RequestSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
@@ -43,6 +44,7 @@ public class PurchaseRequestService {
     private final PurchaseRequestRepository requestRepo;
     private final PurchaseRequestItemRepository itemRepo;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size) {
@@ -76,6 +78,7 @@ public class PurchaseRequestService {
         tx.bind();
         PurchaseRequest r = new PurchaseRequest();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
         requestRepo.save(r);
         List<RequestItemDto> items = saveItems(r, req.getItems());
@@ -116,6 +119,7 @@ public class PurchaseRequestService {
         if (itemRepo.findByRequestIdOrderByLineNoAsc(id).isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireId()); // 审核=当前登录用户
         requestRepo.save(r);
         return detail(id);
     }

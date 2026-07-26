@@ -81,5 +81,15 @@ public class PurchaseReceiptItem extends BaseEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** 老库交叉引用文本（软关联，报表按列展示，不强 FK）。 */
+    @Column(name = "order_no")
+    private String orderNo;
+
+    @Column(name = "sales_order_no")
+    private String salesOrderNo;
+
+    @Column(name = "production_plan_no")
+    private String productionPlanNo;
+
     private String remark;
 }

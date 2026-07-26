@@ -32,6 +32,7 @@ public class ReturnItemDto {
     private String solution;
     /** zrdw 责任单位（退货专属）。 */
     private String responsible;
+    private BigDecimal discount;
     private String sourceDocNo;
     private String remark;
 }

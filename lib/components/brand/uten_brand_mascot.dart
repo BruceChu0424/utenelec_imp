@@ -44,7 +44,6 @@ class UtenBrandMascot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final image = Image.asset(
       UtenAssets.logoIp,
       fit: fit,
@@ -52,34 +51,18 @@ class UtenBrandMascot extends StatelessWidget {
       gaplessPlayback: true,
     );
 
-    // 全屏铺底（启动屏）：不加背景容器
-    final isFullscreen = width == double.infinity && height == double.infinity;
-    if (isFullscreen) return image;
+    // 完全不约束 → 原尺寸
+    if (width == null && height == null) return image;
 
-    // 尺寸约束包装
-    Widget sized;
+    // 同时约束 → 最常见用法
     if (width != null && height != null) {
-      sized = SizedBox(width: width, height: height, child: image);
-    } else if (width != null) {
-      sized = SizedBox(width: width, child: image);
-    } else if (height != null) {
-      sized = SizedBox(height: height, child: image);
-    } else {
-      sized = image;
+      return SizedBox(width: width, height: height, child: image);
     }
 
-    // 背景容器：浅色模式白底、深色模式 surfaceContainerHigh（随深色模式变化），圆角 + 裁剪。
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? scheme.surfaceContainerHigh : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: isDark
-            ? Border.all(color: scheme.outlineVariant, width: 0.5)
-            : null,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: sized,
-    );
+    // 单边约束 → 让另一边由图片本身比例决定
+    if (width != null) {
+      return SizedBox(width: width, child: image);
+    }
+    return SizedBox(height: height, child: image);
   }
 }

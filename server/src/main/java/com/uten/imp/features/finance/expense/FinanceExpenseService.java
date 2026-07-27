@@ -10,6 +10,7 @@ import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemInput;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseListItem;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseQueryFilter;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -50,6 +51,7 @@ public class FinanceExpenseService {
     private final FinanceExpenseRepository expenseRepo;
     private final FinanceExpenseItemRepository itemRepo;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -88,6 +90,7 @@ public class FinanceExpenseService {
         FinanceExpense e = new FinanceExpense();
         applyHeader(req, e);
         e.setStatus(STATUS_DRAFT);
+        e.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         expenseRepo.save(e);
         List<FinanceExpenseItemDto> items = saveItems(e, req.getItems());
         applyTotals(e, items);
@@ -133,6 +136,7 @@ public class FinanceExpenseService {
         if (e.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "费用单需指定付款账户");
         }
+        e.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         BigDecimal amountLocal = nz(e.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(e.getAccountId(), amountLocal);

@@ -16,9 +16,14 @@
 --        (M_Bank legacy 0 rows: structure already in V57, no data to ingest)
 -- Idempotent: TRUNCATE 14 tables at start (reverse order, includes master
 --             accounts/payment_styles), safe to re-run.
--- Personnel (maker/approver/operator/work): employees has no legacy_id
---             alignment with Sys_Operator/B_Worker, leave NULL (same as
---             purchase module [15]).
+-- Personnel (maker/approver/operator): V70 adds *_legacy_id + *_name columns.
+--             maker/approver (MakeID/ApproverID → Sys_Operator) frozen as *_name
+--             text (export JOIN fname; Sys_Operator 不入 employees 避免与 B_Worker 撞号);
+--             operator/work (WorkID → B_Worker) 建 employees stub（legacy_id 融合键，
+--             status=resigned，legacy_category=子类括注），报表 LEFT JOIN employees 出名。
+--             与 V65-V69 + stock/subcontract stub 范式同构（四模块共用 P0 基础设施）。
+-- settlement_style: M_in/M_out.PStyle → ar_ap_ledger.settlement_style_legacy（B_PStyle
+--             字典未 dump，暂留 SMALLINT 原值，前端按字典常量渲染）。
 -- department_id: SystemItem.ItemID <-> departments has no legacy_id mapping
 --             (V02 table has no legacy_id column), leave NULL (open item
 --             design doc 26 sec 9-8).
@@ -84,7 +89,8 @@ CREATE TEMP TABLE m_get_stage (
     status smallint, status2 smallint, remark text, rec_acc int,
     cancel_date timestamptz, source text, invoices_no text, mtotal numeric(18,4),
     cur_id int, crate numeric(18,6), step_id int, cancel boolean,
-    slf numeric(18,4), qtfy numeric(18,4), qtfymc int, dfch int);
+    slf numeric(18,4), qtfy numeric(18,4), qtfymc int, dfch int,
+    maker_name text, approver_name text, work_name text);
 \copy m_get_stage FROM '/tmp/m_get.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 -- M_Paid (4,545 rows) -> finance_payments
@@ -94,7 +100,8 @@ CREATE TEMP TABLE m_paid_stage (
     status smallint, status2 smallint, remark text, paid_acc int,
     cancel_date timestamptz, source text, invoices_no text, mtotal numeric(18,4),
     cur_id int, crate numeric(18,6), step_id int, cancel boolean,
-    dfzh int, jsr text);
+    dfzh int, jsr text,
+    maker_name text, approver_name text, work_name text);
 \copy m_paid_stage FROM '/tmp/m_paid.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 -- M_DPaid (1,125 rows) -> finance_expenses
@@ -103,7 +110,8 @@ CREATE TEMP TABLE m_dpaid_stage (
     total numeric(18,4), make_id int, approver_id int,
     status smallint, status2 smallint, remark text, paid_acc int,
     invoices_no text, cancel_date timestamptz, source text, paid_style int,
-    mtotal numeric(18,4), cur_id int, crate numeric(18,6), cancel boolean, dfzh int);
+    mtotal numeric(18,4), cur_id int, crate numeric(18,6), cancel boolean, dfzh int,
+    maker_name text, approver_name text, work_name text);
 \copy m_dpaid_stage FROM '/tmp/m_dpaid.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 -- M_DPaidItem (8,537 rows) -> finance_expense_items
@@ -119,7 +127,8 @@ CREATE TEMP TABLE m_oget_stage (
     total numeric(18,4), make_id int, approver_id int,
     status smallint, status2 smallint, remark text, rec_acc int,
     invoices_no text, cancel_date timestamptz, source text, rec_style int,
-    mtotal numeric(18,4), cur_id int, crate numeric(18,6), cancel boolean, dfzh int);
+    mtotal numeric(18,4), cur_id int, crate numeric(18,6), cancel boolean, dfzh int,
+    maker_name text, approver_name text, work_name text);
 \copy m_oget_stage FROM '/tmp/m_oget.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 -- M_OGetItem (1,551 rows) -> finance_other_income_items (NO QTY/Price in old schema)
@@ -284,7 +293,7 @@ INSERT INTO ar_ap_ledger (
     client_id, supplier_id, currency_id, exchange_rate,
     amount_original, amount_original_local, amount_settled, amount_balance,
     is_settled, settled_date, status, remark,
-    legacy_source, legacy_id, legacy_bstyle)
+    legacy_source, legacy_id, legacy_bstyle, settlement_style_legacy)
 SELECT
     'AR',
     CASE
@@ -303,7 +312,8 @@ SELECT
     COALESCE(s.settled, 0), s.balance,
     COALESCE(s.paid_bit, FALSE), s.paid_date,
     1, NULLIF(s.note, ''),
-    'M_in', s.legacy_id, s.b_style::smallint
+    'M_in', s.legacy_id, s.b_style::smallint,
+    NULLIF(s.p_style, 0)::smallint
 FROM m_in_stage s;
 
 -- (3-b) M_out -> AP
@@ -312,7 +322,7 @@ INSERT INTO ar_ap_ledger (
     client_id, supplier_id, currency_id, exchange_rate,
     amount_original, amount_original_local, amount_settled, amount_balance,
     is_settled, settled_date, status, remark,
-    legacy_source, legacy_id, legacy_bstyle)
+    legacy_source, legacy_id, legacy_bstyle, settlement_style_legacy)
 SELECT
     'AP',
     CASE
@@ -332,7 +342,8 @@ SELECT
     COALESCE(s.settled, 0), s.balance,
     COALESCE(s.paid_bit, FALSE), s.paid_date,
     1, NULLIF(s.note, ''),
-    'M_out', s.legacy_id, s.b_style::smallint
+    'M_out', s.legacy_id, s.b_style::smallint,
+    NULLIF(s.p_style, 0)::smallint
 FROM m_out_stage s;
 
 
@@ -343,7 +354,9 @@ INSERT INTO finance_receipts (
     legacy_id, bill_no, bill_date, client_id, account_id, counterpart_account_id,
     currency_id, exchange_rate, amount_original, amount_local,
     bank_fee, other_fee, other_fee_style_id, receipt_method_legacy_id,
-    invoice_no, cancel_date, source_remark, remark, status)
+    invoice_no, cancel_date, source_remark, remark, status,
+    maker_legacy_id, approver_legacy_id, operator_legacy_id,
+    maker_name, approver_name, operator_name)
 SELECT
     s.legacy_id, s.bill_no, s.bill_date,
     (SELECT id FROM clients    WHERE legacy_id = s.client_legacy_id),
@@ -356,14 +369,18 @@ SELECT
     (SELECT id FROM payment_styles WHERE legacy_id = NULLIF(s.qtfymc, 0)),
     NULLIF(s.rec_style, 0),
     NULLIF(s.invoices_no, ''), s.cancel_date,
-    NULLIF(s.source, ''), NULLIF(s.remark, ''), COALESCE(s.status, 0)
+    NULLIF(s.source, ''), NULLIF(s.remark, ''), COALESCE(s.status, 0),
+    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
+    NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
 FROM m_get_stage s;
 
 INSERT INTO finance_payments (
     legacy_id, bill_no, bill_date, supplier_id, account_id, counterpart_account_id,
     currency_id, exchange_rate, amount_original, amount_local,
     payment_method_legacy_id, invoice_no, cancel_date,
-    operator_name, source_remark, remark, status)
+    operator_name, source_remark, remark, status,
+    maker_legacy_id, approver_legacy_id, operator_legacy_id,
+    maker_name, approver_name)
 SELECT
     s.legacy_id, s.bill_no, s.bill_date,
     (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
@@ -375,7 +392,9 @@ SELECT
     NULLIF(s.paid_style, 0),
     NULLIF(s.invoices_no, ''), s.cancel_date,
     NULLIF(s.jsr, ''),
-    NULLIF(s.source, ''), NULLIF(s.remark, ''), COALESCE(s.status, 0)
+    NULLIF(s.source, ''), NULLIF(s.remark, ''), COALESCE(s.status, 0),
+    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
+    NULLIF(s.maker_name,''), NULLIF(s.approver_name,'')
 FROM m_paid_stage s;
 
 
@@ -406,7 +425,9 @@ WHERE a.legacy_source = 'M_out' AND a.legacy_id = s.legacy_id
 -- =====================================================================
 INSERT INTO finance_expenses (
     legacy_id, bill_no, bill_date, account_id, counterpart_account_id,
-    currency_id, exchange_rate, amount_original, amount_local, status, remark)
+    currency_id, exchange_rate, amount_original, amount_local, status, remark,
+    maker_legacy_id, approver_legacy_id, operator_legacy_id,
+    maker_name, approver_name, operator_name)
 SELECT
     s.legacy_id, s.bill_no, s.bill_date,
     (SELECT id FROM accounts   WHERE legacy_id = s.paid_acc),
@@ -414,7 +435,9 @@ SELECT
     (SELECT id FROM currencies WHERE legacy_id = s.cur_id),
     COALESCE(NULLIF(s.crate, 0), 1),
     COALESCE(s.mtotal, 0), COALESCE(s.total, 0),
-    COALESCE(s.status, 0), NULLIF(s.remark, '')
+    COALESCE(s.status, 0), NULLIF(s.remark, ''),
+    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
+    NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
 FROM m_dpaid_stage s;
 
 INSERT INTO finance_expense_items (
@@ -442,7 +465,9 @@ JOIN finance_expenses e ON e.legacy_id = s.bill_legacy_id;
 INSERT INTO finance_other_incomes (
     legacy_id, bill_no, bill_date, account_id, counterpart_account_id,
     currency_id, exchange_rate, amount_original, amount_local,
-    receipt_method_legacy_id, status, remark)
+    receipt_method_legacy_id, status, remark,
+    maker_legacy_id, approver_legacy_id, operator_legacy_id,
+    maker_name, approver_name, operator_name)
 SELECT
     s.legacy_id, s.bill_no, s.bill_date,
     (SELECT id FROM accounts   WHERE legacy_id = s.rec_acc),
@@ -451,7 +476,9 @@ SELECT
     COALESCE(NULLIF(s.crate, 0), 1),
     COALESCE(s.mtotal, 0), COALESCE(s.total, 0),
     NULLIF(s.rec_style, 0),
-    COALESCE(s.status, 0), NULLIF(s.remark, '')
+    COALESCE(s.status, 0), NULLIF(s.remark, ''),
+    NULLIF(s.make_id,0), NULLIF(s.approver_id,0), NULLIF(s.work_id,0),
+    NULLIF(s.maker_name,''), NULLIF(s.approver_name,''), NULLIF(s.work_name,'')
 FROM m_oget_stage s;
 
 INSERT INTO finance_other_income_items (
@@ -522,7 +549,41 @@ FROM m_allcheck_stage s;
 -- Future activation: export M_Bank/M_BankItem + add INSERT here
 -- (mirror the receipt/payment pattern in step 4).
 
+
+-- =====================================================================
+-- (10) 人员补录：B_Worker → employees stub（融合键 legacy_id，经手人/收款人）
+-- =====================================================================
+-- 用户钦定"老库有、新库没有就在员工表添加、显示名字（名字后带（子类）括注）"。
+-- operator/work（WorkID → B_Worker）：建 employees stub，legacy_id=B_Worker.ID（融合键），
+--   full_name=Emp_Name，code='LEGACY-W-<id>'，status='resigned'（老库很多人离职，默认离职；
+--   用户以后在员工档案激活/补全真实信息），department_id=DEPT_HR（HR 负责后续清理/分配真实部门），
+--   hire_date 占位，employment_type='regular'，legacy_category=子类括注（sub_class 当前 NULL，
+--   B_Worker 子类字段待确认后回填；确认列名即贯通）。
+--   报表 LEFT JOIN employees ON e.legacy_id=t.operator_legacy_id 出名 + 子类括注；HR 真名单不覆盖。
+-- maker/approver（MakeID/ApproverID → Sys_Operator）不入 employees（避免与 B_Worker 撞号 +
+--   登录账号非员工档案实体），其 fname 已在 step (4)/(6)/(7) 冻结进 *_name 文本列。
+-- NOT EXISTS 守卫：用户已录真员工（同 legacy_id）优先，绝不覆盖；故重跑幂等、与真名单可融合。
+-- legacy_workers.csv 由 export_legacy.ps1 导出（B_Worker 全量，仓库/委外已共用）。
+CREATE TEMP TABLE finance_worker_stage (legacy_id int, name text, sub_class text);
+\copy finance_worker_stage FROM '/tmp/legacy_workers.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+INSERT INTO employees (legacy_id, code, full_name, id_type, department_id, hire_date, status, employment_type, legacy_category)
+SELECT w.legacy_id, 'LEGACY-W-' || w.legacy_id, NULLIF(w.name,''), '其他',
+       (SELECT id FROM departments WHERE code = 'DEPT_HR'), DATE '2000-01-01', 'resigned', 'regular',
+       NULLIF(w.sub_class,'')
+FROM finance_worker_stage w
+WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0 AND NULLIF(w.name,'') IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.legacy_id = w.legacy_id);
+
 COMMIT;
+
+-- =====================================================================
+-- 刷新钱流应收应付物化视图（防汇总报表 Z/B/D 空数据，同 sales/stock 修复）
+-- =====================================================================
+-- finance_ar_ap_mv 服务 Z 应收应付汇总 + B 应收汇总 + D 应付汇总；V58 建表时 ar_ap_ledger
+-- 为空 → MV 0 行，迁完 ar_ap_ledger 灌入 8.7 万行后须刷新 MV 才有汇总数据（四模块里钱流此前
+-- 漏刷，是汇总报表空的根因，本次补齐）。非 CONCURRENTLY 全量刷新（迁移一次性，brief lock 可接受）。
+REFRESH MATERIALIZED VIEW finance_ar_ap_mv;
 
 
 -- =====================================================================
@@ -625,3 +686,25 @@ FROM ar_ap_ledger
 WHERE source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN','SUBCONTRACT_RECEIPT','SUBCONTRACT_RETURN',
                           'PURCHASE_RECEIPT','PURCHASE_RETURN','DIRECT_RECEIPT','DIRECT_PAYMENT')
 GROUP BY source_doc_type ORDER BY source_doc_type;
+
+-- =====================================================================
+-- 人员列回填命中 + 物化视图刷新校验（V70 + 刷MV）
+-- =====================================================================
+SELECT '==== Finance person *_legacy_id / *_name hit rate (V70) ====' AS section;
+SELECT 'finance_receipts.maker_legacy_id      ' || COUNT(*) FILTER (WHERE maker_legacy_id IS NOT NULL)    || ' / ' || COUNT(*) FROM finance_receipts;
+SELECT 'finance_receipts.operator_legacy_id   ' || COUNT(*) FILTER (WHERE operator_legacy_id IS NOT NULL) || ' / ' || COUNT(*) FROM finance_receipts;
+SELECT 'finance_receipts.maker_name (frozen)  ' || COUNT(*) FILTER (WHERE maker_name IS NOT NULL AND maker_name <> '') || ' / ' || COUNT(*) FROM finance_receipts;
+SELECT 'finance_payments.maker_name (frozen)  ' || COUNT(*) FILTER (WHERE maker_name IS NOT NULL AND maker_name <> '') || ' / ' || COUNT(*) FROM finance_payments;
+SELECT 'finance_payments.approver_name(frozen)' || COUNT(*) FILTER (WHERE approver_name IS NOT NULL AND approver_name <> '') || ' / ' || COUNT(*) FROM finance_payments;
+SELECT 'finance_expenses.operator_legacy_id   ' || COUNT(*) FILTER (WHERE operator_legacy_id IS NOT NULL) || ' / ' || COUNT(*) FROM finance_expenses;
+SELECT 'finance_other_incomes.operator_legacy ' || COUNT(*) FILTER (WHERE operator_legacy_id IS NOT NULL) || ' / ' || COUNT(*) FROM finance_other_incomes;
+SELECT 'employees legacy stubs (B_Worker)     ' || COUNT(*) FROM employees WHERE code LIKE 'LEGACY-W-%';
+
+SELECT '==== ar_ap_ledger.settlement_style_legacy (PStyle) ====' AS section;
+SELECT COALESCE(settlement_style_legacy::text,'NULL') || '  ' || COUNT(*) AS pstyle_dist
+FROM ar_ap_ledger GROUP BY settlement_style_legacy ORDER BY COUNT(*) DESC;
+
+SELECT '==== finance_ar_ap_mv refresh (expect > 0) ====' AS section;
+SELECT 'finance_ar_ap_mv rows                 ' || COUNT(*) FROM finance_ar_ap_mv;
+SELECT 'MV AR rows                            ' || COUNT(*) FROM finance_ar_ap_mv WHERE direction='AR';
+SELECT 'MV AP rows                            ' || COUNT(*) FROM finance_ar_ap_mv WHERE direction='AP';

@@ -1,16 +1,12 @@
-// 生产报表页（生产管理 · production_report:view）：
+// 钱流明细/汇总报表页（finance_report:view）—— 镜像 sales_report_page。
 //
-// 2 张卡（明细/汇总）共用本页，由 [ProductionReportKind] 区分。生产计划只有一种单据
-// （不像销售 4 类），左栏用"状态"ChoiceChip（全部/已审/草稿/红冲）代替销售的单据类型。
+// 一张卡（[cardId] = detail|summary）内用 ChoiceChip 切多个报表变体（应收/应付/收款/付款/费用/收入…），
+// 每个变体对应后端一个 endpoint（+ 固定参数如 direction=AR）。
 //
-// 后端 GET /api/production/reports/plan/{detail|summary} 返回 ReportTableResponse：
-//   { columns:[{key,label,type,width}], rows:[{...显示就绪}], facets:{colKey:[{value,label,count}]},
-//     page, size, total, totalPages }
-// 名称（货品/颜色/类别/制单员/审核员）服务端 JOIN 出；前端按 columns 动态建列。
-//
-// UI：左筛选侧栏（状态 + 日期范围 + 搜索 + 查询）+ 右 Excel 风格表格（标题行每列可筛 + 横滚 + 翻页）。
-// 默认日期范围 2018 至今（老库数据跨多年，放宽避免滤掉历史；同销售/仓库范式）。
-// 列筛选（是否审核/是否完成/车间/类别…）走表头 autofilter（facets），左栏只放公共过滤。
+// 后端 GET /api/finance/reports/{group}/{view} 返回 ReportTableResponse：
+//   { columns, rows(显示就绪), facets, page, totalPages, total }。
+// UI：左筛选侧栏（报表类型 chip + 日期范围 + 搜索 + 查询 + 已选筛选）+ 右 Excel 风格表格
+//   （标题行每列可 autofilter + 横滚 + 翻页）。默认日期 2010 至今（覆盖十几年迁移数据）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,7 +22,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../config/production_report_config.dart';
+import '../config/finance_report_config.dart';
 
 class _Col {
   const _Col(this.key, this.label, this.type, this.width);
@@ -46,19 +42,18 @@ class _ReportData {
   final int total;
 }
 
-class ProductionReportPage extends ConsumerStatefulWidget {
-  const ProductionReportPage({required this.kind, super.key});
-  final ProductionReportKind kind;
+class FinanceReportTablePage extends ConsumerStatefulWidget {
+  const FinanceReportTablePage({required this.cardId, super.key});
+  final String cardId;
 
   @override
-  ConsumerState<ProductionReportPage> createState() => _ProductionReportPageState();
+  ConsumerState<FinanceReportTablePage> createState() => _FinanceReportTablePageState();
 }
 
-class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
-  late final ProductionReportKind _kind = widget.kind;
-  // 状态过滤：null=全部 / 0=草稿 / 1=已审 / -1=红冲。
-  int? _status;
-  DateTime _from = DateTime(2018);
+class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage> {
+  late final FinanceReportCard _card = financeReportCardById(widget.cardId);
+  int _variantIndex = 0;
+  DateTime _from = DateTime(2010);
   DateTime _to = DateTime.now();
   String _keyword = '';
   int _page = 1;
@@ -74,20 +69,22 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  FinanceReportVariant get _variant => _card.variants[_variantIndex];
+
   Future<void> _load() async {
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
       final query = <String, dynamic>{
+        ..._variant.fixedParams,
         'dateFrom': _fmt(_from),
         'dateTo': _fmt(_to),
-        if (_status != null) 'status': _status,
         if (_keyword.isNotEmpty) 'keyword': _keyword,
         'page': _page,
         'size': _size,
         for (final e in _filters.entries) 'f.${e.key}': e.value,
       };
-      final json = await api.get('/production/reports/plan/${_kind.endpoint}', query: query);
+      final json = await api.get(_variant.endpoint, query: query);
       final cols = (json['columns'] as List? ?? const [])
           .map((c) => _Col(
                 (c as Map)['key']?.toString() ?? '',
@@ -120,9 +117,9 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         );
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      context.appError('加载报表失败');
+      context.appError('加载报表失败：$e');
       setState(() => _loading = false);
     }
   }
@@ -161,10 +158,10 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     _load();
   }
 
-  void _changeStatus(int? s) {
-    if (s == _status) return;
+  void _changeVariant(int i) {
+    if (i == _variantIndex) return;
     setState(() {
-      _status = s;
+      _variantIndex = i;
       _page = 1;
       _filters.clear();
       _data = null;
@@ -175,11 +172,12 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final title = _variant.label;
     return Scaffold(
       appBar: UtenAppBar(
-        title: _kind.label,
+        title: title,
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production)),
+            onPressed: () => backTo(context, defaultPath: RouteName.finance)),
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -192,13 +190,13 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
                       bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
                   child: Row(
                     children: [
-                      Icon(_kind.icon, size: 18, color: theme.colorScheme.primary),
+                      Icon(Icons.assessment_outlined, size: 18, color: theme.colorScheme.primary),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text(_kind.label,
+                      Text(title,
                           style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
                       const SizedBox(width: UtenSpacing.s8),
                       if (_data != null)
-                        Text('共 ${_data!.total} ${_kind.isDetail ? '条明细' : '张单'}',
+                        Text('共 ${_data!.total} 条',
                             style: theme.textTheme.bodySmall
                                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                     ],
@@ -221,99 +219,96 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _filterLabel('单据状态'),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: [
-              for (final s in const [
-                ['全部', null],
-                ['已审', 1],
-                ['草稿', 0],
-                ['红冲', -1]
-              ])
-                ChoiceChip(
-                  label: Text(s[0] as String),
-                  selected: _status == s[1],
-                  onSelected: (_) => _changeStatus(s[1] as int?),
-                ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('日期范围'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              TextButton.icon(
-                onPressed: () async {
-                  final p = await showDatePicker(
-                    context: context,
-                    initialDate: _from,
-                    firstDate: DateTime(2010),
-                    lastDate: DateTime(2100),
-                  );
-                  if (p != null) setState(() => _from = p);
-                },
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: Text('起 ${_fmt(_from)}'),
-              ),
-              TextButton.icon(
-                onPressed: () async {
-                  final p = await showDatePicker(
-                    context: context,
-                    initialDate: _to,
-                    firstDate: DateTime(2010),
-                    lastDate: DateTime(2100),
-                  );
-                  if (p != null) setState(() => _to = p);
-                },
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: Text('止 ${_fmt(_to)}'),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('搜索'),
-          UtenSearchBar(
-            hint: '搜索单号 / 货品',
-            initialValue: _keyword,
-            onChanged: (v) => _keyword = v,
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.tonalIcon(
-              onPressed: () {
-                _page = 1;
-                _load();
-              },
-              icon: const Icon(Icons.search_rounded, size: 18),
-              label: const Text('查询'),
-            ),
-          ),
-          if (_filters.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _filterLabel('已选筛选 (${_filters.length})'),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _filterLabel('报表类型'),
             Wrap(
               spacing: 6,
               runSpacing: 4,
               children: [
-                for (final e in _filters.entries)
-                  Chip(
-                    label: Text('${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                        style: const TextStyle(fontSize: 11)),
-                    onDeleted: () => _onFilterChanged(e.key, null),
-                    visualDensity: VisualDensity.compact,
+                for (int i = 0; i < _card.variants.length; i++)
+                  ChoiceChip(
+                    label: Text(_card.variants[i].label),
+                    selected: i == _variantIndex,
+                    onSelected: (_) => _changeVariant(i),
                   ),
               ],
             ),
+            const SizedBox(height: UtenSpacing.s12),
+            _filterLabel('日期范围'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TextButton.icon(
+                  onPressed: () async {
+                    final p = await showDatePicker(
+                      context: context,
+                      initialDate: _from,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (p != null) setState(() => _from = p);
+                  },
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: Text('起 ${_fmt(_from)}'),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final p = await showDatePicker(
+                      context: context,
+                      initialDate: _to,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (p != null) setState(() => _to = p);
+                  },
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: Text('止 ${_fmt(_to)}'),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            _filterLabel('搜索'),
+            UtenSearchBar(
+              hint: '搜索单号 / 名称',
+              initialValue: _keyword,
+              onChanged: (v) => _keyword = v,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: () {
+                  _page = 1;
+                  _load();
+                },
+                icon: const Icon(Icons.search_rounded, size: 18),
+                label: const Text('查询'),
+              ),
+            ),
+            if (_filters.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              _filterLabel('已选筛选 (${_filters.length})'),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  for (final e in _filters.entries)
+                    Chip(
+                      label: Text('${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
+                          style: const TextStyle(fontSize: 11)),
+                      onDeleted: () => _onFilterChanged(e.key, null),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -343,7 +338,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
       onFilterChanged: _onFilterChanged,
       onRowTap: (_) {},
       isLoading: _loading,
-      emptyMessage: _kind.isDetail ? '暂无明细数据' : '暂无汇总数据',
+      emptyMessage: '暂无数据',
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

@@ -88,9 +88,14 @@ function Export-Query {
 #     reader). Each SELECT column order MUST match the staging CREATE TEMP TABLE
 #     in migrate_production.sql (\copy is positional). ---
 
-# ---- F_Plan (7,235 rows -> production_plans). 15 cols; ISR + Status2 dropped
+# ---- F_Plan (7,235 rows -> production_plans). 17 cols; ISR + Status2 dropped
 #      per design 24 §7.1 (ISR = deprecated derived qty; Status2 = prior state).
-$planSql = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, FStyle AS f_style, DDate AS delivery_date, WorkShop AS workshop_name, WorkerID AS worker_name, Seller AS seller_name, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Status AS status, Fulfill AS fulfill_bit, Stop AS stop_bit, Cancel AS cancel_bit FROM F_Plan ORDER BY ID'
+#      maker_name/approver_name: COALESCE(Sys_Operator.fname, B_Worker.Emp_Name)
+#      double fallback -- MakeID/ApproverID legacy pointer source verified at
+#      runtime (doc 24 says B_Worker; subcontract peer says Sys_Operator; both
+#      JOINed so the name resolves whichever it is). Frozen into the column at
+#      export time; report also OR-JOINs employees for future alignment.
+$planSql = 'SELECT F_Plan.ID AS legacy_id, F_Plan.BillNo AS bill_no, F_Plan.BillDate AS bill_date, F_Plan.FStyle AS f_style, F_Plan.DDate AS delivery_date, NULLIF(bw_shop.WorkShop, '''') AS workshop_name, F_Plan.WorkerID AS worker_name, F_Plan.Seller AS seller_name, F_Plan.MakeID AS maker_legacy, F_Plan.ApproverID AS approver_legacy, NULLIF(COALESCE(so_m.fname, bw_m.Emp_Name), '''') AS maker_name, NULLIF(COALESCE(so_a.fname, bw_a.Emp_Name), '''') AS approver_name, F_Plan.Remark AS remark, F_Plan.Status AS status, F_Plan.Fulfill AS fulfill_bit, F_Plan.Stop AS stop_bit, F_Plan.Cancel AS cancel_bit FROM F_Plan LEFT JOIN Sys_Operator so_m ON so_m.ID = F_Plan.MakeID LEFT JOIN B_Worker bw_m ON bw_m.ID = F_Plan.MakeID LEFT JOIN Sys_Operator so_a ON so_a.ID = F_Plan.ApproverID LEFT JOIN B_Worker bw_a ON bw_a.ID = F_Plan.ApproverID LEFT JOIN B_WorkShop bw_shop ON bw_shop.ID = F_Plan.WorkShop ORDER BY F_Plan.ID'
 
 # ---- F_PlanItem (73,388 rows -> production_plan_items). 45 cols; Stop bit
 #      dropped (new schema has no per-item stop flag). Note: design 24 §8.1

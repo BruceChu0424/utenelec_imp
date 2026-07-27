@@ -13,6 +13,7 @@ import com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentListItem;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentQueryFilter;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -58,6 +59,7 @@ public class FinancePaymentService {
     private final ArApLedgerRepository ledgerRepo;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -96,6 +98,7 @@ public class FinancePaymentService {
         FinancePayment p = new FinancePayment();
         applyHeader(req, p);
         p.setStatus(STATUS_DRAFT);
+        p.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         paymentRepo.save(p);
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
         return toDetail(p, items);
@@ -139,6 +142,7 @@ public class FinancePaymentService {
         if (p.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "付款单需指定付款账户");
         }
+        p.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         settlePayment(p);
         p.setStatus(STATUS_APPROVED);
         p.setCancelDate(OffsetDateTime.now());

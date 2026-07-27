@@ -213,12 +213,13 @@ migrate_production () {
 #   + 对账（finance_reconciliations）。M_Bank legacy 0 行，结构在 V57 已建，本期不迁。
 # 依赖：主档（clients/suppliers/currencies）已迁；与销售/采购/委外独立（按 BillNo 前缀溯源）。
 migrate_finance () {
-    echo "→ [钱流模块] 复制 CSV（11 个）..."
+    echo "→ [钱流模块] 复制 CSV（12 个：11 M_ + 人员参考 legacy_workers）..."
     for f in m_acc m_style m_in m_out m_get m_paid \
-             m_dpaid m_dpaid_item m_oget m_oget_item m_allcheck; do
+             m_dpaid m_dpaid_item m_oget m_oget_item m_allcheck \
+             legacy_workers; do
         copy_csv "$f.csv"
     done
-    echo "→ [钱流模块] 执行迁移 SQL..."
+    echo "→ [钱流模块] 执行迁移 SQL（含 B_Worker→employees stub + 刷 finance_ar_ap_mv）..."
     run_sql migrate_finance.sql
 }
 

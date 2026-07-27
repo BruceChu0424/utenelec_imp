@@ -38,6 +38,7 @@ CREATE TEMP TABLE plan_stage (
     legacy_id int, bill_no text, bill_date date, f_style text, delivery_date date,
     workshop_name text, worker_name text, seller_name text,
     maker_legacy int, approver_legacy int,
+    maker_name text, approver_name text,
     remark text, status smallint,
     fulfill_bit boolean, stop_bit boolean, cancel_bit boolean);
 \copy plan_stage FROM '/tmp/production_plans.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
@@ -142,15 +143,18 @@ COMMIT;
 -- department_id 留 NULL：WorkShop varchar(250) 装数字/名字（样本 "37"/"38"），
 --   无 departments legacy_id 对齐，后续建 workshop_legacy_map 表回填。
 -- maker_id/approver_id 留 NULL（同采购）：B_Worker 与 employees 无对齐。
+-- maker_name/approver_name：冻结老库 Sys_Operator.fname / B_Worker.Emp_Name
+--   （export 端双表 COALESCE 取名）。报表 COALESCE(em.full_name, maker_name)
+--   —— employees.legacy_id 对齐后用真名，否则用冻结名（同委外 V66 范式）。
 BEGIN;
 INSERT INTO production_plans (
     legacy_id, bill_no, bill_date, f_style, delivery_date,
     workshop_name, worker_name, seller_name,
-    maker_legacy_id, approver_legacy_id,
+    maker_legacy_id, approver_legacy_id, maker_name, approver_name,
     remark, status, is_closed, is_stopped, is_canceled)
 SELECT s.legacy_id, s.bill_no, s.bill_date, NULLIF(s.f_style,''), s.delivery_date,
        NULLIF(s.workshop_name,''), NULLIF(s.worker_name,''), NULLIF(s.seller_name,''),
-       s.maker_legacy, s.approver_legacy,
+       s.maker_legacy, s.approver_legacy, NULLIF(s.maker_name,''), NULLIF(s.approver_name,''),
        NULLIF(s.remark,''), s.status,
        COALESCE(s.fulfill_bit, FALSE), COALESCE(s.stop_bit, FALSE), COALESCE(s.cancel_bit, FALSE)
 FROM plan_stage s;
@@ -369,3 +373,16 @@ SELECT EXTRACT(YEAR FROM bill_date)::int AS yr, count(*) AS cnt
 FROM production_plan_costs
 GROUP BY 1
 ORDER BY 1;
+
+-- 制单员/审核员冻结名命中（export 端 JOIN Sys_Operator/B_Worker 取名）
+SELECT '!! 计划单头（应 = 7235）        ' || (SELECT count(*) FROM production_plans) AS r
+UNION ALL SELECT '   maker_name 命中（冻结名）   ' || (SELECT count(*) FROM production_plans WHERE maker_name IS NOT NULL)
+UNION ALL SELECT '   approver_name 命中（冻结名） ' || (SELECT count(*) FROM production_plans WHERE approver_name IS NOT NULL);
+
+
+-- ======================== 9. 刷新生产报表物化视图 ========================
+-- 迁完必须刷新，否则 production_monthly_mv 为空 → 月度/汇总报表无数据
+-- （销售 migrate 踩过的坑，见 MEMORY「sales-report-completion」）。
+-- refresh_production_monthly_mv() 用 CONCURRENTLY（V56 已建唯一索引
+-- mv_production_monthly_uidx），须在所有 COMMIT 之后单语句调用（不在事务块内）。
+SELECT refresh_production_monthly_mv();

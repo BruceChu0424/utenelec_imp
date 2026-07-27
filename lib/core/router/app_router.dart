@@ -38,7 +38,10 @@ import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
-import '../../features/finance/pages/finance_report_page.dart';
+import '../../features/finance/pages/finance_report_table_page.dart';
+import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
+import '../../features/finance/pages/finance_statement_page.dart';
+import '../../features/finance/pages/finance_account_flow_page.dart';
 import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
 import '../../features/hvac/pages/hvac_control_page.dart';
@@ -73,7 +76,7 @@ import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/placeholder/pages/feature_placeholder_page.dart';
-import '../../features/production/models/production_report.dart';
+import '../../features/production/config/production_report_config.dart';
 import '../../features/production/pages/production_daily_report_detail_page.dart';
 import '../../features/production/pages/production_daily_report_edit_page.dart';
 import '../../features/production/pages/production_daily_report_list_page.dart';
@@ -775,30 +778,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'production-daily-report-list',
             builder: (_, _) => const ProductionDailyReportListPage(),
           ),
-          // 4 报表入口（静态段，无 :id 冲突）
+          // 生产报表入口（静态段，无 :id 冲突）：计划明细/汇总 2 卡
+          // （日报本期 0 行未挂入口，后端 endpoint/页面代码保留待未来启用）
           GoRoute(
             path: RoutePath.productionReport('plan-detail'),
             name: 'production-report-plan-detail',
             builder: (_, _) => const ProductionReportPage(
-                reportType: ProductionReportType.planDetail),
+                kind: ProductionReportKind.detail),
           ),
           GoRoute(
             path: RoutePath.productionReport('plan-summary'),
             name: 'production-report-plan-summary',
             builder: (_, _) => const ProductionReportPage(
-                reportType: ProductionReportType.planSummary),
-          ),
-          GoRoute(
-            path: RoutePath.productionReport('daily-detail'),
-            name: 'production-report-daily-detail',
-            builder: (_, _) => const ProductionReportPage(
-                reportType: ProductionReportType.dailyDetail),
-          ),
-          GoRoute(
-            path: RoutePath.productionReport('daily-summary'),
-            name: 'production-report-daily-summary',
-            builder: (_, _) => const ProductionReportPage(
-                reportType: ProductionReportType.dailySummary),
+                kind: ProductionReportKind.summary),
           ),
 
           // —— 钱流管理（财税部；静态段 /finance/{report|ar-ap|reconciliations|checks|
@@ -811,7 +803,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.financeReport,
             name: 'finance-report',
-            builder: (_, _) => const FinanceReportPage(),
+            builder: (_, _) => const FinanceReportTablePage(cardId: 'detail'),
+          ),
+          GoRoute(
+            path: RouteName.financeReportDetail,
+            name: 'finance-report-detail',
+            builder: (_, _) => const FinanceReportTablePage(cardId: 'detail'),
+          ),
+          GoRoute(
+            path: RouteName.financeReportSummary,
+            name: 'finance-report-summary',
+            builder: (_, _) => const FinanceReportTablePage(cardId: 'summary'),
+          ),
+          GoRoute(
+            path: RouteName.financeReportOverview,
+            name: 'finance-report-overview',
+            builder: (_, _) => const FinanceArApOverviewPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeReportStatement,
+            name: 'finance-report-statement',
+            builder: (_, _) => const FinanceStatementPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeReportAccountFlow,
+            name: 'finance-report-account-flow',
+            builder: (_, _) => const FinanceAccountFlowPage(),
           ),
           GoRoute(
             path: RouteName.financeArAp,

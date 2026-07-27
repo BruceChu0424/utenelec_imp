@@ -65,20 +65,8 @@ class ProductionHubPage extends StatelessWidget {
                 _Entry(
                   icon: Icons.bar_chart_outlined,
                   label: '计划汇总',
-                  description: '月度上卷（MV）',
+                  description: '单号 / 制单员 / 审核员',
                   location: '/production/reports/plan-summary',
-                ),
-                _Entry(
-                  icon: Icons.receipt_long_outlined,
-                  label: '日报明细',
-                  description: '结构留位 · 0 行',
-                  location: '/production/reports/daily-detail',
-                ),
-                _Entry(
-                  icon: Icons.insert_chart_outlined,
-                  label: '日报汇总',
-                  description: '结构留位 · 0 行',
-                  location: '/production/reports/daily-summary',
                 ),
               ]),
             ],

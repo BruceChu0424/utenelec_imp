@@ -10,6 +10,7 @@ import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanListItem;
 import com.uten.imp.features.production.plan.dto.PlanQueryFilter;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -55,6 +56,7 @@ public class ProductionPlanService {
     private final ProductionPlanRepository planRepo;
     private final ProductionPlanItemRepository itemRepo;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -90,6 +92,7 @@ public class ProductionPlanService {
         tx.bind();
         ProductionPlan p = new ProductionPlan();
         applyHeader(req, p);
+        p.setMakerId(currentUser.requireId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         p.setStatus(STATUS_DRAFT);
         planRepo.save(p);
         saveItems(p, req.getItems());
@@ -135,6 +138,7 @@ public class ProductionPlanService {
         if (itemRepo.findByPlanIdOrderByLineNoAsc(id).isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         p.setStatus(STATUS_APPROVED);
+        p.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         planRepo.save(p);
         recomputeClosed(id);
         // 本期后置：销售模块/车间模块/排产模块上线后在此回写 sales_order_items 与 F_ProductingItem（design §4.1）

@@ -166,7 +166,7 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 ---
 
-**最后更新**：2026-07-26 · Java 后端单一事实源。续作先读本文 + [27] + 各 design doc + DDL(V50-V68) + 采购 Java 范本。
+**最后更新**：2026-07-27 · Java 后端单一事实源。续作先读本文 + [27] + 各 design doc + DDL(V50-V70) + 采购 Java 范本。钱流 22 报表已重写为 `ReportTableResponse` 范式（`features/finance/report/`，含 `execute`/`WhereBuilder`/`FacetSpec`，镜像销售/采购；详见 [26] §十一·财务口径校准）。
 
 ---
 

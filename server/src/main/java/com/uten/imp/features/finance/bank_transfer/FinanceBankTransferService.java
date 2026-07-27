@@ -10,6 +10,7 @@ import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineIn
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferListItem;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferQueryFilter;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
@@ -53,6 +54,7 @@ public class FinanceBankTransferService {
     private final FinanceBankTransferRepository transferRepo;
     private final FinanceBankTransferLineRepository lineRepo;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter f, int page, int size) {
@@ -90,6 +92,7 @@ public class FinanceBankTransferService {
         FinanceBankTransfer t = new FinanceBankTransfer();
         applyHeader(req, t);
         t.setStatus(STATUS_DRAFT);
+        t.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         transferRepo.save(t);
         List<FinanceBankTransferLineDto> items = saveLines(t, req.getItems());
         applyTotals(t, items);
@@ -138,6 +141,7 @@ public class FinanceBankTransferService {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         // TODO: 跨币种换算核销（design doc 26 §4.7、§5.3）
+        t.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         t.setStatus(STATUS_APPROVED);
         transferRepo.save(t);
         return detail(id);

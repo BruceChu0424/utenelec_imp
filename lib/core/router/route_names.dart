@@ -127,6 +127,12 @@ abstract final class RouteName {
   static const String financeReconciliations = '/finance/reconciliations';
   static const String financeChecks = '/finance/checks';
   static const String financeReport = '/finance/report';
+  // 钱流报表 5 卡（镜像销售「明细+汇总+单独卡」）。
+  static const String financeReportDetail = '/finance/report/detail';
+  static const String financeReportSummary = '/finance/report/summary';
+  static const String financeReportOverview = '/finance/report/overview';
+  static const String financeReportStatement = '/finance/report/statement';
+  static const String financeReportAccountFlow = '/finance/report/account-flow';
 }
 
 /// 路径拼接工具（带参数的路由）

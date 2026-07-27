@@ -10,6 +10,7 @@ import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemInpu
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeListItem;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeQueryFilter;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -49,6 +50,7 @@ public class FinanceOtherIncomeService {
     private final FinanceOtherIncomeRepository incomeRepo;
     private final FinanceOtherIncomeItemRepository itemRepo;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -87,6 +89,7 @@ public class FinanceOtherIncomeService {
         FinanceOtherIncome o = new FinanceOtherIncome();
         applyHeader(req, o);
         o.setStatus(STATUS_DRAFT);
+        o.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         incomeRepo.save(o);
         List<FinanceOtherIncomeItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
@@ -132,6 +135,7 @@ public class FinanceOtherIncomeService {
         if (o.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收入单需指定收款账户");
         }
+        o.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         BigDecimal amountLocal = nz(o.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(o.getAccountId(), amountLocal);

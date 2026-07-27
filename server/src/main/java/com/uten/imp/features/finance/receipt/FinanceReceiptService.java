@@ -13,6 +13,7 @@ import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptListItem;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptQueryFilter;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -67,6 +68,7 @@ public class FinanceReceiptService {
     private final ArApLedgerRepository ledgerRepo;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
+    private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
 
     @Transactional(readOnly = true)
@@ -105,6 +107,7 @@ public class FinanceReceiptService {
         FinanceReceipt r = new FinanceReceipt();
         applyHeader(req, r);
         r.setStatus(STATUS_DRAFT);
+        r.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         receiptRepo.save(r);
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
         return toDetail(r, items);
@@ -148,6 +151,7 @@ public class FinanceReceiptService {
         if (r.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收款单需指定收款账户");
         }
+        r.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         settleReceipt(r);
         r.setStatus(STATUS_APPROVED);
         r.setCancelDate(OffsetDateTime.now());

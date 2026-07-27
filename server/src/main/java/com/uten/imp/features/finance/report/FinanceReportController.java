@@ -1,56 +1,35 @@
 package com.uten.imp.features.finance.report;
 
-import com.uten.imp.features.finance.report.dto.AccountStatementRow;
-import com.uten.imp.features.finance.report.dto.ArApDetailReportRow;
-import com.uten.imp.features.finance.report.dto.ArApSummaryRow;
-import com.uten.imp.features.finance.report.dto.FinanceDocReportRow;
-import com.uten.imp.features.finance.report.dto.FinanceDocSummaryRow;
-import com.uten.imp.features.finance.report.dto.PartyAnnualStatementRow;
-import com.uten.imp.features.finance.report.dto.PartyStatementRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.format.annotation.DateTimeFormat.ISO;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * 钱流报表 API（钱流报表 · {@code finance_report:view}）。
+ * 钱流报表 API（钱流管理 / 钱流报表，finance_report:view）。镜像销售/采购 {@code /{group}/{view}} 范式。
  *
- * <p>4 大类 22+ 报表端点（按 design doc 26 §六）：
- *
- * <h3>A. 应收应付类（10）</h3>
+ * <p>5 组 22 张报表（服务端 JOIN 出名称 + 分页 + 列 facet 筛选）：
  * <ul>
- *   <li>GET /api/finance/reports/ar-ap/summary   — Z 总览 / B 应收汇总 / D 应付汇总（MV 上卷，direction 区分）</li>
- *   <li>GET /api/finance/reports/ar-ap/detail    — A 应收明细 / C 应付明细</li>
- *   <li>GET /api/finance/reports/parties/statement — I/J 单客户对账 / K/L 单供应商对账（side=AR/AP）</li>
- *   <li>GET /api/finance/reports/parties/annual-statement — X 客户/供应商年度对账单</li>
+ *   <li><b>应收应付</b>：GET /ar-ap/overview（Z 树形）、/ar-ap/detail（A·C direction=AR/AP）、/ar-ap/summary（B·D）</li>
+ *   <li><b>收付款</b>：GET /receipt/{detail,summary}（E·F）、/payment/{detail,summary}（G·H）</li>
+ *   <li><b>费用收入</b>：GET /expense/{detail,summary}（M·N）、/income/{detail,summary}（O·P）、/fee-offset/detail（V）</li>
+ *   <li><b>往来对帐</b>：GET /statement/{flow,detail,annual}?partyId&side=AR|AP（I·J·K·L·X）</li>
+ *   <li><b>账户流水</b>：GET /account/statement?accountId（S）、/bank/{detail,summary}（Q·R 空表）</li>
  * </ul>
  *
- * <h3>B. 收付款单据类（4）</h3>
- * <ul>
- *   <li>GET /api/finance/reports/receipts/detail + /summary — E/F 销售收款</li>
- *   <li>GET /api/finance/reports/payments/detail + /summary — G/H 采购付款</li>
- * </ul>
- *
- * <h3>C. 费用收入类（5）</h3>
- * <ul>
- *   <li>GET /api/finance/reports/expenses/detail + /summary — M/N 一般费用（费用冲销明细同 M）</li>
- *   <li>GET /api/finance/reports/incomes/detail + /summary — O/P 其它收入</li>
- * </ul>
- *
- * <h3>D. 账户流水类（3）</h3>
- * <ul>
- *   <li>GET /api/finance/reports/accounts/statement — S 帐户进出流水帐</li>
- *   <li>Q/R 银行存取款（空表，复用 /api/finance/bank-transfers 列表查询）</li>
- * </ul>
+ * <p>通用参数：billNo / clientId / supplierId / accountId / departmentId / status / dateFrom / dateTo /
+ * keyword / direction / side / partyId / displayMode / categoryType / categoryId / year / page / size。
+ * 列筛选以 {@code f.<colKey>=<value>} 传（值 {@code __null__} 表空值档）。
  */
 @RestController
 @RequestMapping("/api/finance/reports")
@@ -59,158 +38,290 @@ public class FinanceReportController {
 
     private final FinanceReportService service;
 
-    // ============= A. 应收应付类 =============
+    // ======================== ① 应收应付 Z / A·C / B·D ========================
 
-    @GetMapping("/ar-ap/summary")
+    /** Z 应收应付总览（前端左分类树+右表）。displayMode: ALL/ANY/AR_ONLY/AP_ONLY。 */
+    @GetMapping("/ar-ap/overview")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<ArApSummaryRow> arApSummary(
-            @RequestParam(required = false) String direction,
-            @RequestParam(required = false) String sourceDocType,
-            @RequestParam(required = false) UUID partyId,
+    public ReportTableResponse overview(
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.arApSummary(direction, sourceDocType, partyId, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String displayMode,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String categoryType,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size);
     }
 
+    /** A/C 应收/应付明细。 */
     @GetMapping("/ar-ap/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<ArApDetailReportRow> arApDetail(
-            @RequestParam(required = false) String direction,
-            @RequestParam(required = false) String sourceDocType,
+    public ReportTableResponse arApDetail(
+            @RequestParam String direction,
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID partyId,
-            @RequestParam(required = false) UUID clientId,
-            @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) Boolean settled,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.arApDetail(direction, sourceDocType, partyId, clientId, supplierId, settled, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.arApDetail(direction, billNo, partyId, settled, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/parties/statement")
+    /** B/D 应收/应付汇总（按往来单位）。 */
+    @GetMapping("/ar-ap/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<PartyStatementRow> partyStatement(
-            @RequestParam UUID partyId,
-            @RequestParam(defaultValue = "AR") String side,            // AR=客户 / AP=供应商
+    public ReportTableResponse arApSummary(
+            @RequestParam String direction,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "1000") int limit) {
-        return service.partyStatement(partyId, side, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.arApSummary(direction, dateFrom, dateTo, keyword, facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/parties/annual-statement")
-    @PreAuthorize("hasAuthority('finance_report:view')")
-    public PartyAnnualStatementRow partyAnnualStatement(
-            @RequestParam UUID partyId,
-            @RequestParam(defaultValue = "AR") String side,
-            @RequestParam(defaultValue = "2026") int year) {
-        return service.partyAnnualStatement(partyId, side, year);
-    }
+    // ======================== ② 收付款 E·F / G·H ========================
 
-    // ============= B. 收付款单据类 =============
-
-    @GetMapping("/receipts/detail")
+    /** E 销售收款明细。 */
+    @GetMapping("/receipt/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocReportRow> receiptsDetail(
+    public ReportTableResponse receiptDetail(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID clientId,
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.receiptsDetail(clientId, accountId, status, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.receiptDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/receipts/summary")
+    /** F 销售收款汇总。 */
+    @GetMapping("/receipt/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocSummaryRow> receiptsSummary(
+    public ReportTableResponse receiptSummary(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.receiptsSummary(clientId, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.receiptSummary(billNo, clientId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/payments/detail")
+    /** G 采购付款明细。 */
+    @GetMapping("/payment/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocReportRow> paymentsDetail(
+    public ReportTableResponse paymentDetail(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.paymentsDetail(supplierId, accountId, status, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.paymentDetail(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/payments/summary")
+    /** H 采购付款汇总。 */
+    @GetMapping("/payment/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocSummaryRow> paymentsSummary(
+    public ReportTableResponse paymentSummary(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID supplierId,
+            @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.paymentsSummary(supplierId, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.paymentSummary(billNo, supplierId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    // ============= C. 费用收入类 =============
+    // ======================== ③ 费用/收入 M·N / O·P + V ========================
 
-    @GetMapping("/expenses/detail")
+    /** M 一般费用明细。 */
+    @GetMapping("/expense/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocReportRow> expensesDetail(
+    public ReportTableResponse expenseDetail(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.expensesDetail(accountId, departmentId, status, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.expenseDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/expenses/summary")
+    /** N 一般费用汇总。 */
+    @GetMapping("/expense/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocSummaryRow> expensesSummary(
+    public ReportTableResponse expenseSummary(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID departmentId,
-            @RequestParam(required = false) UUID expenseStyleId,
+            @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.expensesSummary(departmentId, expenseStyleId, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.expenseSummary(billNo, departmentId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/incomes/detail")
+    /** O 其它收入明细。 */
+    @GetMapping("/income/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocReportRow> incomesDetail(
+    public ReportTableResponse incomeDetail(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.incomesDetail(accountId, departmentId, status, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.incomeDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    @GetMapping("/incomes/summary")
+    /** P 其它收入汇总。 */
+    @GetMapping("/income/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<FinanceDocSummaryRow> incomesSummary(
+    public ReportTableResponse incomeSummary(
+            @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID departmentId,
-            @RequestParam(required = false) UUID incomeStyleId,
+            @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
-            @RequestParam(defaultValue = "500") int limit) {
-        return service.incomesSummary(departmentId, incomeStyleId, dateFrom, dateTo, limit);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.incomeSummary(billNo, departmentId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
     }
 
-    // ============= D. 账户流水类 =============
-
-    @GetMapping("/accounts/statement")
+    /** V 费用冲销明细（收款侧 + AR 核销 + 其它费用）。 */
+    @GetMapping("/fee-offset/detail")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<AccountStatementRow> accountStatement(
-            @RequestParam UUID accountId,
-            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime dateTo,
-            @RequestParam(defaultValue = "1000") int limit) {
-        return service.accountStatement(accountId, dateFrom, dateTo, limit);
+    public ReportTableResponse feeOffsetDetail(
+            @RequestParam(required = false) String billNo,
+            @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) UUID accountId,
+            @RequestParam(required = false) Short status,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.feeOffsetDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
+                facetsOf(allParams), page, size);
+    }
+
+    // ======================== ④ 往来对帐 I·J·K·L / X ========================
+
+    /** I/K 单客户/供应商流水对帐（滚动余额）。side=AR 走客户 / AP 走供应商。 */
+    @GetMapping("/statement/flow")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public ReportTableResponse statementFlow(
+            @RequestParam(required = false) UUID partyId,
+            @RequestParam(required = false) String side,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.partyStatementFlow(partyId, side, dateFrom, dateTo, page, size);
+    }
+
+    /** J/L 单客户/供应商明细对帐。 */
+    @GetMapping("/statement/detail")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public ReportTableResponse statementDetail(
+            @RequestParam(required = false) UUID partyId,
+            @RequestParam(required = false) String side,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.partyStatementDetail(partyId, side, dateFrom, dateTo, page, size);
+    }
+
+    /** X 客户/供应商年度对帐单（按月）。 */
+    @GetMapping("/statement/annual")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public ReportTableResponse statementAnnual(
+            @RequestParam(required = false) UUID partyId,
+            @RequestParam(required = false) String side,
+            @RequestParam(required = false, defaultValue = "0") int year,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.partyAnnualStatement(partyId, side, year, page, size);
+    }
+
+    // ======================== ⑤ 账户流水 S / 银行存取 Q·R ========================
+
+    /** S 帐户进出流水帐（滚动余额，必填 accountId）。 */
+    @GetMapping("/account/statement")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public ReportTableResponse accountStatement(
+            @RequestParam(required = false) UUID accountId,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return service.accountStatement(accountId, dateFrom, dateTo, keyword, page, size);
+    }
+
+    /** Q 银行存取明细 / R 汇总（M_Bank 0 行，空结构）。 */
+    @GetMapping("/bank/{view}")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public ReportTableResponse bank(@PathVariable String view) {
+        return service.bankReport(view);
+    }
+
+    // ======================== 辅助 ========================
+
+    /** 从全部查询参数里抽出列筛选（键以 "f." 前缀）。 */
+    private static Map<String, String> facetsOf(Map<String, String> allParams) {
+        Map<String, String> facets = new HashMap<>();
+        if (allParams == null) return facets;
+        for (Map.Entry<String, String> e : allParams.entrySet()) {
+            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
+                facets.put(e.getKey().substring(2), e.getValue());
+            }
+        }
+        return facets;
     }
 }

@@ -59,7 +59,7 @@ curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
 | **销售管理** | ✅ 已实现 | `S_Order`(10653)/`S_Out`(12124)/`S_OtherOut`(1558)/`S_Withdraw`(221)（在用）+`S_Quote`(0) | `sales_orders/shipments/other_shipments/returns(+_items)` | `migrate.sh --sales` | [18-总路线图](18-业务四模块-总路线图.md) · [19-老库溯源](19-销售管理-老库溯源.md) · [20-新库与迁移](20-销售管理-新库与迁移.md) |
 | **委外管理** | ✅ 已实现 | `E_` 前缀（**确认是委外**）：`E_In`(10732)/`E_SOut`(10627)/`E_WithDraw`/`E_SWithDraw`/`E_SWaste` | `subcontract_*`（8 单据） | `migrate.sh --subcontract` | [18] · [21-老库溯源](21-委外管理-老库溯源.md) · [22-新库与迁移](22-委外管理-新库与迁移.md) |
 | **生产管理** | ✅ 已实现 | `F_Plan`(7235)+Item(73388) / **`F_PlanCostItem`(1359892)** / `F_DateReport`(0) | `production_plans(+items/+costs 按年分区)` / `production_daily_reports` | `migrate.sh --production` | [18] · [23-老库溯源](23-生产管理-老库溯源.md) · [24-新库与迁移](24-生产管理-新库与迁移.md) |
-| **钱流管理** | ✅ 已实现 | `M_Get`/`M_In`(42489)/`M_Paid`/`M_Out`(44525)/`M_DPaid`/`M_OGet`/`M_Acc`(27)/`M_Style`(124)/`M_AllCheck` | `finance_receipts/payments/expenses/...(+_lines)` + 统一 `ar_ap_ledger`(87014) + `accounts`/`payment_styles` 主档 | `migrate.sh --finance` | [18] · [25-老库溯源](25-钱流管理-老库溯源.md) · [26-新库与迁移](26-钱流管理-新库与迁移.md) |
+| **钱流管理** | ✅ 已实现 | `M_Get`/`M_In`(42489)/`M_Paid`/`M_Out`(44525)/`M_DPaid`/`M_OGet`/`M_Acc`(27)/`M_Style`(124)/`M_AllCheck` | `finance_receipts/payments/expenses/...(+_lines)` + 统一 `ar_ap_ledger`(87014) + `accounts`/`payment_styles` 主档 + **V70 人员列** | `migrate.sh --finance`（含 B_Worker→employees stub + 刷 `finance_ar_ap_mv`） | [18] · [25-老库溯源](25-钱流管理-老库溯源.md) · [26-新库与迁移](26-钱流管理-新库与迁移.md)（**§十一 22 报表全套重建**） |
 | 工资 / 报销 / 检测 | ⏳ 待做 | `W_*` / `B_*` / `C_*` | 待 | 待 | — |
 
 > 模块对应的完整老库结构见 [01-YTDQ老库总览](01-YTDQ老库总览.md)。

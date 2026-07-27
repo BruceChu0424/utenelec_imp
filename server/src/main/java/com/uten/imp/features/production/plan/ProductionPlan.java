@@ -81,6 +81,14 @@ public class ProductionPlan extends SoftDeletableEntity {
     @Column(name = "approver_legacy_id")
     private Integer approverLegacyId;
 
+    /** 制单员名（迁移期冻结老库 Sys_Operator.fname / B_Worker.Emp_Name；未来 employees.legacy_id 对齐后报表 COALESCE 优先真名，V69 加列）。 */
+    @Column(name = "maker_name")
+    private String makerName;
+
+    /** 审核员名（同上）。 */
+    @Column(name = "approver_name")
+    private String approverName;
+
     /** Remark（text 大字段）。 */
     private String remark;
 

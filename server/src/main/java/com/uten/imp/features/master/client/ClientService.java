@@ -1,9 +1,12 @@
 package com.uten.imp.features.master.client;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.client.dto.ClientDetail;
 import com.uten.imp.features.master.client.dto.ClientFacets;
 import com.uten.imp.features.master.client.dto.ClientListItem;
@@ -54,6 +57,10 @@ public class ClientService {
             "empId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
             "postcode", "address", "bank", "bankAccount", "taxId", "credit", "website");
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量列；命中才排序，否则默认 id ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "tday", "tday", "credit", "credit");
+
     /** facet 截断阈值（高基数列取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
@@ -94,7 +101,7 @@ public class ClientService {
     // ===== 列表（Specification 动态筛选） =====
 
     @Transactional(readOnly = true)
-    public PageResponse<ClientListItem> list(ClientQueryFilter f, int page, int size) {
+    public PageResponse<ClientListItem> list(ClientQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         Specification<Client> spec = (Root<Client> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                       CriteriaBuilder cb) -> {
@@ -140,7 +147,8 @@ public class ClientService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
         Page<Client> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
@@ -153,6 +161,81 @@ public class ClientService {
 
     private List<UUID> resolveSubtreeIds(UUID categoryId) {
         return categoryRepo.findSubtree(categoryId).stream().map(ClientCategory::getId).toList();
+    }
+
+    // ===== 加密 Excel 导出（服务端权威列定义） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday/credit）。
+     * 覆盖前端表格 21 列里所有有 DB 列的字段（结账方式/总监无对应列，导出也省略）。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(ClientQueryFilter f, String sort, String order) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "客户编码", ExportColumn.TEXT),
+                new ExportColumn("name", "客户简称", ExportColumn.TEXT),
+                new ExportColumn("fullName", "客户全称", ExportColumn.TEXT),
+                new ExportColumn("clientXz", "客户性质", ExportColumn.TEXT),
+                new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
+                new ExportColumn("region", "区域", ExportColumn.TEXT),
+                new ExportColumn("placeId", "所属地区", ExportColumn.TEXT),
+                new ExportColumn("empId", "业务员", ExportColumn.TEXT),
+                new ExportColumn("legalPerson", "法人代表", ExportColumn.TEXT),
+                new ExportColumn("linkman", "联系人", ExportColumn.TEXT),
+                new ExportColumn("mobile", "手机", ExportColumn.TEXT),
+                new ExportColumn("phone", "联系电话", ExportColumn.TEXT),
+                new ExportColumn("phone2", "备用电话", ExportColumn.TEXT),
+                new ExportColumn("fax", "传真", ExportColumn.TEXT),
+                new ExportColumn("postcode", "邮编", ExportColumn.TEXT),
+                new ExportColumn("address", "地址", ExportColumn.TEXT),
+                new ExportColumn("bank", "开户银行", ExportColumn.TEXT),
+                new ExportColumn("bankAccount", "银行账号", ExportColumn.TEXT),
+                new ExportColumn("taxId", "纳税号", ExportColumn.TEXT),
+                new ExportColumn("credit", "信誉额度", ExportColumn.MONEY),
+                new ExportColumn("website", "网址", ExportColumn.TEXT),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int pageSize = 100;
+        int maxPages = 1000;
+        long total = -1;
+        for (int p = 1; p <= maxPages; p++) {
+            PageResponse<ClientListItem> page = list(f, p, pageSize, sort, order);
+            if (total < 0) total = page.getTotal();
+            for (ClientListItem m : page.getItems()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("code", m.getCode());
+                row.put("name", m.getName());
+                row.put("fullName", m.getFullName());
+                row.put("clientXz", m.getClientXz());
+                row.put("tday", m.getTday());
+                row.put("region", m.getRegion());
+                row.put("placeId", m.getPlaceId());
+                row.put("empId", m.getEmpId());
+                row.put("legalPerson", m.getLegalPerson());
+                row.put("linkman", m.getLinkman());
+                row.put("mobile", m.getMobile());
+                row.put("phone", m.getPhone());
+                row.put("phone2", m.getPhone2());
+                row.put("fax", m.getFax());
+                row.put("postcode", m.getPostcode());
+                row.put("address", m.getAddress());
+                row.put("bank", m.getBank());
+                row.put("bankAccount", m.getBankAccount());
+                row.put("taxId", m.getTaxId());
+                row.put("credit", m.getCredit());
+                row.put("website", m.getWebsite());
+                row.put("status", m.getStatus());
+                rows.add(row);
+            }
+            if (page.getItems().size() < pageSize) break;
+            if (rows.size() >= total) break;
+            if (p == maxPages && rows.size() < total) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
+            }
+        }
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====

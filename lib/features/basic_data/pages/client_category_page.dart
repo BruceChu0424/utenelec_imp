@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -26,6 +27,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/client_node.dart';
+import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
 import '../repositories/client_category_repository.dart';
 import '../repositories/client_repository.dart';
@@ -413,6 +415,10 @@ class _DetailPaneState extends State<_DetailPane> {
   String _keyword = '';
   ClientFacets? _facets;
 
+  // 列排序态（金额/数量/日期列）：null = 默认顺序（id ASC）。
+  String? _sortKey;
+  bool _sortAsc = true;
+
   /// 详情弹窗加载中（防并发）。与 [_clientLoading]（列表分页加载）是两回事，不可混用。
   bool _detailLoading = false;
 
@@ -441,13 +447,15 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _detail = d;
         _loading = false;
-        // 切换分类时重置客户分页 + 筛选状态 + facet。
+        // 切换分类时重置客户分页 + 筛选状态 + facet + 排序态。
         _clientPage = null;
         _clientPageNum = 1;
         _clientError = null;
         _filters = {};
         _keyword = '';
         _facets = null;
+        _sortKey = null;
+        _sortAsc = true;
       });
       // 父分类也加载（后端按子树汇总）；并行拉客户列表与字段 facet。
       await Future.wait([_loadClients(1), _loadFacets()]);
@@ -481,6 +489,8 @@ class _DetailPaneState extends State<_DetailPane> {
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -534,6 +544,23 @@ class _DetailPaneState extends State<_DetailPane> {
     setState(() => _keyword = kw);
     _loadClients(1);
   }
+
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _loadClients(1); // 排序变化回第 1 页重载
+  }
+
+  /// 导出查询参数（与 _loadClients 一致，不含 page/size）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        'categoryId': widget.nodeId,
+        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+        ...masterFilterQueryParams(_filters),
+        if (_sortKey != null) 'sort': _sortKey,
+        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+      };
 
   // 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
   static const _clientFields = [
@@ -850,6 +877,14 @@ class _DetailPaneState extends State<_DetailPane> {
                     onChanged: _onKeywordChanged,
                   ),
                 ),
+                const SizedBox(width: UtenSpacing.s8),
+                UtenExportButton(
+                  endpoint: '/master/clients/export',
+                  report: '',
+                  queryParams: _exportQuery,
+                  filename: '客户资料',
+                  label: '导出客户',
+                ),
                 if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
                   UtenButton(
@@ -872,6 +907,9 @@ class _DetailPaneState extends State<_DetailPane> {
               filters: _filters,
               onFilterChanged: _onFilterChanged,
               onRowTap: (m) => _showClientDetail(m.id),
+              sortColumn: _sortKey,
+              sortAscending: _sortAsc,
+              onSortChange: _onSortChange,
               isLoading: _clientLoading && _clientPage == null,
               loadingMore: _clientLoading && _clientPage != null,
               error: _clientError,
@@ -912,6 +950,8 @@ class _DetailPaneState extends State<_DetailPane> {
         key: 'tday',
         label: '信用天数',
         width: 80,
+        type: 'number',
+        sortable: true,
         value: (m) => m.tday?.toString()),
     MasterColumnDef(
         key: 'director', label: '总监', width: 90, value: (m) => null),
@@ -952,6 +992,8 @@ class _DetailPaneState extends State<_DetailPane> {
         key: 'credit',
         label: '信誉额度',
         width: 110,
+        type: 'money',
+        sortable: true,
         value: (m) => m.credit?.toStringAsFixed(2)),
     MasterColumnDef(
         key: 'website', label: '网址', width: 160, value: (m) => m.website),

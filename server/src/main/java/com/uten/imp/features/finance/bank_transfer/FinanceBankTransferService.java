@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferDetail;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineDto;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineInput;
@@ -27,6 +28,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -51,13 +53,16 @@ public class FinanceBankTransferService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "amountLocal", "amountLocal");
+
     private final FinanceBankTransferRepository transferRepo;
     private final FinanceBankTransferLineRepository lineRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
 
     @Transactional(readOnly = true)
-    public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter f, int page, int size) {
+    public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter f, int page, int size, String sort, String order) {
         Specification<FinanceBankTransfer> spec = (Root<FinanceBankTransfer> root,
                                                    jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                    CriteriaBuilder cb) -> {
@@ -72,7 +77,8 @@ public class FinanceBankTransferService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceBankTransfer> p = transferRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }

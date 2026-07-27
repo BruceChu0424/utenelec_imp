@@ -1,9 +1,12 @@
 package com.uten.imp.features.master.currency;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.currency.dto.CurrencyDetail;
 import com.uten.imp.features.master.currency.dto.CurrencyFacets;
 import com.uten.imp.features.master.currency.dto.CurrencyListItem;
@@ -47,6 +50,9 @@ public class CurrencyService {
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status");
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（数值列；命中才排序，否则默认 code ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("exchangeRate", "exchangeRate");
+
     /** facet 截断阈值。 */
     private static final int FACET_LIMIT = 50;
 
@@ -65,7 +71,7 @@ public class CurrencyService {
     // ===== 列表（Specification 动态筛选） =====
 
     @Transactional(readOnly = true)
-    public PageResponse<CurrencyListItem> list(CurrencyQueryFilter f, int page, int size) {
+    public PageResponse<CurrencyListItem> list(CurrencyQueryFilter f, int page, int size, String sort, String order) {
         Specification<Currency> spec = (Root<Currency> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -86,7 +92,8 @@ public class CurrencyService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Currency> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
@@ -95,6 +102,44 @@ public class CurrencyService {
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Currency> root,
                               String field, String value) {
         if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    // ===== 加密 Excel 导出（服务端权威列定义） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（exchangeRate）。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(CurrencyQueryFilter f, String sort, String order) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("name", "币种名称", ExportColumn.TEXT),
+                new ExportColumn("exchangeRate", "参考汇率", ExportColumn.NUMBER),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int pageSize = 100;
+        int maxPages = 1000;
+        long total = -1;
+        for (int p = 1; p <= maxPages; p++) {
+            PageResponse<CurrencyListItem> page = list(f, p, pageSize, sort, order);
+            if (total < 0) total = page.getTotal();
+            for (CurrencyListItem c : page.getItems()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("code", c.getCode());
+                row.put("name", c.getName());
+                row.put("exchangeRate", c.getExchangeRate());
+                row.put("status", c.getStatus());
+                rows.add(row);
+            }
+            if (page.getItems().size() < pageSize) break;
+            if (rows.size() >= total) break;
+            if (p == maxPages && rows.size() < total) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
+            }
+        }
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====

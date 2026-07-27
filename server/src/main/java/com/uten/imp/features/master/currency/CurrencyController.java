@@ -1,13 +1,22 @@
 package com.uten.imp.features.master.currency;
 
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPasswordRequest;
+import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.currency.dto.CurrencyDetail;
 import com.uten.imp.features.master.currency.dto.CurrencyFacets;
 import com.uten.imp.features.master.currency.dto.CurrencyListItem;
 import com.uten.imp.features.master.currency.dto.CurrencyQueryFilter;
 import com.uten.imp.features.master.currency.dto.CurrencySaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +28,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -44,6 +55,10 @@ import java.util.UUID;
 public class CurrencyController {
 
     private final CurrencyService service;
+    private final XlsxExportService xlsxExport;
+    private final EncryptedWorkbookService encryptedWorkbook;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
 
     @GetMapping
     @PreAuthorize("hasAuthority('currency:view')")
@@ -54,8 +69,10 @@ public class CurrencyController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.list(new CurrencyQueryFilter(keyword, nullFields, code, name, status), page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.list(new CurrencyQueryFilter(keyword, nullFields, code, name, status), page, size, sort, order);
     }
 
     @GetMapping("/facets")
@@ -75,6 +92,37 @@ public class CurrencyController {
     @PreAuthorize("hasAuthority('currency:view')")
     public CurrencyDetail detail(@PathVariable UUID id) {
         return service.detail(id);
+    }
+
+    // ---------- 加密 Excel 导出（POST，密码走 body；过滤/排序走 query，与 GET /list 一致） ----------
+
+    @PostMapping("/export")
+    @PreAuthorize("hasAuthority('currency:export')")
+    public ResponseEntity<byte[]> export(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Set<String> nullFields,
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestBody ExportPasswordRequest body) {
+        if (body == null || body.password() == null || body.password().length() < 4) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出密码至少 4 位");
+        }
+        ExportPayload payload = service.export(
+                new CurrencyQueryFilter(keyword, nullFields, code, name, status), sort, order);
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "export_currency", "master_data", String.valueOf(payload.total()), "success"));
+        String filename = "currencies.xlsx";
+        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename*=UTF-8''" + encoded)
+                .header("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(encrypted);
     }
 
     @PostMapping

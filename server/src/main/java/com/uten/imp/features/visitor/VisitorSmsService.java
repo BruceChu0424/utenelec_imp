@@ -4,6 +4,7 @@ import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SmsProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.visitor.sms.SmsGateway;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,17 +29,18 @@ public class VisitorSmsService {
     private final VisitorSmsCodeRepository smsRepo;
     private final SmsGateway gateway;
     private final SmsProperties props;
+    private final SystemSettingsService settings;
 
     /** 生成并发送验证码；返回明文 code（log 网关时 controller 可回传联调）。 */
     @Transactional
     public String send(String phone, String scene) {
         smsRepo.findTopByPhoneOrderByCreatedAtDesc(phone).ifPresent(last -> {
-            if (last.getCreatedAt().isAfter(OffsetDateTime.now().minusSeconds(props.getSendIntervalSeconds()))) {
+            if (last.getCreatedAt().isAfter(OffsetDateTime.now().minusSeconds(settings.readInt("sms_send_interval_seconds", 60)))) {
                 throw new ApiException(ErrorCode.SMS_RATE_LIMITED);
             }
         });
         long todayCount = smsRepo.countByPhoneAndCreatedAtAfter(phone, OffsetDateTime.now().minusDays(1));
-        if (todayCount >= props.getDailyLimit()) {
+        if (todayCount >= settings.readInt("sms_daily_limit", 10)) {
             throw new ApiException(ErrorCode.SMS_RATE_LIMITED);
         }
 
@@ -48,7 +50,7 @@ public class VisitorSmsService {
         entity.setCodeHash(HashUtil.sha256(code));
         entity.setScene(scene);
         entity.setAttempts(0);
-        entity.setExpiresAt(OffsetDateTime.now().plusMinutes(props.getCodeTtlMinutes()));
+        entity.setExpiresAt(OffsetDateTime.now().plusMinutes(settings.readInt("sms_code_ttl_minutes", 5)));
         smsRepo.save(entity);
 
         if (!gateway.sendCode(phone, code)) {
@@ -79,6 +81,6 @@ public class VisitorSmsService {
     }
 
     public int codeTtlSeconds() {
-        return props.getCodeTtlMinutes() * 60;
+        return settings.readInt("sms_code_ttl_minutes", 5) * 60;
     }
 }

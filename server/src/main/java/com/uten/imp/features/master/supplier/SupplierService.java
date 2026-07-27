@@ -1,9 +1,12 @@
 package com.uten.imp.features.master.supplier;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.supplier.dto.FacetBucket;
 import com.uten.imp.features.master.supplier.dto.SupplierDetail;
 import com.uten.imp.features.master.supplier.dto.SupplierDictItem;
@@ -53,6 +56,9 @@ public class SupplierService {
             "mobile", "phone", "phone2", "fax", "postcode", "address", "bank",
             "bankAccount", "taxId", "website", "shipVia", "shipAddress");
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（数量列；命中才排序，否则默认 id ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("tday", "tday");
+
     /** facet 截断阈值（高基数列如 name/address 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
@@ -88,7 +94,7 @@ public class SupplierService {
     // ===== 列表（Specification 动态筛选） =====
 
     @Transactional(readOnly = true)
-    public PageResponse<SupplierListItem> list(SupplierQueryFilter f, int page, int size) {
+    public PageResponse<SupplierListItem> list(SupplierQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         Specification<Supplier> spec = (Root<Supplier> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                         CriteriaBuilder cb) -> {
@@ -134,7 +140,8 @@ public class SupplierService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
         Page<Supplier> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
@@ -147,6 +154,75 @@ public class SupplierService {
 
     private List<UUID> resolveSubtreeIds(UUID categoryId) {
         return categoryRepo.findSubtree(categoryId).stream().map(SupplierCategory::getId).toList();
+    }
+
+    // ===== 加密 Excel 导出（服务端权威列定义） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（tday）。
+     * 覆盖前端表格 21 列里 19 个有 DB 列的字段（主结账方式/损耗率无对应列，导出也省略）。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(SupplierQueryFilter f, String sort, String order) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("name", "供应商简称", ExportColumn.TEXT),
+                new ExportColumn("description", "全称", ExportColumn.TEXT),
+                new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
+                new ExportColumn("place", "所属地区", ExportColumn.TEXT),
+                new ExportColumn("empId", "业务员", ExportColumn.TEXT),
+                new ExportColumn("legalPerson", "法人代表", ExportColumn.TEXT),
+                new ExportColumn("linkman", "联系人", ExportColumn.TEXT),
+                new ExportColumn("mobile", "手机", ExportColumn.TEXT),
+                new ExportColumn("phone", "联系电话", ExportColumn.TEXT),
+                new ExportColumn("phone2", "备用电话", ExportColumn.TEXT),
+                new ExportColumn("fax", "传真", ExportColumn.TEXT),
+                new ExportColumn("postcode", "邮编", ExportColumn.TEXT),
+                new ExportColumn("address", "地址", ExportColumn.TEXT),
+                new ExportColumn("bank", "开户银行", ExportColumn.TEXT),
+                new ExportColumn("bankAccount", "银行账号", ExportColumn.TEXT),
+                new ExportColumn("taxId", "纳税号", ExportColumn.TEXT),
+                new ExportColumn("website", "网址", ExportColumn.TEXT),
+                new ExportColumn("shipVia", "运输方式", ExportColumn.TEXT),
+                new ExportColumn("shipAddress", "送货地址", ExportColumn.TEXT));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int pageSize = 100;
+        int maxPages = 1000;
+        long total = -1;
+        for (int p = 1; p <= maxPages; p++) {
+            PageResponse<SupplierListItem> page = list(f, p, pageSize, sort, order);
+            if (total < 0) total = page.getTotal();
+            for (SupplierListItem m : page.getItems()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("name", m.getName());
+                row.put("description", m.getDescription());
+                row.put("tday", m.getTday());
+                row.put("place", m.getPlace());
+                row.put("empId", m.getEmpId());
+                row.put("legalPerson", m.getLegalPerson());
+                row.put("linkman", m.getLinkman());
+                row.put("mobile", m.getMobile());
+                row.put("phone", m.getPhone());
+                row.put("phone2", m.getPhone2());
+                row.put("fax", m.getFax());
+                row.put("postcode", m.getPostcode());
+                row.put("address", m.getAddress());
+                row.put("bank", m.getBank());
+                row.put("bankAccount", m.getBankAccount());
+                row.put("taxId", m.getTaxId());
+                row.put("website", m.getWebsite());
+                row.put("shipVia", m.getShipVia());
+                row.put("shipAddress", m.getShipAddress());
+                rows.add(row);
+            }
+            if (page.getItems().size() < pageSize) break;
+            if (rows.size() >= total) break;
+            if (p == maxPages && rows.size() < total) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
+            }
+        }
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====

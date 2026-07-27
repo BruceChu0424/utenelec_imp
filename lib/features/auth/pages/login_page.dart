@@ -26,6 +26,8 @@ import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/repositories/account_history_store.dart';
+import '../widgets/account_field.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -79,13 +81,16 @@ class _LoginPageState extends ConsumerState<LoginPage>
     });
 
     try {
+      final account = _accountController.text.trim();
       await ref
           .read(sessionProvider.notifier)
           .login(
-            account: _accountController.text.trim(),
+            account: account,
             password: _passwordController.text,
             rememberDevice: _rememberDevice,
           );
+      // 登录成功：记住账号（只记账号不记密码）
+      await ref.read(accountHistoryProvider).add(account);
 
       if (mounted) {
         // 路由守卫会自动重定向到 dashboard（首登强制改密则重定向到改密页）
@@ -177,15 +182,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
             child: UtenWordmarkLogo(width: 220, height: 220 / (405 / 74)),
           ),
           const SizedBox(height: UtenSpacing.s32),
-          UtenInput(
+          AccountField(
             controller: _accountController,
             hint: l10n.loginAccountHint,
-            prefixIcon: Icons.person_outline_rounded,
-            textInputAction: TextInputAction.next,
             validator: (value) => (value == null || value.isEmpty)
                 ? l10n.loginAccountRequired
                 : null,
-            autofillHints: const ['username'],
           ),
           const SizedBox(height: UtenSpacing.s16),
           UtenInput(
@@ -201,26 +203,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
             autofillHints: const ['password'],
           ),
           const SizedBox(height: UtenSpacing.s16),
-          Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: Checkbox(
-                  value: _rememberDevice,
-                  onChanged: (value) =>
-                      setState(() => _rememberDevice = value ?? false),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Text(
-                l10n.loginRememberMe,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+          // 「记住此设备」开关已移除：安全考虑，每次登录必须输密码（不长期记住设备/免密）。
+          // 账号历史单独记忆（AccountField 下拉，只记账号不记密码）。
           if (_errorMessage != null) ...[
             const SizedBox(height: UtenSpacing.s16),
             Container(

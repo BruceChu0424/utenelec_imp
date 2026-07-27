@@ -151,6 +151,15 @@ abstract final class ApiEndpoints {
   static String userEffectivePermissions(String id) =>
       '/admin/users/$id/effective-permissions';
 
+  /// 审计日志（导出下载 / 登录 / 改密 等全员审计；超管只读）
+  static const adminAuditLogs = '/admin/audit-logs';
+
+  /// 系统设置（安全/业务策略阈值；超管 user:manage，改设置二次密码确认）
+  static const adminSystemSettings = '/admin/system-settings';
+
+  /// 公共运行时设置（仅需登录，前端读会话空闲超时阈值等）
+  static const publicSettings = '/settings/public';
+
   // 访客（visitor）
   static const visitorSendCode = '/visitor/auth/send-code';
   static const visitorLogin = '/visitor/auth/login';

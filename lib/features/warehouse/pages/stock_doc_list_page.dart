@@ -40,6 +40,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   String? _error;
   String _keyword = '';
   int? _status; // null=全部
+  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
+  String? _sortKey;
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -66,6 +69,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
             filter: StockDocFilter(
                 keyword: _keyword.trim().isEmpty ? null : _keyword,
                 status: _status),
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -88,6 +93,15 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   }
 
   // ---- 列定义 -----------------------------------------------------------
+
+  /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _load(1);
+  }
 
   /// 各状态单据数（KPI 条用，并行 4 次 list size=1 取 total）。
   Future<int> _countStatus(int? s) async {
@@ -112,6 +126,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
           key: 'billDate',
           label: '日期',
           width: 120,
+          type: 'date',
+          sortable: true,
           value: (it) => it.billDate == null
               ? null
               : (it.billDate!.length >= 10
@@ -135,6 +151,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
           key: 'total',
           label: '合计',
           width: 140,
+          type: 'money',
+          sortable: true,
           value: (it) => it.totalLocal?.toStringAsFixed(2)),
       MasterColumnDef(
           key: 'status',
@@ -238,6 +256,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                       nullCounts: const {},
                       filters: const {},
                       onFilterChanged: (_, _) {},
+                      sortColumn: _sortKey,
+                      sortAscending: _sortAsc,
+                      onSortChange: _onSortChange,
                       onRowTap: (it) => context.push(
                           RoutePath.stockDocDetail(widget.docType.code, it.id)),
                       isLoading: _loading && _page == null,

@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -27,6 +28,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
 import '../models/supplier_node.dart';
 import '../repositories/supplier_category_repository.dart';
@@ -416,6 +418,10 @@ class _DetailPaneState extends State<_DetailPane> {
   String _keyword = '';
   SupplierFacets? _facets;
 
+  // 列排序态（金额/数量/日期列）：null = 默认顺序（id ASC）。
+  String? _sortKey;
+  bool _sortAsc = true;
+
   /// 详情弹窗加载中（防并发）。
   /// 注意：与 [_supplierLoading]（供应商分页列表的加载状态）是两回事，不可混用——
   /// 列表加载完后 [_supplierLoading] 恒为 false，无法防止详情弹窗被并发触发。
@@ -446,13 +452,15 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _detail = d;
         _loading = false;
-        // 切换分类时重置供应商分页 + 筛选状态 + facet。
+        // 切换分类时重置供应商分页 + 筛选状态 + facet + 排序态。
         _supplierPage = null;
         _supplierPageNum = 1;
         _supplierError = null;
         _filters = {};
         _keyword = '';
         _facets = null;
+        _sortKey = null;
+        _sortAsc = true;
       });
       // 父分类也加载（后端按子树汇总）；并行拉供应商列表与字段 facet。
       await Future.wait([_loadSuppliers(1), _loadFacets()]);
@@ -486,6 +494,8 @@ class _DetailPaneState extends State<_DetailPane> {
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -540,6 +550,23 @@ class _DetailPaneState extends State<_DetailPane> {
     setState(() => _keyword = kw);
     _loadSuppliers(1);
   }
+
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _loadSuppliers(1); // 排序变化回第 1 页重载
+  }
+
+  /// 导出查询参数（与 _loadSuppliers 一致，不含 page/size）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        'categoryId': widget.nodeId,
+        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+        ...masterFilterQueryParams(_filters),
+        if (_sortKey != null) 'sort': _sortKey,
+        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+      };
 
   // 供应商主档可编辑字段（与后端 SupplierSaveRequest 对齐）。
   static const _supplierFields = [
@@ -853,6 +880,14 @@ class _DetailPaneState extends State<_DetailPane> {
                     onChanged: _onKeywordChanged,
                   ),
                 ),
+                const SizedBox(width: UtenSpacing.s8),
+                UtenExportButton(
+                  endpoint: '/master/suppliers/export',
+                  report: '',
+                  queryParams: _exportQuery,
+                  filename: '供应商资料',
+                  label: '导出供应商',
+                ),
                 if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
                   UtenButton(
@@ -875,6 +910,9 @@ class _DetailPaneState extends State<_DetailPane> {
               filters: _filters,
               onFilterChanged: _onFilterChanged,
               onRowTap: (s) => _showSupplierDetail(s.id),
+              sortColumn: _sortKey,
+              sortAscending: _sortAsc,
+              onSortChange: _onSortChange,
               isLoading: _supplierLoading && _supplierPage == null,
               loadingMore: _supplierLoading && _supplierPage != null,
               error: _supplierError,
@@ -912,6 +950,8 @@ class _DetailPaneState extends State<_DetailPane> {
         key: 'tday',
         label: '信用天数',
         width: 80,
+        type: 'number',
+        sortable: true,
         value: (s) => s.tday?.toString()),
     MasterColumnDef(
         key: 'lossRate',

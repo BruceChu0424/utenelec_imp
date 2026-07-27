@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.reconciliation;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.finance.reconciliation.dto.FinanceReconciliationListItem;
 import com.uten.imp.features.finance.reconciliation.dto.FinanceReconciliationQueryFilter;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 账户流水查询服务（只读）。流水写入由各 finance_*审核 Service 用 EntityManager 直插
@@ -30,8 +32,14 @@ public class FinanceReconciliationService {
 
     private final FinanceReconciliationRepository repo;
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate",
+            "inAmount", "inAmount",
+            "outAmount", "outAmount");
+
     @Transactional(readOnly = true)
-    public PageResponse<FinanceReconciliationListItem> list(FinanceReconciliationQueryFilter f, int page, int size) {
+    public PageResponse<FinanceReconciliationListItem> list(FinanceReconciliationQueryFilter f, int page, int size, String sort, String order) {
         Specification<FinanceReconciliation> spec = (Root<FinanceReconciliation> root,
                                                      jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                      CriteriaBuilder cb) -> {
@@ -49,7 +57,8 @@ public class FinanceReconciliationService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceReconciliation> p = repo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }

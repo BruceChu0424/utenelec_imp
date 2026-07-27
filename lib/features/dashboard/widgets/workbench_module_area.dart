@@ -435,6 +435,16 @@ const _allGroups = <_ModuleGroup>[
         label: '权限管理',
         location: RouteName.adminPermissions,
       ),
+      _ModuleItem(
+        icon: Icons.receipt_long_outlined,
+        label: '审计日志',
+        location: RouteName.adminAuditLogs,
+      ),
+      _ModuleItem(
+        icon: Icons.tune_outlined,
+        label: '系统设置',
+        location: RouteName.adminSystemSettings,
+      ),
     ],
   ),
 ];

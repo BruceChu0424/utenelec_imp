@@ -20,12 +20,21 @@ class MasterColumnDef<T> {
     required this.label,
     required this.width,
     required this.value,
+    this.type = 'text',
+    this.sortable = false,
   });
 
   final String key;
   final String label;
   final double width;
   final String? Function(T item) value;
+
+  /// 列类型，对齐后端 ReportColumn.type：text / date / number / money / bool。
+  /// 用于决定排序菜单文案（date=从远到近/从近到远，数值=从小到大/从大到小）。
+  final String type;
+
+  /// 该列是否允许点表头排序（日期/金额/数量等可排序列置 true）。
+  final bool sortable;
 }
 
 /// 主档通用表格视图：横排 autofilter 筛选 + 逐行数据（列对齐）+ 分页。
@@ -40,6 +49,9 @@ class MasterDataTableView<T> extends StatefulWidget {
     required this.filters,
     required this.onFilterChanged,
     required this.onRowTap,
+    this.sortColumn,
+    this.sortAscending = true,
+    this.onSortChange,
     this.isLoading = false,
     this.loadingMore = false,
     this.error,
@@ -57,6 +69,16 @@ class MasterDataTableView<T> extends StatefulWidget {
   final Map<String, String?> filters;
   final void Function(String key, String? value) onFilterChanged;
   final void Function(T item) onRowTap;
+
+  /// 当前排序的列 key（与 MasterColumnDef.key 对齐）；null = 不排序（用后端默认顺序）。
+  final String? sortColumn;
+
+  /// 当前排序方向：true=升序，false=降序。仅当 [sortColumn] 非空时有效。
+  final bool sortAscending;
+
+  /// 列头排序回调：(列 key, 升序) 应用排序；(null, _) 取消排序回到默认。
+  /// 报表分页场景下，回调应触发带 sort/order 参数重新请求后端。
+  final void Function(String? column, bool ascending)? onSortChange;
 
   final bool isLoading;
   final bool loadingMore;
@@ -79,7 +101,37 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   late final ScrollController _bodyH;
   // 表体竖向滚动：翻页时 jumpTo(0) 回顶（从第一条开始）。
   late final ScrollController _bodyV;
+  // 分页跳转输入框：填数字回车跳页；外部翻页（上一页/下一页/跳页）时同步回当前页。
+  late final TextEditingController _pageCtrl;
   bool _syncing = false;
+
+  /// 当前列宽：默认按列内容自动适配最宽值（[MasterColumnDef.width] 不再用于布局，
+  /// 保留字段供未来手动覆盖/最小宽度扩展）。用户拖拽后覆盖；自动适配需 BuildContext 的
+  /// 文字样式，故在 build 首帧测算（见 [_ensureWidths]）。
+  List<double> _widths = const [];
+
+  /// 用户已手动拖拽过的列下标：数据刷新时这些列保留用户宽度，其余按新内容重新适配。
+  final Set<int> _manualResized = {};
+
+  /// 列宽待重算标记：列集合或数据变化时置 true，[_ensureWidths] 算完清掉。
+  bool _widthsDirty = true;
+
+  /// 当前选中（单击高亮）的行：滚动不刷新数据故高亮常驻，翻页/重查换对象后自然失效。
+  T? _selectedItem;
+
+  // —— 列宽自动适配 / 手动拖拽 常量 ——
+  /// 拖拽命中区半宽：以列右边界为中心、半溢出到相邻列，便于精准抓住边界。
+  static const double _gripHalf = 4;
+  /// 列宽下限（自动适配与拖拽收窄共同下限，防止列被拖没）。
+  static const double _minColWidth = 48;
+  /// 列宽自动适配上限：超长文本（如备注）默认按此截断+省略号，用户可再拖宽。
+  static const double _maxColWidth = 480;
+  /// 自动适配取样行数：量前 N 行最宽值即可（全量量算大表偏重，最宽值通常在前段出现）。
+  static const int _autoFitSampleSize = 100;
+  static const double _cellPadX = UtenSpacing.s12; // 单元格左右内边距（表头/表体一致）
+  static const double _headerIconAllowance = 24; // 表头筛选下拉箭头 + 富余
+  static const double _sortIconAllowance = 20; // 可排序列表头排序图标 + 间距
+  static const double _autoFitBuffer = 6; // 防贴边 ellipsis 富余
 
   @override
   void initState() {
@@ -87,6 +139,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     _headerH = ScrollController();
     _bodyH = ScrollController();
     _bodyV = ScrollController();
+    _pageCtrl = TextEditingController(text: '${widget.currentPage}');
     _headerH.addListener(() => _sync(_headerH, _bodyH));
     _bodyH.addListener(() => _sync(_bodyH, _headerH));
   }
@@ -101,10 +154,79 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 列集合变了（数量或 key 序列不同，如报表切 docType）→ 清手动标记、全量重算列宽。
+    if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
+      _manualResized.clear();
+      _widthsDirty = true;
+    } else if (oldWidget.items != widget.items) {
+      // 数据变了（翻页/筛选/排序/加载更多）→ 标记重算；已手动调整的列在 _ensureWidths 保留。
+      _widthsDirty = true;
+    }
     // 翻页（currentPage 变化）→ 表体竖向回顶，从第一条开始。
     if (oldWidget.currentPage != widget.currentPage && _bodyV.hasClients) {
       _bodyV.jumpTo(0);
     }
+    // 外部翻页后，跳页输入框同步回当前页（用户未提交的输入被放弃，符合直觉）。
+    if (oldWidget.currentPage != widget.currentPage) {
+      _pageCtrl.text = '${widget.currentPage}';
+    }
+  }
+
+  /// 两列集合的 key 序列是否一致（用于判定是否需要重置/重算列宽）。
+  bool _sameColumnKeys(List<MasterColumnDef<T>> a, List<MasterColumnDef<T>> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].key != b[i].key) return false;
+    }
+    return true;
+  }
+
+  /// 按当前列与已加载数据自动测算各列宽度：取表头标签与单元格值的最大文本宽，加内边距/图标富余。
+  /// 用户已手动拖拽的列（[_manualResized]）保留原宽度不重算。仅在 [_widthsDirty] 时执行。
+  void _ensureWidths(BuildContext context) {
+    if (!_widthsDirty) return;
+    _widthsDirty = false;
+    final theme = Theme.of(context);
+    final headerStyle =
+        (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(fontWeight: FontWeight.w700);
+    final bodyStyle = theme.textTheme.bodySmall ?? const TextStyle();
+    final next =
+        List<double>.filled(widget.columns.length, _minColWidth, growable: true);
+    final sampleCount = widget.items.length < _autoFitSampleSize
+        ? widget.items.length
+        : _autoFitSampleSize;
+    for (var i = 0; i < widget.columns.length; i++) {
+      if (_manualResized.contains(i) && i < _widths.length) {
+        next[i] = _widths[i];
+        continue;
+      }
+      final def = widget.columns[i];
+      double w = _measureText(def.label, headerStyle);
+      for (var r = 0; r < sampleCount; r++) {
+        final tw = _measureText(def.value(widget.items[r]) ?? '', bodyStyle);
+        if (tw > w) w = tw;
+      }
+      next[i] = (w +
+              _cellPadX * 2 +
+              _headerIconAllowance +
+              (def.sortable ? _sortIconAllowance : 0) +
+              _autoFitBuffer)
+          .clamp(_minColWidth, _maxColWidth);
+    }
+    _widths = next;
+  }
+
+  /// 测量单行文本渲染宽度（TextPainter，maxLines:1）。测完 dispose 防泄漏。
+  double _measureText(String text, TextStyle style) {
+    if (text.isEmpty) return 0;
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    final w = tp.width;
+    tp.dispose();
+    return w;
   }
 
   @override
@@ -115,7 +237,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     super.dispose();
   }
 
-  double get _totalWidth => widget.columns.fold(0.0, (s, c) => s + c.width);
+  double get _totalWidth => _widths.fold(0.0, (s, w) => s + w);
 
   @override
   Widget build(BuildContext context) {
@@ -149,6 +271,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         ),
       );
     }
+    _ensureWidths(context);
     final total = _totalWidth;
     return Column(
       children: [
@@ -209,43 +332,93 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   Widget _buildHeaderRow(ThemeData theme) {
     return Row(
       children: [
-        for (final col in widget.columns)
+        for (var i = 0; i < widget.columns.length; i++)
           SizedBox(
-            width: col.width,
-            child: _FilterCell(
-              label: col.label,
-              buckets: widget.facets[col.key] ?? const [],
-              nullCount: widget.nullCounts[col.key] ?? 0,
-              selected: widget.filters[col.key],
-              onChanged: (v) => widget.onFilterChanged(col.key, v),
+            width: _widths[i],
+            child: Stack(
+              children: [
+                _FilterCell(
+                  label: widget.columns[i].label,
+                  sortKey: widget.columns[i].key,
+                  type: widget.columns[i].type,
+                  sortable: widget.columns[i].sortable,
+                  sortActive: widget.sortColumn == widget.columns[i].key,
+                  sortAscending: widget.sortAscending,
+                  onSort: widget.onSortChange,
+                  buckets: widget.facets[widget.columns[i].key] ?? const [],
+                  nullCount: widget.nullCounts[widget.columns[i].key] ?? 0,
+                  selected: widget.filters[widget.columns[i].key],
+                  onChanged: (v) =>
+                      widget.onFilterChanged(widget.columns[i].key, v),
+                ),
+                // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的 8px 命中区。
+                // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
+                // 桌面端悬停显示 resize 光标作为可调提示。
+                Positioned(
+                  right: -_gripHalf,
+                  top: 0,
+                  bottom: 0,
+                  width: _gripHalf * 2,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onHorizontalDragUpdate: (d) => _resizeColumn(i, d.delta.dx),
+                    child: const MouseRegion(
+                      cursor: SystemMouseCursors.resizeColumn,
+                      child: SizedBox.expand(),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
       ],
     );
   }
 
+  /// 拖拽改第 [index] 列宽：按本次横向增量更新，下限 [_minColWidth] 防拖没；
+  /// 标记该列已手动调整，后续数据刷新不再自动重算其宽度。
+  void _resizeColumn(int index, double dx) {
+    final next = _widths[index] + dx;
+    if (next < _minColWidth) return;
+    setState(() {
+      _widths[index] = next;
+      _manualResized.add(index);
+    });
+  }
+
   Widget _buildDataRow(ThemeData theme, T item) {
+    final selected = identical(item, _selectedItem);
     return InkWell(
-      onTap: () => widget.onRowTap(item),
-      child: Row(
-        children: [
-          for (final col in widget.columns)
-            SizedBox(
-              width: col.width,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s12,
-                  vertical: UtenSpacing.s8,
-                ),
-                child: Text(
-                  col.value(item) ?? '',
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+      onTap: () {
+        // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。
+        // 同时照常触发调用方 onRowTap（详情/跳源头单据等），不抢占既有交互。
+        setState(() => _selectedItem = item);
+        widget.onRowTap(item);
+      },
+      child: ColoredBox(
+        color: selected
+            ? theme.colorScheme.primary.withValues(alpha: 0.10)
+            : Colors.transparent,
+        child: Row(
+          children: [
+            for (var i = 0; i < widget.columns.length; i++)
+              SizedBox(
+                width: _widths[i],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s12,
+                    vertical: UtenSpacing.s8,
+                  ),
+                  child: Text(
+                    widget.columns[i].value(item) ?? '',
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -267,11 +440,46 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
             label: const Text('上一页'), // TODO(l10n): 补 arb
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-            child: Text(
-              '${widget.currentPage} / ${widget.totalPages}', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 54,
+                  child: TextFormField(
+                    controller: _pageCtrl,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    // 填数字回车跳页：非法→回当前页；越界→钳制到 [1,totalPages] 并回填。
+                    onFieldSubmitted: (v) {
+                      final p = int.tryParse(v.trim());
+                      final target = p == null
+                          ? widget.currentPage
+                          : p.clamp(1, widget.totalPages);
+                      if (target != widget.currentPage) {
+                        widget.onPageChange?.call(target);
+                      } else {
+                        _pageCtrl.text = '$target';
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '/ ${widget.totalPages}', // TODO(l10n): 补 arb
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
             ),
           ),
           TextButton.icon(
@@ -296,6 +504,12 @@ class _FilterCell extends StatefulWidget {
     required this.nullCount,
     required this.selected,
     required this.onChanged,
+    this.sortKey,
+    this.type = 'text',
+    this.sortable = false,
+    this.sortActive = false,
+    this.sortAscending = true,
+    this.onSort,
   });
 
   final String label;
@@ -303,6 +517,15 @@ class _FilterCell extends StatefulWidget {
   final int nullCount;
   final String? selected;
   final ValueChanged<String?> onChanged;
+
+  /// 排序相关（与 MasterColumnDef 对齐）：sortKey=列 key，type 决定菜单文案，
+  /// sortable 控制是否可排序，sortActive/sortAscending 反映当前排序态，onSort 应用排序。
+  final String? sortKey;
+  final String type;
+  final bool sortable;
+  final bool sortActive;
+  final bool sortAscending;
+  final void Function(String? column, bool ascending)? onSort;
 
   @override
   State<_FilterCell> createState() => _FilterCellState();
@@ -348,10 +571,10 @@ class _FilterCellState extends State<_FilterCell> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final s = _sanitized;
-    // 无 facets 的列（如采购/仓库单据列表）→ 纯标签列头，不渲染下拉箭头/菜单。
+    final hasFacets = widget.buckets.isNotEmpty || widget.nullCount > 0;
+    // 无 facets 且不可排序的列（如部分单据列表的纯标签列头）→ 纯标签，不渲染下拉/排序。
     // 这样文档页可直接复用 MasterDataTableView，与基础资料布局完全一致。
-    final interactive =
-        widget.buckets.isNotEmpty || widget.nullCount > 0 || s != null;
+    final interactive = hasFacets || s != null || widget.sortable;
     if (!interactive) {
       return Container(
         height: 44,
@@ -369,6 +592,7 @@ class _FilterCellState extends State<_FilterCell> {
       );
     }
     final filtered = s != null;
+    final highlighted = filtered || widget.sortActive;
     // 选中值用对应桶的展示名（颜色/单位 legacy id → 名称）；找不到回落原值。
     String display;
     if (s == null) {
@@ -393,7 +617,7 @@ class _FilterCellState extends State<_FilterCell> {
         child: Container(
           height: 44,
           padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-          color: filtered ? theme.colorScheme.primaryContainer : null,
+          color: highlighted ? theme.colorScheme.primaryContainer : null,
           child: Row(
             children: [
               Expanded(
@@ -402,20 +626,36 @@ class _FilterCellState extends State<_FilterCell> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: filtered ? FontWeight.w700 : FontWeight.w600,
-                    color: filtered
+                    fontWeight: highlighted ? FontWeight.w700 : FontWeight.w600,
+                    color: highlighted
                         ? theme.colorScheme.primary
                         : theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
-              Icon(
-                Icons.arrow_drop_down_rounded,
-                size: 18,
-                color: filtered
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
+              // 排序指示：当前排序列显 ▲/▼（主色）；可排序但非当前显淡 sort 图标提示可点。
+              if (widget.sortable)
+                Icon(
+                  widget.sortActive
+                      ? (widget.sortAscending
+                          ? Icons.arrow_upward_rounded
+                          : Icons.arrow_downward_rounded)
+                      : Icons.sort_rounded,
+                  size: 16,
+                  color: widget.sortActive
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              if (widget.sortable && hasFacets) const SizedBox(width: UtenSpacing.s4),
+              // 筛选下拉箭头（仅有 facets 的列才显示）。
+              if (hasFacets)
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 18,
+                  color: highlighted
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
             ],
           ),
         ),
@@ -425,9 +665,19 @@ class _FilterCellState extends State<_FilterCell> {
 
   /// 菜单：锚定列头下方（CompositedTransformFollower）、限高 360、ListView 竖向滚动。
   /// TapRegion 捕获菜单外的点击 → 关闭。
+  /// 排序菜单文案：日期=从远到近/从近到远；数值(金额/数量)=从小到大/从大到小。
+  String get _sortAscLabel => widget.type == 'date' ? '从远到近' : '从小到大';
+  String get _sortDescLabel => widget.type == 'date' ? '从近到远' : '从大到小';
+
+  void _sortSelect(String? column, bool ascending) {
+    widget.onSort?.call(column, ascending);
+    _close();
+  }
+
   Widget _buildOverlay(BuildContext ctx) {
     final theme = Theme.of(ctx);
     final sanitized = _sanitized;
+    final hasFacets = widget.buckets.isNotEmpty || widget.nullCount > 0;
     return Stack(
       children: [
         // 点菜单外空白关闭（兜底；TapRegion 是主机制）。
@@ -454,30 +704,56 @@ class _FilterCellState extends State<_FilterCell> {
                   shrinkWrap: true,
                   padding: EdgeInsets.zero,
                   children: <Widget>[
-                    _menuItem(
-                      ctx,
-                      label: '所有', // TODO(l10n): 补 arb
-                      value: null,
-                      isSelected: sanitized == null,
-                      theme: theme,
-                    ),
-                    if (widget.nullCount > 0)
+                    if (widget.sortable) ...[
                       _menuItem(
                         ctx,
-                        label: '空值 (${widget.nullCount})', // TODO(l10n): 补 arb
-                        value: kMasterFilterNullValue,
-                        isSelected: sanitized == kMasterFilterNullValue,
+                        label: _sortAscLabel,
+                        isSelected: widget.sortActive && widget.sortAscending,
+                        onTap: () => _sortSelect(widget.sortKey, true),
                         theme: theme,
                       ),
-                    const Divider(height: 1, thickness: 1),
-                    for (final b in widget.buckets)
                       _menuItem(
                         ctx,
-                        label: '${b.display} (${b.count})',
-                        value: b.value,
-                        isSelected: sanitized == b.value,
+                        label: _sortDescLabel,
+                        isSelected: widget.sortActive && !widget.sortAscending,
+                        onTap: () => _sortSelect(widget.sortKey, false),
                         theme: theme,
                       ),
+                      _menuItem(
+                        ctx,
+                        label: '取消排序', // TODO(l10n): 补 arb
+                        isSelected: !widget.sortActive,
+                        onTap: () => _sortSelect(null, true),
+                        theme: theme,
+                      ),
+                      if (hasFacets) const Divider(height: 1, thickness: 1),
+                    ],
+                    if (hasFacets) ...[
+                      _menuItem(
+                        ctx,
+                        label: '所有', // TODO(l10n): 补 arb
+                        isSelected: sanitized == null,
+                        onTap: () => _select(null),
+                        theme: theme,
+                      ),
+                      if (widget.nullCount > 0)
+                        _menuItem(
+                          ctx,
+                          label: '空值 (${widget.nullCount})', // TODO(l10n): 补 arb
+                          isSelected: sanitized == kMasterFilterNullValue,
+                          onTap: () => _select(kMasterFilterNullValue),
+                          theme: theme,
+                        ),
+                      const Divider(height: 1, thickness: 1),
+                      for (final b in widget.buckets)
+                        _menuItem(
+                          ctx,
+                          label: '${b.display} (${b.count})',
+                          isSelected: sanitized == b.value,
+                          onTap: () => _select(b.value),
+                          theme: theme,
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -491,12 +767,12 @@ class _FilterCellState extends State<_FilterCell> {
   Widget _menuItem(
     BuildContext ctx, {
     required String label,
-    required String? value,
     required bool isSelected,
+    required VoidCallback onTap,
     required ThemeData theme,
   }) {
     return InkWell(
-      onTap: () => _select(value),
+      onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 300),
         padding: const EdgeInsets.symmetric(

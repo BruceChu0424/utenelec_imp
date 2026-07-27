@@ -55,7 +55,7 @@ CREATE TEMP TABLE item_stage (
 
 CREATE TEMP TABLE sg_stage (
     stock_legacy int, goods_legacy int, color_legacy int, year int,
-    qty numeric(18,4), total numeric(18,2));
+    qty numeric(18,4), fact_qty numeric(18,4), total numeric(18,2));
 
 -- ======================== 载入全部 8 类主表（accumulate，标 doc_type） ========================
 \copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_transfer_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
@@ -190,20 +190,29 @@ WHERE w.bill_type = 'WDRAW' AND w.legacy_id = s.legacy_id
   AND s.upstream_legacy_id IS NOT NULL AND s.upstream_legacy_id <> 0
   AND i.legacy_id = s.upstream_legacy_id AND i.bill_type = 'DRAW';
 
--- ======================== 重建库存余额（StockGoods.QTY → stock_balances） ========================
--- StockGoods 是老库权威当前余额（含采购+仓库全部效果），按 仓+货+色 聚合为期初余额。
+-- ======================== 重建库存余额（StockGoods → stock_balances） ========================
+-- StockGoods 按「仓+货+色+年+库位」分行：QTY=年初余额(上年结转)、FactQTY=年末余额。
+-- 当前余额 = 最新年(MAX year)的 FactQTY（同年多库位先 SUM，再取最新年；COALESCE 兜底 QTY）。
+-- 旧实现误 SUM(所有年 QTY) → 跨年重复累加致库存虚高（货品54833: SUM=262204，实=最新年 FactQTY 182515）。
 INSERT INTO stock_balances (warehouse_id, goods_id, color_id, qty, amount_local, last_movement_date)
-SELECT warehouse_id, goods_id, color_id, SUM(qty), SUM(total), now()
+SELECT warehouse_id, goods_id, color_id, fact_qty, total, now()
 FROM (
-    SELECT (SELECT id FROM warehouses WHERE legacy_id = g.stock_legacy) AS warehouse_id,
-           (SELECT id FROM goods      WHERE legacy_id = g.goods_legacy) AS goods_id,
-           (SELECT id FROM colors     WHERE legacy_id = g.color_legacy) AS color_id,
-           g.qty, g.total
-    FROM sg_stage g
-) m
-WHERE warehouse_id IS NOT NULL AND goods_id IS NOT NULL
-GROUP BY 1, 2, 3
-HAVING SUM(qty) <> 0
+    SELECT DISTINCT ON (warehouse_id, goods_id, color_id)
+           warehouse_id, goods_id, color_id, fact_qty, total
+    FROM (
+        SELECT (SELECT id FROM warehouses WHERE legacy_id = g.stock_legacy) AS warehouse_id,
+               (SELECT id FROM goods      WHERE legacy_id = g.goods_legacy) AS goods_id,
+               (SELECT id FROM colors     WHERE legacy_id = g.color_legacy) AS color_id,
+               g.year,
+               SUM(COALESCE(g.fact_qty, g.qty)) AS fact_qty,
+               SUM(g.total) AS total
+        FROM sg_stage g
+        GROUP BY 1, 2, 3, g.year
+    ) yr
+    WHERE warehouse_id IS NOT NULL AND goods_id IS NOT NULL
+    ORDER BY warehouse_id, goods_id, color_id, yr.year DESC
+) latest
+WHERE fact_qty <> 0
 ON CONFLICT (warehouse_id, goods_id, color_id) DO UPDATE
 SET qty = EXCLUDED.qty, amount_local = EXCLUDED.amount_local, last_movement_date = now(), updated_at = now();
 

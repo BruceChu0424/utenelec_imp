@@ -42,6 +42,8 @@ class SalesRepository {
     int page = 1,
     int size = 20,
     SalesDocFilter filter = const SalesDocFilter(),
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -53,6 +55,8 @@ class SalesRepository {
       if (filter.status != null) 'status': filter.status,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(_base, query: query);
     return PagedResult.fromJson(json, SalesDocListItem.fromJson);

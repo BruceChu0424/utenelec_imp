@@ -8,6 +8,8 @@
 >
 > 全局机制（权限 / 视角选择器 / 审批流）见 [全局机制](../05-架构/全局机制.md)。
 > 页面模板见 [页面总览 §六](页面总览.md)。
+>
+> 📍 **现状（2026-07-27）**：本组 8 页**全链路接真实后端**（Spring Boot 3 + PostgreSQL + Flyway）——部门树 CRUD、员工入职/列表/详情/编辑、入离职向导、工资条生成、通知发布均落地，详见 [README](../../README.md)「项目当前阶段」。下方"对照清单"中**绝大部分项已完成**。
 
 ---
 
@@ -127,14 +129,15 @@ flowchart LR
 
 ---
 
-## 九、对照清单（本组页面开工前）
+## 九、对照清单（落地情况）
 
-- [ ] Employee / Department / Position / EmploymentHistory 实体已细化入实体字典
-- [ ] `UtenDataTable` / `UtenMasterDetail` / `UtenTreeView` / `UtenWizard` 已实现
-- [ ] 路由 `/employee` `/department` `/payroll/generate` `/notice/publish` 接入 + 权限守卫
-- [ ] 视角选择器在员工档案/工资条生成页生效
-- [ ] 工资条生成接入审批流（提交 → 财务审核 → 发布）
+- [x] Employee / Department / Position / EmploymentHistory 实体已落库（PostgreSQL，Flyway V1–V40+）
+- [x] `UtenDataTable` / `UtenMasterDetail` / `UtenTreeView` / `UtenWizard` 已实现（Uten 组件库）
+- [x] 路由 `/employee` `/department` `/payroll/generate` `/notice/publish` 接入 + 权限点守卫（[ADR-011](../99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）
+- [x] 工资条生成接入审批流（提交 → 财务审核 → 发布）
+- [x] **全链路真实后端**：Argon2id 密码、JWT 轮换、pgcrypto 字段加密、触发器审计、按权限点脱敏（[10-安全准则](../00-项目准则/10-安全准则.md)）
+- [ ] 视角选择器（`ViewContextProvider`）随业务页落地铺开
 
 ---
 
-**最后更新**：2026-07-22 · **状态**：总览定稿，逐页文档推进中
+**最后更新**：2026-07-27 · **状态**：8 页全链路接真实后端，UX 总览作为页面文档索引保留

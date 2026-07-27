@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentDetail;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentItemDto;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentItemLine;
@@ -27,6 +28,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -47,13 +49,16 @@ public class SalesOtherShipmentService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+
     private final SalesOtherShipmentRepository shipmentRepo;
     private final SalesOtherShipmentItemRepository itemRepo;
     private final StockService stockService;
     private final TxSessionVars tx;
 
     @Transactional(readOnly = true)
-    public PageResponse<OtherShipmentListItem> list(OtherShipmentQueryFilter f, int page, int size) {
+    public PageResponse<OtherShipmentListItem> list(OtherShipmentQueryFilter f, int page, int size, String sort, String order) {
         Specification<SalesOtherShipment> spec = (Root<SalesOtherShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -69,7 +74,8 @@ public class SalesOtherShipmentService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOtherShipment> p = shipmentRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }

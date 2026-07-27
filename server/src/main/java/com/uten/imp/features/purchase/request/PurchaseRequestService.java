@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.purchase.request.dto.RequestDetail;
 import com.uten.imp.features.purchase.request.dto.RequestItemDto;
 import com.uten.imp.features.purchase.request.dto.RequestItemLine;
@@ -27,6 +28,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -47,7 +49,7 @@ public class PurchaseRequestService {
     private final SecurityContextCurrentUser currentUser;
 
     @Transactional(readOnly = true)
-    public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size) {
+    public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
         Specification<PurchaseRequest> spec = (Root<PurchaseRequest> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -61,7 +63,10 @@ public class PurchaseRequestService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate"));
+        // 列排序：sort 命中白名单(日期/金额)才按实体属性排序，否则默认 billDate DESC。
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
+                        Map.of("billDate", "billDate", "total", "totalLocal")));
         Page<PurchaseRequest> p = requestRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }

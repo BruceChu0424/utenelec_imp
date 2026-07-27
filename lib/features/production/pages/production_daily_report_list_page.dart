@@ -39,6 +39,9 @@ class _ProductionDailyReportListPageState
   String? _error;
   String _keyword = '';
   int? _statusFilter;
+  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
+  String? _sortKey;
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -66,6 +69,8 @@ class _ProductionDailyReportListPageState
               keyword: _keyword.trim().isEmpty ? null : _keyword,
               status: _statusFilter,
             ),
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -92,6 +97,15 @@ class _ProductionDailyReportListPageState
     _load(1);
   }
 
+  /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _load(1);
+  }
+
   List<MasterColumnDef<ProductionDailyReportListItem>> _columns(
           MasterNameService names) =>
       <MasterColumnDef<ProductionDailyReportListItem>>[
@@ -101,6 +115,8 @@ class _ProductionDailyReportListPageState
             key: 'billDate',
             label: '日期',
             width: 120,
+            type: 'date',
+            sortable: true,
             value: (it) => (it.billDate ?? '').substring(0, 10)),
         MasterColumnDef(
             key: 'warehouse',
@@ -201,6 +217,9 @@ class _ProductionDailyReportListPageState
                     nullCounts: const {},
                     filters: const {},
                     onFilterChanged: (_, _) {},
+                    sortColumn: _sortKey,
+                    sortAscending: _sortAsc,
+                    onSortChange: _onSortChange,
                     onRowTap: (it) =>
                         context.push('/production/daily-reports/${it.id}'),
                     isLoading: _loading && _page == null,

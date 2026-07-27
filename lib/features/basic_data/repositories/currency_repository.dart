@@ -15,6 +15,8 @@ abstract interface class CurrencyRepository {
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
   });
 
   Future<CurrencyFacets> facets();
@@ -41,11 +43,15 @@ class DioCurrencyRepository implements CurrencyRepository {
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
       if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     };
     final nullFields = <String>[];
     filters.forEach((k, v) {

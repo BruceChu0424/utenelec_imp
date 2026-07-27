@@ -9,12 +9,14 @@
 //   名称（供应商/仓库/货品/颜色/单位/类别/人员）服务端 JOIN 出；前端按 columns 动态建列。
 //
 // UI：左筛选侧栏（单据类型[非催料] + 日期范围 + 搜索 + 查询）+ 右 Excel 风格表格（标题行每列可筛 + 横滚 + 翻页）。
-// 默认日期 2018 至今（老库采购数据跨多年，默认"今年"会滤掉历史）。
+// 默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认避免一进拉全量；firstDate 仍 2010 可手选更早）。
 // 列筛选（供应商/仓库/是否审核/结帐方式…）走表头 autofilter（facets），左栏只放公共过滤。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -26,25 +28,11 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../report/shared/report_cell.dart';
+import '../../report/shared/report_data.dart';
+import '../../report/shared/report_date_range.dart';
+import '../../report/shared/report_sort.dart';
 import '../config/purchase_report_config.dart';
-
-class _Col {
-  const _Col(this.key, this.label, this.type, this.width);
-  final String key;
-  final String label;
-  final String type;
-  final double? width;
-}
-
-class _ReportData {
-  const _ReportData(this.columns, this.rows, this.facets, this.page, this.totalPages, this.total);
-  final List<_Col> columns;
-  final List<Map<String, dynamic>> rows;
-  final Map<String, List<MasterFacetBucket>> facets;
-  final int page;
-  final int totalPages;
-  final int total;
-}
 
 class PurchaseReportTablePage extends ConsumerStatefulWidget {
   const PurchaseReportTablePage({required this.kind, super.key});
@@ -58,14 +46,18 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
   late final PurchaseReportKind _kind = widget.kind;
   // 默认单据类型：订货（用户可在左栏切换；催料页不显示切换）。
   PurchaseReportDocType _docType = PurchaseReportDocType.order;
-  DateTime _from = DateTime(2018);
+  DateTime _from = defaultReportFrom();
   DateTime _to = DateTime.now();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
   final Map<String, String> _filters = {};
 
-  _ReportData? _data;
+  // 列排序态：_sortKey=当前排序列 key（null=不排序）；_sortAsc=升序。
+  String? _sortKey;
+  bool _sortAsc = true;
+
+  ReportData? _data;
   bool _loading = false;
 
   @override
@@ -85,41 +77,15 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
         'page': _page,
         'size': _size,
         for (final e in _filters.entries) 'f.${e.key}': e.value,
+        ...sortQueryParams(_sortKey, _sortAsc),
       };
       final path = _kind.isStandalone
           ? '/purchase/reports/${_kind.endpoint}'
           : '/purchase/reports/${_docType.code}/${_kind.endpoint}';
       final json = await api.get(path, query: query);
-      final cols = (json['columns'] as List? ?? const [])
-          .map((c) => _Col(
-                (c as Map)['key']?.toString() ?? '',
-                c['label']?.toString() ?? '',
-                c['type']?.toString() ?? 'text',
-                (c['width'] as num?)?.toDouble(),
-              ))
-          .toList();
-      final rows = (json['rows'] as List? ?? const []).cast<Map<String, dynamic>>();
-      final facets = <String, List<MasterFacetBucket>>{};
-      final fjson = json['facets'];
-      if (fjson is Map) {
-        fjson.forEach((k, v) {
-          if (v is List) {
-            facets[k.toString()] = v
-                .map((b) => MasterFacetBucket.fromJson(b as Map<String, dynamic>))
-                .toList();
-          }
-        });
-      }
       if (!mounted) return;
       setState(() {
-        _data = _ReportData(
-          cols,
-          rows,
-          facets,
-          (json['page'] as num?)?.toInt() ?? _page,
-          (json['totalPages'] as num?)?.toInt() ?? 1,
-          (json['total'] as num?)?.toInt() ?? 0,
-        );
+        _data = parseReportResponse(json, _page);
         _loading = false;
       });
     } catch (_) {
@@ -132,23 +98,14 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  String? _cell(_Col col, Map<String, dynamic> row) {
-    final v = row[col.key];
-    if (v == null) return null;
-    switch (col.type) {
-      case 'money':
-      case 'number':
-        final n = v is num ? v : num.tryParse('$v');
-        return n == null ? '$v' : n.toStringAsFixed(2);
-      case 'bool':
-        final b = v is bool ? v : '$v' == 'true';
-        return b ? '是' : '否';
-      case 'date':
-        final s = '$v';
-        return s.length >= 10 ? s.substring(0, 10) : s;
-      default:
-        return '$v';
-    }
+  /// 表头排序回调：column=null 取消排序回到默认；否则按该列升/降序重新请求后端。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+      _page = 1;
+    });
+    _load();
   }
 
   void _onFilterChanged(String key, String? value) {
@@ -161,6 +118,16 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
       _page = 1;
     });
     _load();
+  }
+
+  /// 行点击跳源头单据编辑页：明细/汇总/催料每行都带隐藏的 __srcId（= 单据头 id），
+  /// push 编辑页 → pop 回报表（保活筛选/分页状态）。汇总跨单据聚合的无 __srcId 行不响应。
+  void _onRowTap(Map<String, dynamic> row) {
+    final srcId = row['__srcId']?.toString();
+    if (srcId == null || srcId.isEmpty) return;
+    // 催料源于订货单；其余按当前单据类型 code + s（request→requests …）。
+    final seg = _kind.isStandalone ? 'orders' : '${_docType.code}s';
+    context.push(RoutePath.purchaseDocEdit(seg, srcId));
   }
 
   void _changeDocType(PurchaseReportDocType t) {
@@ -179,6 +146,19 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
       ? _kind.label
       : '${_docType.label}${_kind.shortLabel}报表';
 
+  /// 导出报表 key（与 GET 路径一致：催料=endpoint，其余=docType/endpoint）。
+  String get _exportReport =>
+      _kind.isStandalone ? _kind.endpoint : '${_docType.code}/${_kind.endpoint}';
+
+  /// 导出查询参数（过滤+排序，与 _load 一致，不含 page/size）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        'dateFrom': _fmt(_from),
+        'dateTo': _fmt(_to),
+        if (_keyword.isNotEmpty) 'keyword': _keyword,
+        for (final e in _filters.entries) 'f.${e.key}': e.value,
+        ...sortQueryParams(_sortKey, _sortAsc),
+      };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -186,6 +166,14 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
       appBar: UtenAppBar(
         title: _title,
         leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
+        actions: [
+          UtenExportButton(
+            endpoint: '/purchase/reports/export',
+            report: _exportReport,
+            queryParams: _exportQuery,
+            filename: '采购$_title',
+          ),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -336,7 +324,9 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
               key: c.key,
               label: c.label,
               width: (c.width ?? 120).toDouble(),
-              value: (row) => _cell(c, row),
+              type: c.type,
+              sortable: isSortableReportType(c.type),
+              value: (row) => formatReportCell(c, row),
             ))
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
@@ -346,7 +336,10 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
       nullCounts: const {},
       filters: {for (final e in _filters.entries) e.key: e.value},
       onFilterChanged: _onFilterChanged,
-      onRowTap: (_) {},
+      sortColumn: _sortKey,
+      sortAscending: _sortAsc,
+      onSortChange: _onSortChange,
+      onRowTap: _onRowTap,
       isLoading: _loading,
       emptyMessage: (_kind.isStandalone || _kind.isDetail) ? '暂无明细数据' : '暂无汇总数据',
       currentPage: data.page,

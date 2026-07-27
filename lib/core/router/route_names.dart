@@ -76,6 +76,10 @@ abstract final class RouteName {
 
   // 系统管理（超级管理员）
   static const String adminPermissions = '/admin/permissions';
+  // 审计日志（导出下载记录 / 登录 / 改密等全员审计；超管只读）
+  static const String adminAuditLogs = '/admin/audit-logs';
+  // 系统设置（安全/业务策略阈值；超管 user:manage，改设置二次密码确认）
+  static const String adminSystemSettings = '/admin/system-settings';
 
   // 财税部新模块（页面未接入前由占位页承接，权限点已种子化）
   static const String financeCustomers = '/finance/customers';

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -19,6 +20,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/currency_node.dart';
+import '../models/master_facet.dart';
 import '../repositories/currency_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
@@ -41,6 +43,10 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   String _keyword = '';
   CurrencyFacets? _facets;
   bool _detailLoading = false;
+
+  // 列排序态（金额/数量/日期列）：null = 默认顺序（code ASC）。
+  String? _sortKey;
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -66,6 +72,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -115,6 +123,14 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   void _onKeywordChanged(String kw) {
     setState(() => _keyword = kw);
     _loadCurrencies(1);
+  }
+
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _loadCurrencies(1); // 排序变化回第 1 页重载
   }
 
   static const _fields = [
@@ -291,6 +307,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
         key: 'exchangeRate',
         label: '参考汇率',
         width: 140,
+        type: 'money',
+        sortable: true,
         value: (c) => c.exchangeRate?.toStringAsFixed(4)),
     MasterColumnDef(
         key: 'status', label: '状态', width: 100, value: (c) => c.status),
@@ -299,6 +317,14 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   Future<void> _refresh() async {
     await Future.wait([_loadCurrencies(1), _loadFacets()]);
   }
+
+  /// 导出查询参数（与 _loadCurrencies 一致，不含 page/size）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+        ...masterFilterQueryParams(_filters),
+        if (_sortKey != null) 'sort': _sortKey,
+        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +337,13 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
+          UtenExportButton(
+            endpoint: '/master/currencies/export',
+            report: '',
+            queryParams: _exportQuery,
+            filename: '币种资料',
+            label: '导出币种',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
@@ -368,6 +401,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                     filters: _filters,
                     onFilterChanged: _onFilterChanged,
                     onRowTap: (c) => _showDetail(c.id),
+                    sortColumn: _sortKey,
+                    sortAscending: _sortAsc,
+                    onSortChange: _onSortChange,
                     isLoading: _loading && _page == null,
                     loadingMore: _loading && _page != null,
                     error: _error,

@@ -24,3 +24,30 @@ class MasterFacetBucket {
 /// 空值筛选哨兵：filters 中某字段值等于它表示"筛该字段为空的记录"。
 /// repository 据此把字段名收集进 nullFields 请求参数。
 const String kMasterFilterNullValue = '__null__';
+
+/// 把主档页的 [filters]（key→value，value 可能为 [kMasterFilterNullValue]）
+/// 拆成导出/列表用的 query 参数：常规值 → 字段=值；哨兵值 → 收集进 nullFields。
+///
+/// 用于 UtenExportButton.queryParams（与列表 repository.list 构造一致，不含 page/size）：
+/// ```
+/// final q = <String, dynamic>{
+///   'categoryId': nodeId,
+///   if (kw != null) 'keyword': kw,
+///   ...masterFilterQueryParams(_filters),
+///   if (_sortKey != null) 'sort': _sortKey,
+///   if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+/// };
+/// ```
+Map<String, dynamic> masterFilterQueryParams(Map<String, String?> filters) {
+  final query = <String, dynamic>{};
+  final nullFields = <String>[];
+  filters.forEach((k, v) {
+    if (v == kMasterFilterNullValue) {
+      nullFields.add(k);
+    } else {
+      query[k] = v;
+    }
+  });
+  if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
+  return query;
+}

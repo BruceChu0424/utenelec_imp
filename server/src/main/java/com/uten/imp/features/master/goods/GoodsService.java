@@ -1,9 +1,12 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.FacetBucket;
@@ -67,6 +70,9 @@ public class GoodsService {
             "series", "model", "material", "code", "name", "spec",
             "cNumber", "requireRemark", "colorLegacyId", "unitLegacyId");
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量/日期列；命中才排序，否则默认 id ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price");
+
     /** facet 截断阈值（高基数列如 name 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
@@ -94,7 +100,7 @@ public class GoodsService {
     // ===== 列表（Specification 动态筛选） =====
 
     @Transactional(readOnly = true)
-    public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size) {
+    public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         Specification<Goods> spec = (Root<Goods> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                      CriteriaBuilder cb) -> {
@@ -129,7 +135,8 @@ public class GoodsService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
         Page<Goods> p = repo.findAll(spec, pageable);
         List<Goods> content = p.getContent();
         // 批量解析颜色/单位名（按本页出现的 legacy_id 一次性查 colors/units，避免 N+1）。
@@ -172,6 +179,60 @@ public class GoodsService {
         return unitRepo.findByLegacyIdInAndDeletedFalse(distinct).stream()
                 .filter(u -> u.getLegacyId() != null)
                 .collect(Collectors.toMap(Unit::getLegacyId, Unit::getName, (a, b) -> a));
+    }
+
+    // ===== 加密 Excel 导出（服务端权威列定义） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 列定义服务端权威（不信任前端传列）；过滤/排序走 TableSort 白名单（list 已接 sort/order）。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(GoodsQueryFilter f, String sort, String order) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("series", "系列", ExportColumn.TEXT),
+                new ExportColumn("model", "型号", ExportColumn.TEXT),
+                new ExportColumn("name", "货品名称", ExportColumn.TEXT),
+                new ExportColumn("spec", "规格", ExportColumn.TEXT),
+                new ExportColumn("material", "材质", ExportColumn.TEXT),
+                new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT),
+                new ExportColumn("requireRemark", "备注", ExportColumn.TEXT),
+                new ExportColumn("colorName", "主颜色", ExportColumn.TEXT),
+                new ExportColumn("unitName", "单位", ExportColumn.TEXT),
+                new ExportColumn("price", "价格", ExportColumn.MONEY),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int pageSize = 100;
+        int maxPages = 1000; // 10 万行硬上限，防 OOM
+        long total = -1;
+        for (int p = 1; p <= maxPages; p++) {
+            PageResponse<GoodsListItem> page = list(f, p, pageSize, sort, order);
+            if (total < 0) total = page.getTotal();
+            for (GoodsListItem g : page.getItems()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("code", g.getCode());
+                row.put("series", g.getSeries());
+                row.put("model", g.getModel());
+                row.put("name", g.getName());
+                row.put("spec", g.getSpec());
+                row.put("material", g.getMaterial());
+                row.put("cNumber", g.getCNumber());
+                row.put("requireRemark", g.getRequireRemark());
+                row.put("colorName", g.getColorName());
+                row.put("unitName", g.getUnitName());
+                row.put("price", g.getPrice());
+                row.put("status", g.getStatus());
+                rows.add(row);
+            }
+            if (page.getItems().size() < pageSize) break;   // 末页
+            if (rows.size() >= total) break;                // 已达 total
+            if (p == maxPages && rows.size() < total) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
+            }
+        }
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（子树范围内各字段 distinct + 空值计数） =====

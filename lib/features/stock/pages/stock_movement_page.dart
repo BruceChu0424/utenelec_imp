@@ -32,6 +32,9 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
   bool _loading = false;
   String? _error;
   String? _warehouseId;
+  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 transactionDate DESC）；_sortAsc=升序。
+  String? _sortKey;
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -52,6 +55,8 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
       final r = await ref.read(stockQueryRepositoryProvider).movements(
             page: page,
             warehouseId: _warehouseId,
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       final goodsIds =
           r.items.map((e) => e.goodsId).whereType<String>().toSet();
@@ -73,6 +78,8 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
           key: 'date',
           label: '日期', // TODO(l10n): 补 arb
           width: 120,
+          type: 'date',
+          sortable: true,
           value: (m) => m.transactionDate == null
               ? null
               : (m.transactionDate!.length >= 10
@@ -97,12 +104,23 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
           key: 'qty',
           label: '数量', // TODO(l10n): 补 arb
           width: 120,
+          type: 'number',
+          sortable: true,
           value: (m) {
             if (m.qty == null) return null;
             final sign = m.direction == 1 ? '+' : '-';
             return '$sign${m.qty!.toStringAsFixed(2)}';
           }),
     ];
+  }
+
+  /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _load(1);
   }
 
   @override
@@ -178,6 +196,9 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
                       nullCounts: const {},
                       filters: const {},
                       onFilterChanged: (_, _) {},
+                      sortColumn: _sortKey,
+                      sortAscending: _sortAsc,
+                      onSortChange: _onSortChange,
                       onRowTap: (_) {},
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,

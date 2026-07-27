@@ -79,8 +79,16 @@ class ProductionPlanRepository {
     int page = 1,
     int size = 20,
     ProductionPlanFilter filter = const ProductionPlanFilter(),
+    String? sort,
+    String? order,
   }) async {
-    final query = <String, dynamic>{'page': page, 'size': size, ...filter.toQuery()};
+    final query = <String, dynamic>{
+      'page': page,
+      'size': size,
+      ...filter.toQuery(),
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
+    };
     final json = await api.get('/production/plans', query: query); // ENDPOINT
     return PagedResult.fromJson(json, ProductionPlanListItem.fromJson);
   }
@@ -162,8 +170,16 @@ class ProductionPlanCostRepository {
     int page = 1,
     int size = 50,
     ProductionPlanCostFilter filter = const ProductionPlanCostFilter(),
+    String? sort,
+    String? order,
   }) async {
-    final query = <String, dynamic>{'page': page, 'size': size, ...filter.toQuery()};
+    final query = <String, dynamic>{
+      'page': page,
+      'size': size,
+      ...filter.toQuery(),
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
+    };
     final json = await api.get('/production/plan-costs', query: query); // ENDPOINT
     return PagedResult.fromJson(json, ProductionPlanCostRow.fromJson);
   }
@@ -235,8 +251,16 @@ class ProductionDailyReportRepository {
     int page = 1,
     int size = 20,
     ProductionDailyReportFilter filter = const ProductionDailyReportFilter(),
+    String? sort,
+    String? order,
   }) async {
-    final query = <String, dynamic>{'page': page, 'size': size, ...filter.toQuery()};
+    final query = <String, dynamic>{
+      'page': page,
+      'size': size,
+      ...filter.toQuery(),
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
+    };
     final json = await api.get('/production/daily-reports', query: query); // ENDPOINT
     return PagedResult.fromJson(json, ProductionDailyReportListItem.fromJson);
   }

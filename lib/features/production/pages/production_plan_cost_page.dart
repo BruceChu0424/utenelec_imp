@@ -49,6 +49,9 @@ class _ProductionPlanCostPageState
   GoodsOption? _nodeGoods; // 节点物料
   DateTime? _dateFrom;
   DateTime? _dateTo;
+  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 level ASC, billNo ASC）；_sortAsc=升序。
+  String? _sortKey;
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -80,7 +83,13 @@ class _ProductionPlanCostPageState
     try {
       final r = await ref
           .read(productionPlanCostRepositoryProvider)
-          .list(page: page, size: 50, filter: _filter);
+          .list(
+            page: page,
+            size: 50,
+            filter: _filter,
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+          );
       // 解析本页涉及的货品名（详情列展示用）；供应名走 dict，ensureLoaded 已缓存全量。
       final goodsIds = <String>{
         ...r.items.map((e) => e.goodsId).whereType<String>(),
@@ -137,6 +146,15 @@ class _ProductionPlanCostPageState
     _load(1);
   }
 
+  /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _load(1);
+  }
+
   List<MasterColumnDef<ProductionPlanCostRow>> _columns(MasterNameService names) =>
       <MasterColumnDef<ProductionPlanCostRow>>[
         MasterColumnDef(
@@ -145,6 +163,8 @@ class _ProductionPlanCostPageState
             key: 'billDate',
             label: '日期',
             width: 110,
+            type: 'date',
+            sortable: true,
             value: (it) => (it.billDate ?? '').substring(0, 10)),
         MasterColumnDef(
             key: 'level',
@@ -165,21 +185,29 @@ class _ProductionPlanCostPageState
             key: 'qty',
             label: '总需量',
             width: 100,
+            type: 'number',
+            sortable: true,
             value: (it) => it.qty?.toStringAsFixed(2)),
         MasterColumnDef(
             key: 'dqty',
             label: '单套用量',
             width: 100,
+            type: 'number',
+            sortable: true,
             value: (it) => it.dqty?.toStringAsFixed(4)),
         MasterColumnDef(
             key: 'price',
             label: '单价',
             width: 90,
+            type: 'money',
+            sortable: true,
             value: (it) => it.price?.toStringAsFixed(4)),
         MasterColumnDef(
             key: 'total',
             label: '金额',
             width: 110,
+            type: 'money',
+            sortable: true,
             value: (it) => it.total?.toStringAsFixed(2)),
         MasterColumnDef(
             key: 'supplier',
@@ -333,6 +361,9 @@ class _ProductionPlanCostPageState
                     nullCounts: const {},
                     filters: const {},
                     onFilterChanged: (_, _) {},
+                    sortColumn: _sortKey,
+                    sortAscending: _sortAsc,
+                    onSortChange: _onSortChange,
                     onRowTap: (_) {
                       // 只读：tap 仅展示提示，不跳详情（详情页本期不做编辑，单行查询收益低）。
                       context.appSuccess('BOM 行只读');

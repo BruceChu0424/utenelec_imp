@@ -17,6 +17,9 @@ public class SecurityProperties {
     /** 登录限流：每分钟每 IP 次数。 */
     private int loginRateLimitPerMinute = 5;
 
+    /** 导出限流：每分钟每用户次数（防被盗号/脚本短时大量导出拖库；令牌桶，per-userId）。 */
+    private int exportRateLimitPerMinute = 10;
+
     /** 连续失败几次锁定。 */
     private int lockoutThreshold = 5;
 

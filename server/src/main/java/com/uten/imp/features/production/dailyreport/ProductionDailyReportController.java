@@ -57,9 +57,11 @@ public class ProductionDailyReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
         return service.list(new DailyReportQueryFilter(keyword, warehouseId, departmentId, workerId,
-                status, dateFrom, dateTo), page, size);
+                status, dateFrom, dateTo), page, size, sort, order);
     }
 
     @GetMapping("/{id}")

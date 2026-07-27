@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -26,6 +27,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
+import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
 import '../repositories/color_repository.dart';
 import '../repositories/goods_repository.dart';
@@ -418,6 +420,10 @@ class _DetailPaneState extends State<_DetailPane> {
   String _keyword = '';
   GoodsFacets? _facets;
 
+  // 列排序态（金额/数量/日期列）：null = 默认顺序（id ASC）。
+  String? _sortKey;
+  bool _sortAsc = true;
+
   // 颜色/单位字典（货品编辑表单下拉选项）。全局，不随分类切换。
   List<MasterSelectOption> _colorOptions = const [];
   List<MasterSelectOption> _unitOptions = const [];
@@ -486,13 +492,15 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _detail = d;
         _loading = false;
-        // 切换分类时重置货品分页 + 筛选状态 + facet。
+        // 切换分类时重置货品分页 + 筛选状态 + facet + 排序态。
         _goodsPage = null;
         _goodsPageNum = 1;
         _goodsError = null;
         _filters = {};
         _keyword = '';
         _facets = null;
+        _sortKey = null;
+        _sortAsc = true;
       });
       // 父分类也加载（后端按子树汇总）；并行拉货品列表与字段 facet。
       await Future.wait([_loadGoods(1), _loadFacets()]);
@@ -526,6 +534,8 @@ class _DetailPaneState extends State<_DetailPane> {
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -579,6 +589,23 @@ class _DetailPaneState extends State<_DetailPane> {
     setState(() => _keyword = kw);
     _loadGoods(1);
   }
+
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _loadGoods(1); // 排序变化回第 1 页重载
+  }
+
+  /// 导出查询参数（与 _loadGoods 一致，不含 page/size）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        'categoryId': widget.nodeId,
+        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+        ...masterFilterQueryParams(_filters),
+        if (_sortKey != null) 'sort': _sortKey,
+        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+      };
 
   // 货品主档可编辑字段（与后端 GoodsSaveRequest 对齐；老库 78 字段里只维护核心）。
   /// 货品可编辑字段（颜色/单位为下拉，选项来自字典；与后端 GoodsSaveRequest 对齐）。
@@ -896,6 +923,14 @@ class _DetailPaneState extends State<_DetailPane> {
                     onChanged: _onKeywordChanged,
                   ),
                 ),
+                const SizedBox(width: UtenSpacing.s8),
+                UtenExportButton(
+                  endpoint: '/master/goods/export',
+                  report: '',
+                  queryParams: _exportQuery,
+                  filename: '货品资料',
+                  label: '导出货品',
+                ),
                 if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
                   UtenButton(
@@ -918,6 +953,9 @@ class _DetailPaneState extends State<_DetailPane> {
               filters: _filters,
               onFilterChanged: _onFilterChanged,
               onRowTap: (g) => _showGoodsDetail(g.id),
+              sortColumn: _sortKey,
+              sortAscending: _sortAsc,
+              onSortChange: _onSortChange,
               isLoading: _goodsLoading && _goodsPage == null,
               loadingMore: _goodsLoading && _goodsPage != null,
               error: _goodsError,
@@ -974,6 +1012,8 @@ class _DetailPaneState extends State<_DetailPane> {
         key: 'price',
         label: '价格',
         width: 100,
+        type: 'money',
+        sortable: true,
         value: (g) => g.price?.toStringAsFixed(2)),
   ];
 }

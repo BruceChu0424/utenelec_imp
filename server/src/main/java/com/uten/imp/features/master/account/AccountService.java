@@ -1,9 +1,12 @@
 package com.uten.imp.features.master.account;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.account.dto.AccountDetail;
 import com.uten.imp.features.master.account.dto.AccountFacets;
 import com.uten.imp.features.master.account.dto.AccountListItem;
@@ -59,6 +62,9 @@ public class AccountService {
     private static final Set<String> ALLOWED_NULL_FIELDS =
             Set.of("code", "bankAccountNo", "currencyId", "parentLegacyId", "styleLegacyId");
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（金额列；命中才排序，否则默认 code ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("balanceCurrent", "balanceCurrent");
+
     /** facet 截断阈值。 */
     private static final int FACET_LIMIT = 50;
 
@@ -101,7 +107,7 @@ public class AccountService {
     // ===== 列表（Specification 动态筛选） =====
 
     @Transactional(readOnly = true)
-    public PageResponse<AccountListItem> list(AccountQueryFilter f, int page, int size) {
+    public PageResponse<AccountListItem> list(AccountQueryFilter f, int page, int size, String sort, String order) {
         Specification<Account> spec = (Root<Account> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                        CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -125,7 +131,8 @@ public class AccountService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Account> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
@@ -134,6 +141,55 @@ public class AccountService {
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Account> root,
                               String field, String value) {
         if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    // ===== 加密 Excel 导出（服务端权威列定义） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 列定义服务端权威；过滤/排序走 list 已接的 TableSort 白名单（balanceCurrent）。
+     * accountType 用枚举值（BANK/CASH/...），与 DB 列一致，便于二次处理；不解析为中文。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(AccountQueryFilter f, String sort, String order) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("name", "账户名称", ExportColumn.TEXT),
+                new ExportColumn("bankAccountNo", "银行账号", ExportColumn.TEXT),
+                new ExportColumn("accountType", "账户类型", ExportColumn.TEXT),
+                new ExportColumn("initBalance", "期初余额", ExportColumn.MONEY),
+                new ExportColumn("receiptsTotal", "累计收款", ExportColumn.MONEY),
+                new ExportColumn("paymentsTotal", "累计付款", ExportColumn.MONEY),
+                new ExportColumn("balanceCurrent", "当前余额", ExportColumn.MONEY),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int pageSize = 100;
+        int maxPages = 1000;
+        long total = -1;
+        for (int p = 1; p <= maxPages; p++) {
+            PageResponse<AccountListItem> page = list(f, p, pageSize, sort, order);
+            if (total < 0) total = page.getTotal();
+            for (AccountListItem a : page.getItems()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("code", a.getCode());
+                row.put("name", a.getName());
+                row.put("bankAccountNo", a.getBankAccountNo());
+                row.put("accountType", a.getAccountType());
+                row.put("initBalance", a.getInitBalance());
+                row.put("receiptsTotal", a.getReceiptsTotal());
+                row.put("paymentsTotal", a.getPaymentsTotal());
+                row.put("balanceCurrent", a.getBalanceCurrent());
+                row.put("status", a.getStatus());
+                rows.add(row);
+            }
+            if (page.getItems().size() < pageSize) break;
+            if (rows.size() >= total) break;
+            if (p == maxPages && rows.size() < total) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
+            }
+        }
+        return new ExportPayload(cols, rows, rows.size());
     }
 
     // ===== facets（各字段 distinct + 空值计数） =====

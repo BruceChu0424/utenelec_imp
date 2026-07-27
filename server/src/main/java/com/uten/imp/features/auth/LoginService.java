@@ -4,6 +4,7 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.dto.LoginRequest;
 import com.uten.imp.features.auth.dto.TokenResponse;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -30,6 +31,7 @@ public class LoginService {
     private final PasswordEncoder passwordEncoder;
     private final LoginRateLimiter rateLimiter;
     private final SecurityProperties securityProps;
+    private final SystemSettingsService sysSettings;
     private final AuditService audit;
     private final TokenIssuer tokenIssuer;
     private final TxSessionVars tx;
@@ -38,11 +40,13 @@ public class LoginService {
 
     public LoginService(UserAccountRepository userRepo, PasswordEncoder passwordEncoder,
                         LoginRateLimiter rateLimiter, SecurityProperties securityProps,
+                        SystemSettingsService sysSettings,
                         AuditService audit, TokenIssuer tokenIssuer, TxSessionVars tx) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiter = rateLimiter;
         this.securityProps = securityProps;
+        this.sysSettings = sysSettings;
         this.audit = audit;
         this.tokenIssuer = tokenIssuer;
         this.tx = tx;
@@ -108,9 +112,9 @@ public class LoginService {
     private void onBadCredentials(UserAccount user, String ip) {
         int attempts = user.getFailedAttempts() + 1;
         user.setFailedAttempts(attempts);
-        if (attempts >= securityProps.getLockoutThreshold()) {
+        if (attempts >= sysSettings.readInt("lockout_threshold", 5)) {
             user.setStatus("locked");
-            user.setLockedUntil(OffsetDateTime.now().plusMinutes(securityProps.getLockoutMinutes()));
+            user.setLockedUntil(OffsetDateTime.now().plusMinutes(sysSettings.readInt("lockout_minutes", 15)));
         }
         userRepo.save(user);
         audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed", "users", user.getId().toString(), "bad_password");

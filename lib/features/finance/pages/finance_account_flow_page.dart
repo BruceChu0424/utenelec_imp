@@ -4,11 +4,12 @@
 //   · 帐户进出流水 (S)   → /finance/reports/account/statement?accountId&dateFrom&dateTo&keyword（滚动余额）
 //   · 银行存取明细 (Q)   → /finance/reports/bank/detail（M_Bank 老库 0 行，空表保结构）
 //   · 银行存取汇总 (R)   → /finance/reports/bank/summary（空表）
-// 右侧 MasterDataTableView。默认日期 2010 至今。账户列表来自 FinanceNameService。
+// 右侧 MasterDataTableView。默认日期范围 = 上月今日..今日（defaultReportFrom()）。账户列表来自 FinanceNameService。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -19,26 +20,13 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../report/shared/report_cell.dart';
+import '../../report/shared/report_data.dart';
+import '../../report/shared/report_date_range.dart';
+import '../../report/shared/report_sort.dart';
 import '../providers/finance_name_provider.dart';
 
 enum _FlowView { statement, bankDetail, bankSummary }
-
-class _Col {
-  const _Col(this.key, this.label, this.type, this.width);
-  final String key;
-  final String label;
-  final String type;
-  final double? width;
-}
-
-class _ReportData {
-  const _ReportData(this.columns, this.rows, this.page, this.totalPages, this.total);
-  final List<_Col> columns;
-  final List<Map<String, dynamic>> rows;
-  final int page;
-  final int totalPages;
-  final int total;
-}
 
 class FinanceAccountFlowPage extends ConsumerStatefulWidget {
   const FinanceAccountFlowPage({super.key});
@@ -50,13 +38,17 @@ class FinanceAccountFlowPage extends ConsumerStatefulWidget {
 class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage> {
   _FlowView _view = _FlowView.statement;
   String? _accountId;
-  DateTime _from = DateTime(2010);
+  DateTime _from = defaultReportFrom();
   DateTime _to = DateTime.now();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
 
-  _ReportData? _data;
+  // 列排序态：_sortKey=当前排序列 key（null=不排序）；_sortAsc=升序。
+  String? _sortKey;
+  bool _sortAsc = true;
+
+  ReportData? _data;
   bool _loading = false;
 
   @override
@@ -90,26 +82,12 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
         },
         'page': _page,
         'size': _size,
+        ...sortQueryParams(_sortKey, _sortAsc),
       };
       final json = await api.get(_endpoint, query: query);
-      final cols = (json['columns'] as List? ?? const [])
-          .map((c) => _Col(
-                (c as Map)['key']?.toString() ?? '',
-                c['label']?.toString() ?? '',
-                c['type']?.toString() ?? 'text',
-                (c['width'] as num?)?.toDouble(),
-              ))
-          .toList();
-      final rows = (json['rows'] as List? ?? const []).cast<Map<String, dynamic>>();
       if (!mounted) return;
       setState(() {
-        _data = _ReportData(
-          cols,
-          rows,
-          (json['page'] as num?)?.toInt() ?? _page,
-          (json['totalPages'] as num?)?.toInt() ?? 1,
-          (json['total'] as num?)?.toInt() ?? 0,
-        );
+        _data = parseReportResponse(json, _page);
         _loading = false;
       });
     } catch (e) {
@@ -122,21 +100,27 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  String? _cell(_Col col, Map<String, dynamic> row) {
-    final v = row[col.key];
-    if (v == null) return null;
-    switch (col.type) {
-      case 'money':
-      case 'number':
-        final n = v is num ? v : num.tryParse('$v');
-        return n == null ? '$v' : n.toStringAsFixed(2);
-      case 'date':
-        final s = '$v';
-        return s.length >= 10 ? s.substring(0, 10) : s;
-      default:
-        return '$v';
-    }
+  /// 表头排序回调：column=null 取消排序回到默认；否则按该列升/降序重新请求后端。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+      _page = 1;
+    });
+    _load();
   }
+
+  /// 导出报表 key（仅 S 帐户进出流水纳入导出；Q/R 银行存取款老库 0 行空表，不纳入）。
+  String get _exportReport => 'account/statement';
+
+  /// 导出查询参数（与 _load 一致，不含 page/size）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        if (_accountId != null) 'accountId': _accountId,
+        'dateFrom': _fmt(_from),
+        'dateTo': _fmt(_to),
+        if (_keyword.isNotEmpty) 'keyword': _keyword,
+        ...sortQueryParams(_sortKey, _sortAsc),
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +134,16 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
       appBar: UtenAppBar(
         title: title,
         leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.finance)),
+        actions: [
+          // 仅 S 帐户进出流水支持导出；Q/R 银行存取款为空表（M_Bank 0 行），不显示导出按钮。
+          if (_view == _FlowView.statement)
+            UtenExportButton(
+              endpoint: '/finance/reports/export',
+              report: _exportReport,
+              queryParams: _exportQuery,
+              filename: title,
+            ),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -263,7 +257,9 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
     final columns = data.columns
         .map((c) => MasterColumnDef<Map<String, dynamic>>(
               key: c.key, label: c.label, width: (c.width ?? 120).toDouble(),
-              value: (row) => _cell(c, row),
+              type: c.type,
+              sortable: isSortableReportType(c.type),
+              value: (row) => formatReportCell(c, row),
             ))
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
@@ -273,6 +269,9 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, __) {},
+      sortColumn: _sortKey,
+      sortAscending: _sortAsc,
+      onSortChange: _onSortChange,
       onRowTap: (_) {},
       isLoading: _loading,
       emptyMessage: _view == _FlowView.statement ? '暂无流水数据' : '银行存取款未启用（空表）',

@@ -49,9 +49,11 @@ public class ProductionPlanCostController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
         return service.list(new PlanCostQueryFilter(planItemId, masterGoodsId, goodsId, parentId,
-                supplierId, salesOrderCostItemId, dateFrom, dateTo), page, size);
+                supplierId, salesOrderCostItemId, dateFrom, dateTo), page, size, sort, order);
     }
 
     @GetMapping("/{id}")

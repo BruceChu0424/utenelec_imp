@@ -1,15 +1,28 @@
 package com.uten.imp.features.subcontract.report;
 
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.export.ExportPasswordRequest;
+import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.format.annotation.DateTimeFormat.ISO;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +48,10 @@ import java.util.UUID;
 public class SubcontractReportController {
 
     private final SubcontractReportService service;
+    private final XlsxExportService xlsxExport;
+    private final EncryptedWorkbookService encryptedWorkbook;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
 
     /** 8 张明细/汇总报表：doc/view 路由分发。 */
     @GetMapping("/{doc}/{view}")
@@ -51,7 +68,9 @@ public class SubcontractReportController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Map<String, String> f,   // f.<colKey>=<value> 表头 facet
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
         // 只保留 f. 前缀的列筛选（其余 @RequestParam 已绑定）
         Map<String, String> facets = f == null ? Map.of()
                 : f.entrySet().stream()
@@ -59,14 +78,14 @@ public class SubcontractReportController {
                     .collect(java.util.stream.Collectors.toMap(e -> e.getKey().substring(2), Map.Entry::getValue));
         String key = doc + "/" + view;
         return switch (key) {
-            case "RECEIPT/detail"        -> service.receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
-            case "RECEIPT/summary"       -> service.receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
-            case "RETURN/detail"         -> service.returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
-            case "RETURN/summary"        -> service.returnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
-            case "MATERIAL_ISSUE/detail" -> service.materialIssueDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
-            case "MATERIAL_ISSUE/summary"-> service.materialIssueSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
-            case "MATERIAL_RETURN/detail"-> service.materialReturnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
-            case "MATERIAL_RETURN/summary"-> service.materialReturnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size);
+            case "RECEIPT/detail"        -> service.receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+            case "RECEIPT/summary"       -> service.receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+            case "RETURN/detail"         -> service.returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+            case "RETURN/summary"        -> service.returnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+            case "MATERIAL_ISSUE/detail" -> service.materialIssueDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+            case "MATERIAL_ISSUE/summary"-> service.materialIssueSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+            case "MATERIAL_RETURN/detail"-> service.materialReturnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
+            case "MATERIAL_RETURN/summary"-> service.materialReturnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             default -> throw new IllegalArgumentException("未知报表类型：" + key);
         };
     }
@@ -82,6 +101,35 @@ public class SubcontractReportController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return service.inOutStatus(supplierId, dateFrom, dateTo, keyword, page, size);
+    }
+
+    // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------
+
+    @PostMapping("/export")
+    @PreAuthorize("hasAuthority('subcontract_report:export')")
+    public ResponseEntity<byte[]> export(
+            @RequestParam String report,
+            @RequestParam(required = false) Map<String, String> allParams,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestBody ExportPasswordRequest body) {
+        if (body == null || body.password() == null || body.password().length() < 4) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出密码至少 4 位");
+        }
+        ExportPayload payload = service.export(report, allParams, sort, order);
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "export_subcontract_report", "subcontract_reports",
+                report + "/" + payload.total() + "rows", "success"));
+        String filename = "subcontract_" + report.replace('/', '_') + ".xlsx";
+        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename*=UTF-8''" + encoded)
+                .header("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(encrypted);
     }
 
     /** 月度汇总（MV，兜底；前端不再暴露入口）。 */

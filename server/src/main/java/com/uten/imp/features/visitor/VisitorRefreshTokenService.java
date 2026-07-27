@@ -2,6 +2,7 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.config.props.JwtProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +23,7 @@ public class VisitorRefreshTokenService {
 
     private final VisitorRefreshTokenRepository repo;
     private final JwtProperties props;
+    private final SystemSettingsService settings;
 
     /** 签发新令牌：返回原始令牌（仅此一次交给客户端），库内只存哈希。 */
     public String issue(UUID visitorId, String deviceInfo) {
@@ -31,7 +33,7 @@ public class VisitorRefreshTokenService {
         t.setDeviceInfo(deviceInfo);
         t.setTokenHash(HashUtil.sha256(raw));
         t.setIssuedAt(OffsetDateTime.now());
-        t.setExpiresAt(OffsetDateTime.now().plusDays(props.getRefreshTtlDays()));
+        t.setExpiresAt(OffsetDateTime.now().plusDays(settings.readLong("jwt_refresh_ttl_days", 7)));
         repo.save(t);
         return raw;
     }

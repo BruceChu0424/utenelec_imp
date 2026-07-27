@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.waste.dto.WasteDetail;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemDto;
@@ -28,6 +29,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -55,6 +57,9 @@ public class SubcontractWasteService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（损耗无金额列，有总重数量列；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "totalWeight", "totalWeight");
+
     private final SubcontractWasteRepository wasteRepo;
     private final SubcontractWasteItemRepository itemRepo;
     private final StockService stockService;
@@ -62,7 +67,7 @@ public class SubcontractWasteService {
     private final EntityManager em;
 
     @Transactional(readOnly = true)
-    public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size) {
+    public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
         Specification<SubcontractWaste> spec = (Root<SubcontractWaste> root,
                                                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                 CriteriaBuilder cb) -> {
@@ -78,7 +83,8 @@ public class SubcontractWasteService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractWaste> p = wasteRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }

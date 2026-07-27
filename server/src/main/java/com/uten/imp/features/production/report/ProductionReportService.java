@@ -1,5 +1,11 @@
 package com.uten.imp.features.production.report;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportSort;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 
 /**
  * 生产报表查询（design §6.2）。
@@ -42,6 +49,7 @@ public class ProductionReportService {
     private static final UUID NIL = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final EntityManager em;
+    private final SystemSettingsService settings;
 
     // ======================== 通用执行器 ========================
 
@@ -59,7 +67,8 @@ public class ProductionReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
-                                       Map<String, String> activeFacets, int page, int size) {
+                                       Map<String, String> activeFacets, int page, int size,
+                                       String sort, String order) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -77,8 +86,13 @@ public class ProductionReportService {
         WhereBuilder.Built baseB = mainWhere.build(null);
 
         // data
+        // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
+        var sortKeys = new java.util.HashSet<String>();
+        for (ReportColumn c : columns) sortKeys.add(c.key());
+        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
-                + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+                + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
@@ -116,7 +130,10 @@ public class ProductionReportService {
             facets.put(spec.key(), buckets);
         }
 
-        return new ReportTableResponse(columns, items, facets, safePage, safeSize, total, totalPages);
+        // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
+        // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
     }
 
     private static Object norm(Object v) {
@@ -173,7 +190,7 @@ public class ProductionReportService {
     /** 生产计划明细：按 单号/货品/状态/日期/关键字 过滤，服务端 JOIN 出货品/类别/颜色名称。 */
     @Transactional(readOnly = true)
     public ReportTableResponse planDetail(String billNo, UUID goodsId, Short status, LocalDate dateFrom,
-                                          LocalDate dateTo, String kw, Map<String, String> facets, int page, int size) {
+                                          LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140),
                 ReportColumn.date("billDate", "开单日期"),
@@ -202,7 +219,8 @@ public class ProductionReportService {
                 ReportColumn.date("planEndDate", "计划完工日期"),
                 ReportColumn.number("iqty", "完工数量"),
                 ReportColumn.text("requestNote", "特殊要求", 140),
-                ReportColumn.text("summary", "摘要", 140));
+                ReportColumn.text("summary", "摘要", 140),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳生产计划编辑页
         String dataSelect = """
                 SELECT i.bill_no AS "billNo", i.bill_date AS "billDate",
                        p.workshop_name AS "workshop", p.seller_name AS "seller", p.f_style AS "fStyle",
@@ -214,7 +232,8 @@ public class ProductionReportService {
                        g.name AS "goodsName", g.spec AS "spec", col.name AS "colorName",
                        i.oqty AS "oqty", i.qty AS "qty",
                        i.plan_begin_date AS "planBeginDate", i.plan_end_date AS "planEndDate",
-                       i.iqty AS "iqty", i.request_note AS "requestNote", i.remark AS "summary"
+                       i.iqty AS "iqty", i.request_note AS "requestNote", i.remark AS "summary",
+                       p.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM production_plan_items i
@@ -230,7 +249,7 @@ public class ProductionReportService {
                 new FacetSpec("closed", "p.is_closed AS v, CASE WHEN p.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "p.is_closed", "p.is_closed", "bool"),
                 new FacetSpec("workshop", "p.workshop_name AS v, p.workshop_name AS lbl", "p.workshop_name", "p.workshop_name", "text"),
                 new FacetSpec("categoryName", "CAST(g.category_id AS text) AS v, mc.name AS lbl", "g.category_id, mc.name", "g.category_id", "uuid"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
     }
 
     // ======================== ② 生产计划汇总（单据级，一行一单，不走 MV） ========================
@@ -238,7 +257,7 @@ public class ProductionReportService {
     /** 生产计划汇总：一行=一整张生产计划单（单据级）。制单员/审核员 COALESCE(employees, 冻结名)。 */
     @Transactional(readOnly = true)
     public ReportTableResponse planSummary(String billNo, Short status, LocalDate dateFrom, LocalDate dateTo,
-                                           String kw, Map<String, String> facets, int page, int size) {
+                                           String kw, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 150),
                 ReportColumn.date("billDate", "开单日期"),
@@ -246,13 +265,15 @@ public class ProductionReportService {
                 ReportColumn.date("shipmentDate", "出货日期"),
                 ReportColumn.text("makerName", "制单员", 100),
                 ReportColumn.text("approverName", "审核员", 100),
-                ReportColumn.text("remark", "备注", 180));
+                ReportColumn.text("remark", "备注", 180),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳生产计划编辑页
         String dataSelect = """
                 SELECT p.bill_no AS "billNo", p.bill_date AS "billDate", p.f_style AS "fStyle",
                        p.delivery_date AS "shipmentDate",
                        COALESCE(em_mk.full_name, p.maker_name) AS "makerName",
                        COALESCE(em_ap.full_name, p.approver_name) AS "approverName",
-                       p.remark AS "remark"
+                       p.remark AS "remark",
+                       p.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM production_plans p
@@ -267,8 +288,72 @@ public class ProductionReportService {
         addSummaryKw(w, kw, "p.bill_no");
         List<FacetSpec> specs = List.of(
                 new FacetSpec("approved", "(p.status = 1) AS v, CASE WHEN (p.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(p.status = 1)", "p.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no", specs, facets, page, size, sort, order);
     }
+
+    // ======================== 导出（加密 Excel） ========================
+
+    /**
+     * 导出某报表全量（不分页，循环 size=500 累积全部行），返回 ExportColumn + 行 Map。
+     * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致：
+     * plan/detail / plan/summary。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        String billNo = p == null ? null : p.get("billNo");
+        UUID goodsId = parseUuid(p == null ? null : p.get("goodsId"));
+        Short status = parseShort(p == null ? null : p.get("status"));
+        LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
+        String kw = p == null ? null : p.get("keyword");
+        Map<String, String> facets = facetsOfMap(p);
+        BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
+            case "plan/detail"  -> (pg, sz) -> planDetail(billNo, goodsId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "plan/summary" -> (pg, sz) -> planSummary(billNo, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
+        };
+        return paginateAll(loader);
+    }
+
+    /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
+    private ExportPayload paginateAll(BiFunction<Integer, Integer, ReportTableResponse> loader) {
+        final int size = 500;
+        List<Map<String, Object>> all = new ArrayList<>();
+        List<ExportColumn> cols = null;
+        int page = 1;
+        while (page <= 2000) {
+            ReportTableResponse r = loader.apply(page, size);
+            if (page == 1 && r.total() > settings.readInt("export_max_rows", 100000)) {
+                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
+            }
+            if (cols == null && r.columns() != null) {
+                cols = r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type()))
+                        .toList();
+            }
+            all.addAll(r.rows());
+            if (r.rows().size() < size) break;
+            if ((long) all.size() >= r.total()) break;
+            page++;
+        }
+        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
+    }
+
+    private static Map<String, String> facetsOfMap(Map<String, String> p) {
+        Map<String, String> facets = new LinkedHashMap<>();
+        if (p == null) return facets;
+        for (Map.Entry<String, String> e : p.entrySet()) {
+            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
+                facets.put(e.getKey().substring(2), e.getValue());
+            }
+        }
+        return facets;
+    }
+
+    private static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
+    private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
+    private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
 
     // ======================== 保留：月度汇总（MV 上卷，未来月度分析用） ========================
 

@@ -23,6 +23,8 @@ abstract interface class AccountRepository {
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
   });
 
   Future<AccountFacets> facets();
@@ -49,11 +51,15 @@ class DioAccountRepository implements AccountRepository {
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
       if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     };
     final nullFields = <String>[];
     filters.forEach((k, v) {

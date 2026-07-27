@@ -49,11 +49,15 @@ class SubcontractRepository {
     int page = 1,
     int size = 20,
     SubcontractDocFilter filter = const SubcontractDocFilter(),
+    String? sort,
+    String? order,
   }) async {
     final json = await api.get(_base, query: {
       'page': page,
       'size': size,
       ...filter.toQuery(),
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     });
     return PagedResult.fromJson(
         json, SubcontractDocListItem.fromJson);

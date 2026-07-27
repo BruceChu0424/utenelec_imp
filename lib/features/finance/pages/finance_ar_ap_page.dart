@@ -36,6 +36,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   String _keyword = '';
   String? _direction; // null=全部 / AR / AP
   bool? _settled; // null=全部 / false=未清 / true=已清
+  // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
+  String? _sortKey;
+  bool _sortAsc = true;
 
   @override
   void initState() {
@@ -61,6 +64,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
               direction: _direction,
               settled: _settled,
             ),
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -103,21 +108,29 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
           key: 'billDate',
           label: '立帐日',
           width: 120,
+          type: 'date',
+          sortable: true,
           value: (it) => (it.billDate ?? '').substring(0, 10)),
       MasterColumnDef(
           key: 'amountOriginalLocal',
           label: '立帐额',
           width: 130,
+          type: 'money',
+          sortable: true,
           value: (it) => it.amountOriginalLocal?.toStringAsFixed(2)),
       MasterColumnDef(
           key: 'amountSettled',
           label: '已核销',
           width: 130,
+          type: 'money',
+          sortable: true,
           value: (it) => it.amountSettled?.toStringAsFixed(2)),
       MasterColumnDef(
           key: 'amountBalance',
           label: '余额',
           width: 130,
+          type: 'money',
+          sortable: true,
           value: (it) => it.amountBalance?.toStringAsFixed(2)),
       MasterColumnDef(
           key: 'settled',
@@ -125,6 +138,15 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
           width: 80,
           value: (it) => it.settled ? '是' : '否'),
     ];
+  }
+
+  /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _load(1);
   }
 
   @override
@@ -220,6 +242,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                       nullCounts: const {},
                       filters: const {},
                       onFilterChanged: (_, _) {},
+                      sortColumn: _sortKey,
+                      sortAscending: _sortAsc,
+                      onSortChange: _onSortChange,
                       onRowTap: (_) {},
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,

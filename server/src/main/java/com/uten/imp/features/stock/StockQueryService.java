@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.stock.dto.BalanceRow;
 import com.uten.imp.features.stock.dto.MovementRow;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -29,11 +31,19 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockQueryService {
 
+    /** 余额列排序白名单：前端列 key → JPA 实体属性名（数量可排序；命中才排序，否则默认 lastMovementDate DESC）。 */
+    private static final Map<String, String> BALANCE_ALLOWED_SORT = Map.of("qty", "qty");
+
+    /** 流水列排序白名单：前端列 key → JPA 实体属性名（日期/数量可排序；命中才排序，否则默认 transactionDate DESC）。 */
+    private static final Map<String, String> MOVEMENT_ALLOWED_SORT = Map.of(
+            "date", "transactionDate", "qty", "qty");
+
     private final StockBalanceRepository balanceRepo;
     private final StockMovementRepository movementRepo;
 
     @Transactional(readOnly = true)
-    public PageResponse<BalanceRow> balances(UUID warehouseId, UUID goodsId, int page, int size) {
+    public PageResponse<BalanceRow> balances(UUID warehouseId, UUID goodsId, int page, int size,
+                                             String sort, String order) {
         Specification<StockBalance> spec = (Root<StockBalance> root,
                                             jakarta.persistence.criteria.CriteriaQuery<?> q,
                                             CriteriaBuilder cb) -> {
@@ -42,7 +52,8 @@ public class StockQueryService {
             if (goodsId != null) ps.add(cb.equal(root.get("goodsId"), goodsId));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "lastMovementDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "lastMovementDate"), BALANCE_ALLOWED_SORT));
         Page<StockBalance> p = balanceRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toBalanceRow).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
@@ -51,7 +62,7 @@ public class StockQueryService {
     @Transactional(readOnly = true)
     public PageResponse<MovementRow> movements(UUID warehouseId, UUID goodsId, Short movementType,
                                                OffsetDateTime dateFrom, OffsetDateTime dateTo,
-                                               int page, int size) {
+                                               int page, int size, String sort, String order) {
         Specification<StockMovement> spec = (Root<StockMovement> root,
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
@@ -63,7 +74,8 @@ public class StockQueryService {
             if (dateTo != null) ps.add(cb.lessThanOrEqualTo(root.get("transactionDate"), dateTo));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "transactionDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "transactionDate"), MOVEMENT_ALLOWED_SORT));
         Page<StockMovement> p = movementRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toMovementRow).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());

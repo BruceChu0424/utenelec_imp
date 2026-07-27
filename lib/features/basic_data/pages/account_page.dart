@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -20,6 +21,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/account_node.dart';
+import '../models/master_facet.dart';
 import '../repositories/account_repository.dart';
 import '../repositories/currency_repository.dart';
 import '../widgets/master_data_table_view.dart';
@@ -46,6 +48,10 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   String _keyword = '';
   AccountFacets? _facets;
   bool _detailLoading = false;
+
+  // 列排序态（金额/数量/日期列）：null = 默认顺序（code ASC）。
+  String? _sortKey;
+  bool _sortAsc = true;
 
   /// 币种字典（账户编辑表单币种下拉选项）。全局，失败静默降级为空下拉。
   List<MasterSelectOption> _currencyOptions = const [];
@@ -78,6 +84,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -149,6 +157,14 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   void _onKeywordChanged(String kw) {
     setState(() => _keyword = kw);
     _loadAccounts(1);
+  }
+
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _loadAccounts(1); // 排序变化回第 1 页重载
   }
 
   List<MasterFieldDef> get _fields => [
@@ -364,6 +380,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         key: 'balanceCurrent',
         label: '当前余额',
         width: 140,
+        type: 'money',
+        sortable: true,
         value: (a) => a.balanceCurrent?.toStringAsFixed(2)),
     MasterColumnDef(
         key: 'status', label: '状态', width: 100, value: (a) => a.status),
@@ -372,6 +390,14 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   Future<void> _refresh() async {
     await Future.wait([_loadAccounts(1), _loadFacets()]);
   }
+
+  /// 导出查询参数（与 _loadAccounts 一致，不含 page/size）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+        ...masterFilterQueryParams(_filters),
+        if (_sortKey != null) 'sort': _sortKey,
+        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -390,6 +416,13 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
+          UtenExportButton(
+            endpoint: '/master/accounts/export',
+            report: '',
+            queryParams: _exportQuery,
+            filename: '账户资料',
+            label: '导出账户',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
@@ -447,6 +480,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                     filters: _filters,
                     onFilterChanged: _onFilterChanged,
                     onRowTap: (a) => _showDetail(a.id),
+                    sortColumn: _sortKey,
+                    sortAscending: _sortAsc,
+                    onSortChange: _onSortChange,
                     isLoading: _loading && _page == null,
                     loadingMore: _loading && _page != null,
                     error: _error,

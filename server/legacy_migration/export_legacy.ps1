@@ -181,7 +181,7 @@ $whCheckMain = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date
 $whCheckItem = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, NULL AS price, STotal AS amount, UnitID AS unit_legacy_id, URate AS unit_rate, Weight AS weight, SurplusQTY AS surplus_qty, NowQTY AS count_qty, StorgePlace AS place_legacy_id, 0 AS upstream_legacy_id, NULL AS source_doc_no, Reason AS summary FROM O_CheckItem ORDER BY ID'
 
 # StockGoods ledger (rebuild stock_balances opening; sg_stage: stock_legacy,goods_legacy,color_legacy,year,qty,total)
-$whStockGoods = 'SELECT StockID AS stock_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, Year AS year, QTY AS qty, Total AS total FROM StockGoods ORDER BY StockID, GoodsID, ColorID, Year'
+$whStockGoods = 'SELECT StockID AS stock_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, Year AS year, QTY AS qty, FactQTY AS fact_qty, Total AS total FROM StockGoods ORDER BY StockID, GoodsID, ColorID, Year'
 
 # ---- Sales documents (5 doc mains + 5 item tables + 1 BOM cost). Cols match migrate_sales.sql staging. ----
 # S_Quote (0 rows in legacy; structure-only export keeps \copy idempotent).

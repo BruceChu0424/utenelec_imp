@@ -14,11 +14,15 @@ class StockQueryRepository {
     int page = 1,
     int size = 20,
     String? warehouseId,
+    String? sort,
+    String? order,
   }) async {
     final json = await api.get(ApiEndpoints.stockBalances, query: {
       'page': page,
       'size': size,
       if (warehouseId != null) 'warehouseId': warehouseId,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     });
     return PagedResult.fromJson(json, BalanceRow.fromJson);
   }
@@ -31,6 +35,8 @@ class StockQueryRepository {
     int? movementType,
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
   }) async {
     final json = await api.get(ApiEndpoints.stockMovements, query: {
       'page': page,
@@ -40,6 +46,8 @@ class StockQueryRepository {
       if (movementType != null) 'movementType': movementType,
       if (dateFrom != null) 'dateFrom': dateFrom,
       if (dateTo != null) 'dateTo': dateTo,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     });
     return PagedResult.fromJson(json, MovementRow.fromJson);
   }

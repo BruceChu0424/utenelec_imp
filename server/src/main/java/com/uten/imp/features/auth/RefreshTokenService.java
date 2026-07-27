@@ -2,6 +2,7 @@ package com.uten.imp.features.auth;
 
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.config.props.JwtProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.model.RefreshToken;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import org.springframework.stereotype.Service;
@@ -21,10 +22,12 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository repo;
     private final JwtProperties props;
+    private final SystemSettingsService settings;
 
-    public RefreshTokenService(RefreshTokenRepository repo, JwtProperties props) {
+    public RefreshTokenService(RefreshTokenRepository repo, JwtProperties props, SystemSettingsService settings) {
         this.repo = repo;
         this.props = props;
+        this.settings = settings;
     }
 
     /** 签发新令牌：返回原始令牌（仅此一次交给客户端），库内只存哈希。 */
@@ -35,7 +38,7 @@ public class RefreshTokenService {
         t.setDeviceInfo(deviceInfo);
         t.setTokenHash(HashUtil.sha256(raw));
         t.setIssuedAt(OffsetDateTime.now());
-        t.setExpiresAt(OffsetDateTime.now().plusDays(props.getRefreshTtlDays()));
+        t.setExpiresAt(OffsetDateTime.now().plusDays(settings.readLong("jwt_refresh_ttl_days", 7)));
         repo.save(t);
         return raw;
     }

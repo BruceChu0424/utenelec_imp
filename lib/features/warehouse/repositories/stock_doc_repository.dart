@@ -22,6 +22,8 @@ class StockDocRepository {
     int page = 1,
     int size = 20,
     StockDocFilter filter = const StockDocFilter(),
+    String? sort,
+    String? order,
   }) async {
     final json = await api.get(ApiEndpoints.stockDocsBase, query: {
       'docType': type.code,
@@ -31,6 +33,8 @@ class StockDocRepository {
         'keyword': filter.keyword!.trim(),
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
       if (filter.status != null) 'status': filter.status,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     });
     return PagedResult.fromJson(json, StockDocListItem.fromJson);
   }

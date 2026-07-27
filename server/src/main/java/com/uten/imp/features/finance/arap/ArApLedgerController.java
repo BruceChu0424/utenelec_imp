@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.finance.arap.dto.ArApLedgerDetail;
 import com.uten.imp.features.finance.arap.dto.ArApLedgerListItem;
 import com.uten.imp.features.finance.arap.dto.ArApLedgerQueryFilter;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -48,6 +50,13 @@ public class ArApLedgerController {
 
     private final ArApLedgerRepository repo;
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate",
+            "amountOriginalLocal", "amountOriginalLocal",
+            "amountSettled", "amountSettled",
+            "amountBalance", "amountBalance");
+
     @GetMapping
     @PreAuthorize("hasAuthority('ar_ap_ledger:view')")
     public PageResponse<ArApLedgerListItem> list(
@@ -64,7 +73,9 @@ public class ArApLedgerController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String sourceDocNo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
         ArApLedgerQueryFilter f = new ArApLedgerQueryFilter(
                 keyword, direction, sourceDocType, partyId, clientId, supplierId, currencyId,
                 settled, status, dateFrom, dateTo, sourceDocNo);
@@ -98,7 +109,8 @@ public class ArApLedgerController {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<ArApLedger> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());

@@ -72,6 +72,8 @@ class FinanceRepository {
     int page = 1,
     int size = 20,
     FinanceDocFilter filter = const FinanceDocFilter(),
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -90,6 +92,8 @@ class FinanceRepository {
       if (filter.status != null) 'status': filter.status,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.docBase(_seg), query: query);
     return PagedResult.fromJson(json, FinanceDocListItem.fromJson);
@@ -160,6 +164,8 @@ class ArApLedgerRepository {
     int page = 1,
     int size = 20,
     ArApFilter filter = const ArApFilter(),
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -172,6 +178,8 @@ class ArApLedgerRepository {
       if (filter.settled != null) 'settled': filter.settled,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     };
     final json = await api.get(FinanceEndpoints.arAp, query: query);
     return PagedResult.fromJson(json, ArApLedgerItem.fromJson);
@@ -226,6 +234,8 @@ class ReconciliationRepository {
     int page = 1,
     int size = 20,
     ReconciliationFilter filter = const ReconciliationFilter(),
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -237,6 +247,8 @@ class ReconciliationRepository {
       if (filter.checkNo != null) 'checkNo': filter.checkNo,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     };
     final json =
         await api.get(FinanceEndpoints.reconciliations, query: query);

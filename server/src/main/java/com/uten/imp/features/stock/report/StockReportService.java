@@ -1,7 +1,11 @@
 package com.uten.imp.features.stock.report;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -56,37 +61,42 @@ public class StockReportService {
     private static final String AP = "em_ap.full_name || COALESCE('（' || em_ap.legacy_category || '）','')";
 
     private final EntityManager em;
+    private final SystemSettingsService settings;
 
     // ======================== 明细 / 汇总 派发 ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse detail(String docType, String billNo, UUID warehouseId, UUID clientId, Short status,
                                       LocalDate dateFrom, LocalDate dateTo, String kw,
-                                      Map<String, String> facets, int page, int size) {
+                                      Map<String, String> facets, int page, int size, String sort, String order) {
         String dt = normalizeDocType(docType);
-        List<Col> cols = detailCols(dt);
+        // 末尾追加隐藏 __srcId（= 单据头 stock_documents.id）：行点击跳该单据编辑页。
+        List<Col> cols = new ArrayList<>(detailCols(dt));
+        cols.add(c("__srcId", "", "text", null, "o.id"));
         String dataSelect = "SELECT " + selectClause(cols);
         String fromJoin = DETAIL_FROM;
         WhereBuilder w = new WhereBuilder(
                 "WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND i.bill_type = '" + dt + "'");
         addCommonFilters(w, billNo, warehouseId, clientId, status, dateFrom, dateTo, kw, true);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
-                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", commonFacets(), facets, page, size);
+                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", commonFacets(), facets, page, size, sort, order);
     }
 
     @Transactional(readOnly = true)
     public ReportTableResponse summary(String docType, String billNo, UUID warehouseId, UUID clientId, Short status,
                                        LocalDate dateFrom, LocalDate dateTo, String kw,
-                                       Map<String, String> facets, int page, int size) {
+                                       Map<String, String> facets, int page, int size, String sort, String order) {
         String dt = normalizeDocType(docType);
-        List<Col> cols = summaryCols(dt);
+        // 末尾追加隐藏 __srcId（= 单据头 stock_documents.id）：汇总一行一单，行点击跳该单据编辑页。
+        List<Col> cols = new ArrayList<>(summaryCols(dt));
+        cols.add(c("__srcId", "", "text", null, "o.id"));
         String dataSelect = "SELECT " + selectClause(cols);
         String fromJoin = SUMMARY_FROM;
         WhereBuilder w = new WhereBuilder(
                 "WHERE COALESCE(o.is_deleted,false)=false AND o.doc_type = '" + dt + "'");
         addCommonFilters(w, billNo, warehouseId, clientId, status, dateFrom, dateTo, kw, false);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
-                "o.bill_date DESC, o.bill_no", commonFacets(), facets, page, size);
+                "o.bill_date DESC, o.bill_no", commonFacets(), facets, page, size, sort, order);
     }
 
     // ======================== 明细列集（按 docType） ========================
@@ -295,12 +305,92 @@ public class StockReportService {
                         "(o.status = 1)", "o.status = 1", "bool"));
     }
 
+    // ======================== 导出（加密 Excel） ========================
+
+    /**
+     * 导出某报表全量（不分页，循环 size=500 累积全部行），返回 ExportColumn + 行 Map。
+     * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致：
+     * {@code <docType>/<detail|summary>}，docType ∈ TRANSFER/OTHER_IN/DRAW/WDRAW/FINISHED_IN/FINISHED_OUT/CHECK。
+     *
+     * <p>白名单：kind 仅认 {@code detail}/{@code summary}（switch default 抛错）；docType 走
+     * {@link #normalizeDocType}（命中 {@link #DOC_TYPES} 集合，防 SQL 注入）。过滤参数化（{@link WhereBuilder}）。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        if (report == null || report.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "report 必填");
+        }
+        String[] parts = report.split("/");
+        if (parts.length != 2) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表格式应为 docType/detail|summary: " + report);
+        }
+        String docType = parts[0].trim();
+        String kind = parts[1].trim().toLowerCase();
+        String billNo = p == null ? null : p.get("billNo");
+        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
+        UUID clientId = parseUuid(p == null ? null : p.get("clientId"));
+        Short status = parseShort(p == null ? null : p.get("status"));
+        LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
+        String kw = p == null ? null : p.get("keyword");
+        Map<String, String> facets = facetsOfMap(p);
+        BiFunction<Integer, Integer, ReportTableResponse> loader = switch (kind) {
+            case "detail"  -> (pg, sz) -> detail(docType, billNo, warehouseId, clientId, status,
+                    dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "summary" -> (pg, sz) -> summary(docType, billNo, warehouseId, clientId, status,
+                    dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表 kind: " + kind);
+        };
+        return paginateAll(loader);
+    }
+
+    /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
+    private ExportPayload paginateAll(BiFunction<Integer, Integer, ReportTableResponse> loader) {
+        final int size = 500;
+        List<Map<String, Object>> all = new ArrayList<>();
+        List<ExportColumn> cols = null;
+        int page = 1;
+        while (page <= 2000) {
+            ReportTableResponse r = loader.apply(page, size);
+            if (page == 1 && r.total() > settings.readInt("export_max_rows", 100000)) {
+                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
+            }
+            if (cols == null && r.columns() != null) {
+                cols = r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type()))
+                        .toList();
+            }
+            all.addAll(r.rows());
+            if (r.rows().size() < size) break;
+            if ((long) all.size() >= r.total()) break;
+            page++;
+        }
+        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
+    }
+
+    private static Map<String, String> facetsOfMap(Map<String, String> p) {
+        Map<String, String> facets = new LinkedHashMap<>();
+        if (p == null) return facets;
+        for (Map.Entry<String, String> e : p.entrySet()) {
+            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
+                facets.put(e.getKey().substring(2), e.getValue());
+            }
+        }
+        return facets;
+    }
+
+    private static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
+    private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
+    private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
+
     // ======================== 通用执行器（与 purchase/sales 同型） ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
-                                       Map<String, String> activeFacets, int page, int size) {
+                                       Map<String, String> activeFacets, int page, int size,
+                                       String sort, String order) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -317,8 +407,13 @@ public class StockReportService {
         WhereBuilder.Built full = mainWhere.build(facetClauses);
         WhereBuilder.Built baseB = mainWhere.build(null);
 
+        // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
+        var sortKeys = new java.util.HashSet<String>();
+        for (ReportColumn c : columns) sortKeys.add(c.key());
+        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
-                + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+                + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
@@ -354,7 +449,10 @@ public class StockReportService {
             facets.put(spec.key(), buckets);
         }
 
-        return new ReportTableResponse(columns, items, facets, safePage, safeSize, total, totalPages);
+        // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
+        // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
     }
 
     private static Object norm(Object v) {

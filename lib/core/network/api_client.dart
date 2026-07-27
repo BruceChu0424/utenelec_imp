@@ -1,5 +1,8 @@
 // API 客户端：基于 Dio，注入 AuthInterceptor；统一把 DioException 转成 ApiException。
 // 基址由 --dart-define=API_BASE_URL 指定，默认本地后端。
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -82,6 +85,38 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
+  }
+
+  /// 下载二进制（加密 Excel 导出用）：POST [path]，密码走 [body]，过滤/排序走 [query]，
+  /// 以 bytes 接收。AuthInterceptor 自动管 401 刷新。错误体（bytes）尝试解 JSON 取业务消息。
+  Future<Uint8List> downloadBytes(String path,
+      {Object? body, Map<String, dynamic>? query}) async {
+    try {
+      final r = await _dio.post<List<int>>(
+        path,
+        data: body,
+        queryParameters: query,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(r.data ?? const []);
+    } on DioException catch (e) {
+      throw _convertBytes(e);
+    }
+  }
+
+  /// bytes 响应的错误转换：业务错误体可能是 UTF-8 JSON 字节，尝试解出 ApiError 取消息。
+  ApiException _convertBytes(DioException e) {
+    final data = e.response?.data;
+    ApiError? body;
+    if (data is List<int>) {
+      try {
+        final decoded = jsonDecode(utf8.decode(data));
+        if (decoded is Map<String, dynamic>) body = ApiError.fromJson(decoded);
+      } catch (_) {}
+    } else if (data is Map<String, dynamic>) {
+      body = ApiError.fromJson(data);
+    }
+    return ApiExceptionFactory.fromDioStatusCode(e.response?.statusCode, body);
   }
 
   /// 便捷：路径无需前导斜杠时补齐（endpoints 已带前导斜杠）。

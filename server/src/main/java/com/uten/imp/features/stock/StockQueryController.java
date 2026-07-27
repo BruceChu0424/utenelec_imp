@@ -34,8 +34,10 @@ public class StockQueryController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) UUID goodsId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.balances(warehouseId, goodsId, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.balances(warehouseId, goodsId, page, size, sort, order);
     }
 
     @GetMapping("/movements")
@@ -47,7 +49,9 @@ public class StockQueryController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE_TIME) OffsetDateTime dateTo,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.movements(warehouseId, goodsId, movementType, dateFrom, dateTo, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.movements(warehouseId, goodsId, movementType, dateFrom, dateTo, page, size, sort, order);
     }
 }

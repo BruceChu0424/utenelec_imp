@@ -37,6 +37,7 @@ import '../../notice/providers/notice_providers.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../widgets/floating_capsule_nav_bar.dart';
+import '../widgets/idle_timeout_guard.dart';
 import '../widgets/uten_side_nav_rail.dart';
 
 class MainShellPage extends ConsumerStatefulWidget {
@@ -173,15 +174,16 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
     }
 
     // compact 保留悬浮胶囊；medium+ 切换为左侧 Rail + 内容收敛
-    if (context.breakpoint.isCompact) {
-      return _buildCompactShell(tabIndex: tabIndex, labels: labels, unread: unread);
-    }
-    return _buildRailShell(
-      tabIndex: tabIndex,
-      location: location,
-      labels: labels,
-      unread: unread,
-    );
+    final shell = context.breakpoint.isCompact
+        ? _buildCompactShell(tabIndex: tabIndex, labels: labels, unread: unread)
+        : _buildRailShell(
+            tabIndex: tabIndex,
+            location: location,
+            labels: labels,
+            unread: unread,
+          );
+    // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
+    return IdleTimeoutGuard(child: shell);
   }
 
   /// compact 外壳：底部悬浮胶囊 overlay（与 v3 完全一致）

@@ -4,6 +4,7 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.dto.ChangePasswordRequest;
 import com.uten.imp.features.auth.dto.TokenResponse;
 import com.uten.imp.features.auth.model.PasswordHistory;
@@ -36,6 +37,7 @@ public class PasswordService {
     private final PasswordEncoder passwordEncoder;
     private final PasswordPolicy passwordPolicy;
     private final SecurityProperties securityProps;
+    private final SystemSettingsService sysSettings;
     private final SecurityContextCurrentUser currentUser;
     private final AuditService audit;
     private final TokenIssuer tokenIssuer;
@@ -44,6 +46,7 @@ public class PasswordService {
     public PasswordService(UserAccountRepository userRepo, PasswordHistoryRepository passwordHistoryRepo,
                            RefreshTokenRepository refreshTokenRepo, PasswordEncoder passwordEncoder,
                            PasswordPolicy passwordPolicy, SecurityProperties securityProps,
+                           SystemSettingsService sysSettings,
                            SecurityContextCurrentUser currentUser, AuditService audit, TokenIssuer tokenIssuer,
                            TxSessionVars tx) {
         this.userRepo = userRepo;
@@ -52,6 +55,7 @@ public class PasswordService {
         this.passwordEncoder = passwordEncoder;
         this.passwordPolicy = passwordPolicy;
         this.securityProps = securityProps;
+        this.sysSettings = sysSettings;
         this.currentUser = currentUser;
         this.audit = audit;
         this.tokenIssuer = tokenIssuer;
@@ -83,7 +87,7 @@ public class PasswordService {
         passwordPolicy.validate(req.newPassword(), user.getLoginAccount());
 
         // 防重用：最近 N 条历史
-        for (PasswordHistory h : passwordHistoryRepo.findRecent(userId, securityProps.getPasswordHistorySize())) {
+        for (PasswordHistory h : passwordHistoryRepo.findRecent(userId, sysSettings.readInt("password_history_size", 5))) {
             if (passwordEncoder.matches(req.newPassword(), h.getPasswordHash())) {
                 throw new ApiException(ErrorCode.PASSWORD_REUSE);
             }

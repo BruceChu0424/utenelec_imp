@@ -22,6 +22,8 @@ abstract interface class SupplierRepository {
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
   });
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
@@ -47,12 +49,16 @@ class DioSupplierRepository implements SupplierRepository {
     int size = 20,
     String? keyword,
     Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
       'categoryId': categoryId,
       'page': page,
       'size': size,
       if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
     // 其余按 字段=值 发送。

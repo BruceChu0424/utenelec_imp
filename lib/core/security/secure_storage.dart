@@ -31,6 +31,12 @@ class SecureStorage {
   Future<void> saveLoginAccount(String account) =>
       _storage.write(key: _keyAccount, value: account);
 
+  // 通用键值读写（供账号历史等结构化数据用，仍走 flutter_secure_storage 加密）
+  Future<String?> read(String key) => _storage.read(key: key);
+  Future<void> write(String key, String value) =>
+      _storage.write(key: key, value: value);
+  Future<void> delete(String key) => _storage.delete(key: key);
+
   Future<void> clear() async {
     await _storage.delete(key: _keyAccess);
     await _storage.delete(key: _keyRefresh);

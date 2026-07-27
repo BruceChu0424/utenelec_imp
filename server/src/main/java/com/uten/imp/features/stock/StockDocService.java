@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.StockDocItemDto;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
@@ -27,6 +28,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -57,6 +59,9 @@ public class StockDocService {
 
     private static final short DIR_IN = 1, DIR_OUT = -1;
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+
     private final StockDocumentRepository docRepo;
     private final StockDocumentItemRepository itemRepo;
     private final StockService stockService;
@@ -65,7 +70,7 @@ public class StockDocService {
     // ===== 列表 =====
 
     @Transactional(readOnly = true)
-    public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size) {
+    public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order) {
         Specification<StockDocument> spec = (Root<StockDocument> root,
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
@@ -83,7 +88,8 @@ public class StockDocService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "billDate"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<StockDocument> p = docRepo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toList).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());

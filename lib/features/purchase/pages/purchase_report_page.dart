@@ -12,6 +12,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../providers/master_name_provider.dart';
+import '../../report/shared/report_date_range.dart';
 
 class _Monthly {
   const _Monthly(this.docType, this.ym, this.goodsId, this.supplierId, this.qty, this.amt);
@@ -40,7 +41,7 @@ class PurchaseReportPage extends ConsumerStatefulWidget {
 
 class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
   String? _docType = 'ORDER'; // 订货 / 收货 RECEIPT / 退货 RETURN
-  DateTime _from = DateTime(DateTime.now().year, 1, 1);
+  DateTime _from = defaultReportFrom();
   DateTime _to = DateTime.now();
   List<_Monthly> _monthly = const [];
   List<_Pending> _pending = const [];

@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.production.plancost.dto.PlanCostAggregation;
 import com.uten.imp.features.production.plancost.dto.PlanCostQueryFilter;
 import com.uten.imp.features.production.plancost.dto.PlanCostRow;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -44,9 +46,17 @@ public class ProductionPlanCostService {
     private final ProductionPlanCostRepository repo;
     private final EntityManager em;
 
+    /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/数量可排序；命中才排序，否则默认 level ASC, billNo ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "billDate", "billDate",
+            "qty", "qty",
+            "dqty", "dqty",
+            "price", "price",
+            "total", "total");
+
     /** 分页查询（design §6.2）：按计划明细/成品/货品/父节点/供应商/日期过滤。 */
     @Transactional(readOnly = true)
-    public PageResponse<PlanCostRow> list(PlanCostQueryFilter f, int page, int size) {
+    public PageResponse<PlanCostRow> list(PlanCostQueryFilter f, int page, int size, String sort, String order) {
         Specification<ProductionPlanCost> spec = (Root<ProductionPlanCost> root,
                                                   jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
@@ -64,7 +74,8 @@ public class ProductionPlanCostService {
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "level", "billNo"));
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "level", "billNo"), ALLOWED_SORT));
         Page<ProductionPlanCost> p = repo.findAll(spec, pageable);
         return new PageResponse<>(p.map(this::toRow).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
     }

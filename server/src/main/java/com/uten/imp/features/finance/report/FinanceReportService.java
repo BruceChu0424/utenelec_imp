@@ -1,7 +1,11 @@
 package com.uten.imp.features.finance.report;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 
 /**
  * 钱流报表查询服务（finance_report:view）—— 镜像销售/采购 {@code ReportTableResponse} 范式。
@@ -45,13 +50,15 @@ public class FinanceReportService {
     private static final UUID NIL = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final EntityManager em;
+    private final SystemSettingsService settings;
 
     // ======================== 通用执行器（镜像销售/采购） ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
-                                       Map<String, String> activeFacets, int page, int size) {
+                                       Map<String, String> activeFacets, int page, int size,
+                                       String sort, String order) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -68,8 +75,13 @@ public class FinanceReportService {
         WhereBuilder.Built full = mainWhere.build(facetClauses);
         WhereBuilder.Built baseB = mainWhere.build(null);
 
+        // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
+        var sortKeys = new java.util.HashSet<String>();
+        for (ReportColumn c : columns) sortKeys.add(c.key());
+        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
-                + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+                + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
@@ -105,7 +117,9 @@ public class FinanceReportService {
             facets.put(spec.key(), buckets);
         }
 
-        return new ReportTableResponse(columns, items, facets, safePage, safeSize, total, totalPages);
+        // 隐藏元数据列（key 以 "__" 开头，如 __srcId）：不进返回的 columns（前端不渲染、导出不含），但行 Map 已 put 其值。
+        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
     }
 
     private static Object norm(Object v) {
@@ -239,7 +253,7 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse arApDetail(String direction, String billNo, UUID partyId, Boolean settled,
                                           LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                          Map<String, String> facets, int page, int size) {
+                                          Map<String, String> facets, int page, int size, String sort, String order) {
         String dir = normalizeDirection(direction);
         boolean isAR = "AR".equals(dir);
         List<ReportColumn> cols = List.of(
@@ -276,19 +290,19 @@ public class FinanceReportService {
             w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(c.name,s.name)) LIKE LOWER(:kw))", "kw", "%" + keyword.toLowerCase() + "%");
         List<FacetSpec> specs = List.of(
                 new FacetSpec("settled", "l.is_settled AS v, CASE WHEN l.is_settled THEN '已收/付' ELSE '未收/付' END AS lbl", "l.is_settled", "l.is_settled", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", specs, facets, page, size, sort, order);
     }
 
     /** B/D 应收/应付汇总（按往来单位 GROUP BY，含期初/本期立帐/核销/期末余额）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse arApSummary(String direction, LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                          Map<String, String> facets, int page, int size) {
+                                          Map<String, String> facets, int page, int size, String sort, String order) {
         String dir = normalizeDirection(direction);
         LocalDate from = dateFrom != null ? dateFrom : LocalDate.of(2010, 1, 1);
         LocalDate to = dateTo != null ? dateTo : LocalDate.now();
         return "AR".equals(dir)
                 ? receivableSummary(keyword, from, to, page, size)
-                : payableSummary(keyword, from, to, facets, page, size);
+                : payableSummary(keyword, from, to, facets, page, size, sort, order);
     }
 
     /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。 */
@@ -354,7 +368,7 @@ public class FinanceReportService {
     /** D 应付款汇总（按立帐单号一行一单：立帐单号/供应商/开单日期/币别/汇率/应付帐款/已付金额）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse payableSummary(String keyword, LocalDate from, LocalDate to,
-                                              Map<String, String> facets, int page, int size) {
+                                              Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "立帐单号", 150),
                 ReportColumn.text("supplierName", "供应商", 180),
@@ -378,7 +392,7 @@ public class FinanceReportService {
             w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(s.name,'')) LIKE LOWER(:kw))", "kw", "%" + keyword.toLowerCase() + "%");
         if (from != null) w.add("l.bill_date>=:dateFrom", "dateFrom", from);
         if (to != null) w.add("l.bill_date<=:dateTo", "dateTo", to);
-        return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", List.of(), facets, page, size, sort, order);
     }
 
     /** 原生 SQL 分页执行器（CTE/聚合报表用，如 B 应收汇总）。SQL 含 :from/:to[/:kw] 参数。 */
@@ -423,7 +437,7 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse receiptDetail(String billNo, UUID clientId, UUID accountId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                             Map<String, String> facets, int page, int size) {
+                                             Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("clientName", "客户名称", 160), ReportColumn.text("clientFull", "客户全称", 200),
@@ -434,14 +448,16 @@ public class FinanceReportService {
                 ReportColumn.money("uncollected", "未收金额"),
                 ReportColumn.money("balance", "本次余额"),
                 ReportColumn.money("otherFee", "其它费用金额"),
-                ReportColumn.text("remark", "备注", 160));
+                ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
                        COALESCE(c.place_id,'') AS "district", a.name AS "accountName", NULL AS "departmentName",
                        t.amount_original AS "amountOriginal", COALESCE(ar.bal,0) AS "uncollected",
                        (COALESCE(ar.bal,0) - t.amount_local) AS "balance",
-                       t.other_fee AS "otherFee", t.remark AS "remark"
+                       t.other_fee AS "otherFee", t.remark AS "remark",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
@@ -453,13 +469,13 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
         addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
     /** F 销售收款汇总（按客户 GROUP BY）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receiptSummary(String billNo, UUID clientId, Short status, LocalDate dateFrom,
-                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size) {
+                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("clientCode", "客户编号", 110), ReportColumn.text("clientName", "客户名称", 160),
                 ReportColumn.text("clientFull", "客户全称", 200), ReportColumn.text("address", "客户地址", 200),
@@ -480,21 +496,23 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse paymentDetail(String billNo, UUID supplierId, UUID accountId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                             Map<String, String> facets, int page, int size) {
+                                             Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 180), ReportColumn.text("operatorName", "付款人", 100),
                 ReportColumn.text("accountName", "付款帐户", 130), ReportColumn.money("amountOriginal", "实付金额(外)"),
                 ReportColumn.money("amountTotal", "付款总额"), ReportColumn.money("amountLocal", "实付金额"),
                 ReportColumn.text("incomeItem", "收入项目名称", 130), ReportColumn.text("counterpartAccount", "对方账户", 140),
-                ReportColumn.text("handlerName", "经手人", 100), ReportColumn.text("remark", "备注", 160));
+                ReportColumn.text("handlerName", "经手人", 100), ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳付款单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", s.name AS "supplierName",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
                          CASE WHEN COALESCE(em_op.legacy_category,'') <> '' THEN ' ('||em_op.legacy_category||')' ELSE '' END AS "operatorName",
                        a.name AS "accountName", t.amount_original AS "amountOriginal", t.amount_original AS "amountTotal",
                        t.amount_local AS "amountLocal", NULL AS "incomeItem", ca.name AS "counterpartAccount",
-                       COALESCE(em_op.full_name, t.operator_name, '') AS "handlerName", t.remark AS "remark"
+                       COALESCE(em_op.full_name, t.operator_name, '') AS "handlerName", t.remark AS "remark",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_payments t
@@ -505,13 +523,13 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
         addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
     /** H 采购付款汇总（一行一付款单 + 关联 AP 立帐单/已付/未付/本次付款/本次余额）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse paymentSummary(String billNo, UUID supplierId, Short status, LocalDate dateFrom,
-                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size) {
+                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 180), ReportColumn.text("operatorName", "付款人", 100),
@@ -523,7 +541,8 @@ public class FinanceReportService {
                 ReportColumn.money("paid", "已付金额"), ReportColumn.money("unpaid", "未付金额"),
                 ReportColumn.money("thisPay", "本次付款"), ReportColumn.money("thisBalance", "本次余额"),
                 ReportColumn.text("summary", "摘要", 160),
-                ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("handlerName", "经手人", 100));
+                ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("handlerName", "经手人", 100),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳付款单编辑页
         // 关联 ar_ap_ledger(DIRECT_PAYMENT)：直接付款 1:1 建一条 AP 立帐行（source_doc_id=付款单 id），
         // 取 立帐单号/已付(amount_settled)/未付(amount_balance)。迁移期 source_doc_id 已回填（~69% 命中），未命中则空。
         String dataSelect = """
@@ -538,7 +557,8 @@ public class FinanceReportService {
                        ap.amount_settled AS "paid", ap.amount_balance AS "unpaid",
                        t.amount_local AS "thisPay", ap.amount_balance AS "thisBalance", COALESCE(ap.remark,'') AS "summary",
                        ca.name AS "counterpartAccount",
-                       COALESCE(em_op.full_name, t.operator_name,'') AS "handlerName"
+                       COALESCE(em_op.full_name, t.operator_name,'') AS "handlerName",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_payments t
@@ -552,7 +572,7 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
         addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
     // ======================== ③ 费用/收入明细/汇总 M·N / O·P + V ========================
@@ -561,7 +581,7 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse expenseDetail(String billNo, UUID accountId, UUID departmentId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                             Map<String, String> facets, int page, int size) {
+                                             Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "付款人", 100), ReportColumn.text("accountName", "付款帐户", 130),
@@ -571,7 +591,8 @@ public class FinanceReportService {
                 ReportColumn.money("lineAmount", "支出金额"), ReportColumn.text("counterpartName", "对方", 120),
                 ReportColumn.text("departmentName", "部门", 120), ReportColumn.text("counterpartAccount", "对方账户", 140),
                 ReportColumn.text("remark", "备注", 160), ReportColumn.text("summary", "摘要", 160),
-                ReportColumn.number("lineNo", "序号"));
+                ReportColumn.number("lineNo", "序号"),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳费用单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
@@ -579,7 +600,8 @@ public class FinanceReportService {
                        a.name AS "accountName", cur.code AS "currencyCode", t.amount_original AS "amountTotal", t.amount_local AS "amountLocal",
                        ps.name AS "styleName", i.qty AS "qty", i.price AS "price", i.amount_local AS "lineAmount",
                        COALESCE(i.counterpart_name,'') AS "counterpartName", d.name AS "departmentName",
-                       ca.name AS "counterpartAccount", t.remark AS "remark", i.summary AS "summary", i.line_no AS "lineNo"
+                       ca.name AS "counterpartAccount", t.remark AS "remark", i.summary AS "summary", i.line_no AS "lineNo",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_expense_items i
@@ -593,13 +615,13 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
     /** N 一般费用汇总（按 单号×部门×费用项目 GROUP BY items）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse expenseSummary(String billNo, UUID departmentId, Short status, LocalDate dateFrom,
-                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size) {
+                                              LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "付款人", 100), ReportColumn.text("accountName", "付款帐户", 130),
@@ -608,14 +630,16 @@ public class FinanceReportService {
                 ReportColumn.text("styleName", "费用项目名称", 130), ReportColumn.number("qty", "数量"),
                 ReportColumn.money("price", "单价"), ReportColumn.money("lineAmount", "支出金额"),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账户", 140),
-                ReportColumn.text("summary", "摘要", 160));
+                ReportColumn.text("summary", "摘要", 160),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳费用单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName", a.name AS "accountName",
                        t.amount_local AS "amountLocal", COALESCE(em_mk.full_name, t.maker_name,'') AS "makerName",
                        COALESCE(em_ap.full_name, t.approver_name,'') AS "approverName", t.remark AS "remark",
                        ps.name AS "styleName", i.qty AS "qty", i.price AS "price", i.amount_local AS "lineAmount",
-                       COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary"
+                       COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_expense_items i
@@ -629,27 +653,29 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
     /** O 其它收入明细。 */
     @Transactional(readOnly = true)
     public ReportTableResponse incomeDetail(String billNo, UUID accountId, UUID departmentId, Short status,
                                             LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                            Map<String, String> facets, int page, int size) {
+                                            Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
                 ReportColumn.money("amountTotal", "收款总额"), ReportColumn.text("styleName", "收入项目名称", 130),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账号", 140),
-                ReportColumn.text("summary", "摘要", 160), ReportColumn.text("remark", "备注", 160));
+                ReportColumn.text("summary", "摘要", 160), ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收入单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
                          CASE WHEN COALESCE(em_op.legacy_category,'') <> '' THEN ' ('||em_op.legacy_category||')' ELSE '' END AS "operatorName",
                        a.name AS "accountName", t.amount_original AS "amountTotal", ps.name AS "styleName",
                        COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount",
-                       i.summary AS "summary", t.remark AS "remark"
+                       i.summary AS "summary", t.remark AS "remark",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_other_income_items i
@@ -661,13 +687,13 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
     /** P 其它收入汇总。 */
     @Transactional(readOnly = true)
     public ReportTableResponse incomeSummary(String billNo, UUID departmentId, Short status, LocalDate dateFrom,
-                                             LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size) {
+                                             LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
@@ -675,7 +701,8 @@ public class FinanceReportService {
                 ReportColumn.text("makerName", "制单员", 100), ReportColumn.text("approverName", "审核员", 100),
                 ReportColumn.text("remark", "备注", 160), ReportColumn.text("styleName", "收入项目名称", 130),
                 ReportColumn.money("incomeAmount", "收入金额"), ReportColumn.text("counterpartName", "对方", 120),
-                ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("summary", "摘要", 160));
+                ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("summary", "摘要", 160),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收入单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName", a.name AS "accountName",
@@ -683,7 +710,8 @@ public class FinanceReportService {
                        COALESCE(em_mk.full_name, t.maker_name,'') AS "makerName",
                        COALESCE(em_ap.full_name, t.approver_name,'') AS "approverName", t.remark AS "remark",
                        ps.name AS "styleName", i.amount_local AS "incomeAmount",
-                       COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary"
+                       COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_other_income_items i
@@ -697,14 +725,14 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
     /** V 费用冲销明细（销售收款侧带 AR 核销 + 其它费用；按用户列规格，覆盖旧"同M"注释）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse feeOffsetDetail(String billNo, UUID clientId, UUID accountId, Short status,
                                                LocalDate dateFrom, LocalDate dateTo, String keyword,
-                                               Map<String, String> facets, int page, int size) {
+                                               Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("clientName", "客户名称", 160), ReportColumn.text("clientFull", "客户全称", 200),
@@ -712,14 +740,16 @@ public class FinanceReportService {
                 ReportColumn.text("region", "区域", 100), ReportColumn.text("district", "所属地区", 110),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.money("uncollected", "未收金额"),
                 ReportColumn.money("thisReceipt", "本次收款"), ReportColumn.money("balance", "本次余额"),
-                ReportColumn.money("otherFee", "其它费用金额"), ReportColumn.text("remark", "备注", 160));
+                ReportColumn.money("otherFee", "其它费用金额"), ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页（费用冲销源单为收款单）
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
                        COALESCE(c.place_id,'') AS "district",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName",
                        COALESCE(ar.bal,0) AS "uncollected", t.amount_local AS "thisReceipt", (COALESCE(ar.bal,0) - t.amount_local) AS "balance",
-                       t.other_fee AS "otherFee", t.remark AS "remark"
+                       t.other_fee AS "otherFee", t.remark AS "remark",
+                       t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
@@ -731,7 +761,7 @@ public class FinanceReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
         addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
     // ======================== ④ 往来对帐单 I·J·K·L / X（滚动余额，源=头表+台账） ========================
@@ -1062,6 +1092,107 @@ public class FinanceReportService {
         String d = direction.trim().toUpperCase();
         if (!d.equals("AR") && !d.equals("AP")) throw new ApiException(ErrorCode.BUSINESS, "direction 只能是 AR 或 AP");
         return d;
+    }
+
+    // ======================== 导出（加密 Excel） ========================
+
+    /**
+     * 导出某钱流报表全量（不分页，循环 size=500 累积全部行），返回 ExportColumn + 行 Map。
+     * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致：
+     * ar-ap/overview / ar-ap/{detail,summary} / {receipt|payment|expense|income}/{detail,summary} /
+     * fee-offset/detail / statement/{flow,detail,annual} / account/statement。
+     *
+     * <p>Q/R 银行存取款（{@link #bankReport}）为空表结构（M_Bank 0 行），不纳入导出——
+     * 前端银行存取 chip 不显示导出按钮。
+     *
+     * <p>滚动余额报表（statement/flow·detail、account/statement）每次分页都从全量重算余额后切片，
+     * 跨页累积时每页的「余额」均基于全集正确计算，导出值与页内一致。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        String billNo = p == null ? null : p.get("billNo");
+        UUID clientId = parseUuid(p == null ? null : p.get("clientId"));
+        UUID supplierId = parseUuid(p == null ? null : p.get("supplierId"));
+        UUID accountId = parseUuid(p == null ? null : p.get("accountId"));
+        UUID departmentId = parseUuid(p == null ? null : p.get("departmentId"));
+        UUID partyId = parseUuid(p == null ? null : p.get("partyId"));
+        UUID categoryId = parseUuid(p == null ? null : p.get("categoryId"));
+        Short status = parseShort(p == null ? null : p.get("status"));
+        LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
+        String keyword = p == null ? null : p.get("keyword");
+        String direction = p == null ? null : p.get("direction");
+        String side = p == null ? null : p.get("side");
+        String displayMode = p == null ? null : p.get("displayMode");
+        String categoryType = p == null ? null : p.get("categoryType");
+        Boolean settled = parseBool(p == null ? null : p.get("settled"));
+        int year = parseIntOrZero(p == null ? null : p.get("year"));
+        Map<String, String> facets = facetsOfMap(p);
+        BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
+            case "ar-ap/overview"    -> (pg, sz) -> arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
+            case "ar-ap/detail"      -> (pg, sz) -> arApDetail(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "ar-ap/summary"     -> (pg, sz) -> arApSummary(direction, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "receipt/detail"    -> (pg, sz) -> receiptDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "receipt/summary"   -> (pg, sz) -> receiptSummary(billNo, clientId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "payment/detail"    -> (pg, sz) -> paymentDetail(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "payment/summary"   -> (pg, sz) -> paymentSummary(billNo, supplierId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "expense/detail"    -> (pg, sz) -> expenseDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "expense/summary"   -> (pg, sz) -> expenseSummary(billNo, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "income/detail"     -> (pg, sz) -> incomeDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "income/summary"    -> (pg, sz) -> incomeSummary(billNo, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "fee-offset/detail" -> (pg, sz) -> feeOffsetDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "statement/flow"    -> (pg, sz) -> partyStatementFlow(partyId, side, dateFrom, dateTo, pg, sz);
+            case "statement/detail"  -> (pg, sz) -> partyStatementDetail(partyId, side, dateFrom, dateTo, pg, sz);
+            case "statement/annual"  -> (pg, sz) -> partyAnnualStatement(partyId, side, year, pg, sz);
+            case "account/statement" -> (pg, sz) -> accountStatement(accountId, dateFrom, dateTo, keyword, pg, sz);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
+        };
+        return paginateAll(loader);
+    }
+
+    /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
+    private ExportPayload paginateAll(BiFunction<Integer, Integer, ReportTableResponse> loader) {
+        final int size = 500;
+        List<Map<String, Object>> all = new ArrayList<>();
+        List<ExportColumn> cols = null;
+        int page = 1;
+        while (page <= 2000) {
+            ReportTableResponse r = loader.apply(page, size);
+            if (page == 1 && r.total() > settings.readInt("export_max_rows", 100000)) {
+                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
+            }
+            if (cols == null && r.columns() != null) {
+                cols = r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type()))
+                        .toList();
+            }
+            all.addAll(r.rows());
+            if (r.rows().size() < size) break;
+            if ((long) all.size() >= r.total()) break;
+            page++;
+        }
+        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
+    }
+
+    private static Map<String, String> facetsOfMap(Map<String, String> p) {
+        Map<String, String> facets = new LinkedHashMap<>();
+        if (p == null) return facets;
+        for (Map.Entry<String, String> e : p.entrySet()) {
+            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
+                facets.put(e.getKey().substring(2), e.getValue());
+            }
+        }
+        return facets;
+    }
+
+    private static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
+    private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
+    private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
+    private static Boolean parseBool(String s) { return (s == null || s.isBlank()) ? null : Boolean.valueOf(s); }
+    private static int parseIntOrZero(String s) {
+        if (s == null || s.isBlank()) return 0;
+        try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { return 0; }
     }
 
     // ======================== 内部结构 ========================

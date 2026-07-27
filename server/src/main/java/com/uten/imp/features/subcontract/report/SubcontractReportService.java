@@ -1,5 +1,11 @@
 package com.uten.imp.features.subcontract.report;
 
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.report.ReportSort;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 
 /**
  * 委外报表查询（委外管理 / 委外报表）。
@@ -47,13 +54,15 @@ public class SubcontractReportService {
     private static final UUID NIL = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     private final EntityManager em;
+    private final SystemSettingsService settings;
 
     // ======================== 通用执行器（8 张明细/汇总共用） ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
-                                       Map<String, String> activeFacets, int page, int size) {
+                                       Map<String, String> activeFacets, int page, int size,
+                                       String sort, String order) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -70,8 +79,13 @@ public class SubcontractReportService {
         WhereBuilder.Built full = mainWhere.build(facetClauses);
         WhereBuilder.Built baseB = mainWhere.build(null);
 
+        // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
+        var sortKeys = new java.util.HashSet<String>();
+        for (ReportColumn c : columns) sortKeys.add(c.key());
+        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
-                + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+                + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
@@ -110,7 +124,10 @@ public class SubcontractReportService {
             facets.put(spec.key(), buckets);
         }
 
-        return new ReportTableResponse(columns, items, facets, safePage, safeSize, total, totalPages);
+        // 隐藏元数据列（key 以 "__" 开头，如行跳源头用的 __srcId）：不进返回的 columns（前端不渲染、
+        // 导出 Excel 不含），但行 Map 已 put 其值（前端 onRowTap 可读 row['__srcId'] 跳对应单据编辑页）。
+        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages);
     }
 
     private static int toInt(Object v) {
@@ -169,7 +186,7 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse receiptDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String kw,
-                                             Map<String, String> facets, int page, int size) {
+                                             Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
@@ -184,7 +201,8 @@ public class SubcontractReportService {
                 ReportColumn.text("step", "工序", 80),
                 ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
                 ReportColumn.number("returnedQty", "退货数量"), ReportColumn.money("returnedAmount", "退货金额"),
-                ReportColumn.text("returnNo", "委外退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140));
+                ReportColumn.text("returnNo", "委外退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外进仓单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        o.settlement_style_legacy AS "settlementStyle",
@@ -195,7 +213,8 @@ public class SubcontractReportService {
                        i.qty AS "qty", un.name AS "unitName", NULL AS "step",
                        i.price AS "price", i.amount_local AS "amount",
                        i.returned_qty AS "returnedQty", i.return_amount AS "returnedAmount",
-                       i.return_no AS "returnNo", i.order_no AS "orderNo"
+                       i.return_no AS "returnNo", i.order_no AS "orderNo",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_receipt_items i
@@ -213,7 +232,7 @@ public class SubcontractReportService {
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
     }
 
     // ======================== ② 委外进仓汇总 ========================
@@ -221,17 +240,19 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse receiptSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                               LocalDate dateFrom, LocalDate dateTo, String kw,
-                                              Map<String, String> facets, int page, int size) {
+                                              Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 150), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
-                ReportColumn.text("receiverName", "收货人", 100), ReportColumn.text("makerName", "制单员", 100));
+                ReportColumn.text("receiverName", "收货人", 100), ReportColumn.text("makerName", "制单员", 100),
+                ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        o.settlement_style_legacy AS "settlementStyle",
                        COALESCE(em_rec.full_name, o.receiver_name) AS "receiverName",
-                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName"
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_receipts o
@@ -251,7 +272,7 @@ public class SubcontractReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
     }
 
     // ======================== ③ 委外退货明细 ========================
@@ -259,7 +280,7 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse returnDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                             LocalDate dateFrom, LocalDate dateTo, String kw,
-                                            Map<String, String> facets, int page, int size) {
+                                            Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
@@ -273,7 +294,8 @@ public class SubcontractReportService {
                 ReportColumn.number("qty", "数量"), ReportColumn.text("unitName", "单位", 70),
                 ReportColumn.text("step", "工序", 80),
                 ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
-                ReportColumn.text("receiptNo", "委外进仓单号", 140));
+                ReportColumn.text("receiptNo", "委外进仓单号", 140),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外退货单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        o.settlement_style_legacy AS "settlementStyle",
@@ -282,7 +304,8 @@ public class SubcontractReportService {
                        g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", i.weight AS "weight", i.girth_qty AS "girth",
                        i.qty AS "qty", un.name AS "unitName", NULL AS "step",
-                       i.price AS "price", i.amount_local AS "amount", i.receipt_no AS "receiptNo"
+                       i.price AS "price", i.amount_local AS "amount", i.receipt_no AS "receiptNo",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_return_items i
@@ -300,7 +323,7 @@ public class SubcontractReportService {
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
     }
 
     // ======================== ④ 委外退货汇总 ========================
@@ -308,17 +331,19 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse returnSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String kw,
-                                             Map<String, String> facets, int page, int size) {
+                                             Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 150), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
-                ReportColumn.text("makerName", "制单员", 100), ReportColumn.text("approverName", "审核员", 100));
+                ReportColumn.text("makerName", "制单员", 100), ReportColumn.text("approverName", "审核员", 100),
+                ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        o.settlement_style_legacy AS "settlementStyle",
                        COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
-                       COALESCE(em_ap.full_name, o.approver_name) AS "approverName"
+                       COALESCE(em_ap.full_name, o.approver_name) AS "approverName",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_returns o
@@ -338,7 +363,7 @@ public class SubcontractReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑤ 委外材料出仓明细 ========================
@@ -346,7 +371,7 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse materialIssueDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                                    LocalDate dateFrom, LocalDate dateTo, String kw,
-                                                   Map<String, String> facets, int page, int size) {
+                                                   Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
@@ -357,14 +382,16 @@ public class SubcontractReportService {
                 ReportColumn.text("unitName", "单位", 70), ReportColumn.number("weight", "重量"),
                 ReportColumn.number("boxQty", "胶箱数量"), ReportColumn.number("qty", "数量"),
                 ReportColumn.number("returnedQty", "退货数量"),
-                ReportColumn.text("returnNo", "材料退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140));
+                ReportColumn.text("returnNo", "材料退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外发料单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
                        g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", un.name AS "unitName", i.weight AS "weight",
                        i.box_qty AS "boxQty", i.qty AS "qty", i.returned_qty AS "returnedQty",
-                       i.return_no AS "returnNo", i.order_no AS "orderNo"
+                       i.return_no AS "returnNo", i.order_no AS "orderNo",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_material_issue_items i
@@ -381,7 +408,7 @@ public class SubcontractReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑥ 委外材料出仓汇总 ========================
@@ -389,16 +416,18 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse materialIssueSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw,
-                                                    Map<String, String> facets, int page, int size) {
+                                                    Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.number("docSeq", "编号", 70), ReportColumn.text("billNo", "单号", 150),
                 ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
-                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"));
+                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT ROW_NUMBER() OVER (ORDER BY o.bill_date DESC, o.bill_no) AS "docSeq",
                        o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
-                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved"
+                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_material_issues o
@@ -415,7 +444,7 @@ public class SubcontractReportService {
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         addSummaryKw(w, kw, "o.bill_no");
         List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑦ 委外材料退货明细 ========================
@@ -423,7 +452,7 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse materialReturnDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw,
-                                                    Map<String, String> facets, int page, int size) {
+                                                    Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
@@ -433,13 +462,15 @@ public class SubcontractReportService {
                 ReportColumn.text("spec", "规格", 140), ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.text("unitName", "单位", 70), ReportColumn.number("weight", "重量"),
                 ReportColumn.number("girth", "围数"), ReportColumn.number("qty", "数量"),
-                ReportColumn.text("issueNo", "材料出仓单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140));
+                ReportColumn.text("issueNo", "材料出仓单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140),
+                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外材料退货单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
                        COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
                        g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel", g.name AS "goodsName",
                        g.spec AS "spec", col.name AS "colorName", un.name AS "unitName", i.weight AS "weight",
-                       i.girth_qty AS "girth", i.qty AS "qty", i.issue_no AS "issueNo", i.order_no AS "orderNo"
+                       i.girth_qty AS "girth", i.qty AS "qty", i.issue_no AS "issueNo", i.order_no AS "orderNo",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_material_return_items i
@@ -456,7 +487,7 @@ public class SubcontractReportService {
         List<FacetSpec> specs = List.of(
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑧ 委外材料退货汇总 ========================
@@ -464,16 +495,18 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse materialReturnSummary(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                                      LocalDate dateFrom, LocalDate dateTo, String kw,
-                                                     Map<String, String> facets, int page, int size) {
+                                                     Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.number("docSeq", "编号", 70), ReportColumn.text("billNo", "单号", 150),
                 ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
-                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"));
+                ReportColumn.text("operatorName", "经办人", 100), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT ROW_NUMBER() OVER (ORDER BY o.bill_date DESC, o.bill_no) AS "docSeq",
                        o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
-                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved"
+                       COALESCE(em_op.full_name, o.operator_name) AS "operatorName", (o.status = 1) AS "approved",
+                       o.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM subcontract_material_returns o
@@ -490,7 +523,7 @@ public class SubcontractReportService {
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         addSummaryKw(w, kw, "o.bill_no");
         List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
     }
 
     // ======================== ⑨ 委外出入状况表（综合 · 按 委外商×货品×颜色 聚合） ========================
@@ -652,6 +685,79 @@ public class SubcontractReportService {
     private static FacetSpec facetWarehouse() {
         return new FacetSpec("warehouseName", "CAST(wh.id AS text) AS v, wh.name AS lbl", "wh.id, wh.name", "o.warehouse_id", "uuid");
     }
+
+    // ======================== 导出（加密 Excel） ========================
+
+    /**
+     * 导出某报表全量（不分页，循环 size=500 累积全部行），返回 ExportColumn + 行 Map。
+     * 列定义映射 ReportColumn→ExportColumn（剥离 width）。report 取值与 GET 路径一致：
+     * {RECEIPT|RETURN|MATERIAL_ISSUE|MATERIAL_RETURN}/{detail|summary} 或独立 in-out-status。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        String billNo = p == null ? null : p.get("billNo");
+        UUID supplierId = parseUuid(p == null ? null : p.get("supplierId"));
+        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
+        Short status = parseShort(p == null ? null : p.get("status"));
+        LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
+        LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
+        String kw = p == null ? null : p.get("keyword");
+        Map<String, String> facets = facetsOfMap(p);
+        BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
+            case "RECEIPT/detail"         -> (pg, sz) -> receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "RECEIPT/summary"        -> (pg, sz) -> receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "RETURN/detail"          -> (pg, sz) -> returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "RETURN/summary"         -> (pg, sz) -> returnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "MATERIAL_ISSUE/detail"  -> (pg, sz) -> materialIssueDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "MATERIAL_ISSUE/summary" -> (pg, sz) -> materialIssueSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "MATERIAL_RETURN/detail" -> (pg, sz) -> materialReturnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            case "MATERIAL_RETURN/summary"-> (pg, sz) -> materialReturnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+            // 出入状况表综合聚合，不接受 sort/facets；忽略 sort/order 参数（无注入风险）。
+            case "in-out-status"          -> (pg, sz) -> inOutStatus(supplierId, dateFrom, dateTo, kw, pg, sz);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
+        };
+        return paginateAll(loader);
+    }
+
+    /** 循环分页(size=500)累积全部行；硬上限 2000 页(=百万行)防失控。列取首页 columns 映射为 ExportColumn。 */
+    private ExportPayload paginateAll(BiFunction<Integer, Integer, ReportTableResponse> loader) {
+        final int size = 500;
+        List<Map<String, Object>> all = new ArrayList<>();
+        List<ExportColumn> cols = null;
+        int page = 1;
+        while (page <= 2000) {
+            ReportTableResponse r = loader.apply(page, size);
+            if (page == 1 && r.total() > settings.readInt("export_max_rows", 100000)) {
+                // 大数据量导出内存安全上限：超 10 万行要求收窄筛选/分批，防 OOM。
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出数据超过 10 万行上限，请收窄筛选条件或分批导出");
+            }
+            if (cols == null && r.columns() != null) {
+                cols = r.columns().stream()
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type()))
+                        .toList();
+            }
+            all.addAll(r.rows());
+            if (r.rows().size() < size) break;
+            if ((long) all.size() >= r.total()) break;
+            page++;
+        }
+        return new ExportPayload(cols == null ? List.of() : cols, all, all.size());
+    }
+
+    private static Map<String, String> facetsOfMap(Map<String, String> p) {
+        Map<String, String> facets = new LinkedHashMap<>();
+        if (p == null) return facets;
+        for (Map.Entry<String, String> e : p.entrySet()) {
+            if (e.getKey().startsWith("f.") && e.getValue() != null && !e.getValue().isBlank()) {
+                facets.put(e.getKey().substring(2), e.getValue());
+            }
+        }
+        return facets;
+    }
+
+    private static UUID parseUuid(String s) { return (s == null || s.isBlank()) ? null : UUID.fromString(s); }
+    private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
+    private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
 
     // ======================== 保留：月度汇总（MV，前端不再暴露入口） ========================
 

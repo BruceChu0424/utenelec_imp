@@ -91,6 +91,13 @@
             <version>1.78.1</version>
         </dependency>
 
+        <!-- Excel 导出：POI 5.2.5（SXSSF 流式防 OOM + OOXML Agile AES-256 加密，复用上面的 BouncyCastle） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
+
         <!-- 登录限流 -->
         <dependency>
             <groupId>com.bucket4j</groupId>

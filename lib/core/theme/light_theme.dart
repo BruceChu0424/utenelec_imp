@@ -56,6 +56,7 @@ ThemeData buildLightTheme() {
     useMaterial3: true,
     brightness: Brightness.light,
     colorScheme: colorScheme,
+    fontFamily: 'NotoSansSC',
     scaffoldBackgroundColor: UtenColors.background,
     canvasColor: UtenColors.background,
     visualDensity: VisualDensity.adaptivePlatformDensity,

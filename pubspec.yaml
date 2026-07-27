@@ -68,3 +68,10 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/lottie/
+
+  # 中文字体本地化：CanvasKit 渲染中文需要 CJK 字体数据，默认从 fonts.gstatic.com 拉
+  # Noto Sans SC（中国网络失败）。本地打包后用本地，不依赖 CDN。
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC.ttf

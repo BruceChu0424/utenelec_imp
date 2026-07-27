@@ -53,6 +53,7 @@ ThemeData buildDarkTheme() {
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: colorScheme,
+    fontFamily: 'NotoSansSC',
     scaffoldBackgroundColor: UtenColors.darkBackground,
     canvasColor: UtenColors.darkBackground,
     visualDensity: VisualDensity.adaptivePlatformDensity,

@@ -2,6 +2,8 @@ package com.uten.imp.features.master.supplier;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -50,6 +52,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SupplierService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.SUPPLIER;
+
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "name", "description", "tday", "place", "empId", "legalPerson", "linkman",
@@ -90,6 +94,7 @@ public class SupplierService {
     private final SupplierCategoryRepository categoryRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -289,6 +294,8 @@ public class SupplierService {
         tx.bind();
         Supplier m = new Supplier();
         apply(req, m);
+        m.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
     }
@@ -314,7 +321,6 @@ public class SupplierService {
     private void apply(SupplierSaveRequest req, Supplier m) {
         m.setCategory(requireCategory(req.getCategoryId()));
         m.setName(req.getName());
-        m.setCode(req.getCode());
         m.setDescription(req.getDescription());
         m.setPlace(req.getPlace());
         m.setEmpId(req.getEmpId());

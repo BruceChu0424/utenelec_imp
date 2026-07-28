@@ -73,6 +73,8 @@ class ProductionPlanListItem {
     this.workshopName,
     this.workerName,
     this.sellerName,
+    this.sellerId,
+    this.workerId,
     this.status,
     this.closed = false,
     this.stopped = false,
@@ -88,6 +90,8 @@ class ProductionPlanListItem {
   final String? workshopName;
   final String? workerName;
   final String? sellerName;
+  final String? sellerId;
+  final String? workerId;
   final int? status;
   final bool closed;
   final bool stopped;
@@ -104,6 +108,8 @@ class ProductionPlanListItem {
         workshopName: json['workshopName'] as String?,
         workerName: json['workerName'] as String?,
         sellerName: json['sellerName'] as String?,
+        sellerId: json['sellerId'] as String?,
+        workerId: json['workerId'] as String?,
         status: _asInt(json['status']),
         closed: (json['closed'] as bool?) ?? false,
         stopped: (json['stopped'] as bool?) ?? false,
@@ -271,6 +277,8 @@ class ProductionPlanDetail {
     this.workshopName,
     this.workerName,
     this.sellerName,
+    this.sellerId,
+    this.workerId,
     this.makerId,
     this.approverId,
     this.makerLegacyId,
@@ -294,6 +302,8 @@ class ProductionPlanDetail {
   final String? workshopName;
   final String? workerName;
   final String? sellerName;
+  final String? sellerId;
+  final String? workerId;
   final String? makerId;
   final String? approverId;
   final int? makerLegacyId;
@@ -318,6 +328,8 @@ class ProductionPlanDetail {
         workshopName: json['workshopName'] as String?,
         workerName: json['workerName'] as String?,
         sellerName: json['sellerName'] as String?,
+        sellerId: json['sellerId'] as String?,
+        workerId: json['workerId'] as String?,
         makerId: json['makerId'] as String?,
         approverId: json['approverId'] as String?,
         makerLegacyId: _asInt(json['makerLegacyId']),

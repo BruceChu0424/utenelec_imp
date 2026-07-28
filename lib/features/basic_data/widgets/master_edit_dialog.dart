@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -26,6 +27,12 @@ class MasterSelectOption {
   final String label;
 }
 
+/// 状态字段固定选项（使用/禁用），10 个主档共用。配合后端 CHECK(status IN ('使用','禁用'))。
+const List<MasterSelectOption> kMasterStatusOptions = [
+  MasterSelectOption(value: '使用', label: '使用'),
+  MasterSelectOption(value: '禁用', label: '禁用'),
+];
+
 /// 主档字段定义。
 class MasterFieldDef {
   const MasterFieldDef({
@@ -37,6 +44,7 @@ class MasterFieldDef {
     this.group,
     this.options,
     this.selectInteger = false,
+    this.readOnly = false,
   });
 
   /// 与后端 SaveRequest 字段名对齐（如 name / colorLegacyId）。
@@ -60,6 +68,10 @@ class MasterFieldDef {
 
   /// select 提交值是否按整数解析（颜色/单位 legacy_id = true，提交 JSON 数字）。
   final bool selectInteger;
+
+  /// 只读字段（如编号）：禁用展示、不参与提交。
+  /// 编辑时显既有值；新建时值为空 → 显 [hint]（如「保存后自动生成」）。
+  final bool readOnly;
 }
 
 typedef MasterSubmit = Future<bool> Function(Map<String, dynamic> body);
@@ -168,6 +180,7 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
   Future<void> _submit() async {
     final body = Map<String, dynamic>.from(widget.fixedValues);
     for (final f in widget.fields) {
+      if (f.readOnly) continue; // 只读字段（编号）不上送：新建服务端生成、编辑保留
       // select 类型：从 _selectValues 取，按 selectInteger 决定提交 int 还是 String。
       if (f.type == MasterFieldType.select) {
         final sv = _selectValues[f.key];
@@ -339,6 +352,7 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
   }
 
   Widget _field(MasterFieldDef f) {
+    if (f.readOnly) return _readOnlyField(f);
     if (f.type == MasterFieldType.select) return _selectField(f);
     return TextField(
       controller: _controllers[f.key],
@@ -352,23 +366,33 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
     );
   }
 
-  /// select 字段：DropdownButtonFormField，首项「— 不选 —」= null（可清空）。
-  /// initialValue 已在 initState sanitize（不在选项里→null），故必命中某 item。
+  /// 只读字段（编号）：禁用展示。编辑时显既有值；新建时空值显 [MasterFieldDef.hint]。
+  Widget _readOnlyField(MasterFieldDef f) {
+    final ctl = _controllers[f.key];
+    final empty = ctl == null || ctl.text.isEmpty;
+    return TextField(
+      controller: ctl,
+      enabled: false,
+      decoration: InputDecoration(
+        labelText: f.label,
+        hintText: empty ? (f.hint ?? '') : null,
+      ),
+    );
+  }
+
+  /// select 字段：UtenDropdownField（Overlay 弹层，对齐全站下拉；根治溢出）。
+  /// required → 不显示「不选」（强制选）；非 required → allowClear 可清空回 null。
+  /// initialValue 已在 initState sanitize（不在选项里→null）。
   Widget _selectField(MasterFieldDef f) {
     final options = f.options ?? const <MasterSelectOption>[];
-    return DropdownButtonFormField<String?>(
-      initialValue: _selectValues[f.key],
-      decoration: InputDecoration(
-        labelText: f.required ? '${f.label} *' : f.label,
-        hintText: f.hint,
-      ),
-      items: <DropdownMenuItem<String?>>[
-        const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-        for (final o in options)
-          DropdownMenuItem<String?>(
-            value: o.value,
-            child: Text(o.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
+    return UtenDropdownField(
+      label: f.label,
+      required: f.required,
+      value: _selectValues[f.key],
+      allowClear: !f.required,
+      hintText: f.hint,
+      items: [
+        for (final o in options) UtenDropdownItem(value: o.value, label: o.label),
       ],
       onChanged: (v) => setState(() => _selectValues[f.key] = v),
     );

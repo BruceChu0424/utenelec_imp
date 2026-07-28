@@ -18,6 +18,8 @@ public class PlanListItem {
     private String workshopName;
     private String workerName;
     private String sellerName;
+    private UUID sellerId;
+    private UUID workerId;
     private Short status;
     private boolean closed;
     private boolean stopped;

@@ -2,6 +2,8 @@ package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -65,6 +67,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class GoodsService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.GOODS;
+
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "series", "model", "material", "code", "name", "spec",
@@ -96,6 +100,7 @@ public class GoodsService {
     private final UnitRepository unitRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -341,6 +346,8 @@ public class GoodsService {
         tx.bind();
         Goods g = new Goods();
         apply(req, g);
+        g.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
         return toDetail(g, null, null);
     }
@@ -382,7 +389,6 @@ public class GoodsService {
     private void apply(GoodsSaveRequest req, Goods g) {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
-        g.setCode(req.getCode());
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         g.setSpec(req.getSpec());
@@ -395,6 +401,25 @@ public class GoodsService {
         g.setStatus(req.getStatus());
         g.setColorLegacyId(req.getColorLegacyId());
         g.setUnitLegacyId(req.getUnitLegacyId());
+        // 成本预算（「成本预算」页签字段；前端表单全量回传，null 即清空）
+        g.setSourceE(req.getSourceE());
+        g.setMachiningE(req.getMachiningE());
+        g.setIncidentalE(req.getIncidentalE());
+        g.setLacquerE(req.getLacquerE());
+        g.setPlatingE(req.getPlatingE());
+        g.setCasingE(req.getCasingE());
+        g.setPolishE(req.getPolishE());
+        g.setTotal(req.getTotal());
+        g.setWorkRate(req.getWorkRate());
+        g.setWorkE(req.getWorkE());
+        g.setLostRate(req.getLostRate());
+        g.setLostE(req.getLostE());
+        g.setRentRate(req.getRentRate());
+        g.setRentE(req.getRentE());
+        g.setMakeRate(req.getMakeRate());
+        g.setMakeE(req.getMakeE());
+        g.setCTotal(req.getCTotal());
+        g.setGTotal(req.getGTotal());
     }
 
     private GoodsDetail toDetail(Goods g, String colorName, String unitName) {
@@ -405,7 +430,12 @@ public class GoodsService {
                 toPrice(g.getPrice()), g.getStatus(), g.getLegacyId(),
                 g.getShortName(), categoryId, categoryName, g.getPack(),
                 g.getMaterial(), g.getThickness(), g.getUnitLegacyId(),
-                g.getMWeight(), g.getPieces(), colorName, unitName, g.getColorLegacyId());
+                g.getMWeight(), g.getPieces(), colorName, unitName, g.getColorLegacyId(),
+                g.getSourceE(), g.getMachiningE(), g.getIncidentalE(), g.getLacquerE(),
+                g.getPlatingE(), g.getCasingE(), g.getPolishE(), g.getTotal(),
+                g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
+                g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
+                g.getCTotal(), g.getGTotal());
     }
 
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames) {

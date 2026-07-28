@@ -2,6 +2,8 @@ package com.uten.imp.features.master.account;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -49,6 +51,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AccountService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.ACCOUNT;
+
     /** 账户类型枚举值（对齐 V50 CHECK 约束）。 */
     public static final String TYPE_BANK = "BANK";
     public static final String TYPE_CASH = "CASH";
@@ -79,6 +83,7 @@ public class AccountService {
     private final AccountRepository repo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     // ===== account_type 映射（迁移 CASE WHEN 的 Java 版本单一事实源） =====
 
@@ -240,6 +245,8 @@ public class AccountService {
         tx.bind();
         Account a = new Account();
         apply(req, a);
+        a.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (a.getStatus() == null) a.setStatus("使用");
         recomputeBalance(a);
         repo.save(a);
         return toDetail(a);
@@ -267,7 +274,6 @@ public class AccountService {
     /** 应用请求字段到实体（不含 receipts/payments/balance，由 Service 维护）。 */
     private void apply(AccountSaveRequest req, Account a) {
         a.setName(req.getName());
-        a.setCode(req.getCode());
         a.setBankAccountNo(req.getBankAccountNo());
         a.setAccountType(req.getAccountType() == null || req.getAccountType().isBlank()
                 ? inferAccountType(req.getName()) : req.getAccountType());

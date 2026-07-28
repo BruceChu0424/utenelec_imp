@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.paymentstyle;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.paymentstyle.dto.PaymentStyleDetail;
@@ -32,6 +34,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PaymentStyleService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.PAYMENT_STYLE;
+
     /** category 白名单（与 V50 CHECK 约束一致）。 */
     public static final Set<String> CATEGORIES = Set.of(
             "ACCOUNT", "LIABILITY", "EQUITY", "EXPENSE", "INCOME", "METHOD");
@@ -39,6 +43,7 @@ public class PaymentStyleService {
     private final PaymentStyleRepository repo;
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final MasterCodeService masterCodeService;
 
     @Transactional(readOnly = true)
     public List<PaymentStyleNode> tree() {
@@ -82,7 +87,7 @@ public class PaymentStyleService {
             throw new ApiException(ErrorCode.BUSINESS, "未知类别：" + req.getCategory());
         }
         PaymentStyle s = new PaymentStyle();
-        s.setCode(req.getCode());
+        s.setCode(masterCodeService.nextCode(CODE_PREFIX));
         s.setName(req.getName());
         s.setCategory(req.getCategory());
         s.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
@@ -92,6 +97,7 @@ public class PaymentStyleService {
         s.setLinkedAccountLegacyId(req.getLinkedAccountLegacyId());
         s.setInitBalance(req.getInitBalance());
         if (req.getStatus() != null && !req.getStatus().isBlank()) s.setStatus(req.getStatus());
+        if (s.getStatus() == null) s.setStatus("使用");
         if (req.getParentId() != null) {
             PaymentStyle parent = requireStyle(req.getParentId());
             s.setParent(parent);

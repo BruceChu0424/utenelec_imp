@@ -58,6 +58,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
   final _grid = UtenEditableGridController<FinanceGridRow>();
+  final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
 
@@ -76,6 +77,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     _otherFee.dispose();
     _invoiceNo.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
+    _scrollCtl.dispose();
     super.dispose();
   }
 
@@ -284,7 +286,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : UtenContentContainer(
-                child: ListView(
+                child: Scrollbar(
+                  controller: _scrollCtl,
+                  thumbVisibility: true,
+                  child: ListView(
+                  controller: _scrollCtl,
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
                     Card(
@@ -406,6 +412,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                       createBlankRow: () => FinanceGridRow(mode: _cfg.itemMode),
                     ),
                   ],
+                ),
                 ),
               ),
       ),

@@ -565,10 +565,17 @@ class _DetailPaneState extends State<_DetailPane> {
   // 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
   static const _clientFields = [
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '编号', group: '基础'),
+    MasterFieldDef(
+        key: 'code', label: '编号', group: '基础', readOnly: true, hint: '保存后自动生成'),
     MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
     MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
-    MasterFieldDef(key: 'status', label: '状态', group: '基础'),
+    MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
     MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
     MasterFieldDef(key: 'mobile', label: '手机', group: '联系'),
     MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
@@ -603,6 +610,7 @@ class _DetailPaneState extends State<_DetailPane> {
       context: context,
       title: '新增客户', // TODO(l10n): 补 arb
       fields: _clientFields,
+      initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateClient,
     );

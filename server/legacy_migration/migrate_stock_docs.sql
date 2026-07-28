@@ -55,7 +55,8 @@ CREATE TEMP TABLE item_stage (
 
 CREATE TEMP TABLE sg_stage (
     stock_legacy int, goods_legacy int, color_legacy int, year int,
-    qty numeric(18,4), fact_qty numeric(18,4), total numeric(18,2));
+    qty numeric(18,4), fact_qty numeric(18,4), total numeric(18,2),
+    weight numeric(18,4), fact_weight numeric(33,4));   -- V80 即时库存重量（StockGoods.Weight/FactWeight）
 
 -- ======================== 载入全部 8 类主表（accumulate，标 doc_type） ========================
 \copy doc_stage(legacy_id,bill_no,bill_date,stock_legacy_id,to_stock_legacy_id,client_legacy_id,supplier_legacy_id,worker_legacy,maker_legacy,approver_legacy,plan_no,bill_type,remark,total_original,status,cancel_bit,ass_team) FROM '/tmp/stock_transfer_m.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
@@ -122,8 +123,10 @@ WHERE NOT EXISTS (SELECT 1 FROM colors c WHERE c.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
 -- 仓库（从主表 + 台账反推）
+-- ⚠ 幻影仓（StockGoods 引用了 B_Storage 里不存在的 StockID）：is_accountable=FALSE。
+--   老库即时库存 INNER JOIN B_Storage，幻影仓本就不计入「全部」；指定该仓下拉仍可查。
 INSERT INTO warehouses (legacy_id, code, name, status, is_accountable, auto_created)
-SELECT DISTINCT lid, 'LEGACY-W-' || lid, '（迁移自动补录）', '使用', TRUE, TRUE
+SELECT DISTINCT lid, 'LEGACY-W-' || lid, '（迁移自动补录）', '使用', FALSE, TRUE
 FROM (SELECT stock_legacy_id AS lid FROM doc_stage UNION ALL
       SELECT to_stock_legacy_id FROM doc_stage UNION ALL
       SELECT stock_legacy FROM sg_stage) t
@@ -194,18 +197,20 @@ WHERE w.bill_type = 'WDRAW' AND w.legacy_id = s.legacy_id
 -- StockGoods 按「仓+货+色+年+库位」分行：QTY=年初余额(上年结转)、FactQTY=年末余额。
 -- 当前余额 = 最新年(MAX year)的 FactQTY（同年多库位先 SUM，再取最新年；COALESCE 兜底 QTY）。
 -- 旧实现误 SUM(所有年 QTY) → 跨年重复累加致库存虚高（货品54833: SUM=262204，实=最新年 FactQTY 182515）。
-INSERT INTO stock_balances (warehouse_id, goods_id, color_id, qty, amount_local, last_movement_date)
-SELECT warehouse_id, goods_id, color_id, fact_qty, total, now()
+-- V80 即时库存重量：weight 同口径——最新年 SUM(COALESCE(FactWeight, Weight))（Weight 全 0，FactWeight 有效）。
+INSERT INTO stock_balances (warehouse_id, goods_id, color_id, qty, amount_local, weight, last_movement_date)
+SELECT warehouse_id, goods_id, color_id, fact_qty, total, fact_weight, now()
 FROM (
     SELECT DISTINCT ON (warehouse_id, goods_id, color_id)
-           warehouse_id, goods_id, color_id, fact_qty, total
+           warehouse_id, goods_id, color_id, fact_qty, total, fact_weight
     FROM (
         SELECT (SELECT id FROM warehouses WHERE legacy_id = g.stock_legacy) AS warehouse_id,
                (SELECT id FROM goods      WHERE legacy_id = g.goods_legacy) AS goods_id,
                (SELECT id FROM colors     WHERE legacy_id = g.color_legacy) AS color_id,
                g.year,
                SUM(COALESCE(g.fact_qty, g.qty)) AS fact_qty,
-               SUM(g.total) AS total
+               SUM(g.total) AS total,
+               SUM(COALESCE(g.fact_weight, g.weight)) AS fact_weight
         FROM sg_stage g
         GROUP BY 1, 2, 3, g.year
     ) yr
@@ -214,7 +219,8 @@ FROM (
 ) latest
 WHERE fact_qty <> 0
 ON CONFLICT (warehouse_id, goods_id, color_id) DO UPDATE
-SET qty = EXCLUDED.qty, amount_local = EXCLUDED.amount_local, last_movement_date = now(), updated_at = now();
+SET qty = EXCLUDED.qty, amount_local = EXCLUDED.amount_local, weight = EXCLUDED.weight,
+    last_movement_date = now(), updated_at = now();
 
 -- ======================== 回填仓库流水（已审单据 → stock_movements，供报表） ========================
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,
@@ -265,6 +271,7 @@ REFRESH MATERIALIZED VIEW stock_monthly_mv;
 -- ======================== 校验 ========================
 SELECT '✔ 主表合计 ' || (SELECT count(*) FROM stock_documents) || ' / 明细 ' || (SELECT count(*) FROM stock_document_items) AS r
 UNION ALL SELECT '余额行 '   || (SELECT count(*) FROM stock_balances)
+UNION ALL SELECT '余额含重量 ' || (SELECT count(*) FROM stock_balances WHERE weight IS NOT NULL AND weight <> 0)
 UNION ALL SELECT '仓库流水 ' || (SELECT count(*) FROM stock_movements WHERE source_doc_type='STOCK_DOC')
 UNION ALL SELECT '补录货品 ' || (SELECT count(*) FROM goods WHERE name LIKE '（迁移自动补录%')
 UNION ALL SELECT '补录员工 ' || (SELECT count(*) FROM employees WHERE code LIKE 'LEGACY-W-%')

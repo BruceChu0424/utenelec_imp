@@ -35,6 +35,7 @@ import '../repositories/product_category_repository.dart';
 import '../repositories/unit_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/goods_detail_dialog.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -612,9 +613,16 @@ class _DetailPaneState extends State<_DetailPane> {
   List<MasterFieldDef> get _goodsFields => [
     const MasterFieldDef(
         key: 'name', label: '名称', required: true, group: '基础'),
-    const MasterFieldDef(key: 'code', label: '编号', group: '基础'),
+    const MasterFieldDef(
+        key: 'code', label: '编号', group: '基础', readOnly: true, hint: '保存后自动生成'),
     const MasterFieldDef(key: 'shortName', label: '简称', group: '基础'),
-    const MasterFieldDef(key: 'status', label: '状态', group: '基础'),
+    const MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
     const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
     const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
     const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
@@ -667,6 +675,7 @@ class _DetailPaneState extends State<_DetailPane> {
       context: context,
       title: '新增货品', // TODO(l10n): 补 arb
       fields: _goodsFields,
+      initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateGoods,
     );
@@ -711,7 +720,29 @@ class _DetailPaneState extends State<_DetailPane> {
         'colorLegacyId': d.colorLegacyId?.toString() ?? '',
         'unitLegacyId': d.unitLegacyId?.toString() ?? '',
       },
-      fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
+      // fixedValues：分类 + 成本预算字段原值回传（后端 apply 全量覆盖，
+      // 不带成本字段会把已维护的成本清成 null；成本本身在「成本预算」页签改）。
+      fixedValues: {
+        'categoryId': d.categoryId ?? widget.nodeId,
+        'sourceE': d.sourceE,
+        'machiningE': d.machiningE,
+        'incidentalE': d.incidentalE,
+        'lacquerE': d.lacquerE,
+        'platingE': d.platingE,
+        'casingE': d.casingE,
+        'polishE': d.polishE,
+        'total': d.total,
+        'workRate': d.workRate,
+        'workE': d.workE,
+        'lostRate': d.lostRate,
+        'lostE': d.lostE,
+        'rentRate': d.rentRate,
+        'rentE': d.rentE,
+        'makeRate': d.makeRate,
+        'makeE': d.makeE,
+        'cTotal': d.cTotal,
+        'gTotal': d.gTotal,
+      },
       onSubmit: (body) => _doUpdateGoods(d.id, body),
     );
   }
@@ -820,15 +851,14 @@ class _DetailPaneState extends State<_DetailPane> {
     // 用局部 detail 捕获 non-null：d 是 nullable，跨闭包边界不再提升，
     // 直接在 onEdit/onDelete 里用 d 会报类型错。
     final detail = d;
-    await showMasterDetailSheet(
+    await showGoodsDetailDialog(
       context: context,
-      title: detail.name?.isNotEmpty == true
-          ? detail.name!
-          : (detail.code ?? '货品详情'),
-      rows: _goodsDetailRows(detail),
+      detail: detail,
+      basicRows: _goodsDetailRows(detail),
       canEdit: _canEditMaster,
       onEdit: () => _showGoodsEdit(detail),
       onDelete: () => _deleteGoods(detail),
+      onDataChanged: () => _loadGoods(_goodsPageNum),
     );
     if (mounted) _detailLoading = false;
   }

@@ -121,7 +121,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   Future<bool> _doCreate(_EditResult r) async {
     try {
       await ref.read(paymentStyleRepositoryProvider).create(PaymentStyleSaveInput(
-            code: r.code ?? '',
+            code: '', // 服务端自动生成（SK 前缀），前端不收集
             name: r.name,
             category: _category.value,
             parentId: r.parentId,
@@ -487,10 +487,9 @@ class _DetailPaneState extends ConsumerState<_DetailPane> {
   }
 }
 
-/// 编辑对话框收集到的字段（新建时 code 必填，编辑时 code 为 null 不上送）。
+/// 编辑对话框收集到的字段（code 不收集：新建服务端自动生成、编辑保留既有）。
 class _EditResult {
   const _EditResult({
-    this.code,
     required this.name,
     this.parentId,
     this.receipt = false,
@@ -499,7 +498,6 @@ class _EditResult {
     this.status,
   });
 
-  final String? code;
   final String name;
   final String? parentId;
   final bool receipt;
@@ -575,17 +573,12 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
   }
 
   Future<void> _submit() async {
-    if (!_isEdit && _codeCtl.text.trim().isEmpty) {
-      setState(() => _formError = '请输入类别编码');
-      return;
-    }
     if (_nameCtl.text.trim().isEmpty) {
       setState(() => _formError = '请输入类别名称');
       return;
     }
     setState(() => _formError = null);
     final ok = await widget.onSubmit(_EditResult(
-      code: _isEdit ? null : _codeCtl.text.trim(),
       name: _nameCtl.text.trim(),
       parentId: _parent?.id,
       receipt: _receipt,
@@ -607,8 +600,11 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
           children: [
             TextField(
               controller: _codeCtl,
-              readOnly: _isEdit,
-              decoration: const InputDecoration(labelText: '编码 *'),
+              enabled: false,
+              decoration: InputDecoration(
+                labelText: '编码',
+                hintText: _isEdit ? null : '保存后自动生成',
+              ),
             ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(

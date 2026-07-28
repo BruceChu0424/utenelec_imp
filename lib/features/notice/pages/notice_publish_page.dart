@@ -3,6 +3,7 @@
 // 文档：docs/03-页面/通知发布页.md
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/click_guard.dart';
@@ -14,15 +15,18 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../models/notice.dart';
+import '../providers/notice_arrival.dart';
+import '../providers/notice_providers.dart';
 
-class NoticePublishPage extends StatefulWidget {
+class NoticePublishPage extends ConsumerStatefulWidget {
   const NoticePublishPage({super.key});
 
   @override
-  State<NoticePublishPage> createState() => _NoticePublishPageState();
+  ConsumerState<NoticePublishPage> createState() => _NoticePublishPageState();
 }
 
-class _NoticePublishPageState extends State<NoticePublishPage> {
+class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   final _title = TextEditingController();
   final _content = TextEditingController();
   String _type = '公告';
@@ -98,13 +102,39 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
     );
     if (dialog != true) return;
 
-    // 3) 实际请求（mock）。这里由 UtenActionButton 在调用本方法时已经置忙，
-    //    等 await resolve 后按钮自动解锁，恢复可点。
-    await Future<void>.delayed(const Duration(milliseconds: 600));
+    // 3) 真实入库（mock 仓储），并映射类型 → 重要度：
+    //    紧急类型 = urgent；置顶 = important；其余 = normal。
+    final type = _typeToEnum(_type);
+    final priority = type == NoticeType.urgent
+        ? NoticePriority.urgent
+        : (_topPriority ? NoticePriority.important : NoticePriority.normal);
+    final notice = await ref.read(noticeRepositoryProvider).publish(
+          title: _title.text.trim(),
+          content: _content.text.trim(),
+          type: type,
+          publisher: '人事部',
+          topPriority: _topPriority,
+          priority: priority,
+        );
+    // 列表 + 角标失效刷新
+    ref.invalidate(noticeListProvider);
+    ref.invalidate(unreadNoticeCountProvider);
     if (!mounted) return; // State 自己的 context 用 mounted 守卫足矣
     context.appSuccess(l10n.noticePublishPublished);
+    // 4) 全链路演示：模拟接收端收到这条通知——
+    //    紧急 → 屏幕正中红色弹窗；置顶(重要) → 正中橙色弹窗；其余 → 顶部弹条。
+    //    接真后端后，这段逻辑由推送/WebSocket 在接收端触发（dispatchNoticeArrival）。
+    dispatchNoticeArrival(context, notice);
     context.go('/notice');
   }
+
+  static NoticeType _typeToEnum(String code) => switch (code) {
+        '制度' => NoticeType.policy,
+        '福利' => NoticeType.benefit,
+        '系统' => NoticeType.system,
+        '紧急' => NoticeType.urgent,
+        _ => NoticeType.announcement,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -121,15 +151,14 @@ class _NoticePublishPageState extends State<NoticePublishPage> {
               loadingLabel: const Text('保存中…'),
               onAction: () async {
                 await Future<void>.delayed(const Duration(milliseconds: 400));
-                if (context.mounted)
+                if (context.mounted) {
                   context.appInfo(l10n.noticePublishDraftSaved);
+                }
               },
             ),
             const SizedBox(width: 12),
             Expanded(
               child: UtenActionButton(
-                type: UtenActionButtonType.primary,
-                isExpanded: true,
                 icon: Icons.send_rounded,
                 label: Text(l10n.noticePublishPublishButton),
                 loadingLabel: const Text('发布中…'),

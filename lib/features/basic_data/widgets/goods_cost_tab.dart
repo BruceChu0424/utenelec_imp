@@ -1,0 +1,246 @@
+// 货品详情「成本预算」页签：18 项成本字段可编辑表单（对照老系统 002.jpg 成本预算页签）。
+//
+// 保存走货品主档 PUT（GoodsSaveRequest 已含成本字段）：基础字段从 detail 全量回传
+// （后端 apply 全量覆盖，缺字段会被置 null），成本字段取表单值。
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../components/buttons/uten_button.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../models/goods_node.dart';
+import '../repositories/goods_repository.dart';
+
+/// 成本字段定义（key 与后端 GoodsSaveRequest 对齐）。
+class _CostField {
+  const _CostField(this.key, this.label, {this.percent = false});
+
+  final String key;
+  final String label;
+  final bool percent; // 比率字段（%）
+}
+
+const _costFields = [
+  _CostField('sourceE', '材料合计'),
+  _CostField('machiningE', '加工费'),
+  _CostField('incidentalE', '杂费'),
+  _CostField('lacquerE', '喷漆、朔费'),
+  _CostField('platingE', '电镀费'),
+  _CostField('casingE', '包装费'),
+  _CostField('polishE', '抛光费'),
+  _CostField('total', '成品价'),
+  _CostField('workRate', '人工比率', percent: true),
+  _CostField('workE', '人工费'),
+  _CostField('lostRate', '损耗比率', percent: true),
+  _CostField('lostE', '损耗费'),
+  _CostField('rentRate', '厂租比率', percent: true),
+  _CostField('rentE', '厂房租金'),
+  _CostField('makeRate', '生产利率', percent: true),
+  _CostField('makeE', '生产利润'),
+  _CostField('cTotal', '成本价'),
+  _CostField('gTotal', '出厂价'),
+];
+
+class GoodsCostTab extends ConsumerStatefulWidget {
+  const GoodsCostTab({
+    super.key,
+    required this.detail,
+    required this.canEdit,
+    this.onSaved,
+  });
+
+  final GoodsDetail detail;
+  final bool canEdit;
+  final VoidCallback? onSaved;
+
+  @override
+  ConsumerState<GoodsCostTab> createState() => _GoodsCostTabState();
+}
+
+class _GoodsCostTabState extends ConsumerState<GoodsCostTab> {
+  late final Map<String, TextEditingController> _controllers;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.detail;
+    final initial = <String, double?>{
+      'sourceE': d.sourceE,
+      'machiningE': d.machiningE,
+      'incidentalE': d.incidentalE,
+      'lacquerE': d.lacquerE,
+      'platingE': d.platingE,
+      'casingE': d.casingE,
+      'polishE': d.polishE,
+      'total': d.total,
+      'workRate': d.workRate,
+      'workE': d.workE,
+      'lostRate': d.lostRate,
+      'lostE': d.lostE,
+      'rentRate': d.rentRate,
+      'rentE': d.rentE,
+      'makeRate': d.makeRate,
+      'makeE': d.makeE,
+      'cTotal': d.cTotal,
+      'gTotal': d.gTotal,
+    };
+    _controllers = {
+      for (final f in _costFields)
+        f.key: TextEditingController(text: initial[f.key]?.toString() ?? ''),
+    };
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final cost = <String, double?>{};
+    for (final f in _costFields) {
+      final raw = _controllers[f.key]!.text.trim();
+      if (raw.isEmpty) {
+        cost[f.key] = null;
+        continue;
+      }
+      final v = double.tryParse(raw);
+      if (v == null) {
+        setState(() => _error = '「${f.label}」需为数字'); // TODO(l10n): 补 arb
+        return;
+      }
+      cost[f.key] = v;
+    }
+    // 基础字段全量回传（后端 apply 全量覆盖；缺哪个哪个被清 null）。
+    final d = widget.detail;
+    final body = <String, dynamic>{
+      'categoryId': d.categoryId,
+      'name': d.name,
+      'code': d.code,
+      'shortName': d.shortName,
+      'model': d.model,
+      'spec': d.spec,
+      'price': d.price,
+      'material': d.material,
+      'thickness': d.thickness,
+      'mWeight': d.mWeight,
+      'pack': d.pack,
+      'pieces': d.pieces,
+      'status': d.status,
+      'colorLegacyId': d.colorLegacyId,
+      'unitLegacyId': d.unitLegacyId,
+      ...cost,
+    };
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await ref.read(goodsRepositoryProvider).update(d.id, body);
+      if (!mounted) return;
+      context.appSuccess('成本预算已保存'); // TODO(l10n): 补 arb
+      widget.onSaved?.call();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = '保存失败，请稍后重试'); // TODO(l10n): 补 arb
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final twoColumn = !context.breakpoint.isCompact;
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.canEdit ? '各项成本可直接编辑，保存后生效' : '各项成本（只读）', // TODO(l10n): 补 arb
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                if (twoColumn)
+                  for (var i = 0; i < _costFields.length; i += 2)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                      child: Row(
+                        children: [
+                          Expanded(child: _field(theme, _costFields[i])),
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: i + 1 < _costFields.length
+                                ? _field(theme, _costFields[i + 1])
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    )
+                else
+                  for (final f in _costFields)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                      child: _field(theme, f),
+                    ),
+                if (_error != null) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    _error!,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.error),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        if (widget.canEdit) ...[
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UtenButton(
+                  icon: Icons.save_outlined,
+                  isLoading: _saving,
+                  onPressed: _save,
+                  child: const Text('保存成本预算'), // TODO(l10n): 补 arb
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _field(ThemeData theme, _CostField f) {
+    return TextField(
+      controller: _controllers[f.key],
+      enabled: widget.canEdit,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: f.percent ? '${f.label}(%)' : f.label,
+        border: const OutlineInputBorder(),
+        isDense: true,
+      ),
+    );
+  }
+}

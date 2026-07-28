@@ -73,9 +73,113 @@ class MockNoticeRepository {
     return _delay(() => _ensureData().where((n) => !n.isRead).length);
   }
 
+  /// 发布新通知（人事广播类）。插入到列表最前，返回入库后的实体。
+  Future<Notice> publish({
+    required String title,
+    required String content,
+    required NoticeType type,
+    required String publisher,
+    bool topPriority = false,
+    NoticePriority priority = NoticePriority.normal,
+  }) async {
+    return _delay(() {
+      final list = _ensureData();
+      final notice = Notice(
+        id: 'notice-${DateTime.now().millisecondsSinceEpoch}',
+        title: title,
+        content: content,
+        type: type,
+        publisher: publisher,
+        publishedAt: DateTime.now(),
+        isRead: false,
+        topPriority: topPriority,
+        priority: priority,
+      );
+      list.insert(0, notice);
+      return notice;
+    });
+  }
+
+  int _incomingSeq = 0;
+
+  /// 模拟「收到一条新工作通知」（接真后端后由推送/WebSocket 触发）。
+  ///
+  /// 轮换产生工作平台三类典型事件：任务下发 / 上游完成 / 审批结果，
+  /// 覆盖 normal / important 两种重要度（urgent 由发布通道演示）。
+  /// 插入仓储并返回新通知，调用方负责刷新列表 + 弹出到达提醒。
+  Future<Notice> simulateIncoming() async {
+    return _delay(() {
+      final list = _ensureData();
+      final seq = _incomingSeq++;
+      final now = DateTime.now();
+      final id = 'notice-in-${now.millisecondsSinceEpoch}';
+
+      final notice = switch (seq % 3) {
+        // 任务下发（重要 → 居中弹窗）
+        0 => Notice(
+            id: id,
+            title: '新任务下发：7 月盘点差异复核',
+            content:
+                '仓储部下发盘点任务：\n\n7 月月度盘点存在 3 项差异（A 区原料仓 2 项、成品仓 1 项），请在 3 个工作日内完成复核并提交差异说明。\n\n任务编号：PD-2026-0718\n截止时间：${now.add(const Duration(days: 3)).month} 月 ${now.add(const Duration(days: 3)).day} 日 18:00\n\n请通过"工作台 → 库存 → 盘点"入口处理。',
+            type: NoticeType.task,
+            publisher: '仓储部',
+            publishedAt: now,
+            isRead: false,
+            priority: NoticePriority.important,
+          ),
+        // 上游完成（一般 → 顶部弹条）
+        1 => Notice(
+            id: id,
+            title: '上游完成：采购单 PO-2026-0205 已到货入库',
+            content:
+                '你关注的采购流程节点已更新：\n\n采购单 PO-2026-0205（包装材料一批）已由供应商送达，仓储部完成到货入库，质检流程已自动流转至质量部。\n\n入库数量：1,200 件\n入库时间：${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}\n\n该节点为你的下游任务的触发条件，可开始安排后续工作。',
+            type: NoticeType.workflow,
+            publisher: '采购部',
+            publishedAt: now,
+            isRead: false,
+          ),
+        // 审批结果（一般 → 顶部弹条）
+        _ => Notice(
+            id: id,
+            title: '审批通过：你的请假申请已批准',
+            content:
+                '你提交的请假申请（事假 1 天）已由直属上级 张经理 审批通过。\n\n申请编号：QJ-2026-0092\n请假日期：${now.add(const Duration(days: 5)).month} 月 ${now.add(const Duration(days: 5)).day} 日\n\n考勤记录已自动更新。',
+            type: NoticeType.approval,
+            publisher: '张经理',
+            publishedAt: now,
+            isRead: false,
+          ),
+      };
+
+      list.insert(0, notice);
+      return notice;
+    });
+  }
+
   List<Notice> _seed() {
     final now = DateTime.now();
     return [
+      Notice(
+        id: 'notice-w01',
+        title: '新任务下发：B 区产线 5S 整改',
+        content:
+            '生产部下发整改任务：\n\n本周巡检发现 B 区产线 3 处 5S 不达标项（物料堆放、通道标识、工具归位），请在本周五前完成整改并拍照上传。\n\n任务编号：ZG-2026-0715\n责任人：当班班长\n\n请通过"工作台 → 生产"入口反馈进度。',
+        type: NoticeType.task,
+        publisher: '生产部',
+        publishedAt: now.subtract(const Duration(minutes: 40)),
+        isRead: false,
+        priority: NoticePriority.important,
+      ),
+      Notice(
+        id: 'notice-w02',
+        title: '上游完成：外协订单 WX-2026-0089 已回货',
+        content:
+            '你关注的外协流程节点已更新：\n\n外协订单 WX-2026-0089（五金件表面处理）已由外协厂完成并回货，当前处于 IQC 来料检验环节。\n\n回货数量：800 件\n\n检验通过后流转至你的入库任务，请提前安排。',
+        type: NoticeType.workflow,
+        publisher: '供应链部',
+        publishedAt: now.subtract(const Duration(hours: 1)),
+        isRead: false,
+      ),
       Notice(
         id: 'notice-001',
         title: '关于 7 月员工生日会的通知',
@@ -96,6 +200,7 @@ class MockNoticeRepository {
         publishedAt: now.subtract(const Duration(hours: 8)),
         isRead: false,
         topPriority: true,
+        priority: NoticePriority.urgent,
       ),
       Notice(
         id: 'notice-003',

@@ -32,7 +32,7 @@ import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_doc_link_picker.dart';
-import '../widgets/sales_goods_picker.dart';
+import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../widgets/sales_grid_columns.dart';
 
 class SalesDocEditPage extends ConsumerStatefulWidget {
@@ -78,6 +78,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   DateTime? _deliverDate; // 订货交货日
 
   final _grid = UtenEditableGridController<SalesGridRow>();
+  final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
 
@@ -102,6 +103,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _parcelCount.dispose();
     _outType.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
+    _scrollCtl.dispose();
     super.dispose();
   }
 
@@ -209,8 +211,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   }
 
   Future<void> _pickGoods(SalesGridRow row) async {
-    final g = await showSalesGoodsPickerDialog(context, ref);
-    if (g != null) row.goods = g; // setter → goodsNotifier，单元格自动刷新
+    final g = await showUtenGoodsPicker(context, ref);
+    if (g == null) return;
+    final names = ref.read(salesMasterNameServiceProvider);
+    row
+      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+      // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
+      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
+      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
   }
 
   /// 「从上游引入」：弹选择器，把所选 SalesLinkedItem 映射成行追加。
@@ -381,7 +389,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : UtenContentContainer(
-                child: ListView(
+                child: Scrollbar(
+                  controller: _scrollCtl,
+                  thumbVisibility: true,
+                  child: ListView(
+                  controller: _scrollCtl,
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
                     Card(
@@ -559,6 +571,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                       createBlankRow: () => SalesGridRow(),
                     ),
                   ],
+                ),
                 ),
               ),
       ),

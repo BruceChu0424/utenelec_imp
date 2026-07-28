@@ -38,6 +38,10 @@ dependencies:
   # 文件保存（导出加密 Excel：桌面/移动写下载/文档目录；Web 走浏览器 blob 不依赖此包）
   path_provider: ^2.1.5
 
+  # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
+  pdf: ^3.11.3
+  printing: ^5.14.2
+
   # 扫码 / 二维码（访客系统：保安扫码 + 访客凭证）
   mobile_scanner: ^7.0.0
   qr_flutter: ^4.1.0

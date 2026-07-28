@@ -90,6 +90,25 @@ public class ProductionReportController {
         return service.planSummary(billNo, status, dateFrom, dateTo, keyword, facetsOf(allParams), page, size, sort, order);
     }
 
+    // ===== 物料反查产成品（BOM where-used） =====
+
+    /**
+     * 查一个原材料（materialGoodsId）被用在了哪些产成品上（按产成品汇总）。
+     * GET /api/production/reports/where-used?materialGoodsId=&dateFrom=&dateTo=&page=&size=&sort=&order=
+     */
+    @GetMapping("/where-used")
+    @PreAuthorize("hasAuthority('production_where_used:view')")
+    public ReportTableResponse whereUsed(
+            @RequestParam UUID materialGoodsId,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.whereUsed(materialGoodsId, dateFrom, dateTo, page, size, sort, order);
+    }
+
     /** 从全部查询参数里抽出列筛选（键以 "f." 前缀）。 */
     private static Map<String, String> facetsOf(Map<String, String> allParams) {
         Map<String, String> facets = new HashMap<>();

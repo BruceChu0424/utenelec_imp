@@ -1,10 +1,9 @@
 // 生产模块仓库（生产管理 / production）。
 //
-// 4 个仓库 + 4 个 Provider（底部）：
+// 3 个仓库 + 3 个 Provider（底部）：
 //   ① ProductionPlanRepository        — 计划单 CRUD + /approve + /reverse
-//   ② ProductionPlanCostRepository    — BOM 成本只读（list/detail/aggregate；本期不重算）
-//   ③ ProductionDailyReportRepository — 日报 CRUD + /approve + /reverse（空结构保未来）
-//   ④ ProductionReportRepository      — 4 报表（明细分页 / 汇总 MV，裸数组返回）
+//   ② ProductionDailyReportRepository — 日报 CRUD + /approve + /reverse（空结构保未来）
+//   ③ ProductionReportRepository      — 4 报表（明细分页 / 汇总 MV，裸数组返回）
 //
 // 端点（后端 @RequestMapping 全部在 /api/production/* 下，baseUrl 由 ApiClient 注入）：
 //   GET    /production/plans                 列表（PageResponse<PlanListItem>）
@@ -14,9 +13,6 @@
 //   DELETE /production/plans/{id}            软删（仅草稿；已审需红冲）
 //   POST   /production/plans/{id}/approve    审核 0→1
 //   POST   /production/plans/{id}/reverse    红冲 1→-1
-//   GET    /production/plan-costs            BOM 行分页（PageResponse<PlanCostRow>）
-//   GET    /production/plan-costs/{id}       单 BOM 行
-//   GET    /production/plan-costs/aggregate  汇总（裸数组 List<PlanCostAggregation>）
 //   GET    /production/daily-reports         列表（PageResponse<DailyReportListItem>）
 //   GET    /production/daily-reports/{id}    详情（DailyReportDetail）
 //   POST   /production/daily-reports         新建（草稿）
@@ -38,7 +34,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_plan.dart';
-import '../models/production_plan_cost.dart';
 import '../models/production_report.dart';
 
 // ───────────────────────── 生产计划单 ─────────────────────────
@@ -120,94 +115,6 @@ class ProductionPlanRepository {
   Future<ProductionPlanDetail> reverse(String id) async {
     final json = await api.post('/production/plans/$id/reverse'); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);
-  }
-}
-
-// ───────────────────────── 生产计划成本（BOM 展开，只读） ─────────────────────────
-
-/// BOM 成本查询过滤（136 万行分区表，靠索引 + 分区裁剪；过滤驱动后端 SQL）。
-class ProductionPlanCostFilter {
-  const ProductionPlanCostFilter({
-    this.planItemId,
-    this.masterGoodsId,
-    this.goodsId,
-    this.parentId,
-    this.supplierId,
-    this.salesOrderCostItemId,
-    this.dateFrom,
-    this.dateTo,
-  });
-
-  /// 经 BillID 陷阱→production_plan_items.id（不是 plans.id）。
-  final String? planItemId;
-  final String? masterGoodsId; // 顶层成品（最常用，走 idx_ppc_mgoods）
-  final String? goodsId; // 节点物料
-  final String? parentId; // BOM 子树
-  final String? supplierId; // 建议供应
-  final String? salesOrderCostItemId; // 销售→生产成本溯源
-  final String? dateFrom; // 分区裁剪
-  final String? dateTo;
-
-  Map<String, dynamic> toQuery() => <String, dynamic>{
-        if (planItemId != null) 'planItemId': planItemId,
-        if (masterGoodsId != null) 'masterGoodsId': masterGoodsId,
-        if (goodsId != null) 'goodsId': goodsId,
-        if (parentId != null) 'parentId': parentId,
-        if (supplierId != null) 'supplierId': supplierId,
-        if (salesOrderCostItemId != null)
-          'salesOrderCostItemId': salesOrderCostItemId,
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
-      };
-}
-
-/// BOM 成本只读仓库（本期严格只读；不做 BOM 展开/级联重算/MRP 需购量）。
-class ProductionPlanCostRepository {
-  ProductionPlanCostRepository(this.api);
-  final ApiClient api;
-
-  Future<PagedResult<ProductionPlanCostRow>> list({
-    int page = 1,
-    int size = 50,
-    ProductionPlanCostFilter filter = const ProductionPlanCostFilter(),
-    String? sort,
-    String? order,
-  }) async {
-    final query = <String, dynamic>{
-      'page': page,
-      'size': size,
-      ...filter.toQuery(),
-      if (sort != null && sort.isNotEmpty) 'sort': sort,
-      if (order != null && order.isNotEmpty) 'order': order,
-    };
-    final json = await api.get('/production/plan-costs', query: query); // ENDPOINT
-    return PagedResult.fromJson(json, ProductionPlanCostRow.fromJson);
-  }
-
-  Future<ProductionPlanCostRow> detail(String id) async {
-    final json = await api.get('/production/plan-costs/$id'); // ENDPOINT
-    return ProductionPlanCostRow.fromJson(json);
-  }
-
-  /// 按顶层成品上卷汇总（裸数组，非 PageResponse）。
-  Future<List<ProductionPlanCostAggregation>> aggregate({
-    String? masterGoodsId,
-    String? planItemId,
-    String? dateFrom,
-    String? dateTo,
-    int limit = 200,
-  }) async {
-    final query = <String, dynamic>{
-      if (masterGoodsId != null) 'masterGoodsId': masterGoodsId,
-      if (planItemId != null) 'planItemId': planItemId,
-      if (dateFrom != null) 'dateFrom': dateFrom,
-      if (dateTo != null) 'dateTo': dateTo,
-      'limit': limit,
-    };
-    final list = await api.getList('/production/plan-costs/aggregate', query: query); // ENDPOINT
-    return list
-        .map((e) => ProductionPlanCostAggregation.fromJson(e))
-        .toList();
   }
 }
 
@@ -374,16 +281,11 @@ class ProductionReportRepository {
 }
 
 // ───────────────────────── Providers ─────────────────────────
-// 4 个 plain Provider（无 family 参数，区别于 purchase 的 .family(docType)）。
+// 3 个 plain Provider（无 family 参数，区别于 purchase 的 .family(docType)）。
 // 命名带 Production 前缀避免与占位 mock 的 productionRepositoryProvider 冲突。
 
 final productionPlanRepositoryProvider = Provider<ProductionPlanRepository>(
   (ref) => ProductionPlanRepository(ref.watch(apiClientProvider)),
-);
-
-final productionPlanCostRepositoryProvider =
-    Provider<ProductionPlanCostRepository>(
-  (ref) => ProductionPlanCostRepository(ref.watch(apiClientProvider)),
 );
 
 final productionDailyReportRepositoryProvider =

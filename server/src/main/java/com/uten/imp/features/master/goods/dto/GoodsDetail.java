@@ -10,6 +10,13 @@ import java.util.UUID;
 /**
  * 货品详情：列表核心字段 + 关键业务字段（够看即可，不必 78 字段全返）。
  * category_name 由 @ManyToOne category 的 name 取；path 暂不返（分类详情页已有）。
+ *
+ * <p>成本预算 17 字段（老系统「成本预算」页签，对照 B_Goods 成本项列）：
+ * 材料合计 sourceE / 加工费 machiningE / 杂费 incidentalE / 喷漆朔费 lacquerE /
+ * 电镀费 platingE / 包装费 casingE / 抛光费 polishE / 成品价 total /
+ * 人工比率 workRate / 人工费 workE / 损耗比率 lostRate / 损耗费 lostE /
+ * 厂租比率 rentRate / 厂房租金 rentE / 生产利率 makeRate / 生产利润 makeE /
+ * 成本价 cTotal / 出厂价 gTotal。
  */
 @Getter
 @AllArgsConstructor
@@ -38,4 +45,26 @@ public class GoodsDetail {
     private String colorName;        // 主颜色名（color_legacy_id → colors.name 解析）
     private String unitName;         // 单位名（unit_legacy_id → units.name 解析）
     private Integer colorLegacyId;   // 主颜色 legacy id（编辑表单回显选中用；unitLegacyId 已在上方）
+
+    // ===== 成本预算（「成本预算」页签） =====
+    private BigDecimal sourceE;      // SourceE 材料合计
+    private BigDecimal machiningE;   // MachiningE 加工费
+    private BigDecimal incidentalE;  // IncidentalE 杂费
+    private BigDecimal lacquerE;     // LacquerE 喷漆、朔费
+    private BigDecimal platingE;     // PlatingE 电镀费
+    private BigDecimal casingE;      // CasingE 包装费
+    private BigDecimal polishE;      // PolishE 抛光费
+    private BigDecimal total;        // Total 成品价
+    private BigDecimal workRate;     // WorkRate 人工比率(%)
+    private BigDecimal workE;        // WorkE 人工费
+    private BigDecimal lostRate;     // LostRate 损耗比率(%)
+    private BigDecimal lostE;        // LostE 损耗费
+    private BigDecimal rentRate;     // RentRate 厂租比率(%)
+    private BigDecimal rentE;        // RentE 厂房租金
+    private BigDecimal makeRate;     // MakeRate 生产利率(%)
+    private BigDecimal makeE;        // MakeE 生产利润
+    @JsonProperty("cTotal")
+    private BigDecimal cTotal;       // CTotal 成本价（防 Jackson 连续大写 quirk）
+    @JsonProperty("gTotal")
+    private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 }

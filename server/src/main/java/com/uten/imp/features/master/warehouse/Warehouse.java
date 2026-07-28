@@ -34,9 +34,13 @@ public class Warehouse extends SoftDeletableEntity {
     private String location;    // Location 仓库位置
     private String remark;      // Remark
 
-    /** 是否参与库存核算（源 IsCal）。 */
+    /** 是否参与库存核算（源 IsCal，⚠ 取反：老库 IsCal=0=参与核算）。 */
     @Column(name = "is_accountable", nullable = false)
     private boolean accountable = true;
+
+    /** 不良品仓标记（V81；老库无字段，按名称「不良」识别）。即时库存「全部」默认含、开关可剔除。 */
+    @Column(name = "is_defective", nullable = false)
+    private boolean defective = false;
 
     /** 所属车间 legacy id（源 WorkID，暂不建 FK）。 */
     @Column(name = "workshop_legacy_id")

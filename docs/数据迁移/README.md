@@ -43,6 +43,8 @@ curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
 |---|---|---|---|---|---|
 | **货品分类** | ✅ 已实现 | `SystemItem` (ItemclassID=1) | `material_categories` | `migrate.sh --goods` | [02-老库溯源](02-货品分类-老库溯源.md) · [03-新库与迁移](03-货品分类-新库与迁移.md) |
 | **货品主档** | ✅ 已实现 | `B_Goods`（35750 条，全 78 字段，image 留空） | `goods` | `migrate.sh --goods-data` | （字段映射见 V32__goods.sql） |
+| **货品组装（BOM）+ 成本预算** | ✅ 已实现 | `B_BomItem`（218,820 行；孤儿 20,717 跳过）/ 成本列随主档 | `goods_bom_items`（V79，198,103 行） | `migrate.sh --goods-bom` | [31-组装BOM与成本预算](31-货品组装BOM与成本预算.md) |
+| **即时库存** | ✅ 已实现 | `View_IOStockGoods` 口径：`StockGoods.FactQTY/FactWeight` + `B_Goods.Paper/CTotal` + `View_ProductMore`（F_PlanItem） | `stock_balances`（**V80 增 weight**；余额含重量 1,288 行） | `migrate.sh --stock-docs`（重跑即补重量） | [32-即时库存](32-即时库存.md) |
 | **模具分类** | ✅ 已实现 | `SystemItem` (ItemclassID=18，65 扁平根) | `mould_categories` | `migrate.sh --mould` | [04-老库溯源](04-模具资料-老库溯源.md) · [05-新库与迁移](05-模具资料-新库与迁移.md) |
 | **模具主档** | ✅ 已实现 | `B_Mould`（1605 条，12 字段） | `moulds` | `migrate.sh --mould-data` | （字段映射见 V34__mould.sql） |
 | **颜色** | ✅ 已实现 | `B_Color`（151 条，**实测扁平**非树；`B_Goods.MColorID` 引用） | `colors` | `migrate.sh --color-data` | [10-老库溯源](10-颜色资料-老库溯源.md) · [11-新库与迁移](11-颜色资料-新库与迁移.md) |
@@ -142,4 +144,4 @@ server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classp
 
 ---
 
-**最后更新**：2026-07-27 · **已实现模块**：货品/模具/客户/供应商（分类+主档）+ 颜色/单位/币种/仓库 + 采购（4 单据 + **9 报表** + V65 迁移补全）+ 库存（流水+余额+仓库 9 单据）+ **销售/委外/生产/钱流（4 业务模块，全链路打通：DDL V50-V63 + 数据 100% 迁移 + Java 后端 + Flutter 前端 + e2e 验证 + UI 屏幕利用率优化）** —— 见 [18-总路线图](18-业务四模块-总路线图.md) · [27-DDL契约](27-DDL一致性契约.md) · [28-Java契约](28-Java后端契约.md) · [29-后续TODO路线图](29-后续优化与待办路线图.md) · [30-UI优化方案](30-UI屏幕利用率优化方案.md)
+**最后更新**：2026-07-28 · **已实现模块**：货品/模具/客户/供应商（分类+主档）+ **货品组装 BOM + 成本预算**（V79 `goods_bom_items` 19.8 万行 + 详情三页签 + A4 配件清单打印/Excel，[31](31-货品组装BOM与成本预算.md)）+ 颜色/单位/币种/仓库 + 采购（4 单据 + **9 报表** + V65 迁移补全）+ 库存（流水+余额+仓库 9 单据）+ **销售/委外/生产/钱流（4 业务模块，全链路打通：DDL V50-V63 + 数据 100% 迁移 + Java 后端 + Flutter 前端 + e2e 验证 + UI 屏幕利用率优化）**；**生产物料反查产成品报表**（V78 `production_where_used:view`，BOM where-used，[物料反查产成品页](../03-页面/物料反查产成品页.md)）；**生产「BOM 成本展开」已下线**（并入货品「组装信息」页签，历史表保留） —— 见 [18-总路线图](18-业务四模块-总路线图.md) · [27-DDL契约](27-DDL一致性契约.md) · [28-Java契约](28-Java后端契约.md) · [29-后续TODO路线图](29-后续优化与待办路线图.md) · [30-UI优化方案](30-UI屏幕利用率优化方案.md)

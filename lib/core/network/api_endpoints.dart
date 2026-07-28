@@ -25,6 +25,12 @@ abstract final class ApiEndpoints {
   static const goodsFacets = '$goods/facets';
   static String good(String id) => '/master/goods/$id';
 
+  // 货品组装信息（BOM）—— 详情「组装信息」页签 + 配件清单导出
+  static String goodsBom(String id) => '/master/goods/$id/bom';
+  static String goodsBomItem(String id, String itemId) =>
+      '/master/goods/$id/bom/$itemId';
+  static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
+
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
   static const mouldCategories = '/master/mould-categories';
   static const mouldCategoryTree = '$mouldCategories/tree';
@@ -105,6 +111,8 @@ abstract final class ApiEndpoints {
   // 库存查询（库存管理）：当前余额 + 出入库流水。
   static const stockBalances = '/stock/balances';
   static const stockMovements = '/stock/movements';
+  // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
+  static const stockInstantInventory = '/stock/instant-inventory';
 
   // 仓库管理单据（8 类统一，端点 /api/stock/docs，docType 区分）：CRUD + 审核 + 红冲。
   static const stockDocsBase = '/stock/docs';

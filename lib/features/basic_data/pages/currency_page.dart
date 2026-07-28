@@ -136,7 +136,12 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   static const _fields = [
     MasterFieldDef(
         key: 'name', label: '币种名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '币种编号', group: '基础'),
+    MasterFieldDef(
+        key: 'code',
+        label: '币种编号',
+        group: '基础',
+        readOnly: true,
+        hint: '保存后自动生成'),
     MasterFieldDef(
         key: 'exchangeRate',
         label: '参考汇率',
@@ -144,7 +149,12 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
         type: MasterFieldType.money,
         hint: '如 7.2'),
     MasterFieldDef(
-        key: 'status', label: '状态', group: '基础', hint: '使用 / 禁用'),
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
   ];
 
   void _showCreate() {
@@ -152,6 +162,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       context: context,
       title: '新增币种',
       fields: _fields,
+      initialValues: const {'status': '使用'},
       onSubmit: _doCreate,
     );
   }

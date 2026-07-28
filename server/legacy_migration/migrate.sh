@@ -7,6 +7,7 @@
 # 用法：
 #   bash server/legacy_migration/migrate.sh              # 迁全部已实现模块
 #   bash server/legacy_migration/migrate.sh --goods      # 只迁货品分类
+#   bash server/legacy_migration/migrate.sh --goods-bom  # 只迁货品组装信息（BOM → V79 goods_bom_items）
 #   bash server/legacy_migration/migrate.sh --mould      # 只迁模具分类
 #   bash server/legacy_migration/migrate.sh --mould-data # 只迁模具主档
 #   bash server/legacy_migration/migrate.sh --purchase   # 只迁采购四单据
@@ -54,6 +55,15 @@ migrate_goods_data () {
     copy_csv goods.csv
     echo "→ [货品主档] 执行迁移 SQL..."
     run_sql migrate_goods_data.sql
+}
+
+# 货品组装信息（BOM）：B_BomItem → goods_bom_items（V79）。
+# 依赖：--goods-data 先迁（goods.legacy_id 映射父/组件）；孤儿行（父或组件货品不存在）跳过。
+migrate_goods_bom () {
+    echo "→ [货品组装BOM] 复制 CSV..."
+    copy_csv goods_bom.csv
+    echo "→ [货品组装BOM] 执行迁移 SQL..."
+    run_sql migrate_goods_bom.sql
 }
 
 migrate_mould () {
@@ -226,6 +236,7 @@ migrate_finance () {
 case "$TARGET" in
     --goods|-g) migrate_goods ;;
     --goods-data) migrate_goods_data ;;
+    --goods-bom) migrate_goods_bom ;;
     --mould|-m) migrate_mould ;;
     --mould-data) migrate_mould_data ;;
     --client) migrate_client ;;
@@ -245,6 +256,7 @@ case "$TARGET" in
     --all|-a|*)
         migrate_goods
         migrate_goods_data
+        migrate_goods_bom
         migrate_mould
         migrate_mould_data
         migrate_client

@@ -40,6 +40,8 @@
 - **单据号系统生成（配套）**：编辑页 billNo 字段只读"保存后自动生成"（后端 `DocNumberService` + V76 `doc_number_sequences`，详见 [数据迁移/27-DDL一致性契约] §一 V76 段 + [数据迁移/28-Java后端契约] §九）。
 - **skip-list**：采购 request（请购）配置 `skipListOnCreate`，管理卡直跳新建页（编辑页 AppBar 加"查看历史"按钮进列表）。
 - **保存按钮文案**："存草稿"→"保存"（草稿→审核→红冲流程不变）。
+- **货品选择统一（2026-07-28）**：明细「货品」单元格的选择器从居中搜索款换成统一 `showUtenGoodsPicker`（左分类树+右货品表，右滑入/底部抽屉，**排除原材料/辅料/未分类**），全模块（销售/采购/委外/仓库/生产）共用；选中后**颜色/单位自动回填**（货品主档 `colorLegacyId` 经 `MasterNameService.colorIdByLegacy` 桥接到明细 UUID，零后端）；销售明细颜色/单位改只读。旧 `sales_goods_picker`/`goods_picker_dialog` 删除；顺修 5 处编辑页 `Scrollbar` 崩溃。详见 [组件库/UtenGoodsPicker](../02-组件库/UtenGoodsPicker.md) · [ADR-015](../99-决策记录-ADR/ADR-015-统一货品选择器与legacy到UUID桥接.md)。
+- **从上游引入 Excel 化（2026-07-28）**：销售出货/退货编辑页「从上游引入」从居中 Dialog 换成**右滑入大面板（840）**，两步各自 Excel 表——Step1 上游单据 `MasterDataTableView`（搜索 + 客户筛选 + 分页 + 排序，状态固定已审）；Step2 该单据明细 `UtenEditableGrid`（`showAddRow:false`）勾选 + 本次数量 + 全选/反选。点单据切明细，引入沿用 `SalesLinkedItem` 映射。`UtenEditableGrid` 通用组件加 `showAddRow` 开关（默认 true 不影响编辑页）。
 
 ---
 

@@ -21,6 +21,8 @@ class AppNotification {
     this.title,
     this.durationMs = 3200,
     this.fieldErrors,
+    this.icon,
+    this.onTap,
   });
 
   final String id;
@@ -29,6 +31,13 @@ class AppNotification {
   final String message;
   final int durationMs;
   final List<ApiFieldError>? fieldErrors;
+
+  /// 自定义左侧图标（微信式消息弹条场景，如发送人头像/业务图标）；
+  /// null 时回退到 kind 对应的语义图标。
+  final IconData? icon;
+
+  /// 点击弹条后的动作（如跳转到对应详情页）；null 时点击仅关闭。
+  final VoidCallback? onTap;
 }
 
 /// 通知服务：Notifier 持有内存队列；所有页面通过 `context.appSuccess/Error/...` 调用。
@@ -70,6 +79,8 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       message: n.message,
       durationMs: n.durationMs,
       fieldErrors: n.fieldErrors,
+      icon: n.icon,
+      onTap: n.onTap,
     );
     final next = <AppNotification>[...state, fresh];
     while (next.length > _maxQueue) {
@@ -139,6 +150,28 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
         title: title,
         message: message,
         durationMs: duration?.inMilliseconds ?? 3200,
+      ));
+
+  /// 通用入口（统一门面 UtenNotify.banner 走这里）。
+  ///
+  /// 支持自定义 [icon] 与点击动作 [onTap]，用于「微信式消息弹条」场景：
+  /// 顶部滑入一条新消息，点击跳转详情，不阻塞当前操作。
+  void showMessage(
+    String message, {
+    String? title,
+    AppNotificationKind kind = AppNotificationKind.info,
+    Duration? duration,
+    IconData? icon,
+    VoidCallback? onTap,
+  }) =>
+      _show(AppNotification(
+        id: '',
+        kind: kind,
+        title: title,
+        message: message,
+        durationMs: duration?.inMilliseconds ?? 3200,
+        icon: icon,
+        onTap: onTap,
       ));
 }
 
@@ -310,13 +343,19 @@ class _AppNotificationBannerState
               borderRadius: BorderRadius.circular(12),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: _dismiss,
+                // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
+                onTap: n.onTap == null
+                    ? _dismiss
+                    : () {
+                        n.onTap!();
+                        _dismiss();
+                      },
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(icon, color: fg, size: 22),
+                      Icon(n.icon ?? icon, color: fg, size: 22),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(

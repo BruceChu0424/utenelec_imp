@@ -42,4 +42,26 @@ public class GoodsSaveRequest {
     private String status;       // Status（使用/禁用）
     private Integer colorLegacyId;  // MColorID（→ colors.legacy_id；编辑表单颜色下拉选）
     private Integer unitLegacyId;   // UnitID（→ units.legacy_id；编辑表单单位下拉选）
+
+    // ===== 成本预算（「成本预算」页签；可空，留空不清已有值时传 null 即覆盖为 null，前端表单始终全量回传） =====
+    private BigDecimal sourceE;      // SourceE 材料合计
+    private BigDecimal machiningE;   // MachiningE 加工费
+    private BigDecimal incidentalE;  // IncidentalE 杂费
+    private BigDecimal lacquerE;     // LacquerE 喷漆、朔费
+    private BigDecimal platingE;     // PlatingE 电镀费
+    private BigDecimal casingE;      // CasingE 包装费
+    private BigDecimal polishE;      // PolishE 抛光费
+    private BigDecimal total;        // Total 成品价
+    private BigDecimal workRate;     // WorkRate 人工比率(%)
+    private BigDecimal workE;        // WorkE 人工费
+    private BigDecimal lostRate;     // LostRate 损耗比率(%)
+    private BigDecimal lostE;        // LostE 损耗费
+    private BigDecimal rentRate;     // RentRate 厂租比率(%)
+    private BigDecimal rentE;        // RentE 厂房租金
+    private BigDecimal makeRate;     // MakeRate 生产利率(%)
+    private BigDecimal makeE;        // MakeE 生产利润
+    @JsonProperty("cTotal")
+    private BigDecimal cTotal;       // CTotal 成本价（防 Jackson 连续大写 quirk）
+    @JsonProperty("gTotal")
+    private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 }

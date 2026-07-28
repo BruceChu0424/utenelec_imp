@@ -84,3 +84,57 @@ String movementTypeLabel(int? t) {
   };
   return t == null ? '—' : (m[t] ?? '类型$t');
 }
+
+/// 即时库存行（对标老系统「即时库存」窗口），对应后端 InstantInventoryRow。
+/// 粒度=货品+颜色；名称（分类/颜色/单位）后端已解析，免前端字典二次查询。
+class InstantInventoryRow {
+  const InstantInventoryRow({
+    this.goodsId,
+    this.colorId,
+    this.categoryName,
+    this.model,
+    this.cNumber,
+    this.name,
+    this.spec,
+    this.colorName,
+    this.unitName,
+    this.remark,
+    this.weight,
+    this.qty,
+    this.costAmount,
+    this.moreQty,
+  });
+
+  final String? goodsId;
+  final String? colorId;
+  final String? categoryName; // 所属类型
+  final String? model;        // 型号
+  final String? cNumber;      // 客户型号
+  final String? name;         // 货品名称
+  final String? spec;         // 规格
+  final String? colorName;    // 颜色
+  final String? unitName;     // 单位
+  final String? remark;       // 备注（老库 B_Goods.Paper，如 外购）
+  final double? weight;       // 库存重量
+  final double? qty;          // 库存数量
+  final double? costAmount;   // 成本金额
+  final double? moreQty;      // 多排数量
+
+  factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
+      InstantInventoryRow(
+        goodsId: json['goodsId'] as String?,
+        colorId: json['colorId'] as String?,
+        categoryName: json['categoryName'] as String?,
+        model: json['model'] as String?,
+        cNumber: json['cNumber'] as String?,
+        name: json['name'] as String?,
+        spec: json['spec'] as String?,
+        colorName: json['colorName'] as String?,
+        unitName: json['unitName'] as String?,
+        remark: json['remark'] as String?,
+        weight: (json['weight'] as num?)?.toDouble(),
+        qty: (json['qty'] as num?)?.toDouble(),
+        costAmount: (json['costAmount'] as num?)?.toDouble(),
+        moreQty: (json['moreQty'] as num?)?.toDouble(),
+      );
+}

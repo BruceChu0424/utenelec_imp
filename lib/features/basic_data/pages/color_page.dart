@@ -131,9 +131,19 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   static const _colorFields = [
     MasterFieldDef(
         key: 'name', label: '颜色名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '颜色编号', group: '基础'),
     MasterFieldDef(
-        key: 'status', label: '状态', group: '基础', hint: '使用 / 禁用'),
+        key: 'code',
+        label: '颜色编号',
+        group: '基础',
+        readOnly: true,
+        hint: '保存后自动生成'),
+    MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
   ];
 
   void _showCreate() {
@@ -141,6 +151,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
       context: context,
       title: '新增颜色', // TODO(l10n): 补 arb
       fields: _colorFields,
+      initialValues: const {'status': '使用'},
       onSubmit: _doCreate,
     );
   }

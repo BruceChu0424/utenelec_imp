@@ -16,8 +16,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/widgets/dropdown_items.dart';
+import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../purchase/providers/master_name_provider.dart';
-import '../../purchase/widgets/goods_picker_dialog.dart';
 import '../repositories/production_repository.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
@@ -131,8 +131,15 @@ class _ProductionDailyReportEditPageState
               (double.tryParse(r.price.text) ?? 0));
 
   Future<void> _pickGoods(_ItemRow row) async {
-    final g = await showGoodsPickerDialog(context, ref);
-    if (g != null) setState(() => row.goods = g);
+    final g = await showUtenGoodsPicker(context, ref);
+    if (g == null) return;
+    final names = ref.read(masterNameServiceProvider);
+    setState(() {
+      row
+        ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+        ..colorId = names.colorIdByLegacy(g.colorLegacyId)
+        ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+    });
   }
 
   Future<void> _save() async {

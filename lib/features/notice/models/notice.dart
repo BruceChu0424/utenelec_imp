@@ -18,7 +18,16 @@ enum NoticeType {
   system('系统', 0xFF3B82F6, Icons.info_rounded),
 
   /// 警告/紧急
-  urgent('紧急', 0xFFEF4444, Icons.priority_high_rounded);
+  urgent('紧急', 0xFFEF4444, Icons.priority_high_rounded),
+
+  /// 工作任务下发（工作类）
+  task('任务', 0xFF0EA5E9, Icons.assignment_rounded),
+
+  /// 审批结果 / 待办（工作类）
+  approval('审批', 0xFF6366F1, Icons.approval_rounded),
+
+  /// 流程节点完成 / 上游完成（工作类）
+  workflow('流程', 0xFF10B981, Icons.account_tree_rounded);
 
   const NoticeType(this.label, this.colorHex, this.icon);
 
@@ -27,6 +36,35 @@ enum NoticeType {
   final IconData icon;
 
   Color get color => Color(colorHex);
+
+  /// 是否工作类通知（任务/审批/流程）——工作平台的核心标识，
+  /// 与公告类（announcement/policy/benefit/system/urgent）区分。
+  bool get isWork => switch (this) {
+        NoticeType.task || NoticeType.approval || NoticeType.workflow => true,
+        _ => false,
+      };
+}
+
+/// 通知重要度（驱动卡片样式与到达时的弹出通道）
+enum NoticePriority {
+  /// 一般：到达时顶部弹条（微信式，不阻塞）
+  normal('一般', 0xFF3B82F6),
+
+  /// 重要：到达时屏幕正中弹窗（橙色），卡片带重要标识
+  important('重要', 0xFFF59E0B),
+
+  /// 紧急：到达时屏幕正中弹窗（红色，禁止遮罩关闭），卡片带紧急标识
+  urgent('紧急', 0xFFEF4444);
+
+  const NoticePriority(this.label, this.colorHex);
+
+  final String label;
+  final int colorHex;
+
+  Color get color => Color(colorHex);
+
+  /// 是否需要在卡片上显示重要度标识（normal 不显示）
+  bool get showBadge => this != NoticePriority.normal;
 }
 
 /// 通知
@@ -40,6 +78,7 @@ class Notice {
     required this.publishedAt,
     required this.isRead,
     this.topPriority = false,
+    this.priority = NoticePriority.normal,
     this.attachments = const [],
     this.readAt,
   });
@@ -70,6 +109,9 @@ class Notice {
   /// 是否置顶
   final bool topPriority;
 
+  /// 重要度（默认一般；驱动卡片样式与到达弹出通道）
+  final NoticePriority priority;
+
   /// 附件（前端 Mock 用文件名表示）
   final List<String> attachments;
 
@@ -83,6 +125,7 @@ class Notice {
       publishedAt: publishedAt,
       isRead: isRead ?? this.isRead,
       topPriority: topPriority,
+      priority: priority,
       attachments: attachments,
       readAt: readAt ?? this.readAt,
     );

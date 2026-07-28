@@ -155,10 +155,10 @@ abstract final class Perm {
   // ===== 生产管理（生产部；V55 seed 细粒度）=====
   static const productionPlanView = 'production_plan:view';
   static const productionPlanEdit = 'production_plan:edit';
-  static const productionPlanCostView = 'production_plan_cost:view';
   static const productionDailyReportView = 'production_daily_report:view';
   static const productionDailyReportEdit = 'production_daily_report:edit';
   static const productionReportView = 'production_report:view';
+  static const productionWhereUsedView = 'production_where_used:view';
 
   // ===== 钱流管理（财税部；V57 seed）=====
   static const financeReceiptView = 'finance_receipt:view';
@@ -278,7 +278,6 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractReportView,
       // 生产管理（V55）
       Perm.productionPlanView, Perm.productionPlanEdit,
-      Perm.productionPlanCostView,
       Perm.productionDailyReportView, Perm.productionDailyReportEdit,
       Perm.productionReportView,
       // 钱流管理（V57）

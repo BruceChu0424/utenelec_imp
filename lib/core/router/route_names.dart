@@ -95,9 +95,10 @@ abstract final class RouteName {
   static const String purchaseReturnList = '/purchase/returns';
   static const String purchaseReport = '/purchase/report';
 
-  // 库存查询（库存管理）：余额 + 出入库流水。
+  // 库存查询（库存管理）：余额 + 出入库流水 + 即时库存。
   static const String stockBalance = '/stock/balance';
   static const String stockMovement = '/stock/movement';
+  static const String stockInstantInventory = '/stock/instant-inventory';
 
   // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
   static const String warehouse = '/warehouse';
@@ -117,11 +118,11 @@ abstract final class RouteName {
   static const String subcontract = '/subcontract';
   static const String subcontractReport = '/subcontract/report';
 
-  // 生产管理（生产部）：hub + 计划单 + BOM 成本 + 日报 + 4 报表入口。
+  // 生产管理（生产部）：hub + 计划单 + 日报 + 4 报表入口。
   static const String production = '/production';
   static const String productionPlanList = '/production/plans';
-  static const String productionPlanCost = '/production/plan-cost';
   static const String productionDailyReportList = '/production/daily-reports';
+  static const String productionWhereUsed = '/production/where-used';
   // /production/reports/{plan-detail|plan-summary|daily-detail|daily-summary} 用 RoutePath 助手。
 
   // 钱流管理（财税部）：hub + 5 单据 + AR/AP 台账 + 对账 + 支票 + 报表。

@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.unit;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -42,6 +44,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UnitService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.UNIT;
+
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status");
 
@@ -59,6 +63,7 @@ public class UnitService {
     private final UnitRepository repo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -143,6 +148,8 @@ public class UnitService {
         tx.bind();
         Unit u = new Unit();
         apply(req, u);
+        u.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (u.getStatus() == null) u.setStatus("使用");
         repo.save(u);
         return toDetail(u);
     }
@@ -167,7 +174,6 @@ public class UnitService {
 
     private void apply(UnitSaveRequest req, Unit u) {
         u.setName(req.getName());
-        u.setCode(req.getCode());
         u.setStatus(req.getStatus());
     }
 

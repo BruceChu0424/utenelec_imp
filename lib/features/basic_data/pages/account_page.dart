@@ -170,7 +170,12 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   List<MasterFieldDef> get _fields => [
         const MasterFieldDef(
             key: 'name', label: '账户名称', required: true, group: '基础'),
-        const MasterFieldDef(key: 'code', label: '账户编号', group: '基础'),
+        const MasterFieldDef(
+            key: 'code',
+            label: '账户编号',
+            group: '基础',
+            readOnly: true,
+            hint: '保存后自动生成'),
         const MasterFieldDef(
             key: 'bankAccountNo', label: '银行账号', group: '基础'),
         MasterFieldDef(
@@ -198,7 +203,12 @@ class _AccountPageState extends ConsumerState<AccountPage> {
             type: MasterFieldType.money,
             hint: '如 0.00'),
         const MasterFieldDef(
-            key: 'status', label: '状态', group: '基础', hint: '使用 / 禁用'),
+            key: 'status',
+            label: '状态',
+            type: MasterFieldType.select,
+            options: kMasterStatusOptions,
+            required: true,
+            group: '基础'),
       ];
 
   void _showCreate() {

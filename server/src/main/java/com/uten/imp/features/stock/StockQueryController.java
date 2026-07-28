@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.dto.BalanceRow;
+import com.uten.imp.features.stock.dto.InstantInventoryRow;
 import com.uten.imp.features.stock.dto.MovementRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -53,5 +54,25 @@ public class StockQueryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.movements(warehouseId, goodsId, movementType, dateFrom, dateTo, page, size, sort, order);
+    }
+
+    /**
+     * 即时库存（对标老系统「即时库存」窗口，仓库管理 hub 入口）：
+     * 货品+颜色 粒度聚合余额，左货品分类树（含子树）+ 仓库下拉 + 关键字过滤。
+     *
+     * GET /api/stock/instant-inventory?categoryId=&warehouseId=&includeDefective=&keyword=&page=&size=&sort=&order=
+     */
+    @GetMapping("/instant-inventory")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public PageResponse<InstantInventoryRow> instantInventory(
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.instantInventory(categoryId, warehouseId, includeDefective, keyword, page, size, sort, order);
     }
 }

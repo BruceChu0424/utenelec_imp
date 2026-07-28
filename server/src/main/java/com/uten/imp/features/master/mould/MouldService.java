@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.mould;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -46,6 +48,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MouldService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.MOULD;
+
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。仅含有数据的 6 列。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "code", "name", "place", "mstatus", "remark", "status");
@@ -71,6 +75,7 @@ public class MouldService {
     private final MouldCategoryRepository categoryRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -170,6 +175,8 @@ public class MouldService {
         tx.bind();
         Mould m = new Mould();
         apply(req, m);
+        m.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
     }
@@ -196,7 +203,6 @@ public class MouldService {
     private void apply(MouldSaveRequest req, Mould m) {
         m.setCategory(requireCategory(req.getCategoryId()));
         m.setName(req.getName());
-        m.setCode(req.getCode());
         m.setMnumber(req.getMnumber());
         m.setQty(req.getQty());
         m.setTqty(req.getTqty());

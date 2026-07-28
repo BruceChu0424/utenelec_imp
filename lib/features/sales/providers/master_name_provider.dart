@@ -6,8 +6,8 @@
 //
 // 与 purchase/providers/master_name_provider.dart 的差异：clients 替 suppliers；
 // 其他端点（warehousesDict/currenciesDict/colorsDict/unitsDict/goodsLookup）复用。
-// 货品搜索（编辑页 typeahead）复用 purchase 的 showGoodsPickerDialog（其内部用采购
-// MasterNameService.searchGoods —— 货品搜索与模块无关，复用避免重复造）。
+// 货品选择改用统一组件 showUtenGoodsPicker（basic_data/widgets/uten_goods_picker.dart，
+// 左分类树+右货品表），不再复用旧搜索款 picker。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -35,6 +35,10 @@ class SalesMasterNameService {
   Map<String, String> _currencies = {};
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
+  /// legacy id → 新库 UUID（选货品后按 goods.colorLegacyId 回填 colorId/unitId 用）。
+  /// colors/units dict 接口实际带 legacyId，之前解析时丢了，此处补建。
+  Map<int, String> _colorByLegacy = {};
+  Map<int, String> _unitByLegacy = {};
   final Map<String, String> _goods = {};
   bool _loaded = false;
 
@@ -68,12 +72,26 @@ class SalesMasterNameService {
       _currencies = {
         for (final e in currencies) e['id'] as String: (e['name'] ?? '') as String
       };
-      _colors = {
-        for (final e in colors) e['id'] as String: (e['name'] ?? '') as String
-      };
-      _units = {
-        for (final e in units) e['id'] as String: (e['name'] ?? '') as String
-      };
+      final colorMap = <String, String>{};
+      final colorByLegacy = <int, String>{};
+      for (final e in colors) {
+        final id = e['id'] as String;
+        colorMap[id] = (e['name'] ?? '') as String;
+        final legacy = e['legacyId'];
+        if (legacy is num) colorByLegacy[legacy.toInt()] = id;
+      }
+      _colors = colorMap;
+      _colorByLegacy = colorByLegacy;
+      final unitMap = <String, String>{};
+      final unitByLegacy = <int, String>{};
+      for (final e in units) {
+        final id = e['id'] as String;
+        unitMap[id] = (e['name'] ?? '') as String;
+        final legacy = e['legacyId'];
+        if (legacy is num) unitByLegacy[legacy.toInt()] = id;
+      }
+      _units = unitMap;
+      _unitByLegacy = unitByLegacy;
     } catch (_) {
       // 静默降级：解析不到显示 '—'，不阻塞列表
     }
@@ -116,6 +134,12 @@ class SalesMasterNameService {
   String color(String? id) => _resolve(_colors, id);
   String unit(String? id) => _resolve(_units, id);
   String goods(String? id) => _resolve(_goods, id);
+
+  /// 由 legacy id 查颜色新库 UUID（选货品后回填用）；查不到返回 null。
+  String? colorIdByLegacy(int? legacy) =>
+      (legacy == null) ? null : _colorByLegacy[legacy];
+  String? unitIdByLegacy(int? legacy) =>
+      (legacy == null) ? null : _unitByLegacy[legacy];
 
   Map<String, String> get clientEntries => _clients;
   Map<String, String> get warehouseEntries => _warehouses;

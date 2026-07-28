@@ -30,8 +30,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../features/purchase/providers/master_name_provider.dart'
     show GoodsOption;
+import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
-import '../../purchase/widgets/goods_picker_dialog.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
@@ -92,6 +92,7 @@ class _SubcontractDocEditPageState
   DateTime? _lastDate;
 
   final _grid = UtenEditableGridController<SubcontractGridRow>();
+  final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
 
@@ -110,6 +111,7 @@ class _SubcontractDocEditPageState
     _bStyle.dispose();
     _totalWeight.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
+    _scrollCtl.dispose();
     super.dispose();
   }
 
@@ -204,8 +206,13 @@ class _SubcontractDocEditPageState
   }
 
   Future<void> _pickGoods(SubcontractGridRow row) async {
-    final g = await showGoodsPickerDialog(context, ref);
-    if (g != null) row.goods = g; // setter → goodsNotifier，单元格自动刷新
+    final g = await showUtenGoodsPicker(context, ref);
+    if (g == null) return;
+    final names = ref.read(mn.masterNameServiceProvider);
+    row
+      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
+      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
@@ -348,7 +355,11 @@ class _SubcontractDocEditPageState
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : UtenContentContainer(
-                child: ListView(
+                child: Scrollbar(
+                  controller: _scrollCtl,
+                  thumbVisibility: true,
+                  child: ListView(
+                  controller: _scrollCtl,
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
                     _headerCard(theme),
@@ -373,6 +384,7 @@ class _SubcontractDocEditPageState
                       createBlankRow: () => SubcontractGridRow(),
                     ),
                   ],
+                ),
                 ),
               ),
       ),

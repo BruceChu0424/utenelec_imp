@@ -17,21 +17,27 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
+import '../providers/visitor_notice_bridge.dart';
 import '../providers/visitor_pending_count_provider.dart';
 
 class MyVisitorsPage extends ConsumerWidget {
   const MyVisitorsPage({super.key});
 
-  Future<void> _confirm(WidgetRef ref, String id, bool confirmed, AppLocalizations l10n) async {
+  Future<void> _confirm(WidgetRef ref, VisitorApplication app, bool confirmed, AppLocalizations l10n) async {
     try {
-      await ref.read(visitorStaffRepositoryProvider).hostConfirm(id, confirmed: confirmed);
+      await ref.read(visitorStaffRepositoryProvider).hostConfirm(app.id, confirmed: confirmed);
       ref.invalidate(myAsHostProvider);
       // 确认后回到 pending（HR 待办）或 rejected，两个徽章都要刷新
       ref.read(visitorHostPendingCountProvider.notifier).refresh();
       ref.read(visitorPendingCountProvider.notifier).refresh();
+      // 被访人确认/拒绝 → 工作通知（流程流转 / 审批驳回）
+      if (ref.context.mounted) {
+        await notifyVisitorHostConfirm(ref.context, ref, app: app, confirmed: confirmed);
+      }
     } on ApiException catch (e) {
       ref.context.appApiError(e, fallback: l10n.commonError);
     } catch (_) {
@@ -89,14 +95,14 @@ class MyVisitorsPage extends ConsumerWidget {
                           Expanded(
                             child: UtenButton(
                               type: UtenButtonType.danger,
-                              onPressed: () => _confirm(ref, app.id, false, l10n),
+                              onPressed: () => _confirm(ref, app, false, l10n),
                               child: Text(l10n.myVisitorsReject),
                             ),
                           ),
                           const SizedBox(width: UtenSpacing.s12),
                           Expanded(
                             child: UtenButton(
-                              onPressed: () => _confirm(ref, app.id, true, l10n),
+                              onPressed: () => _confirm(ref, app, true, l10n),
                               child: Text(l10n.myVisitorsConfirm),
                             ),
                           ),

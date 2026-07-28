@@ -1,25 +1,24 @@
-// 上游单据明细引入对话框（销售编辑页"从上游引入"用）。
+// 上游单据明细引入面板（销售编辑页"从上游引入"用）。
 //
-// 两步：
-//  1) 拉上游单据列表（page:1, size:20），用户选一张。
-//  2) detail → items，渲染复选清单：货品名 / 上游数量 / 本次数量（默认 = 上游数量；
-//     出货引入订货时默认 = qty - shippedQty，跳过已发完的行）。
-//  确认返回所选 [SalesLinkedItem] 列表（带 orderItemId / outItemId），编辑页据此外推明细行。
+// 重做（2026-07-28）：从居中 Dialog 换成右滑入大面板（840，与 showUtenGoodsPicker 统一），
+// 两步各自 Excel 表：
+//  Step1 上游单据：MasterDataTableView（搜索 + 客户筛选 + 分页 + 排序，状态固定已审）。
+//  Step2 该单据明细：UtenEditableGrid（showAddRow:false）勾选 + 本次数量。
+// 确认返回所选 [SalesLinkedItem] 列表，编辑页据此外推明细行。
 //
 // 上游类型由 cfg 决定：
-//  - linkToOutItem（退货链出货）：拉 shipments（已审优先）
-//  - linkToOrderItem（出货/退货链订货）：拉 orders（已审优先）
-//
-// 注：当前 v1 实现单源选择（退货同时双挂需引入两次，UI 略繁但满足业务）；
-// 后续如需"选一次自动双挂"可扩展 _pickSources 返回多个上游。
-import 'dart:math' as math;
-
+//  - linkToOutItem（退货链出货）：拉 shipments（已审）
+//  - linkToOrderItem（出货/退货链订货）：拉 orders（已审）
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -48,59 +47,122 @@ class SalesLinkedItem {
 }
 
 /// 决定引入源（订货 / 出货）。退货同时双挂时优先出货（outItemId 真骨干），
-/// 订货 orderItemId 由编辑页"再引入一次订货"补全（v1 简化）。
+/// 订货 orderItemId 由编辑页"再引入一次订货"补全（v1 简化，逻辑沿用）。
 SalesDocType _upstreamType(SalesDocConfig cfg) {
   if (cfg.linkToOutItem) return SalesDocType.shipment;
   if (cfg.linkToOrderItem) return SalesDocType.order;
   return SalesDocType.order;
 }
 
-/// 弹出"从上游引入"对话框；返回所选明细（null 表示用户取消，空列表理论上不会发生）。
+/// 弹出"从上游引入"右滑入大面板；返回所选明细（null 表示取消）。
 Future<List<SalesLinkedItem>?> showSalesDocLinkPicker(
   BuildContext context,
   WidgetRef ref,
   SalesDocConfig cfg,
 ) {
-  return showDialog<List<SalesLinkedItem>>(
+  final sheet =
+      _UpstreamImportSheet(cfg: cfg, upstreamType: _upstreamType(cfg));
+  if (context.breakpoint.isCompact) {
+    return showModalBottomSheet<List<SalesLinkedItem>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * 0.9,
+          child: sheet,
+        ),
+      ),
+    );
+  }
+  return showGeneralDialog<List<SalesLinkedItem>>(
     context: context,
-    builder: (_) =>
-        _SalesDocLinkPickerDialog(cfg: cfg, upstreamType: _upstreamType(cfg)),
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.black54,
+    transitionDuration: const Duration(milliseconds: 250),
+    pageBuilder: (ctx, _, _) => Align(
+      alignment: Alignment.centerRight,
+      child: Material(
+        color: Theme.of(ctx).colorScheme.surface,
+        child: SizedBox(width: 840, height: double.infinity, child: sheet),
+      ),
+    ),
+    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
+      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
   );
 }
 
-class _SalesDocLinkPickerDialog extends ConsumerStatefulWidget {
-  const _SalesDocLinkPickerDialog({required this.cfg, required this.upstreamType});
+/// 上游明细勾选行：持上游明细引用 + 选中态 + 本次数量控制器。
+class _UpstreamItemRow extends EditableGridRow {
+  _UpstreamItemRow(this.item);
+  final SalesDocItem item;
+  final ValueNotifier<bool> selectedNotifier = ValueNotifier<bool>(false);
+  final TextEditingController qty = TextEditingController();
+  bool get selected => selectedNotifier.value;
+
+  @override
+  void dispose() {
+    selectedNotifier.dispose();
+    qty.dispose();
+    super.dispose();
+  }
+}
+
+class _UpstreamImportSheet extends ConsumerStatefulWidget {
+  const _UpstreamImportSheet({required this.cfg, required this.upstreamType});
 
   final SalesDocConfig cfg;
   final SalesDocType upstreamType;
 
   @override
-  ConsumerState<_SalesDocLinkPickerDialog> createState() =>
-      _SalesDocLinkPickerDialogState();
+  ConsumerState<_UpstreamImportSheet> createState() =>
+      _UpstreamImportSheetState();
 }
 
-class _SalesDocLinkPickerDialogState
-    extends ConsumerState<_SalesDocLinkPickerDialog> {
-  // Step 1：上游单据列表
+class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
+  SalesDocType get _upType => widget.upstreamType;
+
+  // Step1 · 上游单据
   PagedResult<SalesDocListItem>? _docPage;
   bool _loadingDocs = false;
   String? _docsError;
+  final _keywordCtl = TextEditingController();
+  String _keyword = '';
+  String? _clientId;
+  String? _sortKey;
+  bool _sortAsc = true;
 
-  // Step 2：选中上游单据后的明细清单
+  // Step2 · 明细
   SalesDocDetail? _upDetail;
-  final Map<int, double> _picked = {}; // lineIndex → 本次数量
+  late final UtenEditableGridController<_UpstreamItemRow> _grid;
   bool _loadingItems = false;
-
-  SalesDocType get _upType => widget.upstreamType;
 
   @override
   void initState() {
     super.initState();
+    _grid = UtenEditableGridController<_UpstreamItemRow>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(salesMasterNameServiceProvider).ensureLoaded();
       _loadDocs(1);
     });
   }
+
+  @override
+  void dispose() {
+    _keywordCtl.dispose();
+    _grid.dispose();
+    super.dispose();
+  }
+
+  // ---- Step1：上游单据 ---------------------------------------------------
 
   Future<void> _loadDocs(int page) async {
     setState(() {
@@ -111,7 +173,14 @@ class _SalesDocLinkPickerDialogState
       final r = await ref.read(salesRepositoryProvider(_upType)).list(
             page: page,
             size: 20,
-            filter: const SalesDocFilter(status: kSalesStatusApproved),
+            // 业务约束：只引入已审单（草稿/红冲不可引入）。
+            filter: SalesDocFilter(
+              keyword: _keyword.trim().isEmpty ? null : _keyword,
+              clientId: _clientId,
+              status: kSalesStatusApproved,
+            ),
+            sort: _sortKey,
+            order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       if (!mounted) return;
       setState(() {
@@ -127,17 +196,31 @@ class _SalesDocLinkPickerDialogState
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _docsError = '加载上游单据失败';
+        _docsError = '加载上游单据失败'; // TODO(l10n): 补 arb
         _loadingDocs = false;
       });
     }
   }
 
+  void _onKeywordChanged(String v) {
+    _keyword = v;
+    _loadDocs(1);
+  }
+
+  void _onSortChange(String? col, bool asc) {
+    setState(() {
+      _sortKey = col;
+      _sortAsc = asc;
+    });
+    _loadDocs(1);
+  }
+
+  // ---- Step2：选中单据的明细 --------------------------------------------
+
   Future<void> _pickDoc(SalesDocListItem d) async {
     setState(() {
       _loadingItems = true;
       _upDetail = null;
-      _picked.clear();
     });
     try {
       final detail =
@@ -148,6 +231,12 @@ class _SalesDocLinkPickerDialogState
           .toSet();
       await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
+      final rows = detail.items.map((it) {
+        final row = _UpstreamItemRow(it);
+        row.qty.text = _defaultQty(it).toString();
+        return row;
+      }).toList();
+      _grid.replaceAll(rows);
       setState(() {
         _upDetail = detail;
         _loadingItems = false;
@@ -155,125 +244,361 @@ class _SalesDocLinkPickerDialogState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingItems = false);
+      // 静默降级（与 v1 一致）
     }
   }
 
   /// 默认本次数量：出货引入订货 → max(0, qty - shippedQty)；其它 → qty。
   double _defaultQty(SalesDocItem it) {
-    if (_upType == SalesDocType.order && widget.cfg.type == SalesDocType.shipment) {
+    if (_upType == SalesDocType.order &&
+        widget.cfg.type == SalesDocType.shipment) {
       final remain = (it.qty ?? 0) - (it.shippedQty ?? 0);
       return remain < 0 ? 0 : remain;
     }
     return it.qty ?? 0;
   }
 
-  void _toggle(int i, bool? checked) {
-    final items = _upDetail?.items ?? const <SalesDocItem>[];
-    if (i >= items.length) return;
-    setState(() {
-      if (checked == true) {
-        _picked[i] = _defaultQty(items[i]);
-      } else {
-        _picked.remove(i);
-      }
-    });
+  void _setSelectedAll(bool v) {
+    for (final r in _grid.rows) {
+      r.selectedNotifier.value = v;
+    }
+    setState(() {});
   }
 
+  void _invertSelection() {
+    for (final r in _grid.rows) {
+      r.selectedNotifier.value = !r.selectedNotifier.value;
+    }
+    setState(() {});
+  }
+
+  void _toggleRow(_UpstreamItemRow row, bool v) {
+    row.selectedNotifier.value = v;
+    setState(() {});
+  }
+
+  int get _selectedCount => _grid.rows.where((r) => r.selected).length;
+
   void _submit() {
-    final items = _upDetail?.items ?? const <SalesDocItem>[];
     final out = <SalesLinkedItem>[];
-    _picked.forEach((i, qty) {
-      if (i >= items.length || qty <= 0) return;
-      final it = items[i];
-      if (it.goodsId == null) return;
+    for (final row in _grid.rows) {
+      if (!row.selected) continue;
+      final it = row.item;
+      if (it.goodsId == null) continue;
+      final q = double.tryParse(row.qty.text) ?? 0;
+      if (q <= 0) continue;
       out.add(SalesLinkedItem(
         goodsId: it.goodsId!,
-        qty: qty,
+        qty: q,
         price: it.price,
-        orderItemId:
-            widget.cfg.linkToOrderItem && _upType == SalesDocType.order
-                ? it.id
-                : null,
-        outItemId:
-            widget.cfg.linkToOutItem && _upType == SalesDocType.shipment
-                ? it.id
-                : null,
+        orderItemId: widget.cfg.linkToOrderItem && _upType == SalesDocType.order
+            ? it.id
+            : null,
+        outItemId: widget.cfg.linkToOutItem && _upType == SalesDocType.shipment
+            ? it.id
+            : null,
         colorId: it.colorId,
         unitId: it.unitId,
       ));
-    });
-    Navigator.pop(context, out);
+    }
+    Navigator.of(context).pop(out);
   }
+
+  // ---- build ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
-    return Dialog(
-      child: SizedBox(
-        width: math.min(640, MediaQuery.of(context).size.width - 40),
-        height: math.min(560, MediaQuery.of(context).size.height - 80),
+    final inStep2 = _upDetail != null;
+    return Scaffold(
+      body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-              child: Row(
-                children: [
-                  Text(
-                      _upDetail == null
-                          ? '从${_upTypeLabel()}引入'
-                          : '选择明细（${names.client(_upDetail!.clientId)}）',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  const Spacer(),
-                  if (_upDetail != null)
-                    TextButton.icon(
-                      onPressed: () => setState(() {
-                        _upDetail = null;
-                        _picked.clear();
-                      }),
-                      icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                      label: const Text('重选单据'),
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
+            _buildHeader(theme, inStep2, names),
             const Divider(height: 1),
             Expanded(
-              child: _upDetail == null
-                  ? _buildDocList(theme, names)
-                  : _buildItemList(theme, names),
+              child: inStep2
+                  ? (_loadingItems
+                      ? const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2.5))
+                      : _buildStep2(theme, names))
+                  : _buildStep1(theme, names),
             ),
-            if (_upDetail != null)
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Text('已选 ${_picked.length} 行',
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                      const SizedBox(width: UtenSpacing.s12),
-                      FilledButton.icon(
-                        onPressed:
-                            _picked.isEmpty ? null : _submit,
-                        icon: const Icon(Icons.check_rounded, size: 18),
-                        label: const Text('引入'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildHeader(ThemeData theme, bool inStep2, SalesMasterNameService names) {
+    final title = inStep2
+        ? '选择明细（${names.client(_upDetail!.clientId)}）'
+        : '从${_upTypeLabel()}引入';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(UtenSpacing.s8, UtenSpacing.s12, UtenSpacing.s4, UtenSpacing.s8),
+      child: Row(
+        children: [
+          if (inStep2)
+            TextButton.icon(
+              onPressed: () => setState(() => _upDetail = null),
+              icon: const Icon(Icons.arrow_back_rounded, size: 18),
+              label: const Text('重选单据'), // TODO(l10n): 补 arb
+            ),
+          Expanded(
+            child: Text(
+              title,
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- Step1 ------------------------------------------------------------
+
+  Widget _buildStep1(ThemeData theme, SalesMasterNameService names) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s12, UtenSpacing.s12, UtenSpacing.s12, UtenSpacing.s8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _keywordCtl,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    hintText: '搜索单据号', // TODO(l10n): 补 arb
+                    isDense: true,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onChanged: _onKeywordChanged,
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s12),
+              SizedBox(
+                width: 240,
+                child: UtenDropdownField(
+                  label: '客户',
+                  value: _clientId ?? '',
+                  items: [
+                    UtenDropdownItem(
+                        value: '', label: '全部客户'), // TODO(l10n): 补 arb
+                    for (final e in names.clientEntries.entries)
+                      UtenDropdownItem(value: e.key, label: e.value),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _clientId =
+                        (v == null || v.isEmpty) ? null : v);
+                    _loadDocs(1);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: MasterDataTableView<SalesDocListItem>(
+            columns: _docColumns(names),
+            items: _docPage?.items ?? const [],
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            sortColumn: _sortKey,
+            sortAscending: _sortAsc,
+            onSortChange: _onSortChange,
+            onRowTap: _pickDoc,
+            isLoading: _loadingDocs && _docPage == null,
+            loadingMore: _loadingDocs && _docPage != null,
+            error: _docsError,
+            onRetry: () => _loadDocs(1),
+            emptyMessage: '暂无已审${_upTypeLabel()}单', // TODO(l10n): 补 arb
+            currentPage: _docPage?.page ?? 1,
+            totalPages: _docPage?.totalPages ?? 1,
+            onPageChange: (p) => _loadDocs(p),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<MasterColumnDef<SalesDocListItem>> _docColumns(
+          SalesMasterNameService names) =>
+      [
+        MasterColumnDef(
+            key: 'billNo', label: '单据号', width: 140, value: (d) => d.billNo),
+        MasterColumnDef(
+            key: 'billDate',
+            label: '日期',
+            width: 110,
+            type: 'date',
+            sortable: true,
+            value: (d) => (d.billDate ?? '').substring(0, 10)),
+        MasterColumnDef(
+            key: 'client',
+            label: '客户',
+            width: 200,
+            value: (d) => names.client(d.clientId)),
+        MasterColumnDef(
+            key: 'total',
+            label: '合计',
+            width: 120,
+            type: 'money',
+            sortable: true,
+            value: (d) => d.totalLocal?.toStringAsFixed(2)),
+        MasterColumnDef(
+            key: 'status',
+            label: '状态',
+            width: 90,
+            value: (d) => salesStatusLabel(d.status)),
+      ];
+
+  // ---- Step2 ------------------------------------------------------------
+
+  Widget _buildStep2(ThemeData theme, SalesMasterNameService names) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s12, UtenSpacing.s8, UtenSpacing.s12, UtenSpacing.s4),
+          child: Row(
+            children: [
+              TextButton(
+                  onPressed: () => _setSelectedAll(true),
+                  child: const Text('全选')), // TODO(l10n): 补 arb
+              TextButton(
+                  onPressed: _invertSelection,
+                  child: const Text('反选')), // TODO(l10n): 补 arb
+              TextButton(
+                  onPressed: () => _setSelectedAll(false),
+                  child: const Text('取消全选')), // TODO(l10n): 补 arb
+            ],
+          ),
+        ),
+        Expanded(
+          // UtenEditableGrid 表体 content-tall（shrinkWrap，不自竖滚），外层竖向滚动；
+          // 明细行数一般可控（一张单几十行），表头随滚可接受（与编辑页明细一致）。
+          child: SingleChildScrollView(
+            child: UtenEditableGrid<_UpstreamItemRow>(
+              controller: _grid,
+              columns: _itemColumns(names),
+              // showAddRow:false → 不显示"添加行"栏（这里是选明细不是编辑）。
+              showAddRow: false,
+              showRowDelete: false,
+              createBlankRow: () =>
+                  _UpstreamItemRow(SalesDocItem(id: null)), // 不会被调用
+              emptyMessage: '该单据无明细', // TODO(l10n): 补 arb
+            ),
+          ),
+        ),
+        _buildStep2Footer(theme),
+      ],
+    );
+  }
+
+  Widget _buildStep2Footer(ThemeData theme) {
+    final n = _selectedCount;
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border:
+              Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+        ),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text('已选 $n 行', // TODO(l10n): 补 arb
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(width: UtenSpacing.s12),
+            FilledButton.icon(
+              onPressed: n == 0 ? null : _submit,
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: const Text('引入'), // TODO(l10n): 补 arb
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<EditableGridColumn<_UpstreamItemRow>> _itemColumns(
+          SalesMasterNameService names) =>
+      [
+        EditableGridColumn<_UpstreamItemRow>(
+          key: 'sel',
+          label: '',
+          width: 50,
+          cellBuilder: (context, row) => ValueListenableBuilder<bool>(
+            valueListenable: row.selectedNotifier,
+            builder: (_, sel, __) => Checkbox(
+              value: sel,
+              onChanged: (v) => _toggleRow(row, v ?? false),
+            ),
+          ),
+        ),
+        EditableGridColumn<_UpstreamItemRow>(
+          key: 'goods',
+          label: '货品',
+          width: 200,
+          cellBuilder: (context, row) =>
+              Text(names.goods(row.item.goodsId)),
+        ),
+        EditableGridColumn<_UpstreamItemRow>(
+          key: 'color',
+          label: '颜色',
+          width: 90,
+          cellBuilder: (context, row) => Text(names.color(row.item.colorId)),
+        ),
+        EditableGridColumn<_UpstreamItemRow>(
+          key: 'unit',
+          label: '单位',
+          width: 80,
+          cellBuilder: (context, row) => Text(names.unit(row.item.unitId)),
+        ),
+        EditableGridColumn<_UpstreamItemRow>(
+          key: 'qty',
+          label: _upType == SalesDocType.order ? '订货数' : '出货数',
+          width: 90,
+          numeric: true,
+          cellBuilder: (context, row) =>
+              Text((row.item.qty ?? 0).toStringAsFixed(1)),
+        ),
+        EditableGridColumn<_UpstreamItemRow>(
+          key: 'shipped',
+          label: _upType == SalesDocType.order ? '已发' : '已退',
+          width: 90,
+          numeric: true,
+          cellBuilder: (context, row) => Text((_upType == SalesDocType.order
+              ? (row.item.shippedQty ?? 0)
+              : (row.item.returnedQty ?? 0)).toStringAsFixed(1)),
+        ),
+        EditableGridColumn<_UpstreamItemRow>(
+          key: 'thisQty',
+          label: '本次数量',
+          width: 120,
+          numeric: true,
+          cellBuilder: (context, row) => TextField(
+            controller: row.qty,
+            textAlign: TextAlign.right,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '0'),
+          ),
+        ),
+      ];
 
   String _upTypeLabel() {
     switch (_upType) {
@@ -284,115 +609,5 @@ class _SalesDocLinkPickerDialogState
       default:
         return '上游';
     }
-  }
-
-  Widget _buildDocList(ThemeData theme, SalesMasterNameService names) {
-    if (_loadingDocs && _docPage == null) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (_docsError != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_docsError!),
-            const SizedBox(height: UtenSpacing.s8),
-            OutlinedButton(onPressed: () => _loadDocs(1), child: const Text('重试')),
-          ],
-        ),
-      );
-    }
-    final items = _docPage?.items ?? const <SalesDocListItem>[];
-    if (items.isEmpty) {
-      return Center(
-        child: Text('暂无可引入的${_upTypeLabel()}单',
-            style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
-      );
-    }
-    return ListView.separated(
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (ctx, i) {
-        final d = items[i];
-        return ListTile(
-          title: Text(d.billNo ?? '—'),
-          subtitle: Text(
-            '${(d.billDate ?? '').substring(0, 10)}  ·  ${names.client(d.clientId)}',
-            style: const TextStyle(fontSize: 11),
-          ),
-          trailing: Text('¥${d.totalLocal?.toStringAsFixed(0) ?? '—'}'),
-          onTap: () => _pickDoc(d),
-        );
-      },
-    );
-  }
-
-  Widget _buildItemList(ThemeData theme, SalesMasterNameService names) {
-    if (_loadingItems) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    final items = _upDetail?.items ?? const <SalesDocItem>[];
-    return ListView.separated(
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (ctx, i) {
-        final it = items[i];
-        final checked = _picked.containsKey(i);
-        final remaining =
-            (it.qty ?? 0) - (it.shippedQty ?? 0);
-        final exhausted = _upType == SalesDocType.order &&
-            widget.cfg.type == SalesDocType.shipment &&
-            remaining <= 0;
-        return CheckboxListTile(
-          value: checked,
-          onChanged: exhausted ? null : (v) => _toggle(i, v),
-          dense: true,
-          controlAffinity: ListTileControlAffinity.leading,
-          title: Text(names.goods(it.goodsId)),
-          subtitle: Text(
-            [
-              names.color(it.colorId),
-              names.unit(it.unitId),
-              if (_upType == SalesDocType.order)
-                '订 ${it.qty?.toStringAsFixed(1)}'
-              else
-                '出 ${it.qty?.toStringAsFixed(1)}',
-              if (_upType == SalesDocType.order &&
-                  widget.cfg.type == SalesDocType.shipment)
-                '· 待 ${remaining.toStringAsFixed(1)}'
-              else if (_upType == SalesDocType.order)
-                '· 已发 ${(it.shippedQty ?? 0).toStringAsFixed(1)}'
-              else if (_upType == SalesDocType.shipment)
-                '· 已退 ${(it.returnedQty ?? 0).toStringAsFixed(1)}',
-            ].join('  ·  '),
-            style: const TextStyle(fontSize: 11),
-          ),
-          isThreeLine: false,
-          secondary: checked
-              ? SizedBox(
-                  width: 84,
-                  child: TextFormField(
-                    initialValue: _picked[i]?.toString() ?? '',
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      labelText: '本次',
-                    ),
-                    onChanged: (v) {
-                      final n = double.tryParse(v);
-                      if (n != null) _picked[i] = n;
-                    },
-                  ),
-                )
-              : (exhausted
-                  ? Text('已发完',
-                      style: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontSize: 11))
-                  : null),
-        );
-      },
-    );
   }
 }

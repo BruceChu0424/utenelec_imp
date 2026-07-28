@@ -199,26 +199,29 @@ public class StockDocService {
         for (StockDocumentItem it : items) {
             if (it.getGoodsId() == null) continue;
             BigDecimal baseQty = baseQty(it);
+            // 基本重量 = 明细 weight × unit_rate（与 baseQty 同口径；无重量则为 null，余额重量不动）。
+            BigDecimal baseWgt = baseWeight(it);
             switch (d.getDocType()) {
-                case "OTHER_IN" -> move(d, it, T_OTHER_IN, DIR_IN, baseQty, d.getWarehouseId(), ts, sign);
-                case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, d.getWarehouseId(), ts, sign);
-                case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, d.getWarehouseId(), ts, sign);
-                case "WDRAW" -> move(d, it, T_WDRAW, DIR_IN, baseQty, d.getWarehouseId(), ts, sign);
-                case "FINISHED_IN" -> move(d, it, T_FINISHED_IN, DIR_IN, baseQty, d.getWarehouseId(), ts, sign);
-                case "FINISHED_OUT" -> move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, d.getWarehouseId(), ts, sign);
+                case "OTHER_IN" -> move(d, it, T_OTHER_IN, DIR_IN, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
+                case "OTHER_OUT", "WASTE" -> move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
+                case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
+                case "WDRAW" -> move(d, it, T_WDRAW, DIR_IN, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
+                case "FINISHED_IN" -> move(d, it, T_FINISHED_IN, DIR_IN, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
+                case "FINISHED_OUT" -> move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
                 case "TRANSFER" -> {
                     if (d.getWarehouseId() != null)
-                        move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, d.getWarehouseId(), ts, sign);
+                        move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, baseWgt, d.getWarehouseId(), ts, sign);
                     if (d.getToWarehouseId() != null)
-                        move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, d.getToWarehouseId(), ts, sign);
+                        move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, baseWgt, d.getToWarehouseId(), ts, sign);
                 }
                 case "CHECK" -> {
                     BigDecimal surplus = it.getSurplusQty();
                     if (surplus == null || surplus.signum() == 0) continue;
+                    // 盘点只记差额数量；盘盈盘亏无单重口径，重量传 null（不动余额重量，避免错账）。
                     if (surplus.signum() > 0)
-                        move(d, it, T_CHECK_GAIN, DIR_IN, surplus, d.getWarehouseId(), ts, sign);
+                        move(d, it, T_CHECK_GAIN, DIR_IN, surplus, null, d.getWarehouseId(), ts, sign);
                     else
-                        move(d, it, T_CHECK_LOSS, DIR_OUT, surplus.abs(), d.getWarehouseId(), ts, sign);
+                        move(d, it, T_CHECK_LOSS, DIR_OUT, surplus.abs(), null, d.getWarehouseId(), ts, sign);
                 }
                 default -> { /* 未识别类型不动库存 */ }
             }
@@ -232,15 +235,22 @@ public class StockDocService {
         return qty.multiply(rate);
     }
 
-    /** 写一笔流水：审核用 naturalDir，红冲反向（naturalDir × sign）。 */
+    /** base_weight = weight × unit_rate（V80 即时库存重量基本量）；明细无重量返回 null。 */
+    private BigDecimal baseWeight(StockDocumentItem it) {
+        if (it.getWeight() == null) return null;
+        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
+        return it.getWeight().multiply(rate);
+    }
+
+    /** 写一笔流水：审核用 naturalDir，红冲反向（naturalDir × sign）。weight 传正数，由 recordMovement 乘 direction。 */
     private void move(StockDocument d, StockDocumentItem it, short type, short naturalDir,
-                      BigDecimal qty, UUID warehouseId, OffsetDateTime ts, int sign) {
+                      BigDecimal qty, BigDecimal weight, UUID warehouseId, OffsetDateTime ts, int sign) {
         if (warehouseId == null || qty == null || qty.signum() == 0) return;
         short dir = (short) (naturalDir * sign);
         stockService.recordMovement(new StockService.MovementRequest(
                 ts, type, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), warehouseId, dir, qty,
-                it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark()));
+                it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark(), weight));
     }
 
     // ===== 私有映射 =====

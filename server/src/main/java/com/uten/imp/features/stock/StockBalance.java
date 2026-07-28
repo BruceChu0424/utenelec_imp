@@ -39,8 +39,13 @@ public class StockBalance extends BaseEntity {
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty;
 
+    /** 本币金额（采购=入库成本）。 */
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal;
+
+    /** 当前库存重量（V80 即时库存）：历史=StockGoods 最新年 FactWeight，增量=明细 weight×unit_rate×direction。 */
+    @Column(name = "weight", precision = 18, scale = 4)
+    private BigDecimal weight;
 
     @Column(name = "last_movement_date")
     private OffsetDateTime lastMovementDate;

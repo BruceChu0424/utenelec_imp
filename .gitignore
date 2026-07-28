@@ -70,3 +70,6 @@ server/backups/
 # 需要时用 server/legacy_migration/export_legacy.ps1 重新生成）
 server/legacy_migration/data/
 server/src/main/resources/legacy-migration/
+
+# 迁移调试/调查草稿区（一次性查询脚本，完成后清理，不进仓库）
+server/legacy_migration/_scratch/

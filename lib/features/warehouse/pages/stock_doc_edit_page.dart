@@ -20,8 +20,8 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../purchase/providers/master_name_provider.dart';
-import '../../purchase/widgets/goods_picker_dialog.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../widgets/stock_grid_columns.dart';
@@ -46,6 +46,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   String? _toWarehouseId;
 
   final _grid = UtenEditableGridController<StockGridRow>();
+  final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
 
@@ -61,6 +62,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     _remark.dispose();
     _assTeam.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
+    _scrollCtl.dispose();
     super.dispose();
   }
 
@@ -106,8 +108,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   }
 
   Future<void> _pickGoods(StockGridRow row) async {
-    final g = await showGoodsPickerDialog(context, ref);
-    if (g != null) row.goods = g; // setter → goodsNotifier，单元格自动刷新
+    final g = await showUtenGoodsPicker(context, ref);
+    if (g == null) return;
+    row.goods = GoodsOption(id: g.id, code: g.code, name: g.name);
   }
 
   Future<void> _save() async {
@@ -171,7 +174,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : UtenContentContainer(
-                child: ListView(
+                child: Scrollbar(
+                  controller: _scrollCtl,
+                  thumbVisibility: true,
+                  child: ListView(
+                  controller: _scrollCtl,
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
                     Card(
@@ -237,6 +244,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                       createBlankRow: () => StockGridRow(isCheck: _isCheck),
                     ),
                   ],
+                ),
                 ),
               ),
       ),

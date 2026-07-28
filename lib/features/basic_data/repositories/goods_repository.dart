@@ -29,6 +29,10 @@ abstract interface class GoodsRepository {
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<GoodsFacets> facets(String categoryId);
 
+  /// 全局搜货品（组装信息「添加组件」选择器用；不限分类，按编号/名称/型号/规格/系列模糊）。
+  Future<PagedResult<GoodsListItem>> search(String keyword,
+      {int page = 1, int size = 20});
+
   Future<GoodsDetail> detail(String id);
 
   Future<void> create(Map<String, dynamic> body);
@@ -83,6 +87,18 @@ class DioGoodsRepository implements GoodsRepository {
       query: {'categoryId': categoryId},
     );
     return GoodsFacets.fromJson(json);
+  }
+
+  @override
+  Future<PagedResult<GoodsListItem>> search(String keyword,
+      {int page = 1, int size = 20}) async {
+    // 后端 categoryId 可空：不传即全库搜索（BOM 组件选择器场景）。
+    final json = await api.get(ApiEndpoints.goods, query: {
+      'page': page,
+      'size': size,
+      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+    });
+    return PagedResult.fromJson(json, GoodsListItem.fromJson);
   }
 
   @override

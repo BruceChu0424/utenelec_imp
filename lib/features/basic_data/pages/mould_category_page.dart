@@ -541,9 +541,16 @@ class _DetailPaneState extends State<_DetailPane> {
   // 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
   static const _mouldFields = [
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '编号', group: '基础'),
+    MasterFieldDef(
+        key: 'code', label: '编号', group: '基础', readOnly: true, hint: '保存后自动生成'),
     MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
-    MasterFieldDef(key: 'status', label: '状态', group: '基础'),
+    MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
     MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
     MasterFieldDef(
       key: 'tqty',
@@ -567,6 +574,7 @@ class _DetailPaneState extends State<_DetailPane> {
       context: context,
       title: '新增模具', // TODO(l10n): 补 arb
       fields: _mouldFields,
+      initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateMould,
     );

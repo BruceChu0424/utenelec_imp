@@ -31,7 +31,6 @@ class ProductionPerm {
   const ProductionPerm._();
   static const planView = 'production_plan:view';
   static const planEdit = 'production_plan:edit';
-  static const planCostView = 'production_plan_cost:view';
   static const dailyReportView = 'production_daily_report:view';
   static const dailyReportEdit = 'production_daily_report:edit';
   static const reportView = 'production_report:view';

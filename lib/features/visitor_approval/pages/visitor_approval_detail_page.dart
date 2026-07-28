@@ -25,6 +25,7 @@ import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
+import '../providers/visitor_notice_bridge.dart';
 import '../providers/visitor_pending_count_provider.dart';
 
 class VisitorApprovalDetailPage extends ConsumerWidget {
@@ -34,11 +35,24 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
   Future<void> _action(WidgetRef ref, String action,
       {String? comment, String? rejectReason}) async {
     try {
-      await ref.read(visitorStaffRepositoryProvider).action(applicationId,
-          action: action, comment: comment, rejectReason: rejectReason);
+      final app = await ref.read(visitorStaffRepositoryProvider).action(
+          applicationId,
+          action: action,
+          comment: comment,
+          rejectReason: rejectReason);
       ref.invalidate(visitorApprovalDetailProvider(applicationId));
       // 审批动作改变待办数，立即刷新徽章
       ref.read(visitorPendingCountProvider.notifier).refresh();
+      // 审批事件 → 工作通知：通过/驳回/转接待自动生成 Notice 并弹到达提醒
+      if (ref.context.mounted) {
+        await notifyVisitorApprovalOutcome(
+          ref.context,
+          ref,
+          app: app,
+          action: action,
+          rejectReason: rejectReason,
+        );
+      }
     } on ApiException catch (e) {
       ref.context.appApiError(e, fallback: AppLocalizations.of(ref.context).commonError);
     } catch (_) {

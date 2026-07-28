@@ -571,7 +571,8 @@ class _DetailPaneState extends State<_DetailPane> {
   // 供应商主档可编辑字段（与后端 SupplierSaveRequest 对齐）。
   static const _supplierFields = [
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '编号', group: '基础'),
+    MasterFieldDef(
+        key: 'code', label: '编号', group: '基础', readOnly: true, hint: '保存后自动生成'),
     MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
     MasterFieldDef(key: 'place', label: '地区', group: '地址'),
     MasterFieldDef(key: 'empId', label: '业务员', group: '资质'),
@@ -592,7 +593,13 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
     MasterFieldDef(key: 'initTotal', label: '期初应付', type: MasterFieldType.money, group: '财务'),
     MasterFieldDef(key: 'tday', label: '结算天数', type: MasterFieldType.integer, group: '财务'),
-    MasterFieldDef(key: 'status', label: '状态', group: '基础'),
+    MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
     MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
   ];
 
@@ -606,6 +613,7 @@ class _DetailPaneState extends State<_DetailPane> {
       context: context,
       title: '新增供应商', // TODO(l10n): 补 arb
       fields: _supplierFields,
+      initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateSupplier,
     );

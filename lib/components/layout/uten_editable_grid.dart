@@ -186,6 +186,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     required this.createBlankRow,
     this.footer,
     this.showRowDelete = true,
+    this.showAddRow = true,
     this.addRowLabel = '添加行',
     this.addRowsLabel = '添加多行',
     this.emptyMessage = '暂无明细，点击下方按钮添加',
@@ -201,6 +202,9 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final Widget? footer;
 
   final bool showRowDelete;
+  /// 是否显示底部「添加行/添加多行」栏。编辑页用 true（默认）；「从上游引入」选明细等
+  /// 只读勾选场景传 false 隐藏。
+  final bool showAddRow;
   final String addRowLabel;
   final String addRowsLabel;
   final String emptyMessage;
@@ -406,19 +410,20 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
               child: widget.footer!,
             ),
           ),
-        _AddRowBar(
-          onAddOne: () => widget.controller.addRow(widget.createBlankRow()),
-          onAddMany: () async {
-            final n = await _showAddRowsDialog(context);
-            if (n != null && n > 0) {
-              widget.controller.addRows(
-                List.generate(n, (_) => widget.createBlankRow()),
-              );
-            }
-          },
-          addRowLabel: widget.addRowLabel,
-          addRowsLabel: widget.addRowsLabel,
-        ),
+        if (widget.showAddRow)
+          _AddRowBar(
+            onAddOne: () => widget.controller.addRow(widget.createBlankRow()),
+            onAddMany: () async {
+              final n = await _showAddRowsDialog(context);
+              if (n != null && n > 0) {
+                widget.controller.addRows(
+                  List.generate(n, (_) => widget.createBlankRow()),
+                );
+              }
+            },
+            addRowLabel: widget.addRowLabel,
+            addRowsLabel: widget.addRowsLabel,
+          ),
       ],
     );
   }

@@ -130,9 +130,19 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   static const _unitFields = [
     MasterFieldDef(
         key: 'name', label: '单位名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '单位编号', group: '基础'),
     MasterFieldDef(
-        key: 'status', label: '状态', group: '基础', hint: '使用 / 禁用'),
+        key: 'code',
+        label: '单位编号',
+        group: '基础',
+        readOnly: true,
+        hint: '保存后自动生成'),
+    MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
   ];
 
   void _showCreate() {
@@ -140,6 +150,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       context: context,
       title: '新增单位', // TODO(l10n): 补 arb
       fields: _unitFields,
+      initialValues: const {'status': '使用'},
       onSubmit: _doCreate,
     );
   }

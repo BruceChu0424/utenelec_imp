@@ -2,6 +2,8 @@ package com.uten.imp.features.master.client;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -51,6 +53,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ClientService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.CLIENT;
+
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。主结账方式 / 总监 无对应列，不在内。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "code", "name", "fullName", "clientXz", "tday", "region", "placeId",
@@ -97,6 +101,7 @@ public class ClientService {
     private final ClientCategoryRepository categoryRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -293,6 +298,8 @@ public class ClientService {
         tx.bind();
         Client m = new Client();
         apply(req, m);
+        m.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
     }
@@ -318,7 +325,6 @@ public class ClientService {
     private void apply(ClientSaveRequest req, Client m) {
         m.setCategory(requireCategory(req.getCategoryId()));
         m.setName(req.getName());
-        m.setCode(req.getCode());
         m.setFullName(req.getFullName());
         m.setClientRank(req.getClientRank());
         m.setRegion(req.getRegion());

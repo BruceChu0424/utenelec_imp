@@ -273,7 +273,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     }
     _ensureWidths(context);
     final total = _totalWidth;
+    // stretch：列总宽 < 视口宽时（颜色/单位等列少主档）表头与表体撑满视口宽、
+    // 内容靠左，而非整体水平居中（Column 默认 crossAxisAlignment.center 会把窄于
+    // 视口的表格居中、左右留白）。仅作用于交叉轴（横向），不影响主轴 Flexible(loose)
+    // 的「行少收缩、横滚条贴末行」行为。
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 表头：横向跟随表体同步（无可见滚动条），竖向固定（sticky）。
         Material(
@@ -298,36 +303,47 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         Flexible(
           child: LayoutBuilder(
             builder: (ctx, c) => Scrollbar(
-              controller: _bodyH,
+              // 竖向滚动条（上下）：绑表体 ListView 的 _bodyV。置于横向滚动之外层，
+              // 使 thumb 固定在视口右边缘、不随横向滚动被带走。竖向 ListView 嵌在
+              // 横向 SingleChildScrollView 内层，其滚动通知冒泡到本 Scrollbar 时
+              // depth=1（穿过了横向那层 Scrollable），Scrollbar 默认 notificationPredicate
+              // (depth==0) 会滤掉 → thumb 不更新；放宽到 depth<=1 才能捕获竖向滚动。
+              controller: _bodyV,
               thumbVisibility: true,
-              child: SingleChildScrollView(
+              notificationPredicate: (ScrollNotification n) => n.depth <= 1,
+              child: Scrollbar(
+                // 横向滚动条（左右）：绑 _bodyH，thumb 钉视口底，表头经 _sync 跟随同步。
                 controller: _bodyH,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: total,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxHeight: c.maxHeight),
-                    child: ListView.builder(
-                      controller: _bodyV,
-                      shrinkWrap: true,
-                      physics: const ClampingScrollPhysics(),
-                      padding: EdgeInsets.zero,
-                      itemCount: widget.items.length + (widget.loadingMore ? 1 : 0),
-                      itemBuilder: (ctx, i) {
-                        if (i == widget.items.length) {
-                          return const Padding(
-                            padding: EdgeInsets.all(UtenSpacing.s12),
-                            child: Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _bodyH,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: total,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: c.maxHeight),
+                      child: ListView.builder(
+                        controller: _bodyV,
+                        shrinkWrap: true,
+                        physics: const ClampingScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: widget.items.length + (widget.loadingMore ? 1 : 0),
+                        itemBuilder: (ctx, i) {
+                          if (i == widget.items.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(UtenSpacing.s12),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
                               ),
-                            ),
-                          );
-                        }
-                        return _buildDataRow(theme, widget.items[i]);
-                      },
+                            );
+                          }
+                          return _buildDataRow(theme, widget.items[i]);
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -764,7 +780,9 @@ class _FilterCellState extends State<_FilterCell> {
                       for (final b in widget.buckets)
                         _menuItem(
                           ctx,
-                          label: '${b.display} (${b.count})',
+                          label: b.count > 0
+                              ? '${b.display} (${b.count})'
+                              : b.display,
                           isSelected: sanitized == b.value,
                           onTap: () => _select(b.value),
                           theme: theme,

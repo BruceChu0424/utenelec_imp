@@ -30,6 +30,7 @@
 >   - **V70** 钱流（`finance_receipts/payments/expenses/other_incomes/bank_transfers` 各加 `maker/approver/operator_legacy_id` + `*_name`；`ar_ap_ledger.settlement_style_legacy` SMALLINT。补齐四模块里钱流漏掉的报表补列；22 报表同时重写为 ReportTableResponse 范式，详见 [26] §十一）
 > - 报表统一走服务端 JOIN + `ReportTableResponse{columns,rows,facets}` 范式（采购/委外/仓库/销售/钱流一致），人名 `LEFT JOIN employees ON legacy_id=*_legacy_id OR id=*_id`（employees.legacy_id 未填前显空白）。
 > - **V76 单据号序列（2026-07-27，跨模块重构落地）**：`V76__doc_number_sequences.sql` 建 `doc_number_sequences(prefix TEXT, period CHAR(4) YYMM, last_seq INT, UNIQUE(prefix, period))`。**所有业务单据的 `bill_no` 现由后端 `DocNumberService` 系统生成**（详见 [28] §九），格式 `[前缀][YYMM][4位月内顺序号]` 如 `CD26070001`。契约修订：§二 "单据号 `bill_no TEXT NOT NULL` + `UNIQUE(bill_no)`" 仍成立，但**客户端不再传 billNo**（Service.create() 忽略传入值，空时自动生成；update 不重生成）；迁移 backfill 扫描现有 `bill_no` 按 (prefix, period) 回填 last_seq 最大值，保证新号不撞老号。`StockDocService` 走 doc_type→prefix 映射；CJ 撞号已解决（采购收货=CJ，仓库产成品进仓=CR 新分配）。**2026-07-28 增订**：① 全部 25 个 `*SaveRequest*` DTO 已移除 `billNo` 上的 `@NotBlank`（**DTO 不再校验 billNo**，因服务端生成；此前带校验时请求在到达 `DocNumberService` 前就被 400 拒）；② `DocNumberController` 的 `GET /api/doc-number/peek` 端点**已删除**（连同 `DocNumberService.peekNumber` / `DocNumberPrefix.fromCode`），最小化攻击面；③ 全部 25 个 create-单据 Service 已接入 DocNumberService（含补接的 `ProductionDailyReportService`=`SR` / `SubcontractInquiryService`=`EA` / `SubcontractApplicationService`=`EB`，客户端 billNo 零信任）。
+> - **V77 主档编号 + V78 物料反查权限（2026-07-28）**：V77 `V77__master_code_sequences.sql` 建 `master_code_sequences(category, period, last_seq)` 供 10 主档 code 服务端自动生成（`MasterCodeService`，零碰撞拼音缀 + 部分唯一索引 `WHERE legacy_id IS NULL`，详见 master_code memory）；V78 `V78__production_where_used.sql` 仅 seed `production_where_used:view` 权限点（**物料反查产成品报表**，无新表，数据复用 V55 `production_plan_costs`；端点 `/api/production/reports/where-used`，工作台工程研发部 + 生产部 hub 双入口，详见 [物料反查产成品页](../03-页面/物料反查产成品页.md)）。
 
 > **依赖序**：V50→V51→V53→V55→V57（生产 V55 的 SOCItemID/S_OrderID 映射依赖销售 V51 先落，但 DDL 层面无 FK 跨模块，仅迁移时需序）。各模块 DDL 互不 FK（跨模块联动在 Service 层）。
 
@@ -169,7 +170,23 @@ CREATE TABLE ar_ap_ledger (
 - [ ] 不越界 CREATE 别模块的表（见 §一）。
 - [ ] 每表 COMMENT + 索引齐全。
 - [ ] `psql --syntax-check` 或本地 Flyway `validate` 通过（若可跑）。
+- [ ] **已应用的迁移不再改**（改了会 checksum mismatch 致启动失败，见 §九）。
 
 ---
 
-**最后更新**：2026-07-27 · DDL 阶段单一事实源。各 agent 读本文 + 自己的 design doc 落 Flyway。本期新增 V76 `doc_number_sequences`（单据号系统生成，§一末段 + §二契约修订）。
+## 九、Flyway checksum 维护（dev 常见坑）
+
+**已应用的迁移文件不能再改**。Flyway 启动 `validate`：对每个已 applied 版本重算 .sql 的 CRC32 checksum 与 `flyway_schema_history.checksum` 比对，不一致即报 `Migration checksum mismatch for version V??`，后端启动失败。
+
+- **dev 常踩**：开发中直接改已 applied 的 .sql（调列/调 seed），下次启动即 mismatch。典型：V77 master_code 开发中反复改 `V77__master_code_sequences.sql`，resolved checksum 一日数变，任何重启都撞。
+- **修复（等价 `flyway repair`）**：日志会打印 `Applied to database : <旧值>` / `Resolved locally : <新值>`，对齐即可：
+  ```sql
+  UPDATE flyway_schema_history SET checksum=<Resolved locally 值> WHERE version='??';
+  ```
+  或 `mvn flyway:repair`（若配了 plugin）。
+- **临时绕过（不改库）**：启动加 `--spring.flyway.validate-on-migrate=false`（dev 容忍；prod 必校验）。
+- **正确做法**：已 applied 的迁移要改 → 写**新迁移**（V??+1）`ALTER`/补 seed，不回头改旧文件。只有"该版本尚未在任何环境 applied"时才可直接改 .sql。
+
+---
+
+**最后更新**：2026-07-28 · DDL 阶段单一事实源。各 agent 读本文 + 自己的 design doc 落 Flyway。V76 `doc_number_sequences`（单据号系统生成）；V77 `master_code_sequences`（主档编号）/ V78 `production_where_used` 权限（物料反查产成品报表，§一末段）；新增 §九「Flyway checksum 维护」。

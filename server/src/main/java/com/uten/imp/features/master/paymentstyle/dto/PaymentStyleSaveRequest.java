@@ -17,7 +17,6 @@ import java.util.UUID;
 @Setter
 public class PaymentStyleSaveRequest {
 
-    @NotBlank
     private String code;
 
     @NotBlank

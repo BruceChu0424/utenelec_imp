@@ -45,7 +45,7 @@
 | 流水线/产量* | ❌ | ✅ | ✅只读 | ✅ | ❌ |
 | 库存* | ❌ | ✅ | ✅只读 | ✅ | ❌ |
 
-权限点（现行，按部门/个人配置）：`lab:test:view/upload`、`production:view`、`stock:view`、`stock_report:view/export`、`production_report:view/export`、`warehouse:*`。
+权限点（现行，按部门/个人配置）：`lab:test:view/upload`、`production:view`、`stock:view`、`stock_report:view/export`、`production_report:view/export`、`production_where_used:view`、`warehouse:*`。
 
 ## 四、共同特征
 - **平板优先**：多为数据录入/看板，桌面/平板用 `MasterDataTableView` + 看板，手机简化。

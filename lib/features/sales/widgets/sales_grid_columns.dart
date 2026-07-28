@@ -6,7 +6,6 @@
 // salesGridColumns：货品/颜色/单位/数量/单价/金额 + V66 补列（条件）。
 import 'package:flutter/material.dart';
 
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -35,8 +34,15 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   /// orderItemId/outItemId —— 销售双挂所以两 id 各自独立透传，不像采购三选一）。
   String? orderItemId;
   String? outItemId;
-  String? colorId;
-  String? unitId;
+
+  /// 颜色/单位（选货品后自动回填或上游引入预填；单元格只读显示）。
+  /// 用 ValueNotifier：选货品后单元格即时刷新（与 goodsNotifier 同款），无需整页 setState。
+  final colorIdNotifier = ValueNotifier<String?>(null);
+  String? get colorId => colorIdNotifier.value;
+  set colorId(String? v) => colorIdNotifier.value = v;
+  final unitIdNotifier = ValueNotifier<String?>(null);
+  String? get unitId => unitIdNotifier.value;
+  set unitId(String? v) => unitIdNotifier.value = v;
 
   // V66 报表补列：成本分项/包装派生/折扣。空文本不随 body 提交（后端按 nullable 处理）。
   // order：机加价/围数/进仓数量（inNo/outNo 是系统字段，不入录）。
@@ -68,6 +74,8 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   @override
   void dispose() {
     goodsNotifier.dispose();
+    colorIdNotifier.dispose();
+    unitIdNotifier.dispose();
     qty.dispose();
     price.dispose();
     machiningPrice.dispose();
@@ -123,35 +131,15 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       key: 'color',
       label: '颜色',
       width: 130,
-      cellBuilder: (context, row) => UtenDropdownField(
-        value: row.colorId,
-        items: [
-          for (final e in colorEntries.entries)
-            UtenDropdownItem(value: e.key, label: e.value),
-          if (row.colorId != null &&
-              row.colorId!.isNotEmpty &&
-              !colorEntries.containsKey(row.colorId))
-            UtenDropdownItem(value: row.colorId, label: row.colorId!),
-        ],
-        onChanged: (v) => row.colorId = v,
-      ),
+      cellBuilder: (context, row) =>
+          _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
     EditableGridColumn<SalesGridRow>(
       key: 'unit',
       label: '单位',
       width: 110,
-      cellBuilder: (context, row) => UtenDropdownField(
-        value: row.unitId,
-        items: [
-          for (final e in unitEntries.entries)
-            UtenDropdownItem(value: e.key, label: e.value),
-          if (row.unitId != null &&
-              row.unitId!.isNotEmpty &&
-              !unitEntries.containsKey(row.unitId))
-            UtenDropdownItem(value: row.unitId, label: row.unitId!),
-        ],
-        onChanged: (v) => row.unitId = v,
-      ),
+      cellBuilder: (context, row) =>
+          _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
     EditableGridColumn<SalesGridRow>(
       key: 'qty',
@@ -209,6 +197,31 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         docType == SalesDocType.returnDoc)
       _extraNumericColumn('折扣', 'discount', (r) => r.discount),
   ];
+}
+
+/// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。
+Widget _readOnlyMasterCell(
+  BuildContext context,
+  ValueNotifier<String?> notifier,
+  Map<String, String> entries,
+) {
+  final theme = Theme.of(context);
+  return ValueListenableBuilder<String?>(
+    valueListenable: notifier,
+    builder: (context, id, _) {
+      final name = (id != null && id.isNotEmpty) ? entries[id] : null;
+      final hasName = name != null && name.isNotEmpty;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Text(
+          hasName ? name : '—',
+          style: TextStyle(
+            color: hasName ? null : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// V66 补列 numeric 列工厂：右对齐数字输入框（与数量/单价同款）。

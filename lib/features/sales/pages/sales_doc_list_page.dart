@@ -19,6 +19,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
@@ -239,10 +240,17 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                     tablePane: MasterDataTableView<SalesDocListItem>(
                       columns: _columns(names),
                       items: _page?.items ?? const [],
-                      facets: const {},
+                      facets: _statusFacets(),
                       nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
+                      filters: _statusFilter == null
+                          ? const <String, String?>{}
+                          : <String, String?>{'status': '$_statusFilter'},
+                      onFilterChanged: (key, value) {
+                        if (key != 'status') return;
+                        setState(() => _statusFilter =
+                            value == null ? null : int.tryParse(value));
+                        _load(1);
+                      },
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
@@ -266,6 +274,15 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
       ),
     );
   }
+
+  /// 表头「状态」列筛选桶（状态是固定枚举，前端硬编码；count=0 表示不强调计数）。
+  Map<String, List<MasterFacetBucket>> _statusFacets() => const {
+        'status': [
+          MasterFacetBucket(value: '0', count: 0, label: '草稿'),
+          MasterFacetBucket(value: '1', count: 0, label: '已审'),
+          MasterFacetBucket(value: '-1', count: 0, label: '红冲'),
+        ],
+      };
 
   Widget _statusChip(String label, int? value) {
     final selected = _statusFilter == value;

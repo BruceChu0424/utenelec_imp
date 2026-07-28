@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.warehouse;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -41,6 +43,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class WarehouseService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.WAREHOUSE;
+
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status", "location");
 
     private static final int FACET_LIMIT = 50;
@@ -55,6 +59,7 @@ public class WarehouseService {
     private final WarehouseRepository repo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     @Transactional(readOnly = true)
     public PageResponse<WarehouseListItem> list(WarehouseQueryFilter f, int page, int size) {
@@ -134,6 +139,8 @@ public class WarehouseService {
         tx.bind();
         Warehouse w = new Warehouse();
         apply(req, w);
+        w.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (w.getStatus() == null) w.setStatus("使用");
         repo.save(w);
         return toDetail(w);
     }
@@ -158,7 +165,6 @@ public class WarehouseService {
 
     private void apply(WarehouseSaveRequest req, Warehouse w) {
         w.setName(req.getName());
-        w.setCode(req.getCode());
         w.setLocation(req.getLocation());
         w.setRemark(req.getRemark());
         if (req.getAccountable() != null) w.setAccountable(req.getAccountable());

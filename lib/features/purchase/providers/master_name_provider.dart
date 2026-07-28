@@ -31,6 +31,10 @@ class MasterNameService {
   Map<String, String> _currencies = {};
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
+  /// legacy id → 新库 UUID（选货品后按 goods.colorLegacyId 回填 colorId/unitId 用）。
+  /// colors/units dict 接口实际带 legacyId，之前解析时丢了，此处补建。
+  Map<int, String> _colorByLegacy = {};
+  Map<int, String> _unitByLegacy = {};
   final Map<String, String> _goods = {};
   bool _loaded = false;
 
@@ -47,8 +51,26 @@ class MasterNameService {
       _suppliers = {for (final e in results[0]) e['id'] as String: (e['name'] ?? '') as String};
       _warehouses = {for (final e in results[1]) e['id'] as String: (e['name'] ?? '') as String};
       _currencies = {for (final e in results[2]) e['id'] as String: (e['name'] ?? '') as String};
-      _colors = {for (final e in results[3]) e['id'] as String: (e['name'] ?? '') as String};
-      _units = {for (final e in results[4]) e['id'] as String: (e['name'] ?? '') as String};
+      final colorMap = <String, String>{};
+      final colorByLegacy = <int, String>{};
+      for (final e in results[3]) {
+        final id = e['id'] as String;
+        colorMap[id] = (e['name'] ?? '') as String;
+        final legacy = e['legacyId'];
+        if (legacy is num) colorByLegacy[legacy.toInt()] = id;
+      }
+      _colors = colorMap;
+      _colorByLegacy = colorByLegacy;
+      final unitMap = <String, String>{};
+      final unitByLegacy = <int, String>{};
+      for (final e in results[4]) {
+        final id = e['id'] as String;
+        unitMap[id] = (e['name'] ?? '') as String;
+        final legacy = e['legacyId'];
+        if (legacy is num) unitByLegacy[legacy.toInt()] = id;
+      }
+      _units = unitMap;
+      _unitByLegacy = unitByLegacy;
     } catch (_) {
       // 静默降级：解析不到显示 '—'，不阻塞列表
     }
@@ -93,6 +115,12 @@ class MasterNameService {
   String color(String? id) => _resolve(_colors, id);
   String unit(String? id) => _resolve(_units, id);
   String goods(String? id) => _resolve(_goods, id);
+
+  /// 由 legacy id 查颜色新库 UUID（选货品后回填用）；查不到返回 null。
+  String? colorIdByLegacy(int? legacy) =>
+      (legacy == null) ? null : _colorByLegacy[legacy];
+  String? unitIdByLegacy(int? legacy) =>
+      (legacy == null) ? null : _unitByLegacy[legacy];
 
   String _resolve(Map<String, String> map, String? id) =>
       (id != null && id.isNotEmpty && map[id]?.isNotEmpty == true) ? map[id]! : '—';

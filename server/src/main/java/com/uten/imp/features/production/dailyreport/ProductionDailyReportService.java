@@ -157,7 +157,7 @@ public class ProductionDailyReportService {
     private void applyHeader(DailyReportSaveRequest req, ProductionDailyReport r) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
-            r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PROD_DAILY_REPORT));
+            r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_DAILY_REPORT));
         }
         r.setBillDate(req.getBillDate());
         r.setWarehouseId(req.getWarehouseId());

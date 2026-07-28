@@ -204,6 +204,8 @@ public class ProductionPlanService {
         p.setWorkshopName(req.getWorkshopName());
         p.setWorkerName(req.getWorkerName());
         p.setSellerName(req.getSellerName());
+        p.setSellerId(req.getSellerId());
+        p.setWorkerId(req.getWorkerId());
         p.setRemark(req.getRemark());
         p.setSourceDocNo(req.getSourceDocNo());
     }
@@ -269,6 +271,7 @@ public class ProductionPlanService {
     private PlanListItem toList(ProductionPlan p) {
         return new PlanListItem(p.getId(), p.getBillNo(), p.getBillDate(), p.getDeliveryDate(),
                 p.getDepartmentId(), p.getWorkshopName(), p.getWorkerName(), p.getSellerName(),
+                p.getSellerId(), p.getWorkerId(),
                 p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getLegacyId());
     }
 
@@ -289,6 +292,7 @@ public class ProductionPlanService {
     private PlanDetail toDetail(ProductionPlan p, List<PlanItemDto> items) {
         return new PlanDetail(p.getId(), p.getLegacyId(), p.getBillNo(), p.getBillDate(), p.getFStyle(),
                 p.getDeliveryDate(), p.getDepartmentId(), p.getWorkshopName(), p.getWorkerName(), p.getSellerName(),
+                p.getSellerId(), p.getWorkerId(),
                 p.getMakerId(), p.getApproverId(), p.getMakerLegacyId(), p.getApproverLegacyId(), p.getRemark(),
                 p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getSourceDocNo(), items);
     }

@@ -23,18 +23,21 @@ public interface StockBalanceRepository
     Optional<StockBalance> findByWarehouseIdAndGoodsIdAndColorId(UUID warehouseId, UUID goodsId, UUID colorId);
 
     /**
-     * 增量 upsert 余额：不存在则插入，存在则 qty/amount_local 累加已带方向符号的增量。
+     * 增量 upsert 余额：不存在则插入，存在则 qty/amount_local/weight 累加已带方向符号的增量。
      *
      * @param delta 已乘 direction(+1/-1) 的数量增量
      * @param amt   已乘 direction 的金额增量
+     * @param wgt   已乘 direction 的重量增量（V80 即时库存；null 视为 0，不改动既有重量）
      */
     @Modifying
     @Query(value = """
-            INSERT INTO stock_balances (id, warehouse_id, goods_id, color_id, qty, amount_local, last_movement_date, created_at, updated_at)
-            VALUES (gen_random_uuid(), :wid, :gid, :cid, :delta, :amt, :ts, now(), now())
+            INSERT INTO stock_balances (id, warehouse_id, goods_id, color_id, qty, amount_local, weight, last_movement_date, created_at, updated_at)
+            VALUES (gen_random_uuid(), :wid, :gid, :cid, :delta, :amt, COALESCE(:wgt, 0), :ts, now(), now())
             ON CONFLICT (warehouse_id, goods_id, color_id) DO UPDATE
             SET qty = stock_balances.qty + :delta,
                 amount_local = COALESCE(stock_balances.amount_local, 0) + :amt,
+                weight = CASE WHEN :wgt IS NULL THEN stock_balances.weight
+                              ELSE COALESCE(stock_balances.weight, 0) + :wgt END,
                 last_movement_date = :ts,
                 updated_at = now()
             """, nativeQuery = true)
@@ -43,5 +46,6 @@ public interface StockBalanceRepository
                        @Param("cid") UUID colorId,
                        @Param("delta") BigDecimal delta,
                        @Param("amt") BigDecimal amt,
+                       @Param("wgt") BigDecimal wgt,
                        @Param("ts") OffsetDateTime ts);
 }

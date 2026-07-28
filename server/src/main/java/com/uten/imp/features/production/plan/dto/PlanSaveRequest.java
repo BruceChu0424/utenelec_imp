@@ -23,6 +23,8 @@ public class PlanSaveRequest {
     private String workshopName;
     private String workerName;
     private String sellerName;
+    private UUID sellerId;
+    private UUID workerId;
     private String remark;
     private String sourceDocNo;
 

@@ -335,12 +335,18 @@ const _allGroups = <_ModuleGroup>[
       ),
     ],
   ),
-  // 空分组：暂无卡片，超管可见占位，功能规划接入中
+  // 工程研发部：物料反查产成品（BOM where-used，工程研发部 + 生产部共用入口）
   _ModuleGroup(
     key: 'eng',
     title: '工程研发部',
     color: UtenColors.teal700,
-    items: [],
+    items: [
+      _ModuleItem(
+        icon: Icons.find_in_page_outlined,
+        label: '物料反查产成品',
+        location: RouteName.productionWhereUsed,
+      ),
+    ],
   ),
   _ModuleGroup(
     key: 'pmc',

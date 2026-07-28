@@ -55,7 +55,8 @@ public class StockService {
     private final StockBalanceRepository balanceRepo;
     private final TxSessionVars tx;
 
-    /** 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。 */
+    /** 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。
+     *  weight 为基本单位重量（已乘 unit_rate，V80 即时库存重量联动；null=不维护重量）。 */
     public record MovementRequest(
             OffsetDateTime transactionDate,
             short movementType,
@@ -70,7 +71,29 @@ public class StockService {
             UUID unitId,
             BigDecimal unitRate,
             BigDecimal amountLocal,
-            String remark) {
+            String remark,
+            BigDecimal weight) {
+
+        /** 兼容旧签名（无重量）：weight=null，余额重量保持不变。 */
+        public MovementRequest(
+                OffsetDateTime transactionDate,
+                short movementType,
+                String sourceDocType,
+                UUID sourceDocId,
+                UUID sourceItemId,
+                UUID goodsId,
+                UUID colorId,
+                UUID warehouseId,
+                short direction,
+                BigDecimal qty,
+                UUID unitId,
+                BigDecimal unitRate,
+                BigDecimal amountLocal,
+                String remark) {
+            this(transactionDate, movementType, sourceDocType, sourceDocId, sourceItemId,
+                    goodsId, colorId, warehouseId, direction, qty, unitId, unitRate,
+                    amountLocal, remark, null);
+        }
     }
 
     /**
@@ -103,7 +126,9 @@ public class StockService {
         BigDecimal dir = BigDecimal.valueOf(req.direction());
         BigDecimal signedQty = req.qty().multiply(dir);
         BigDecimal signedAmt = (req.amountLocal() == null ? BigDecimal.ZERO : req.amountLocal()).multiply(dir);
+        // 重量：null=调用方不维护（旧调用方/无重量业务），upsert 内部保持原值；非 null 才按方向增减。
+        BigDecimal signedWgt = req.weight() == null ? null : req.weight().multiply(dir);
         balanceRepo.upsertBalance(req.warehouseId(), req.goodsId(), req.colorId(),
-                signedQty, signedAmt, ts);
+                signedQty, signedAmt, signedWgt, ts);
     }
 }

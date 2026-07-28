@@ -5,6 +5,10 @@
 > 顶部渲染（status bar 下方滑入），按 `success/error/warning/info` 四级配色，
 > 队列上限 3 条 + 600ms 同 message 合并去重，专治"先成功再失败"的双 SnackBar 抖动。
 
+> ⚠️ **调用入口已收敛**：新代码请走统一门面 **[UtenNotify](UtenNotify.md)**
+> （`UtenNotify.banner/success/error/...`，顶部弹条 + 居中弹窗双通道）。
+> 本文档描述底层服务行为；`context.appSuccess/Error/...` 扩展保持兼容可用。
+
 ---
 
 ## 一、用途
@@ -21,6 +25,7 @@
 | API 抛 `ApiException` 后的错误提示 | `context.appApiError(e)` |
 | 普通 toast 式提示 | `context.appInfo(...)` |
 | 阻塞性错误 | 用 `UtenDialog` 确认对话框，**不要**用通知 |
+| 重要/紧急强提醒（必须被看见） | 用 `UtenNotify.alert(...)` 居中弹窗（见 [UtenNotify.md](UtenNotify.md)），**不要**用顶部弹条 |
 | 进度提示（非瞬时反馈） | 用 `UtenLoading` loading 组件，**不要**用通知 |
 
 > 旧代码里 `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(...)))`

@@ -193,7 +193,6 @@ List<String>? requiredAnyPermFor(String location) {
     // hub：任一生产 view 即可见
     return const [
       Perm.productionPlanView,
-      Perm.productionPlanCostView,
       Perm.productionDailyReportView,
       Perm.productionReportView,
     ];
@@ -201,8 +200,9 @@ List<String>? requiredAnyPermFor(String location) {
   if (location.startsWith('/production/reports')) {
     return const [Perm.productionReportView];
   }
-  if (location == RouteName.productionPlanCost) {
-    return const [Perm.productionPlanCostView];
+  // 物料反查产成品（BOM where-used）：工程研发部 + 生产部共用入口
+  if (location == RouteName.productionWhereUsed) {
+    return const [Perm.productionWhereUsedView];
   }
   if (location.startsWith('/production/plans')) {
     final isEdit = location.endsWith('/new') || location.endsWith('/edit');

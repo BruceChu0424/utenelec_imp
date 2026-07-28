@@ -21,6 +21,8 @@ public class PlanDetail {
     private String workshopName;
     private String workerName;
     private String sellerName;
+    private UUID sellerId;
+    private UUID workerId;
     private UUID makerId;
     private UUID approverId;
     private Integer makerLegacyId;

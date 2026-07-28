@@ -51,6 +51,31 @@ class StockQueryRepository {
     });
     return PagedResult.fromJson(json, MovementRow.fromJson);
   }
+
+  /// 即时库存分页（货品+颜色聚合余额；categoryId=分类含子树 / warehouseId=仓库 / keyword 模糊）。
+  /// includeDefective=「含不良品仓」开关（仅仓库=全部时生效，默认 true=老系统口径）。
+  Future<PagedResult<InstantInventoryRow>> instantInventory({
+    int page = 1,
+    int size = 20,
+    String? categoryId,
+    String? warehouseId,
+    bool includeDefective = true,
+    String? keyword,
+    String? sort,
+    String? order,
+  }) async {
+    final json = await api.get(ApiEndpoints.stockInstantInventory, query: {
+      'page': page,
+      'size': size,
+      if (categoryId != null) 'categoryId': categoryId,
+      if (warehouseId != null) 'warehouseId': warehouseId,
+      'includeDefective': includeDefective,
+      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
+    });
+    return PagedResult.fromJson(json, InstantInventoryRow.fromJson);
+  }
 }
 
 final stockQueryRepositoryProvider = Provider<StockQueryRepository>(

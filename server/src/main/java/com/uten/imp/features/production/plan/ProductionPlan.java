@@ -67,6 +67,14 @@ public class ProductionPlan extends SoftDeletableEntity {
     @Column(name = "seller_name")
     private String sellerName;
 
+    /** 跟单员 → employees（V82 加列；前端员工选择器所选 id，历史单留空）。 */
+    @Column(name = "seller_id")
+    private UUID sellerId;
+
+    /** 生产工 → employees（V82 加列；同上）。 */
+    @Column(name = "worker_id")
+    private UUID workerId;
+
     /** MakeID → employees（迁移留空，B_Worker 与 employees 无 legacy_id 对齐）。 */
     @Column(name = "maker_id")
     private UUID makerId;

@@ -88,6 +88,24 @@ class GoodsDetail {
     this.colorName,
     this.unitName,
     this.colorLegacyId,
+    this.sourceE,
+    this.machiningE,
+    this.incidentalE,
+    this.lacquerE,
+    this.platingE,
+    this.casingE,
+    this.polishE,
+    this.total,
+    this.workRate,
+    this.workE,
+    this.lostRate,
+    this.lostE,
+    this.rentRate,
+    this.rentE,
+    this.makeRate,
+    this.makeE,
+    this.cTotal,
+    this.gTotal,
   });
 
   final String id;
@@ -110,6 +128,26 @@ class GoodsDetail {
   final String? colorName;
   final String? unitName;
   final int? colorLegacyId;
+
+  // ===== 成本预算（「成本预算」页签；对应后端 GoodsDetail 成本字段） =====
+  final double? sourceE;      // 材料合计
+  final double? machiningE;   // 加工费
+  final double? incidentalE;  // 杂费
+  final double? lacquerE;     // 喷漆、朔费
+  final double? platingE;     // 电镀费
+  final double? casingE;      // 包装费
+  final double? polishE;      // 抛光费
+  final double? total;        // 成品价
+  final double? workRate;     // 人工比率(%)
+  final double? workE;        // 人工费
+  final double? lostRate;     // 损耗比率(%)
+  final double? lostE;        // 损耗费
+  final double? rentRate;     // 厂租比率(%)
+  final double? rentE;        // 厂房租金
+  final double? makeRate;     // 生产利率(%)
+  final double? makeE;        // 生产利润
+  final double? cTotal;       // 成本价
+  final double? gTotal;       // 出厂价
 
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
         id: json['id'] as String,
@@ -134,6 +172,25 @@ class GoodsDetail {
         colorName: json['colorName'] as String?,
         unitName: json['unitName'] as String?,
         colorLegacyId: (json['colorLegacyId'] as num?)?.toInt(),
+        sourceE: (json['sourceE'] as num?)?.toDouble(),
+        machiningE: (json['machiningE'] as num?)?.toDouble(),
+        incidentalE: (json['incidentalE'] as num?)?.toDouble(),
+        lacquerE: (json['lacquerE'] as num?)?.toDouble(),
+        platingE: (json['platingE'] as num?)?.toDouble(),
+        casingE: (json['casingE'] as num?)?.toDouble(),
+        polishE: (json['polishE'] as num?)?.toDouble(),
+        total: (json['total'] as num?)?.toDouble(),
+        workRate: (json['workRate'] as num?)?.toDouble(),
+        workE: (json['workE'] as num?)?.toDouble(),
+        lostRate: (json['lostRate'] as num?)?.toDouble(),
+        lostE: (json['lostE'] as num?)?.toDouble(),
+        rentRate: (json['rentRate'] as num?)?.toDouble(),
+        rentE: (json['rentE'] as num?)?.toDouble(),
+        makeRate: (json['makeRate'] as num?)?.toDouble(),
+        makeE: (json['makeE'] as num?)?.toDouble(),
+        // 后端 @JsonProperty 已锁定 cTotal/gTotal；兼容小写兜底（同 mWeight quirk）。
+        cTotal: ((json['cTotal'] ?? json['ctotal']) as num?)?.toDouble(),
+        gTotal: ((json['gTotal'] ?? json['gtotal']) as num?)?.toDouble(),
       );
 }
 

@@ -119,7 +119,12 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   static const _fields = [
     MasterFieldDef(
         key: 'name', label: '仓库名称', required: true, group: '基础'),
-    MasterFieldDef(key: 'code', label: '仓库编号', group: '基础'),
+    MasterFieldDef(
+        key: 'code',
+        label: '仓库编号',
+        group: '基础',
+        readOnly: true,
+        hint: '保存后自动生成'),
     MasterFieldDef(
         key: 'location',
         label: '仓库位置',
@@ -135,7 +140,12 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
           MasterSelectOption(value: 'false', label: '不使用（不核算）'),
         ]),
     MasterFieldDef(
-        key: 'status', label: '状态', group: '基础', hint: '使用 / 禁用'),
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础'),
   ];
 
   void _showCreate() {
@@ -143,7 +153,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       context: context,
       title: '新增仓库',
       fields: _fields,
-      initialValues: const {'accountable': 'true'},
+      initialValues: const {'accountable': 'true', 'status': '使用'},
       onSubmit: _doCreate,
     );
   }

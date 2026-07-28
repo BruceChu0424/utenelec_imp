@@ -62,6 +62,7 @@ import '../../features/purchase/pages/purchase_report_page.dart';
 import '../../features/purchase/pages/purchase_report_table_page.dart';
 import '../../features/purchase/config/purchase_report_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
+import '../../features/stock/pages/instant_inventory_page.dart';
 import '../../features/stock/pages/stock_balance_page.dart';
 import '../../features/stock/pages/stock_movement_page.dart';
 import '../../features/warehouse/models/stock_doc.dart';
@@ -83,11 +84,11 @@ import '../../features/production/pages/production_daily_report_detail_page.dart
 import '../../features/production/pages/production_daily_report_edit_page.dart';
 import '../../features/production/pages/production_daily_report_list_page.dart';
 import '../../features/production/pages/production_hub_page.dart';
-import '../../features/production/pages/production_plan_cost_page.dart';
 import '../../features/production/pages/production_plan_detail_page.dart';
 import '../../features/production/pages/production_plan_edit_page.dart';
 import '../../features/production/pages/production_plan_list_page.dart';
 import '../../features/production/pages/production_report_page.dart';
+import '../../features/production/pages/where_used_report_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
@@ -542,6 +543,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-movement',
             builder: (_, _) => const StockMovementPage(),
           ),
+          GoRoute(
+            path: RouteName.stockInstantInventory,
+            name: 'stock-instant-inventory',
+            builder: (_, _) => const InstantInventoryPage(),
+          ),
 
           // —— 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）——
           GoRoute(
@@ -759,11 +765,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const ProductionPlanListPage(),
           ),
           GoRoute(
-            path: RouteName.productionPlanCost,
-            name: 'production-plan-cost',
-            builder: (_, _) => const ProductionPlanCostPage(),
-          ),
-          GoRoute(
             path: '/production/daily-reports/new',
             name: 'production-daily-report-new',
             builder: (_, _) => const ProductionDailyReportEditPage(),
@@ -798,6 +799,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'production-report-plan-summary',
             builder: (_, _) => const ProductionReportPage(
                 kind: ProductionReportKind.summary),
+          ),
+          // 物料反查产成品（BOM where-used）：输入材料查用在哪些产成品
+          GoRoute(
+            path: RouteName.productionWhereUsed,
+            name: 'production-where-used',
+            builder: (_, _) => const WhereUsedReportPage(),
           ),
 
           // —— 钱流管理（财税部；静态段 /finance/{report|ar-ap|reconciliations|checks|

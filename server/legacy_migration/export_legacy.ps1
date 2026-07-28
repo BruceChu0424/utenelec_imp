@@ -21,7 +21,7 @@
 # Output lands in ./data/ (next to goods_categories.csv / goods.csv).
 # =====================================================================
 param(
-    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
+    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'GoodsBom', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
     [string]$Target = 'All'
 )
 
@@ -90,6 +90,10 @@ $mouldDataSql = 'SELECT ID AS legacy_id, ISNULL(ParentID,0) AS parent_legacy, Mo
 
 # Goods category tree: ItemclassID=1 (reconciliation vs goods_categories.csv).
 $goodsCatSql = 'SELECT ItemID AS legacy_id, ISNULL(ParentID,0) AS parent_legacy, Number AS code, Name AS name FROM SystemItem WHERE ItemclassID=1 ORDER BY ItemID'
+
+# Goods assembly BOM: B_BomItem (218k rows). BillID=parent goods (B_Goods.ID), GoodsID=component goods.
+# Col order MUST match migrate_goods_bom.sql bom_stage.
+$goodsBomSql = 'SELECT ID AS legacy_id, BillID AS goods_legacy_id, GoodsID AS component_legacy_id, ISNULL(ColorID,0) AS color_legacy_id, QTY AS qty, Price AS price, Total AS total, ISNULL(VendID,0) AS vend_legacy_id, Summary AS summary, BomStatus AS bom_status, SStatus AS sstatus FROM B_BomItem ORDER BY ID'
 
 # Client category tree: SystemItem ItemclassID=2 (10 roots / 40 nodes / depth 3: foreign-trade/region/province).
 $clientCatSql = 'SELECT ItemID AS legacy_id, ISNULL(ParentID,0) AS parent_legacy, Number AS code, Name AS name FROM SystemItem WHERE ItemclassID=2 ORDER BY ItemID'
@@ -180,8 +184,9 @@ $whFinishedOutItem = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID 
 $whCheckMain = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, StockID AS stock_legacy_id, 0 AS to_stock_legacy_id, 0 AS client_legacy_id, 0 AS supplier_legacy_id, CheckID AS worker_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, NULL AS plan_no, NULL AS bill_type, Remark AS remark, NULL AS total_original, Status AS status, Cancel AS cancel_bit, NULL AS ass_team FROM O_Check ORDER BY ID'
 $whCheckItem = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, NULL AS price, STotal AS amount, UnitID AS unit_legacy_id, URate AS unit_rate, Weight AS weight, SurplusQTY AS surplus_qty, NowQTY AS count_qty, StorgePlace AS place_legacy_id, 0 AS upstream_legacy_id, NULL AS source_doc_no, Reason AS summary FROM O_CheckItem ORDER BY ID'
 
-# StockGoods ledger (rebuild stock_balances opening; sg_stage: stock_legacy,goods_legacy,color_legacy,year,qty,total)
-$whStockGoods = 'SELECT StockID AS stock_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, Year AS year, QTY AS qty, FactQTY AS fact_qty, Total AS total FROM StockGoods ORDER BY StockID, GoodsID, ColorID, Year'
+# StockGoods ledger (rebuild stock_balances opening; sg_stage: stock_legacy,goods_legacy,color_legacy,year,qty,fact_qty,total,weight,fact_weight)
+# weight/fact_weight added for instant-inventory (V80): legacy 库存重量 column = latest-year FactWeight.
+$whStockGoods = 'SELECT StockID AS stock_legacy, GoodsID AS goods_legacy, ColorID AS color_legacy, Year AS year, QTY AS qty, FactQTY AS fact_qty, Total AS total, Weight AS weight, FactWeight AS fact_weight FROM StockGoods ORDER BY StockID, GoodsID, ColorID, Year'
 
 # ---- Sales documents (5 doc mains + 5 item tables + 1 BOM cost). Cols match migrate_sales.sql staging. ----
 # S_Quote (0 rows in legacy; structure-only export keeps \copy idempotent).
@@ -259,6 +264,7 @@ switch ($Target) {
     'MouldCategory'   { Export-Query -Sql $mouldCatSql    -OutPath (Join-Path $dataDir 'mould_categories.csv') }
     'MouldData'       { Export-Query -Sql $mouldDataSql   -OutPath (Join-Path $dataDir 'mould.csv') }
     'GoodsCategory'   { Export-Query -Sql $goodsCatSql    -OutPath (Join-Path $dataDir 'goods_categories.csv') }
+    'GoodsBom'        { Export-Query -Sql $goodsBomSql    -OutPath (Join-Path $dataDir 'goods_bom.csv') }
     'ClientCategory'  { Export-Query -Sql $clientCatSql   -OutPath (Join-Path $dataDir 'client_categories.csv') }
     'ClientData'      { Export-Query -Sql $clientDataSql  -OutPath (Join-Path $dataDir 'client.csv') }
     'SupplierCategory' { Export-Query -Sql $supplierCatSql  -OutPath (Join-Path $dataDir 'supplier_categories.csv') }
@@ -387,6 +393,7 @@ switch ($Target) {
     'M_AllCheck'   { Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv') }
     'All' {
         Export-Query -Sql $goodsCatSql     -OutPath (Join-Path $dataDir 'goods_categories.csv')
+        Export-Query -Sql $goodsBomSql     -OutPath (Join-Path $dataDir 'goods_bom.csv')
         Export-Query -Sql $mouldCatSql     -OutPath (Join-Path $dataDir 'mould_categories.csv')
         Export-Query -Sql $mouldDataSql    -OutPath (Join-Path $dataDir 'mould.csv')
         Export-Query -Sql $clientCatSql    -OutPath (Join-Path $dataDir 'client_categories.csv')

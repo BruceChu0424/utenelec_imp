@@ -1,30 +1,36 @@
-// 生产计划单编辑页（新建/编辑，全页路由）：主表头表单 + 明细行编辑器。
+// 生产计划单编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
-// 与采购编辑页同构（MasterNameService 解析货品/颜色/单位；showGoodsPickerDialog 选货品）。
+// 与销售/采购编辑页同构（统一模板：UtenFormGrid 表头 + UtenDateField 日期 + UtenEditableGrid 明细）。
 // 生产计划特点：
-//   - 无币种/供应商/金额（数量驱动，非金额驱动；成本在 BOM 展开表）
-//   - 车间/生产工/跟单员为文本字段（legacy 字符串，department_id/worker_id 留空，未来回填）
-//   - 明细行核心字段：productNo（业务编号，必填）+ goodsId（必填）+ qty 排产量（必填）+
-//     oqty 订货量 + color/unit + salesOrderNo（关联销售订单文本）+ remark
-//   - 12 数量族中其余 10 个（lqty/iqty/...）本期不编辑（触发器/下游回写，归未来模块）
+//   - 无币种/供应商/金额（数量驱动）：明细排产量→表尾「排产合计」（qtyNotifier 复用 grid.totalListenable）。
+//   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_PLAN "SJ"），本页只读显示。
+//   - 车间=部门选择器（UtenDepartmentPicker，落 department_id；部门名冗余写 workshop_name 供报表 facet）。
+//   - 跟单员/生产工=员工选择器（UtenEmployeePicker，落 seller_id/worker_id，V82 加列；name 留底）。
+//   - 来源单号=销售订单选择器（showSalesOrderPicker，回填单号字符串；头表来源单号是冗余文本）。
+//   - 明细行：productNo（必填）+ goodsId（必填）+ qty 排产量（必填）+ oqty 订货量 + color/unit + salesOrderNo + remark。
 //
-// 保存组装 PlanSaveRequest body 调 create/update，成功后跳详情。
 // 仅草稿可编辑（后端校验，前端不再重复判断；已审单据走详情页红冲）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/widgets/dropdown_items.dart';
+import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../department/widgets/uten_department_picker.dart';
+import '../../employee/repositories/employee_repository.dart';
 import '../../purchase/providers/master_name_provider.dart';
-import '../../purchase/widgets/goods_picker_dialog.dart';
+import '../../sales/widgets/sales_order_picker.dart';
 import '../repositories/production_repository.dart';
+import '../widgets/production_grid_columns.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
   const ProductionPlanEditPage({super.key, this.id});
@@ -35,38 +41,25 @@ class ProductionPlanEditPage extends ConsumerStatefulWidget {
       _ProductionPlanEditPageState();
 }
 
-class _ItemRow {
-  _ItemRow();
-  final productNo = TextEditingController();
-  final qty = TextEditingController();
-  final oqty = TextEditingController();
-  final salesOrderNo = TextEditingController();
-  final remark = TextEditingController();
-  GoodsOption? goods;
-  String? colorId;
-  String? unitId;
-
-  void dispose() {
-    productNo.dispose();
-    qty.dispose();
-    oqty.dispose();
-    salesOrderNo.dispose();
-    remark.dispose();
-  }
-}
-
 class _ProductionPlanEditPageState
     extends ConsumerState<ProductionPlanEditPage> {
-  final _billNo = TextEditingController();
-  final _workshop = TextEditingController(); // workshopName 文本
-  final _worker = TextEditingController(); // workerName 文本
-  final _seller = TextEditingController(); // sellerName 文本
-  final _sourceDocNo = TextEditingController();
+  final _billNo = TextEditingController(); // 只读显示（后端自动生成）
+  final _sourceDocNo = TextEditingController(); // 来源单号（销售订单号字符串）
   final _remark = TextEditingController();
   DateTime _billDate = DateTime.now();
   DateTime? _deliveryDate;
 
-  final _items = <_ItemRow>[];
+  // 车间 = 部门
+  String? _departmentId;
+  String? _workshopName; // 部门名冗余（供报表 workshop_name facet）
+
+  // 跟单员 / 生产工（id + picker initial 缓存）
+  String? _sellerId;
+  String? _workerId;
+  final Map<String, UtenEmployeePickerItem> _empCache = {};
+
+  final _grid = UtenEditableGridController<ProductionGridRow>();
+  final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
 
@@ -79,14 +72,10 @@ class _ProductionPlanEditPageState
   @override
   void dispose() {
     _billNo.dispose();
-    _workshop.dispose();
-    _worker.dispose();
-    _seller.dispose();
     _sourceDocNo.dispose();
     _remark.dispose();
-    for (final r in _items) {
-      r.dispose();
-    }
+    _grid.dispose(); // 自动 dispose 各行控制器
+    _scrollCtl.dispose();
     super.dispose();
   }
 
@@ -101,22 +90,23 @@ class _ProductionPlanEditPageState
         final goodsIds =
             d.items.map((e) => e.goodsId).whereType<String>().toSet();
         await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+        await _preloadEmployees([d.sellerId, d.workerId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
-        _workshop.text = d.workshopName ?? '';
-        _worker.text = d.workerName ?? '';
-        _seller.text = d.sellerName ?? '';
         _sourceDocNo.text = d.sourceDocNo ?? '';
         _remark.text = d.remark ?? '';
         if (d.billDate != null) {
           _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
         }
         _deliveryDate = _parseDate(d.deliveryDate);
+        _departmentId = d.departmentId;
+        _workshopName = d.workshopName; // 部门名冗余（老库可能为编号字符串）
+        _sellerId = d.sellerId;
+        _workerId = d.workerId;
+        final rows = <ProductionGridRow>[];
         for (final it in d.items) {
-          final row = _ItemRow()
+          final row = ProductionGridRow()
             ..productNo.text = it.productNo ?? ''
-            ..qty.text = it.qty?.toString() ?? ''
-            ..oqty.text = it.oqty?.toString() ?? ''
             ..salesOrderNo.text = it.salesOrderNo ?? ''
             ..remark.text = it.remark ?? ''
             ..colorId = it.colorId
@@ -126,15 +116,18 @@ class _ProductionPlanEditPageState
                 : GoodsOption(
                     id: it.goodsId!,
                     name: ref.read(masterNameServiceProvider).goods(it.goodsId));
-          _items.add(row);
+          row.qty.text = it.qty?.toString() ?? '';
+          row.oqty.text = it.oqty?.toString() ?? '';
+          rows.add(row);
         }
+        _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
       } catch (_) {
         // 静默降级
       }
     }
-    if (_items.isEmpty) _items.add(_ItemRow());
+    if (_grid.isEmpty) _grid.addRow(ProductionGridRow());
     if (mounted) setState(() => _loading = false);
   }
 
@@ -144,38 +137,50 @@ class _ProductionPlanEditPageState
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  double get _qtyTotal => _items.fold<double>(
-      0, (s, r) => s + (double.tryParse(r.qty.text) ?? 0));
-
-  Future<void> _pickGoods(_ItemRow row) async {
-    final g = await showGoodsPickerDialog(context, ref);
-    if (g != null) setState(() => row.goods = g);
+  /// 并发按 id 拉人员名字（picker 的 initial 显示用）。失败静默。
+  Future<void> _preloadEmployees(Iterable<String?> ids) async {
+    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+    if (uniq.isEmpty) return;
+    final repo = ref.read(employeeRepositoryProvider);
+    await Future.wait(uniq.map((id) async {
+      try {
+        final p = await repo.getById(id);
+        _empCache[id] = UtenEmployeePickerItem(
+          id: p.id,
+          name: p.fullName ?? '',
+          departmentName: p.departmentName,
+        );
+      } catch (_) {
+        // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
+      }
+    }));
   }
 
-  Future<void> _pickDate({
-    required DateTime? current,
-    required ValueChanged<DateTime> onPicked,
-  }) async {
-    final p = await showDatePicker(
-      context: context,
-      initialDate: current ?? DateTime.now(),
-      firstDate: DateTime(2010),
-      lastDate: DateTime(2100),
-    );
-    if (p != null) setState(() => onPicked(p));
+  Future<void> _pickGoods(ProductionGridRow row) async {
+    final g = await showUtenGoodsPicker(context, ref);
+    if (g == null) return;
+    final names = ref.read(masterNameServiceProvider);
+    row
+      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+      // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
+      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
+      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+  }
+
+  Future<void> _pickSourceOrder() async {
+    final d = await showSalesOrderPicker(context, ref);
+    if (d == null) return;
+    setState(() => _sourceDocNo.text = d.billNo ?? '');
   }
 
   Future<void> _save() async {
-    if (_billNo.text.trim().isEmpty) {
-      context.appError('请填写单据号');
-      return;
-    }
-    if (_items.isEmpty || _items.every((r) => r.goods == null)) {
+    final rows = _grid.rows;
+    if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
       return;
     }
-    for (var i = 0; i < _items.length; i++) {
-      final r = _items[i];
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
       if (r.goods == null) continue;
       if (r.productNo.text.trim().isEmpty) {
         context.appError('第 ${i + 1} 行缺少产品编号');
@@ -187,13 +192,14 @@ class _ProductionPlanEditPageState
       }
     }
     final itemsBody = <Map<String, dynamic>>[];
-    for (final r in _items) {
+    for (final r in rows) {
       if (r.goods == null) continue;
       itemsBody.add({
         'productNo': r.productNo.text.trim(),
         'goodsId': r.goods!.id,
         'qty': double.tryParse(r.qty.text) ?? 0,
-        if (double.tryParse(r.oqty.text) != null) 'oqty': double.tryParse(r.oqty.text),
+        if (double.tryParse(r.oqty.text) != null)
+          'oqty': double.tryParse(r.oqty.text),
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.salesOrderNo.text.trim().isNotEmpty)
@@ -201,14 +207,15 @@ class _ProductionPlanEditPageState
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       });
     }
+    // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
-      'billNo': _billNo.text.trim(),
       'billDate': _fmt(_billDate),
       if (_deliveryDate != null) 'deliveryDate': _fmt(_deliveryDate!),
-      if (_workshop.text.trim().isNotEmpty)
-        'workshopName': _workshop.text.trim(),
-      if (_worker.text.trim().isNotEmpty) 'workerName': _worker.text.trim(),
-      if (_seller.text.trim().isNotEmpty) 'sellerName': _seller.text.trim(),
+      if (_departmentId != null) 'departmentId': _departmentId,
+      if (_workshopName != null && _workshopName!.trim().isNotEmpty)
+        'workshopName': _workshopName,
+      if (_sellerId != null) 'sellerId': _sellerId,
+      if (_workerId != null) 'workerId': _workerId,
       if (_sourceDocNo.text.trim().isNotEmpty)
         'sourceDocNo': _sourceDocNo.text.trim(),
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
@@ -232,103 +239,54 @@ class _ProductionPlanEditPageState
     }
   }
 
-  Widget _dropdown(String label, String? value, Map<String, String> entries,
-      ValueChanged<String?> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: DropdownButtonFormField<String?>(
-        initialValue: value,
-        decoration: InputDecoration(labelText: label),
-        items: stringDropdownItems(value, entries),
-        onChanged: onChanged,
-      ),
+  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  Widget _employeePicker({
+    required String label,
+    required String? currentId,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return UtenEmployeePicker(
+      key: ValueKey('${label}_$currentId'),
+      label: label,
+      initial: currentId == null ? null : _empCache[currentId],
+      loader: (kw) async {
+        final res = await ref
+            .read(employeeRepositoryProvider)
+            .list(size: 30, search: kw);
+        return [
+          for (final e in res.items)
+            UtenEmployeePickerItem(
+              id: e.id,
+              name: e.fullName,
+              departmentName: e.departmentName,
+            ),
+        ];
+      },
+      onChanged: (item) {
+        if (item != null) _empCache[item.id] = item;
+        onChanged(item?.id);
+      },
     );
   }
 
-  Widget _itemEditor(ThemeData theme, _ItemRow row, int i) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: InkWell(
-                onTap: () => _pickGoods(row),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: '货品',
-                    isDense: true,
-                    suffixIcon: Icon(Icons.search_rounded, size: 18),
-                  ),
-                  child: Text(row.goods?.name ?? '点击选择',
-                      style: TextStyle(
-                          color: row.goods == null
-                              ? theme.colorScheme.onSurfaceVariant
-                              : null)),
-                ),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close_rounded, size: 18),
-              onPressed: () => setState(() {
-                _items.remove(row);
-                row.dispose();
-              }),
-            ),
-          ]),
-          const SizedBox(height: UtenSpacing.s8),
-          TextField(
-            controller: row.productNo,
-            decoration: const InputDecoration(
-                labelText: '产品编号 *', isDense: true),
+  /// 来源单号：只读 outlined 框 + 放大镜，点按弹销售订单选择器。
+  Widget _sourceDocField(ThemeData theme) {
+    return InkWell(
+      onTap: _pickSourceOrder,
+      borderRadius: BorderRadius.circular(UtenSpacing.s8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: '来源单号',
+          suffixIcon: const Icon(Icons.search_rounded, size: 18),
+        ),
+        child: Text(
+          _sourceDocNo.text.isEmpty ? '点击选择销售订单' : _sourceDocNo.text,
+          style: TextStyle(
+            color: _sourceDocNo.text.isEmpty
+                ? theme.colorScheme.onSurfaceVariant
+                : null,
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: row.qty,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    labelText: '排产量 *', isDense: true),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: TextField(
-                controller: row.oqty,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    labelText: '订货量', isDense: true),
-              ),
-            ),
-          ]),
-          Row(children: [
-            Expanded(
-              child: _dropdown(
-                  '颜色', row.colorId, ref.read(masterNameServiceProvider).colorEntries,
-                  (v) => setState(() => row.colorId = v)),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: _dropdown(
-                  '单位', row.unitId, ref.read(masterNameServiceProvider).unitEntries,
-                  (v) => setState(() => row.unitId = v)),
-            ),
-          ]),
-          TextField(
-            controller: row.salesOrderNo,
-            decoration: const InputDecoration(
-                labelText: '关联销售订单号', isDense: true),
-          ),
-          TextField(
-            controller: row.remark,
-            decoration: const InputDecoration(labelText: '行备注', isDense: true),
-            maxLines: 2,
-          ),
-        ]),
+        ),
       ),
     );
   }
@@ -336,6 +294,7 @@ class _ProductionPlanEditPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
           title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',
@@ -344,94 +303,113 @@ class _ProductionPlanEditPageState
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : UtenContentContainer(
-                child: ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            UtenFormGrid(children: [
-                              TextField(
-                                controller: _billNo,
-                                decoration:
-                                    const InputDecoration(labelText: '单据号 *'),
-                              ),
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('单据日期'),
-                                subtitle: Text(_fmt(_billDate)),
-                                trailing: const Icon(Icons.calendar_today_outlined,
-                                    size: 18),
-                                onTap: () => _pickDate(
-                                  current: _billDate,
-                                  onPicked: (d) => _billDate = d,
+                child: Scrollbar(
+                  controller: _scrollCtl,
+                  thumbVisibility: true,
+                  child: ListView(
+                    controller: _scrollCtl,
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              UtenFormGrid(children: [
+                                // 单据号：系统自动生成，只读显示。
+                                TextFormField(
+                                  readOnly: true,
+                                  controller: _billNo,
+                                  decoration: InputDecoration(
+                                    labelText: '单据号',
+                                    hintText: _billNo.text.isEmpty
+                                        ? '保存后自动生成'
+                                        : null,
+                                    filled: _billNo.text.isEmpty,
+                                    suffixIcon: _billNo.text.isEmpty
+                                        ? const Icon(Icons.autorenew_outlined,
+                                            size: 18)
+                                        : const Icon(Icons.lock_outline,
+                                            size: 16),
+                                  ),
                                 ),
-                              ),
-                              ListTile(
-                                contentPadding: const EdgeInsets.only(top: UtenSpacing.s8),
-                                title: const Text('交货日'),
-                                subtitle: Text(_deliveryDate == null
-                                    ? '未选择'
-                                    : _fmt(_deliveryDate!)),
-                                trailing:
-                                    const Icon(Icons.event_outlined, size: 18),
-                                onTap: () => _pickDate(
-                                  current: _deliveryDate,
-                                  onPicked: (d) => _deliveryDate = d,
+                                UtenDateField(
+                                  label: '单据日期',
+                                  required: true,
+                                  value: _billDate,
+                                  onChanged: (d) =>
+                                      setState(() => _billDate = d),
                                 ),
-                              ),
+                                UtenDateField(
+                                  label: '交货日',
+                                  value: _deliveryDate,
+                                  onChanged: (d) =>
+                                      setState(() => _deliveryDate = d),
+                                ),
+                                // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                UtenDepartmentPicker(
+                                  mode: UtenDepartmentPickerMode.single,
+                                  label: '车间',
+                                  hint: '选择生产车间（部门）',
+                                  initialSelection: _departmentId == null
+                                      ? const []
+                                      : [
+                                          DeptSelection(
+                                            id: _departmentId!,
+                                            name: _workshopName ?? '',
+                                            fullPath: '',
+                                            level: '',
+                                          ),
+                                        ],
+                                  onChanged: (sel) {
+                                    final s = sel.isEmpty ? null : sel.first;
+                                    setState(() {
+                                      _departmentId = s?.id;
+                                      _workshopName = s?.name; // 部门名冗余
+                                    });
+                                  },
+                                ),
+                                _employeePicker(
+                                  label: '跟单员',
+                                  currentId: _sellerId,
+                                  onChanged: (id) =>
+                                      setState(() => _sellerId = id),
+                                ),
+                                _employeePicker(
+                                  label: '生产工',
+                                  currentId: _workerId,
+                                  onChanged: (id) =>
+                                      setState(() => _workerId = id),
+                                ),
+                                _sourceDocField(theme),
+                              ]),
+                              const SizedBox(height: UtenSpacing.s12),
                               TextField(
-                                controller: _workshop,
-                                decoration: const InputDecoration(
-                                    labelText: '车间（编号/名称）'),
-                              ),
-                              TextField(
-                                controller: _worker,
+                                controller: _remark,
                                 decoration:
-                                    const InputDecoration(labelText: '生产工'),
+                                    const InputDecoration(labelText: '备注'),
+                                maxLines: 2,
                               ),
-                              TextField(
-                                controller: _seller,
-                                decoration:
-                                    const InputDecoration(labelText: '跟单员'),
-                              ),
-                              TextField(
-                                controller: _sourceDocNo,
-                                decoration: const InputDecoration(
-                                    labelText: '来源单号（销售订单等）'),
-                              ),
-                            ]),
-                            const SizedBox(height: UtenSpacing.s12),
-                            TextField(
-                              controller: _remark,
-                              decoration: const InputDecoration(labelText: '备注'),
-                              maxLines: 2,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Row(
-                      children: [
-                        Text('明细 (${_items.length})',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () =>
-                              setState(() => _items.add(_ItemRow())),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('添加行'),
+                      const SizedBox(height: UtenSpacing.s12),
+                      Text('明细 (${_grid.length})',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      UtenEditableGrid<ProductionGridRow>(
+                        controller: _grid,
+                        columns: productionGridColumns(
+                          onPickGoods: _pickGoods,
+                          colorEntries: names.colorEntries,
+                          unitEntries: names.unitEntries,
                         ),
-                      ],
-                    ),
-                    for (var i = 0; i < _items.length; i++)
-                      _itemEditor(theme, _items[i], i),
-                  ],
+                        createBlankRow: () => ProductionGridRow(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -439,15 +417,21 @@ class _ProductionPlanEditPageState
         child: Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+            border: Border(
+                top: BorderSide(color: theme.colorScheme.outlineVariant)),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('明细 ${_items.length} 行 · 排产合计 ${_qtyTotal.toStringAsFixed(2)}',
+              ValueListenableBuilder<double>(
+                valueListenable: _grid.totalListenable,
+                builder: (_, total, _) => Text(
+                  '排产合计 ${total.toStringAsFixed(2)}',
                   style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
               const SizedBox(width: UtenSpacing.s16),
               UtenButton(
                 type: UtenButtonType.secondary,
@@ -459,7 +443,7 @@ class _ProductionPlanEditPageState
                 isLoading: _saving,
                 icon: Icons.save_outlined,
                 onPressed: _saving ? null : _save,
-                child: Text(widget.id == null ? '存草稿' : '保存'),
+                child: const Text('保存'),
               ),
             ],
           ),

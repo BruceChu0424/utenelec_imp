@@ -61,6 +61,26 @@ class _Content extends StatelessWidget {
               type: _typeToBadge(notice.type),
               icon: notice.type.icon,
             ),
+            if (notice.type.isWork) ...[
+              const SizedBox(width: UtenSpacing.s8),
+              const UtenStatusBadge(
+                label: '工作',
+                type: UtenStatusBadgeType.accent,
+                icon: Icons.work_outline_rounded,
+              ),
+            ],
+            if (notice.priority.showBadge) ...[
+              const SizedBox(width: UtenSpacing.s8),
+              UtenStatusBadge(
+                label: notice.priority.label,
+                type: notice.priority == NoticePriority.urgent
+                    ? UtenStatusBadgeType.danger
+                    : UtenStatusBadgeType.warning,
+                icon: notice.priority == NoticePriority.urgent
+                    ? Icons.priority_high_rounded
+                    : Icons.error_rounded,
+              ),
+            ],
             if (notice.topPriority) ...[
               const SizedBox(width: UtenSpacing.s8),
               const UtenStatusBadge(
@@ -209,6 +229,9 @@ class _Content extends StatelessWidget {
     NoticeType.benefit => UtenStatusBadgeType.success,
     NoticeType.system => UtenStatusBadgeType.neutral,
     NoticeType.urgent => UtenStatusBadgeType.danger,
+    NoticeType.task => UtenStatusBadgeType.info,
+    NoticeType.approval => UtenStatusBadgeType.accent,
+    NoticeType.workflow => UtenStatusBadgeType.success,
   };
 
   String _fmt(DateTime d) {

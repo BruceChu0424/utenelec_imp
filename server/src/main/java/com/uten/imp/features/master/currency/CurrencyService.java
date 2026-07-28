@@ -2,6 +2,8 @@ package com.uten.imp.features.master.currency;
 
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -47,6 +49,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CurrencyService {
 
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.CURRENCY;
+
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status");
 
@@ -67,6 +71,7 @@ public class CurrencyService {
     private final CurrencyRepository repo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final MasterCodeService masterCodeService;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -189,6 +194,8 @@ public class CurrencyService {
         tx.bind();
         Currency c = new Currency();
         apply(req, c);
+        c.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (c.getStatus() == null) c.setStatus("使用");
         repo.save(c);
         return toDetail(c);
     }
@@ -213,7 +220,6 @@ public class CurrencyService {
 
     private void apply(CurrencySaveRequest req, Currency c) {
         c.setName(req.getName());
-        c.setCode(req.getCode());
         c.setExchangeRate(req.getExchangeRate());
         c.setStatus(req.getStatus());
     }

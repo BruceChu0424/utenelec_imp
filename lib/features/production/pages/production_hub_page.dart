@@ -1,11 +1,13 @@
 // 生产管理入口页（hub）—— 两个分组卡片（与 basic_data / purchase / warehouse hub 对齐）：
-//  ① 生产管理（操作类 · 单据）：生产计划单 + BOM 成本展开（只读）+ 生产日报表
+//  ① 生产管理（操作类 · 单据）：生产计划单 + 生产日报表
 //  ② 生产报表（分析类）：计划明细 / 计划汇总 / 日报明细 / 日报汇总（4 参数化入口）
 //
 // 点卡片进对应列表/查询/报表页。卡片网格布局对齐采购 hub（UtenResponsiveGrid）。
 //
 // 路径目前写死（与 app_router 待注册的 /production/* 对齐；用户后续把路径常量搬到
 // route_names.dart 的 RouteName.production* 段，与本页 _Entry.location 同步即可）。
+//
+// 注：原「BOM 成本展开」入口已下线（组装/BOM 数据并入 基础资料-货品资料「组装信息」页签）。
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -42,12 +44,6 @@ class ProductionHubPage extends StatelessWidget {
                   location: '/production/plans',
                 ),
                 _Entry(
-                  icon: Icons.account_tree_outlined,
-                  label: 'BOM 成本展开',
-                  description: '只读历史数据',
-                  location: '/production/plan-cost',
-                ),
-                _Entry(
                   icon: Icons.edit_calendar_outlined,
                   label: '生产日报表',
                   description: '完工日报 · 留位',
@@ -67,6 +63,12 @@ class ProductionHubPage extends StatelessWidget {
                   label: '计划汇总',
                   description: '单号 / 制单员 / 审核员',
                   location: '/production/reports/plan-summary',
+                ),
+                _Entry(
+                  icon: Icons.find_in_page_outlined,
+                  label: '物料反查产成品',
+                  description: '查材料用在哪些产品',
+                  location: '/production/where-used',
                 ),
               ]),
             ],

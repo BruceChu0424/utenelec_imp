@@ -126,14 +126,14 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
             width: 120,
             type: 'date',
             sortable: true,
-            value: (it) => (it.billDate ?? '').substring(0, 10)),
+            value: (it) => productionDateOnly(it.billDate)),
         MasterColumnDef(
             key: 'deliveryDate',
             label: '交货日',
             width: 120,
             type: 'date',
             sortable: true,
-            value: (it) => (it.deliveryDate ?? '').substring(0, 10)),
+            value: (it) => productionDateOnly(it.deliveryDate)),
         MasterColumnDef(
             key: 'workshop',
             label: '车间',

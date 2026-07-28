@@ -63,6 +63,8 @@ class SubcontractDocConfig {
     this.showWasted = false,
     // 审核效果文案（确认对话框用）
     this.approveEffect = '',
+    // 管理卡片点进直达新增页（true=跳过列表）
+    this.skipListOnCreate = false,
   });
 
   final SubcontractDocType type;
@@ -112,12 +114,27 @@ class SubcontractDocConfig {
   /// 审核联动效果说明（确认对话框 + 详情页提示）。
   final String approveEffect;
 
+  /// 管理卡片点进是否直达新增页（跳过列表）。
+  final bool skipListOnCreate;
+
   /// 明细是否可链路引入。
   bool get hasUpstreamLink =>
       linkToApplicationItem ||
       linkToOrderItem ||
       linkToReceiptItem ||
       linkToMaterialIssueItem;
+
+  /// 单据号前缀（新建页预览占位用；询价/申请未启用→空，不预览）。
+  String get billNoPrefix => switch (type) {
+        SubcontractDocType.inquiry => '',
+        SubcontractDocType.application => '',
+        SubcontractDocType.order => 'EO',
+        SubcontractDocType.receipt => 'EJ',
+        SubcontractDocType.materialIssue => 'EC',
+        SubcontractDocType.returnDoc => 'ET',
+        SubcontractDocType.materialReturn => 'ER',
+        SubcontractDocType.waste => 'EW',
+      };
 
   /// 列表是否带金额合计列（无单价的三类没有金额）。
   bool get hasAmount => itemHasPrice;
@@ -261,6 +278,7 @@ class SubcontractDocConfig {
     linkToOrderItem: true,
     showReturned: true,
     approveEffect: '审核将入库（材料退）+ 回写发料已退 / 订货已材料退。',
+    skipListOnCreate: true,
   );
 
   /// 委外材料损耗单（3 行；链到发料；审核出库+回写损耗）。
@@ -280,6 +298,7 @@ class SubcontractDocConfig {
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
     approveEffect: '审核将出库 + 回写发料明细已损耗。',
+    skipListOnCreate: true,
   );
 
   static SubcontractDocConfig by(SubcontractDocType t) {

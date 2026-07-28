@@ -28,6 +28,13 @@ String productionStatusLabel(int? code) {
   }
 }
 
+/// 截取日期字符串为 yyyy-MM-dd；null/空/不足 10 位则原样返回（避免 substring 越界：
+/// 后端日期可能为 null 或短串，`''.substring(0,10)` 会抛 RangeError 整页渲染失败）。
+String productionDateOnly(String? s) {
+  if (s == null) return '';
+  return s.length >= 10 ? s.substring(0, 10) : s;
+}
+
 Color productionStatusColor(int? code, ThemeData theme) {
   switch (code) {
     case kProductionStatusApproved:

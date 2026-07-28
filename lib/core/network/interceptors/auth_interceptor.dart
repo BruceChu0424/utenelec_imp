@@ -73,6 +73,12 @@ class AuthInterceptor extends Interceptor {
       final newRefresh = data['refreshToken'] as String?;
       if (access != null) {
         await storage.saveTokens(accessToken: access, refreshToken: newRefresh);
+        // 把刷新返回的最新 profile（含权限快照）转发给 sessionProvider，
+        // 让权限随 access 刷新滑动更新（不再只在登录时拉一次，重登才生效）。
+        final user = data['user'];
+        if (user is Map<String, dynamic>) {
+          SessionEventBus.instance.publishProfile(user);
+        }
         c.complete(access);
         return access;
       }

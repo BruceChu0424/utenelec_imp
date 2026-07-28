@@ -19,6 +19,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/providers/idle_timeout_controller.dart';
 import '../models/system_setting_entry.dart';
 import '../repositories/system_setting_repository.dart';
 
@@ -118,6 +119,10 @@ class _AdminSystemSettingsPageState
       }
       if (!mounted) return;
       context.appSuccess('已保存 ${keys.length} 项设置');
+      // 若改了「自动退出登录」阈值，通知 IdleTimeoutGuard 立即重拉（当前会话即时生效，不必重登）。
+      if (keys.contains('session_idle_timeout_minutes')) {
+        ref.read(idleThresholdVersionProvider.notifier).state++;
+      }
       await _load(); // 重载拿最新 updatedAt
     } on ApiException catch (e) {
       if (!mounted) return;

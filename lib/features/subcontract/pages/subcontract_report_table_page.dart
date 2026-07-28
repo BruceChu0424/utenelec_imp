@@ -132,14 +132,14 @@ class _SubcontractReportTablePageState extends ConsumerState<SubcontractReportTa
     'MATERIAL_RETURN': 'material-returns',
   };
 
-  /// 行点击跳源头单据编辑页：明细/汇总每行带隐藏的 __srcId（= 单据头 id），
-  /// push 编辑页 → pop 回报表（保活筛选/分页状态）。出入状况表为聚合报表无 __srcId，行不响应。
+  /// 行点击跳源头单据详情页：明细/汇总每行带隐藏的 __srcId（= 单据头 id），
+  /// push 详情页 → pop 回报表（保活筛选/分页状态）。出入状况表为聚合报表无 __srcId，行不响应。
   void _onRowTap(Map<String, dynamic> row) {
     final srcId = row['__srcId']?.toString();
     if (srcId == null || srcId.isEmpty) return;
     final seg = _docTypeSeg[_docType.code];
     if (seg == null) return;
-    context.push(RoutePath.subcontractDocEdit(seg, srcId));
+    context.push(RoutePath.subcontractDocDetail(seg, srcId));
   }
 
   void _changeDocType(SubcontractReportDocType t) {

@@ -31,6 +31,8 @@ class PurchaseDocConfig {
     // 明细列开关
     this.showReceived = false,
     this.showReturned = false,
+    // 管理卡片点进直达新增页（true=跳过列表，列表仍可从新增页"查看历史"进入）
+    this.skipListOnCreate = false,
   });
 
   final PurchaseDocType type;
@@ -60,9 +62,20 @@ class PurchaseDocConfig {
   final bool showReceived; // 订货/收货明细显示已收
   final bool showReturned; // 订货/收货/退货明细显示已退
 
+  /// 管理卡片点进是否直达新增页（跳过列表）。
+  final bool skipListOnCreate;
+
   /// 明细是否可链路引入（决定编辑页是否显示"从上游引入"按钮）。
   bool get hasUpstreamLink =>
       linkToRequestItem || linkToOrderItem || linkToReceiptItem;
+
+  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
+  String get billNoPrefix => switch (type) {
+        PurchaseDocType.request => 'CS',
+        PurchaseDocType.order => 'CD',
+        PurchaseDocType.receipt => 'CJ',
+        PurchaseDocType.returnDoc => 'CT',
+      };
 
   static const request = PurchaseDocConfig(
     type: PurchaseDocType.request,
@@ -73,6 +86,7 @@ class PurchaseDocConfig {
     editPerm: Perm.purchaseRequestEdit,
     hasApplicant: true,
     hasNeedDate: true,
+    skipListOnCreate: true,
   );
 
   static const order = PurchaseDocConfig(

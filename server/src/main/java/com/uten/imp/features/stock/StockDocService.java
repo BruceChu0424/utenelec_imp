@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.StockDocItemDto;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
@@ -62,10 +64,22 @@ public class StockDocService {
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
 
+    /** doc_type → 单据号前缀（无映射的 doc_type 如 WASTE 不自动生成，保留客户端值）。 */
+    private static final Map<String, DocNumberPrefix> DOC_TYPE_TO_PREFIX = Map.of(
+            "TRANSFER", DocNumberPrefix.STOCK_TRANSFER,
+            "OTHER_IN", DocNumberPrefix.STOCK_OTHER_IN,
+            "OTHER_OUT", DocNumberPrefix.STOCK_OTHER_OUT,
+            "DRAW", DocNumberPrefix.STOCK_DRAW,
+            "WDRAW", DocNumberPrefix.STOCK_WDRAW,
+            "FINISHED_OUT", DocNumberPrefix.STOCK_FINISHED_OUT,
+            "FINISHED_IN", DocNumberPrefix.STOCK_FINISHED_IN,
+            "CHECK", DocNumberPrefix.STOCK_CHECK);
+
     private final StockDocumentRepository docRepo;
     private final StockDocumentItemRepository itemRepo;
     private final StockService stockService;
     private final TxSessionVars tx;
+    private final DocNumberService docNumberService;
 
     // ===== 列表 =====
 
@@ -233,7 +247,13 @@ public class StockDocService {
 
     private void applyHeader(StockDocSaveRequest req, StockDocument d) {
         d.setDocType(req.getDocType());
-        d.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时按 doc_type 取号；无映射类型（如 WASTE）保留客户端值；更新保留既有号。
+        if (d.getBillNo() == null || d.getBillNo().isBlank()) {
+            DocNumberPrefix prefix = DOC_TYPE_TO_PREFIX.get(d.getDocType());
+            if (prefix != null) {
+                d.setBillNo(docNumberService.nextNumber(prefix));
+            }
+        }
         d.setBillDate(req.getBillDate());
         d.setWarehouseId(req.getWarehouseId());
         d.setToWarehouseId(req.getToWarehouseId());

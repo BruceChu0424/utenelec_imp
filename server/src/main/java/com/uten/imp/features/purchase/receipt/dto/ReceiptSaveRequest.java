@@ -16,7 +16,6 @@ import java.util.UUID;
 @Setter
 public class ReceiptSaveRequest {
 
-    @NotBlank
     private String billNo;
 
     @NotNull

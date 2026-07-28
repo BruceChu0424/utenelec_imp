@@ -116,7 +116,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
-      appBar: UtenAppBar(title: '${widget.docType.label}详情'),
+      appBar: UtenAppBar(title: '${widget.docType.label}详情', showBackButton: true),
       body: SafeArea(
         child: UtenContentContainer.narrow(
           child: _loading

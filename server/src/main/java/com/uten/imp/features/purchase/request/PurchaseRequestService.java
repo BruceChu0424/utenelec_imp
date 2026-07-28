@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.purchase.request.dto.RequestDetail;
 import com.uten.imp.features.purchase.request.dto.RequestItemDto;
 import com.uten.imp.features.purchase.request.dto.RequestItemLine;
@@ -47,6 +49,7 @@ public class PurchaseRequestService {
     private final PurchaseRequestItemRepository itemRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -141,7 +144,10 @@ public class PurchaseRequestService {
     }
 
     private void applyHeader(RequestSaveRequest req, PurchaseRequest r) {
-        r.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (r.getBillNo() == null || r.getBillNo().isBlank()) {
+            r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
+        }
         r.setBillDate(req.getBillDate());
         r.setWarehouseId(req.getWarehouseId());
         r.setApplicantId(req.getApplicantId());

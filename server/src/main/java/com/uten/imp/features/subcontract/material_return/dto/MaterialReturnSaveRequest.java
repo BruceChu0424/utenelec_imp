@@ -15,7 +15,6 @@ import java.util.UUID;
 @Setter
 public class MaterialReturnSaveRequest {
 
-    @NotBlank
     private String billNo;
 
     @NotNull

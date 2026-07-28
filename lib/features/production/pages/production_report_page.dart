@@ -129,13 +129,13 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     _load();
   }
 
-  /// 行点击跳源头单据编辑页：明细/汇总每行都带隐藏的 __srcId（= 生产计划单头 id），
-  /// push 编辑页 → pop 回报表（保活筛选/分页状态）。无 __srcId 的行不响应。
-  /// 本页 Kind 仅 plan 的 detail/summary（日报结构留位、未挂前端），统一跳生产计划编辑页。
+  /// 行点击跳源头单据详情页：明细/汇总每行都带隐藏的 __srcId（= 生产计划单头 id），
+  /// push 详情页 → pop 回报表（保活筛选/分页状态）。无 __srcId 的行不响应。
+  /// 本页 Kind 仅 plan 的 detail/summary（日报结构留位、未挂前端），统一跳生产计划详情页。
   void _onRowTap(Map<String, dynamic> row) {
     final srcId = row['__srcId']?.toString();
     if (srcId == null || srcId.isEmpty) return;
-    context.push(RoutePath.productionPlanEdit(srcId));
+    context.push(RoutePath.productionPlanDetail(srcId));
   }
 
   /// 导出报表 key（与 GET 路径一致：plan/${endpoint}）。

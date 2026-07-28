@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferDetail;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineDto;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineInput;
@@ -60,6 +62,7 @@ public class FinanceBankTransferService {
     private final FinanceBankTransferLineRepository lineRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter f, int page, int size, String sort, String order) {
@@ -170,7 +173,10 @@ public class FinanceBankTransferService {
     // ===================== CRUD 辅助 =====================
 
     private void applyHeader(FinanceBankTransferSaveRequest req, FinanceBankTransfer t) {
-        t.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (t.getBillNo() == null || t.getBillNo().isBlank()) {
+            t.setBillNo(docNumberService.nextNumber(DocNumberPrefix.FIN_BANK_TRANSFER));
+        }
         t.setBillDate(req.getBillDate());
         t.setOutAccountId(req.getOutAccountId());
         t.setCurrencyId(req.getCurrencyId());

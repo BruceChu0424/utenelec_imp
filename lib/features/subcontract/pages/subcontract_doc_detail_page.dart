@@ -167,7 +167,7 @@ class _SubcontractDocDetailPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: UtenAppBar(title: '${_cfg.label}详情'),
+      appBar: UtenAppBar(title: '${_cfg.label}详情', showBackButton: true),
       body: SafeArea(
         child: UtenContentContainer.narrow(
           child: _loading

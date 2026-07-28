@@ -5,7 +5,7 @@
 // （session_idle_timeout_minutes，默认 30，管理员可在系统设置页调整）。
 //
 // 仅记录「最后一次活动时间 + 定时检查」，不直接登出——登出由 UI 层（IdleTimeoutGuard 弹窗）触发，
-// 保持与 sessionProvider 解耦。Timer 30s 粒度检查（平衡及时性与开销）。
+// 保持与 sessionProvider 解耦。Timer 30s 粒度检查（_check 用秒级判定，小阈值更精确）。
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -58,7 +58,9 @@ class IdleTimeoutNotifier extends Notifier<IdleTimeoutState> {
     final last = state.lastActivity;
     if (last == null || state.timedOut) return;
     final idle = DateTime.now().difference(last);
-    if (idle.inMinutes >= state.thresholdMinutes) {
+    // 秒级判定（而非 inMinutes 向下取整）：让 1 分钟等小阈值在到达后下一次 30s tick 即触发，
+    // 而非整数分钟取整导致最多 ~阈值+1 分钟才弹。
+    if (idle.inSeconds >= state.thresholdMinutes * 60) {
       state = state.copyWith(timedOut: true);
     }
   }
@@ -74,3 +76,8 @@ class IdleTimeoutNotifier extends Notifier<IdleTimeoutState> {
 
 final idleTimeoutProvider =
     NotifierProvider<IdleTimeoutNotifier, IdleTimeoutState>(IdleTimeoutNotifier.new);
+
+/// 阈值刷新信号：超管在「系统设置」保存 session_idle_timeout_minutes 后自增，
+/// IdleTimeoutGuard 监听到变化立即重拉阈值（当前会话即时生效，不必下次登录）。
+/// 配合 IdleTimeoutGuard 的 5 分钟定时轮询，覆盖「本机即时」+「他机/别处最终一致」两种场景。
+final idleThresholdVersionProvider = StateProvider<int>((ref) => 0);

@@ -105,7 +105,9 @@ class _Entry {
           icon: cfg.icon,
           label: cfg.label,
           description: cfg.shortLabel,
-          location: SubcontractRoute.list(cfg.type.pathSegment),
+          location: cfg.skipListOnCreate
+              ? SubcontractRoute.newList(cfg.type.pathSegment)
+              : SubcontractRoute.list(cfg.type.pathSegment),
           enabled: cfg.enabled,
         );
 

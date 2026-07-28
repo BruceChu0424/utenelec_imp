@@ -9,18 +9,21 @@
 //     内容区套 UtenContentContainer（maxWidth 1600 居中），超宽屏不再无限拉宽
 //
 // 主 Tab 承载（全断点一致）：
-//   - 四个主 Tab 由内部 PageView 承载，支持左右跟手滑动（桌面端可鼠标拖拽），
-//     四页 KeepAlive 保活；compact 下胶囊滑块高亮随 PageController.page 连续位置联动
+//   - 四个主 Tab 由 UtenSlidingTabView 承载：离散方向滑动转场（当前页左移 / 新页右进），
+//     不经过中间页（替代旧 PageView，消除工作台→设置 等跨多页点击时中间页闪烁）；
+//     四页常驻保活（Offstage 隐藏仍 layout、保留 State 与滚动位置）；
+//     compact 触屏支持横滑切相邻 Tab，胶囊滑块高亮随转场 lerp 联动
 //   - 业务子页面（工资条/报销/人事…）照常通过 go_router 进入，
 //     外壳仅保留导航（高亮归属 Tab），不提供页间滑动
-//   - 保活覆盖子页面：进入业务子页面（tabIndex==null）时 PageView 不从树移除，
+//   - 保活覆盖子页面：进入业务子页面（tabIndex==null）时滑动容器不从树移除，
 //     仅以 Offstage 隐藏（仍 layout、保留 State 与滚动位置），子页面叠在上层；
 //     故从任一 Tab 进子页再返回，各 Tab 滚动位置/状态不丢（不回顶部）。
 //     见 _buildCompactShell / _buildRailShell 的 Stack+Offstage 结构。
 //
 // 路由同步：
-//   - 滑动停稳 → onPageChanged → context.go(tab 路由)，URL 与页一致
-//   - 深链 / 外部 go() 进 tab 路由 → build 检测页码不一致 → animateToPage
+//   - 横滑切相邻 Tab 落定 → onChanged → context.go(tab 路由)，URL 与页一致
+//   - 点击导航 / 深链 / 外部 go() 进 tab 路由 → build 检测 index 变化 →
+//     UtenSlidingTabView 内部 post-frame 启动转场
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,7 +33,6 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_anim.dart';
 import '../../dashboard/pages/dashboard_page.dart';
 import '../../notice/pages/notice_list_page.dart';
 import '../../notice/providers/notice_providers.dart';
@@ -39,6 +41,7 @@ import '../../settings/pages/settings_page.dart';
 import '../widgets/floating_capsule_nav_bar.dart';
 import '../widgets/idle_timeout_guard.dart';
 import '../widgets/uten_side_nav_rail.dart';
+import '../widgets/uten_sliding_tab_view.dart';
 
 class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key, required this.child});
@@ -63,31 +66,17 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
   /// Rail 展开（常驻标签）的最小屏宽
   static const double _railExtendedWidth = 1280;
 
-  late final PageController _pageController;
-
-  /// 连续页位置（喂胶囊滑块跟手）
+  /// 连续页位置（喂胶囊滑块跟手；由 UtenSlidingTabView 随转场 lerp 驱动）
   late final ValueNotifier<double> _position;
 
   @override
   void initState() {
     super.initState();
-    // initState 不能用 dependOnInheritedWidget 读路由，
-    // 先按 0 创建；首次 didChangeDependencies 若初始路由非 0 会立即跳正。
-    _pageController = PageController();
     _position = ValueNotifier<double>(0);
-    _pageController.addListener(_syncPositionFromController);
-  }
-
-  void _syncPositionFromController() {
-    if (!_pageController.hasClients) return;
-    final page = _pageController.page;
-    if (page != null) _position.value = page;
   }
 
   @override
   void dispose() {
-    _pageController.removeListener(_syncPositionFromController);
-    _pageController.dispose();
     _position.dispose();
     super.dispose();
   }
@@ -109,8 +98,8 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
     return 0;
   }
 
-  void _onPageChanged(int index) {
-    _position.value = index.toDouble();
+  /// 横滑切到相邻 Tab 落定：同步路由（与点击导航终点一致）。
+  void _onTabChanged(int index) {
     final location = GoRouterState.of(context).matchedLocation;
     if (location != _tabLocations[index]) {
       context.go(_tabLocations[index]);
@@ -125,11 +114,18 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
     context.go(_tabLocations[index]);
   }
 
-  /// 四页保活 PageView（两个断点分支共用同一份定义）
-  Widget _tabPageView() {
-    return PageView(
-      controller: _pageController,
-      onPageChanged: _onPageChanged,
+  /// 四页保活 + 离散滑动转场的 Tab 容器（两个断点分支共用同一份定义）。
+  /// 替代旧 PageView：避免点击非相邻 Tab 时「滚过」中间页闪烁
+  /// （工作台→我的 不再闪过通知；工作台→设置 不再闪过中间两页）。
+  Widget _slidingTabs({required int? tabIndex}) {
+    return UtenSlidingTabView(
+      index: tabIndex,
+      position: _position,
+      onChanged: _onTabChanged,
+      // compact：横滑手势 + 左右滑动转场（手机 PageView 直觉）；
+      // rail 桌面：都关——点 Tab 即时切换，避免大屏整页横移突兀，也不开横滑手势。
+      swipeEnabled: context.breakpoint.isCompact,
+      animated: context.breakpoint.isCompact,
       children: const [
         _KeepAlivePage(child: DashboardPage()),
         _KeepAlivePage(child: NoticeListPage()),
@@ -153,23 +149,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
 
     final tabIndex = _exactTabIndex(location);
 
-    if (tabIndex != null) {
-      // 深链 / 点导航 / 权限重定向进入某 tab：
-      // PageView 页码不一致时动画切到目标页（滑动停稳触发的 go() 到这里
-      // 页码已一致，天然跳过，不会和手势打架）。
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_pageController.hasClients) return;
-        final current = _pageController.page?.round() ?? tabIndex;
-        if (current != tabIndex) {
-          _pageController.animateToPage(
-            tabIndex,
-            duration: UtenAnim.normal,
-            curve: UtenAnim.standard,
-          );
-        }
-      });
-    } else {
-      // 业务子页面：导航停在归属 tab（无滑动手势，位置固定）
+    // 业务子页面（tabIndex==null）：滑动容器被 Offstage 隐藏、不驱动 _position，
+    // 故在此把胶囊高亮固定到归属 Tab。主 Tab 页则交由 UtenSlidingTabView 驱动 _position。
+    if (tabIndex == null) {
       _position.value = _capsuleIndex(location).toDouble();
     }
 
@@ -214,7 +196,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                   Positioned.fill(
                     child: Offstage(
                       offstage: tabIndex == null,
-                      child: _tabPageView(),
+                      child: _slidingTabs(tabIndex: tabIndex),
                     ),
                   ),
                   if (tabIndex == null)
@@ -281,7 +263,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                     Positioned.fill(
                       child: Offstage(
                         offstage: tabIndex == null,
-                        child: _tabPageView(),
+                        child: _slidingTabs(tabIndex: tabIndex),
                       ),
                     ),
                     if (tabIndex == null)

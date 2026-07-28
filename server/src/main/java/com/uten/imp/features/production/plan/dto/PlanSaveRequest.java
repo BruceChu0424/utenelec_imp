@@ -14,7 +14,6 @@ import java.util.UUID;
 @Getter
 @Setter
 public class PlanSaveRequest {
-    @NotBlank
     private String billNo;
     @NotNull
     private LocalDate billDate;

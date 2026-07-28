@@ -292,34 +292,44 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           thickness: 1,
           color: theme.colorScheme.outlineVariant,
         ),
-        // 表体：Expanded 竖向（行多滚动）；横向可滚（与表头同步，底部滚动条）。
-        Expanded(
-          child: Scrollbar(
-            controller: _bodyH,
-            thumbVisibility: true,
-            child: SingleChildScrollView(
+        // 表体：竖向按内容收缩（行少→横滚条贴最后一行），顶到 LayoutBuilder 上限则竖向滚动（行多→横滚条钉视口底）。
+        // 用 Flexible(loose) 而非 Expanded，让 ListView(shrinkWrap) 在行少时真正收缩；
+        // ConstrainedBox(maxHeight) 把高度封顶在可用空间，行多时转为可滚。
+        Flexible(
+          child: LayoutBuilder(
+            builder: (ctx, c) => Scrollbar(
               controller: _bodyH,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: total,
-                child: ListView.builder(
-                  controller: _bodyV,
-                  itemCount: widget.items.length + (widget.loadingMore ? 1 : 0),
-                  itemBuilder: (ctx, i) {
-                    if (i == widget.items.length) {
-                      return const Padding(
-                        padding: EdgeInsets.all(UtenSpacing.s12),
-                        child: Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      );
-                    }
-                    return _buildDataRow(theme, widget.items[i]);
-                  },
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _bodyH,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: total,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: c.maxHeight),
+                    child: ListView.builder(
+                      controller: _bodyV,
+                      shrinkWrap: true,
+                      physics: const ClampingScrollPhysics(),
+                      padding: EdgeInsets.zero,
+                      itemCount: widget.items.length + (widget.loadingMore ? 1 : 0),
+                      itemBuilder: (ctx, i) {
+                        if (i == widget.items.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(UtenSpacing.s12),
+                            child: Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                          );
+                        }
+                        return _buildDataRow(theme, widget.items[i]);
+                      },
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -333,8 +343,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     return Row(
       children: [
         for (var i = 0; i < widget.columns.length; i++)
-          SizedBox(
+          Container(
             width: _widths[i],
+            // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(color: theme.colorScheme.outline),
+              ),
+            ),
             child: Stack(
               children: [
                 _FilterCell(

@@ -15,7 +15,6 @@ import java.util.UUID;
 @Setter
 public class QuoteSaveRequest {
 
-    @NotBlank
     private String billNo;
 
     @NotNull

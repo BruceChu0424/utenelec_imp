@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.waste.dto.WasteDetail;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemDto;
@@ -65,6 +67,7 @@ public class SubcontractWasteService {
     private final StockService stockService;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
@@ -212,7 +215,10 @@ public class SubcontractWasteService {
     }
 
     private void applyHeader(WasteSaveRequest req, SubcontractWaste r) {
-        r.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (r.getBillNo() == null || r.getBillNo().isBlank()) {
+            r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SUB_WASTE));
+        }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
         r.setWarehouseId(req.getWarehouseId());

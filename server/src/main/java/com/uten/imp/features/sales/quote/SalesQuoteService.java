@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.sales.quote.dto.QuoteDetail;
 import com.uten.imp.features.sales.quote.dto.QuoteItemDto;
 import com.uten.imp.features.sales.quote.dto.QuoteItemLine;
@@ -50,6 +52,7 @@ public class SalesQuoteService {
     private final SalesQuoteRepository quoteRepo;
     private final SalesQuoteItemRepository itemRepo;
     private final TxSessionVars tx;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<QuoteListItem> list(QuoteQueryFilter f, int page, int size, String sort, String order) {
@@ -149,7 +152,10 @@ public class SalesQuoteService {
     }
 
     private void applyHeader(QuoteSaveRequest req, SalesQuote q) {
-        q.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (q.getBillNo() == null || q.getBillNo().isBlank()) {
+            q.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SALES_QUOTE));
+        }
         q.setBillDate(req.getBillDate());
         q.setClientId(req.getClientId());
         q.setValidUntil(req.getValidUntil());

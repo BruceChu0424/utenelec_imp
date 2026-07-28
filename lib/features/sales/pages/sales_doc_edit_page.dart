@@ -1,13 +1,14 @@
-// 销售单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细行编辑器 + 保存。
+// 销售单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
 // 差异由 config 驱动（与采购 edit 页同形）：
 //  - 客户/仓库/币种下拉按 has* 显隐；
 //  - 业务员/发货人按 has* 显隐 UtenEmployeePicker；
-//  - 有效期（报价）/交货日（订货）按 has* 显隐 showDatePicker；
+//  - 有效期（报价）/交货日（订货）按 has* 显隐 UtenDateField（outlined，与其它字段同款）；
 //  - 合同信息（订货）/发货信息（出货类）/出库类型（其它出货）按 has* 显隐；
 //  - 「从上游引入」按 hasUpstreamLink 显隐（出货→订货，退货→出货）。
-//  - 明细行含：货品 picker + 颜色/单位下拉 + 数量/单价（金额自动）。
+//  - 明细改 Excel 表：货品/颜色/单位/数量/单价→金额自动 + V66 报表补列 + 添加行/添加多行 + 行尾删除。
 //
+// 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 保存组装 body 调 create/update，成功后跳详情。
 // 路由用 SalesRoutePath 字面量（route_names.dart 由上层统一加 sales_*）。
 import 'package:flutter/material.dart';
@@ -15,9 +16,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -29,6 +33,7 @@ import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_doc_link_picker.dart';
 import '../widgets/sales_goods_picker.dart';
+import '../widgets/sales_grid_columns.dart';
 
 class SalesDocEditPage extends ConsumerStatefulWidget {
   const SalesDocEditPage({super.key, required this.docType, this.id});
@@ -39,56 +44,9 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
   ConsumerState<SalesDocEditPage> createState() => _SalesDocEditPageState();
 }
 
-class _ItemRow {
-  _ItemRow();
-  GoodsOption? goods;
-  final qty = TextEditingController();
-  final price = TextEditingController();
-  /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为 orderItemId/outItemId）。
-  String? orderItemId;
-  String? outItemId;
-  String? colorId;
-  String? unitId;
-
-  // V66 报表补列：成本分项/包装派生/系统单号。按 docType 在 _itemEditor 中显隐对应输入框。
-  // order：机加价/围数/进仓数量（inNo/outNo 是系统字段，不入录）。
-  // shipment/other_shipment：材料价/压铸价/机加价/围数/折扣。
-  // return：折扣。
-  final machiningPrice = TextEditingController();
-  final circumference = TextEditingController();
-  final inboundQty = TextEditingController();
-  final materialPrice = TextEditingController();
-  final dieCastPrice = TextEditingController();
-  final discount = TextEditingController();
-
-  /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
-  factory _ItemRow.fromLinked(SalesLinkedItem li, GoodsOption goods) {
-    final r = _ItemRow()
-      ..goods = goods
-      ..orderItemId = li.orderItemId
-      ..outItemId = li.outItemId
-      ..colorId = li.colorId
-      ..unitId = li.unitId;
-    r.qty.text = li.qty.toString();
-    if (li.price != null) r.price.text = li.price.toString();
-    return r;
-  }
-
-  void dispose() {
-    qty.dispose();
-    price.dispose();
-    machiningPrice.dispose();
-    circumference.dispose();
-    inboundQty.dispose();
-    materialPrice.dispose();
-    dieCastPrice.dispose();
-    discount.dispose();
-  }
-}
-
 class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
-  final _billNo = TextEditingController();
+  final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
   final _taxRate = TextEditingController();
@@ -119,7 +77,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   DateTime? _validUntil; // 报价有效期
   DateTime? _deliverDate; // 订货交货日
 
-  final _items = <_ItemRow>[];
+  final _grid = UtenEditableGridController<SalesGridRow>();
   bool _saving = false;
   bool _loading = false;
 
@@ -143,9 +101,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _shipLinkPhone.dispose();
     _parcelCount.dispose();
     _outType.dispose();
-    for (final r in _items) {
-      r.dispose();
-    }
+    _grid.dispose(); // 自动 dispose 各行控制器
     super.dispose();
   }
 
@@ -184,19 +140,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _shipLinkPhone.text = d.linkPhone ?? '';
         _parcelCount.text = d.parcelCount?.toString() ?? '';
         _outType.text = d.outType ?? '';
+        final rows = <SalesGridRow>[];
         for (final it in d.items) {
-          final row = _ItemRow()
+          final row = SalesGridRow()
             ..goods = it.goodsId == null
                 ? null
                 : GoodsOption(
                     id: it.goodsId!,
                     name: ref.read(salesMasterNameServiceProvider).goods(it.goodsId))
-            ..qty.text = it.qty?.toString() ?? ''
-            ..price.text = it.price?.toString() ?? ''
             ..orderItemId = it.orderItemId
             ..outItemId = it.outItemId
             ..colorId = it.colorId
             ..unitId = it.unitId;
+          row.qty.text = it.qty?.toString() ?? '';
+          row.price.text = it.price?.toString() ?? '';
           // V66 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
           if (it.machiningPrice != null) {
             row.machiningPrice.text = it.machiningPrice.toString();
@@ -216,15 +173,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           if (it.discount != null) {
             row.discount.text = it.discount.toString();
           }
-          _items.add(row);
+          rows.add(row);
         }
+        _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
       } catch (_) {
         // 静默降级
       }
     }
-    if (_items.isEmpty) _items.add(_ItemRow());
+    if (_grid.isEmpty) _grid.addRow(SalesGridRow());
     if (mounted) setState(() => _loading = false);
   }
 
@@ -245,24 +203,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           departmentName: p.departmentName,
         );
       } catch (_) {
-        // 静默
+        // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
       }
     }));
   }
 
-  double get _total => _items.fold<double>(
-      0,
-      (s, r) =>
-          s +
-          (double.tryParse(r.qty.text) ?? 0) *
-              (double.tryParse(r.price.text) ?? 0));
-
-  Future<void> _pickGoods(_ItemRow row) async {
+  Future<void> _pickGoods(SalesGridRow row) async {
     final g = await showSalesGoodsPickerDialog(context, ref);
-    if (g != null) setState(() => row.goods = g);
+    if (g != null) row.goods = g; // setter → goodsNotifier，单元格自动刷新
   }
 
-  /// 「从上游引入」：弹选择器，把所选 SalesLinkedItem 映射成 _ItemRow 追加。
+  /// 「从上游引入」：弹选择器，把所选 SalesLinkedItem 映射成行追加。
   Future<void> _importFromUpstream() async {
     final picked = await showSalesDocLinkPicker(context, ref, _cfg);
     if (picked == null || picked.isEmpty) return;
@@ -272,24 +223,21 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
     }
     if (!mounted) return;
-    setState(() {
-      for (final li in picked) {
-        if (li.goodsId.isEmpty) continue;
-        final goods = GoodsOption(
-          id: li.goodsId,
-          name: ref.read(salesMasterNameServiceProvider).goods(li.goodsId),
-        );
-        _items.add(_ItemRow.fromLinked(li, goods));
-      }
-    });
+    final rows = <SalesGridRow>[];
+    for (final li in picked) {
+      if (li.goodsId.isEmpty) continue;
+      final goods = GoodsOption(
+        id: li.goodsId,
+        name: ref.read(salesMasterNameServiceProvider).goods(li.goodsId),
+      );
+      rows.add(SalesGridRow.fromLinked(li, goods));
+    }
+    _grid.addRows(rows);
   }
 
   Future<void> _save() async {
-    if (_billNo.text.trim().isEmpty) {
-      context.appError('请填写单据号');
-      return;
-    }
-    if (_items.isEmpty || _items.every((r) => r.goods == null)) {
+    final rows = _grid.rows;
+    if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
       return;
     }
@@ -298,7 +246,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       return;
     }
     final itemsBody = <Map<String, dynamic>>[];
-    for (final r in _items) {
+    for (final r in rows) {
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text) ?? 0;
       final price = double.tryParse(r.price.text);
@@ -350,8 +298,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       }
       itemsBody.add(body);
     }
+    // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
-      'billNo': _billNo.text.trim(),
       'billDate': _fmt(_billDate),
       if (_clientId != null) 'clientId': _clientId,
       if (_cfg.hasWarehouse && _warehouseId != null)
@@ -413,26 +361,22 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  Future<void> _pickDate({
-    required DateTime? current,
-    required ValueChanged<DateTime> onPicked,
-  }) async {
-    final p = await showDatePicker(
-      context: context,
-      initialDate: current ?? DateTime.now(),
-      firstDate: DateTime(2010),
-      lastDate: DateTime(2100),
-    );
-    if (p != null) setState(() => onPicked(p));
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}'),
+          title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+          showBackButton: true,
+          actions: _cfg.skipListOnCreate
+              ? [
+                  TextButton(
+                    onPressed: () => context.push('/sales/${_cfg.type.pathSegment}'),
+                    child: const Text('查看历史'),
+                  ),
+                ]
+              : null),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -447,21 +391,25 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             UtenFormGrid(children: [
-                              TextField(
+                              // 单据号：系统自动生成，只读显示。
+                              TextFormField(
+                                readOnly: true,
                                 controller: _billNo,
-                                decoration:
-                                    const InputDecoration(labelText: '单据号 *'),
-                              ),
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('单据日期'),
-                                subtitle: Text(_fmt(_billDate)),
-                                trailing: const Icon(Icons.calendar_today_outlined,
-                                    size: 18),
-                                onTap: () => _pickDate(
-                                  current: _billDate,
-                                  onPicked: (d) => _billDate = d,
+                                decoration: InputDecoration(
+                                  labelText: '单据号',
+                                  hintText:
+                                      _billNo.text.isEmpty ? '保存后自动生成' : null,
+                                  filled: _billNo.text.isEmpty,
+                                  suffixIcon: _billNo.text.isEmpty
+                                      ? const Icon(Icons.autorenew_outlined, size: 18)
+                                      : const Icon(Icons.lock_outline, size: 16),
                                 ),
+                              ),
+                              UtenDateField(
+                                label: '单据日期',
+                                required: true,
+                                value: _billDate,
+                                onChanged: (d) => setState(() => _billDate = d),
                               ),
                               _dropdown('客户', _clientId, names.clientEntries,
                                   (v) => setState(() => _clientId = v),
@@ -490,6 +438,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       const InputDecoration(labelText: '税率(%)'),
                                 ),
                               ],
+                              // 人员字段（按 config 显隐）
                               if (_cfg.hasSeller)
                                 _employeePicker(
                                   label: '业务员',
@@ -504,35 +453,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                   onChanged: (id) =>
                                       setState(() => _senderId = id),
                                 ),
+                              // 日期字段（按 config 显隐，统一 UtenDateField）
                               if (_cfg.hasValidUntil)
-                                ListTile(
-                                  contentPadding:
-                                      const EdgeInsets.only(top: UtenSpacing.s8),
-                                  title: const Text('有效期'),
-                                  subtitle: Text(_validUntil == null
-                                      ? '未选择'
-                                      : _fmt(_validUntil!)),
-                                  trailing: const Icon(Icons.event_outlined,
-                                      size: 18),
-                                  onTap: () => _pickDate(
-                                    current: _validUntil,
-                                    onPicked: (d) => _validUntil = d,
-                                  ),
+                                UtenDateField(
+                                  label: '有效期',
+                                  value: _validUntil,
+                                  onChanged: (d) =>
+                                      setState(() => _validUntil = d),
                                 ),
                               if (_cfg.hasDeliverDate)
-                                ListTile(
-                                  contentPadding:
-                                      const EdgeInsets.only(top: UtenSpacing.s8),
-                                  title: const Text('交货日期'),
-                                  subtitle: Text(_deliverDate == null
-                                      ? '未选择'
-                                      : _fmt(_deliverDate!)),
-                                  trailing: const Icon(Icons.event_outlined,
-                                      size: 18),
-                                  onTap: () => _pickDate(
-                                    current: _deliverDate,
-                                    onPicked: (d) => _deliverDate = d,
-                                  ),
+                                UtenDateField(
+                                  label: '交货日期',
+                                  value: _deliverDate,
+                                  onChanged: (d) =>
+                                      setState(() => _deliverDate = d),
                                 ),
                               if (_cfg.hasContractInfo) ...[
                                 TextField(
@@ -602,7 +536,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                     const SizedBox(height: UtenSpacing.s12),
                     Row(
                       children: [
-                        Text('明细 (${_items.length})',
+                        Text('明细 (${_grid.length})',
                             style: theme.textTheme.titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w600)),
                         const Spacer(),
@@ -612,16 +546,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             icon: const Icon(Icons.link_rounded, size: 18),
                             label: const Text('从上游引入'),
                           ),
-                        TextButton.icon(
-                          onPressed: () =>
-                              setState(() => _items.add(_ItemRow())),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('添加行'),
-                        ),
                       ],
                     ),
-                    for (var i = 0; i < _items.length; i++)
-                      _itemEditor(theme, names, _items[i], i),
+                    UtenEditableGrid<SalesGridRow>(
+                      controller: _grid,
+                      columns: salesGridColumns(
+                        onPickGoods: _pickGoods,
+                        docType: widget.docType,
+                        colorEntries: names.colorEntries,
+                        unitEntries: names.unitEntries,
+                      ),
+                      createBlankRow: () => SalesGridRow(),
+                    ),
                   ],
                 ),
               ),
@@ -637,9 +573,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('合计 ¥${_total.toStringAsFixed(2)}',
+              ValueListenableBuilder<double>(
+                valueListenable: _grid.totalListenable,
+                builder: (_, total, _) => Text(
+                  '合计 ¥${total.toStringAsFixed(2)}',
                   style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
               const SizedBox(width: UtenSpacing.s16),
               UtenButton(
                 type: UtenButtonType.secondary,
@@ -651,7 +592,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                 isLoading: _saving,
                 icon: Icons.save_outlined,
                 onPressed: _saving ? null : _save,
-                child: Text(widget.id == null ? '存草稿' : '保存'),
+                child: const Text('保存'),
               ),
             ],
           ),
@@ -666,253 +607,43 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     required String? currentId,
     required ValueChanged<String?> onChanged,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: UtenEmployeePicker(
-        key: ValueKey('${label}_$currentId'),
-        label: label,
-        initial: currentId == null ? null : _empCache[currentId],
-        loader: (kw) async {
-          final res = await ref
-              .read(employeeRepositoryProvider)
-              .list(size: 30, search: kw);
-          return [
-            for (final e in res.items)
-              UtenEmployeePickerItem(
-                id: e.id,
-                name: e.fullName,
-                departmentName: e.departmentName,
-              ),
-          ];
-        },
-        onChanged: (item) {
-          if (item != null) _empCache[item.id] = item;
-          onChanged(item?.id);
-        },
-      ),
+    return UtenEmployeePicker(
+      key: ValueKey('${label}_$currentId'),
+      label: label,
+      initial: currentId == null ? null : _empCache[currentId],
+      loader: (kw) async {
+        final res = await ref
+            .read(employeeRepositoryProvider)
+            .list(size: 30, search: kw);
+        return [
+          for (final e in res.items)
+            UtenEmployeePickerItem(
+              id: e.id,
+              name: e.fullName,
+              departmentName: e.departmentName,
+            ),
+        ];
+      },
+      onChanged: (item) {
+        if (item != null) _empCache[item.id] = item;
+        onChanged(item?.id);
+      },
     );
   }
 
   Widget _dropdown(String label, String? value, Map<String, String> entries,
       ValueChanged<String?> onChanged,
       {bool required = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: DropdownButtonFormField<String?>(
-        initialValue: value,
-        decoration:
-            InputDecoration(labelText: required ? '$label *' : label),
-        items: [
-          const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-          for (final e in entries.entries)
-            DropdownMenuItem<String?>(
-              value: e.key,
-              child: Text(e.value,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-        ],
-        onChanged: onChanged,
-      ),
+    return UtenDropdownField(
+      label: label,
+      value: value,
+      required: required,
+      items: [
+        for (final e in entries.entries) UtenDropdownItem(value: e.key, label: e.value),
+        if (value != null && value.isNotEmpty && !entries.containsKey(value))
+          UtenDropdownItem(value: value, label: value),
+      ],
+      onChanged: onChanged,
     );
-  }
-
-  Widget _itemEditor(
-      ThemeData theme, SalesMasterNameService names, _ItemRow row, int i) {
-    final amount = (double.tryParse(row.qty.text) ?? 0) *
-        (double.tryParse(row.price.text) ?? 0);
-    final linked = row.orderItemId != null || row.outItemId != null;
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: InkWell(
-                onTap: () => _pickGoods(row),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: '货品',
-                    isDense: true,
-                    suffixIcon: Icon(Icons.search_rounded, size: 18),
-                  ),
-                  child: Text(row.goods?.name ?? '点击选择',
-                      style: TextStyle(
-                          color: row.goods == null
-                              ? theme.colorScheme.onSurfaceVariant
-                              : null)),
-                ),
-              ),
-            ),
-            if (linked)
-              Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Icon(Icons.link_rounded,
-                    size: 16, color: theme.colorScheme.primary),
-              ),
-            IconButton(
-              icon: const Icon(Icons.close_rounded, size: 18),
-              onPressed: () => setState(() {
-                _items.remove(row);
-                row.dispose();
-              }),
-            ),
-          ]),
-          const SizedBox(height: UtenSpacing.s8),
-          Row(children: [
-            // 颜色下拉
-            Expanded(
-              child: DropdownButtonFormField<String?>(
-                key: ValueKey('color_${i}_${row.colorId ?? ''}'),
-                initialValue: row.colorId,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                    labelText: '颜色', isDense: true),
-                items: [
-                  const DropdownMenuItem<String?>(child: Text('—')),
-                  for (final e in names.colorEntries.entries)
-                    DropdownMenuItem<String?>(
-                      value: e.key,
-                      child: Text(e.value,
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                ],
-                onChanged: (v) => setState(() => row.colorId = v),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            // 单位下拉
-            Expanded(
-              child: DropdownButtonFormField<String?>(
-                key: ValueKey('unit_${i}_${row.unitId ?? ''}'),
-                initialValue: row.unitId,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                    labelText: '单位', isDense: true),
-                items: [
-                  const DropdownMenuItem<String?>(child: Text('—')),
-                  for (final e in names.unitEntries.entries)
-                    DropdownMenuItem<String?>(
-                      value: e.key,
-                      child: Text(e.value,
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                ],
-                onChanged: (v) => setState(() => row.unitId = v),
-              ),
-            ),
-          ]),
-          const SizedBox(height: UtenSpacing.s8),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: row.qty,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration:
-                    const InputDecoration(labelText: '数量', isDense: true),
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: TextField(
-                controller: row.price,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration:
-                    const InputDecoration(labelText: '单价', isDense: true),
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            SizedBox(
-              width: 90,
-              child: Text('¥${amount.toStringAsFixed(2)}',
-                  textAlign: TextAlign.right,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-          ]),
-          // V66 补列输入区（按 docType 显隐）：成本分项/包装派生/折扣。
-          //   order：机加价/围数/进仓数量（inNo/outNo 系统字段，不入录）。
-          //   shipment/other_shipment：材料价/压铸价/机加价/围数/折扣。
-          //   return：折扣。
-          if (_extraFields.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                for (final f in _extraFields)
-                  SizedBox(
-                    width: 120,
-                    child: TextField(
-                      controller: f.controller(row),
-                      keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
-                      decoration: InputDecoration(
-                          labelText: f.label, isDense: true),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ]),
-      ),
-    );
-  }
-
-  /// 当前 docType 在明细编辑区追加的 V66 字段描述（与 _save/_init 的字段映射一致）。
-  List<_ExtraField> get _extraFields {
-    switch (widget.docType) {
-      case SalesDocType.order:
-        return const [
-          _ExtraField('机加价', _Field.machiningPrice),
-          _ExtraField('围数', _Field.circumference),
-          _ExtraField('进仓数量', _Field.inboundQty),
-        ];
-      case SalesDocType.shipment:
-      case SalesDocType.otherShipment:
-        return const [
-          _ExtraField('材料价', _Field.materialPrice),
-          _ExtraField('压铸价', _Field.dieCastPrice),
-          _ExtraField('机加价', _Field.machiningPrice),
-          _ExtraField('围数', _Field.circumference),
-          _ExtraField('折扣', _Field.discount),
-        ];
-      case SalesDocType.returnDoc:
-        return const [_ExtraField('折扣', _Field.discount)];
-      case SalesDocType.quote:
-        return const [];
-    }
-  }
-}
-
-/// V66 明细扩展字段描述（label + 在 _ItemRow 上的 controller 选择）。
-enum _Field { machiningPrice, circumference, inboundQty, materialPrice, dieCastPrice, discount }
-
-class _ExtraField {
-  const _ExtraField(this.label, this.field);
-  final String label;
-  final _Field field;
-
-  TextEditingController controller(_ItemRow row) {
-    switch (field) {
-      case _Field.machiningPrice:
-        return row.machiningPrice;
-      case _Field.circumference:
-        return row.circumference;
-      case _Field.inboundQty:
-        return row.inboundQty;
-      case _Field.materialPrice:
-        return row.materialPrice;
-      case _Field.dieCastPrice:
-        return row.dieCastPrice;
-      case _Field.discount:
-        return row.discount;
-    }
   }
 }

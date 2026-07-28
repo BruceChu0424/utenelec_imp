@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemDto;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemInput;
@@ -58,6 +60,7 @@ public class FinanceExpenseService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceExpenseListItem> list(FinanceExpenseQueryFilter f, int page, int size, String sort, String order) {
@@ -219,7 +222,10 @@ public class FinanceExpenseService {
     // ===================== CRUD 辅助 =====================
 
     private void applyHeader(FinanceExpenseSaveRequest req, FinanceExpense e) {
-        e.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (e.getBillNo() == null || e.getBillNo().isBlank()) {
+            e.setBillNo(docNumberService.nextNumber(DocNumberPrefix.FIN_EXPENSE));
+        }
         e.setBillDate(req.getBillDate());
         e.setAccountId(req.getAccountId());
         e.setCounterpartAccountId(req.getCounterpartAccountId());

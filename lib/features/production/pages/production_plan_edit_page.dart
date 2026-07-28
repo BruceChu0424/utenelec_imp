@@ -21,6 +21,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/widgets/dropdown_items.dart';
 import '../../purchase/providers/master_name_provider.dart';
 import '../../purchase/widgets/goods_picker_dialog.dart';
 import '../repositories/production_repository.dart';
@@ -238,15 +239,7 @@ class _ProductionPlanEditPageState
       child: DropdownButtonFormField<String?>(
         initialValue: value,
         decoration: InputDecoration(labelText: label),
-        items: [
-          const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-          for (final e in entries.entries)
-            DropdownMenuItem<String?>(
-              value: e.key,
-              child: Text(e.value,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-        ],
+        items: stringDropdownItems(value, entries),
         onChanged: onChanged,
       ),
     );
@@ -345,7 +338,8 @@ class _ProductionPlanEditPageState
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建生产计划单' : '编辑生产计划单'),
+          title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',
+          showBackButton: true),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))

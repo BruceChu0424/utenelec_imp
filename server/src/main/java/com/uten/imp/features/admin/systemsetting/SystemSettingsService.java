@@ -80,6 +80,10 @@ public class SystemSettingsService {
                 case "long" -> {
                     long v = Long.parseLong(value);
                     if (v < 0) throw new ApiException(ErrorCode.VALIDATION_FAILED, label + " 不能为负数");
+                    // access token TTL 过短（如 0/1 分钟）会导致登录即过期、刷新风暴；最小 5 分钟。
+                    if ("jwt_access_ttl_minutes".equals(key) && v < 5) {
+                        throw new ApiException(ErrorCode.VALIDATION_FAILED, label + " 不能小于 5 分钟（过短会登录即过期）");
+                    }
                 }
                 case "bool" -> {
                     if (!"true".equalsIgnoreCase(value) && !"false".equalsIgnoreCase(value)) {

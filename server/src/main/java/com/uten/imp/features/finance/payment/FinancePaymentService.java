@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -66,6 +68,7 @@ public class FinancePaymentService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter f, int page, int size, String sort, String order) {
@@ -317,7 +320,10 @@ public class FinancePaymentService {
     // ===================== CRUD 辅助 =====================
 
     private void applyHeader(FinancePaymentSaveRequest req, FinancePayment p) {
-        p.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (p.getBillNo() == null || p.getBillNo().isBlank()) {
+            p.setBillNo(docNumberService.nextNumber(DocNumberPrefix.FIN_PAYMENT));
+        }
         p.setBillDate(req.getBillDate());
         p.setSupplierId(req.getSupplierId());
         p.setAccountId(req.getAccountId());

@@ -16,7 +16,6 @@ import java.util.UUID;
 @Setter
 public class FinanceOtherIncomeSaveRequest {
 
-    @NotBlank
     private String billNo;
 
     @NotNull

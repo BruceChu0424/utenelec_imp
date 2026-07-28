@@ -154,7 +154,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
-      appBar: UtenAppBar(title: '${_cfg.label}详情'),
+      appBar: UtenAppBar(title: '${_cfg.label}详情', showBackButton: true),
       body: SafeArea(
         child: UtenContentContainer.narrow(
           child: _loading

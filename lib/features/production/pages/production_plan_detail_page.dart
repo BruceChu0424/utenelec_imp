@@ -162,7 +162,7 @@ class _ProductionPlanDetailPageState
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
-      appBar: const UtenAppBar(title: '生产计划单详情'),
+      appBar: const UtenAppBar(title: '生产计划单详情', showBackButton: true),
       body: SafeArea(
         child: UtenContentContainer(
           child: _loading
@@ -315,7 +315,7 @@ class _ProductionPlanDetailPageState
           _icell(it.qty?.toStringAsFixed(2), 1, theme),
           _icell(it.oqty?.toStringAsFixed(2), 1, theme),
           _icell(it.iqty?.toStringAsFixed(2), 1, theme),
-          _icell((it.outboundDate ?? '').substring(0, 10), 1, theme),
+          _icell(productionDateOnly(it.outboundDate), 1, theme),
         ],
       ),
     );

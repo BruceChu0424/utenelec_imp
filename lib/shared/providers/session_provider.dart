@@ -36,6 +36,16 @@ class SessionNotifier extends Notifier<SessionState> {
     SessionEventBus.instance.onSessionExpired.listen((_) {
       state = const SessionState();
     });
+    // 监听 access 刷新成功（AuthInterceptor）：用最新 profile 更新权限快照，
+    // 使权限变更随刷新即时生效（不再只在登录时拉一次、重登才反映）。
+    SessionEventBus.instance.onProfileRefreshed.listen((userJson) {
+      if (state.status == AuthStatus.authenticated) {
+        state = SessionState(
+          status: AuthStatus.authenticated,
+          user: _toAppUser(UserProfile.fromJson(userJson)),
+        );
+      }
+    });
     return const SessionState();
   }
 

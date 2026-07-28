@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
@@ -52,6 +54,7 @@ public class ProductionDailyReportService {
     private final ProductionDailyReportRepository reportRepo;
     private final ProductionDailyReportItemRepository itemRepo;
     private final TxSessionVars tx;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
@@ -152,7 +155,10 @@ public class ProductionDailyReportService {
     // ====================== 私有辅助 ======================
 
     private void applyHeader(DailyReportSaveRequest req, ProductionDailyReport r) {
-        r.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (r.getBillNo() == null || r.getBillNo().isBlank()) {
+            r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PROD_DAILY_REPORT));
+        }
         r.setBillDate(req.getBillDate());
         r.setWarehouseId(req.getWarehouseId());
         r.setDepartmentId(req.getDepartmentId());

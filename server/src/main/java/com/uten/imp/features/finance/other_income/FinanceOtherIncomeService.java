@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeDetail;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemDto;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemInput;
@@ -57,6 +59,7 @@ public class FinanceOtherIncomeService {
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final EntityManager em;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceOtherIncomeListItem> list(FinanceOtherIncomeQueryFilter f, int page, int size, String sort, String order) {
@@ -218,7 +221,10 @@ public class FinanceOtherIncomeService {
     // ===================== CRUD 辅助 =====================
 
     private void applyHeader(FinanceOtherIncomeSaveRequest req, FinanceOtherIncome o) {
-        o.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (o.getBillNo() == null || o.getBillNo().isBlank()) {
+            o.setBillNo(docNumberService.nextNumber(DocNumberPrefix.FIN_OTHER_INCOME));
+        }
         o.setBillDate(req.getBillDate());
         o.setAccountId(req.getAccountId());
         o.setCounterpartAccountId(req.getCounterpartAccountId());

@@ -1,18 +1,25 @@
 // 钱流单据编辑页（新建/编辑，全页路由，按 docType 参数化）。
 //
-// 主表头表单 + 明细行编辑器（3 种模式）+ 保存。
+// 主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 // - settle（receipt/payment）：明细 = AR/AP 核销行，用「从应收应付引入」对话框选台账行回填；
-// - allocate（expense/otherIncome）：明细 = 分摊行（项目下拉 + 金额 + 摘要）；
+// - allocate（expense/otherIncome）：明细 = 分摊行（项目下拉 + 数量/单价→金额自动 + 部门）；
 // - transfer（bankTransfer）：明细 = 转入行（转入账户 + 日期 + 金额）。
-// 差异由 config 驱动；保存组装 body 调 create/update，成功后跳详情。
+// 差异由 config 驱动（isSettle/isAllocate/isTransfer），列集由 financeGridColumns(mode) 返回。
+//
+// 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）；
+// 发票号（invoiceNo）仍由用户手工录入（未弃用）。日期统一用 UtenDateField。
+// 保存组装 body 调 create/update，成功后跳详情。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -23,6 +30,7 @@ import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
 import '../widgets/ar_ap_picker_dialog.dart';
+import '../widgets/finance_grid_columns.dart';
 
 class FinanceDocEditPage extends ConsumerStatefulWidget {
   const FinanceDocEditPage({super.key, required this.docType, this.id});
@@ -33,40 +41,9 @@ class FinanceDocEditPage extends ConsumerStatefulWidget {
   ConsumerState<FinanceDocEditPage> createState() => _FinanceDocEditPageState();
 }
 
-class _ItemRow {
-  _ItemRow();
-  // settle
-  String? appliedLedgerId;
-  String? appliedBillNo;
-  // allocate
-  String? styleId; // expense/income 项目
-  String? departmentId;
-  // transfer
-  String? inAccountId;
-  String? occurDate;
-  // 公共
-  final qty = TextEditingController();
-  final price = TextEditingController();
-  final amount = TextEditingController(); // 本次/分摊/转入金额（本币）
-
-  factory _ItemRow.fromApplied(AppliedArAp a) {
-    final r = _ItemRow()
-      ..appliedLedgerId = a.ledgerId
-      ..appliedBillNo = a.appliedBillNo;
-    r.amount.text = a.amountLocal.toStringAsFixed(2);
-    return r;
-  }
-
-  void dispose() {
-    qty.dispose();
-    price.dispose();
-    amount.dispose();
-  }
-}
-
 class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   FinanceDocConfig get _cfg => FinanceDocConfig.by(widget.docType);
-  final _billNo = TextEditingController();
+  final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
   final _bankFee = TextEditingController();
@@ -80,7 +57,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   String? _operatorId;
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
-  final _items = <_ItemRow>[];
+  final _grid = UtenEditableGridController<FinanceGridRow>();
   bool _saving = false;
   bool _loading = false;
 
@@ -98,9 +75,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     _bankFee.dispose();
     _otherFee.dispose();
     _invoiceNo.dispose();
-    for (final r in _items) {
-      r.dispose();
-    }
+    _grid.dispose(); // 自动 dispose 各行控制器
     super.dispose();
   }
 
@@ -131,26 +106,30 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         _currencyId = d.currencyId;
         _rate.text = d.exchangeRate?.toString() ?? '1';
         _operatorId = d.operatorId;
+        final rows = <FinanceGridRow>[];
         for (final it in d.items) {
-          final row = _ItemRow()
+          final row = FinanceGridRow(mode: _cfg.itemMode)
             ..appliedLedgerId = it.appliedLedgerId
             ..appliedBillNo = it.appliedBillNo
             ..styleId = it.expenseStyleId ?? it.incomeStyleId
-            ..departmentId = it.departmentId
             ..inAccountId = it.inAccountId
             ..occurDate = it.occurDate;
+          row.department.text = it.departmentId ?? '';
           row.qty.text = it.qty?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
           row.amount.text = it.amountLocal?.toString() ?? '';
-          _items.add(row);
+          rows.add(row);
         }
+        _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
       } catch (_) {
         // 静默降级
       }
     }
-    if (_items.isEmpty && !_cfg.isSettle) _items.add(_ItemRow());
+    if (_grid.isEmpty && !_cfg.isSettle) {
+      _grid.addRow(FinanceGridRow(mode: _cfg.itemMode));
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -170,10 +149,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     }));
   }
 
-  double get _total => _items.fold<double>(
-      0, (s, r) => s + (double.tryParse(r.amount.text) ?? 0));
-
-  /// 「从应收应付引入」：弹核销选择器，把所选 AppliedArAp 映射成 _ItemRow 追加。
+  /// 「从应收应付引入」：弹核销选择器，把所选 AppliedArAp 映射成行追加。
   Future<void> _importFromArAp() async {
     if (_partyId == null || _partyId!.isEmpty) {
       context.appError('请先选择${_cfg.partyLabel}');
@@ -186,18 +162,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       partyId: _partyId,
     );
     if (picked == null || picked.isEmpty) return;
-    setState(() {
-      for (final a in picked) {
-        _items.add(_ItemRow.fromApplied(a));
-      }
-    });
+    _grid.addRows(
+        picked.map((a) => FinanceGridRow.fromApplied(_cfg.itemMode, a)));
   }
 
   Future<void> _save() async {
-    if (_billNo.text.trim().isEmpty) {
-      context.appError('请填写单据号');
-      return;
-    }
     if (_accountId == null) {
       context.appError('请选择${_cfg.accountLabel}');
       return;
@@ -207,9 +176,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       return;
     }
     final itemsBody = <Map<String, dynamic>>[];
-    for (final r in _items) {
-      final amt = double.tryParse(r.amount.text);
-      if (amt == null || amt <= 0) continue;
+    for (final r in _grid.rows) {
+      // amountNotifier 是所有模式的「金额」真相源：
+      // allocate = qty*price；settle/transfer = amount.text 同步。无效输入 → 0 → 跳过。
+      final amt = r.amountNotifier.value;
+      if (amt <= 0) continue;
       final item = <String, dynamic>{
         'amountLocal': amt,
         'amountOriginal': amt,
@@ -232,9 +203,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
             item['incomeStyleId'] = r.styleId;
           }
         }
-        if (r.departmentId != null && r.departmentId!.isNotEmpty) {
-          item['departmentId'] = r.departmentId;
-        }
+        final dept = r.department.text.trim();
+        if (dept.isNotEmpty) item['departmentId'] = dept;
         final qty = double.tryParse(r.qty.text);
         final price = double.tryParse(r.price.text);
         if (qty != null) item['qty'] = qty;
@@ -251,15 +221,15 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       return;
     }
 
+    // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
-      'billNo': _billNo.text.trim(),
       'billDate': _fmt(_billDate),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       // 账户字段名按单据类型：bankTransfer=outAccountId，其余=accountId。
-      _cfg.type == FinanceDocType.bankTransfer ? 'outAccountId' : 'accountId':
-          _accountId,
-      if (_cfg.hasParty)
-        _cfg.isClient ? 'clientId' : 'supplierId': _partyId,
+      _cfg.type == FinanceDocType.bankTransfer
+          ? 'outAccountId'
+          : 'accountId': _accountId,
+      if (_cfg.hasParty) _cfg.isClient ? 'clientId' : 'supplierId': _partyId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
       if (_cfg.hasBankFee && _bankFee.text.isNotEmpty)
@@ -280,8 +250,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           : await repo.update(widget.id!, body);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
-      context
-          .replace('/finance/${_cfg.type.pathSegment}/${d.id}');
+      context.replace('/finance/${_cfg.type.pathSegment}/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -294,25 +263,23 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  Future<void> _pickDate({
-    required DateTime? current,
-    required ValueChanged<DateTime> onPicked,
-  }) async {
-    final p = await showDatePicker(
-      context: context,
-      initialDate: current ?? DateTime.now(),
-      firstDate: DateTime(2010),
-      lastDate: DateTime(2100),
-    );
-    if (p != null) setState(() => onPicked(p));
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     return Scaffold(
-      appBar: UtenAppBar(title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}'),
+      appBar: UtenAppBar(
+          title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+          showBackButton: true,
+          actions: _cfg.skipListOnCreate
+              ? [
+                  TextButton(
+                    onPressed: () =>
+                        context.push('/finance/${_cfg.type.pathSegment}'),
+                    child: const Text('查看历史'),
+                  ),
+                ]
+              : null),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -327,19 +294,29 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             UtenFormGrid(children: [
-                              TextField(
+                              // 单据号：系统自动生成，只读显示。
+                              TextFormField(
+                                readOnly: true,
                                 controller: _billNo,
-                                decoration: const InputDecoration(labelText: '单据号 *'),
-                              ),
-                              ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                title: const Text('单据日期'),
-                                subtitle: Text(_fmt(_billDate)),
-                                trailing: const Icon(Icons.calendar_today_outlined, size: 18),
-                                onTap: () => _pickDate(
-                                  current: _billDate,
-                                  onPicked: (d) => _billDate = d,
+                                decoration: InputDecoration(
+                                  labelText: '单据号',
+                                  hintText: _billNo.text.isEmpty
+                                      ? '保存后自动生成'
+                                      : null,
+                                  filled: _billNo.text.isEmpty,
+                                  suffixIcon: _billNo.text.isEmpty
+                                      ? const Icon(Icons.autorenew_outlined,
+                                          size: 18)
+                                      : const Icon(Icons.lock_outline,
+                                          size: 16),
                                 ),
+                              ),
+                              UtenDateField(
+                                label: '单据日期',
+                                required: true,
+                                value: _billDate,
+                                onChanged: (d) =>
+                                    setState(() => _billDate = d),
                               ),
                               if (_cfg.hasParty)
                                 _dropdown(
@@ -351,11 +328,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                     (v) => setState(() {
                                           _partyId = v;
                                           // 切换往来方后清空已引入的核销行（避免错配）。
-                                          _items.clear();
+                                          _grid.clear();
                                         }),
                                     required: true),
                               _dropdown(_cfg.accountLabel, _accountId,
-                                  names.accountEntries, (v) => setState(() => _accountId = v),
+                                  names.accountEntries,
+                                  (v) => setState(() => _accountId = v),
                                   required: true),
                               if (_cfg.hasCurrency)
                                 _dropdown('币种', _currencyId, names.currencyEntries,
@@ -363,30 +341,37 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                               if (_cfg.hasCurrency)
                                 TextField(
                                   controller: _rate,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  keyboardType: const TextInputType.numberWithOptions(
+                                      decimal: true),
                                   decoration: const InputDecoration(labelText: '汇率'),
                                 ),
                               if (_cfg.hasBankFee)
                                 TextField(
                                   controller: _bankFee,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: const InputDecoration(labelText: '银行手续费'),
+                                  keyboardType: const TextInputType.numberWithOptions(
+                                      decimal: true),
+                                  decoration: const InputDecoration(
+                                      labelText: '银行手续费'),
                                 ),
                               if (_cfg.hasOtherFee)
                                 TextField(
                                   controller: _otherFee,
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: const InputDecoration(labelText: '其它手续费'),
+                                  keyboardType: const TextInputType.numberWithOptions(
+                                      decimal: true),
+                                  decoration: const InputDecoration(
+                                      labelText: '其它手续费'),
                                 ),
                               if (_cfg.hasInvoiceNo)
                                 TextField(
                                   controller: _invoiceNo,
-                                  decoration: const InputDecoration(labelText: '发票号'),
+                                  decoration:
+                                      const InputDecoration(labelText: '发票号'),
                                 ),
                               _employeePicker(
                                 label: '经办人',
                                 currentId: _operatorId,
-                                onChanged: (id) => setState(() => _operatorId = id),
+                                onChanged: (id) =>
+                                    setState(() => _operatorId = id),
                               ),
                             ]),
                             const SizedBox(height: UtenSpacing.s12),
@@ -402,7 +387,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                     const SizedBox(height: UtenSpacing.s12),
                     Row(
                       children: [
-                        Text('明细 (${_items.length})',
+                        Text('明细 (${_grid.length})',
                             style: theme.textTheme.titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w600)),
                         const Spacer(),
@@ -412,16 +397,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                             icon: const Icon(Icons.link_rounded, size: 18),
                             label: const Text('从应收应付引入'),
                           ),
-                        if (!_cfg.isSettle)
-                          TextButton.icon(
-                            onPressed: () =>
-                                setState(() => _items.add(_ItemRow())),
-                            icon: const Icon(Icons.add_rounded, size: 18),
-                            label: const Text('添加行'),
-                          ),
                       ],
                     ),
-                    for (final row in _items) _itemEditor(theme, names, row),
+                    UtenEditableGrid<FinanceGridRow>(
+                      controller: _grid,
+                      columns: financeGridColumns(_cfg.itemMode,
+                          names: names, type: _cfg.type),
+                      createBlankRow: () => FinanceGridRow(mode: _cfg.itemMode),
+                    ),
                   ],
                 ),
               ),
@@ -436,9 +419,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('合计 ¥${_total.toStringAsFixed(2)}',
+              ValueListenableBuilder<double>(
+                valueListenable: _grid.totalListenable,
+                builder: (_, total, _) => Text(
+                  '合计 ¥${total.toStringAsFixed(2)}',
                   style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
               const SizedBox(width: UtenSpacing.s16),
               UtenButton(
                 type: UtenButtonType.secondary,
@@ -450,7 +438,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                 isLoading: _saving,
                 icon: Icons.save_outlined,
                 onPressed: _saving ? null : _save,
-                child: Text(widget.id == null ? '存草稿' : '保存'),
+                child: const Text('保存'),
               ),
             ],
           ),
@@ -464,255 +452,43 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     required String? currentId,
     required ValueChanged<String?> onChanged,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: UtenEmployeePicker(
-        key: ValueKey('${label}_$currentId'),
-        label: label,
-        initial: currentId == null ? null : _empCache[currentId],
-        loader: (kw) async {
-          final res = await ref
-              .read(employeeRepositoryProvider)
-              .list(size: 30, search: kw);
-          return [
-            for (final e in res.items)
-              UtenEmployeePickerItem(
-                id: e.id,
-                name: e.fullName,
-                departmentName: e.departmentName,
-              ),
-          ];
-        },
-        onChanged: (item) {
-          if (item != null) _empCache[item.id] = item;
-          onChanged(item?.id);
-        },
-      ),
+    return UtenEmployeePicker(
+      key: ValueKey('${label}_$currentId'),
+      label: label,
+      initial: currentId == null ? null : _empCache[currentId],
+      loader: (kw) async {
+        final res = await ref
+            .read(employeeRepositoryProvider)
+            .list(size: 30, search: kw);
+        return [
+          for (final e in res.items)
+            UtenEmployeePickerItem(
+              id: e.id,
+              name: e.fullName,
+              departmentName: e.departmentName,
+            ),
+        ];
+      },
+      onChanged: (item) {
+        if (item != null) _empCache[item.id] = item;
+        onChanged(item?.id);
+      },
     );
   }
 
   Widget _dropdown(String label, String? value, Map<String, String> entries,
       ValueChanged<String?> onChanged,
       {bool required = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: DropdownButtonFormField<String?>(
-        initialValue: value,
-        decoration: InputDecoration(labelText: required ? '$label *' : label),
-        items: [
-          const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-          for (final e in entries.entries)
-            DropdownMenuItem<String?>(
-              value: e.key,
-              child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-        ],
-        onChanged: onChanged,
-      ),
-    );
-  }
-
-  Widget _itemEditor(ThemeData theme, FinanceNameService names, _ItemRow row) {
-    if (_cfg.isSettle) return _settleEditor(theme, row);
-    if (_cfg.isAllocate) return _allocateEditor(theme, names, row);
-    return _transferEditor(theme, names, row);
-  }
-
-  /// 核销行：单据号(只读，来自引入) + 本次金额 + 删除。
-  Widget _settleEditor(ThemeData theme, _ItemRow row) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: Text(row.appliedBillNo ?? '直接收款（未指定核销）',
-                  style: TextStyle(
-                      color: row.appliedBillNo == null
-                          ? theme.colorScheme.onSurfaceVariant
-                          : null)),
-            ),
-            Expanded(
-              child: TextField(
-                controller: row.amount,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    isDense: true, labelText: '本次金额'),
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close_rounded, size: 18),
-              onPressed: () => setState(() {
-                _items.remove(row);
-                row.dispose();
-              }),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 分摊行：项目下拉 + 部门(UUID 文本，TODO 升级 picker) + 数量/单价 + 金额 + 删除。
-  Widget _allocateEditor(ThemeData theme, FinanceNameService names, _ItemRow row) {
-    final cat = _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
-    final styles = names.stylesFor(cat);
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Expanded(
-                child: DropdownButtonFormField<String?>(
-                  initialValue: row.styleId,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                      isDense: true,
-                      labelText: _cfg.type == FinanceDocType.expense
-                          ? '费用项目'
-                          : '收入项目'),
-                  items: [
-                    const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-                    for (final s in styles)
-                      DropdownMenuItem<String?>(
-                        value: s.id,
-                        child: Text(s.name ?? s.id,
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: (v) => setState(() => row.styleId = v),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
-                onPressed: () => setState(() {
-                  _items.remove(row);
-                  row.dispose();
-                }),
-              ),
-            ]),
-            const SizedBox(height: UtenSpacing.s8),
-            // TODO(finance): 升级为部门 picker（当前先用 UUID 文本输入）。
-            TextField(
-              decoration: const InputDecoration(
-                  isDense: true, labelText: '分摊部门ID（可空）'),
-              onChanged: (v) => row.departmentId =
-                  v.trim().isEmpty ? null : v.trim(),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Row(children: [
-              Expanded(
-                child: TextField(
-                  controller: row.qty,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(isDense: true, labelText: '数量'),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: TextField(
-                  controller: row.price,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(isDense: true, labelText: '单价'),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: TextField(
-                  controller: row.amount,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(isDense: true, labelText: '金额 *'),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-            ]),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 转入行：转入账户下拉 + 日期 + 金额 + 删除。
-  Widget _transferEditor(ThemeData theme, FinanceNameService names, _ItemRow row) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(children: [
-              Expanded(
-                child: DropdownButtonFormField<String?>(
-                  initialValue: row.inAccountId,
-                  isExpanded: true,
-                  decoration:
-                      const InputDecoration(isDense: true, labelText: '转入账户'),
-                  items: [
-                    const DropdownMenuItem<String?>(child: Text('— 不选 —')),
-                    for (final e in names.accountEntries.entries)
-                      DropdownMenuItem<String?>(
-                        value: e.key,
-                        child: Text(e.value,
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: (v) => setState(() => row.inAccountId = v),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
-                onPressed: () => setState(() {
-                  _items.remove(row);
-                  row.dispose();
-                }),
-              ),
-            ]),
-            const SizedBox(height: UtenSpacing.s8),
-            Row(children: [
-              Expanded(
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: const Text('日期'),
-                  subtitle: Text(row.occurDate == null
-                      ? '未选择'
-                      : row.occurDate!.substring(0, 10)),
-                  trailing:
-                      const Icon(Icons.event_outlined, size: 18),
-                  onTap: () => _pickDate(
-                    current: row.occurDate == null
-                        ? null
-                        : DateTime.tryParse(row.occurDate!),
-                    onPicked: (d) =>
-                        setState(() => row.occurDate = _fmt(d)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: TextField(
-                  controller: row.amount,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(isDense: true, labelText: '金额 *'),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-            ]),
-          ],
-        ),
-      ),
+    return UtenDropdownField(
+      label: label,
+      value: value,
+      required: required,
+      items: [
+        for (final e in entries.entries) UtenDropdownItem(value: e.key, label: e.value),
+        if (value != null && value.isNotEmpty && !entries.containsKey(value))
+          UtenDropdownItem(value: value, label: value),
+      ],
+      onChanged: onChanged,
     );
   }
 }

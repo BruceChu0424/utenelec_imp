@@ -14,7 +14,7 @@ import java.util.UUID;
 @Getter
 @Setter
 public class OrderSaveRequest {
-    @NotBlank private String billNo;
+    private String billNo;
     @NotNull private LocalDate billDate;
     private UUID supplierId;
     private UUID warehouseId;

@@ -161,7 +161,7 @@ class _ProductionDailyReportDetailPageState
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
-      appBar: const UtenAppBar(title: '生产日报详情'),
+      appBar: const UtenAppBar(title: '生产日报详情', showBackButton: true),
       body: SafeArea(
         child: UtenContentContainer(
           child: _loading

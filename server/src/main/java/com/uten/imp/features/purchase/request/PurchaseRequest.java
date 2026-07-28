@@ -32,6 +32,6 @@ public class PurchaseRequest extends SoftDeletableEntity {
     @Column(name = "status", nullable = false) private Short status = 0;
     @Column(name = "is_closed", nullable = false) private boolean closed = false;
     /** 老库 Stop 位（是否中止）。V65 默认 FALSE，用 Boolean 包装以兼容历史 NULL。 */
-    @Column(name = "is_stopped") private Boolean isStopped;
+    @Column(name = "is_stopped") private Boolean isStopped = false;
     @Column(name = "source_doc_no") private String sourceDocNo;
 }

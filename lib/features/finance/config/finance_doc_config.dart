@@ -33,6 +33,8 @@ class FinanceDocConfig {
     this.accountLabel = '收款账户',
     this.partyLabel = '往来方',
     this.amountLabel = '金额',
+    // 管理卡片点进直达新增页（true=跳过列表）
+    this.skipListOnCreate = false,
   });
 
   final FinanceDocType type;
@@ -65,8 +67,20 @@ class FinanceDocConfig {
   final String partyLabel; // 客户/供应商
   final String amountLabel;
 
+  /// 管理卡片点进是否直达新增页（跳过列表）。
+  final bool skipListOnCreate;
+
   /// 明细是否需要「从应收应付引入」（仅 receipt/payment 核销）。
   bool get hasArApLink => isSettle;
+
+  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
+  String get billNoPrefix => switch (type) {
+        FinanceDocType.receipt => 'XS',
+        FinanceDocType.payment => 'CF',
+        FinanceDocType.expense => 'YF',
+        FinanceDocType.otherIncome => 'QS',
+        FinanceDocType.bankTransfer => 'YC',
+      };
 
   static const receipt = FinanceDocConfig(
     type: FinanceDocType.receipt,
@@ -107,6 +121,7 @@ class FinanceDocConfig {
     itemMode: ItemMode.allocate,
     accountLabel: '费用账户',
     amountLabel: '费用金额',
+    skipListOnCreate: true,
   );
 
   static const otherIncome = FinanceDocConfig(
@@ -119,6 +134,7 @@ class FinanceDocConfig {
     itemMode: ItemMode.allocate,
     accountLabel: '收入账户',
     amountLabel: '收入金额',
+    skipListOnCreate: true,
   );
 
   static const bankTransfer = FinanceDocConfig(
@@ -131,6 +147,7 @@ class FinanceDocConfig {
     itemMode: ItemMode.transfer,
     hasInvoiceNo: true,
     accountLabel: '转出账户',
+    skipListOnCreate: true,
   );
 
   static FinanceDocConfig by(FinanceDocType t) {

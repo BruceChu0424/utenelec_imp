@@ -23,7 +23,6 @@ public class StockDocSaveRequest {
     @NotBlank
     private String docType;
 
-    @NotBlank
     private String billNo;
 
     @NotNull

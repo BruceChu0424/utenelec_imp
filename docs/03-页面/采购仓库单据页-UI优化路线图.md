@@ -2,7 +2,7 @@
 
 > 建立时间：2026-07-26 · 来源：`/ui-ux-pro-max` 设计系统评审 + 实测
 > 适用：采购 4 单据、仓库 8 单据（及未来销售/委外/生产等同款"主从表单据列表"页）
-> 状态：第 1 项已完成；2/3/4 待做（按价值排序，以后迭代）
+> 状态：第 1、2、3 项已完成（3 = 编辑页 Excel 明细 + 日期/下拉统一，2026-07-27 跨模块重构落地）；原"待做 1/2/3"按价值排序以后迭代
 
 ---
 
@@ -32,6 +32,14 @@
 
 ### 2. 仓库 hub 分区标题
 - `WarehouseHubPage` 加「出入库单据」标题 + 副标题，对齐采购 hub 的两组卡片层次。
+
+### 3. 编辑页明细改可编辑 Excel 表 + 日期/下拉统一（2026-07-27，跨模块重构落地）
+- **明细 Excel 化**：新建 `lib/components/layout/uten_editable_grid.dart`（`UtenEditableGrid` — controller + `AmountRowMixin` + `ValueListenable` 杀重建风暴；加行/加 N 行/删行；sticky 表头 + 列宽拖拽 + 表头竖分隔线 + 表头左对齐；内容撑高的 body 给 ListView）。采购/仓库（及其它三模块）各配套 `lib/features/{module}/widgets/{module}_grid_columns.dart`（`{Module}GridRow` + columns）。**替换原来编辑页的纵向卡列表明细编辑器**（采购 4 单据 + 仓库 8 单据编辑页全改）。
+- **日期字段统一**：新建 `lib/components/inputs/uten_date_field.dart`（`UtenDateField`，outlined，与其它字段一致），替换编辑页里 ListTile 风格的日期选择器。
+- **下拉字段统一**：新建 `lib/components/inputs/uten_dropdown_field.dart`（`UtenDropdownField`，Overlay 弹层，样式镜像货品主档 `_FilterCell`：`surfaceContainerHigh`+`elevation8`+`radius8`+选中 `primaryContainer`+勾），替换编辑页表头与 grid 单元格里所有的 `DropdownButtonFormField`。
+- **单据号系统生成（配套）**：编辑页 billNo 字段只读"保存后自动生成"（后端 `DocNumberService` + V76 `doc_number_sequences`，详见 [数据迁移/27-DDL一致性契约] §一 V76 段 + [数据迁移/28-Java后端契约] §九）。
+- **skip-list**：采购 request（请购）配置 `skipListOnCreate`，管理卡直跳新建页（编辑页 AppBar 加"查看历史"按钮进列表）。
+- **保存按钮文案**："存草稿"→"保存"（草稿→审核→红冲流程不变）。
 
 ---
 

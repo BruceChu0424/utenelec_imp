@@ -118,8 +118,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     _load();
   }
 
-  /// 行点击跳源头单据编辑页：明细/汇总每行都带隐藏的 __srcId（= 单据头 id），
-  /// push 编辑页 → pop 回报表（保活筛选/分页状态）。
+  /// 行点击跳源头单据详情页：明细/汇总每行都带隐藏的 __srcId（= 单据头 id），
+  /// push 详情页 → pop 回报表（保活筛选/分页状态）。
   /// docType.code（ORDER/SHIPMENT/RETURN/OTHER_SHIPMENT）→ 销售单据路由 seg：
   ///   ORDER→orders、SHIPMENT→shipments、RETURN→returns、OTHER_SHIPMENT→other-shipments（kebab）。
   ///   不能简单 `${code}s`：OTHER_SHIPMENT 期望 other-shipments（短横）非 OTHER_SHIPMENTs。
@@ -132,7 +132,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       SalesReportDocType.returnDoc => 'returns',
       SalesReportDocType.otherShipment => 'other-shipments',
     };
-    context.push(RoutePath.salesDocEdit(seg, srcId));
+    context.push(RoutePath.salesDocDetail(seg, srcId));
   }
 
   void _changeDocType(SalesReportDocType t) {

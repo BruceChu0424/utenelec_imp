@@ -232,7 +232,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       ShellRoute(
-        builder: (context, state, child) => MainShellPage(child: child),
+        // SelectionArea 包整个外壳：登录后所有页面（四主 Tab + 业务子页）文字均可拖选 + 复制。
+        // ⚠️ 必须在 Navigator 内：ShellRoute.builder 的 widget 挂在 root Navigator 上、有 Overlay
+        //    祖先。绝不能放进 MaterialApp.router 的 builder——它在 Navigator 外层，
+        //    SelectableRegion 找不到 Overlay 祖先会直接崩溃。
+        builder: (context, state, child) =>
+            SelectionArea(child: MainShellPage(child: child)),
         routes: [
           GoRoute(
             path: RouteName.home,

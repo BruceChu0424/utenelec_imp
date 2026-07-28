@@ -166,7 +166,7 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 ---
 
-**最后更新**：2026-07-27 · Java 后端单一事实源。续作先读本文 + [27] + 各 design doc + DDL(V50-V70) + 采购 Java 范本。钱流 22 报表已重写为 `ReportTableResponse` 范式（`features/finance/report/`，含 `execute`/`WhereBuilder`/`FacetSpec`，镜像销售/采购；详见 [26] §十一·财务口径校准）。
+**最后更新**：2026-07-27 · Java 后端单一事实源。续作先读本文 + [27] + 各 design doc + DDL(V50-V76) + 采购 Java 范本。钱流 22 报表已重写为 `ReportTableResponse` 范式（`features/finance/report/`，含 `execute`/`WhereBuilder`/`FacetSpec`，镜像销售/采购；详见 [26] §十一·财务口径校准）。本期新增 §九 `common/docnumber` 包（DocNumberService + DocNumberPrefix + DocNumberController，V76 单据号系统生成）。
 
 ---
 
@@ -177,3 +177,49 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 - **核验后修复的 bug**（见 [29] §接手清单 + 各 Service）：① 库存金额方向（reverse 不取反 amountLocal，7 处，e2e 实测红冲金额净归 0）② 月报 SQL（GROUP BY 漏 ym + **Hibernate 原生 SQL null 参数类型坑**：`(:param IS NULL OR col=:param)` 当 param=null 时 PG 报 `could not determine data type of parameter $N` → 报表页"加载失败"；**已对全部可空 param 加 `CAST(:param AS 类型) IS NULL`，6 处全修**——`FinanceReportService` / `SubcontractReportService` / `ProductionReportService` / `ProductionPlanCostService` / `PurchaseReportService` / `SalesReportService`，全仓 grep `:[A-Za-z_]+\s+IS\s+(NOT\s+)?NULL` 零残留；铁律见 §七-6）③ 核销超核/负应收同号校验 ④ 委外进仓 supplier 非空校验 ⑤ legacy_bstyle=30。
 - **来源感知导航**：前端跨页用 `goFrom`/`backTo`（`lib/core/router/nav_helpers.dart`），主 Tab 用 go（push 失效）+ KeepAlive 保滚动；列表→详情用 push/pop。见记忆 go-router-origin-aware-nav + [30]。
 - **StockService 常量** 15-20 已加（agent 勿改 StockService.java）。
+
+---
+
+## 九、单据号统一生成 · `common/docnumber` 包（2026-07-27 跨模块重构落地）
+
+> 配套 DDL：[27] V76 `doc_number_sequences` 表。全部 25 个 create-单据 Service 已接入（含 2026-07-28 补接的 3 个，见本节末「2026-07-28 修订」）。
+
+**包结构**（`server/.../common/docnumber/`，跨模块共享，非任何单模块独占）：
+```
+common/docnumber/
+  ├─ DocNumberService.java       序列生成（原子）
+  └─ DocNumberPrefix.java        enum，25 单据类型各一前缀
+  （DocNumberController 的 GET /api/doc-number/peek **已删除**——见本节末「2026-07-28 修订」）
+```
+
+**核心契约**：
+- `String nextNumber(DocNumberPrefix prefix, YearMonth ym)`：
+  - SQL：`INSERT INTO doc_number_sequences(prefix, period, last_seq) VALUES(?, ?, 1) ON CONFLICT(prefix, period) DO UPDATE SET last_seq = doc_number_sequences.last_seq + 1 RETURNING last_seq` —— **单语句原子**（PG 行锁，无并发撞号）。
+  - 格式：`[prefix][YYMM][4位月内顺序号零填充]`，例 `CD26070001`。
+- **接入规则（铁律）**：全部 25 个单据 Service 的 `create()` 内，`billNo` 为空 → 调 `nextNumber` 生成；**忽略客户端传入的 billNo**（防伪造/撞号/绕过序列）；`update()` **永不重新生成**（保留原号）。`StockDocService` 走 `doc_type → DocNumberPrefix` 映射表。
+- **撞号处理**：CJ 既有"采购收货"又有"仓库产成品进仓"，V76 分配时仓库让步改用 `CR`；其余前缀按单据类型一一映射。
+- **历史 backfill**：迁移完成后扫描各表现有 `bill_no`，按 `(prefix, period)` 回填 `last_seq = MAX(解析出的序号)`，保证新生成的号不撞已迁入的老号。
+- **前端协作**：单据号保存后在详情页展示；新建页 billNo 字段只读占位"保存后自动生成"。（peek 端点曾实现预览后回退，**2026-07-28 已删除**——见本节末「2026-07-28 修订」；前端用 save-then-show，最安全。）
+
+> Java agent 写新单据类型时：① 在 `DocNumberPrefix` 枚举加前缀；② create() 调 `nextNumber`；③ 勿在 controller/DTO 暴露"客户端自传 billNo"路径（SaveRequest 可保留 billNo 字段但 Service 忽略其值）。
+
+---
+
+### 2026-07-28 修订（单据号系统生成落地后的安全/正确性修复）
+
+> 上述 §九 落地后，经实测验证追加下列修复（均已实现 + 验证 2026-07-28）：
+
+1. **DTO `@NotBlank billNo` 全量移除**：全部 25 个 `*SaveRequest*` DTO 不再要求/校验 `billNo`（单据号由 `DocNumberService` 服务端生成，DTO 不应再约束）。此前若带 `@NotBlank`，请求在到达 `DocNumberService` 前就被 400 拒绝，单据号生成逻辑根本跑不到。
+2. **peek 端点删除（最小攻击面）**：`DocNumberController` 的 `GET /api/doc-number/peek` 删除；`DocNumberService.peekNumber` 与 `DocNumberPrefix.fromCode` 同步删除。前端用 save-then-show，peek 端点本就未用，删除以收敛接口面、降攻击面。
+3. **3 个此前休眠/未接的 Service 接入 DocNumberService**（纵深防御，不再信任客户端 billNo）：
+   - `ProductionDailyReportService` → 新前缀 `SR`（`DocNumberPrefix.PROD_DAILY_REPORT`）
+   - `SubcontractInquiryService` → `EA`（`DocNumberPrefix.SUB_INQUIRY`）
+   - `SubcontractApplicationService` → `EB`（`DocNumberPrefix.SUB_APPLICATION`）
+   - `DocNumberPrefix` 同步新增上述 3 个枚举常量。**至此全部 25 个 create-单据 Service 均由服务端权威生成 billNo，客户端传入的 billNo 零信任。**
+4. **`is_stopped` 实体默认值修复（潜在 bug，因 #1 修复而暴露）**：
+   - 现象：`PurchaseOrder.isStopped` / `PurchaseRequest.isStopped` 原为 `private Boolean isStopped;`（包装类型，默认 `null`），DDL 列为 `NOT NULL DEFAULT FALSE` —— Hibernate insert 仍发 `null`（实体字段值优先于 DDL DEFAULT），触发 NOT NULL 约束违反、create 失败。
+   - 修复：改为 `private Boolean isStopped = false;`（create 显式发 `false`；legacy `NULL` 历史数据读取不受影响）。
+   - 关联：此 bug 此前被 #1 修复前的 `@NotBlank` 400 拦截挡在前面，**未到达 DB**，故一直潜伏；#1 移除 `@NotBlank` 后才暴露。
+   - 不受影响：`SalesOrder.isStopped` / `ProductionPlan.isStopped` 用原始 `boolean`（JVM 默认 `false`，Hibernate 视为已赋值），不会发 null。
+
+> 教训：DDL `NOT NULL DEFAULT X` 列在 Java 实体里**不能用包装类型无默认值**（`Boolean xxx;`）—— Hibernate insert 会以字段值 `null` 覆盖 DDL DEFAULT；要么用原始类型（`boolean xxx;`），要么显式赋默认（`Boolean xxx = false;`）。详见 [27] §二「NOT NULL DEFAULT 列契约」。

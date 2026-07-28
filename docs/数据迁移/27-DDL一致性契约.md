@@ -29,6 +29,7 @@
 >   - **V68** 销售（`sales_*_items` 机加价/材料价/压铸价/围数/进仓/in_no/out_no/discount/returned + 4 主表 `*_legacy_id` + `client_director_v` 视图，详见 [20] 附记）
 >   - **V70** 钱流（`finance_receipts/payments/expenses/other_incomes/bank_transfers` 各加 `maker/approver/operator_legacy_id` + `*_name`；`ar_ap_ledger.settlement_style_legacy` SMALLINT。补齐四模块里钱流漏掉的报表补列；22 报表同时重写为 ReportTableResponse 范式，详见 [26] §十一）
 > - 报表统一走服务端 JOIN + `ReportTableResponse{columns,rows,facets}` 范式（采购/委外/仓库/销售/钱流一致），人名 `LEFT JOIN employees ON legacy_id=*_legacy_id OR id=*_id`（employees.legacy_id 未填前显空白）。
+> - **V76 单据号序列（2026-07-27，跨模块重构落地）**：`V76__doc_number_sequences.sql` 建 `doc_number_sequences(prefix TEXT, period CHAR(4) YYMM, last_seq INT, UNIQUE(prefix, period))`。**所有业务单据的 `bill_no` 现由后端 `DocNumberService` 系统生成**（详见 [28] §九），格式 `[前缀][YYMM][4位月内顺序号]` 如 `CD26070001`。契约修订：§二 "单据号 `bill_no TEXT NOT NULL` + `UNIQUE(bill_no)`" 仍成立，但**客户端不再传 billNo**（Service.create() 忽略传入值，空时自动生成；update 不重生成）；迁移 backfill 扫描现有 `bill_no` 按 (prefix, period) 回填 last_seq 最大值，保证新号不撞老号。`StockDocService` 走 doc_type→prefix 映射；CJ 撞号已解决（采购收货=CJ，仓库产成品进仓=CR 新分配）。**2026-07-28 增订**：① 全部 25 个 `*SaveRequest*` DTO 已移除 `billNo` 上的 `@NotBlank`（**DTO 不再校验 billNo**，因服务端生成；此前带校验时请求在到达 `DocNumberService` 前就被 400 拒）；② `DocNumberController` 的 `GET /api/doc-number/peek` 端点**已删除**（连同 `DocNumberService.peekNumber` / `DocNumberPrefix.fromCode`），最小化攻击面；③ 全部 25 个 create-单据 Service 已接入 DocNumberService（含补接的 `ProductionDailyReportService`=`SR` / `SubcontractInquiryService`=`EA` / `SubcontractApplicationService`=`EB`，客户端 billNo 零信任）。
 
 > **依赖序**：V50→V51→V53→V55→V57（生产 V55 的 SOCItemID/S_OrderID 映射依赖销售 V51 先落，但 DDL 层面无 FK 跨模块，仅迁移时需序）。各模块 DDL 互不 FK（跨模块联动在 Service 层）。
 
@@ -40,6 +41,7 @@
 - 溯源 `legacy_id INT`（**主表加 UNIQUE；明细不加 UNIQUE**——委外 [22] 吸取仓库踩坑：跨表 IDENTITY 重复；分区明细用 `UNIQUE(legacy_id, bill_date)`）。
 - 单据号 `bill_no TEXT NOT NULL` + `UNIQUE(bill_no)`（主表）；明细冗余 `bill_no TEXT NOT NULL` + `bill_date DATE NOT NULL`（查询裁剪 + 报表免 JOIN 主表）。
 - 状态 `status SMALLINT NOT NULL DEFAULT 0`（`0草稿/1已审/-1红冲`）+ `is_closed BOOLEAN NOT NULL DEFAULT FALSE`（Service 派生）。
+- ⚠️ **NOT NULL DEFAULT 列 ↔ Entity 字段默认值契约（2026-07-28 增订）**：DDL 写 `xxx BOOLEAN NOT NULL DEFAULT FALSE`（或 `DEFAULT 0` 等）**不代表** Java 实体可省字段默认值——Hibernate `persist()` 时若实体字段为包装类型且未赋值（如 `private Boolean isStopped;` 默认 `null`），insert 语句会带 `null` 覆盖 DDL DEFAULT，触发 NOT NULL 约束违反。**铁律**：DDL `NOT NULL DEFAULT X` 列对应的 Entity 字段，要么用原始类型（`boolean` / `short`，JVM 默认 `false`/`0`、Hibernate 视为已赋值），要么显式赋默认（`private Boolean isStopped = false;`）。**踩坑实例**：`PurchaseOrder.isStopped` / `PurchaseRequest.isStopped` 原为包装类型无默认 → create 失败（详见 [28] §九「2026-07-28 修订」#4）；`SalesOrder.isStopped` / `ProductionPlan.isStopped` 用原始 `boolean` 不受影响。
 - 金额双口径：`*_original NUMERIC(18,4)`（原币）+ `*_local NUMERIC(18,4)`（本币）；数量 `NUMERIC(18,4)`；汇率 `NUMERIC(18,6)`；税率 `NUMERIC(18,4)`。**严禁 float 存金额/数量**（老库反模式）。
 - 多币种：`currency_id UUID REFERENCES currencies(id)` + `exchange_rate NUMERIC(18,6) DEFAULT 1`。
 - 审计四件套 `created_at/updated_at TIMESTAMPTZ DEFAULT now()` + `created_by/updated_by UUID` + 软删 `is_deleted BOOLEAN DEFAULT FALSE` + `deleted_at TIMESTAMPTZ`（主表）。**明细/行表也必须带 `created_by/updated_by`**——因明细 Entity 都 `extends BaseEntity→AuditableEntity`（同采购 V44 范式，Hibernate `ddl-auto=validate` 会校验）。> ⚠️ 本档早期版本误写"明细可省 created_by/updated_by"，已订正：V60 补齐 21 张明细表 created_by/updated_by，V61 补 finance_expense_items/other_income_items.remark。建新模块明细表务必带 4 审计列。
@@ -170,4 +172,4 @@ CREATE TABLE ar_ap_ledger (
 
 ---
 
-**最后更新**：2026-07-27 · DDL 阶段单一事实源。各 agent 读本文 + 自己的 design doc 落 Flyway。
+**最后更新**：2026-07-27 · DDL 阶段单一事实源。各 agent 读本文 + 自己的 design doc 落 Flyway。本期新增 V76 `doc_number_sequences`（单据号系统生成，§一末段 + §二契约修订）。

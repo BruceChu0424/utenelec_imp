@@ -18,6 +18,18 @@ enum StockDocType {
   final String code;
   final String label;
 
+  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐；FINISHED_IN 用新铸 CR）。
+  String get billNoPrefix => switch (this) {
+        StockDocType.transfer => 'CB',
+        StockDocType.otherIn => 'QR',
+        StockDocType.otherOut => 'QC',
+        StockDocType.draw => 'SL',
+        StockDocType.wdraw => 'ST',
+        StockDocType.finishedIn => 'CR',
+        StockDocType.finishedOut => 'CC',
+        StockDocType.check => 'PQ',
+      };
+
   static StockDocType byCode(String c) =>
       StockDocType.values.firstWhere((e) => e.code == c, orElse: () => StockDocType.otherIn);
 }

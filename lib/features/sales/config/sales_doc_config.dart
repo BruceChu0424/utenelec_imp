@@ -57,7 +57,9 @@ class SalesDocConfig {
     this.linkToOutItem = false, // 退货 → 出货明细
     // 明细列差异（详情展示）
     this.showShipped = false, // 订货明细显示已发
-    this.showReturned = false, // 订货/出货明细显示已退
+    this.showReturned = false, // 讂货/出货明细显示已退
+    // 管理卡片点进直达新增页（true=跳过列表）
+    this.skipListOnCreate = false,
   });
 
   final SalesDocType type;
@@ -92,8 +94,20 @@ class SalesDocConfig {
   final bool showShipped;
   final bool showReturned;
 
+  /// 管理卡片点进是否直达新增页（跳过列表）。
+  final bool skipListOnCreate;
+
   /// 明细是否可链路引入（决定编辑页是否显示"从上游引入"按钮）。
   bool get hasUpstreamLink => linkToOrderItem || linkToOutItem;
+
+  /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
+  String get billNoPrefix => switch (type) {
+        SalesDocType.quote => 'XB',
+        SalesDocType.order => 'XD',
+        SalesDocType.shipment => 'XC',
+        SalesDocType.otherShipment => 'OC',
+        SalesDocType.returnDoc => 'XT',
+      };
 
   static const quote = SalesDocConfig(
     type: SalesDocType.quote,
@@ -103,6 +117,7 @@ class SalesDocConfig {
     listPerm: SalesPerm.quoteView,
     editPerm: SalesPerm.quoteEdit,
     hasValidUntil: true,
+    skipListOnCreate: true,
   );
 
   static const order = SalesDocConfig(

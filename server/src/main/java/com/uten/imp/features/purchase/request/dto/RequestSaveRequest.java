@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Getter @Setter
 public class RequestSaveRequest {
-    @NotBlank private String billNo;
+    private String billNo;
     @NotNull private LocalDate billDate;
     private UUID warehouseId;
     private UUID applicantId;

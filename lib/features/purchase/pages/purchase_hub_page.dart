@@ -92,7 +92,9 @@ class _Entry {
       : icon = cfg.icon,
         label = cfg.label,
         description = cfg.shortLabel,
-        location = '/purchase/${cfg.type.pathSegment}';
+        location = cfg.skipListOnCreate
+            ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
+            : '/purchase/${cfg.type.pathSegment}';
 
   final IconData icon;
   final String label;

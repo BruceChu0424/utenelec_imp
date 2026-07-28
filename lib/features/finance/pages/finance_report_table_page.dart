@@ -66,8 +66,8 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   /// 导出报表 key（剥离 /finance/reports/ 前缀，与 GET 路径一致：ar-ap/detail / receipt/summary …）。
   String get _exportReport => _variant.endpoint.replaceFirst('/finance/reports/', '');
 
-  /// 行点击跳源头单据编辑页：明细/汇总每行带隐藏的 __srcId（= 单据头 id），
-  /// push 编辑页 → pop 回报表（保活筛选/分页状态）。聚合/台账类报表无 __srcId，行不响应。
+  /// 行点击跳源头单据详情页：明细/汇总每行带隐藏的 __srcId（= 单据头 id），
+  /// push 详情页 → pop 回报表（保活筛选/分页状态）。聚合/台账类报表无 __srcId，行不响应。
   /// _exportReport 前缀 → 钱流单据路由 seg：
   ///   receipt/*→receipts、payment/*→payments、expense/*→expenses、income/*→incomes、
   ///   fee-offset/*→receipts（费用冲销源单为收款单）；ar-ap/* 无单据编辑页，不跳。
@@ -84,7 +84,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       _ => null, // ar-ap 等聚合/台账报表无单据编辑页
     };
     if (seg == null) return;
-    context.push(RoutePath.financeDocEdit(seg, srcId));
+    context.push(RoutePath.financeDocDetail(seg, srcId));
   }
 
   /// 导出查询参数（含 direction 等固定参数 + 过滤+排序，与 _load 一致，不含 page/size）。

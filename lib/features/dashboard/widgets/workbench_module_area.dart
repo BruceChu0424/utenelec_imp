@@ -326,10 +326,12 @@ const _allGroups = <_ModuleGroup>[
         label: '生产管理',
         location: RouteName.production,
       ),
+      // 空调控制：按需求置灰占位（功能规划接入中），与财税部 comingSoon 卡片同款，暂不跳转
       _ModuleItem(
         icon: Icons.hvac_outlined,
         label: '空调控制',
         location: '/hvac',
+        comingSoon: true,
       ),
     ],
   ),

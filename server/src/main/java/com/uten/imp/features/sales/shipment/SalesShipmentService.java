@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.sales.shipment.dto.ShipmentDetail;
@@ -71,6 +73,7 @@ public class SalesShipmentService {
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
     public PageResponse<ShipmentListItem> list(ShipmentQueryFilter f, int page, int size, String sort, String order) {
@@ -260,7 +263,10 @@ public class SalesShipmentService {
     }
 
     private void applyHeader(ShipmentSaveRequest req, SalesShipment s) {
-        s.setBillNo(req.getBillNo());
+        // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
+        if (s.getBillNo() == null || s.getBillNo().isBlank()) {
+            s.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SALES_SHIPMENT));
+        }
         s.setBillDate(req.getBillDate());
         s.setClientId(req.getClientId());
         s.setWarehouseId(req.getWarehouseId());

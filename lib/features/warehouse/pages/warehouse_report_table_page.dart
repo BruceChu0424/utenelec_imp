@@ -119,12 +119,12 @@ class _WarehouseReportTablePageState
     _load();
   }
 
-  /// 行点击跳源头单据编辑页：明细/汇总每行都带隐藏的 __srcId（= stock_documents.id），
-  /// push 编辑页 → pop 回报表（保活筛选/分页状态）。code 即大写 docType（与路由段一致）。
+  /// 行点击跳源头单据详情页：明细/汇总每行都带隐藏的 __srcId（= stock_documents.id），
+  /// push 详情页 → pop 回报表（保活筛选/分页状态）。code 即大写 docType（与路由段一致）。
   void _onRowTap(Map<String, dynamic> row) {
     final srcId = row['__srcId']?.toString();
     if (srcId == null || srcId.isEmpty) return;
-    context.push(RoutePath.stockDocEdit(_docType.code, srcId));
+    context.push(RoutePath.stockDocDetail(_docType.code, srcId));
   }
 
   void _changeDocType(WarehouseReportDocType t) {

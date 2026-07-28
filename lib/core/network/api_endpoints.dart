@@ -199,4 +199,7 @@ abstract final class ApiEndpoints {
   // 用户偏好（任意 key-value；工作台布局等）
   static const userPreferences = '/user/preferences';
   static String userPreference(String key) => '/user/preferences/$key';
+
+  // 单据号预览（新建页占位显示；不消耗序列，并发时可能差1以保存后为准）
+  static const docNumberPeek = '/doc-number/peek';
 }

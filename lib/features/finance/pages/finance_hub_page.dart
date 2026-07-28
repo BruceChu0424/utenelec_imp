@@ -49,19 +49,19 @@ class FinanceHubPage extends StatelessWidget {
                   icon: Icons.outbound_outlined,
                   label: '一般费用',
                   description: '按部门分摊',
-                  location: '/finance/expenses',
+                  location: RoutePath.financeDocNew('expenses'),
                 ),
                 _Entry(
                   icon: Icons.add_circle_outline,
                   label: '其它收入',
                   description: '按部门分摊',
-                  location: '/finance/incomes',
+                  location: RoutePath.financeDocNew('incomes'),
                 ),
                 _Entry(
                   icon: Icons.swap_horiz_rounded,
                   label: '银行存取款',
                   description: '账户间转入',
-                  location: '/finance/bank-transfers',
+                  location: RoutePath.financeDocNew('bank-transfers'),
                 ),
                 _Entry(
                   icon: Icons.receipt_long_outlined,

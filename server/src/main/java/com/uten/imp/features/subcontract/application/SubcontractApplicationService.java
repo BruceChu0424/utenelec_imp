@@ -14,6 +14,7 @@ import com.uten.imp.features.subcontract.application.dto.ApplicationListItem;
 import com.uten.imp.features.subcontract.application.dto.ApplicationQueryFilter;
 import com.uten.imp.features.subcontract.application.dto.ApplicationSaveRequest;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -56,6 +57,9 @@ public class SubcontractApplicationService {
     private final SubcontractApplicationItemRepository itemRepo;
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
+    private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
 
     @Transactional(readOnly = true)
     public PageResponse<ApplicationListItem> list(ApplicationQueryFilter f, int page, int size, String sort, String order) {
@@ -93,6 +97,7 @@ public class SubcontractApplicationService {
         tx.bind();
         SubcontractApplication r = new SubcontractApplication();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         applicationRepo.save(r);
         List<ApplicationItemDto> items = saveItems(r, req.getItems());
@@ -132,6 +137,7 @@ public class SubcontractApplicationService {
     public ApplicationDetail approve(UUID id) {
         tx.bind();
         SubcontractApplication r = requireApplication(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -139,6 +145,7 @@ public class SubcontractApplicationService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         applicationRepo.save(r);
         return detail(id);
     }
@@ -148,6 +155,7 @@ public class SubcontractApplicationService {
     public ApplicationDetail reverse(UUID id) {
         tx.bind();
         SubcontractApplication r = requireApplication(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -223,7 +231,8 @@ public class SubcontractApplicationService {
         return new ApplicationDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), items);
+                r.isClosed(), r.getSourceDocNo(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 
     private SubcontractApplication requireApplication(UUID id) {

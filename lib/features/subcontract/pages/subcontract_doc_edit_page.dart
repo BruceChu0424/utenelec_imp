@@ -18,6 +18,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_import_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -38,8 +40,7 @@ import '../providers/subcontract_providers.dart';
 import '../repositories/subcontract_repository.dart';
 import '../widgets/subcontract_grid_columns.dart';
 import '../widgets/subcontract_link_picker.dart';
-import '../../../features/purchase/providers/master_name_provider.dart'
-    as mn;
+import '../../../features/purchase/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
   const SubcontractDocEditPage({super.key, required this.docType, this.id});
@@ -67,6 +68,9 @@ class _SubcontractDocEditPageState
     extends ConsumerState<SubcontractDocEditPage> {
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(widget.docType);
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
+  // 制单信息（服务端权威，只读展示）
+  String? _makerName;
+  String? _createdAt;
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
   final _taxRate = TextEditingController();
@@ -123,8 +127,10 @@ class _SubcontractDocEditPageState
         final d = await ref
             .read(subcontractRepositoryProvider(widget.docType))
             .detail(widget.id!);
-        final goodsIds =
-            d.items.map((e) => e.goodsId).whereType<String>().toSet();
+        final goodsIds = d.items
+            .map((e) => e.goodsId)
+            .whereType<String>()
+            .toSet();
         await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
         await _preloadEmployees([d.purchaserId, d.senderId, d.workerId]);
         if (!mounted) return;
@@ -146,6 +152,8 @@ class _SubcontractDocEditPageState
         _workerId = d.workerId;
         _deliverDate = _parseDate(d.deliverDate);
         _lastDate = _parseDate(d.lastDate);
+        _makerName = d.makerName;
+        _createdAt = d.createdAt;
         final rows = <SubcontractGridRow>[];
         for (final it in d.items) {
           final row = SubcontractGridRow()
@@ -153,12 +161,16 @@ class _SubcontractDocEditPageState
                 ? null
                 : GoodsOption(
                     id: it.goodsId!,
-                    name: ref.read(mn.masterNameServiceProvider).goods(it.goodsId))
+                    name: ref
+                        .read(mn.masterNameServiceProvider)
+                        .goods(it.goodsId),
+                  )
             ..qty.text = it.qty?.toString() ?? ''
             ..price.text = it.price?.toString() ?? ''
             ..weight.text = it.weight?.toString() ?? ''
             // 优先级与 _linkItemKey 一致（receipt > materialIssue > order > application）
-            ..upstreamItemId = it.receiptItemId ??
+            ..upstreamItemId =
+                it.receiptItemId ??
                 it.materialIssueItemId ??
                 it.orderItemId ??
                 it.applicationItemId
@@ -191,18 +203,20 @@ class _SubcontractDocEditPageState
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
     if (uniq.isEmpty) return;
     final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(uniq.map((id) async {
-      try {
-        final p = await repo.getById(id);
-        _empCache[id] = UtenEmployeePickerItem(
-          id: p.id,
-          name: p.fullName ?? '',
-          departmentName: p.departmentName,
-        );
-      } catch (_) {
-        // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-      }
-    }));
+    await Future.wait(
+      uniq.map((id) async {
+        try {
+          final p = await repo.getById(id);
+          _empCache[id] = UtenEmployeePickerItem(
+            id: p.id,
+            name: p.fullName ?? '',
+            departmentName: p.departmentName,
+          );
+        } catch (_) {
+          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
+        }
+      }),
+    );
   }
 
   Future<void> _pickGoods(SubcontractGridRow row) async {
@@ -219,8 +233,10 @@ class _SubcontractDocEditPageState
   Future<void> _importFromUpstream() async {
     final picked = await showSubcontractLinkPicker(context, ref, _cfg);
     if (picked == null || picked.isEmpty) return;
-    final goodsIds =
-        picked.map((e) => e.goodsId).where((id) => id.isNotEmpty).toSet();
+    final goodsIds = picked
+        .map((e) => e.goodsId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
     if (goodsIds.isNotEmpty) {
       await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
     }
@@ -266,8 +282,7 @@ class _SubcontractDocEditPageState
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (_cfg.itemHasPrice && price != null) 'price': price,
-        if (_cfg.itemHasPrice && price != null)
-          'amountOriginal': qty * price,
+        if (_cfg.itemHasPrice && price != null) 'amountOriginal': qty * price,
         if (_cfg.itemHasPrice && price != null) 'amountLocal': qty * price,
         if (_cfg.itemHasWeight && w != null) 'weight': w,
         if (_cfg.itemHasGirth) 'girthQty': double.tryParse(r.girth.text),
@@ -290,14 +305,16 @@ class _SubcontractDocEditPageState
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
       if (_cfg.hasTaxRate) 'taxRate': double.tryParse(_taxRate.text),
-      if (_cfg.hasPurchaser && _purchaserId != null) 'purchaserId': _purchaserId,
+      if (_cfg.hasPurchaser && _purchaserId != null)
+        'purchaserId': _purchaserId,
       if (_cfg.hasSender && _senderId != null) 'senderId': _senderId,
       if (_cfg.hasWorker && _workerId != null) 'workerId': _workerId,
       if (_cfg.hasDeliverDate && _deliverDate != null)
         'deliverDate': _fmt(_deliverDate!),
       if (_cfg.hasLastDate && _lastDate != null) 'lastDate': _fmt(_lastDate!),
       if (_cfg.hasBStyle) 'bStyle': int.tryParse(_bStyle.text),
-      if (_cfg.hasTotalWeight) 'totalWeight': double.tryParse(_totalWeight.text),
+      if (_cfg.hasTotalWeight)
+        'totalWeight': double.tryParse(_totalWeight.text),
       if (_cfg.hasSettlement) 'settlementStyleLegacy': _settlementStyle,
       'items': itemsBody,
     };
@@ -328,7 +345,8 @@ class _SubcontractDocEditPageState
       return {'materialIssueItemId': upstreamItemId};
     }
     if (_cfg.linkToOrderItem) return {'orderItemId': upstreamItemId};
-    if (_cfg.linkToApplicationItem) return {'applicationItemId': upstreamItemId};
+    if (_cfg.linkToApplicationItem)
+      return {'applicationItemId': upstreamItemId};
     return const {};
   }
 
@@ -340,17 +358,20 @@ class _SubcontractDocEditPageState
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-          showBackButton: true,
-          actions: _cfg.skipListOnCreate
-              ? [
-                  TextButton(
-                    onPressed: () =>
-                        context.push('/subcontract/${_cfg.type.pathSegment}'),
-                    child: const Text('查看历史'),
-                  ),
-                ]
-              : null),
+        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        showBackButton: true,
+        actions: _cfg.skipListOnCreate
+            ? [
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  icon: Icons.history_rounded,
+                  onPressed: () =>
+                      context.push('/subcontract/${_cfg.type.pathSegment}'),
+                  child: const Text('查看历史'),
+                ),
+              ]
+            : null,
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -359,32 +380,34 @@ class _SubcontractDocEditPageState
                   controller: _scrollCtl,
                   thumbVisibility: true,
                   child: ListView(
-                  controller: _scrollCtl,
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    _headerCard(theme),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Row(
-                      children: [
-                        Text('明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        if (_cfg.hasUpstreamLink)
-                          TextButton.icon(
-                            onPressed: _importFromUpstream,
-                            icon: const Icon(Icons.link_rounded, size: 18),
-                            label: const Text('从上游引入'),
+                    controller: _scrollCtl,
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      _headerCard(theme),
+                      const SizedBox(height: UtenSpacing.s12),
+                      Row(
+                        children: [
+                          Text(
+                            '明细 (${_grid.length})',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                      ],
-                    ),
-                    UtenEditableGrid<SubcontractGridRow>(
-                      controller: _grid,
-                      columns: subcontractGridColumns(_pickGoods, _cfg),
-                      createBlankRow: () => SubcontractGridRow(),
-                    ),
-                  ],
-                ),
+                          const Spacer(),
+                          if (_cfg.hasUpstreamLink)
+                            UtenImportButton(
+                              label: '从上游引入',
+                              onPressed: _importFromUpstream,
+                            ),
+                        ],
+                      ),
+                      UtenEditableGrid<SubcontractGridRow>(
+                        controller: _grid,
+                        columns: subcontractGridColumns(_pickGoods, _cfg),
+                        createBlankRow: () => SubcontractGridRow(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -392,8 +415,9 @@ class _SubcontractDocEditPageState
         child: Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            border:
-                Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+            border: Border(
+              top: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
@@ -404,22 +428,26 @@ class _SubcontractDocEditPageState
                   valueListenable: _grid.totalListenable,
                   builder: (_, total, _) => Text(
                     '合计 ¥${total.toStringAsFixed(2)}',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 )
               else if (_cfg.hasTotalWeight)
                 Text(
-                    '总重 ${_totalWeight.text.isEmpty ? "0.00" : _totalWeight.text}',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700))
+                  '总重 ${_totalWeight.text.isEmpty ? "0.00" : _totalWeight.text}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                )
               else
                 ListenableBuilder(
                   listenable: _grid,
                   builder: (_, _) => Text(
                     '${_grid.rows.where((r) => r.goods != null).length} 行',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               const SizedBox(width: UtenSpacing.s16),
@@ -450,113 +478,143 @@ class _SubcontractDocEditPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            UtenFormGrid(children: [
-              // 单据号：系统自动生成，只读显示。
-              TextFormField(
-                readOnly: true,
-                controller: _billNo,
-                decoration: InputDecoration(
-                  labelText: '单据号',
-                  hintText: _billNo.text.isEmpty ? '保存后自动生成' : null,
-                  filled: _billNo.text.isEmpty,
-                  suffixIcon: _billNo.text.isEmpty
-                      ? const Icon(Icons.autorenew_outlined, size: 18)
-                      : const Icon(Icons.lock_outline, size: 16),
+            UtenFormGrid(
+              children: [
+                // 单据号：系统自动生成，只读显示。
+                TextFormField(
+                  readOnly: true,
+                  controller: _billNo,
+                  decoration: InputDecoration(
+                    labelText: '单据号',
+                    hintText: _billNo.text.isEmpty ? '保存后自动生成' : null,
+                    filled: _billNo.text.isEmpty,
+                    suffixIcon: _billNo.text.isEmpty
+                        ? const Icon(Icons.autorenew_outlined, size: 18)
+                        : const Icon(Icons.lock_outline, size: 16),
+                  ),
                 ),
-              ),
-              UtenDateField(
-                label: '单据日期',
-                required: true,
-                value: _billDate,
-                onChanged: (d) => setState(() => _billDate = d),
-              ),
-              if (_cfg.hasSupplier)
-                _dropdown('委外商', _supplierId, names.supplierEntries,
+                // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                ...utenMakerAuditCells(
+                  ref,
+                  makerName: _makerName,
+                  createdAt: _createdAt,
+                ),
+                UtenDateField(
+                  label: '单据日期',
+                  required: true,
+                  value: _billDate,
+                  onChanged: (d) => setState(() => _billDate = d),
+                ),
+                if (_cfg.hasSupplier)
+                  _dropdown(
+                    '委外商',
+                    _supplierId,
+                    names.supplierEntries,
                     (v) => setState(() => _supplierId = v),
-                    required: _cfg.supplierRequired),
-              _dropdown('仓库', _warehouseId, names.warehouseEntries,
+                    required: _cfg.supplierRequired,
+                  ),
+                _dropdown(
+                  '仓库',
+                  _warehouseId,
+                  names.warehouseEntries,
                   (v) => setState(() => _warehouseId = v),
-                  required: _cfg.warehouseRequired),
-              if (_cfg.hasCurrency) ...[
-                _dropdown('币种', _currencyId, names.currencyEntries,
-                    (v) => setState(() => _currencyId = v)),
-                TextField(
-                  controller: _rate,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: '汇率'),
+                  required: _cfg.warehouseRequired,
                 ),
-              ],
-              if (_cfg.hasTaxRate)
-                TextField(
-                  controller: _taxRate,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: '税率(%)'),
-                ),
-              // 人员字段（按 config 显隐）
-              if (_cfg.hasPurchaser)
-                _employeePicker(
-                  label: '采购员',
-                  currentId: _purchaserId,
-                  onChanged: (id) => setState(() => _purchaserId = id),
-                ),
-              if (_cfg.hasSender)
-                _employeePicker(
-                  label: '交货人',
-                  currentId: _senderId,
-                  onChanged: (id) => setState(() => _senderId = id),
-                ),
-              if (_cfg.hasWorker)
-                _employeePicker(
-                  label: '经办人',
-                  currentId: _workerId,
-                  onChanged: (id) => setState(() => _workerId = id),
-                ),
-              // 日期字段（按 config 显隐，统一 UtenDateField）
-              if (_cfg.hasDeliverDate)
-                UtenDateField(
-                  label: '交货日期',
-                  value: _deliverDate,
-                  onChanged: (d) => setState(() => _deliverDate = d),
-                ),
-              if (_cfg.hasLastDate)
-                UtenDateField(
-                  label: '最后交货日',
-                  value: _lastDate,
-                  onChanged: (d) => setState(() => _lastDate = d),
-                ),
-              if (_cfg.hasBStyle)
-                TextField(
-                  controller: _bStyle,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'bStyle（业务类型）'),
-                ),
-              if (_cfg.hasTotalWeight)
-                TextField(
-                  controller: _totalWeight,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: '总重'),
-                ),
-              if (_cfg.hasSettlement)
-                DropdownButtonFormField<int?>(
-                  initialValue: _settlementStyle,
-                  decoration: const InputDecoration(labelText: '结帐方式'),
-                  items: [
-                    const DropdownMenuItem<int?>(child: Text('— 不选 —')),
-                    for (final e in kSubcontractSettlementStyles.entries)
-                      DropdownMenuItem<int?>(value: e.key, child: Text(e.value)),
-                    if (_settlementStyle != null &&
-                        !kSubcontractSettlementStyles
-                            .containsKey(_settlementStyle))
-                      DropdownMenuItem<int?>(
+                if (_cfg.hasCurrency) ...[
+                  _dropdown(
+                    '币种',
+                    _currencyId,
+                    names.currencyEntries,
+                    (v) => setState(() => _currencyId = v),
+                  ),
+                  TextField(
+                    controller: _rate,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '汇率'),
+                  ),
+                ],
+                if (_cfg.hasTaxRate)
+                  TextField(
+                    controller: _taxRate,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '税率(%)'),
+                  ),
+                // 人员字段（按 config 显隐）
+                if (_cfg.hasPurchaser)
+                  _employeePicker(
+                    label: '采购员',
+                    currentId: _purchaserId,
+                    onChanged: (id) => setState(() => _purchaserId = id),
+                  ),
+                if (_cfg.hasSender)
+                  _employeePicker(
+                    label: '交货人',
+                    currentId: _senderId,
+                    onChanged: (id) => setState(() => _senderId = id),
+                  ),
+                if (_cfg.hasWorker)
+                  _employeePicker(
+                    label: '经办人',
+                    currentId: _workerId,
+                    onChanged: (id) => setState(() => _workerId = id),
+                  ),
+                // 日期字段（按 config 显隐，统一 UtenDateField）
+                if (_cfg.hasDeliverDate)
+                  UtenDateField(
+                    label: '交货日期',
+                    value: _deliverDate,
+                    onChanged: (d) => setState(() => _deliverDate = d),
+                  ),
+                if (_cfg.hasLastDate)
+                  UtenDateField(
+                    label: '最后交货日',
+                    value: _lastDate,
+                    onChanged: (d) => setState(() => _lastDate = d),
+                  ),
+                if (_cfg.hasBStyle)
+                  TextField(
+                    controller: _bStyle,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'bStyle（业务类型）',
+                    ),
+                  ),
+                if (_cfg.hasTotalWeight)
+                  TextField(
+                    controller: _totalWeight,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(labelText: '总重'),
+                  ),
+                if (_cfg.hasSettlement)
+                  DropdownButtonFormField<int?>(
+                    initialValue: _settlementStyle,
+                    decoration: const InputDecoration(labelText: '结帐方式'),
+                    items: [
+                      const DropdownMenuItem<int?>(child: Text('— 不选 —')),
+                      for (final e in kSubcontractSettlementStyles.entries)
+                        DropdownMenuItem<int?>(
+                          value: e.key,
+                          child: Text(e.value),
+                        ),
+                      if (_settlementStyle != null &&
+                          !kSubcontractSettlementStyles.containsKey(
+                            _settlementStyle,
+                          ))
+                        DropdownMenuItem<int?>(
                           value: _settlementStyle,
-                          child: Text('$_settlementStyle')),
-                  ],
-                  onChanged: (v) => setState(() => _settlementStyle = v),
-                ),
-            ]),
+                          child: Text('$_settlementStyle'),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() => _settlementStyle = v),
+                  ),
+              ],
+            ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
               controller: _remark,
@@ -599,15 +657,20 @@ class _SubcontractDocEditPageState
     );
   }
 
-  Widget _dropdown(String label, String? value, Map<String, String> entries,
-      ValueChanged<String?> onChanged,
-      {bool required = false}) {
+  Widget _dropdown(
+    String label,
+    String? value,
+    Map<String, String> entries,
+    ValueChanged<String?> onChanged, {
+    bool required = false,
+  }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
       items: [
-        for (final e in entries.entries) UtenDropdownItem(value: e.key, label: e.value),
+        for (final e in entries.entries)
+          UtenDropdownItem(value: e.key, label: e.value),
         if (value != null && value.isNotEmpty && !entries.containsKey(value))
           UtenDropdownItem(value: value, label: value),
       ],

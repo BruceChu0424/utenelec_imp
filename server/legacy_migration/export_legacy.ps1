@@ -21,7 +21,7 @@
 # Output lands in ./data/ (next to goods_categories.csv / goods.csv).
 # =====================================================================
 param(
-    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'GoodsBom', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
+    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'GoodsBom', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'HrWorkers', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
     [string]$Target = 'All'
 )
 
@@ -124,7 +124,7 @@ $purchaseApplicationSql     = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDa
 $purchaseApplicationItemSql = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS amount_original, RQTY AS ordered_qty, UnitID AS unit_legacy_id, URate AS unit_rate, Weight AS weight, SOrderNo AS source_doc_no, SOrderNo AS sales_order_no, ProduceNo AS production_no, POrderNo AS purchase_order_no, FPlanNo AS production_plan_no, Pback AS purchase_reply, Summary AS summary, SendDate AS deliver_date FROM P_ApplicationItem ORDER BY ID'
 $purchaseOrderSql           = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, SendDate AS deliver_date, Purchaser AS purchaser_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, Fulfill AS fulfill_bit, Stop AS stop_bit, VendID AS supplier_legacy_id, TRate AS tax_rate, CurID AS currency_legacy_id, CRate AS exchange_rate, Cancel AS cancel_bit, PStyle AS settlement_style_legacy FROM P_Order ORDER BY ID'
 $purchaseOrderItemSql       = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS amount_original, RQTY AS received_qty, WQTY AS returned_qty, ApplyID AS request_item_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, SendDate AS deliver_date, Weight AS weight, SOrderNo AS source_doc_no, SOrderNo AS sales_order_no, PInNo AS receipt_no, FPlanNo AS production_plan_no FROM P_OrderItem ORDER BY ID'
-$purchaseReceiptSql         = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, SenderID AS sender_legacy, Receiver AS receiver_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, TRate AS tax_rate, CurID AS currency_legacy_id, CRate AS exchange_rate, Cancel AS cancel_bit, Last_Date AS last_date, PStyle AS settlement_style_legacy FROM P_In ORDER BY ID'
+$purchaseReceiptSql         = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, SenderID AS sender_legacy, Receiver AS receiver_legacy, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, TRate AS tax_rate, CurID AS currency_legacy_id, CRate AS exchange_rate, Cancel AS cancel_bit, Last_Date AS last_date, PStyle AS settlement_style_legacy, sman AS salesman_legacy FROM P_In ORDER BY ID'
 $purchaseReceiptItemSql     = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS amount_original, OrderID AS order_item_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, WQTY AS returned_qty, BPQTY AS gift_qty, Weight AS weight, SOrderNo AS source_doc_no, OrderNo AS order_no, SOrderNo AS sales_order_no, FPlanNo AS production_plan_no FROM P_InItem ORDER BY ID'
 $purchaseReturnSql          = 'SELECT ID AS legacy_id, BillNo AS bill_no, BillDate AS bill_date, VendID AS supplier_legacy_id, StockID AS warehouse_legacy_id, MakeID AS maker_legacy, ApproverID AS approver_legacy, Remark AS remark, Total AS total_original, Status AS status, CurID AS currency_legacy_id, CRate AS exchange_rate, Cancel AS cancel_bit, Last_Date AS last_date, PStyle AS settlement_style_legacy FROM P_Withdraw ORDER BY ID'
 $purchaseReturnItemSql      = 'SELECT ID AS legacy_id, BillID AS bill_legacy_id, GoodsID AS goods_legacy_id, ColorID AS color_legacy_id, QTY AS qty, Price AS price, Total AS amount_original, InID AS receipt_item_legacy_id, OrderID AS order_item_legacy_id, UnitID AS unit_legacy_id, URate AS unit_rate, Weight AS weight, SOrderNo AS source_doc_no, InNo AS receipt_no, OrderNo AS order_no, SOrderNo AS sales_order_no, FPlanNo AS production_plan_no FROM P_WithdrawItem ORDER BY ID'
@@ -141,6 +141,13 @@ $bWorkerSchemaSql           = 'SELECT ORDINAL_POSITION AS pos, COLUMN_NAME AS co
 
 # ---- Sys_Operator 参考导出（ID + fname）：制单员/审核员（MakeID/ApproverID）名冻结用，不入 employees 表（避免与 B_Worker 撞号）----
 $legacyOperatorRefSql       = 'SELECT ID AS legacy_id, fname AS name FROM Sys_Operator ORDER BY ID'
+
+# ---- 老库部门参考导出（SystemItem ItemclassID=5）：采购申请单 StepID → 部门名（老视图 View_P_Application 口径）----
+$legacyDeptSql              = 'SELECT ItemID AS legacy_id, Name AS name, Number AS code FROM SystemItem WHERE ItemclassID = 5 ORDER BY ItemID'
+
+# ---- B_Worker 人事全量导出（试迁测试数据用；可选列全部按文本导，迁移端 NULLIF 处理空串）----
+# Emp_Style=工种/职位（老库 Post/Duty 全空）；ParentID=部门（SystemItem ItemclassID=5）。
+$hrWorkersSql               = 'SELECT ID AS legacy_id, Emp_Name AS full_name, Number AS worker_number, ParentID AS dept_legacy_id, BirthDay AS birth_date, Sex AS sex, Education AS education, Emp_Style AS emp_style, Work_Date AS work_date, ID_Card AS id_card, Mobile AS mobile, Nat_Place AS nat_place, Phone AS phone, Work_Phone AS work_phone, Email AS email, Address AS address, Remark AS remark, Status AS legacy_status FROM B_Worker ORDER BY ID'
 
 # ---- Warehouse-management docs (O_* unified -> stock_documents). ----
 # 8 doc main/item tables aliased to ONE staging shape (see migrate_stock_docs.sql
@@ -277,6 +284,8 @@ switch ($Target) {
         Export-Query -Sql $purchaseApplicationSql     -OutPath (Join-Path $dataDir 'purchase_applications.csv')
         Export-Query -Sql $purchaseApplicationItemSql -OutPath (Join-Path $dataDir 'purchase_application_items.csv')
         Export-Query -Sql $legacyWorkerRefSql         -OutPath (Join-Path $dataDir 'legacy_workers_ref.csv')
+        Export-Query -Sql $legacyOperatorRefSql       -OutPath (Join-Path $dataDir 'legacy_operators_ref.csv')
+        Export-Query -Sql $legacyDeptSql              -OutPath (Join-Path $dataDir 'legacy_departments.csv')
     }
     'PurchaseOrder' {
         Export-Query -Sql $purchaseOrderSql     -OutPath (Join-Path $dataDir 'purchase_orders.csv')
@@ -379,6 +388,11 @@ switch ($Target) {
         Export-Query -Sql $drSql       -OutPath (Join-Path $dataDir 'production_daily_reports.csv')
         Export-Query -Sql $driSql      -OutPath (Join-Path $dataDir 'production_daily_report_items.csv')
     }
+    'HrWorkers' {
+        # B_Worker 人事全量 + 部门字典（迁移映射用）
+        Export-Query -Sql $hrWorkersSql   -OutPath (Join-Path $dataDir 'hr_workers.csv')
+        Export-Query -Sql $legacyDeptSql  -OutPath (Join-Path $dataDir 'legacy_departments.csv')
+    }
     'M_Acc'        { Export-Query -Sql $mAccSql        -OutPath (Join-Path $dataDir 'm_acc.csv') }
     'M_Style'      { Export-Query -Sql $mStyleSql      -OutPath (Join-Path $dataDir 'm_style.csv') }
     'M_in'         { Export-Query -Sql $mInSql         -OutPath (Join-Path $dataDir 'm_in.csv') }
@@ -412,6 +426,11 @@ switch ($Target) {
         Export-Query -Sql $purchaseReceiptItemSql -OutPath (Join-Path $dataDir 'purchase_receipt_items.csv')
         Export-Query -Sql $purchaseReturnSql     -OutPath (Join-Path $dataDir 'purchase_returns.csv')
         Export-Query -Sql $purchaseReturnItemSql -OutPath (Join-Path $dataDir 'purchase_return_items.csv')
+        # 采购参考：操作员（制单员/审核员名冻结）+ 老库部门（申请单 StepID → 部门名）
+        Export-Query -Sql $legacyOperatorRefSql   -OutPath (Join-Path $dataDir 'legacy_operators_ref.csv')
+        Export-Query -Sql $legacyDeptSql          -OutPath (Join-Path $dataDir 'legacy_departments.csv')
+        # 人事：B_Worker 全量（试迁测试数据）
+        Export-Query -Sql $hrWorkersSql           -OutPath (Join-Path $dataDir 'hr_workers.csv')
         # warehouse-management 8 docs + StockGoods ledger
         Export-Query -Sql $whTransferMain     -OutPath (Join-Path $dataDir 'stock_transfer_m.csv')
         Export-Query -Sql $whTransferItem     -OutPath (Join-Path $dataDir 'stock_transfer_i.csv')

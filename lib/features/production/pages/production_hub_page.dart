@@ -17,6 +17,7 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../widgets/production_pending_badge.dart';
 
 class ProductionHubPage extends StatelessWidget {
   const ProductionHubPage({super.key});
@@ -38,16 +39,23 @@ class ProductionHubPage extends StatelessWidget {
             children: [
               _section(context, theme, '生产管理', const [
                 _Entry(
+                  icon: Icons.dashboard_customize_outlined,
+                  label: '生产调度',
+                  description: '待排产 · 合并排产 · 缺料提醒',
+                  location: '/production/schedule',
+                  badge: ProductionPendingBadge(),
+                ),
+                _Entry(
                   icon: Icons.assignment_outlined,
                   label: '生产计划单',
                   description: '计划单 · 明细 · 审核',
-                  location: '/production/plans',
+                  location: '/production/plans/new',
                 ),
                 _Entry(
                   icon: Icons.edit_calendar_outlined,
                   label: '生产日报表',
                   description: '完工日报 · 留位',
-                  location: '/production/daily-reports',
+                  location: '/production/daily-reports/new',
                 ),
               ]),
               const SizedBox(height: UtenSpacing.s16),
@@ -111,12 +119,16 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
+    this.badge,
   });
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
+
+  /// 右上角待办徽章（如 ProductionPendingBadge；>0 自动显示）
+  final Widget? badge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -133,37 +145,47 @@ class _EntryTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => goFrom(context, entry.location),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-              vertical: UtenSpacing.s20, horizontal: UtenSpacing.s16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(entry.icon, color: color, size: 22),
+        child: Stack(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(
+                  vertical: UtenSpacing.s20, horizontal: UtenSpacing.s16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: UtenRadius.lgAll,
+                border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(entry.label,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(entry.description,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            ],
-          ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: UtenRadius.mdAll,
+                    ),
+                    child: Icon(entry.icon, color: color, size: 22),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Text(entry.label,
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(entry.description,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            if (entry.badge != null)
+              Positioned(
+                top: UtenSpacing.s8,
+                right: UtenSpacing.s8,
+                child: entry.badge!,
+              ),
+          ],
         ),
       ),
     );

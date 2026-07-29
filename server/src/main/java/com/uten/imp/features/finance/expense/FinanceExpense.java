@@ -69,4 +69,11 @@ public class FinanceExpense extends SoftDeletableEntity {
 
     @Column(name = "is_closed", nullable = false)
     private boolean closed = false;
+
+    /** C6：0 未过账 / 1 已过账待财务确认 / 2 财务已确认。 */
+    @Column(name = "gl_status", nullable = false)
+    private Short glStatus = 0;
+
+    @Column(name = "gl_voucher_id")
+    private UUID glVoucherId;
 }

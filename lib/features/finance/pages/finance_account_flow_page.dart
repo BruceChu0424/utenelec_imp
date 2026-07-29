@@ -5,12 +5,17 @@
 //   · 银行存取明细 (Q)   → /finance/reports/bank/detail（M_Bank 老库 0 行，空表保结构）
 //   · 银行存取汇总 (R)   → /finance/reports/bank/summary（空表）
 // 右侧 MasterDataTableView。默认日期范围 = 上月今日..今日（defaultReportFrom()）。账户列表来自 FinanceNameService。
+//
+// 筛选口径（报表类型/账户/日期范围/排序）按账号服务端持久化
+// （report.finance.accountFlow，ReportFilterPrefs：docType=view、extra={accountId}）；关键字不持久化。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -23,6 +28,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../providers/finance_name_provider.dart';
 
@@ -51,16 +57,59 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
   ReportData? _data;
   bool _loading = false;
 
+  /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
+  bool _dirty = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyPrefs(ref.read(financeAccountFlowReportPrefsProvider));
       ref.read(financeNameServiceProvider).ensureLoaded().then((_) {
         final entries = ref.read(financeNameServiceProvider).accountEntries;
-        if (entries.isNotEmpty) setState(() => _accountId ??= entries.keys.first);
+        // 偏好恢复的账户优先；无恢复值才默认第一个
+        if (entries.isNotEmpty) {
+          setState(() {
+            if (_accountId == null || !entries.containsKey(_accountId)) {
+              _accountId = entries.keys.first;
+            }
+          });
+        }
         _load();
       });
     });
+  }
+
+  /// 应用偏好快照（空快照=未存过，保留页面默认）。
+  void _applyPrefs(ReportFilterPrefs p) {
+    if (p.isEmpty) return;
+    setState(() {
+      final v = p.docType;
+      if (v != null) {
+        _view = _FlowView.values.firstWhere((e) => e.name == v, orElse: () => _view);
+      }
+      _accountId = p.extra['accountId']?.toString();
+      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
+      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
+      _sortKey = p.sortKey;
+      _sortAsc = p.sortAsc;
+    });
+  }
+
+  /// 当前筛选口径快照（不含关键字/分页）。
+  ReportFilterPrefs _snapshot() => ReportFilterPrefs(
+        docType: _view.name,
+        from: _fmt(_from),
+        to: _fmt(_to),
+        sortKey: _sortKey,
+        sortAsc: _sortAsc,
+        extra: {if (_accountId != null) 'accountId': _accountId},
+      );
+
+  /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  void _persistPrefs() {
+    _dirty = true;
+    ref.read(financeAccountFlowReportPrefsProvider.notifier).update(_snapshot());
   }
 
   String get _endpoint => switch (_view) {
@@ -107,6 +156,7 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
       _sortAsc = ascending;
       _page = 1;
     });
+    _persistPrefs();
     _load();
   }
 
@@ -122,28 +172,45 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
         ...sortQueryParams(_sortKey, _sortAsc),
       };
 
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 仅 S 帐户进出流水（与导出口径一致）。
+  Future<UtenPrintTable> _printLoader() async {
+    final api = ref.read(apiClientProvider);
+    final json = await api.get('/finance/reports/account/statement',
+        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final data = parseReportResponse(json, 1);
+    return UtenPrintTable(
+      headers: [for (final c in data.columns) c.label],
+      rows: [
+        for (final r in data.rows)
+          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
+      ],
+    );
+  }
+
+  /// 当前视图标题（build 与表格工具条共用）。
+  String get _title => switch (_view) {
+        _FlowView.statement => '帐户进出流水帐',
+        _FlowView.bankDetail => '银行存取款明细表',
+        _FlowView.bankSummary => '银行存取款汇总表',
+      };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final title = switch (_view) {
-      _FlowView.statement => '帐户进出流水帐',
-      _FlowView.bankDetail => '银行存取款明细表',
-      _FlowView.bankSummary => '银行存取款汇总表',
-    };
+    final title = _title;
+    // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。
+    ref.listen(financeAccountFlowReportPrefsProvider, (prev, next) {
+      if (!_dirty && prev != next && !next.isEmpty && mounted) {
+        _applyPrefs(next);
+        _page = 1;
+        _load();
+      }
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
         leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.finance)),
-        actions: [
-          // 仅 S 帐户进出流水支持导出；Q/R 银行存取款为空表（M_Bank 0 行），不显示导出按钮。
-          if (_view == _FlowView.statement)
-            UtenExportButton(
-              endpoint: '/finance/reports/export',
-              report: _exportReport,
-              queryParams: _exportQuery,
-              filename: title,
-            ),
-        ],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -202,18 +269,24 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
                   for (final e in names.accountEntries.entries)
                     DropdownMenuItem<String?>(value: e.key, child: Text(e.value, maxLines: 1, overflow: TextOverflow.ellipsis)),
                 ],
-                onChanged: (v) { setState(() { _accountId = v; _page = 1; }); _load(); },
+                onChanged: (v) { setState(() { _accountId = v; _page = 1; }); _persistPrefs(); _load(); },
               )),
               const SizedBox(height: UtenSpacing.s12),
               _filterLabel('日期范围'),
               Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 TextButton.icon(onPressed: () async {
                   final p = await showDatePicker(context: context, initialDate: _from, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                  if (p != null) setState(() => _from = p);
+                  if (p != null) {
+                    setState(() => _from = p);
+                    _persistPrefs();
+                  }
                 }, icon: const Icon(Icons.event_outlined, size: 18), label: Text('起 ${_fmt(_from)}')),
                 TextButton.icon(onPressed: () async {
                   final p = await showDatePicker(context: context, initialDate: _to, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                  if (p != null) setState(() => _to = p);
+                  if (p != null) {
+                    setState(() => _to = p);
+                    _persistPrefs();
+                  }
                 }, icon: const Icon(Icons.event_outlined, size: 18), label: Text('止 ${_fmt(_to)}')),
               ]),
               const SizedBox(height: UtenSpacing.s12),
@@ -240,6 +313,7 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
   void _changeView(_FlowView v) {
     if (v == _view) return;
     setState(() { _view = v; _page = 1; _data = null; });
+    _persistPrefs();
     _load();
   }
 
@@ -265,6 +339,30 @@ class _FinanceAccountFlowPageState extends ConsumerState<FinanceAccountFlowPage>
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
       items: data.rows,
+      // 仅 S 帐户进出流水支持预览打印/导出；Q/R 银行存取款为空表（M_Bank 0 行），不显示。
+      toolbarActions: [
+        if (_view == _FlowView.statement) ...[
+          UtenPrintPreviewButton(
+            title: _title,
+            subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+            loader: _printLoader,
+            exportEndpoint: '/finance/reports/export',
+            exportReport: _exportReport,
+            exportQuery: _exportQuery,
+            exportFilename: _title,
+            type: UtenButtonType.primary,
+            size: UtenButtonSize.large,
+          ),
+          UtenExportButton(
+            endpoint: '/finance/reports/export',
+            report: _exportReport,
+            queryParams: _exportQuery,
+            filename: _title,
+            type: UtenButtonType.primary,
+            size: UtenButtonSize.large,
+          ),
+        ],
+      ],
       facets: const {},
       nullCounts: const {},
       filters: const {},

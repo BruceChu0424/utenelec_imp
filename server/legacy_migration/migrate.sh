@@ -16,6 +16,9 @@
 #   bash server/legacy_migration/migrate.sh --subcontract # 只迁委外八单据（询价/申请/订单+BOM/入库/发料/退料/次品退/废料）
 #   bash server/legacy_migration/migrate.sh --production # 只迁生产（F_Plan/F_PlanItem/F_PlanCostItem/F_DateReport，依赖 --sales 先迁）
 #   bash server/legacy_migration/migrate.sh --finance    # 只迁钱流（账户/付款方式 + AR/AP + 收支/对账）
+#   bash server/legacy_migration/migrate.sh --hr-workers # 只迁人事老库（B_Worker 全量试迁，含加密敏感信息）
+#   bash server/legacy_migration/migrate.sh --goods-owner # 只迁货品归属（外贸按人授权，V85）
+#   bash server/legacy_migration/migrate.sh --client-owner # 只迁客户归属（业务员按人授权，V86）
 #
 # 当前已实现：货品/模具/客户/供应商（分类+主档）、颜色/单位/币种/仓库主档、采购四单据、
 #   仓库管理 9 单据（统一 stock_documents + 台账余额 + 流水）、销售五单据（含 BOM 成本子表）、
@@ -33,14 +36,16 @@ CONTAINER="${PG_CONTAINER:-uten-imp-postgres}"
 PG_USER="${PG_USER:-uten}"
 PG_DB="${PG_DB:-uten_imp}"
 TARGET="${1:---all}"
+# docker 可执行文件自动探测（Windows git bash 常不在 PATH，可用 DOCKER 环境变量覆盖）
+DOCKER="${DOCKER:-$(command -v docker || command -v docker.exe || echo '/c/Program Files/Docker/Docker/resources/bin/docker.exe')}"
 
 run_sql () {  # $1 = sql 文件名（HERE 下）
-    docker exec -i "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 < "$HERE/$1"
+    "$DOCKER" exec -i "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 < "$HERE/$1"
 }
 
 copy_csv () {  # $1 = csv 文件名（HERE/data 下）；自动去 CRLF（Windows 导出兼容）
-    docker cp "$HERE/data/$1" "$CONTAINER:/tmp/$1"
-    docker exec "$CONTAINER" sh -c "tr -d '\r' < /tmp/$1 > /tmp/$1.lf && mv /tmp/$1.lf /tmp/$1" 2>/dev/null || true
+    "$DOCKER" cp "$HERE/data/$1" "$CONTAINER:/tmp/$1"
+    "$DOCKER" exec "$CONTAINER" sh -c "tr -d '\r' < /tmp/$1 > /tmp/$1.lf && mv /tmp/$1.lf /tmp/$1" 2>/dev/null || true
 }
 
 migrate_goods () {
@@ -137,11 +142,12 @@ migrate_warehouse_data () {
 }
 
 migrate_purchase () {
-    echo "→ [采购四单据] 复制 CSV（8 个）..."
+    echo "→ [采购四单据] 复制 CSV（11 个：8 单据 + 人员/部门参考）..."
     for f in purchase_applications purchase_application_items \
              purchase_orders purchase_order_items \
              purchase_receipts purchase_receipt_items \
-             purchase_returns purchase_return_items; do
+             purchase_returns purchase_return_items \
+             legacy_workers_ref legacy_operators_ref legacy_departments; do
         copy_csv "$f.csv"
     done
     echo "→ [采购四单据] 执行迁移 SQL..."
@@ -233,9 +239,62 @@ migrate_finance () {
     run_sql migrate_finance.sql
 }
 
+# 人事老库（B_Worker 72 人全量试迁）：employees 主档 + Emp_Style 职位建档 +
+#   身份证/手机 pgcrypto+HMAC 敏感信息。只动 LEGACY-W-* stub，HR 真员工不覆盖；幂等重跑。
+# 密钥注入：从 server/.env 读 UTEN_PGP_MASTER_KEY/UTEN_HMAC_KEY 生成临时 \set 文件送入容器，
+#   用完本地/容器两侧即删（不落库、不进日志、不进 git）。
+migrate_hr_workers () {
+    echo "→ [人事老库] 复制 CSV（1 个：hr_workers）..."
+    copy_csv hr_workers.csv
+    echo "→ [人事老库] 注入加密密钥（临时文件，用后删除）..."
+    local envf="$HERE/../.env" keyf="$HERE/.uten_keys.tmp.sql"
+    local pgp_key pgp_ver hmac_key
+    pgp_key=$(grep '^UTEN_PGP_MASTER_KEY=' "$envf" | cut -d= -f2-)
+    pgp_ver=$(grep '^UTEN_PGP_KEY_VERSION=' "$envf" | cut -d= -f2-)
+    hmac_key=$(grep '^UTEN_HMAC_KEY=' "$envf" | cut -d= -f2-)
+    if [ -z "$pgp_key" ] || [ -z "$hmac_key" ]; then
+        echo "✗ server/.env 缺少 UTEN_PGP_MASTER_KEY 或 UTEN_HMAC_KEY"; exit 1
+    fi
+    pgp_ver="${pgp_ver:-v1}"
+    {
+        printf "\\set pgp_key '%s'\n"  "${pgp_key//\'/\'\'}"
+        printf "\\set pgp_ver '%s'\n"  "${pgp_ver//\'/\'\'}"
+        printf "\\set hmac_key '%s'\n" "${hmac_key//\'/\'\'}"
+    } > "$keyf"
+    "$DOCKER" cp "$keyf" "$CONTAINER:/tmp/_uten_keys.sql"
+    rm -f "$keyf"
+    echo "→ [人事老库] 执行迁移 SQL（部门映射 + 职位建档 + 员工/敏感信息 upsert）..."
+    run_sql migrate_hr_workers.sql
+    "$DOCKER" exec "$CONTAINER" rm -f /tmp/_uten_keys.sql
+}
+
+# 货品归属（外贸按人授权）：老库外贸子树 → goods.owner_employee_id（无 CSV，纯 UPDATE）。
+# 依赖：goods/material_categories 已迁 + employees 有 legacy_id + V85 已应用。幂等（先清零再灌）。
+migrate_goods_owner () {
+    echo "→ [货品归属] 执行归属迁移 SQL（外贸子树 → owner_employee_id）..."
+    run_sql migrate_goods_owner.sql
+}
+
+# 客户归属（业务员按人授权）：clients.emp_id → owner_employee_id（无 CSV，纯 UPDATE）。
+# 依赖：clients 已迁 + employees 有 legacy_id + V86 已应用。幂等（先清零再灌）。
+migrate_client_owner () {
+    echo "→ [客户归属] 执行归属迁移 SQL（emp_id → owner_employee_id）..."
+    run_sql migrate_client_owner.sql
+}
+
+# 销售单据归属（业务员按人授权）：seller_legacy_id → owner_employee_id（无 CSV，纯 UPDATE）。
+# 依赖：销售单据已迁 + employees 有 legacy_id + V91 已应用。幂等（先清零再灌）。
+migrate_sales_owner () {
+    echo "→ [销售归属] 执行归属迁移 SQL（seller_legacy_id → owner_employee_id）..."
+    run_sql migrate_sales_owner.sql
+}
+
 case "$TARGET" in
     --goods|-g) migrate_goods ;;
     --goods-data) migrate_goods_data ;;
+    --goods-owner) migrate_goods_owner ;;
+    --client-owner) migrate_client_owner ;;
+    --sales-owner) migrate_sales_owner ;;
     --goods-bom) migrate_goods_bom ;;
     --mould|-m) migrate_mould ;;
     --mould-data) migrate_mould_data ;;
@@ -253,6 +312,7 @@ case "$TARGET" in
     --subcontract) migrate_subcontract ;;
     --production) migrate_production ;;
     --finance) migrate_finance ;;
+    --hr-workers) migrate_hr_workers ;;
     --all|-a|*)
         migrate_goods
         migrate_goods_data
@@ -273,6 +333,10 @@ case "$TARGET" in
         migrate_subcontract
         migrate_production
         migrate_finance
+        migrate_hr_workers
+        migrate_goods_owner
+        migrate_client_owner
+        migrate_sales_owner
         ;;
 esac
 

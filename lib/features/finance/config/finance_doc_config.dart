@@ -96,6 +96,7 @@ class FinanceDocConfig {
     hasInvoiceNo: true,
     accountLabel: '收款账户',
     partyLabel: '客户',
+    skipListOnCreate: true,
   );
 
   static const payment = FinanceDocConfig(
@@ -109,6 +110,7 @@ class FinanceDocConfig {
     itemMode: ItemMode.settle,
     accountLabel: '付款账户',
     partyLabel: '供应商',
+    skipListOnCreate: true,
   );
 
   static const expense = FinanceDocConfig(

@@ -59,6 +59,10 @@ public class Client extends SoftDeletableEntity {
     private String placeId;             // PlaceID（地区文本，如"四川省"）
     @Column(name = "emp_id")
     private String empId;               // Emp_ID（业务员 legacy id，文本保原值）
+
+    /** 归属业务员（每个销售只看自己的客户；NULL=公共客户全员可见）。V86 新增。 */
+    @Column(name = "owner_employee_id")
+    private java.util.UUID ownerEmployeeId;
     @Column(name = "legal_person")
     private String legalPerson;         // Juri_Per（法人）
     private String linkman;             // Link_Man（联系人）
@@ -107,4 +111,8 @@ public class Client extends SoftDeletableEntity {
     // ===== 状态 / 备注 =====
     private String status;              // Status（使用/禁用）
     private String remark;              // Remark（备注）
+
+    /** 铺底额（V121，元）：应收管控下限；应收汇总表「超出铺底额」= 应收余额−铺底额。 */
+    @Column(name = "credit_floor", precision = 18, scale = 4)
+    private java.math.BigDecimal creditFloor;
 }

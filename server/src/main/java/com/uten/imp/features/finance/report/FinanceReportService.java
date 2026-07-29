@@ -51,6 +51,10 @@ public class FinanceReportService {
 
     private final EntityManager em;
     private final SystemSettingsService settings;
+    private final com.uten.imp.features.finance.statement.FinanceStatementService statementService;
+    private final com.uten.imp.features.finance.cost.FinanceCostService costService;
+    private final com.uten.imp.features.finance.gl.GlReportService glReportService;
+    private final com.uten.imp.features.finance.asset.FixedAssetService fixedAssetService;
 
     // ======================== 通用执行器（镜像销售/采购） ========================
 
@@ -305,7 +309,9 @@ public class FinanceReportService {
                 : payableSummary(keyword, from, to, facets, page, size, sort, order);
     }
 
-    /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。 */
+    /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。
+     *  附件6 口径（2026-07-29 补全）：结算期限（PStyle+TDay 渲染）/铺底额（clients.credit_floor）/
+     *  超出铺底额（应收余额−铺底额，负取 0）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receivableSummary(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
@@ -316,6 +322,7 @@ public class FinanceReportService {
                 ReportColumn.text("director", "总监", 110),
                 ReportColumn.text("region", "区域", 100),
                 ReportColumn.text("district", "所属地区", 110),
+                ReportColumn.text("settlement", "结算期限", 130),
                 ReportColumn.money("creditFloor", "铺底额"),
                 ReportColumn.money("prevBalance", "上月余额"),
                 ReportColumn.money("shippedAmount", "发货金额"),
@@ -348,63 +355,116 @@ public class FinanceReportService {
                 SELECT c.code AS "partyCode", c.name AS "partyName", c.full_name AS "partyFull",
                     COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director",
                     COALESCE(c.region,'') AS "region", COALESCE(c.place_id,'') AS "district",
-                    NULL AS "creditFloor",
+                    CASE c.price_style
+                        WHEN 6 THEN '月结' || COALESCE(NULLIF(c.tday, 0), 30) || '天'
+                        WHEN 1 THEN '现金'
+                        WHEN 2 THEN '提货'
+                        WHEN 3 THEN '代付'
+                        WHEN 4 THEN '支票'
+                        WHEN 7 THEN '垫付'
+                        WHEN 8 THEN '汇款'
+                        WHEN 10 THEN '代收'
+                        ELSE CASE WHEN c.tday IS NOT NULL AND c.tday > 0 THEN '月结' || c.tday || '天' ELSE '' END
+                    END AS "settlement",
+                    c.credit_floor AS "creditFloor",
                     (COALESCE(p.prior_posted,0) - COALESCE(co.prior_coll,0)) AS "prevBalance",
                     COALESCE(p.shipped,0) AS "shippedAmount",
                     COALESCE(co.period_coll,0) AS "receivedAmount",
                     COALESCE(p.returned,0) AS "returnAmount",
                     COALESCE(co.period_coll,0) AS "offsetAmount",
                     (COALESCE(p.total_posted,0) - COALESCE(co.total_coll,0)) AS "balance",
-                    NULL AS "overFloor", NULL AS "materialAmount"
+                    GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_coll,0)) - COALESCE(c.credit_floor,0), 0) AS "overFloor",
+                    NULL AS "materialAmount"
                 FROM clients c
                 JOIN posting p ON p.client_id=c.id
                 LEFT JOIN coll co ON co.client_id=c.id
                 LEFT JOIN client_director_v d ON d.client_id=c.id
                 LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
                 """;
-        return executeRawPaged(cols, core, "c.name", keyword, from, to, page, size);
+        return executeRawPaged(cols, core, "c.name", keyword, from, to, page, size, "c");
     }
 
-    /** D 应付款汇总（按立帐单号一行一单：立帐单号/供应商/开单日期/币别/汇率/应付帐款/已付金额）。 */
+    /** D 应付款汇总（按供应商；附件 3 口径，2026-07-29 重做）：
+     *  供应商编号/简称/全称/结算期限/上月余额/货款金额/付款金额/退货金额/货款冲销/货款余额/应付合计。
+     *  恒等式：期初+货款+退货−付款=期末（与 B 应收同「立帐−付款」时序口径）。
+     *  模具款四列（模具款/付款/冲销/余额）暂无模具立帐数据源，占位 NULL（注释见 SQL）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse payableSummary(String keyword, LocalDate from, LocalDate to,
                                               Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
-                ReportColumn.text("billNo", "立帐单号", 150),
-                ReportColumn.text("supplierName", "供应商", 180),
-                ReportColumn.date("billDate", "开单日期"),
-                ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.number("rate", "汇率"),
-                ReportColumn.money("payable", "应付帐款"),
-                ReportColumn.money("paid", "已付金额"));
-        String dataSelect = """
-                SELECT l.bill_no AS "billNo", s.name AS "supplierName", l.bill_date AS "billDate",
-                       cur.code AS "currencyCode", l.exchange_rate AS "rate",
-                       l.amount_original_local AS "payable", l.amount_settled AS "paid"
+                ReportColumn.text("partyCode", "供应商编号", 110),
+                ReportColumn.text("partyName", "供应商简称", 160),
+                ReportColumn.text("partyFull", "供应商全称", 200),
+                ReportColumn.text("settlement", "结算期限", 150),
+                ReportColumn.money("prevBalance", "上月余额"),
+                ReportColumn.money("goodsAmount", "货款金额"),
+                ReportColumn.money("paidAmount", "付款金额"),
+                ReportColumn.money("returnAmount", "退货金额"),
+                ReportColumn.money("offsetAmount", "货款冲销"),
+                ReportColumn.money("balance", "货款余额"),
+                ReportColumn.money("mouldAmount", "模具款"),
+                ReportColumn.money("mouldPaid", "模具付款"),
+                ReportColumn.money("mouldOffset", "模具款冲销"),
+                ReportColumn.money("mouldBalance", "模具款余额"),
+                ReportColumn.money("totalBalance", "应付合计"));
+        // 立帐取 ar_ap_ledger（PURCHASE_RECEIPT 正 / PURCHASE_RETURN 负），付款取 finance_payments。
+        // 退货为负立帐自动冲减。结算期限 = PStyle 字典 + TDay 渲染。
+        String core = """
+                WITH posting AS (
+                    SELECT supplier_id,
+                        SUM(CASE WHEN bill_date < :from THEN amount_original_local ELSE 0 END) AS prior_posted,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='PURCHASE_RECEIPT' THEN amount_original_local ELSE 0 END) AS goods,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='PURCHASE_RETURN' THEN amount_original_local ELSE 0 END) AS returned,
+                        SUM(CASE WHEN bill_date <= :to THEN amount_original_local ELSE 0 END) AS total_posted
+                    FROM ar_ap_ledger WHERE is_deleted=false AND status=1 AND direction='AP' AND supplier_id IS NOT NULL
+                    GROUP BY supplier_id
+                ), paid AS (
+                    SELECT supplier_id,
+                        SUM(CASE WHEN bill_date < :from THEN amount_local ELSE 0 END) AS prior_paid,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN amount_local ELSE 0 END) AS period_paid,
+                        SUM(amount_local) AS total_paid
+                    FROM finance_payments WHERE COALESCE(is_deleted,false)=false AND status=1 AND supplier_id IS NOT NULL
+                    GROUP BY supplier_id
+                )
+                SELECT s.code AS "partyCode", s.name AS "partyName", COALESCE(s.description, s.name) AS "partyFull",
+                    CASE s.price_style
+                        WHEN 6 THEN '月结' || COALESCE(NULLIF(s.tday, 0), 30) || '天'
+                        WHEN 1 THEN '现金'
+                        WHEN 2 THEN '提货'
+                        WHEN 3 THEN '代付'
+                        WHEN 4 THEN '支票'
+                        WHEN 7 THEN '垫付'
+                        WHEN 8 THEN '汇款'
+                        WHEN 10 THEN '代收'
+                        ELSE CASE WHEN s.tday IS NOT NULL AND s.tday > 0 THEN '月结' || s.tday || '天' ELSE '' END
+                    END AS "settlement",
+                    (COALESCE(p.prior_posted,0) - COALESCE(pa.prior_paid,0)) AS "prevBalance",
+                    COALESCE(p.goods,0) AS "goodsAmount",
+                    COALESCE(pa.period_paid,0) AS "paidAmount",
+                    COALESCE(p.returned,0) AS "returnAmount",
+                    COALESCE(pa.period_paid,0) AS "offsetAmount",
+                    (COALESCE(p.total_posted,0) - COALESCE(pa.total_paid,0)) AS "balance",
+                    NULL AS "mouldAmount", NULL AS "mouldPaid", NULL AS "mouldOffset", NULL AS "mouldBalance",
+                    (COALESCE(p.total_posted,0) - COALESCE(pa.total_paid,0)) AS "totalBalance"
+                FROM suppliers s
+                JOIN posting p ON p.supplier_id=s.id
+                LEFT JOIN paid pa ON pa.supplier_id=s.id
                 """;
-        String fromJoin = """
-                FROM ar_ap_ledger l
-                LEFT JOIN suppliers s ON s.id=l.supplier_id
-                LEFT JOIN currencies cur ON cur.id=l.currency_id
-                """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(l.is_deleted,false)=false AND l.status=1 AND l.direction='AP'");
-        if (keyword != null && !keyword.isBlank())
-            w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(s.name,'')) LIKE LOWER(:kw))", "kw", "%" + keyword.toLowerCase() + "%");
-        if (from != null) w.add("l.bill_date>=:dateFrom", "dateFrom", from);
-        if (to != null) w.add("l.bill_date<=:dateTo", "dateTo", to);
-        return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", List.of(), facets, page, size, sort, order);
+        return executeRawPaged(cols, core, "s.name", keyword, from, to, page, size, "s");
     }
 
-    /** 原生 SQL 分页执行器（CTE/聚合报表用，如 B 应收汇总）。SQL 含 :from/:to[/:kw] 参数。 */
+    /** 原生 SQL 分页执行器（CTE/聚合报表用，如 B 应收汇总 / D 应付汇总）。SQL 含 :from/:to[/:kw] 参数。
+     *  [partyAlias] 外层主表别名（应收=客户 c / 应付=供应商 s），keyword 走 {alias}.name/{alias}.code。 */
     @Transactional(readOnly = true)
     private ReportTableResponse executeRawPaged(List<ReportColumn> cols, String coreSql, String orderBy,
-                                                String keyword, LocalDate from, LocalDate to, int page, int size) {
+                                                String keyword, LocalDate from, LocalDate to, int page, int size,
+                                                String partyAlias) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
         String where = "WHERE TRUE";
         if (keyword != null && !keyword.isBlank()) {
-            where = "WHERE (LOWER(COALESCE(c.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(c.code,'')) LIKE LOWER(:kw))";
+            where = "WHERE (LOWER(COALESCE(" + partyAlias + ".name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(" + partyAlias + ".code,'')) LIKE LOWER(:kw))";
         }
         var dq = em.createNativeQuery(coreSql + " " + where + " ORDER BY " + orderBy + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to);
@@ -1145,6 +1205,32 @@ public class FinanceReportService {
             case "statement/detail"  -> (pg, sz) -> partyStatementDetail(partyId, side, dateFrom, dateTo, pg, sz);
             case "statement/annual"  -> (pg, sz) -> partyAnnualStatement(partyId, side, year, pg, sz);
             case "account/statement" -> (pg, sz) -> accountStatement(accountId, dateFrom, dateTo, keyword, pg, sz);
+            // C2 对账单（FinanceStatementService；lossRate 仅 subcontract 用，默认 0.03）
+            case "statements/subcontract" -> (pg, sz) -> statementService.subcontractStatement(
+                    keyword, dateFrom, dateTo, parseBigDecimal(p == null ? null : p.get("lossRate")), pg, sz);
+            case "statements/supplier" -> (pg, sz) -> statementService.supplierStatement(keyword, dateFrom, dateTo, pg, sz);
+            case "statements/other-receivable" -> (pg, sz) -> statementService.otherReceivableStatement(keyword, dateFrom, dateTo, pg, sz);
+            case "statements/client" -> (pg, sz) -> statementService.clientStatement(keyword, dateFrom, dateTo, pg, sz);
+            // C4 成本核算（FinanceCostService）
+            case "cost/product" -> (pg, sz) -> costService.productCost(keyword, dateFrom, dateTo, pg, sz);
+            case "cost/sales-summary" -> (pg, sz) -> costService.salesCostSummary(keyword, dateFrom, dateTo, pg, sz);
+            case "cost/copper-fee" -> (pg, sz) -> costService.copperFee(keyword, dateFrom, dateTo, pg, sz);
+            case "cost/copper-pickling" -> (pg, sz) -> costService.copperPickling(keyword, dateFrom, dateTo, pg, sz);
+            case "cost/plastic" -> (pg, sz) -> costService.plasticUsage(keyword, dateFrom, dateTo, pg, sz);
+            case "cost/plastic-detail" -> (pg, sz) -> costService.plasticDetail(
+                    p == null ? null : p.get("kind"), keyword, dateFrom, dateTo, pg, sz);
+            // C3 总账（GlReportService；year/month 缺省取 dateTo 年/月）
+            case "gl/trial-balance" -> (pg, sz) -> glReportService.trialBalance(dateFrom, dateTo, pg, sz);
+            case "gl/balance-sheet" -> (pg, sz) -> glReportService.balanceSheet(dateTo);
+            case "gl/profit-annual" -> (pg, sz) -> glReportService.profitAnnual(yearOf(p, dateTo));
+            case "gl/profit-monthly" -> (pg, sz) -> glReportService.profitMonthly(yearOf(p, dateTo), monthOf(p, dateTo));
+            case "gl/manufacturing-expense" -> (pg, sz) -> glReportService.manufacturingExpense(yearOf(p, dateTo));
+            case "gl/admin-expense" -> (pg, sz) -> glReportService.adminExpense(yearOf(p, dateTo));
+            case "gl/sales-expense" -> (pg, sz) -> glReportService.salesExpense(yearOf(p, dateTo));
+            case "gl/operating-pl" -> (pg, sz) -> glReportService.operatingPl(yearOf(p, dateTo), monthOf(p, dateTo));
+            // C5 固定资产/长期待摊清单
+            case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule();
+            case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule();
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
         return paginateAll(loader);
@@ -1190,6 +1276,17 @@ public class FinanceReportService {
     private static Short parseShort(String s) { return (s == null || s.isBlank()) ? null : Short.valueOf(s); }
     private static LocalDate parseDate(String s) { return (s == null || s.isBlank()) ? null : LocalDate.parse(s); }
     private static Boolean parseBool(String s) { return (s == null || s.isBlank()) ? null : Boolean.valueOf(s); }
+    private static BigDecimal parseBigDecimal(String s) { return (s == null || s.isBlank()) ? null : new BigDecimal(s); }
+    private static int yearOf(Map<String, String> p, LocalDate dateTo) {
+        String y = p == null ? null : p.get("year");
+        if (y != null && !y.isBlank()) return Integer.parseInt(y);
+        return (dateTo != null ? dateTo : LocalDate.now()).getYear();
+    }
+    private static int monthOf(Map<String, String> p, LocalDate dateTo) {
+        String m = p == null ? null : p.get("month");
+        if (m != null && !m.isBlank()) return Integer.parseInt(m);
+        return (dateTo != null ? dateTo : LocalDate.now()).getMonthValue();
+    }
     private static int parseIntOrZero(String s) {
         if (s == null || s.isBlank()) return 0;
         try { return Integer.parseInt(s.trim()); } catch (NumberFormatException e) { return 0; }

@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../purchase/providers/master_name_provider.dart';
 
 /// 生产计划明细行。货品用 ValueNotifier（点选后单元格自动刷新，无需 setState）；
 /// 排产量控制器变更 → 写回 qtyNotifier（表尾合计订阅它）。
@@ -27,6 +27,14 @@ class ProductionGridRow extends EditableGridRow {
   final TextEditingController oqty = TextEditingController();
   final TextEditingController salesOrderNo = TextEditingController();
   final TextEditingController remark = TextEditingController();
+
+  /// 业务链溯源（从订单带明细时回填；保存随 salesOrderItemId 提交，
+  /// 计划审核时按 1:1 link 回写 sales_order_items.planned_qty）。
+  String? salesOrderItemId;
+  String? clientName;
+  double? unitRate; // 单位换算率（订单行带出；MRP 毛需求按基本单位折算依赖它）
+  String? orderDate; // yyyy-MM-dd（订单日期）
+  String? outboundDate; // yyyy-MM-dd（交货日）
 
   /// 颜色/单位（选货品后自动回填；单元格只读显示）。ValueNotifier 即时刷新。
   final colorIdNotifier = ValueNotifier<String?>(null);

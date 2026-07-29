@@ -15,6 +15,7 @@ import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferQueryF
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -62,7 +63,9 @@ public class FinanceBankTransferService {
     private final FinanceBankTransferLineRepository lineRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final EntityManager em;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter f, int page, int size, String sort, String order) {
@@ -101,7 +104,7 @@ public class FinanceBankTransferService {
         FinanceBankTransfer t = new FinanceBankTransfer();
         applyHeader(req, t);
         t.setStatus(STATUS_DRAFT);
-        t.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        t.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         transferRepo.save(t);
         List<FinanceBankTransferLineDto> items = saveLines(t, req.getItems());
         applyTotals(t, items);
@@ -146,11 +149,12 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
         FinanceBankTransfer t = require(id);
+        em.lock(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         // TODO: 跨币种换算核销（design doc 26 §4.7、§5.3）
-        t.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        t.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         t.setStatus(STATUS_APPROVED);
         transferRepo.save(t);
         return detail(id);
@@ -161,6 +165,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
         FinanceBankTransfer t = require(id);
+        em.lock(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -244,7 +249,8 @@ public class FinanceBankTransferService {
                 t.getOutAccountId(), t.getCurrencyId(), t.getExchangeRate(),
                 t.getAmountOriginal(), t.getAmountLocal(), t.getInvoiceNo(),
                 t.getOperatorId(), t.getMakerId(), t.getApproverId(), t.getRemark(),
-                t.getStatus(), t.isClosed(), items);
+                t.getStatus(), t.isClosed(), items,
+                nameResolver.nameOf(t.getMakerId()), t.getCreatedAt());
     }
 
     private FinanceBankTransfer require(UUID id) {

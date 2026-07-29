@@ -29,14 +29,23 @@ public class ProfileChangeQueryService {
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
 
+    /** 当前登录人绑定的员工档案 id。submitted_by 的 FK 指向 employees(id)，不能用 users.id 查。 */
+    private UUID requireEmployeeId() {
+        UUID employeeId = access.requireStaff().getEmployeeId();
+        if (employeeId == null) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号未绑定员工档案");
+        }
+        return employeeId;
+    }
+
     /** 员工自查列表。 */
     @Transactional(readOnly = true)
     public ProfileChangeDto.Page<ProfileChangeDto.MyListItem> myList(int page, int size, String status) {
-        UUID userId = access.requireStaff().getId();
+        UUID employeeId = requireEmployeeId();
         Pageable pageable = Pageables.of(page, size);
         Page<ProfileChangeRequest> p = (status == null || status.isBlank())
-                ? repo.findBySubmittedByOrderBySubmittedAtDesc(userId, pageable)
-                : repo.findBySubmittedByAndStatusOrderBySubmittedAtDesc(userId, status, pageable);
+                ? repo.findBySubmittedByOrderBySubmittedAtDesc(employeeId, pageable)
+                : repo.findBySubmittedByAndStatusOrderBySubmittedAtDesc(employeeId, status, pageable);
         List<ProfileChangeDto.MyListItem> items = new ArrayList<>();
         for (var e : foldByBatch(p.getContent()).entrySet()) {
             List<ProfileChangeRequest> rs = e.getValue();
@@ -57,10 +66,10 @@ public class ProfileChangeQueryService {
     /** 员工自查单批详情。 */
     @Transactional(readOnly = true)
     public ProfileChangeDto.BatchDetail myBatchDetail(UUID batchId) {
-        UUID userId = access.requireStaff().getId();
+        UUID employeeId = requireEmployeeId();
         List<ProfileChangeRequest> rs = repo.findByBatchId(batchId);
         if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "申请不存在");
-        boolean mine = rs.stream().allMatch(r -> r.getSubmittedBy().equals(userId));
+        boolean mine = rs.stream().allMatch(r -> r.getSubmittedBy().equals(employeeId));
         if (!mine) throw new ApiException(ErrorCode.FORBIDDEN);
         return mapper.toBatchDetail(rs);
     }
@@ -68,10 +77,10 @@ public class ProfileChangeQueryService {
     /** 员工撤销未审批次。 */
     @Transactional
     public void cancelBatch(UUID batchId) {
-        UUID userId = access.requireStaff().getId();
+        UUID employeeId = requireEmployeeId();
         List<ProfileChangeRequest> rs = repo.findByBatchIdAndStatus(batchId, "pending");
         if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "无 pending 批次可撤销");
-        boolean mine = rs.stream().allMatch(r -> r.getSubmittedBy().equals(userId));
+        boolean mine = rs.stream().allMatch(r -> r.getSubmittedBy().equals(employeeId));
         if (!mine) throw new ApiException(ErrorCode.FORBIDDEN);
         OffsetDateTime now = OffsetDateTime.now();
         for (ProfileChangeRequest r : rs) {
@@ -93,10 +102,12 @@ public class ProfileChangeQueryService {
             p = (status == null || status.isBlank())
                     ? repo.findByEmployeeIdOrderBySubmittedAtDesc(employeeId, pageable)
                     : repo.findByEmployeeIdAndStatusOrderBySubmittedAtDesc(employeeId, status, pageable);
+        } else if (status == null || status.isBlank()) {
+            // 默认待审队列
+            p = repo.findByStatusOrderBySubmittedAtDesc("pending", pageable);
         } else {
-            p = (status == null || status.isBlank() || "pending".equals(status))
-                    ? repo.findByStatusOrderBySubmittedAtDesc("pending", pageable)
-                    : repo.findAllByOrderBySubmittedAtDesc(pageable);
+            // 指定状态筛选（applied/rejected/cancelled）——之前误用 findAll 导致筛选失效（混合全部状态）
+            p = repo.findByStatusOrderBySubmittedAtDesc(status, pageable);
         }
         Map<UUID, List<ProfileChangeRequest>> byBatch = foldByBatch(p.getContent());
         // 员工姓名/部门批量回填（避免逐批 findById 的 N+1）

@@ -20,10 +20,10 @@ class GoodsOption {
   final String? name;
 
   factory GoodsOption.fromJson(Map<String, dynamic> json) => GoodsOption(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+  );
 }
 
 class SalesMasterNameService {
@@ -35,6 +35,7 @@ class SalesMasterNameService {
   Map<String, String> _currencies = {};
   Map<String, String> _colors = {};
   Map<String, String> _units = {};
+
   /// legacy id → 新库 UUID（选货品后按 goods.colorLegacyId 回填 colorId/unitId 用）。
   /// colors/units dict 接口实际带 legacyId，之前解析时丢了，此处补建。
   Map<int, String> _colorByLegacy = {};
@@ -47,7 +48,10 @@ class SalesMasterNameService {
     try {
       // 客户无 /dict 端点：拉全量（size=9999）后建 dict。其他主档走 dict（小表）。
       // Future.wait 混合返回类型 → 用显式 await 分别取（Future.wait 会把异型合并成 List<Object>）。
-      final clientFut = api.get('/master/clients', query: {'page': 1, 'size': 9999});
+      final clientFut = api.get(
+        '/master/clients',
+        query: {'page': 1, 'size': 9999},
+      );
       final warehouseFut = api.getList('/master/warehouses/dict');
       final currencyFut = api.getList('/master/currencies/dict');
       final colorFut = api.getList('/master/colors/dict');
@@ -67,10 +71,12 @@ class SalesMasterNameService {
         };
       }
       _warehouses = {
-        for (final e in warehouses) e['id'] as String: (e['name'] ?? '') as String
+        for (final e in warehouses)
+          e['id'] as String: (e['name'] ?? '') as String,
       };
       _currencies = {
-        for (final e in currencies) e['id'] as String: (e['name'] ?? '') as String
+        for (final e in currencies)
+          e['id'] as String: (e['name'] ?? '') as String,
       };
       final colorMap = <String, String>{};
       final colorByLegacy = <int, String>{};
@@ -100,23 +106,30 @@ class SalesMasterNameService {
 
   /// 货品名按 id 批量解析（只查本地未缓存的 id，带缓存）。
   Future<void> loadGoodsNames(Iterable<String> ids) async {
-    final need =
-        ids.where((id) => id.isNotEmpty && !_goods.containsKey(id)).toSet();
+    final need = ids
+        .where((id) => id.isNotEmpty && !_goods.containsKey(id))
+        .toSet();
     if (need.isEmpty) return;
     try {
-      final list = await api.getList('/master/goods/lookup',
-          query: {'ids': need.join(',')});
+      final list = await api.getList(
+        '/master/goods/lookup',
+        query: {'ids': need.join(',')},
+      );
       for (final e in list) {
         _goods[e['id'] as String] = ((e['name'] ?? '') as String);
       }
-    } catch (_) {/* 静默 */}
+    } catch (_) {
+      /* 静默 */
+    }
   }
 
   /// 货品关键词搜索（编辑页 picker 用）。
   Future<List<GoodsOption>> searchGoods(String keyword, {int size = 20}) async {
     if (keyword.trim().isEmpty) return const [];
-    final json = await api.get('/master/goods',
-        query: {'keyword': keyword.trim(), 'page': 1, 'size': size});
+    final json = await api.get(
+      '/master/goods',
+      query: {'keyword': keyword.trim(), 'page': 1, 'size': size},
+    );
     final items = json['items'];
     if (items is! List) return const [];
     final out = items
@@ -149,8 +162,8 @@ class SalesMasterNameService {
 
   String _resolve(Map<String, String> map, String? id) =>
       (id != null && id.isNotEmpty && map[id]?.isNotEmpty == true)
-          ? map[id]!
-          : '—';
+      ? map[id]!
+      : '—';
 }
 
 final salesMasterNameServiceProvider = Provider<SalesMasterNameService>(

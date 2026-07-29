@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -15,16 +16,19 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
 import '../widgets/subcontract_status_badge.dart';
-import '../../../features/purchase/providers/master_name_provider.dart'
-    as mn;
+import '../../../features/purchase/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocDetailPage extends ConsumerStatefulWidget {
-  const SubcontractDocDetailPage(
-      {super.key, required this.docType, required this.id});
+  const SubcontractDocDetailPage({
+    super.key,
+    required this.docType,
+    required this.id,
+  });
   final SubcontractDocType docType;
   final String id;
 
@@ -60,8 +64,10 @@ class _SubcontractDocDetailPageState
       final d = await ref
           .read(subcontractRepositoryProvider(widget.docType))
           .detail(widget.id);
-      final goodsIds =
-          d.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final goodsIds = d.items
+          .map((e) => e.goodsId)
+          .whereType<String>()
+          .toSet();
       await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
       setState(() {
@@ -83,11 +89,13 @@ class _SubcontractDocDetailPageState
     }
   }
 
-  Future<void> _approve() async =>
-      _doAction('${_cfg.approveEffect}\n\n确认审核？',
-          (repo) => repo.approve(widget.id), '已审核');
-  Future<void> _reverse() async => _doAction('红冲将反向冲销，确认？',
-      (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _approve() async => _doAction(
+    '${_cfg.approveEffect}\n\n确认审核？',
+    (repo) => repo.approve(widget.id),
+    '已审核',
+  );
+  Future<void> _reverse() async =>
+      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
   Future<void> _doAction(
     String confirm,
@@ -102,11 +110,13 @@ class _SubcontractDocDetailPageState
         content: Text(confirm),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -135,8 +145,9 @@ class _SubcontractDocDetailPageState
         content: const Text('确定删除该草稿单据吗？'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -167,27 +178,37 @@ class _SubcontractDocDetailPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: UtenAppBar(title: '${_cfg.label}详情', showBackButton: true),
+      appBar: UtenAppBar(
+        title: '${_cfg.label}详情',
+        showBackButton: true,
+        actions: [
+          UtenButton(
+            type: UtenButtonType.tonal,
+            icon: Icons.history_rounded,
+            onPressed: () => context.push('/subcontract/${_cfg.type.pathSegment}'),
+            child: const Text('查看历史'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: UtenContentContainer.narrow(
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
-                  ? Center(child: Text(_error!))
-                  : _detail == null
-                      ? const SizedBox.shrink()
-                      : ListView(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          children: [
-                            _headerCard(theme),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _itemsCard(theme),
-                          ],
-                        ),
+              ? Center(child: Text(_error!))
+              : _detail == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  children: [
+                    _headerCard(theme),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _itemsCard(theme),
+                  ],
+                ),
         ),
       ),
-      bottomNavigationBar:
-          _detail == null || _busy ? null : _actions(theme),
+      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -197,6 +218,8 @@ class _SubcontractDocDetailPageState
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
+      _KV('制单员', d.makerName),
+      _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (_cfg.hasSupplier) _KV('委外商', names.supplier(d.supplierId)),
       _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
@@ -214,16 +237,20 @@ class _SubcontractDocDetailPageState
         _KV('总重', d.totalWeight?.toStringAsFixed(2)),
       if (_cfg.hasAmount) _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
-      _KV('状态', null,
-          badge: SubcontractStatusBadge(
-              status: d.status, closed: d.closed, apPosted: d.apPosted)),
+      _KV(
+        '状态',
+        null,
+        badge: SubcontractStatusBadge(
+          status: d.status,
+          closed: d.closed,
+          apPosted: d.apPosted,
+        ),
+      ),
     ];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
-          children: [for (final r in rows) _kvRow(theme, r)],
-        ),
+        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
       ),
     );
   }
@@ -234,9 +261,12 @@ class _SubcontractDocDetailPageState
       children: [
         SizedBox(
           width: 84,
-          child: Text(r.label,
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          child: Text(
+            r.label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         const SizedBox(width: UtenSpacing.s8),
         Expanded(child: r.badge ?? Text(r.value ?? '—')),
@@ -244,115 +274,108 @@ class _SubcontractDocDetailPageState
     );
   }
 
+  /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款），
+  /// 不再是卡片式拼凑行；口径保留（价格/重量/已收/已退/损耗按 config 显隐）。
   Widget _itemsCard(ThemeData theme) {
     final d = _detail!;
     final items = d.items;
     final names = ref.watch(mn.masterNameServiceProvider);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s4),
-              child: Text('明细 (${items.length})',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-            const Divider(height: 1),
-            _itemHeader(theme),
-            for (final it in items) _itemRow(theme, names, it),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _itemHeader(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: Row(
-        children: [
-          _icell('货品', 3, theme, bold: true),
-          _icell('数量', 1, theme, bold: true),
-          if (_cfg.itemHasPrice) _icell('单价', 1, theme, bold: true),
-          if (_cfg.itemHasPrice) _icell('金额', 1, theme, bold: true),
-          if (_cfg.itemHasWeight) _icell('重量', 1, theme, bold: true),
-          if (_cfg.showReceived) _icell('已收', 1, theme, bold: true),
-          if (_cfg.showReturned) _icell('已退', 1, theme, bold: true),
-          if (_cfg.showWasted) _icell('已损耗', 1, theme, bold: true),
-          if (_cfg.itemHasWasteFields)
-            _icell('损耗率/原因', 2, theme, bold: true),
-        ],
-      ),
-    );
-  }
-
-  Widget _itemRow(
-      ThemeData theme, mn.MasterNameService names, SubcontractDocItem it) {
-    final amt = (it.qty ?? 0) * (it.price ?? 0);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(names.goods(it.goodsId),
-                    style: const TextStyle(fontSize: 13)),
-                Text(
-                  [names.color(it.colorId), names.unit(it.unitId)].join(' · '),
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '明细 (${items.length})',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
           ),
-          _icell(it.qty?.toStringAsFixed(2), 1, theme),
-          if (_cfg.itemHasPrice) ...[
-            _icell(it.price?.toStringAsFixed(2), 1, theme),
-            _icell(amt.toStringAsFixed(2), 1, theme),
-          ],
-          if (_cfg.itemHasWeight)
-            _icell(it.weight?.toStringAsFixed(2), 1, theme),
-          if (_cfg.showReceived)
-            _icell(it.receivedQty?.toStringAsFixed(2), 1, theme),
-          if (_cfg.showReturned)
-            _icell(it.returnedQty?.toStringAsFixed(2), 1, theme),
-          if (_cfg.showWasted)
-            _icell(it.wastedQty?.toStringAsFixed(2), 1, theme),
-          if (_cfg.itemHasWasteFields)
-            Expanded(
-              flex: 2,
-              child: Text(
-                [
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        MasterDataTableView<SubcontractDocItem>(
+          embedded: true,
+          columns: [
+            MasterColumnDef(
+              key: 'goods',
+              label: '货品',
+              width: 240,
+              value: (it) =>
+                  '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
+            ),
+            MasterColumnDef(
+              key: 'qty',
+              label: '数量',
+              width: 90,
+              type: 'number',
+              value: (it) => it.qty?.toStringAsFixed(2),
+            ),
+            if (_cfg.itemHasPrice) ...[
+              MasterColumnDef(
+                key: 'price',
+                label: '单价',
+                width: 90,
+                type: 'money',
+                value: (it) => it.price?.toStringAsFixed(2),
+              ),
+              MasterColumnDef(
+                key: 'amount',
+                label: '金额',
+                width: 100,
+                type: 'money',
+                value: (it) =>
+                    ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+              ),
+            ],
+            if (_cfg.itemHasWeight)
+              MasterColumnDef(
+                key: 'weight',
+                label: '重量',
+                width: 90,
+                type: 'number',
+                value: (it) => it.weight?.toStringAsFixed(2),
+              ),
+            if (_cfg.showReceived)
+              MasterColumnDef(
+                key: 'received',
+                label: '已收',
+                width: 90,
+                type: 'number',
+                value: (it) => it.receivedQty?.toStringAsFixed(2),
+              ),
+            if (_cfg.showReturned)
+              MasterColumnDef(
+                key: 'returned',
+                label: '已退',
+                width: 90,
+                type: 'number',
+                value: (it) => it.returnedQty?.toStringAsFixed(2),
+              ),
+            if (_cfg.showWasted)
+              MasterColumnDef(
+                key: 'wasted',
+                label: '已损耗',
+                width: 90,
+                type: 'number',
+                value: (it) => it.wastedQty?.toStringAsFixed(2),
+              ),
+            if (_cfg.itemHasWasteFields)
+              MasterColumnDef(
+                key: 'wasteCause',
+                label: '损耗率/原因',
+                width: 140,
+                value: (it) => [
                   if (it.wasteRate != null) '${it.wasteRate}%',
                   if (it.cause?.isNotEmpty == true) it.cause,
                 ].join(' · '),
-                textAlign: TextAlign.right,
-                style: const TextStyle(fontSize: 12),
               ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _icell(String? text, int flex, ThemeData theme, {bool bold = false}) {
-    return Expanded(
-      flex: flex,
-      child: Text(
-        text ?? '—',
-        textAlign: TextAlign.right,
-        style: TextStyle(
-            fontSize: 12,
-            fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-            color: bold ? theme.colorScheme.onSurfaceVariant : null),
-      ),
+          ],
+          items: items,
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          onRowTap: (_) {},
+          emptyMessage: '（无明细）',
+        ),
+      ],
     );
   }
 
@@ -361,50 +384,64 @@ class _SubcontractDocDetailPageState
     final children = <Widget>[];
     if (s == kSubcontractStatusDraft && _canEdit) {
       children
-        ..add(UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline,
-          onPressed: _delete,
-          child: const Text('删除'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          type: UtenButtonType.secondary,
-          icon: Icons.edit_outlined,
-          onPressed: () => context.push(
-              SubcontractRoute.edit(_cfg.pathSegment, widget.id)),
-          child: const Text('编辑'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () => context.push(
+              SubcontractRoute.edit(_cfg.pathSegment, widget.id),
+            ),
+            child: const Text('编辑'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approve,
-          child: const Text('审核'),
-        ));
+        ..add(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approve,
+            child: const Text('审核'),
+          ),
+        );
     } else if (s == kSubcontractStatusApproved && _canEdit) {
-      children.add(UtenButton(
-        type: UtenButtonType.danger,
-        icon: Icons.undo_outlined,
-        onPressed: _reverse,
-        child: const Text('红冲'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.danger,
+          icon: Icons.undo_outlined,
+          onPressed: _reverse,
+          child: const Text('红冲'),
+        ),
+      );
     } else {
-      children.add(UtenButton(
-        type: UtenButtonType.secondary,
-        onPressed: () => context.go(SubcontractRoute.list(_cfg.pathSegment)),
-        child: const Text('返回列表'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => context.go(SubcontractRoute.list(_cfg.pathSegment)),
+          child: const Text('返回列表'),
+        ),
+      );
     }
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border:
-              Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Row(
-            mainAxisAlignment: MainAxisAlignment.center, children: children),
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: children,
+        ),
       ),
     );
   }

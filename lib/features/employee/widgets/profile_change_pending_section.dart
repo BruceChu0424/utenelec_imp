@@ -12,7 +12,6 @@ import '../../../components/cards/uten_card.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/session_provider.dart';
 import '../../profile/models/profile_change_request.dart';
 import '../../profile/providers/profile_change_providers.dart';
 
@@ -141,7 +140,7 @@ class _PendingRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${l10n.profileChangeBatchItems(itemCount)} · ${employeeName}',
+                    '${l10n.profileChangeBatchItems(itemCount)} · $employeeName',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
                     ),

@@ -31,4 +31,6 @@ public class StockDocItemDto {
     private String sourceDocNo;
     private String remark;
     private LocalDate billDate;
+    /** 已出库量（仅 DRAW 领料行；qty−issuedQty=剩余可出）。 */
+    private BigDecimal issuedQty;
 }

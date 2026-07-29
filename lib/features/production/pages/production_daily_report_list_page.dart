@@ -127,7 +127,7 @@ class _ProductionDailyReportListPageState
             key: 'workshop',
             label: '车间',
             width: 140,
-            value: (it) => it.workshopName),
+            value: (it) => names.department(it.departmentId)),
         MasterColumnDef(
             key: 'status',
             label: '状态',

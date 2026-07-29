@@ -11,13 +11,14 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/account_node.dart';
@@ -80,7 +81,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       _pageNum = page;
     });
     try {
-      final result = await ref.read(accountRepositoryProvider).list(
+      final result = await ref
+          .read(accountRepositoryProvider)
+          .list(
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
@@ -168,48 +171,54 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   List<MasterFieldDef> get _fields => [
-        const MasterFieldDef(
-            key: 'name', label: '账户名称', required: true, group: '基础'),
-        const MasterFieldDef(
-            key: 'code',
-            label: '账户编号',
-            group: '基础',
-            readOnly: true,
-            hint: '保存后自动生成'),
-        const MasterFieldDef(
-            key: 'bankAccountNo', label: '银行账号', group: '基础'),
-        MasterFieldDef(
-          key: 'accountType',
-          label: '账户类型',
-          required: true,
-          group: '基础',
-          type: MasterFieldType.select,
-          options: [
-            for (final t in AccountType.values)
-              MasterSelectOption(value: t.value, label: t.label),
-          ],
-        ),
-        MasterFieldDef(
-          key: 'currencyId',
-          label: '币种',
-          group: '基础',
-          type: MasterFieldType.select,
-          options: _currencyOptions,
-        ),
-        const MasterFieldDef(
-            key: 'initBalance',
-            label: '期初余额',
-            group: '余额',
-            type: MasterFieldType.money,
-            hint: '如 0.00'),
-        const MasterFieldDef(
-            key: 'status',
-            label: '状态',
-            type: MasterFieldType.select,
-            options: kMasterStatusOptions,
-            required: true,
-            group: '基础'),
-      ];
+    const MasterFieldDef(
+      key: 'name',
+      label: '账户名称',
+      required: true,
+      group: '基础',
+    ),
+    const MasterFieldDef(
+      key: 'code',
+      label: '账户编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
+    const MasterFieldDef(key: 'bankAccountNo', label: '银行账号', group: '基础'),
+    MasterFieldDef(
+      key: 'accountType',
+      label: '账户类型',
+      required: true,
+      group: '基础',
+      type: MasterFieldType.select,
+      options: [
+        for (final t in AccountType.values)
+          MasterSelectOption(value: t.value, label: t.label),
+      ],
+    ),
+    MasterFieldDef(
+      key: 'currencyId',
+      label: '币种',
+      group: '基础',
+      type: MasterFieldType.select,
+      options: _currencyOptions,
+    ),
+    const MasterFieldDef(
+      key: 'initBalance',
+      label: '期初余额',
+      group: '余额',
+      type: MasterFieldType.money,
+      hint: '如 0.00',
+    ),
+    const MasterFieldDef(
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
+  ];
 
   void _showCreate() {
     showMasterEditDialog(
@@ -222,21 +231,16 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    try {
-      await ref.read(accountRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('账户已创建');
-      await _loadAccounts(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(accountRepositoryProvider).create(body);
+      },
+      success: '账户已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadAccounts(_pageNum);
+    return true;
   }
 
   void _showEdit(AccountDetail d) {
@@ -258,21 +262,16 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    try {
-      await ref.read(accountRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('账户已更新');
-      await _loadAccounts(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(accountRepositoryProvider).update(id, body);
+      },
+      success: '账户已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadAccounts(_pageNum);
+    return true;
   }
 
   Future<void> _delete(AccountDetail d) async {
@@ -297,23 +296,18 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(accountRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('账户已删除');
-      await _loadAccounts(_pageNum);
-      if (mounted &&
-          _page != null &&
-          _page!.items.isEmpty &&
-          _page!.page > 1) {
-        await _loadAccounts(_page!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试');
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(accountRepositoryProvider).delete(d.id);
+      },
+      success: '账户已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadAccounts(_pageNum);
+    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
+      await _loadAccounts(_page!.page - 1);
     }
   }
 
@@ -358,43 +352,53 @@ class _AccountPageState extends ConsumerState<AccountPage> {
   }
 
   List<MasterDetailRow> _detailRows(AccountDetail a) => [
-        MasterDetailRow('编号', a.code),
-        MasterDetailRow('账户名称', a.name),
-        MasterDetailRow('银行账号', a.bankAccountNo),
-        MasterDetailRow('账户类型', AccountType.labelOf(a.accountType)),
-        MasterDetailRow('期初余额', a.initBalance?.toStringAsFixed(2)),
-        MasterDetailRow('累计收款', a.receiptsTotal?.toStringAsFixed(2)),
-        MasterDetailRow('累计付款', a.paymentsTotal?.toStringAsFixed(2)),
-        MasterDetailRow('当前余额', a.balanceCurrent?.toStringAsFixed(2)),
-        MasterDetailRow('状态', a.status),
-        MasterDetailRow('自动建账', a.autoCreated ? '是' : '否'),
-        MasterDetailRow('旧编码', a.legacyId?.toString()),
-      ];
+    MasterDetailRow('编号', a.code),
+    MasterDetailRow('账户名称', a.name),
+    MasterDetailRow('银行账号', a.bankAccountNo),
+    MasterDetailRow('账户类型', AccountType.labelOf(a.accountType)),
+    MasterDetailRow('期初余额', a.initBalance?.toStringAsFixed(2)),
+    MasterDetailRow('累计收款', a.receiptsTotal?.toStringAsFixed(2)),
+    MasterDetailRow('累计付款', a.paymentsTotal?.toStringAsFixed(2)),
+    MasterDetailRow('当前余额', a.balanceCurrent?.toStringAsFixed(2)),
+    MasterDetailRow('状态', a.status),
+    MasterDetailRow('自动建账', a.autoCreated ? '是' : '否'),
+    MasterDetailRow('旧编码', a.legacyId?.toString()),
+  ];
 
   static final _columns = <MasterColumnDef<AccountListItem>>[
+    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (a) => a.code),
     MasterColumnDef(
-        key: 'code', label: '编号', width: 120, value: (a) => a.code),
+      key: 'name',
+      label: '账户名称',
+      width: 200,
+      value: (a) => a.name,
+    ),
     MasterColumnDef(
-        key: 'name', label: '账户名称', width: 200, value: (a) => a.name),
+      key: 'accountType',
+      label: '类型',
+      width: 100,
+      value: (a) => AccountType.labelOf(a.accountType),
+    ),
     MasterColumnDef(
-        key: 'accountType',
-        label: '类型',
-        width: 100,
-        value: (a) => AccountType.labelOf(a.accountType)),
+      key: 'bankAccountNo',
+      label: '银行账号',
+      width: 180,
+      value: (a) => a.bankAccountNo,
+    ),
     MasterColumnDef(
-        key: 'bankAccountNo',
-        label: '银行账号',
-        width: 180,
-        value: (a) => a.bankAccountNo),
+      key: 'balanceCurrent',
+      label: '当前余额',
+      width: 140,
+      type: 'money',
+      sortable: true,
+      value: (a) => a.balanceCurrent?.toStringAsFixed(2),
+    ),
     MasterColumnDef(
-        key: 'balanceCurrent',
-        label: '当前余额',
-        width: 140,
-        type: 'money',
-        sortable: true,
-        value: (a) => a.balanceCurrent?.toStringAsFixed(2)),
-    MasterColumnDef(
-        key: 'status', label: '状态', width: 100, value: (a) => a.status),
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (a) => a.status,
+    ),
   ];
 
   Future<void> _refresh() async {
@@ -403,11 +407,29 @@ class _AccountPageState extends ConsumerState<AccountPage> {
 
   /// 导出查询参数（与 _loadAccounts 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
-        ...masterFilterQueryParams(_filters),
-        if (_sortKey != null) 'sort': _sortKey,
-        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
-      };
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    ...masterFilterQueryParams(_filters),
+    if (_sortKey != null) 'sort': _sortKey,
+    if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+  };
+
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final result = await ref.read(accountRepositoryProvider).list(
+          page: 1,
+          size: 2000,
+          keyword: _keyword.trim().isEmpty ? null : _keyword,
+          filters: _filters,
+          sort: _sortKey,
+          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        );
+    return UtenPrintTable(
+      headers: [for (final c in _columns) c.label],
+      rows: [
+        for (final a in result.items) [for (final c in _columns) c.value(a) ?? ''],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -415,10 +437,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
     final total = _page?.total ?? 0;
     final title = widget.initialAccountTypeFilter == null
         ? '账户资料'
-        : (AccountType.byValue(widget.initialAccountTypeFilter)?.label ??
-                '账户')
-            .toString() +
-            '账户';
+        : (AccountType.byValue(widget.initialAccountTypeFilter)?.label ?? '账户')
+                  .toString() +
+              '账户';
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
@@ -426,13 +447,6 @@ class _AccountPageState extends ConsumerState<AccountPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
-          UtenExportButton(
-            endpoint: '/master/accounts/export',
-            report: '',
-            queryParams: _exportQuery,
-            filename: '账户资料',
-            label: '导出账户',
-          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
@@ -448,18 +462,23 @@ class _AccountPageState extends ConsumerState<AccountPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.account_balance_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.account_balance_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       Text(
                         '账户 ($total)',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
@@ -485,6 +504,28 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                   child: MasterDataTableView<AccountListItem>(
                     columns: _columns,
                     items: _page?.items ?? const [],
+                    toolbarActions: [
+                      UtenPrintPreviewButton(
+                        title: '账户资料',
+                        subtitle: '最多前 2000 行',
+                        loader: _printLoader,
+                        exportEndpoint: '/master/accounts/export',
+                        exportReport: '',
+                        exportQuery: _exportQuery,
+                        exportFilename: '账户资料',
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                      UtenExportButton(
+                        endpoint: '/master/accounts/export',
+                        report: '',
+                        queryParams: _exportQuery,
+                        filename: '账户资料',
+                        label: '导出账户',
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                    ],
                     facets: _facets?.fields ?? const {},
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,

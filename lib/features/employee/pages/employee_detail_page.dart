@@ -16,10 +16,12 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
+import '../widgets/employee_transfer_dialog.dart';
 import '../widgets/profile_change_pending_section.dart';
 
 class EmployeeDetailPage extends ConsumerStatefulWidget {
@@ -89,6 +91,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                 _load();
               },
             ),
+          _buildActionMenu(context, l10n),
         ],
       ),
       body: _loading
@@ -110,6 +113,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                   children: [
                     _header(theme, l10n),
                     ProfileChangePendingSection(employeeId: widget.employeeId),
+                    ..._expiryBanners(theme, l10n),
                     const SizedBox(height: UtenSpacing.s16),
                   _section(l10n.employeeDetailBasic, [
                     UtenInfoRow(
@@ -204,6 +208,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                         status: _p.status,
                         size: UtenStatusBadgeSize.medium,
                       ),
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldAccountStatus,
+                      value: null,
+                      valueWidget: _accountStatusBadge(theme, l10n),
                     ),
                     UtenInfoRow(
                       label: l10n.employeeFieldEmploymentType,
@@ -312,9 +321,14 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                                         size: 20,
                                       ),
                                       title: Text(_historyTitle(l10n, h)),
-                                      subtitle: h.eventDate == null
-                                          ? null
-                                          : Text(h.eventDate!),
+                                      subtitle: Text(
+                                        [
+                                          if (h.eventDate != null) h.eventDate!,
+                                          if (h.remark != null &&
+                                              h.remark!.isNotEmpty)
+                                            h.remark!,
+                                        ].join(' · '),
+                                      ),
                                     ),
                                 ],
                               ),
@@ -331,6 +345,154 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
   }
 
   EmployeeProfile get _p => _profile!;
+
+  /// 操作菜单：调岗 / 转正 / 办理离职 / 删除档案（按权限点 + 员工状态显隐）。
+  Widget _buildActionMenu(BuildContext context, AppLocalizations l10n) {
+    final p = _profile;
+    if (p == null) return const SizedBox.shrink();
+    final perms = ref.watch(currentPermissionsProvider);
+    final canEdit = perms.contains(Perm.employeeEdit);
+    final canDelete = perms.contains(Perm.employeeDelete);
+    final resigned = p.status == 'resigned';
+
+    final items = <PopupMenuEntry<String>>[
+      if (canEdit && !resigned)
+        PopupMenuItem(value: 'transfer', child: Text(l10n.employeeActionTransfer)),
+      if (canEdit && p.status == 'probation')
+        PopupMenuItem(value: 'confirm', child: Text(l10n.employeeActionConfirm)),
+      if (canEdit && !resigned)
+        PopupMenuItem(value: 'offboard', child: Text(l10n.employeeActionOffboard)),
+      if (canEdit && resigned)
+        PopupMenuItem(value: 'rehire', child: Text(l10n.employeeActionRehire)),
+      if (canDelete)
+        PopupMenuItem(value: 'delete', child: Text(l10n.employeeActionDelete)),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert_rounded),
+      tooltip: l10n.employeeActions,
+      itemBuilder: (_) => items,
+      onSelected: (v) => switch (v) {
+        'transfer' => _onTransfer(),
+        'confirm' => _onConfirm(),
+        'offboard' => _onOffboard(),
+        'rehire' => _onRehire(),
+        'delete' => _onDelete(),
+        _ => null,
+      },
+    );
+  }
+
+  Future<void> _onTransfer() async {
+    final ok = await showEmployeeTransferDialog(
+      context,
+      employeeId: widget.employeeId,
+      currentDepartmentId: _p.departmentId,
+    );
+    if (ok) _load();
+  }
+
+  Future<void> _onOffboard() async {
+    await context.push('/employee/${widget.employeeId}/offboarding');
+    _load();
+  }
+
+  Future<void> _onConfirm() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.employeeConfirmTitle),
+        content: Text(l10n.employeeConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(employeeRepositoryProvider).confirm(widget.employeeId);
+      if (!mounted) return;
+      context.appSuccess(l10n.employeeConfirmSuccess);
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
+  }
+
+  Future<void> _onRehire() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.employeeRehireTitle),
+        content: Text(l10n.employeeRehireBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(employeeRepositoryProvider).rehire(widget.employeeId);
+      if (!mounted) return;
+      context.appSuccess(l10n.employeeRehireSuccess);
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
+  }
+
+  Future<void> _onDelete() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.employeeDeleteTitle),
+        content: Text(l10n.employeeDeleteBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonDelete),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(employeeRepositoryProvider).delete(widget.employeeId);
+      if (!mounted) return;
+      context.appSuccess(l10n.employeeDeleteSuccess);
+      context.go('/employee');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
+  }
 
   Widget _header(ThemeData theme, AppLocalizations l10n) {
     final p = _p;
@@ -416,9 +578,93 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
       'onboard' => l10n.historyEventOnboard,
       'transfer' => l10n.historyEventTransfer,
       'resign' => l10n.historyEventResign,
+      'rehire' => l10n.historyEventRehire,
       _ => h.eventType ?? '',
     };
     final dept = h.toDeptName ?? h.fromDeptName ?? '';
     return '$type · $dept';
+  }
+
+  /// 登录账号状态徽章：active=正常 / locked=锁定 / disabled=停用 / null=未开通。
+  Widget _accountStatusBadge(ThemeData theme, AppLocalizations l10n) {
+    final (label, color) = switch (_p.accountStatus) {
+      'active' => (l10n.accountStatusActive, Colors.green.shade700),
+      'locked' => (l10n.accountStatusLocked, Colors.orange.shade800),
+      'disabled' => (l10n.accountStatusDisabled, theme.colorScheme.error),
+      _ => (l10n.accountStatusNone, theme.colorScheme.onSurfaceVariant),
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.circle, size: 8, color: color),
+        const SizedBox(width: 6),
+        Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color)),
+      ],
+    );
+  }
+
+  /// 到期预警横幅：试用期/合同 30 天内到期或已过期时醒目提示（离职员工不再提示）。
+  List<Widget> _expiryBanners(ThemeData theme, AppLocalizations l10n) {
+    if (_p.status == 'resigned') return const [];
+    final banners = <Widget>[];
+    final today = DateUtils.dateOnly(DateTime.now());
+
+    String? check(String? dateStr, String Function(String date, int days) expiring,
+        String Function(String date) expired) {
+      if (dateStr == null) return null;
+      final d = DateTime.tryParse(dateStr);
+      if (d == null) return null;
+      final days = DateUtils.dateOnly(d).difference(today).inDays;
+      if (days < 0) return expired(dateStr);
+      if (days <= 30) return expiring(dateStr, days);
+      return null;
+    }
+
+    final msgs = <String>[
+      if (_p.status == 'probation')
+        ?check(
+          _p.probationEndDate,
+          (date, days) => l10n.employeeProbationExpiring(date, days),
+          (date) => l10n.employeeProbationExpired(date),
+        ),
+      ?check(
+        _p.contractEnd,
+        (date, days) => l10n.employeeContractExpiring(date, days),
+        (date) => l10n.employeeContractExpired(date),
+      ),
+    ];
+
+    for (final msg in msgs) {
+      banners.add(
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s12),
+          child: Container(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.12),
+              borderRadius: UtenRadius.mdAll,
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.event_busy_rounded,
+                    size: 18, color: Colors.orange.shade800),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    msg,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.orange.shade900,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return banners;
   }
 }

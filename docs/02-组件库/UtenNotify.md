@@ -126,7 +126,36 @@ await context.notifyAlert(title: '...', message: '...', level: UtenAlertLevel.ur
 
 返回值：`true`=确认、`false`=取消、`null`=遮罩/返回键关闭。
 
-## 三、视觉规范
+## 三、统一操作反馈（guardAction，写操作首选）
+
+> [`lib/core/ui/action_feedback.dart`](../../lib/core/ui/action_feedback.dart)
+> 一行调用自带「成功 / 业务失败 / 网络失败」顶部通知，消灭每个页面重复的
+> `try / on ApiException / catch` 三段样板，并杜绝"点了按钮毫无反馈"的静默失败。
+
+```dart
+// 写操作（保存/审核/红冲/删除/提交）：成功弹 success，失败自动弹错误条并返回 null
+final detail = await context.guardAction(
+  () => repo.approve(id),
+  success: '已审核',
+);
+if (detail == null) return; // 失败已弹通知（含后端 message + fieldErrors）
+
+// 读操作（加载列表/详情/报表）：成功不打扰，失败弹错误条
+final rows = await context.guardLoad(() => repo.list());
+
+// 只关心成败的 void 操作（bool 回调场景）
+final ok = await context.guardRun(
+  () => repo.delete(id),
+  success: '已删除',
+);
+```
+
+错误映射（全部走 AppNotificationService 顶部弹条）：
+`ApiException` → 后端 `message` + `fieldErrors`（网络断连 `NetworkException` 自带
+「网络连接失败，请检查后重试」；5xx「服务器繁忙」；401/403/429 各有语义文案）；
+其它异常 → `errorFallback`（默认「操作失败，请稍后重试」）。
+
+## 四、视觉规范
 
 - **顶部弹条**：status bar 下方 8dp，全宽左右各留 16dp；背景/文字/图标取 `colorScheme`（success=primary、error=error、warning=tertiary、info=surfaceContainerHighest）；滑入 220ms easeOutCubic，可滑动关闭。
 - **居中弹窗**：最大宽 400dp、最大高 520dp，圆角 16；56dp 圆形级别图标居中置顶；内容超长可滚动；urgent 带 1.5dp 红色描边 + 加深遮罩（55%）。
@@ -156,11 +185,11 @@ UtenNotify.alert → showGeneralDialog → _CenterAlertDialog  ← 居中弹窗�
 
 ## 七、通知模块全链路（features/notice）
 
-通知模块（导航栏「通知」）是两条通道的第一个完整消费者，链路已打通：
+通知模块（导航栏「通知」）是两条通道的第一个完整消费者，链路已打通且**已接真后端**（2026-07-29，`/api/notices`，Mock 仓储与「模拟新通知」按钮已删除）：
 
 ```mermaid
 flowchart TD
-    T[新通知到达<br/>发布页发布 / 列表页「模拟新通知」<br/>真后端后=推送·WebSocket] --> REPO[MockNoticeRepository<br/>publish / simulateIncoming 入库]
+    T[新通知到达<br/>发布页发布<br/>推送·WebSocket（待接）] --> REPO[DioNoticeRepository<br/>POST /api/notices 入库]
     REPO --> INV[失效刷新 noticeListProvider<br/>+ unreadNoticeCountProvider]
     INV --> BADGE[导航栏未读角标 +1]
     INV --> LIST[列表新卡片<br/>工作标识 / 重要度徽章 / 强调条]
@@ -173,13 +202,13 @@ flowchart TD
 
 - **分派规则**：`Notice.priority`（normal/important/urgent）决定弹哪条通道——见 `lib/features/notice/providers/notice_arrival.dart`。
 - **工作标识**：`NoticeType.task/approval/workflow`（任务下发/审批结果/上游完成）属于工作类，`type.isWork=true`，卡片带「工作」描边小签，与公告广播一眼可辨。
-- **已接入的业务事件**：访客审批流转（`lib/features/visitor_approval/providers/visitor_notice_bridge.dart`）——HR 批准/驳回/转接待人、被访人确认/拒绝，都会自动生成工作通知并按上述规则弹提醒（驳回=important 居中弹窗，其余 normal 顶部弹条）。其他模块（报销审批、任务系统）要发通知，照此模式：造一条 `Notice` → 入库 → `dispatchNoticeArrival`。
-- **接真后端**：推送/WebSocket 收到一条 Notice 后 → 仓储入库 → 列表/角标失效刷新 → 调 `dispatchNoticeArrival`。业务方不需要碰弹窗细节。
+- **已接入的业务事件**：访客审批流转（`lib/features/visitor_approval/providers/visitor_notice_bridge.dart`）——HR 批准/驳回/转接待人、被访人确认/拒绝，都会自动生成工作通知并按上述规则弹提醒（驳回=important 居中弹窗，其余 normal 顶部弹条）。发布人由后端取当前员工姓名快照；动作人无 `notice:publish` 权限时静默降级（不拖垮审批主流程）。其他模块（报销审批、任务系统）要发通知，照此模式：造一条 `Notice` → 入库 → `dispatchNoticeArrival`。
+- **接收端提醒（待接推送）**：推送/WebSocket 收到一条 Notice 后 → 仓储入库 → 列表/角标失效刷新 → 调 `dispatchNoticeArrival`。业务方不需要碰弹窗细节。
 
 ## 八、避坑
 
-1. **不要用 `ScaffoldMessenger.showSnackBar`**——跟最近 Scaffold 绑定，跨页面 pop 后消息丢失；本项目 Phase 1.0+ 已全面废除。
-2. **`UtenToast`（底部轻提示）仅存量兼容**，新功能一律走 `UtenNotify`。
+1. **不要用 `ScaffoldMessenger.showSnackBar`**——跟最近 Scaffold 绑定，跨页面 pop 后消息丢失；本项目 Phase 1.0+ 已全面废除（2026-07-29 清完最后 5 处残留：生产调度/订单列表/批量发货面板/采购报表/委外枢纽）。
+2. **`UtenToast` 已改为适配层**（2026-07-29）：内部转发到 AppNotificationService，存量调用不用改；新代码一律 `context.appSuccess/Error` 或 `context.guardAction(...)`。
 3. **async 后用 context 先判 `mounted`**：
    ```dart
    await someAsync();
@@ -190,4 +219,4 @@ flowchart TD
 
 ---
 
-**最后更新**：2026-07-28 · **门面**：`lib/core/ui/uten_notify.dart` · **组件**：`lib/components/feedback/uten_center_alert.dart`、`lib/core/ui/app_notification.dart`
+**最后更新**：2026-07-29 · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/components/feedback/uten_center_alert.dart`、`lib/core/ui/app_notification.dart` · **通知模块**：已接真后端（V92/V94 + `/api/notices`）

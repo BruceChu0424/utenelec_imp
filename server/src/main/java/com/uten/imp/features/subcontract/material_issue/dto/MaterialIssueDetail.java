@@ -36,4 +36,6 @@ public class MaterialIssueDetail {
     private String makerName;
     private Integer approverLegacyId;
     private String approverName;
+    /** 制单时间（审计 created_at，创建后不可变）。 */
+    private java.time.Instant createdAt;
 }

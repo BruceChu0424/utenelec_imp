@@ -1,8 +1,11 @@
-// 出入库流水查询页（库存管理，stock:view）：仓库筛选 + 流水列表（类型/方向/货品/仓库名解析）。
+// 出入库流水查询页（库存管理，stock:view）：仓库筛选 + 货品过滤 + 流水列表（类型/方向/货品/仓库名解析）。
 //
 // 改为统一主档表格（MasterDataTableView）+ 桌面左筛选/右表格两栏（UtenListTwoPane），
 // 与基础资料/单据列表同款；手机垂直堆叠。原手搓 ListTile + 手动分页已移除（复用统一组件）。
 // 收支方向以 +/- 前缀体现（与仓库报表同款；表格单元格不支持逐行着色）。
+//
+// 货品过滤：可由即时库存行点击带入（/stock/movement?goodsId=xxx），左栏显示货品 chip 可清除
+// （清除=看全部货品）；仓库下拉与货品过滤可叠加。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,7 +23,13 @@ import '../models/stock_query.dart';
 import '../repositories/stock_query_repository.dart';
 
 class StockMovementPage extends ConsumerStatefulWidget {
-  const StockMovementPage({super.key});
+  const StockMovementPage({super.key, this.goodsId, this.warehouseId});
+
+  /// 预置货品过滤（即时库存/余额/货品详情带入）；null=全部货品。
+  final String? goodsId;
+
+  /// 预置仓库过滤（库存余额行点击带入，与货品叠加）；null=全部仓库。
+  final String? warehouseId;
 
   @override
   ConsumerState<StockMovementPage> createState() => _StockMovementPageState();
@@ -32,6 +41,7 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
   bool _loading = false;
   String? _error;
   String? _warehouseId;
+  String? _goodsId;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 transactionDate DESC）；_sortAsc=升序。
   String? _sortKey;
   bool _sortAsc = true;
@@ -39,8 +49,16 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
   @override
   void initState() {
     super.initState();
+    _goodsId = widget.goodsId;
+    _warehouseId = widget.warehouseId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(masterNameServiceProvider).ensureLoaded().then((_) => _load(1));
+      ref.read(masterNameServiceProvider).ensureLoaded().then((_) async {
+        // 预置货品时先解析名称（chip 显示用），再拉列表
+        if (_goodsId != null) {
+          await ref.read(masterNameServiceProvider).loadGoodsNames({_goodsId!});
+        }
+        if (mounted) _load(1);
+      });
     });
   }
 
@@ -55,6 +73,7 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
       final r = await ref.read(stockQueryRepositoryProvider).movements(
             page: page,
             warehouseId: _warehouseId,
+            goodsId: _goodsId,
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
@@ -166,6 +185,23 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // 货品过滤（即时库存带入）：chip 可清除，清除=全部货品
+                          if (_goodsId != null) ...[
+                            Text('货品',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w600)),
+                            const SizedBox(height: UtenSpacing.s4),
+                            InputChip(
+                              label: Text(names.goods(_goodsId),
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                              onDeleted: () {
+                                setState(() => _goodsId = null);
+                                _load(1);
+                              },
+                            ),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
                           SizedBox(
                             width: double.infinity,
                             child: DropdownButtonFormField<String?>(

@@ -32,5 +32,13 @@ public class StockDocDetail {
     private Short status;
     private boolean closed;
     private String sourceDocNo;
+    /** 领料车间/部门（V97，DRAW 用）。 */
+    private UUID departmentId;
+    /** 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完。 */
+    private Short issueStatus;
     private List<StockDocItemDto> items;
+    /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
+    private String makerName;
+    /** 制单时间（审计 created_at，创建后不可变）。 */
+    private java.time.Instant createdAt;
 }

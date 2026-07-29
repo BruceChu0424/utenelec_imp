@@ -18,14 +18,16 @@ import java.io.OutputStream;
  * 已注册的 BouncyCastle provider 支撑（见 {@code BouncyCastleRegistrar}）。
  *
  * <p>用法：{@code byte[] enc = enc.encrypt(xlsxExportService.build(cols, rows), password);}。
+ * 密码为 null/空串时<b>不加密</b>，原样返回明文 xlsx（前端导出对话框提供「不设密码」选项）。
  * 校验：写加密后可用 {@code WorkbookFactory.create(new ByteArrayInputStream(enc), password)} 读回。
  */
 @Service
 public class EncryptedWorkbookService {
 
     public byte[] encrypt(byte[] xlsx, String password) {
+        // 密码为空 = 用户在前端选择「不设密码」：直接返回明文 xlsx（所有导出端点统一放行）。
         if (password == null || password.isEmpty()) {
-            throw new IllegalArgumentException("导出密码不能为空");
+            return xlsx;
         }
         POIFSFileSystem fs = null;
         OPCPackage pkg = null;

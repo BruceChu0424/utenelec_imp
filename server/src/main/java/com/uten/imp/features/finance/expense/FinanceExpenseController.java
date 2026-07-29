@@ -93,4 +93,11 @@ public class FinanceExpenseController {
     public FinanceExpenseDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }
+
+    /** C6 财务确认：已过账的费用单确认入账（gl_status 1→2）。 */
+    @PostMapping("/{id}/gl-confirm")
+    @PreAuthorize("hasAuthority('finance_expense:edit')")
+    public FinanceExpenseDetail glConfirm(@PathVariable UUID id) {
+        return service.glConfirm(id);
+    }
 }

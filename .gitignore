@@ -71,5 +71,6 @@ server/backups/
 server/legacy_migration/data/
 server/src/main/resources/legacy-migration/
 
-# 迁移调试/调查草稿区（一次性查询脚本，完成后清理，不进仓库）
-server/legacy_migration/_scratch/
+# 调试/调查草稿区（一次性脚本与临时文件，完成后清理，不进仓库）
+# 覆盖根 _scratch/ 与 server/legacy_migration/_scratch/
+_scratch/

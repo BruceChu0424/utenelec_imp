@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.dto.StockDocDetail;
+import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocListItem;
 import com.uten.imp.features.stock.dto.StockDocQueryFilter;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
@@ -51,11 +52,14 @@ public class StockDocController {
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) Short issueStatus,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo), page, size, sort, order);
+        return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
+                departmentId, issueStatus), page, size, sort, order);
     }
 
     @GetMapping("/{id}")
@@ -92,5 +96,19 @@ public class StockDocController {
     @PreAuthorize("hasAuthority('stock_doc:edit')")
     public StockDocDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    /** DRAW 分轮出库（部分出库，V97）：按行扣剩余可出量并写库存流水。 */
+    @PostMapping("/{id}/issue")
+    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    public StockDocDetail issue(@PathVariable UUID id, @Valid @RequestBody StockDocIssueRequest req) {
+        return service.issue(id, req);
+    }
+
+    /** DRAW 反出库：对称回退已出库量（红冲前须全部反出库）。 */
+    @PostMapping("/{id}/issue/reverse")
+    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    public StockDocDetail reverseIssue(@PathVariable UUID id, @Valid @RequestBody StockDocIssueRequest req) {
+        return service.reverseIssue(id, req);
     }
 }

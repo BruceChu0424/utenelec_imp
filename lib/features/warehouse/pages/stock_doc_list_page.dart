@@ -40,6 +40,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
   String? _error;
   String _keyword = '';
   int? _status; // null=全部
+  int? _issueStatus; // DRAW 出库进度筛选（null=全部，V97）
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
   String? _sortKey;
   bool _sortAsc = true;
@@ -68,7 +69,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
             page: page,
             filter: StockDocFilter(
                 keyword: _keyword.trim().isEmpty ? null : _keyword,
-                status: _status),
+                status: _status,
+                issueStatus: _issueStatus),
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
@@ -116,6 +118,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
 
   List<MasterColumnDef<StockDocListItem>> get _columns {
     final isTransfer = widget.docType == StockDocType.transfer;
+    final isDraw = widget.docType == StockDocType.draw;
     return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
           key: 'billNo',
@@ -133,6 +136,13 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
               : (it.billDate!.length >= 10
                   ? it.billDate!.substring(0, 10)
                   : it.billDate)),
+      if (isDraw)
+        MasterColumnDef(
+            key: 'department',
+            label: '领料车间',
+            width: 140,
+            value: (it) =>
+                ref.read(masterNameServiceProvider).department(it.departmentId)),
       MasterColumnDef(
           key: 'warehouse',
           label: '仓库',
@@ -159,6 +169,12 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
           label: '状态',
           width: 100,
           value: (it) => stockStatusLabel(it.status)),
+      if (isDraw)
+        MasterColumnDef(
+            key: 'issueStatus',
+            label: '出库进度',
+            width: 110,
+            value: (it) => drawIssueStatusLabel(it.issueStatus)),
     ];
   }
 
@@ -246,6 +262,31 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
                               },
                             ),
                           ),
+                          // DRAW：出库进度筛选（未出库/部分出库=「未完成领料单」）
+                          if (widget.docType == StockDocType.draw) ...[
+                            const SizedBox(height: UtenSpacing.s8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                for (final (label, value) in [
+                                  ('全部', null),
+                                  ('未出库', 0),
+                                  ('部分出库', 1),
+                                  ('已出完', 2),
+                                ])
+                                  ChoiceChip(
+                                    label: Text(label,
+                                        style: const TextStyle(fontSize: 12)),
+                                    selected: _issueStatus == value,
+                                    onSelected: (_) {
+                                      setState(() => _issueStatus = value);
+                                      _load(1);
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),

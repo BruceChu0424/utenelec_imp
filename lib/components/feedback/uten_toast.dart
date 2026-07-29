@@ -1,14 +1,23 @@
-// UtenToast - 轻提示
-// 文档：docs/02-组件库/UtenToast.md（待写）
+// UtenToast - 轻提示（兼容适配层）
+// 文档：docs/02-组件库/UtenNotify.md
+//
+// 历史遗留入口：早期页面用 `UtenToast.success/error/...`，与 UtenNotify /
+// context.appSuccess 是两套并行实现。为消除重复代码，本类改为**纯适配层**：
+// 保持原有静态方法签名不变，内部全部转发到 AppNotificationService 全局队列
+// （顶部微信式弹条：去重 + 上限 3 条 + 跨路由不丢），不再自绘 Overlay。
+//
+// 新代码请直接使用 `context.appSuccess/appError/...` 或 `context.guardAction(...)`
+// （见 lib/core/ui/action_feedback.dart），不要再新增 UtenToast 调用。
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
+import '../../core/ui/app_notification.dart';
+import '../../core/ui/uten_notify.dart';
 
 /// Uten 轻提示类型
 enum UtenToastType { success, error, warning, info }
 
-/// Uten 轻提示
+/// Uten 轻提示（适配层：转发到全局顶部通知服务）。
 class UtenToast {
   UtenToast._();
 
@@ -18,44 +27,18 @@ class UtenToast {
     UtenToastType type = UtenToastType.info,
     Duration duration = const Duration(seconds: 2),
   }) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    final (icon, color) = switch (type) {
-      UtenToastType.success => (
-          Icons.check_circle_rounded,
-          UtenColors.success,
-        ),
-      UtenToastType.error => (
-          Icons.cancel_rounded,
-          UtenColors.error,
-        ),
-      UtenToastType.warning => (
-          Icons.warning_rounded,
-          UtenColors.warning,
-        ),
-      UtenToastType.info => (
-          Icons.info_rounded,
-          UtenColors.info,
-        ),
+    final kind = switch (type) {
+      UtenToastType.success => AppNotificationKind.success,
+      UtenToastType.error => AppNotificationKind.error,
+      UtenToastType.warning => AppNotificationKind.warning,
+      UtenToastType.info => AppNotificationKind.info,
     };
-
-    final overlay = Overlay.of(context);
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (ctx) => _ToastView(
-        message: message,
-        icon: icon,
-        color: color,
-        isDark: isDark,
-        onDismiss: () => entry.remove(),
-      ),
+    UtenNotify.banner(
+      context,
+      message: message,
+      kind: kind,
+      duration: duration,
     );
-
-    overlay.insert(entry);
-    Future.delayed(duration, () {
-      if (entry.mounted) entry.remove();
-    });
   }
 
   static void success(BuildContext context, String message) =>
@@ -69,102 +52,4 @@ class UtenToast {
 
   static void info(BuildContext context, String message) =>
       show(context, message);
-}
-
-class _ToastView extends StatefulWidget {
-  const _ToastView({
-    required this.message,
-    required this.icon,
-    required this.color,
-    required this.isDark,
-    required this.onDismiss,
-  });
-
-  final String message;
-  final IconData icon;
-  final Color color;
-  final bool isDark;
-  final VoidCallback onDismiss;
-
-  @override
-  State<_ToastView> createState() => _ToastViewState();
-}
-
-class _ToastViewState extends State<_ToastView>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 16,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        child: Center(
-          child: FadeTransition(
-            opacity: _controller,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.95, end: 1).animate(_controller),
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 380),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: widget.isDark
-                        ? const Color(0xFF1A2D24)
-                        : const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(widget.icon, color: widget.color, size: 20),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
-                          widget.message,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

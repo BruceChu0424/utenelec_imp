@@ -20,6 +20,8 @@ abstract interface class EmployeeRepository {
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
   Future<void> transfer(String id, Map<String, dynamic> body);
   Future<void> offboard(String id, Map<String, dynamic> body);
+  Future<void> confirm(String id);
+  Future<void> rehire(String id);
   Future<void> delete(String id);
 }
 
@@ -73,6 +75,13 @@ class DioEmployeeRepository implements EmployeeRepository {
   @override
   Future<void> offboard(String id, Map<String, dynamic> body) =>
       api.post(ApiEndpoints.employeeOffboard(id), body: body);
+
+  @override
+  Future<void> confirm(String id) =>
+      api.post(ApiEndpoints.employeeConfirm(id));
+
+  @override
+  Future<void> rehire(String id) => api.post(ApiEndpoints.employeeRehire(id));
 
   @override
   Future<void> delete(String id) => api.delete(ApiEndpoints.employee(id));

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -15,6 +16,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -154,7 +156,18 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
-      appBar: UtenAppBar(title: '${_cfg.label}详情', showBackButton: true),
+      appBar: UtenAppBar(
+        title: '${_cfg.label}详情',
+        showBackButton: true,
+        actions: [
+          UtenButton(
+            type: UtenButtonType.tonal,
+            icon: Icons.history_rounded,
+            onPressed: () => context.push('/purchase/${_cfg.type.pathSegment}'),
+            child: const Text('查看历史'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: UtenContentContainer.narrow(
           child: _loading
@@ -184,6 +197,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
+      _KV('制单员', d.makerName),
+      _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (_cfg.hasSupplier) _KV('供应商', names.supplier(d.supplierId)),
       _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
@@ -226,89 +241,75 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     );
   }
 
+  /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款：
+  /// 表头设置列显隐 + 网格线 + 横滚），不再是卡片式拼凑行。
   Widget _itemsCard(ThemeData theme, MasterNameService names) {
     final items = _detail!.items;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s4),
-              child: Text('明细 (${items.length})',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('明细 (${items.length})',
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: UtenSpacing.s8),
+        MasterDataTableView<PurchaseDocItem>(
+          embedded: true,
+          columns: [
+            MasterColumnDef(
+              key: 'goods',
+              label: '货品',
+              width: 220,
+              value: (it) =>
+                  '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）',
             ),
-            const Divider(height: 1),
-            // 表头
-            _itemHeader(theme),
-            for (final it in items) _itemRow(theme, names, it),
+            MasterColumnDef(
+              key: 'qty',
+              label: '数量',
+              width: 90,
+              type: 'number',
+              value: (it) => it.qty?.toStringAsFixed(2),
+            ),
+            MasterColumnDef(
+              key: 'price',
+              label: '单价',
+              width: 90,
+              type: 'money',
+              value: (it) => it.price?.toStringAsFixed(2),
+            ),
+            MasterColumnDef(
+              key: 'amount',
+              label: '金额',
+              width: 100,
+              type: 'money',
+              value: (it) =>
+                  ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+            ),
+            if (_cfg.showReceived)
+              MasterColumnDef(
+                key: 'received',
+                label: '已收',
+                width: 90,
+                type: 'number',
+                value: (it) => it.receivedQty?.toStringAsFixed(2),
+              ),
+            if (_cfg.showReturned)
+              MasterColumnDef(
+                key: 'returned',
+                label: '已退',
+                width: 90,
+                type: 'number',
+                value: (it) => it.returnedQty?.toStringAsFixed(2),
+              ),
           ],
+          items: items,
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          onRowTap: (_) {},
+          emptyMessage: '暂无明细',
         ),
-      ),
-    );
-  }
-
-  Widget _itemHeader(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: Row(
-        children: [
-          _icell('货品', 3, theme, bold: true),
-          _icell('数量', 1, theme, bold: true),
-          _icell('单价', 1, theme, bold: true),
-          _icell('金额', 1, theme, bold: true),
-          if (_cfg.showReceived) _icell('已收', 1, theme, bold: true),
-          if (_cfg.showReturned) _icell('已退', 1, theme, bold: true),
-        ],
-      ),
-    );
-  }
-
-  Widget _itemRow(ThemeData theme, MasterNameService names, PurchaseDocItem it) {
-    final amt = (it.qty ?? 0) * (it.price ?? 0);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(names.goods(it.goodsId), style: const TextStyle(fontSize: 13)),
-                Text(
-                  [
-                    names.color(it.colorId),
-                    names.unit(it.unitId),
-                  ].join(' · '),
-                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-          _icell(it.qty?.toStringAsFixed(2), 1, theme),
-          _icell(it.price?.toStringAsFixed(2), 1, theme),
-          _icell(amt.toStringAsFixed(2), 1, theme),
-          if (_cfg.showReceived) _icell(it.receivedQty?.toStringAsFixed(2), 1, theme),
-          if (_cfg.showReturned) _icell(it.returnedQty?.toStringAsFixed(2), 1, theme),
-        ],
-      ),
-    );
-  }
-
-  Widget _icell(String? text, int flex, ThemeData theme, {bool bold = false}) {
-    return Expanded(
-      flex: flex,
-      child: Text(
-        text ?? '—',
-        textAlign: TextAlign.right,
-        style: TextStyle(
-            fontSize: 12,
-            fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-            color: bold ? theme.colorScheme.onSurfaceVariant : null),
-      ),
+      ],
     );
   }
 

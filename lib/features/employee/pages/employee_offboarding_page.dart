@@ -1,30 +1,36 @@
-// 离职流程页（Phase 2）
+// 离职流程页（真实后端）
 // 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
+// 提交：POST /api/org/employees/{id}/offboard；后端置状态 resigned、写任职记录、
+// 自动驳回在途信息修改申请、停用登录账号并吊销 refresh token。
 // 文档：docs/03-页面/离职流程页.md
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../repositories/employee_repository.dart';
 
 enum ResignType { voluntary, dismissed, contractEnd, retire }
 
-class EmployeeOffboardingPage extends StatefulWidget {
+class EmployeeOffboardingPage extends ConsumerStatefulWidget {
   const EmployeeOffboardingPage({super.key, required this.employeeId});
   final String employeeId;
 
   @override
-  State<EmployeeOffboardingPage> createState() =>
+  ConsumerState<EmployeeOffboardingPage> createState() =>
       _EmployeeOffboardingPageState();
 }
 
-class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
+class _EmployeeOffboardingPageState
+    extends ConsumerState<EmployeeOffboardingPage> {
   int _step = 0;
   bool _submitting = false;
   ResignType _type = ResignType.voluntary;
@@ -132,7 +138,7 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
                     final d = await showDatePicker(
                       context: context,
                       initialDate: _date ?? DateTime.now(),
-                      firstDate: DateTime.now(),
+                      firstDate: DateTime(2020),
                       lastDate: DateTime(2100),
                     );
                     if (d != null) setState(() => _date = d);
@@ -224,11 +230,37 @@ class _EmployeeOffboardingPageState extends State<EmployeeOffboardingPage> {
     if (ok != true) return;
 
     setState(() => _submitting = true);
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _submitting = false);
+    try {
+      // 交接说明 + 回收确认项一并存档（后端离职单无独立交接/清单字段，
+      // 全部并入 reason 写入任职记录 remark，事后可追溯）
+      final reason = _reason.text.trim();
+      final handover = _handover.text.trim();
+      final checkedItems = [
+        for (var i = 0; i < _checks.length; i++)
+          if (_checks[i]) _checkLabel(l10n, i),
+      ];
+      final combinedReason = [
+        if (reason.isNotEmpty) reason,
+        if (handover.isNotEmpty) '${l10n.employeeOffboardFieldHandover}：$handover',
+        if (checkedItems.isNotEmpty)
+          '${l10n.employeeOffboardStepCheck}：${checkedItems.join('、')}',
+      ].join('\n');
+      await ref.read(employeeRepositoryProvider).offboard(widget.employeeId, {
+        'resignType': _typeLabel(l10n, _type),
+        'effectiveDate': DateFormat('yyyy-MM-dd').format(_date!),
+        if (combinedReason.isNotEmpty) 'reason': combinedReason,
+      });
+      if (!mounted) return;
       context.appSuccess(l10n.employeeOffboardCompleted);
       context.go('/employee/${widget.employeeId}');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    } catch (_) {
+      if (!mounted) return;
+      context.appError(l10n.employeeOffboardLoadFailed);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 

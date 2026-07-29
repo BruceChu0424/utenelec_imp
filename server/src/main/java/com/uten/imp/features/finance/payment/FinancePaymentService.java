@@ -67,6 +67,7 @@ public class FinancePaymentService {
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
 
@@ -107,7 +108,7 @@ public class FinancePaymentService {
         FinancePayment p = new FinancePayment();
         applyHeader(req, p);
         p.setStatus(STATUS_DRAFT);
-        p.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        p.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         paymentRepo.save(p);
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
         return toDetail(p, items);
@@ -145,13 +146,14 @@ public class FinancePaymentService {
     public FinancePaymentDetail approve(UUID id) {
         tx.bind();
         FinancePayment p = require(id);
+        em.lock(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         if (p.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "付款单需指定付款账户");
         }
-        p.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        p.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         settlePayment(p);
         p.setStatus(STATUS_APPROVED);
         p.setCancelDate(OffsetDateTime.now());
@@ -164,6 +166,7 @@ public class FinancePaymentService {
     public FinancePaymentDetail reverse(UUID id) {
         tx.bind();
         FinancePayment p = require(id);
+        em.lock(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -391,7 +394,8 @@ public class FinancePaymentService {
                 p.getExchangeRate(), p.getAmountOriginal(), p.getAmountLocal(), p.getPaymentMethodId(),
                 p.getPaymentMethodLegacyId(), p.getInvoiceNo(), p.getCancelDate(),
                 p.getOperatorName(), p.getOperatorId(), p.getMakerId(), p.getApproverId(),
-                p.getSourceRemark(), p.getRemark(), p.getStatus(), p.isClosed(), items);
+                p.getSourceRemark(), p.getRemark(), p.getStatus(), p.isClosed(), items,
+                nameResolver.nameOf(p.getMakerId()), p.getCreatedAt());
     }
 
     private FinancePayment require(UUID id) {

@@ -17,6 +17,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -25,7 +26,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/master_facet.dart';
@@ -127,27 +128,24 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
   }
 
   Future<bool> _doCreate(CategoryEditResult r) async {
-    try {
-      await ref.read(supplierCategoryRepositoryProvider).create(
-            ProductCategorySaveInput(
-              code: r.code!,
-              name: r.name,
-              parentId: r.parentId,
-            ),
-          );
-      if (!mounted) return false;
-      context.appSuccess('分类已创建'); // TODO(l10n): 补 arb
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(supplierCategoryRepositoryProvider)
+            .create(
+              ProductCategorySaveInput(
+                code: r.code!,
+                name: r.name,
+                parentId: r.parentId,
+              ),
+            );
+      },
+      success: '分类已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   void _showEditDialog(ProductCategoryDetail detail) {
@@ -162,27 +160,21 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
   }
 
   Future<bool> _doUpdate(String id, CategoryEditResult r) async {
-    try {
-      await ref.read(supplierCategoryRepositoryProvider).update(
-            id,
-            ProductCategoryUpdateInput(
-              name: r.name,
-              parentId: r.parentId,
-            ),
-          );
-      if (!mounted) return false;
-      context.appSuccess('分类已更新'); // TODO(l10n): 补 arb
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(supplierCategoryRepositoryProvider)
+            .update(
+              id,
+              ProductCategoryUpdateInput(name: r.name, parentId: r.parentId),
+            );
+      },
+      success: '分类已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
@@ -207,26 +199,22 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(supplierCategoryRepositoryProvider).delete(node.id);
-      if (!mounted) return;
-      context.appSuccess('分类已删除'); // TODO(l10n): 补 arb
-      if (_selectedId == node.id) _selectedId = null;
-      await _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
-    }
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(supplierCategoryRepositoryProvider).delete(node.id);
+      },
+      success: '分类已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    if (_selectedId == node.id) _selectedId = null;
+    await _load();
   }
 
   // ---- 树渲染 -------------------------------------------------------------
 
-  Widget _buildTree({
-    required void Function(String id) onSelect,
-  }) {
+  Widget _buildTree({required void Function(String id) onSelect}) {
     final theme = Theme.of(context);
     final canEdit = _canEdit;
     return UtenCategoryTreeView(
@@ -489,7 +477,9 @@ class _DetailPaneState extends State<_DetailPane> {
       _supplierPageNum = page;
     });
     try {
-      final result = await widget.ref.read(supplierRepositoryProvider).list(
+      final result = await widget.ref
+          .read(supplierRepositoryProvider)
+          .list(
             widget.nodeId,
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -561,18 +551,43 @@ class _DetailPaneState extends State<_DetailPane> {
 
   /// 导出查询参数（与 _loadSuppliers 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        'categoryId': widget.nodeId,
-        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
-        ...masterFilterQueryParams(_filters),
-        if (_sortKey != null) 'sort': _sortKey,
-        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
-      };
+    'categoryId': widget.nodeId,
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    ...masterFilterQueryParams(_filters),
+    if (_sortKey != null) 'sort': _sortKey,
+    if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+  };
+
+  /// 打印预览数据：按当前分类/筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final result = await widget.ref.read(supplierRepositoryProvider).list(
+          widget.nodeId,
+          page: 1,
+          size: 2000,
+          keyword: _keyword.trim().isEmpty ? null : _keyword,
+          filters: _filters,
+          sort: _sortKey,
+          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        );
+    return UtenPrintTable(
+      headers: [for (final c in _supplierColumns) c.label],
+      rows: [
+        for (final a in result.items)
+          [for (final c in _supplierColumns) c.value(a) ?? ''],
+      ],
+    );
+  }
 
   // 供应商主档可编辑字段（与后端 SupplierSaveRequest 对齐）。
   static const _supplierFields = [
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
     MasterFieldDef(
-        key: 'code', label: '编号', group: '基础', readOnly: true, hint: '保存后自动生成'),
+      key: 'code',
+      label: '编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(key: 'description', label: '描述/全称', group: '基础'),
     MasterFieldDef(key: 'place', label: '地区', group: '地址'),
     MasterFieldDef(key: 'empId', label: '业务员', group: '资质'),
@@ -591,15 +606,26 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
     MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
     MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
-    MasterFieldDef(key: 'initTotal', label: '期初应付', type: MasterFieldType.money, group: '财务'),
-    MasterFieldDef(key: 'tday', label: '结算天数', type: MasterFieldType.integer, group: '财务'),
     MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础'),
+      key: 'initTotal',
+      label: '期初应付',
+      type: MasterFieldType.money,
+      group: '财务',
+    ),
+    MasterFieldDef(
+      key: 'tday',
+      label: '结算天数',
+      type: MasterFieldType.integer,
+      group: '财务',
+    ),
+    MasterFieldDef(
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
     MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
   ];
 
@@ -620,21 +646,16 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   Future<bool> _doCreateSupplier(Map<String, dynamic> body) async {
-    try {
-      await widget.ref.read(supplierRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('供应商已创建'); // TODO(l10n): 补 arb
-      await _loadSuppliers(_supplierPageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await widget.ref.read(supplierRepositoryProvider).create(body);
+      },
+      success: '供应商已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadSuppliers(_supplierPageNum);
+    return true;
   }
 
   void _showSupplierEdit(SupplierDetail d) {
@@ -674,21 +695,16 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   Future<bool> _doUpdateSupplier(String id, Map<String, dynamic> body) async {
-    try {
-      await widget.ref.read(supplierRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('供应商已更新'); // TODO(l10n): 补 arb
-      await _loadSuppliers(_supplierPageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await widget.ref.read(supplierRepositoryProvider).update(id, body);
+      },
+      success: '供应商已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadSuppliers(_supplierPageNum);
+    return true;
   }
 
   Future<void> _deleteSupplier(SupplierDetail d) async {
@@ -713,24 +729,22 @@ class _DetailPaneState extends State<_DetailPane> {
       ),
     );
     if (ok != true) return;
-    try {
-      await widget.ref.read(supplierRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('供应商已删除'); // TODO(l10n): 补 arb
-      await _loadSuppliers(_supplierPageNum);
-      // 删空当前页时回退上一页，避免列表显示空白
-      if (mounted &&
-          _supplierPage != null &&
-          _supplierPage!.items.isEmpty &&
-          _supplierPage!.page > 1) {
-        await _loadSuppliers(_supplierPage!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await widget.ref.read(supplierRepositoryProvider).delete(d.id);
+      },
+      success: '供应商已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadSuppliers(_supplierPageNum);
+    // 删空当前页时回退上一页，避免列表显示空白
+    if (mounted &&
+        _supplierPage != null &&
+        _supplierPage!.items.isEmpty &&
+        _supplierPage!.page > 1) {
+      await _loadSuppliers(_supplierPage!.page - 1);
     }
   }
 
@@ -788,33 +802,36 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   List<MasterDetailRow> _supplierDetailRows(SupplierDetail d) => [
-        MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
-        MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
-        MasterDetailRow('描述/全称', d.description), // TODO(l10n): 补 arb
-        MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
-        MasterDetailRow('地区', d.place), // TODO(l10n): 补 arb
-        MasterDetailRow('业务员', d.empId), // TODO(l10n): 补 arb
-        MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
-        MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
-        MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
-        MasterDetailRow('电话', d.phone), // TODO(l10n): 补 arb
-        MasterDetailRow('电话2', d.phone2), // TODO(l10n): 补 arb
-        MasterDetailRow('传真', d.fax), // TODO(l10n): 补 arb
-        MasterDetailRow('邮编', d.postcode), // TODO(l10n): 补 arb
-        MasterDetailRow('地址', d.address), // TODO(l10n): 补 arb
-        MasterDetailRow('收货地址', d.shipAddress), // TODO(l10n): 补 arb
-        MasterDetailRow('运输方式', d.shipVia), // TODO(l10n): 补 arb
-        MasterDetailRow('开户行', d.bank), // TODO(l10n): 补 arb
-        MasterDetailRow('银行账号', d.bankAccount), // TODO(l10n): 补 arb
-        MasterDetailRow('税号', d.taxId), // TODO(l10n): 补 arb
-        MasterDetailRow('期初应付', d.initTotal?.toStringAsFixed(2)), // TODO(l10n): 补 arb
-        MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
-        MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
-        MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
-        MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
-        MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
-        MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
-      ];
+    MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
+    MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
+    MasterDetailRow('描述/全称', d.description), // TODO(l10n): 补 arb
+    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
+    MasterDetailRow('地区', d.place), // TODO(l10n): 补 arb
+    MasterDetailRow('业务员', d.empId), // TODO(l10n): 补 arb
+    MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
+    MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
+    MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
+    MasterDetailRow('电话', d.phone), // TODO(l10n): 补 arb
+    MasterDetailRow('电话2', d.phone2), // TODO(l10n): 补 arb
+    MasterDetailRow('传真', d.fax), // TODO(l10n): 补 arb
+    MasterDetailRow('邮编', d.postcode), // TODO(l10n): 补 arb
+    MasterDetailRow('地址', d.address), // TODO(l10n): 补 arb
+    MasterDetailRow('收货地址', d.shipAddress), // TODO(l10n): 补 arb
+    MasterDetailRow('运输方式', d.shipVia), // TODO(l10n): 补 arb
+    MasterDetailRow('开户行', d.bank), // TODO(l10n): 补 arb
+    MasterDetailRow('银行账号', d.bankAccount), // TODO(l10n): 补 arb
+    MasterDetailRow('税号', d.taxId), // TODO(l10n): 补 arb
+    MasterDetailRow(
+      '期初应付',
+      d.initTotal?.toStringAsFixed(2),
+    ), // TODO(l10n): 补 arb
+    MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
+    MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
+    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
+    MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
+    MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -847,16 +864,26 @@ class _DetailPaneState extends State<_DetailPane> {
         children: [
           // 固定：分类信息卡（含编辑按钮）
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(0, UtenSpacing.s16, 0, UtenSpacing.s12),
+            padding: const EdgeInsets.fromLTRB(
+              0,
+              UtenSpacing.s16,
+              0,
+              UtenSpacing.s12,
+            ),
             child: MasterDetailCard(
               title: d.name,
               icon: Icons.local_shipping_outlined,
               subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
               stats: [
-                MasterDetailStat('子分类数', '${d.childCount}'), // TODO(l10n): 补 arb
+                MasterDetailStat(
+                  '子分类数',
+                  '${d.childCount}',
+                ), // TODO(l10n): 补 arb
                 MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
-                MasterDetailStat('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+                MasterDetailStat(
+                  '旧编码',
+                  d.legacyId?.toString(),
+                ), // TODO(l10n): 补 arb
               ],
               path: d.path.isEmpty ? null : d.path,
               canEdit: widget.canEdit,
@@ -872,13 +899,17 @@ class _DetailPaneState extends State<_DetailPane> {
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: Row(
               children: [
-                Icon(Icons.local_shipping_outlined,
-                    size: 18, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.local_shipping_outlined,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: UtenSpacing.s8),
                 Text(
                   '供应商 ($total)', // TODO(l10n): 补 arb
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
@@ -889,13 +920,7 @@ class _DetailPaneState extends State<_DetailPane> {
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                UtenExportButton(
-                  endpoint: '/master/suppliers/export',
-                  report: '',
-                  queryParams: _exportQuery,
-                  filename: '供应商资料',
-                  label: '导出供应商',
-                ),
+                // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
                 if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
                   UtenButton(
@@ -913,6 +938,28 @@ class _DetailPaneState extends State<_DetailPane> {
             child: MasterDataTableView<SupplierListItem>(
               columns: _supplierColumns,
               items: _supplierPage?.items ?? const [],
+              toolbarActions: [
+                UtenPrintPreviewButton(
+                  title: '供应商资料',
+                  subtitle: '最多前 2000 行',
+                  loader: _printLoader,
+                  exportEndpoint: '/master/suppliers/export',
+                  exportReport: '',
+                  exportQuery: _exportQuery,
+                  exportFilename: '供应商资料',
+                  type: UtenButtonType.primary,
+                  size: UtenButtonSize.large,
+                ),
+                UtenExportButton(
+                  endpoint: '/master/suppliers/export',
+                  report: '',
+                  queryParams: _exportQuery,
+                  filename: '供应商资料',
+                  label: '导出供应商',
+                  type: UtenButtonType.primary,
+                  size: UtenButtonSize.large,
+                ),
+              ],
               facets: _facets?.fields ?? const {},
               nullCounts: _facets?.nullCounts ?? const {},
               filters: _filters,
@@ -946,66 +993,127 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 不可筛（不进 facets/nullCounts → 下拉仅显示"所有"），单元格恒显示"—"。
   static final _supplierColumns = <MasterColumnDef<SupplierListItem>>[
     MasterColumnDef(
-        key: 'name', label: '供应商简称', width: 160, value: (s) => s.name),
+      key: 'name',
+      label: '供应商简称',
+      width: 160,
+      value: (s) => s.name,
+    ),
     MasterColumnDef(
-        key: 'description', label: '全称', width: 200, value: (s) => s.description),
+      key: 'description',
+      label: '全称',
+      width: 200,
+      value: (s) => s.description,
+    ),
     MasterColumnDef(
-        key: 'priceStyle',
-        label: '主结账方式',
-        width: 110,
-        value: (_) => '—'), // 无对应物理列，恒显示"—"
+      key: 'priceStyle',
+      label: '主结账方式',
+      width: 110,
+      value: (_) => '—',
+    ), // 无对应物理列，恒显示"—"
     MasterColumnDef(
-        key: 'tday',
-        label: '信用天数',
-        width: 80,
-        type: 'number',
-        sortable: true,
-        value: (s) => s.tday?.toString()),
+      key: 'tday',
+      label: '信用天数',
+      width: 80,
+      type: 'number',
+      sortable: true,
+      value: (s) => s.tday?.toString(),
+    ),
     MasterColumnDef(
-        key: 'lossRate',
-        label: '损耗率(%)',
-        width: 90,
-        value: (_) => '—'), // 无对应物理列，恒显示"—"
+      key: 'lossRate',
+      label: '损耗率(%)',
+      width: 90,
+      value: (_) => '—',
+    ), // 无对应物理列，恒显示"—"
     MasterColumnDef(
-        key: 'place', label: '所属地区', width: 110, value: (s) => s.place),
+      key: 'place',
+      label: '所属地区',
+      width: 110,
+      value: (s) => s.place,
+    ),
     MasterColumnDef(
-        key: 'empId', label: '业务员', width: 90, value: (s) => s.empId),
+      key: 'empId',
+      label: '业务员',
+      width: 90,
+      value: (s) => s.empId,
+    ),
     MasterColumnDef(
-        key: 'legalPerson',
-        label: '法人代表',
-        width: 100,
-        value: (s) => s.legalPerson),
+      key: 'legalPerson',
+      label: '法人代表',
+      width: 100,
+      value: (s) => s.legalPerson,
+    ),
     MasterColumnDef(
-        key: 'linkman', label: '联系人', width: 90, value: (s) => s.linkman),
+      key: 'linkman',
+      label: '联系人',
+      width: 90,
+      value: (s) => s.linkman,
+    ),
     MasterColumnDef(
-        key: 'mobile', label: '手机', width: 120, value: (s) => s.mobile),
+      key: 'mobile',
+      label: '手机',
+      width: 120,
+      value: (s) => s.mobile,
+    ),
     MasterColumnDef(
-        key: 'phone', label: '联系电话', width: 120, value: (s) => s.phone),
+      key: 'phone',
+      label: '联系电话',
+      width: 120,
+      value: (s) => s.phone,
+    ),
     MasterColumnDef(
-        key: 'phone2', label: '备用电话', width: 120, value: (s) => s.phone2),
+      key: 'phone2',
+      label: '备用电话',
+      width: 120,
+      value: (s) => s.phone2,
+    ),
+    MasterColumnDef(key: 'fax', label: '传真', width: 110, value: (s) => s.fax),
     MasterColumnDef(
-        key: 'fax', label: '传真', width: 110, value: (s) => s.fax),
+      key: 'postcode',
+      label: '邮编',
+      width: 80,
+      value: (s) => s.postcode,
+    ),
     MasterColumnDef(
-        key: 'postcode', label: '邮编', width: 80, value: (s) => s.postcode),
+      key: 'address',
+      label: '地址',
+      width: 220,
+      value: (s) => s.address,
+    ),
     MasterColumnDef(
-        key: 'address', label: '地址', width: 220, value: (s) => s.address),
+      key: 'bank',
+      label: '开户银行',
+      width: 160,
+      value: (s) => s.bank,
+    ),
     MasterColumnDef(
-        key: 'bank', label: '开户银行', width: 160, value: (s) => s.bank),
+      key: 'bankAccount',
+      label: '银行账号',
+      width: 160,
+      value: (s) => s.bankAccount,
+    ),
     MasterColumnDef(
-        key: 'bankAccount',
-        label: '银行账号',
-        width: 160,
-        value: (s) => s.bankAccount),
+      key: 'taxId',
+      label: '纳税号',
+      width: 140,
+      value: (s) => s.taxId,
+    ),
     MasterColumnDef(
-        key: 'taxId', label: '纳税号', width: 140, value: (s) => s.taxId),
+      key: 'website',
+      label: '网址',
+      width: 160,
+      value: (s) => s.website,
+    ),
     MasterColumnDef(
-        key: 'website', label: '网址', width: 160, value: (s) => s.website),
+      key: 'shipVia',
+      label: '运输方式',
+      width: 100,
+      value: (s) => s.shipVia,
+    ),
     MasterColumnDef(
-        key: 'shipVia', label: '运输方式', width: 100, value: (s) => s.shipVia),
-    MasterColumnDef(
-        key: 'shipAddress',
-        label: '送货地址',
-        width: 220,
-        value: (s) => s.shipAddress),
+      key: 'shipAddress',
+      label: '送货地址',
+      width: 220,
+      value: (s) => s.shipAddress,
+    ),
   ];
 }

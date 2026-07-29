@@ -103,6 +103,7 @@ class PurchaseDocConfig {
     linkToRequestItem: true,
     showReceived: true,
     showReturned: true,
+    skipListOnCreate: true,
   );
 
   static const receipt = PurchaseDocConfig(
@@ -119,6 +120,7 @@ class PurchaseDocConfig {
     hasReceiver: true,
     linkToOrderItem: true,
     showReturned: true,
+    skipListOnCreate: true,
   );
 
   static const returnDoc = PurchaseDocConfig(
@@ -135,6 +137,7 @@ class PurchaseDocConfig {
     linkToOrderItem: true,
     linkToReceiptItem: true,
     showReturned: true,
+    skipListOnCreate: true,
   );
 
   static PurchaseDocConfig by(PurchaseDocType t) {

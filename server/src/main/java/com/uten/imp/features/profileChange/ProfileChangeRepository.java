@@ -54,6 +54,9 @@ public interface ProfileChangeRepository extends JpaRepository<ProfileChangeRequ
     /** 某员工待审计数（HR 详情页 Hero 后区块使用）。 */
     long countByEmployeeIdAndStatus(UUID employeeId, String status);
 
+    /** 某员工某状态的全部记录（离职时批量自动驳回在途申请）。 */
+    List<ProfileChangeRequest> findByEmployeeIdAndStatus(UUID employeeId, String status);
+
     /** 当前 HR 待办总计数（导航徽章使用）。 */
     long countByStatus(String status);
 }

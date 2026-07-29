@@ -21,4 +21,8 @@ public class StockDocListItem {
     private Short status;
     private boolean closed;
     private Integer legacyId;
+    /** 领料车间/部门（V97，DRAW 用；各车间领料统计筛选）。 */
+    private UUID departmentId;
+    /** 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完；其他类型恒 null。 */
+    private Short issueStatus;
 }

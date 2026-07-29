@@ -181,3 +181,22 @@ class EffectivePermissions {
         superAdmin: json['superAdmin'] as bool? ?? false,
       );
 }
+
+/// 数据范围授权归属人候选（范围内实际有归属数据的员工）。
+class DataScopeOwner {
+  const DataScopeOwner({
+    required this.employeeId,
+    required this.name,
+    required this.count,
+  });
+
+  final String employeeId;
+  final String name;
+  final int count;
+
+  factory DataScopeOwner.fromJson(Map<String, dynamic> json) => DataScopeOwner(
+        employeeId: json['employeeId'] as String,
+        name: json['name'] as String,
+        count: (json['count'] as num).toInt(),
+      );
+}

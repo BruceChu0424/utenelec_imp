@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/widgets/uten_location_field.dart';
 import '../models/department_node.dart';
 import 'uten_department_tree_view.dart';
@@ -142,7 +143,15 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
       parentId: _parent?.id,
       level: _resultLevel,
     );
-    final ok = await widget.onSubmit(result);
+    // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
+    late final bool ok;
+    try {
+      ok = await widget.onSubmit(result);
+    } catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+      return;
+    }
     if (!mounted) return;
     if (ok) Navigator.of(context).pop();
   }
@@ -201,7 +210,9 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
               readOnly: _isEdit,
               decoration: InputDecoration(
                 labelText: '编码', // TODO(l10n): 补 arb
-                hintText: _isEdit ? null : '如 HR-01（创建后不可修改）', // TODO(l10n): 补 arb
+                hintText: _isEdit
+                    ? null
+                    : '如 HR-01（创建后不可修改）', // TODO(l10n): 补 arb
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -215,8 +226,9 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               Text(
                 '常用部门名称，点击填入', // TODO(l10n): 补 arb
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: UtenSpacing.s4),
               Wrap(
@@ -235,8 +247,9 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               Text(
                 _formError!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.error),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
             ],
           ],

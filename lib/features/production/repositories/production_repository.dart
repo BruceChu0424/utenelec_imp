@@ -116,6 +116,288 @@ class ProductionPlanRepository {
     final json = await api.post('/production/plans/$id/reverse'); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);
   }
+
+  // ───────────────────────── MRP-lite（物料需求 → 采购申请） ─────────────────────────
+
+  /// 物料需求预览：BOM 展开毛需求 − 库存 − 在途 = 净需求（自制件标记）。
+  Future<List<MrpRow>> mrpPreview(String id) async {
+    final list = await api.getList('/production/plans/$id/mrp'); // ENDPOINT
+    return list.map(MrpRow.fromJson).toList();
+  }
+
+  /// 按净需求生成采购申请（草稿）；已生成过且单据有效时后端 409 业务错误。
+  /// D3：strategy=gross 按毛需求开单（不扣库存/在途）。
+  Future<MrpGenerateResult> mrpGenerate(String id, {String? strategy}) async {
+    final json = await api.post(
+        '/production/plans/$id/mrp/generate${strategy != null ? '?strategy=$strategy' : ''}'); // ENDPOINT
+    return MrpGenerateResult.fromJson(json);
+  }
+
+  /// D3 订单物料分析：已审销售订货单直接 BOM 展开。
+  Future<List<MrpRow>> mrpOrderPreview(String orderId) async {
+    final list = await api.getList('/production/mrp/order-preview',
+        query: {'orderId': orderId}); // ENDPOINT
+    return list.map(MrpRow.fromJson).toList();
+  }
+
+  /// 按 BOM 毛需求生成生产领料单（草稿，需指定仓库）。
+  Future<MrpGenerateResult> mrpGenerateDraw(String id, String warehouseId) async {
+    final json = await api.post('/production/plans/$id/mrp/generate-draw',
+        body: {'warehouseId': warehouseId}); // ENDPOINT
+    return MrpGenerateResult.fromJson(json);
+  }
+
+  /// 按计划明细（排产量−已入库量）生成成品入库单（草稿，需指定仓库）。
+  Future<MrpGenerateResult> mrpGenerateFinishedIn(String id, String warehouseId) async {
+    final json = await api.post('/production/plans/$id/mrp/generate-finished-in',
+        body: {'warehouseId': warehouseId}); // ENDPOINT
+    return MrpGenerateResult.fromJson(json);
+  }
+
+  // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
+
+  /// 待排产订单行（交货升序，urgent=距交货 ≤3 天）。
+  Future<List<SchedulePendingRow>> schedulePending() async {
+    final list = await api.getList('/production/schedule/pending'); // ENDPOINT
+    return list.map(SchedulePendingRow.fromJson).toList();
+  }
+
+  /// 待排产计数（生产部工作台徽标）：{'count': n, 'urgent': m}。
+  Future<Map<String, int>> schedulePendingCount() async {
+    final json = await api.get('/production/schedule/pending-count'); // ENDPOINT
+    return {
+      'count': (json['count'] as num?)?.toInt() ?? 0,
+      'urgent': (json['urgent'] as num?)?.toInt() ?? 0,
+    };
+  }
+
+  /// 已审订单明细 + 每行货品一层 BOM 零件（新建计划单「从订单带明细」用）。
+  Future<List<ScheduleOrderLine>> scheduleOrderLines(String orderId) async {
+    final list = await api.getList('/production/schedule/order-lines',
+        query: {'orderId': orderId}); // ENDPOINT
+    return list.map(ScheduleOrderLine.fromJson).toList();
+  }
+
+  /// 合并排产：勾选订单行 → 草稿计划（同货合并行 + 预建 links）；返回计划 id。
+  Future<String> createMergePlan(Map<String, dynamic> body) async {
+    final json = await api.post('/production/schedule/merge-plan', body: body); // ENDPOINT
+    return json['planId'] as String;
+  }
+
+  /// D2 建议完工日期（历史日均完工×BOM 层级缓冲）。
+  Future<Map<String, dynamic>> suggestFinish(Map<String, dynamic> body) async {
+    final json = await api.post('/production/schedule/suggest-finish', body: body); // ENDPOINT
+    return Map<String, dynamic>.from(json as Map);
+  }
+}
+
+/// 调度工作台待排产行（对应后端 PendingPlanRow）。
+class SchedulePendingRow {
+  const SchedulePendingRow({
+    required this.orderItemId,
+    required this.orderId,
+    this.orderBillNo,
+    this.clientName,
+    this.goodsId,
+    this.goodsCode,
+    this.goodsName,
+    this.spec,
+    this.colorName,
+    this.unitName,
+    this.qty,
+    this.reservedQty,
+    this.plannedQty,
+    this.needQty,
+    this.deliverDate,
+    this.chainStatus,
+    this.urgent = false,
+  });
+  final String orderItemId;
+  final String orderId;
+  final String? orderBillNo;
+  final String? clientName;
+  final String? goodsId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? spec;
+  final String? colorName;
+  final String? unitName;
+  final double? qty;
+  final double? reservedQty;
+  final double? plannedQty;
+  final double? needQty;
+  final String? deliverDate;
+  final int? chainStatus;
+  final bool urgent;
+
+  factory SchedulePendingRow.fromJson(Map<String, dynamic> j) =>
+      SchedulePendingRow(
+        orderItemId: j['orderItemId'] as String,
+        orderId: j['orderId'] as String,
+        orderBillNo: j['orderBillNo'] as String?,
+        clientName: j['clientName'] as String?,
+        goodsId: j['goodsId'] as String?,
+        goodsCode: j['goodsCode'] as String?,
+        goodsName: j['goodsName'] as String?,
+        spec: j['spec'] as String?,
+        colorName: j['colorName'] as String?,
+        unitName: j['unitName'] as String?,
+        qty: (j['qty'] as num?)?.toDouble(),
+        reservedQty: (j['reservedQty'] as num?)?.toDouble(),
+        plannedQty: (j['plannedQty'] as num?)?.toDouble(),
+        needQty: (j['needQty'] as num?)?.toDouble(),
+        deliverDate: j['deliverDate'] as String?,
+        chainStatus: (j['chainStatus'] as num?)?.toInt(),
+        urgent: j['urgent'] == true,
+      );
+}
+
+/// 已审订单明细行（含一层 BOM 零件），对应后端 ScheduleOrderLine。
+class ScheduleOrderLine {
+  const ScheduleOrderLine({
+    required this.orderItemId,
+    this.lineNo,
+    this.goodsId,
+    this.goodsCode,
+    this.goodsName,
+    this.spec,
+    this.colorId,
+    this.colorName,
+    this.unitId,
+    this.unitName,
+    this.qty,
+    this.plannedQty,
+    this.needQty,
+    this.unitRate,
+    this.deliverDate,
+    this.orderBillNo,
+    this.clientName,
+    this.bom = const [],
+  });
+  final String orderItemId;
+  final int? lineNo;
+  final String? goodsId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? spec;
+  final String? colorId;
+  final String? colorName;
+  final String? unitId;
+  final String? unitName;
+  final double? qty;
+  final double? plannedQty;
+  final double? needQty;
+  final double? unitRate;
+  final String? deliverDate;
+  final String? orderBillNo;
+  final String? clientName;
+  final List<ScheduleBomComponent> bom;
+
+  factory ScheduleOrderLine.fromJson(Map<String, dynamic> j) =>
+      ScheduleOrderLine(
+        orderItemId: j['orderItemId'] as String,
+        lineNo: (j['lineNo'] as num?)?.toInt(),
+        goodsId: j['goodsId'] as String?,
+        goodsCode: j['goodsCode'] as String?,
+        goodsName: j['goodsName'] as String?,
+        spec: j['spec'] as String?,
+        colorId: j['colorId'] as String?,
+        colorName: j['colorName'] as String?,
+        unitId: j['unitId'] as String?,
+        unitName: j['unitName'] as String?,
+        qty: (j['qty'] as num?)?.toDouble(),
+        plannedQty: (j['plannedQty'] as num?)?.toDouble(),
+        needQty: (j['needQty'] as num?)?.toDouble(),
+        unitRate: (j['unitRate'] as num?)?.toDouble(),
+        deliverDate: j['deliverDate'] as String?,
+        orderBillNo: j['orderBillNo'] as String?,
+        clientName: j['clientName'] as String?,
+        bom: [
+          for (final b in (j['bom'] as List? ?? const []))
+            ScheduleBomComponent.fromJson(b as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// 货品一层 BOM 零件（单件用量 × 待排产缺口 = 需求小计）。
+class ScheduleBomComponent {
+  const ScheduleBomComponent({
+    required this.goodsId,
+    this.code,
+    this.name,
+    this.spec,
+    this.perQty,
+    this.needQty,
+    this.onhand,
+    this.selfMade = false,
+  });
+  final String goodsId;
+  final String? code;
+  final String? name;
+  final String? spec;
+  final double? perQty;
+  final double? needQty;
+  final double? onhand;
+  final bool selfMade;
+
+  factory ScheduleBomComponent.fromJson(Map<String, dynamic> j) =>
+      ScheduleBomComponent(
+        goodsId: j['goodsId'] as String,
+        code: j['code'] as String?,
+        name: j['name'] as String?,
+        spec: j['spec'] as String?,
+        perQty: (j['perQty'] as num?)?.toDouble(),
+        needQty: (j['needQty'] as num?)?.toDouble(),
+        onhand: (j['onhand'] as num?)?.toDouble(),
+        selfMade: j['selfMade'] == true,
+      );
+}
+
+/// MRP 预览行。
+class MrpRow {  const MrpRow({
+    required this.goodsId, this.goodsCode, this.goodsName, this.spec,
+    this.colorId, this.gross, this.onhand, this.openPo, this.net,
+    required this.selfMade, this.unitId,
+  });
+  final String goodsId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? spec;
+  final String? colorId;
+  final double? gross;
+  final double? onhand;
+  final double? openPo;
+  final double? net;
+  final bool selfMade;
+  final String? unitId;
+
+  factory MrpRow.fromJson(Map<String, dynamic> j) => MrpRow(
+        goodsId: j['goodsId'] as String,
+        goodsCode: j['goodsCode'] as String?,
+        goodsName: j['goodsName'] as String?,
+        spec: j['spec'] as String?,
+        colorId: j['colorId'] as String?,
+        gross: (j['gross'] as num?)?.toDouble(),
+        onhand: (j['onhand'] as num?)?.toDouble(),
+        openPo: (j['openPo'] as num?)?.toDouble(),
+        net: (j['net'] as num?)?.toDouble(),
+        selfMade: j['selfMade'] == true,
+        unitId: j['unitId'] as String?,
+      );
+}
+
+/// MRP 生成结果。
+class MrpGenerateResult {
+  const MrpGenerateResult({required this.requestId, required this.requestBillNo, required this.lineCount});
+  final String requestId;
+  final String requestBillNo;
+  final int lineCount;
+
+  factory MrpGenerateResult.fromJson(Map<String, dynamic> j) => MrpGenerateResult(
+        requestId: j['requestId'] as String,
+        requestBillNo: j['requestBillNo'] as String,
+        lineCount: (j['lineCount'] as num).toInt(),
+      );
 }
 
 // ───────────────────────── 生产日报（空结构保未来） ─────────────────────────

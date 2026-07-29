@@ -77,7 +77,10 @@ public class SalesReturnService {
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
@@ -85,6 +88,16 @@ public class SalesReturnService {
                                            CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            // 归属可见性（销售按人授权）：公共或可见归属人；超管/sales:view:all 全见
+            var ownerScope = ownerVisibility.evaluate("sales", "sales:view:all");
+            if (!ownerScope.seeAll()) {
+                if (ownerScope.visibleOwners().isEmpty()) {
+                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
+                } else {
+                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
+                            root.get("ownerEmployeeId").in(ownerScope.visibleOwners())));
+                }
+            }
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -115,6 +128,7 @@ public class SalesReturnService {
         tx.bind();
         SalesReturn r = new SalesReturn();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -157,6 +171,7 @@ public class SalesReturnService {
     public ReturnDetail approve(UUID id) {
         tx.bind();
         SalesReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -194,6 +209,7 @@ public class SalesReturnService {
         }
 
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setLastDate(now);
         returnRepo.save(r);
         return detail(id);
@@ -207,6 +223,7 @@ public class SalesReturnService {
     public ReturnDetail reverse(UUID id) {
         tx.bind();
         SalesReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -364,7 +381,8 @@ public class SalesReturnService {
                 r.getClientId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getPaymentStyleId(), r.getSellerId(), r.getMakerId(), r.getApproverId(),
                 r.getLastDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), r.isArPosted(), items);
+                r.isClosed(), r.getSourceDocNo(), r.isArPosted(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 
     private SalesReturn requireReturn(UUID id) {

@@ -90,4 +90,11 @@ public class SalesQuoteController {
     public QuoteDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
     }
+
+    /** 报价转订货（SOP §三1）：已审报价一键生成订货草稿（行带入+来源回联+价格留痕）。 */
+    @PostMapping("/{id}/convert")
+    @PreAuthorize("hasAuthority('sales_order:edit')")
+    public com.uten.imp.features.sales.order.dto.OrderDetail convert(@PathVariable UUID id) {
+        return service.convertToOrder(id);
+    }
 }

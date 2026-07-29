@@ -23,7 +23,9 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     price.addListener(_recalc);
   }
 
-  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(null);
+  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
+    null,
+  );
   GoodsOption? get goods => goodsNotifier.value;
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
@@ -68,8 +70,9 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     return r;
   }
 
-  void _recalc() =>
-      recalcAmount(() => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0));
+  void _recalc() => recalcAmount(
+    () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+  );
 
   @override
   void dispose() {

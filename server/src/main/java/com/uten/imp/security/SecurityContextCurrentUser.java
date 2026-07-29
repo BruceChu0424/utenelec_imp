@@ -27,4 +27,14 @@ public class SecurityContextCurrentUser {
     public UUID requireId() {
         return id().orElseThrow(() -> new IllegalStateException("当前无登录用户"));
     }
+
+    /** 当前登录用户的员工档案 ID（employees.id）。制单员/审核员等业务人名字段统一存它——报表按 employees.id JOIN 姓名。 */
+    public Optional<UUID> employeeId() {
+        return get().map(AuthUser::getEmployeeId);
+    }
+
+    /** 必须为员工账号（staff 且已绑员工档案），否则抛 IllegalStateException。 */
+    public UUID requireEmployeeId() {
+        return employeeId().orElseThrow(() -> new IllegalStateException("当前账号未绑定员工档案"));
+    }
 }

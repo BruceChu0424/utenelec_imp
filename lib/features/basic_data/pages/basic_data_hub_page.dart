@@ -103,7 +103,8 @@ class BasicDataHubPage extends StatelessWidget {
               itemCount: _resources.length,
               spacing: UtenSpacing.s12,
               columns: const UtenResponsiveColumns(compact: 2, medium: 3),
-              itemBuilder: (context, i, _) => _ResourceTile(item: _resources[i]),
+              itemBuilder: (context, i, _) =>
+                  _ResourceTile(item: _resources[i]),
             ),
           ),
         ),

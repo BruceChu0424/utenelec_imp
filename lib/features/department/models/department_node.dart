@@ -9,6 +9,9 @@ const kSkeletonDepartmentLevels = {'决策层', '管理中心'};
 /// 公司根层级（选择器中不显示，从决策层开始列）。
 const kCompanyDepartmentLevel = '公司';
 
+/// 生产部 code（V07 seed：DEPT_PROD，下挂 6 个车间 WS_*）。用于车间选择器裁剪到生产部子树。
+const kDeptCodeProduction = 'DEPT_PROD';
+
 /// 部门树节点（递归 children）。
 class DepartmentNode {
   DepartmentNode({
@@ -51,6 +54,16 @@ class DepartmentNode {
           .toList(),
     );
   }
+}
+
+/// 按 code 在部门树里递归查找节点（如找生产部 DEPT_PROD）。
+DepartmentNode? findDepartmentByCode(List<DepartmentNode> nodes, String code) {
+  for (final n in nodes) {
+    if (n.code == code) return n;
+    final hit = findDepartmentByCode(n.children, code);
+    if (hit != null) return hit;
+  }
+  return null;
 }
 
 /// 部门详情。

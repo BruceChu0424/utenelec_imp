@@ -176,6 +176,8 @@ class PurchaseDocDetail {
     this.receiverId,
     this.makerId,
     this.approverId,
+    this.makerName,
+    this.createdAt,
     this.needDate,
     this.deliverDate,
     this.remark,
@@ -202,6 +204,10 @@ class PurchaseDocDetail {
   final String? receiverId;
   final String? makerId;
   final String? approverId;
+  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  final String? makerName;
+  /// 制单时间 ISO（审计 created_at，创建后不可变）
+  final String? createdAt;
   final String? needDate;
   final String? deliverDate;
   final String? remark;
@@ -228,6 +234,8 @@ class PurchaseDocDetail {
         senderId: json['senderId'] as String?,
         receiverId: json['receiverId'] as String?,
         makerId: json['makerId'] as String?,
+        makerName: json['makerName'] as String?,
+        createdAt: json['createdAt'] as String?,
         approverId: json['approverId'] as String?,
         needDate: json['needDate'] as String?,
         deliverDate: json['deliverDate'] as String?,

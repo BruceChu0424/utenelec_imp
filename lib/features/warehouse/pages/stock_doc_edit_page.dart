@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -44,11 +45,15 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   DateTime _billDate = DateTime.now();
   String? _warehouseId;
   String? _toWarehouseId;
+  String? _departmentId; // 领料车间（仅 DRAW，V97）
 
   final _grid = UtenEditableGridController<StockGridRow>();
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+  // 制单信息（服务端权威，只读展示）
+  String? _makerName;
+  String? _createdAt;
 
   @override
   void initState() {
@@ -81,6 +86,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         if (d.billDate != null) _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
         _warehouseId = d.warehouseId;
         _toWarehouseId = d.toWarehouseId;
+        _departmentId = d.departmentId;
+        _makerName = d.makerName;
+        _createdAt = d.createdAt;
         final rows = <StockGridRow>[];
         for (final it in d.items) {
           final row = StockGridRow(isCheck: _isCheck)
@@ -140,8 +148,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       'billDate': _fmt(_billDate),
       'warehouseId': _warehouseId,
       if (widget.docType == StockDocType.transfer) 'toWarehouseId': _toWarehouseId,
-      if (widget.docType == StockDocType.draw)
+      if (widget.docType == StockDocType.draw) ...{
         'assTeam': _assTeam.text.trim().isEmpty ? null : _assTeam.text.trim(),
+        'departmentId': _departmentId,
+      },
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'items': items,
     };
@@ -169,7 +179,16 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     return Scaffold(
       appBar: UtenAppBar(
           title: widget.id == null ? '新建${widget.docType.label}' : '编辑${widget.docType.label}',
-          showBackButton: true),
+          showBackButton: true,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.tonal,
+              icon: Icons.history_rounded,
+              onPressed: () =>
+                  context.push(RoutePath.stockDocList(widget.docType.code)),
+              child: const Text('查看历史'),
+            ),
+          ]),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -202,6 +221,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                       : const Icon(Icons.lock_outline, size: 16),
                                 ),
                               ),
+                              // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                              ...utenMakerAuditCells(ref,
+                                  makerName: _makerName, createdAt: _createdAt),
                               UtenDateField(
                                 label: '单据日期',
                                 required: true,
@@ -213,11 +235,14 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                               if (widget.docType == StockDocType.transfer)
                                 _dd('调入仓', _toWarehouseId, names.warehouseEntries,
                                     (v) => setState(() => _toWarehouseId = v)),
-                              if (widget.docType == StockDocType.draw)
+                              if (widget.docType == StockDocType.draw) ...[
+                                _dd('领料车间', _departmentId, names.departmentEntries,
+                                    (v) => setState(() => _departmentId = v)),
                                 TextField(
                                   controller: _assTeam,
                                   decoration: const InputDecoration(labelText: '装配班组'),
                                 ),
+                              ],
                             ]),
                             const SizedBox(height: UtenSpacing.s12),
                             TextField(

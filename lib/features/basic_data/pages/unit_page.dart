@@ -18,7 +18,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/unit_node.dart';
@@ -69,7 +69,9 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       _pageNum = page;
     });
     try {
-      final result = await ref.read(unitRepositoryProvider).list(
+      final result = await ref
+          .read(unitRepositoryProvider)
+          .list(
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
@@ -128,21 +130,22 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   // ---- 新建/编辑/删除 ---------------------------------------------------
 
   static const _unitFields = [
+    MasterFieldDef(key: 'name', label: '单位名称', required: true, group: '基础'),
     MasterFieldDef(
-        key: 'name', label: '单位名称', required: true, group: '基础'),
+      key: 'code',
+      label: '单位编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(
-        key: 'code',
-        label: '单位编号',
-        group: '基础',
-        readOnly: true,
-        hint: '保存后自动生成'),
-    MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础'),
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
   ];
 
   void _showCreate() {
@@ -156,21 +159,16 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    try {
-      await ref.read(unitRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('单位已创建'); // TODO(l10n): 补 arb
-      await _loadUnits(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(unitRepositoryProvider).create(body);
+      },
+      success: '单位已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadUnits(_pageNum);
+    return true;
   }
 
   void _showEdit(UnitDetail d) {
@@ -188,21 +186,16 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   }
 
   Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    try {
-      await ref.read(unitRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('单位已更新'); // TODO(l10n): 补 arb
-      await _loadUnits(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(unitRepositoryProvider).update(id, body);
+      },
+      success: '单位已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadUnits(_pageNum);
+    return true;
   }
 
   Future<void> _delete(UnitDetail d) async {
@@ -227,20 +220,18 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(unitRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('单位已删除'); // TODO(l10n): 补 arb
-      await _loadUnits(_pageNum);
-      if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
-        await _loadUnits(_page!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(unitRepositoryProvider).delete(d.id);
+      },
+      success: '单位已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadUnits(_pageNum);
+    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
+      await _loadUnits(_page!.page - 1);
     }
   }
 
@@ -286,21 +277,28 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   }
 
   List<MasterDetailRow> _detailRows(UnitDetail u) => [
-        MasterDetailRow('编号', u.code), // TODO(l10n): 补 arb
-        MasterDetailRow('单位名称', u.name), // TODO(l10n): 补 arb
-        MasterDetailRow('状态', u.status), // TODO(l10n): 补 arb
-        MasterDetailRow('旧编码', u.legacyId?.toString()), // TODO(l10n): 补 arb
-      ];
+    MasterDetailRow('编号', u.code), // TODO(l10n): 补 arb
+    MasterDetailRow('单位名称', u.name), // TODO(l10n): 补 arb
+    MasterDetailRow('状态', u.status), // TODO(l10n): 补 arb
+    MasterDetailRow('旧编码', u.legacyId?.toString()), // TODO(l10n): 补 arb
+  ];
 
   // ---- 列定义 -----------------------------------------------------------
 
   static final _columns = <MasterColumnDef<UnitListItem>>[
+    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (u) => u.code),
     MasterColumnDef(
-        key: 'code', label: '编号', width: 120, value: (u) => u.code),
+      key: 'name',
+      label: '单位名称',
+      width: 220,
+      value: (u) => u.name,
+    ),
     MasterColumnDef(
-        key: 'name', label: '单位名称', width: 220, value: (u) => u.name),
-    MasterColumnDef(
-        key: 'status', label: '状态', width: 100, value: (u) => u.status),
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (u) => u.status,
+    ),
   ];
 
   Future<void> _refresh() async {
@@ -333,16 +331,23 @@ class _UnitPageState extends ConsumerState<UnitPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.straighten_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.straighten_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       Text(
                         '单位 ($total)', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(

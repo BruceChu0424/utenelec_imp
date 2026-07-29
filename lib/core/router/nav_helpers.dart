@@ -33,3 +33,17 @@ void backTo(BuildContext context, {required String defaultPath}) {
   final returnTo = GoRouterState.of(context).uri.queryParameters['returnTo'];
   context.go(returnTo ?? defaultPath);
 }
+
+/// 优先 pop 回上一页；栈空（深链 / context.go 直达）则来源感知回 [defaultPath]。
+///
+/// 用于「既可能 push 进（列表行点击→新建/详情），又可能 go 进（hub 卡片直达
+/// 新建）」的编辑/详情页：从列表 push 进来时 pop 回列表；从 hub go 直达时栈空，
+/// 读 returnTo（goFrom 写入的来源 hub）回模块 hub，没有则回 [defaultPath]。
+/// 比 backTo 多了 pop 分支，避免把 push 进来的页面也强行 go 跳走。
+void popOrBackTo(BuildContext context, {required String defaultPath}) {
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    backTo(context, defaultPath: defaultPath);
+  }
+}

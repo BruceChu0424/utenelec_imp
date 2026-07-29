@@ -35,6 +35,7 @@ class UtenDropdownField extends StatefulWidget {
     this.allowClear = true,
     this.enabled = true,
     this.hintText,
+    this.searchable,
   });
 
   /// 标签（表头字段用；grid 单元格可不传，由列头标识列）。
@@ -52,6 +53,9 @@ class UtenDropdownField extends StatefulWidget {
   final bool enabled;
   final String? hintText;
 
+  /// 弹层是否带搜索框（输入实时过滤选项）。null=自动（选项 ≥4 个时启用）。
+  final bool? searchable;
+
   @override
   State<UtenDropdownField> createState() => _UtenDropdownFieldState();
 }
@@ -59,6 +63,8 @@ class UtenDropdownField extends StatefulWidget {
 class _UtenDropdownFieldState extends State<UtenDropdownField> {
   final LayerLink _link = LayerLink();
   OverlayEntry? _overlay;
+  TextEditingController? _searchCtl;
+  FocusNode? _searchFocus;
 
   /// 当前值的展示文本（孤儿值兜底显原值）。
   String get _display {
@@ -71,6 +77,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   void _open() {
     if (_overlay != null || !widget.enabled) return;
+    _searchCtl = TextEditingController();
+    _searchFocus = FocusNode();
     _overlay = OverlayEntry(builder: _buildOverlay);
     Overlay.of(context, rootOverlay: true).insert(_overlay!);
   }
@@ -78,6 +86,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   void _close() {
     _overlay?.remove();
     _overlay = null;
+    _searchCtl?.dispose();
+    _searchCtl = null;
+    _searchFocus?.dispose();
+    _searchFocus = null;
   }
 
   void _select(String? v) {
@@ -121,8 +133,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   }
 
   /// 弹层：锚定字段下方、限高 320、竖向滚动；点外部关闭。样式对齐 _FilterCell。
+  /// 选项较多（或 searchable:true）时顶部带搜索框，输入实时过滤，回车选中第一项。
   Widget _buildOverlay(BuildContext ctx) {
     final theme = Theme.of(ctx);
+    final searchable = widget.searchable ?? widget.items.length >= 4;
     return Stack(
       children: [
         Positioned.fill(
@@ -144,23 +158,84 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
               clipBehavior: Clip.antiAlias,
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 320, maxWidth: 300),
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  children: <Widget>[
-                    if (widget.allowClear)
-                      _item(ctx,
-                          label: '不选',
-                          selected: widget.value == null,
-                          onTap: () => _select(null),
-                          theme: theme),
-                    for (final it in widget.items)
-                      _item(ctx,
-                          label: it.label,
-                          selected: it.value == widget.value,
-                          onTap: () => _select(it.value),
-                          theme: theme),
-                  ],
+                child: StatefulBuilder(
+                  builder: (ctx, setOverlayState) {
+                    final q = _searchCtl?.text.trim().toLowerCase() ?? '';
+                    final filtered = q.isEmpty
+                        ? widget.items
+                        : widget.items
+                            .where((it) => it.label.toLowerCase().contains(q))
+                            .toList();
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (searchable)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                                UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s4),
+                            child: TextField(
+                              controller: _searchCtl,
+                              focusNode: _searchFocus,
+                              autofocus: true,
+                              style: theme.textTheme.bodyMedium,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: '输入关键字搜索',
+                                prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                                prefixIconConstraints:
+                                    const BoxConstraints(minWidth: 32, minHeight: 32),
+                                suffixIcon: q.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.close_rounded, size: 16),
+                                        onPressed: () {
+                                          _searchCtl!.clear();
+                                          setOverlayState(() {});
+                                        },
+                                      ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: UtenSpacing.s8, vertical: UtenSpacing.s8),
+                              ),
+                              onChanged: (_) => setOverlayState(() {}),
+                              onSubmitted: (_) {
+                                if (filtered.isNotEmpty) _select(filtered.first.value);
+                              },
+                            ),
+                          ),
+                        Flexible(
+                          child: ListView(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            children: <Widget>[
+                              if (widget.allowClear)
+                                _item(ctx,
+                                    label: '不选',
+                                    selected: widget.value == null,
+                                    onTap: () => _select(null),
+                                    theme: theme),
+                              for (final it in filtered)
+                                _item(ctx,
+                                    label: it.label,
+                                    selected: it.value == widget.value,
+                                    onTap: () => _select(it.value),
+                                    theme: theme),
+                              if (filtered.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: UtenSpacing.s12, vertical: UtenSpacing.s12),
+                                  child: Text('无匹配项',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.onSurfaceVariant)),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

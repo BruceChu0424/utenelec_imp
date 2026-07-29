@@ -5,12 +5,18 @@
 //   · 明细对帐 (J 单客户 / L 单供应商)   → /finance/reports/statement/detail?partyId&side
 //   · 年度对帐 (X 客户/供应商，按月)      → /finance/reports/statement/annual?partyId&side&year
 // 右侧 MasterDataTableView（滚动余额列）。默认日期范围 = 上月今日..今日（defaultReportFrom()）。
+//
+// 筛选口径（方向/报表类型/往来单位/年度/日期范围/排序）按账号服务端持久化
+// （report.finance.statement，ReportFilterPrefs：docType=side、extra={view,partyId,year}）；
+// 关键字不持久化。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -23,6 +29,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 
 enum _StmtView { flow, detail, annual }
@@ -60,13 +67,56 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   ReportData? _data;
   bool _loading = false;
 
+  /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
+  bool _dirty = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyPrefs(ref.read(financeStatementReportPrefsProvider));
       _loadParties();
       _load();
     });
+  }
+
+  /// 应用偏好快照（空快照=未存过，保留页面默认）。
+  void _applyPrefs(ReportFilterPrefs p) {
+    if (p.isEmpty) return;
+    setState(() {
+      if (p.docType == 'AR' || p.docType == 'AP') _side = p.docType!;
+      final v = p.extra['view']?.toString();
+      if (v != null) {
+        _view = _StmtView.values.firstWhere((e) => e.name == v, orElse: () => _view);
+      }
+      _partyId = p.extra['partyId']?.toString();
+      final y = p.extra['year'];
+      if (y is num) _year = y.toInt();
+      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
+      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
+      _sortKey = p.sortKey;
+      _sortAsc = p.sortAsc;
+    });
+  }
+
+  /// 当前筛选口径快照（不含关键字/分页）。
+  ReportFilterPrefs _snapshot() => ReportFilterPrefs(
+        docType: _side,
+        from: _fmt(_from),
+        to: _fmt(_to),
+        sortKey: _sortKey,
+        sortAsc: _sortAsc,
+        extra: {
+          'view': _view.name,
+          if (_partyId != null) 'partyId': _partyId,
+          'year': _year,
+        },
+      );
+
+  /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  void _persistPrefs() {
+    _dirty = true;
+    ref.read(financeStatementReportPrefsProvider.notifier).update(_snapshot());
   }
 
   Future<void> _loadParties() async {
@@ -75,14 +125,16 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     try {
       final path = _side == 'AR' ? '/master/clients' : '/master/suppliers';
       final list = await api.getList(path, query: {'size': 9999});
-      final parties = list.map((m) {
-        final j = m as Map<String, dynamic>;
+      final parties = list.map((j) {
         return _Party(j['id']?.toString() ?? '', j['name']?.toString() ?? '');
       }).where((p) => p.id.isNotEmpty).toList();
       if (!mounted) return;
       setState(() {
         _partyList = parties;
-        _partyId = null;
+        // 保留仍然有效的 partyId（偏好恢复的选中不被覆盖）；已失效（被删/换方向）才清空。
+        if (_partyId != null && parties.every((p) => p.id != _partyId)) {
+          _partyId = null;
+        }
         _partyLoading = false;
       });
     } catch (_) {
@@ -136,6 +188,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       _sortAsc = ascending;
       _page = 1;
     });
+    _persistPrefs();
     _load();
   }
 
@@ -158,27 +211,45 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         ...sortQueryParams(_sortKey, _sortAsc),
       };
 
+  /// 打印预览数据：按当前视图/往来单位口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final api = ref.read(apiClientProvider);
+    final json = await api.get(_endpoint,
+        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final data = parseReportResponse(json, 1);
+    return UtenPrintTable(
+      headers: [for (final c in data.columns) c.label],
+      rows: [
+        for (final r in data.rows)
+          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
+      ],
+    );
+  }
+
+  /// 当前视图标签（build 与表格工具条共用）。
+  String get _viewLabel => switch (_view) {
+        _StmtView.flow => _side == 'AR' ? '单客户流水对帐单' : '单供应商流水对帐单',
+        _StmtView.detail => _side == 'AR' ? '单客户明细对帐单' : '单供应商明细对帐单',
+        _StmtView.annual => _side == 'AR' ? '客户年度对帐单' : '供应商年度对帐单',
+      };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final viewLabel = switch (_view) {
-      _StmtView.flow => _side == 'AR' ? '单客户流水对帐单' : '单供应商流水对帐单',
-      _StmtView.detail => _side == 'AR' ? '单客户明细对帐单' : '单供应商明细对帐单',
-      _StmtView.annual => _side == 'AR' ? '客户年度对帐单' : '供应商年度对帐单',
-    };
+    final viewLabel = _viewLabel;
+    // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。
+    ref.listen(financeStatementReportPrefsProvider, (prev, next) {
+      if (!_dirty && prev != next && !next.isEmpty && mounted) {
+        _applyPrefs(next);
+        _loadParties();
+        _page = 1;
+        _load();
+      }
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: '往来对帐单',
         leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.finance)),
-        actions: [
-          // 对帐单需先选往来单位；未选时按钮仍显，点击后后端返回空表（partyStatement* 空结构）。
-          UtenExportButton(
-            endpoint: '/finance/reports/export',
-            report: _exportReport,
-            queryParams: _exportQuery,
-            filename: '往来对帐单',
-          ),
-        ],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -224,12 +295,14 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
             _filterLabel('方向'),
             Wrap(spacing: 6, runSpacing: 4, children: [
               ChoiceChip(label: const Text('应收（客户）'), selected: _side == 'AR', onSelected: (_) {
-                setState(() { _side = 'AR'; _page = 1; _data = null; });
+                setState(() { _side = 'AR'; _partyId = null; _page = 1; _data = null; });
+                _persistPrefs();
                 _loadParties();
                 _load();
               }),
               ChoiceChip(label: const Text('应付（供应商）'), selected: _side == 'AP', onSelected: (_) {
-                setState(() { _side = 'AP'; _page = 1; _data = null; });
+                setState(() { _side = 'AP'; _partyId = null; _page = 1; _data = null; });
+                _persistPrefs();
                 _loadParties();
                 _load();
               }),
@@ -255,6 +328,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
                 ],
                 onChanged: (v) {
                   setState(() { _partyId = v; _page = 1; });
+                  _persistPrefs();
                   _load();
                 },
               ),
@@ -262,9 +336,9 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
               const SizedBox(height: UtenSpacing.s12),
               _filterLabel('年度'),
               Row(children: [
-                IconButton(icon: const Icon(Icons.chevron_left), onPressed: () { setState(() => _year--); _page = 1; _load(); }),
+                IconButton(icon: const Icon(Icons.chevron_left), onPressed: () { setState(() => _year--); _page = 1; _persistPrefs(); _load(); }),
                 Text('$_year', style: theme.textTheme.titleMedium),
-                IconButton(icon: const Icon(Icons.chevron_right), onPressed: () { setState(() => _year++); _page = 1; _load(); }),
+                IconButton(icon: const Icon(Icons.chevron_right), onPressed: () { setState(() => _year++); _page = 1; _persistPrefs(); _load(); }),
               ]),
             ] else ...[
               const SizedBox(height: UtenSpacing.s12),
@@ -272,11 +346,17 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
               Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 TextButton.icon(onPressed: () async {
                   final p = await showDatePicker(context: context, initialDate: _from, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                  if (p != null) setState(() => _from = p);
+                  if (p != null) {
+                    setState(() => _from = p);
+                    _persistPrefs();
+                  }
                 }, icon: const Icon(Icons.event_outlined, size: 18), label: Text('起 ${_fmt(_from)}')),
                 TextButton.icon(onPressed: () async {
                   final p = await showDatePicker(context: context, initialDate: _to, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                  if (p != null) setState(() => _to = p);
+                  if (p != null) {
+                    setState(() => _to = p);
+                    _persistPrefs();
+                  }
                 }, icon: const Icon(Icons.event_outlined, size: 18), label: Text('止 ${_fmt(_to)}')),
               ]),
               const SizedBox(height: UtenSpacing.s12),
@@ -298,6 +378,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   void _changeView(_StmtView v) {
     if (v == _view) return;
     setState(() { _view = v; _page = 1; _data = null; });
+    _persistPrefs();
     _load();
   }
 
@@ -323,6 +404,30 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
       items: data.rows,
+      toolbarActions: [
+        // 对帐单需先选往来单位；未选时按钮仍显，点击后后端返回空表（partyStatement* 空结构）。
+        UtenPrintPreviewButton(
+          title: '往来对帐单 · $_viewLabel',
+          subtitle: _view == _StmtView.annual
+              ? '年度 $_year（最多前 2000 行）'
+              : '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          loader: _printLoader,
+          exportEndpoint: '/finance/reports/export',
+          exportReport: _exportReport,
+          exportQuery: _exportQuery,
+          exportFilename: '往来对帐单',
+          type: UtenButtonType.primary,
+          size: UtenButtonSize.large,
+        ),
+        UtenExportButton(
+          endpoint: '/finance/reports/export',
+          report: _exportReport,
+          queryParams: _exportQuery,
+          filename: '往来对帐单',
+          type: UtenButtonType.primary,
+          size: UtenButtonSize.large,
+        ),
+      ],
       facets: const {},
       nullCounts: const {},
       filters: const {},

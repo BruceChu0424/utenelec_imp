@@ -118,8 +118,9 @@ abstract final class RouteName {
   static const String subcontract = '/subcontract';
   static const String subcontractReport = '/subcontract/report';
 
-  // 生产管理（生产部）：hub + 计划单 + 日报 + 4 报表入口。
+  // 生产管理（生产部）：hub + 调度 + 计划单 + 日报 + 4 报表入口。
   static const String production = '/production';
+  static const String productionSchedule = '/production/schedule';
   static const String productionPlanList = '/production/plans';
   static const String productionDailyReportList = '/production/daily-reports';
   static const String productionWhereUsed = '/production/where-used';
@@ -138,6 +139,14 @@ abstract final class RouteName {
   static const String financeReportOverview = '/finance/report/overview';
   static const String financeReportStatement = '/finance/report/statement';
   static const String financeReportAccountFlow = '/finance/report/account-flow';
+  // C2 对账单（委外加工/采购外放/供应商/其他应收/客户 5 chip）。
+  static const String financeReportRecon = '/finance/report/recon';
+  // C4 成本核算（产品成本/销售成本/铜柱加工费/酸洗明细/塑料耗用 8 chip）。
+  static const String financeReportCost = '/finance/report/cost';
+  // C3 总账报表（科目余额表+附 9~16 共 8 chip）。
+  static const String financeReportGl = '/finance/report/gl';
+  // C5 资产与待摊管理（固定资产/长期待摊 CRUD+计提）。
+  static const String financeAssets = '/finance/assets';
 }
 
 /// 路径拼接工具（带参数的路由）

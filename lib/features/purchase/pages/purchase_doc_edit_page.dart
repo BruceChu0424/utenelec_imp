@@ -13,6 +13,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_import_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -67,6 +69,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+  // 制单信息（服务端权威，只读展示）
+  String? _makerName;
+  String? _createdAt;
 
   @override
   void initState() {
@@ -116,6 +121,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         _receiverId = d.receiverId;
         _needDate = _parseDate(d.needDate);
         _deliverDate = _parseDate(d.deliverDate);
+        _makerName = d.makerName;
+        _createdAt = d.createdAt;
         final rows = <PurchaseGridRow>[];
         for (final it in d.items) {
           final row = PurchaseGridRow()
@@ -280,7 +287,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           showBackButton: true,
           actions: _cfg.skipListOnCreate
               ? [
-                  TextButton(
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.history_rounded,
                     onPressed: () => context.push('/purchase/${_cfg.type.pathSegment}'),
                     child: const Text('查看历史'),
                   ),
@@ -318,6 +327,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                       : const Icon(Icons.lock_outline, size: 16),
                                 ),
                               ),
+                              // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                              ...utenMakerAuditCells(ref,
+                                  makerName: _makerName, createdAt: _createdAt),
                               UtenDateField(
                                 label: '单据日期',
                                 required: true,
@@ -397,10 +409,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                 ?.copyWith(fontWeight: FontWeight.w600)),
                         const Spacer(),
                         if (_cfg.hasUpstreamLink)
-                          TextButton.icon(
+                          UtenImportButton(
+                            label: '从上游引入',
                             onPressed: _importFromUpstream,
-                            icon: const Icon(Icons.link_rounded, size: 18),
-                            label: const Text('从上游引入'),
                           ),
                       ],
                     ),

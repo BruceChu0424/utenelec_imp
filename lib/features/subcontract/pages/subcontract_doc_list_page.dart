@@ -45,6 +45,7 @@ class _SubcontractDocListPageState
   String? _error;
   String _keyword = '';
   int? _statusFilter; // null=全部
+  bool? _closedFilter; // 结案筛选（仅委外订货单）：false=未完成 / true=已结案
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
   String? _sortKey;
   bool _sortAsc = true;
@@ -76,6 +77,7 @@ class _SubcontractDocListPageState
             filter: SubcontractDocFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
               status: _statusFilter,
+              closed: _closedFilter,
             ),
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
@@ -114,49 +116,69 @@ class _SubcontractDocListPageState
     _load(1);
   }
 
-  List<MasterColumnDef<SubcontractDocListItem>> _columns(mn.MasterNameService names) {
+  List<MasterColumnDef<SubcontractDocListItem>> _columns(
+    mn.MasterNameService names,
+  ) {
     return <MasterColumnDef<SubcontractDocListItem>>[
       MasterColumnDef(
-          key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
+        key: 'billNo',
+        label: '单据号',
+        width: 140,
+        value: (it) => it.billNo,
+      ),
       MasterColumnDef(
-          key: 'billDate',
-          label: '日期',
-          width: 120,
-          type: 'date',
-          sortable: true,
-          value: (it) => (it.billDate ?? '').substring(0, 10)),
+        key: 'billDate',
+        label: '日期',
+        width: 120,
+        type: 'date',
+        sortable: true,
+        value: (it) => (it.billDate ?? '').substring(0, 10),
+      ),
       if (_cfg.hasSupplier)
         MasterColumnDef(
-            key: 'supplier',
-            label: '委外商',
-            width: 200,
-            value: (it) => names.supplier(it.supplierId)),
+          key: 'supplier',
+          label: '委外商',
+          width: 200,
+          value: (it) => names.supplier(it.supplierId),
+        ),
       MasterColumnDef(
-          key: 'warehouse',
-          label: '仓库',
-          width: 160,
-          value: (it) => names.warehouse(it.warehouseId)),
+        key: 'warehouse',
+        label: '仓库',
+        width: 160,
+        value: (it) => names.warehouse(it.warehouseId),
+      ),
       if (_cfg.hasAmount)
         MasterColumnDef(
-            key: 'total',
-            label: '合计',
-            width: 140,
-            type: 'money',
-            sortable: true,
-            value: (it) => it.totalLocal?.toStringAsFixed(2)),
+          key: 'total',
+          label: '合计',
+          width: 140,
+          type: 'money',
+          sortable: true,
+          value: (it) => it.totalLocal?.toStringAsFixed(2),
+        ),
       if (_cfg.hasTotalWeight)
         MasterColumnDef(
-            key: 'totalWeight',
-            label: '总重',
-            width: 120,
-            type: 'number',
-            sortable: true,
-            value: (it) => it.totalWeight?.toStringAsFixed(2)),
+          key: 'totalWeight',
+          label: '总重',
+          width: 120,
+          type: 'number',
+          sortable: true,
+          value: (it) => it.totalWeight?.toStringAsFixed(2),
+        ),
       MasterColumnDef(
-          key: 'status',
-          label: '状态',
+        key: 'status',
+        label: '状态',
+        width: 100,
+        value: (it) => subcontractStatusLabel(it.status),
+      ),
+      // 委外订货单：结案状态（未完成=部分入库，其他未入库的作为未完成委外单存在）
+      if (widget.docType == SubcontractDocType.order)
+        MasterColumnDef(
+          key: 'closed',
+          label: '结案',
           width: 100,
-          value: (it) => subcontractStatusLabel(it.status)),
+          value: (it) => it.closed ? '已结案' : '未完成',
+        ),
     ];
   }
 
@@ -189,24 +211,32 @@ class _SubcontractDocListPageState
                 // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(_cfg.icon,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        _cfg.icon,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('${_cfg.shortLabel} ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '${_cfg.shortLabel} ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
                       if (_canEdit)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
                           onPressed: () => context.push(
-                              SubcontractRoute.newList(_cfg.pathSegment)),
+                            SubcontractRoute.newList(_cfg.pathSegment),
+                          ),
                           child: const Text('新建'),
                         ),
                     ],
@@ -217,7 +247,8 @@ class _SubcontractDocListPageState
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -243,6 +274,32 @@ class _SubcontractDocListPageState
                               _statusChip('红冲', kSubcontractStatusReversed),
                             ],
                           ),
+                          // 委外订货单：结案筛选（未完成=部分入库的委外单）
+                          if (widget.docType == SubcontractDocType.order) ...[
+                            const SizedBox(height: UtenSpacing.s8),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: [
+                                for (final (label, value) in [
+                                  ('全部', null),
+                                  ('未完成', false),
+                                  ('已结案', true),
+                                ])
+                                  ChoiceChip(
+                                    label: Text(
+                                      label,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    selected: _closedFilter == value,
+                                    onSelected: (_) {
+                                      setState(() => _closedFilter = value);
+                                      _load(1);
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -257,7 +314,8 @@ class _SubcontractDocListPageState
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
                       onRowTap: (it) => context.push(
-                          SubcontractRoute.detail(_cfg.pathSegment, it.id)),
+                        SubcontractRoute.detail(_cfg.pathSegment, it.id),
+                      ),
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,
@@ -280,24 +338,33 @@ class _SubcontractDocListPageState
   Widget _disabledBanner(ThemeData theme) {
     return Container(
       margin: const EdgeInsets.only(
-          bottom: UtenSpacing.s8,
-          left: UtenSpacing.s4,
-          right: UtenSpacing.s4),
+        bottom: UtenSpacing.s8,
+        left: UtenSpacing.s4,
+        right: UtenSpacing.s4,
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(children: [
-        Icon(Icons.info_outline_rounded,
-            size: 16, color: theme.colorScheme.onSurfaceVariant),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text('该单据类型老库无数据（仅建结构），可新建但不参与链路。',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ),
-      ]),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '该单据类型老库无数据（仅建结构），可新建但不参与链路。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

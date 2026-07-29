@@ -19,7 +19,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/color_node.dart';
@@ -70,7 +70,9 @@ class _ColorPageState extends ConsumerState<ColorPage> {
       _pageNum = page;
     });
     try {
-      final result = await ref.read(colorRepositoryProvider).list(
+      final result = await ref
+          .read(colorRepositoryProvider)
+          .list(
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
@@ -129,21 +131,22 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   // ---- 新建/编辑/删除 ---------------------------------------------------
 
   static const _colorFields = [
+    MasterFieldDef(key: 'name', label: '颜色名称', required: true, group: '基础'),
     MasterFieldDef(
-        key: 'name', label: '颜色名称', required: true, group: '基础'),
+      key: 'code',
+      label: '颜色编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(
-        key: 'code',
-        label: '颜色编号',
-        group: '基础',
-        readOnly: true,
-        hint: '保存后自动生成'),
-    MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础'),
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
   ];
 
   void _showCreate() {
@@ -157,21 +160,14 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    try {
-      await ref.read(colorRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('颜色已创建'); // TODO(l10n): 补 arb
-      await _loadColors(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () => ref.read(colorRepositoryProvider).create(body),
+      success: '颜色已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadColors(_pageNum);
+    return true;
   }
 
   void _showEdit(ColorDetail d) {
@@ -189,21 +185,14 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   }
 
   Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    try {
-      await ref.read(colorRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('颜色已更新'); // TODO(l10n): 补 arb
-      await _loadColors(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () => ref.read(colorRepositoryProvider).update(id, body),
+      success: '颜色已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadColors(_pageNum);
+    return true;
   }
 
   Future<void> _delete(ColorDetail d) async {
@@ -228,24 +217,17 @@ class _ColorPageState extends ConsumerState<ColorPage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(colorRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('颜色已删除'); // TODO(l10n): 补 arb
-      await _loadColors(_pageNum);
-      // 删空当前页时回退上一页，避免列表空白
-      if (mounted &&
-          _page != null &&
-          _page!.items.isEmpty &&
-          _page!.page > 1) {
-        await _loadColors(_page!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () => ref.read(colorRepositoryProvider).delete(d.id),
+      success: '颜色已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadColors(_pageNum);
+    // 删空当前页时回退上一页，避免列表空白
+    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
+      await _loadColors(_page!.page - 1);
     }
   }
 
@@ -291,21 +273,28 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   }
 
   List<MasterDetailRow> _detailRows(ColorDetail c) => [
-        MasterDetailRow('编号', c.code), // TODO(l10n): 补 arb
-        MasterDetailRow('颜色名称', c.name), // TODO(l10n): 补 arb
-        MasterDetailRow('状态', c.status), // TODO(l10n): 补 arb
-        MasterDetailRow('旧编码', c.legacyId?.toString()), // TODO(l10n): 补 arb
-      ];
+    MasterDetailRow('编号', c.code), // TODO(l10n): 补 arb
+    MasterDetailRow('颜色名称', c.name), // TODO(l10n): 补 arb
+    MasterDetailRow('状态', c.status), // TODO(l10n): 补 arb
+    MasterDetailRow('旧编码', c.legacyId?.toString()), // TODO(l10n): 补 arb
+  ];
 
   // ---- 列定义 -----------------------------------------------------------
 
   static final _columns = <MasterColumnDef<ColorListItem>>[
+    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (c) => c.code),
     MasterColumnDef(
-        key: 'code', label: '编号', width: 120, value: (c) => c.code),
+      key: 'name',
+      label: '颜色名称',
+      width: 220,
+      value: (c) => c.name,
+    ),
     MasterColumnDef(
-        key: 'name', label: '颜色名称', width: 220, value: (c) => c.name),
-    MasterColumnDef(
-        key: 'status', label: '状态', width: 100, value: (c) => c.status),
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (c) => c.status,
+    ),
   ];
 
   Future<void> _refresh() async {
@@ -338,16 +327,23 @@ class _ColorPageState extends ConsumerState<ColorPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.palette_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.palette_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       Text(
                         '颜色 ($total)', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(

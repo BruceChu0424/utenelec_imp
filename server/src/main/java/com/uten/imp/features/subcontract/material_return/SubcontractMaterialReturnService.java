@@ -63,6 +63,8 @@ public class SubcontractMaterialReturnService {
     private final StockService stockService;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
@@ -101,6 +103,7 @@ public class SubcontractMaterialReturnService {
         tx.bind();
         SubcontractMaterialReturn r = new SubcontractMaterialReturn();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<MaterialReturnItemDto> items = saveItems(r, req.getItems());
@@ -142,6 +145,7 @@ public class SubcontractMaterialReturnService {
     public MaterialReturnDetail approve(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -174,6 +178,7 @@ public class SubcontractMaterialReturnService {
         }
         // 不立应付：材料退回不是加工费
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         returnRepo.save(r);
         return detail(id);
     }
@@ -183,6 +188,7 @@ public class SubcontractMaterialReturnService {
     public MaterialReturnDetail reverse(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -306,7 +312,9 @@ public class SubcontractMaterialReturnService {
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
                 r.getBStyle(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), r.getSourceDocNo(), items, r.getOperatorLegacyId(), r.getOperatorName(),
-                r.getMakerLegacyId(), r.getMakerName(), r.getApproverLegacyId(), r.getApproverName());
+                r.getMakerLegacyId(),
+                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
     }
 
     private SubcontractMaterialReturn requireReturn(UUID id) {

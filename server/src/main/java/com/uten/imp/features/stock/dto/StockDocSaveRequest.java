@@ -33,9 +33,10 @@ public class StockDocSaveRequest {
     private UUID supplierId;
     private UUID clientId;
     private UUID workerId;
-    private UUID makerId;
-    private UUID approverId;
+    // 制单员/审核员不在请求里：服务端按当前登录用户写入（防伪造、划分责任）。
     private String assTeam;
+    /** 领料车间/部门（V97，DRAW 用）。 */
+    private UUID departmentId;
     private String planNo;
     private String remark;
 

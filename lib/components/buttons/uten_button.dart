@@ -55,27 +55,27 @@ class _UtenButtonState extends State<UtenButton> {
 
   EdgeInsetsGeometry get _padding => switch (widget.size) {
     UtenButtonSize.small => const EdgeInsets.symmetric(
-      horizontal: 12,
-      vertical: 6,
+      horizontal: 14,
+      vertical: 8,
     ),
     UtenButtonSize.medium => const EdgeInsets.symmetric(
-      horizontal: 16,
-      vertical: 10,
+      horizontal: 18,
+      vertical: 12,
     ),
     UtenButtonSize.large => const EdgeInsets.symmetric(
-      horizontal: 20,
-      vertical: 14,
+      horizontal: 22,
+      vertical: 16,
     ),
   };
 
   double get _iconSize => widget.size == UtenButtonSize.small
-      ? 14
-      : (widget.size == UtenButtonSize.large ? 18 : 16);
+      ? 16
+      : (widget.size == UtenButtonSize.large ? 20 : 18);
 
   TextStyle get _textStyle => TextStyle(
     fontSize: widget.size == UtenButtonSize.small
-        ? 12
-        : (widget.size == UtenButtonSize.large ? 15 : 13),
+        ? 13
+        : (widget.size == UtenButtonSize.large ? 16 : 14),
     fontWeight: FontWeight.w600,
     height: 1.2,
   );
@@ -185,10 +185,11 @@ class _UtenButtonState extends State<UtenButton> {
         isDark
             ? (UtenColors.darkSurfaceLow, UtenColors.darkTextPrimary, null)
             : (UtenColors.surfaceMid, UtenColors.textPrimary, null),
-      // 品牌色调次要按钮：浅青绿底 + 深绿字（与分类树选中态视觉一致）。
+      // 品牌色调实心按钮：深绿底（teal700）+ 白字。
+      // 原为浅青绿底深绿字，现场反馈"按钮看不见"，统一改为深绿实心白字（2026-07）。
       UtenButtonType.tonal => isDark
-          ? (UtenColors.teal900, UtenColors.teal100, null)
-          : (UtenColors.teal50, UtenColors.teal700, null),
+          ? (UtenColors.teal600, Colors.white, null)
+          : (UtenColors.teal700, Colors.white, null),
       // 幽灵按钮：透明 + 细边框
       UtenButtonType.ghost => (
         Colors.transparent,

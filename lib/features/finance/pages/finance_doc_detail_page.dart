@@ -7,14 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -89,6 +94,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       (repo) => repo.approve(widget.id), '已审核');
   Future<void> _reverse() async => _doAction('红冲将反向冲销，确认？',
       (repo) => repo.reverse(widget.id), '已红冲');
+  /// C6 财务确认（仅费用单）：已过账 → 财务确认入账。
+  Future<void> _glConfirm() async => _doAction('确认该费用单的总账分录入账？',
+      (repo) => repo.glConfirm(widget.id), '已财务确认');
 
   Future<void> _doAction(
     String confirm,
@@ -161,7 +169,22 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     final theme = Theme.of(context);
     final names = ref.watch(financeNameServiceProvider);
     return Scaffold(
-      appBar: UtenAppBar(title: '${_cfg.label}详情', showBackButton: true),
+      appBar: UtenAppBar(
+        title: '${_cfg.label}详情',
+        // 列表行 push 进（回列表）/ hub 新建保存后 replace 进（栈空→回 hub）；
+        // 用 popOrBackTo 兼顾两种入口。
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: RouteName.finance),
+        ),
+        actions: [
+          UtenButton(
+            type: UtenButtonType.tonal,
+            icon: Icons.history_rounded,
+            onPressed: () => context.push('/finance/${_cfg.type.pathSegment}'),
+            child: const Text('查看历史'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: UtenContentContainer.narrow(
           child: _loading
@@ -197,6 +220,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
+      _KV('制单员', d.makerName),
+      _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (_cfg.hasParty) _KV(_cfg.partyLabel, partyName),
       _KV(_cfg.accountLabel, accountName),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
@@ -210,6 +235,13 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV('状态', null,
           badge: FinanceStatusBadge(status: d.status, closed: d.closed)),
+      // C6：费用单总账过账状态（0 未过账/1 待确认/2 已确认）
+      if (_cfg.type == FinanceDocType.expense && d.glStatus != null)
+        _KV('总账', switch (d.glStatus) {
+          1 => '已过账 · 待财务确认',
+          2 => '已过账 · 财务已确认',
+          _ => '未过账',
+        }),
     ];
     return Card(
       child: Padding(
@@ -237,111 +269,122 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     );
   }
 
+  /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款），
+  /// 不再是卡片式拼凑行；核销/分摊/转账三类列口径不变。
   Widget _itemsCard(ThemeData theme, FinanceNameService names) {
     final items = _detail!.items;
     if (items.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Text('无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        ),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+        child: Text('无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
       );
     }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s4),
-              child: Text('明细 (${items.length})',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-            const Divider(height: 1),
-            _itemHeader(theme),
-            for (final it in items) _itemRow(theme, names, it),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _itemHeader(ThemeData theme) {
-    final cells = <String>[];
-    if (_cfg.isSettle) {
-      cells.addAll(['核销单据', '本次金额', '原币额']);
-    } else if (_cfg.isAllocate) {
-      cells.addAll(['项目', '部门', '数量', '单价', '金额']);
-    } else if (_cfg.isTransfer) {
-      cells.addAll(['转入账户', '日期', '金额']);
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: Row(
-        children: [
-          for (var i = 0; i < cells.length; i++)
-            _icell(cells[i], _flex(i, cells.length), theme, bold: true),
-        ],
-      ),
-    );
-  }
-
-  /// 明细列权重：第一列宽（项目名/账户名），其余等分。
-  int _flex(int i, int total) => i == 0 ? 3 : 1;
-
-  Widget _itemRow(
-      ThemeData theme, FinanceNameService names, FinanceDocItem it) {
     final styleCat =
         _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
-    final cells = <String>[];
-    if (_cfg.isSettle) {
-      cells.addAll([
-        it.appliedBillNo ?? '—',
-        it.amountLocal?.toStringAsFixed(2) ?? '—',
-        it.amountOriginal?.toStringAsFixed(2) ?? '—',
-      ]);
-    } else if (_cfg.isAllocate) {
-      cells.addAll([
-        names.styleName(it.expenseStyleId ?? it.incomeStyleId, styleCat),
-        names.client(it.departmentId).replaceAll('—', it.departmentId ?? '—'),
-        it.qty?.toStringAsFixed(2) ?? '—',
-        it.price?.toStringAsFixed(2) ?? '—',
-        it.amountLocal?.toStringAsFixed(2) ?? '—',
-      ]);
-    } else if (_cfg.isTransfer) {
-      cells.addAll([
-        names.account(it.inAccountId),
-        (it.occurDate ?? '').substring(0, 10),
-        it.amountLocal?.toStringAsFixed(2) ?? '—',
-      ]);
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-      child: Row(
-        children: [
-          for (var i = 0; i < cells.length; i++)
-            _icell(cells[i], _flex(i, cells.length), theme),
-        ],
-      ),
-    );
-  }
-
-  Widget _icell(String? text, int flex, ThemeData theme, {bool bold = false}) {
-    return Expanded(
-      flex: flex,
-      child: Text(
-        text ?? '—',
-        textAlign: flex == 1 ? TextAlign.right : TextAlign.left,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-          color: bold ? theme.colorScheme.onSurfaceVariant : null,
+    final columns = <MasterColumnDef<FinanceDocItem>>[
+      if (_cfg.isSettle) ...[
+        MasterColumnDef(
+          key: 'bill',
+          label: '核销单据',
+          width: 180,
+          value: (it) => it.appliedBillNo,
         ),
-      ),
+        MasterColumnDef(
+          key: 'amountLocal',
+          label: '本次金额',
+          width: 110,
+          type: 'money',
+          value: (it) => it.amountLocal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'amountOriginal',
+          label: '原币额',
+          width: 110,
+          type: 'money',
+          value: (it) => it.amountOriginal?.toStringAsFixed(2),
+        ),
+      ] else if (_cfg.isAllocate) ...[
+        MasterColumnDef(
+          key: 'style',
+          label: '项目',
+          width: 160,
+          value: (it) =>
+              names.styleName(it.expenseStyleId ?? it.incomeStyleId, styleCat),
+        ),
+        MasterColumnDef(
+          key: 'dept',
+          label: '部门',
+          width: 140,
+          value: (it) =>
+              names.client(it.departmentId).replaceAll('—', it.departmentId ?? '—'),
+        ),
+        MasterColumnDef(
+          key: 'qty',
+          label: '数量',
+          width: 90,
+          type: 'number',
+          value: (it) => it.qty?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'price',
+          label: '单价',
+          width: 90,
+          type: 'money',
+          value: (it) => it.price?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'amount',
+          label: '金额',
+          width: 100,
+          type: 'money',
+          value: (it) => it.amountLocal?.toStringAsFixed(2),
+        ),
+      ] else if (_cfg.isTransfer) ...[
+        MasterColumnDef(
+          key: 'inAccount',
+          label: '转入账户',
+          width: 160,
+          value: (it) => names.account(it.inAccountId),
+        ),
+        MasterColumnDef(
+          key: 'occurDate',
+          label: '日期',
+          width: 110,
+          type: 'date',
+          value: (it) => (it.occurDate ?? '').length >= 10
+              ? it.occurDate!.substring(0, 10)
+              : it.occurDate,
+        ),
+        MasterColumnDef(
+          key: 'amount',
+          label: '金额',
+          width: 110,
+          type: 'money',
+          value: (it) => it.amountLocal?.toStringAsFixed(2),
+        ),
+      ],
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('明细 (${items.length})',
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: UtenSpacing.s8),
+        MasterDataTableView<FinanceDocItem>(
+          embedded: true,
+          columns: columns,
+          items: items,
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          onRowTap: (_) {},
+          emptyMessage: '（无明细）',
+        ),
+      ],
     );
   }
 
@@ -371,6 +414,16 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           child: const Text('审核'),
         ));
     } else if (s == kFinanceStatusApproved && _canEdit) {
+      // C6：费用单已过账待确认 → 财务确认按钮（在红冲前）
+      if (_cfg.type == FinanceDocType.expense && _detail!.glStatus == 1) {
+        children
+          ..add(UtenButton(
+            icon: Icons.fact_check_outlined,
+            onPressed: _glConfirm,
+            child: const Text('财务确认'),
+          ))
+          ..add(const SizedBox(width: UtenSpacing.s8));
+      }
       children.add(UtenButton(
         type: UtenButtonType.danger,
         icon: Icons.undo_outlined,

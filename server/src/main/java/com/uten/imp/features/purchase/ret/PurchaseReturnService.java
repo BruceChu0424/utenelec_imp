@@ -56,6 +56,7 @@ public class PurchaseReturnService {
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
 
@@ -95,7 +96,7 @@ public class PurchaseReturnService {
         tx.bind();
         PurchaseReturn r = new PurchaseReturn();
         applyHeader(req, r);
-        r.setMakerId(currentUser.requireId()); // 制单=当前登录用户
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -131,6 +132,7 @@ public class PurchaseReturnService {
     public ReturnDetail approve(UUID id) {
         tx.bind();
         PurchaseReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
@@ -142,7 +144,7 @@ public class PurchaseReturnService {
             writeback(it, +1);
         }
         r.setStatus(STATUS_APPROVED);
-        r.setApproverId(currentUser.requireId()); // 审核=当前登录用户
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         returnRepo.save(r);
         // 立红字应付（AP, PURCHASE_RETURN，金额取负 = 红冲 AP）：取代老库 P_Withdraw 触发器的 M_out 立帐分支。
         // 退货后 supplier 净应付 = 原收货应付 - 退货应付；报表 GROUP BY supplier 自动得出净额。
@@ -163,6 +165,7 @@ public class PurchaseReturnService {
     public ReturnDetail reverse(UUID id) {
         tx.bind();
         PurchaseReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
@@ -286,7 +289,8 @@ public class PurchaseReturnService {
         return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getReceiverId(), r.getMakerId(), r.getApproverId(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items);
+                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 
     private PurchaseReturn requireReturn(UUID id) {

@@ -15,6 +15,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -23,7 +24,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/client_node.dart';
@@ -101,13 +102,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   }
 
   /// 新建分类时的常用名称建议（降低起名门槛；客户类常用维度）。
-  static const _categorySuggestions = [
-    '战略合作客户',
-    '重点客户',
-    '普通客户',
-    '潜在客户',
-    '经销商',
-  ];
+  static const _categorySuggestions = ['战略合作客户', '重点客户', '普通客户', '潜在客户', '经销商'];
 
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
@@ -124,27 +119,24 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   }
 
   Future<bool> _doCreate(CategoryEditResult r) async {
-    try {
-      await ref.read(clientCategoryRepositoryProvider).create(
-            ProductCategorySaveInput(
-              code: r.code!,
-              name: r.name,
-              parentId: r.parentId,
-            ),
-          );
-      if (!mounted) return false;
-      context.appSuccess('分类已创建'); // TODO(l10n): 补 arb
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(clientCategoryRepositoryProvider)
+            .create(
+              ProductCategorySaveInput(
+                code: r.code!,
+                name: r.name,
+                parentId: r.parentId,
+              ),
+            );
+      },
+      success: '分类已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   void _showEditDialog(ProductCategoryDetail detail) {
@@ -159,27 +151,21 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   }
 
   Future<bool> _doUpdate(String id, CategoryEditResult r) async {
-    try {
-      await ref.read(clientCategoryRepositoryProvider).update(
-            id,
-            ProductCategoryUpdateInput(
-              name: r.name,
-              parentId: r.parentId,
-            ),
-          );
-      if (!mounted) return false;
-      context.appSuccess('分类已更新'); // TODO(l10n): 补 arb
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(clientCategoryRepositoryProvider)
+            .update(
+              id,
+              ProductCategoryUpdateInput(name: r.name, parentId: r.parentId),
+            );
+      },
+      success: '分类已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
@@ -204,26 +190,22 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(clientCategoryRepositoryProvider).delete(node.id);
-      if (!mounted) return;
-      context.appSuccess('分类已删除'); // TODO(l10n): 补 arb
-      if (_selectedId == node.id) _selectedId = null;
-      await _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
-    }
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(clientCategoryRepositoryProvider).delete(node.id);
+      },
+      success: '分类已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    if (_selectedId == node.id) _selectedId = null;
+    await _load();
   }
 
   // ---- 树渲染 -------------------------------------------------------------
 
-  Widget _buildTree({
-    required void Function(String id) onSelect,
-  }) {
+  Widget _buildTree({required void Function(String id) onSelect}) {
     final theme = Theme.of(context);
     final canEdit = _canEdit;
     return UtenCategoryTreeView(
@@ -484,7 +466,9 @@ class _DetailPaneState extends State<_DetailPane> {
       _clientPageNum = page;
     });
     try {
-      final result = await widget.ref.read(clientRepositoryProvider).list(
+      final result = await widget.ref
+          .read(clientRepositoryProvider)
+          .list(
             widget.nodeId,
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -515,8 +499,9 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 拉字段 facet（筛选栏下拉选项）。失败不阻塞列表，静默降级为空下拉。
   Future<void> _loadFacets() async {
     try {
-      final f =
-          await widget.ref.read(clientRepositoryProvider).facets(widget.nodeId);
+      final f = await widget.ref
+          .read(clientRepositoryProvider)
+          .facets(widget.nodeId);
       if (!mounted) return;
       setState(() => _facets = f);
     } on ApiException catch (e) {
@@ -555,27 +540,53 @@ class _DetailPaneState extends State<_DetailPane> {
 
   /// 导出查询参数（与 _loadClients 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        'categoryId': widget.nodeId,
-        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
-        ...masterFilterQueryParams(_filters),
-        if (_sortKey != null) 'sort': _sortKey,
-        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
-      };
+    'categoryId': widget.nodeId,
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    ...masterFilterQueryParams(_filters),
+    if (_sortKey != null) 'sort': _sortKey,
+    if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+  };
+
+  /// 打印预览数据：按当前分类/筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final result = await widget.ref.read(clientRepositoryProvider).list(
+          widget.nodeId,
+          page: 1,
+          size: 2000,
+          keyword: _keyword.trim().isEmpty ? null : _keyword,
+          filters: _filters,
+          sort: _sortKey,
+          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        );
+    return UtenPrintTable(
+      headers: [for (final c in _clientColumns) c.label],
+      rows: [
+        for (final a in result.items)
+          [for (final c in _clientColumns) c.value(a) ?? ''],
+      ],
+    );
+  }
 
   // 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
   static const _clientFields = [
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
     MasterFieldDef(
-        key: 'code', label: '编号', group: '基础', readOnly: true, hint: '保存后自动生成'),
+      key: 'code',
+      label: '编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
     MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
     MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础'),
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
     MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
     MasterFieldDef(key: 'mobile', label: '手机', group: '联系'),
     MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
@@ -594,9 +605,30 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
     MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
     MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
-    MasterFieldDef(key: 'credit', label: '信用额度', type: MasterFieldType.money, group: '财务'),
-    MasterFieldDef(key: 'initTotal', label: '期初应收', type: MasterFieldType.money, group: '财务'),
-    MasterFieldDef(key: 'tday', label: '结算天数', type: MasterFieldType.integer, group: '财务'),
+    MasterFieldDef(
+      key: 'credit',
+      label: '信用额度',
+      type: MasterFieldType.money,
+      group: '财务',
+    ),
+    MasterFieldDef(
+      key: 'initTotal',
+      label: '期初应收',
+      type: MasterFieldType.money,
+      group: '财务',
+    ),
+    MasterFieldDef(
+      key: 'creditFloor',
+      label: '铺底额',
+      type: MasterFieldType.money,
+      group: '财务',
+    ),
+    MasterFieldDef(
+      key: 'tday',
+      label: '结算天数',
+      type: MasterFieldType.integer,
+      group: '财务',
+    ),
     MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
   ];
 
@@ -617,21 +649,16 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   Future<bool> _doCreateClient(Map<String, dynamic> body) async {
-    try {
-      await widget.ref.read(clientRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('客户已创建'); // TODO(l10n): 补 arb
-      await _loadClients(_clientPageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await widget.ref.read(clientRepositoryProvider).create(body);
+      },
+      success: '客户已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadClients(_clientPageNum);
+    return true;
   }
 
   void _showClientEdit(ClientDetail d) {
@@ -664,6 +691,7 @@ class _DetailPaneState extends State<_DetailPane> {
         'taxId': d.taxId ?? '',
         'credit': d.credit?.toString() ?? '',
         'initTotal': d.initTotal?.toString() ?? '',
+        'creditFloor': d.creditFloor?.toString() ?? '',
         'tday': d.tday?.toString() ?? '',
         'status': d.status ?? '',
         'remark': d.remark ?? '',
@@ -674,21 +702,16 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   Future<bool> _doUpdateClient(String id, Map<String, dynamic> body) async {
-    try {
-      await widget.ref.read(clientRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('客户已更新'); // TODO(l10n): 补 arb
-      await _loadClients(_clientPageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await widget.ref.read(clientRepositoryProvider).update(id, body);
+      },
+      success: '客户已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadClients(_clientPageNum);
+    return true;
   }
 
   Future<void> _deleteClient(ClientDetail d) async {
@@ -713,24 +736,22 @@ class _DetailPaneState extends State<_DetailPane> {
       ),
     );
     if (ok != true) return;
-    try {
-      await widget.ref.read(clientRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('客户已删除'); // TODO(l10n): 补 arb
-      await _loadClients(_clientPageNum);
-      // 删空当前页时回退上一页，避免列表显示空白
-      if (mounted &&
-          _clientPage != null &&
-          _clientPage!.items.isEmpty &&
-          _clientPage!.page > 1) {
-        await _loadClients(_clientPage!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await widget.ref.read(clientRepositoryProvider).delete(d.id);
+      },
+      success: '客户已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadClients(_clientPageNum);
+    // 删空当前页时回退上一页，避免列表显示空白
+    if (mounted &&
+        _clientPage != null &&
+        _clientPage!.items.isEmpty &&
+        _clientPage!.page > 1) {
+      await _loadClients(_clientPage!.page - 1);
     }
   }
 
@@ -782,36 +803,40 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   List<MasterDetailRow> _clientDetailRows(ClientDetail d) => [
-        MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
-        MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
-        MasterDetailRow('全称', d.fullName), // TODO(l10n): 补 arb
-        MasterDetailRow('等级', d.clientRank), // TODO(l10n): 补 arb
-        MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
-        MasterDetailRow('区域', d.region), // TODO(l10n): 补 arb
-        MasterDetailRow('地区', d.placeId), // TODO(l10n): 补 arb
-        MasterDetailRow('业务员', d.empId), // TODO(l10n): 补 arb
-        MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
-        MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
-        MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
-        MasterDetailRow('电话', d.phone), // TODO(l10n): 补 arb
-        MasterDetailRow('电话2', d.phone2), // TODO(l10n): 补 arb
-        MasterDetailRow('传真', d.fax), // TODO(l10n): 补 arb
-        MasterDetailRow('邮编', d.postcode), // TODO(l10n): 补 arb
-        MasterDetailRow('地址', d.address), // TODO(l10n): 补 arb
-        MasterDetailRow('收货地址', d.shipAddress), // TODO(l10n): 补 arb
-        MasterDetailRow('运输方式', d.shipVia), // TODO(l10n): 补 arb
-        MasterDetailRow('开户行', d.bank), // TODO(l10n): 补 arb
-        MasterDetailRow('银行账号', d.bankAccount), // TODO(l10n): 补 arb
-        MasterDetailRow('税号', d.taxId), // TODO(l10n): 补 arb
-        MasterDetailRow('信用额度', d.credit?.toStringAsFixed(2)), // TODO(l10n): 补 arb
-        MasterDetailRow('期初应收', d.initTotal?.toStringAsFixed(2)), // TODO(l10n): 补 arb
-        MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
-        MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
-        MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
-        MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
-        MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
-        MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
-      ];
+    MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
+    MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
+    MasterDetailRow('全称', d.fullName), // TODO(l10n): 补 arb
+    MasterDetailRow('等级', d.clientRank), // TODO(l10n): 补 arb
+    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
+    MasterDetailRow('区域', d.region), // TODO(l10n): 补 arb
+    MasterDetailRow('地区', d.placeId), // TODO(l10n): 补 arb
+    MasterDetailRow('业务员', d.empId), // TODO(l10n): 补 arb
+    MasterDetailRow('法人', d.legalPerson), // TODO(l10n): 补 arb
+    MasterDetailRow('联系人', d.linkman), // TODO(l10n): 补 arb
+    MasterDetailRow('手机', d.mobile), // TODO(l10n): 补 arb
+    MasterDetailRow('电话', d.phone), // TODO(l10n): 补 arb
+    MasterDetailRow('电话2', d.phone2), // TODO(l10n): 补 arb
+    MasterDetailRow('传真', d.fax), // TODO(l10n): 补 arb
+    MasterDetailRow('邮编', d.postcode), // TODO(l10n): 补 arb
+    MasterDetailRow('地址', d.address), // TODO(l10n): 补 arb
+    MasterDetailRow('收货地址', d.shipAddress), // TODO(l10n): 补 arb
+    MasterDetailRow('运输方式', d.shipVia), // TODO(l10n): 补 arb
+    MasterDetailRow('开户行', d.bank), // TODO(l10n): 补 arb
+    MasterDetailRow('银行账号', d.bankAccount), // TODO(l10n): 补 arb
+    MasterDetailRow('税号', d.taxId), // TODO(l10n): 补 arb
+    MasterDetailRow('信用额度', d.credit?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+    MasterDetailRow(
+      '期初应收',
+      d.initTotal?.toStringAsFixed(2),
+    ), // TODO(l10n): 补 arb
+    MasterDetailRow('铺底额', d.creditFloor?.toStringAsFixed(2)),
+    MasterDetailRow('结算天数', d.tday?.toString()), // TODO(l10n): 补 arb
+    MasterDetailRow('邮箱', d.email), // TODO(l10n): 补 arb
+    MasterDetailRow('网址', d.website), // TODO(l10n): 补 arb
+    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
+    MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
+    MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -844,16 +869,26 @@ class _DetailPaneState extends State<_DetailPane> {
         children: [
           // 固定：分类信息卡（含编辑按钮）
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(0, UtenSpacing.s16, 0, UtenSpacing.s12),
+            padding: const EdgeInsets.fromLTRB(
+              0,
+              UtenSpacing.s16,
+              0,
+              UtenSpacing.s12,
+            ),
             child: MasterDetailCard(
               title: d.name,
               icon: Icons.people_outline,
               subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
               stats: [
-                MasterDetailStat('子分类数', '${d.childCount}'), // TODO(l10n): 补 arb
+                MasterDetailStat(
+                  '子分类数',
+                  '${d.childCount}',
+                ), // TODO(l10n): 补 arb
                 MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
-                MasterDetailStat('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+                MasterDetailStat(
+                  '旧编码',
+                  d.legacyId?.toString(),
+                ), // TODO(l10n): 补 arb
               ],
               path: d.path.isEmpty ? null : d.path,
               canEdit: widget.canEdit,
@@ -869,13 +904,17 @@ class _DetailPaneState extends State<_DetailPane> {
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: Row(
               children: [
-                Icon(Icons.people_outline,
-                    size: 18, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.people_outline,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: UtenSpacing.s8),
                 Text(
                   '客户 ($total)', // TODO(l10n): 补 arb
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
@@ -886,13 +925,7 @@ class _DetailPaneState extends State<_DetailPane> {
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                UtenExportButton(
-                  endpoint: '/master/clients/export',
-                  report: '',
-                  queryParams: _exportQuery,
-                  filename: '客户资料',
-                  label: '导出客户',
-                ),
+                // 预览打印 / 导出：已移入表格工具条（表头设置旁，深绿大按钮）。
                 if (_canEditMaster) ...[
                   const SizedBox(width: UtenSpacing.s8),
                   UtenButton(
@@ -910,6 +943,28 @@ class _DetailPaneState extends State<_DetailPane> {
             child: MasterDataTableView<ClientListItem>(
               columns: _clientColumns,
               items: _clientPage?.items ?? const [],
+              toolbarActions: [
+                UtenPrintPreviewButton(
+                  title: '客户资料',
+                  subtitle: '最多前 2000 行',
+                  loader: _printLoader,
+                  exportEndpoint: '/master/clients/export',
+                  exportReport: '',
+                  exportQuery: _exportQuery,
+                  exportFilename: '客户资料',
+                  type: UtenButtonType.primary,
+                  size: UtenButtonSize.large,
+                ),
+                UtenExportButton(
+                  endpoint: '/master/clients/export',
+                  report: '',
+                  queryParams: _exportQuery,
+                  filename: '客户资料',
+                  label: '导出客户',
+                  type: UtenButtonType.primary,
+                  size: UtenButtonSize.large,
+                ),
+              ],
               facets: _facets?.fields ?? const {},
               nullCounts: _facets?.nullCounts ?? const {},
               filters: _filters,
@@ -942,68 +997,141 @@ class _DetailPaneState extends State<_DetailPane> {
   /// credit 显示两位小数；tday 直接 toString。
   static final _clientColumns = <MasterColumnDef<ClientListItem>>[
     MasterColumnDef(
-        key: 'code', label: '客户编码', width: 100, value: (m) => m.code),
+      key: 'code',
+      label: '客户编码',
+      width: 100,
+      value: (m) => m.code,
+    ),
     MasterColumnDef(
-        key: 'name', label: '客户简称', width: 140, value: (m) => m.name),
+      key: 'name',
+      label: '客户简称',
+      width: 140,
+      value: (m) => m.name,
+    ),
     MasterColumnDef(
-        key: 'fullName', label: '客户全称', width: 200, value: (m) => m.fullName),
+      key: 'fullName',
+      label: '客户全称',
+      width: 200,
+      value: (m) => m.fullName,
+    ),
     MasterColumnDef(
-        key: 'settlementMethod',
-        label: '主结账方式',
-        width: 110,
-        value: (m) => null),
+      key: 'settlementMethod',
+      label: '主结账方式',
+      width: 110,
+      value: (m) => null,
+    ),
     MasterColumnDef(
-        key: 'clientXz', label: '客户性质', width: 90, value: (m) => m.clientXz),
+      key: 'clientXz',
+      label: '客户性质',
+      width: 90,
+      value: (m) => m.clientXz,
+    ),
     MasterColumnDef(
-        key: 'tday',
-        label: '信用天数',
-        width: 80,
-        type: 'number',
-        sortable: true,
-        value: (m) => m.tday?.toString()),
+      key: 'tday',
+      label: '信用天数',
+      width: 80,
+      type: 'number',
+      sortable: true,
+      value: (m) => m.tday?.toString(),
+    ),
     MasterColumnDef(
-        key: 'director', label: '总监', width: 90, value: (m) => null),
+      key: 'director',
+      label: '总监',
+      width: 90,
+      value: (m) => null,
+    ),
     MasterColumnDef(
-        key: 'region', label: '区域', width: 100, value: (m) => m.region),
+      key: 'region',
+      label: '区域',
+      width: 100,
+      value: (m) => m.region,
+    ),
     MasterColumnDef(
-        key: 'placeId', label: '所属地区', width: 110, value: (m) => m.placeId),
+      key: 'placeId',
+      label: '所属地区',
+      width: 110,
+      value: (m) => m.placeId,
+    ),
     MasterColumnDef(
-        key: 'empId', label: '业务员', width: 90, value: (m) => m.empId),
+      key: 'empId',
+      label: '业务员',
+      width: 90,
+      value: (m) => m.empId,
+    ),
     MasterColumnDef(
-        key: 'legalPerson',
-        label: '法人代表',
-        width: 100,
-        value: (m) => m.legalPerson),
+      key: 'legalPerson',
+      label: '法人代表',
+      width: 100,
+      value: (m) => m.legalPerson,
+    ),
     MasterColumnDef(
-        key: 'linkman', label: '联系人', width: 90, value: (m) => m.linkman),
+      key: 'linkman',
+      label: '联系人',
+      width: 90,
+      value: (m) => m.linkman,
+    ),
     MasterColumnDef(
-        key: 'mobile', label: '手机', width: 120, value: (m) => m.mobile),
+      key: 'mobile',
+      label: '手机',
+      width: 120,
+      value: (m) => m.mobile,
+    ),
     MasterColumnDef(
-        key: 'phone', label: '联系电话', width: 120, value: (m) => m.phone),
+      key: 'phone',
+      label: '联系电话',
+      width: 120,
+      value: (m) => m.phone,
+    ),
     MasterColumnDef(
-        key: 'phone2', label: '备用电话', width: 120, value: (m) => m.phone2),
+      key: 'phone2',
+      label: '备用电话',
+      width: 120,
+      value: (m) => m.phone2,
+    ),
     MasterColumnDef(key: 'fax', label: '传真', width: 110, value: (m) => m.fax),
     MasterColumnDef(
-        key: 'postcode', label: '邮编', width: 80, value: (m) => m.postcode),
+      key: 'postcode',
+      label: '邮编',
+      width: 80,
+      value: (m) => m.postcode,
+    ),
     MasterColumnDef(
-        key: 'address', label: '地址', width: 220, value: (m) => m.address),
+      key: 'address',
+      label: '地址',
+      width: 220,
+      value: (m) => m.address,
+    ),
     MasterColumnDef(
-        key: 'bank', label: '开户银行', width: 160, value: (m) => m.bank),
+      key: 'bank',
+      label: '开户银行',
+      width: 160,
+      value: (m) => m.bank,
+    ),
     MasterColumnDef(
-        key: 'bankAccount',
-        label: '银行账号',
-        width: 160,
-        value: (m) => m.bankAccount),
+      key: 'bankAccount',
+      label: '银行账号',
+      width: 160,
+      value: (m) => m.bankAccount,
+    ),
     MasterColumnDef(
-        key: 'taxId', label: '纳税号', width: 140, value: (m) => m.taxId),
+      key: 'taxId',
+      label: '纳税号',
+      width: 140,
+      value: (m) => m.taxId,
+    ),
     MasterColumnDef(
-        key: 'credit',
-        label: '信誉额度',
-        width: 110,
-        type: 'money',
-        sortable: true,
-        value: (m) => m.credit?.toStringAsFixed(2)),
+      key: 'credit',
+      label: '信誉额度',
+      width: 110,
+      type: 'money',
+      sortable: true,
+      value: (m) => m.credit?.toStringAsFixed(2),
+    ),
     MasterColumnDef(
-        key: 'website', label: '网址', width: 160, value: (m) => m.website),
+      key: 'website',
+      label: '网址',
+      width: 160,
+      value: (m) => m.website,
+    ),
   ];
 }

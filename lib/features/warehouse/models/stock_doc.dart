@@ -47,6 +47,8 @@ class StockDocListItem {
     this.closed = false,
     this.legacyId,
     this.assTeam,
+    this.departmentId,
+    this.issueStatus,
   });
   final String id;
   final String? docType;
@@ -59,6 +61,10 @@ class StockDocListItem {
   final bool closed;
   final int? legacyId;
   final String? assTeam;
+  /// 领料车间/部门（V97，DRAW 用）
+  final String? departmentId;
+  /// 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完
+  final int? issueStatus;
 
   factory StockDocListItem.fromJson(Map<String, dynamic> json) => StockDocListItem(
         id: json['id'] as String,
@@ -72,6 +78,8 @@ class StockDocListItem {
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
         assTeam: json['assTeam'] as String?,
+        departmentId: json['departmentId'] as String?,
+        issueStatus: (json['issueStatus'] as num?)?.toInt(),
       );
 }
 
@@ -90,6 +98,7 @@ class StockDocItem {
     this.countQty,
     this.place,
     this.remark,
+    this.issuedQty,
   });
   final String? id;
   final int? lineNo;
@@ -104,6 +113,11 @@ class StockDocItem {
   final double? countQty;
   final String? place;
   final String? remark;
+  /// 已出库量（仅 DRAW 领料行；qty−issuedQty=剩余可出）
+  final double? issuedQty;
+
+  /// 剩余可出数量（仅 DRAW）
+  double get remainingQty => (qty ?? 0) - (issuedQty ?? 0);
 
   factory StockDocItem.fromJson(Map<String, dynamic> json) => StockDocItem(
         id: json['id'] as String?,
@@ -119,6 +133,7 @@ class StockDocItem {
         countQty: (json['countQty'] as num?)?.toDouble(),
         place: json['place'] as String?,
         remark: json['remark'] as String?,
+        issuedQty: (json['issuedQty'] as num?)?.toDouble(),
       );
 }
 
@@ -135,6 +150,10 @@ class StockDocDetail {
     this.status,
     this.closed = false,
     this.assTeam,
+    this.departmentId,
+    this.issueStatus,
+    this.makerName,
+    this.createdAt,
     this.items = const [],
   });
   final String id;
@@ -148,6 +167,14 @@ class StockDocDetail {
   final int? status;
   final bool closed;
   final String? assTeam;
+  /// 领料车间/部门（V97，DRAW 用）
+  final String? departmentId;
+  /// 出库进度（仅 DRAW）：0未出库/1部分出库/2已出完
+  final int? issueStatus;
+  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  final String? makerName;
+  /// 制单时间 ISO（审计 created_at，创建后不可变）
+  final String? createdAt;
   final List<StockDocItem> items;
 
   factory StockDocDetail.fromJson(Map<String, dynamic> json) => StockDocDetail(
@@ -162,6 +189,10 @@ class StockDocDetail {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         assTeam: json['assTeam'] as String?,
+        departmentId: json['departmentId'] as String?,
+        issueStatus: (json['issueStatus'] as num?)?.toInt(),
+        makerName: json['makerName'] as String?,
+        createdAt: json['createdAt'] as String?,
         items: (json['items'] as List?)
                 ?.map((e) => StockDocItem.fromJson(e as Map<String, dynamic>))
                 .toList() ??
@@ -171,6 +202,10 @@ class StockDocDetail {
 
 // 状态标签/色（与采购同：0草稿/1已审/-1红冲）
 String stockStatusLabel(int? s) => const {0: '草稿', 1: '已审', -1: '红冲'}[s] ?? '—';
+
+/// DRAW 出库进度标签（V97 部分出库）
+String drawIssueStatusLabel(int? s) =>
+    const {0: '未出库', 1: '部分出库', 2: '已出完'}[s] ?? '—';
 Color stockStatusColor(int? s, ThemeData t) =>
     s == 1 ? Colors.green : (s == -1 ? t.colorScheme.error : t.colorScheme.onSurfaceVariant);
 

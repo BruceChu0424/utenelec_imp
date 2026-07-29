@@ -4,6 +4,7 @@
 // 与基础资料/单据列表同款；手机垂直堆叠。原手搓 ListTile + 手动分页已移除（复用统一组件）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -183,7 +184,14 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
-                      onRowTap: (_) {},
+                      // 行点击 → 出入库流水页（本行货品+仓库双过滤，push 保活本页筛选）
+                      onRowTap: (b) {
+                        final gid = b.goodsId;
+                        if (gid == null || gid.isEmpty) return;
+                        final wid = b.warehouseId;
+                        context.push(
+                            '${RouteName.stockMovement}?goodsId=$gid${wid == null ? '' : '&warehouseId=$wid'}');
+                      },
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

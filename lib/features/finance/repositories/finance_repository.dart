@@ -128,6 +128,12 @@ class FinanceRepository {
     final json = await api.post(FinanceEndpoints.docReverse(_seg, id));
     return FinanceDocDetail.fromJson(json);
   }
+
+  /// C6 财务确认（仅费用单）：已过账的费用单确认入账（gl_status 1→2）。
+  Future<FinanceDocDetail> glConfirm(String id) async {
+    final json = await api.post('/finance/$_seg/$id/gl-confirm'); // ENDPOINT
+    return FinanceDocDetail.fromJson(json);
+  }
 }
 
 final financeRepositoryProvider =

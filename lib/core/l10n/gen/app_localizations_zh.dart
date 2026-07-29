@@ -745,6 +745,41 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get employeeFieldAccountStatus => '登录账号';
+
+  @override
+  String get accountStatusActive => '正常';
+
+  @override
+  String get accountStatusLocked => '已锁定';
+
+  @override
+  String get accountStatusDisabled => '已停用';
+
+  @override
+  String get accountStatusNone => '未开通';
+
+  @override
+  String employeeProbationExpiring(Object date, Object days) {
+    return '试用期将于 $date 到期（剩 $days 天），请及时办理转正';
+  }
+
+  @override
+  String employeeProbationExpired(Object date) {
+    return '试用期已于 $date 到期，请尽快办理转正或离职';
+  }
+
+  @override
+  String employeeContractExpiring(Object date, Object days) {
+    return '劳动合同将于 $date 到期（剩 $days 天），请及时续签';
+  }
+
+  @override
+  String employeeContractExpired(Object date) {
+    return '劳动合同已于 $date 到期，请尽快处理';
+  }
+
+  @override
   String get employeeEditTitle => '编辑员工';
 
   @override
@@ -918,10 +953,73 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOffboardBack => '上一步';
 
   @override
-  String get employeeOffboardCompleted => '离职办理完成（Mock）';
+  String get employeeOffboardCompleted => '离职办理完成';
 
   @override
   String get employeeOffboardLoadFailed => '加载失败';
+
+  @override
+  String get employeeActions => '更多操作';
+
+  @override
+  String get employeeActionTransfer => '调岗';
+
+  @override
+  String get employeeActionConfirm => '转正';
+
+  @override
+  String get employeeActionOffboard => '办理离职';
+
+  @override
+  String get employeeActionRehire => '复职';
+
+  @override
+  String get employeeActionDelete => '删除档案';
+
+  @override
+  String get employeeTransferTitle => '员工调岗';
+
+  @override
+  String get employeeTransferFieldDate => '生效日期';
+
+  @override
+  String get employeeTransferPickDate => '选择日期';
+
+  @override
+  String get employeeTransferFieldRemark => '备注';
+
+  @override
+  String get employeeTransferDateRequired => '请选择生效日期';
+
+  @override
+  String get employeeTransferSuccess => '调岗完成';
+
+  @override
+  String get employeeConfirmTitle => '确认转正？';
+
+  @override
+  String get employeeConfirmBody => '转正后员工状态将变为「在职」。';
+
+  @override
+  String get employeeConfirmSuccess => '转正完成';
+
+  @override
+  String get employeeRehireTitle => '确认复职？';
+
+  @override
+  String get employeeRehireBody => '复职后员工状态将恢复为「在职」，其登录账号将重新启用（需重新登录）。';
+
+  @override
+  String get employeeRehireSuccess => '复职完成';
+
+  @override
+  String get employeeDeleteTitle => '确认删除该员工档案？';
+
+  @override
+  String get employeeDeleteBody => '删除后其登录账号将被停用，此操作不可恢复。';
+
+  @override
+  String get employeeDeleteSuccess => '员工档案已删除';
 
   @override
   String get resignTypeVoluntary => '主动辞职';
@@ -1000,6 +1098,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get historyEventResign => '离职';
+
+  @override
+  String get historyEventRehire => '复职';
 
   @override
   String get departmentTitle => '部门管理';

@@ -19,6 +19,7 @@ public class AdminUserController {
     private final UserAccountAdminService userAccountAdmin;
     private final RoleAdminService roleAdmin;
     private final PermissionOverrideAdminService permissionOverrideAdmin;
+    private final DataScopeAdminService dataScopeAdmin;
 
     @GetMapping("/users")
     @PreAuthorize("hasAuthority('user:manage')")
@@ -83,4 +84,31 @@ public class AdminUserController {
                 req.grants() == null ? List.of() : req.grants(),
                 req.revokes() == null ? List.of() : req.revokes());
     }
+
+    // ===== 数据范围授权（V89：客户/外贸货品「能看哪些业务员的」中间档） =====
+
+    /** 授权归属人候选（该范围内实际有归属数据的员工 + 数量）。 */
+    @GetMapping("/data-scope-owners")
+    @PreAuthorize("hasAuthority('user:manage')")
+    public List<java.util.Map<String, Object>> dataScopeOwners(@RequestParam String scope) {
+        return dataScopeAdmin.ownerCandidates(scope);
+    }
+
+    /** 某用户在某范围的授权归属人。 */
+    @GetMapping("/users/{id}/data-scopes")
+    @PreAuthorize("hasAuthority('user:manage')")
+    public List<UUID> getDataScopes(@PathVariable UUID id, @RequestParam String scope) {
+        return dataScopeAdmin.getDataScopes(id, scope);
+    }
+
+    /** 整体替换某用户在某范围的授权归属人。 */
+    @PutMapping("/users/{id}/data-scopes")
+    @PreAuthorize("hasAuthority('user:manage')")
+    public void setDataScopes(@PathVariable UUID id, @RequestParam String scope,
+                              @RequestBody DataScopesBody req) {
+        dataScopeAdmin.setDataScopes(id, scope, req == null ? List.of() : req.ownerEmployeeIds());
+    }
+
+    /** 数据范围整体替换请求体。 */
+    public record DataScopesBody(List<UUID> ownerEmployeeIds) {}
 }

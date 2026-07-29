@@ -58,6 +58,7 @@ public class FinanceOtherIncomeService {
     private final FinanceOtherIncomeItemRepository itemRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
 
@@ -98,7 +99,7 @@ public class FinanceOtherIncomeService {
         FinanceOtherIncome o = new FinanceOtherIncome();
         applyHeader(req, o);
         o.setStatus(STATUS_DRAFT);
-        o.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        o.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         incomeRepo.save(o);
         List<FinanceOtherIncomeItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
@@ -138,13 +139,14 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail approve(UUID id) {
         tx.bind();
         FinanceOtherIncome o = require(id);
+        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         if (o.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收入单需指定收款账户");
         }
-        o.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         BigDecimal amountLocal = nz(o.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(o.getAccountId(), amountLocal);
@@ -160,6 +162,7 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = require(id);
+        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -299,7 +302,8 @@ public class FinanceOtherIncomeService {
                 o.getAccountId(), o.getCounterpartAccountId(), o.getCurrencyId(), o.getExchangeRate(),
                 o.getAmountOriginal(), o.getAmountLocal(), o.getReceiptMethodId(), o.getReceiptMethodLegacyId(),
                 o.getOperatorId(), o.getMakerId(), o.getApproverId(), o.getRemark(),
-                o.getStatus(), o.isClosed(), items);
+                o.getStatus(), o.isClosed(), items,
+                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt());
     }
 
     private FinanceOtherIncome require(UUID id) {

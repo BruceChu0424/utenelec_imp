@@ -102,12 +102,12 @@ class SalesDocConfig {
 
   /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
   String get billNoPrefix => switch (type) {
-        SalesDocType.quote => 'XB',
-        SalesDocType.order => 'XD',
-        SalesDocType.shipment => 'XC',
-        SalesDocType.otherShipment => 'OC',
-        SalesDocType.returnDoc => 'XT',
-      };
+    SalesDocType.quote => 'XB',
+    SalesDocType.order => 'XD',
+    SalesDocType.shipment => 'XC',
+    SalesDocType.otherShipment => 'OC',
+    SalesDocType.returnDoc => 'XT',
+  };
 
   static const quote = SalesDocConfig(
     type: SalesDocType.quote,
@@ -135,6 +135,7 @@ class SalesDocConfig {
     showStopped: true,
     showShipped: true,
     showReturned: true,
+    skipListOnCreate: true,
   );
 
   static const shipment = SalesDocConfig(
@@ -153,6 +154,7 @@ class SalesDocConfig {
     showArPosted: true,
     linkToOrderItem: true,
     showReturned: true,
+    skipListOnCreate: true,
   );
 
   static const otherShipment = SalesDocConfig(
@@ -169,6 +171,7 @@ class SalesDocConfig {
     hasSender: true,
     hasShipInfo: true,
     hasOutType: true,
+    skipListOnCreate: true,
   );
 
   static const returnDoc = SalesDocConfig(
@@ -185,6 +188,7 @@ class SalesDocConfig {
     showArPosted: true,
     linkToOrderItem: true,
     linkToOutItem: true,
+    skipListOnCreate: true,
   );
 
   static SalesDocConfig by(SalesDocType t) {

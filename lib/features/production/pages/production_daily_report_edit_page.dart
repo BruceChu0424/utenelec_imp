@@ -1,63 +1,68 @@
-// 生产日报编辑页（新建/编辑，全页路由 · production_daily_report:edit · 空结构保未来）。
+// 生产日报编辑页（新建/编辑，全页路由）：与生产计划/销售编辑页同构（统一模板）。
 //
-// 与生产计划单编辑页同构。日报特点：
-//   - 无车间文本字段（workshopName 仍留，但日报主线是仓库 + 工序/完工量）
-//   - 仓库下拉（MasterNameService 解析 warehouseId）
-//   - 明细行核心：goods（必填）+ qty 完工量（必填）+ price 单价 + 关联计划 planNo
-//   - 行金额 = qty × price（日报有金额，区别于计划单的数量驱动）
+// 日报特点：
+//   - 明细有金额（完工量 × 单价 → 金额，AmountRowMixin；表尾合计 ¥）。
+//   - 单据号系统自动生成（后端 DocNumberService，PRODUCTION_DAILY_REPORT），本页只读显示。
+//   - 仓库 = 下拉（UtenDropdownField，warehouseId）；车间 = 部门选择器（department_id + 部门名冗余 workshop_name）；
+//     生产工 = 员工选择器（workerId）。
+//   - 后端 DailyReportSaveRequest 已具备 departmentId/workerId/warehouseId，纯前端改动。
+//   - 明细行：goodsId（必填）+ qty 完工量（必填）+ price 单价 + color/unit + planNo（关联计划号）+ remark。
+//
+// 仅草稿可编辑（后端校验；已审走详情页红冲）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
+import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/widgets/dropdown_items.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../department/widgets/uten_department_picker.dart';
+import '../../employee/repositories/employee_repository.dart';
 import '../../purchase/providers/master_name_provider.dart';
+import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
+import '../widgets/production_daily_grid_columns.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
   const ProductionDailyReportEditPage({super.key, this.id});
-  final String? id;
+  final String? id; // null=新建
 
   @override
   ConsumerState<ProductionDailyReportEditPage> createState() =>
       _ProductionDailyReportEditPageState();
 }
 
-class _ItemRow {
-  _ItemRow();
-  final qty = TextEditingController();
-  final price = TextEditingController();
-  final planNo = TextEditingController();
-  final remark = TextEditingController();
-  GoodsOption? goods;
-  String? colorId;
-  String? unitId;
-
-  void dispose() {
-    qty.dispose();
-    price.dispose();
-    planNo.dispose();
-    remark.dispose();
-  }
-}
-
 class _ProductionDailyReportEditPageState
     extends ConsumerState<ProductionDailyReportEditPage> {
-  final _billNo = TextEditingController();
-  final _workshop = TextEditingController();
+  final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   DateTime _billDate = DateTime.now();
-  String? _warehouseId;
 
-  final _items = <_ItemRow>[];
+  String? _warehouseId;
+  // 车间 = 部门
+  String? _departmentId;
+  String? _workshopName; // 部门名冗余（供报表 workshop_name facet）
+  // 生产工
+  String? _workerId;
+  final Map<String, UtenEmployeePickerItem> _empCache = {};
+
+  final _grid = UtenEditableGridController<DailyGridRow>();
+  final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+  // 制单信息（服务端权威，只读展示）
+  String? _makerName;
+  String? _createdAt;
 
   @override
   void initState() {
@@ -68,11 +73,9 @@ class _ProductionDailyReportEditPageState
   @override
   void dispose() {
     _billNo.dispose();
-    _workshop.dispose();
     _remark.dispose();
-    for (final r in _items) {
-      r.dispose();
-    }
+    _grid.dispose(); // 自动 dispose 各行控制器
+    _scrollCtl.dispose();
     super.dispose();
   }
 
@@ -87,18 +90,22 @@ class _ProductionDailyReportEditPageState
         final goodsIds =
             d.items.map((e) => e.goodsId).whereType<String>().toSet();
         await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+        await _preloadEmployees([d.workerId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
-        _workshop.text = d.workshopName ?? '';
         _remark.text = d.remark ?? '';
         if (d.billDate != null) {
           _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
         }
         _warehouseId = d.warehouseId;
+        _departmentId = d.departmentId;
+        _workshopName = d.workshopName;
+        _workerId = d.workerId;
+        _makerName = d.makerName;
+        _createdAt = d.createdAt;
+        final rows = <DailyGridRow>[];
         for (final it in d.items) {
-          final row = _ItemRow()
-            ..qty.text = it.qty?.toString() ?? ''
-            ..price.text = it.price?.toString() ?? ''
+          final row = DailyGridRow()
             ..planNo.text = it.planNo ?? ''
             ..remark.text = it.remark ?? ''
             ..colorId = it.colorId
@@ -108,51 +115,62 @@ class _ProductionDailyReportEditPageState
                 : GoodsOption(
                     id: it.goodsId!,
                     name: ref.read(masterNameServiceProvider).goods(it.goodsId));
-          _items.add(row);
+          row.qty.text = it.qty?.toString() ?? '';
+          row.price.text = it.price?.toString() ?? '';
+          row.isFinal = it.isFinal;
+          rows.add(row);
         }
+        _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
       } catch (_) {
         // 静默降级
       }
     }
-    if (_items.isEmpty) _items.add(_ItemRow());
+    if (_grid.isEmpty) _grid.addRow(DailyGridRow());
     if (mounted) setState(() => _loading = false);
   }
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  double get _total => _items.fold<double>(
-      0,
-      (s, r) =>
-          s +
-          (double.tryParse(r.qty.text) ?? 0) *
-              (double.tryParse(r.price.text) ?? 0));
+  /// 并发按 id 拉人员名字（picker 的 initial 显示用）。失败静默。
+  Future<void> _preloadEmployees(Iterable<String?> ids) async {
+    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+    if (uniq.isEmpty) return;
+    final repo = ref.read(employeeRepositoryProvider);
+    await Future.wait(uniq.map((id) async {
+      try {
+        final p = await repo.getById(id);
+        _empCache[id] = UtenEmployeePickerItem(
+          id: p.id,
+          name: p.fullName ?? '',
+          departmentName: p.departmentName,
+        );
+      } catch (_) {
+        // 静默
+      }
+    }));
+  }
 
-  Future<void> _pickGoods(_ItemRow row) async {
+  Future<void> _pickGoods(DailyGridRow row) async {
     final g = await showUtenGoodsPicker(context, ref);
     if (g == null) return;
     final names = ref.read(masterNameServiceProvider);
-    setState(() {
-      row
-        ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-        ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-        ..unitId = names.unitIdByLegacy(g.unitLegacyId);
-    });
+    row
+      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
+      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
   }
 
   Future<void> _save() async {
-    if (_billNo.text.trim().isEmpty) {
-      context.appError('请填写单据号');
-      return;
-    }
-    if (_items.isEmpty || _items.every((r) => r.goods == null)) {
+    final rows = _grid.rows;
+    if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
       return;
     }
-    for (var i = 0; i < _items.length; i++) {
-      final r = _items[i];
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
       if (r.goods == null) continue;
       if (double.tryParse(r.qty.text) == null) {
         context.appError('第 ${i + 1} 行完工量无效');
@@ -160,27 +178,32 @@ class _ProductionDailyReportEditPageState
       }
     }
     final itemsBody = <Map<String, dynamic>>[];
-    for (final r in _items) {
+    for (final r in rows) {
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text) ?? 0;
       final price = double.tryParse(r.price.text);
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
-        if (price != null) 'price': price,
-        if (price != null) 'total': qty * price,
+        if (price != null) ...{
+          'price': price,
+          'total': qty * price,
+        },
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.planNo.text.trim().isNotEmpty) 'planNo': r.planNo.text.trim(),
+        if (r.isFinal) 'isFinal': true,
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       });
     }
+    // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
-      'billNo': _billNo.text.trim(),
       'billDate': _fmt(_billDate),
       if (_warehouseId != null) 'warehouseId': _warehouseId,
-      if (_workshop.text.trim().isNotEmpty)
-        'workshopName': _workshop.text.trim(),
+      if (_departmentId != null) 'departmentId': _departmentId,
+      if (_workshopName != null && _workshopName!.trim().isNotEmpty)
+        'workshopName': _workshopName,
+      if (_workerId != null) 'workerId': _workerId,
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
       'items': itemsBody,
     };
@@ -202,186 +225,174 @@ class _ProductionDailyReportEditPageState
     }
   }
 
-  Widget _dropdown(String label, String? value, Map<String, String> entries,
-      ValueChanged<String?> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: DropdownButtonFormField<String?>(
-        initialValue: value,
-        decoration: InputDecoration(labelText: label),
-        items: stringDropdownItems(value, entries),
-        onChanged: onChanged,
-      ),
+  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  Widget _employeePicker({
+    required String label,
+    required String? currentId,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return UtenEmployeePicker(
+      key: ValueKey('${label}_$currentId'),
+      label: label,
+      initial: currentId == null ? null : _empCache[currentId],
+      loader: (kw) async {
+        final res = await ref
+            .read(employeeRepositoryProvider)
+            .list(size: 30, search: kw);
+        return [
+          for (final e in res.items)
+            UtenEmployeePickerItem(
+              id: e.id,
+              name: e.fullName,
+              departmentName: e.departmentName,
+            ),
+        ];
+      },
+      onChanged: (item) {
+        if (item != null) _empCache[item.id] = item;
+        onChanged(item?.id);
+      },
     );
   }
 
-  Widget _itemEditor(ThemeData theme, _ItemRow row) {
-    final amount =
-        (double.tryParse(row.qty.text) ?? 0) * (double.tryParse(row.price.text) ?? 0);
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: InkWell(
-                onTap: () => _pickGoods(row),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: '货品',
-                    isDense: true,
-                    suffixIcon: Icon(Icons.search_rounded, size: 18),
-                  ),
-                  child: Text(row.goods?.name ?? '点击选择',
-                      style: TextStyle(
-                          color: row.goods == null
-                              ? theme.colorScheme.onSurfaceVariant
-                              : null)),
-                ),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close_rounded, size: 18),
-              onPressed: () => setState(() {
-                _items.remove(row);
-                row.dispose();
-              }),
-            ),
-          ]),
-          const SizedBox(height: UtenSpacing.s8),
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: row.qty,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    labelText: '完工量 *', isDense: true),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: TextField(
-                controller: row.price,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                    labelText: '单价', isDense: true),
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            SizedBox(
-              width: 90,
-              child: Text('¥${amount.toStringAsFixed(2)}',
-                  textAlign: TextAlign.right,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-            ),
-          ]),
-          Row(children: [
-            Expanded(
-              child: _dropdown(
-                  '颜色', row.colorId, ref.read(masterNameServiceProvider).colorEntries,
-                  (v) => setState(() => row.colorId = v)),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: _dropdown(
-                  '单位', row.unitId, ref.read(masterNameServiceProvider).unitEntries,
-                  (v) => setState(() => row.unitId = v)),
-            ),
-          ]),
-          TextField(
-            controller: row.planNo,
-            decoration: const InputDecoration(
-                labelText: '关联生产计划号', isDense: true),
-          ),
-          TextField(
-            controller: row.remark,
-            decoration: const InputDecoration(labelText: '行备注', isDense: true),
-            maxLines: 2,
-          ),
-        ]),
-      ),
+  Widget _dropdown(String label, String? value, Map<String, String> entries,
+      ValueChanged<String?> onChanged) {
+    return UtenDropdownField(
+      label: label,
+      value: value,
+      items: [
+        for (final e in entries.entries)
+          UtenDropdownItem(value: e.key, label: e.value),
+        if (value != null && value.isNotEmpty && !entries.containsKey(value))
+          UtenDropdownItem(value: value, label: value),
+      ],
+      onChanged: onChanged,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final names = ref.watch(masterNameServiceProvider);
+    final workshopTree = ref.watch(productionWorkshopTreeProvider).valueOrNull;
     return Scaffold(
       appBar: UtenAppBar(
           title: widget.id == null ? '新建生产日报' : '编辑生产日报',
-          showBackButton: true),
+          showBackButton: true,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.tonal,
+              icon: Icons.history_rounded,
+              onPressed: () => context.push('/production/daily-reports'),
+              child: const Text('查看历史'),
+            ),
+          ]),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : UtenContentContainer(
-                child: ListView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(children: [
-                          TextField(
-                            controller: _billNo,
-                            decoration:
-                                const InputDecoration(labelText: '单据号 *'),
+                child: Scrollbar(
+                  controller: _scrollCtl,
+                  thumbVisibility: true,
+                  child: ListView(
+                    controller: _scrollCtl,
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              UtenFormGrid(children: [
+                                // 单据号：系统自动生成，只读显示。
+                                TextFormField(
+                                  readOnly: true,
+                                  controller: _billNo,
+                                  decoration: InputDecoration(
+                                    labelText: '单据号',
+                                    hintText: _billNo.text.isEmpty
+                                        ? '保存后自动生成'
+                                        : null,
+                                    filled: _billNo.text.isEmpty,
+                                    suffixIcon: _billNo.text.isEmpty
+                                        ? const Icon(Icons.autorenew_outlined,
+                                            size: 18)
+                                        : const Icon(Icons.lock_outline,
+                                            size: 16),
+                                  ),
+                                ),
+                                // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                ...utenMakerAuditCells(ref,
+                                    makerName: _makerName, createdAt: _createdAt),
+                                UtenDateField(
+                                  label: '单据日期',
+                                  required: true,
+                                  value: _billDate,
+                                  onChanged: (d) =>
+                                      setState(() => _billDate = d),
+                                ),
+                                _dropdown('仓库', _warehouseId,
+                                    names.warehouseEntries, (v) {
+                                  setState(() => _warehouseId = v);
+                                }),
+                                // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                UtenDepartmentPicker(
+                                  mode: UtenDepartmentPickerMode.single,
+                                  label: '车间',
+                                  hint: '选择生产车间（部门）',
+                                  treeOverride: workshopTree,
+                                  initialSelection: _departmentId == null
+                                      ? const []
+                                      : [
+                                          DeptSelection(
+                                            id: _departmentId!,
+                                            name: _workshopName ?? '',
+                                            fullPath: '',
+                                            level: '',
+                                          ),
+                                        ],
+                                  onChanged: (sel) {
+                                    final s = sel.isEmpty ? null : sel.first;
+                                    setState(() {
+                                      _departmentId = s?.id;
+                                      _workshopName = s?.name; // 部门名冗余
+                                    });
+                                  },
+                                ),
+                                _employeePicker(
+                                  label: '生产工',
+                                  currentId: _workerId,
+                                  onChanged: (id) =>
+                                      setState(() => _workerId = id),
+                                ),
+                              ]),
+                              const SizedBox(height: UtenSpacing.s12),
+                              TextField(
+                                controller: _remark,
+                                decoration:
+                                    const InputDecoration(labelText: '备注'),
+                                maxLines: 2,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: UtenSpacing.s8),
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text('单据日期'),
-                            subtitle: Text(_fmt(_billDate)),
-                            trailing: const Icon(Icons.calendar_today_outlined,
-                                size: 18),
-                            onTap: () async {
-                              final p = await showDatePicker(
-                                context: context,
-                                initialDate: _billDate,
-                                firstDate: DateTime(2010),
-                                lastDate: DateTime(2100),
-                              );
-                              if (p != null) setState(() => _billDate = p);
-                            },
-                          ),
-                          _dropdown(
-                              '仓库',
-                              _warehouseId,
-                              ref.read(masterNameServiceProvider).warehouseEntries,
-                              (v) => setState(() => _warehouseId = v)),
-                          TextField(
-                            controller: _workshop,
-                            decoration: const InputDecoration(
-                                labelText: '车间（编号/名称）'),
-                          ),
-                          TextField(
-                            controller: _remark,
-                            decoration: const InputDecoration(labelText: '备注'),
-                            maxLines: 2,
-                          ),
-                        ]),
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Row(
-                      children: [
-                        Text('明细 (${_items.length})',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () =>
-                              setState(() => _items.add(_ItemRow())),
-                          icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('添加行'),
                         ),
-                      ],
-                    ),
-                    for (final row in _items) _itemEditor(theme, row),
-                  ],
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      Text('明细 (${_grid.length})',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      UtenEditableGrid<DailyGridRow>(
+                        controller: _grid,
+                        columns: dailyGridColumns(
+                          onPickGoods: _pickGoods,
+                          colorEntries: names.colorEntries,
+                          unitEntries: names.unitEntries,
+                        ),
+                        createBlankRow: () => DailyGridRow(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -389,15 +400,21 @@ class _ProductionDailyReportEditPageState
         child: Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+            border: Border(
+                top: BorderSide(color: theme.colorScheme.outlineVariant)),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('合计 ¥${_total.toStringAsFixed(2)}',
+              ValueListenableBuilder<double>(
+                valueListenable: _grid.totalListenable,
+                builder: (_, total, _) => Text(
+                  '合计 ¥${total.toStringAsFixed(2)}',
                   style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
               const SizedBox(width: UtenSpacing.s16),
               UtenButton(
                 type: UtenButtonType.secondary,
@@ -409,7 +426,7 @@ class _ProductionDailyReportEditPageState
                 isLoading: _saving,
                 icon: Icons.save_outlined,
                 onPressed: _saving ? null : _save,
-                child: Text(widget.id == null ? '存草稿' : '保存'),
+                child: const Text('保存'),
               ),
             ],
           ),

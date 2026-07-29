@@ -10,13 +10,14 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/currency_node.dart';
@@ -68,7 +69,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       _pageNum = page;
     });
     try {
-      final result = await ref.read(currencyRepositoryProvider).list(
+      final result = await ref
+          .read(currencyRepositoryProvider)
+          .list(
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
@@ -134,27 +137,29 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   }
 
   static const _fields = [
+    MasterFieldDef(key: 'name', label: '币种名称', required: true, group: '基础'),
     MasterFieldDef(
-        key: 'name', label: '币种名称', required: true, group: '基础'),
+      key: 'code',
+      label: '币种编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(
-        key: 'code',
-        label: '币种编号',
-        group: '基础',
-        readOnly: true,
-        hint: '保存后自动生成'),
+      key: 'exchangeRate',
+      label: '参考汇率',
+      group: '基础',
+      type: MasterFieldType.money,
+      hint: '如 7.2',
+    ),
     MasterFieldDef(
-        key: 'exchangeRate',
-        label: '参考汇率',
-        group: '基础',
-        type: MasterFieldType.money,
-        hint: '如 7.2'),
-    MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础'),
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
   ];
 
   void _showCreate() {
@@ -168,21 +173,16 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    try {
-      await ref.read(currencyRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('币种已创建');
-      await _loadCurrencies(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(currencyRepositoryProvider).create(body);
+      },
+      success: '币种已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadCurrencies(_pageNum);
+    return true;
   }
 
   void _showEdit(CurrencyDetail d) {
@@ -201,21 +201,16 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   }
 
   Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    try {
-      await ref.read(currencyRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('币种已更新');
-      await _loadCurrencies(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(currencyRepositoryProvider).update(id, body);
+      },
+      success: '币种已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadCurrencies(_pageNum);
+    return true;
   }
 
   Future<void> _delete(CurrencyDetail d) async {
@@ -240,23 +235,18 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(currencyRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('币种已删除');
-      await _loadCurrencies(_pageNum);
-      if (mounted &&
-          _page != null &&
-          _page!.items.isEmpty &&
-          _page!.page > 1) {
-        await _loadCurrencies(_page!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试');
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(currencyRepositoryProvider).delete(d.id);
+      },
+      success: '币种已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadCurrencies(_pageNum);
+    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
+      await _loadCurrencies(_page!.page - 1);
     }
   }
 
@@ -301,28 +291,35 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   }
 
   List<MasterDetailRow> _detailRows(CurrencyDetail c) => [
-        MasterDetailRow('编号', c.code),
-        MasterDetailRow('币种名称', c.name),
-        MasterDetailRow(
-            '参考汇率', c.exchangeRate?.toStringAsFixed(4)),
-        MasterDetailRow('状态', c.status),
-        MasterDetailRow('旧编码', c.legacyId?.toString()),
-      ];
+    MasterDetailRow('编号', c.code),
+    MasterDetailRow('币种名称', c.name),
+    MasterDetailRow('参考汇率', c.exchangeRate?.toStringAsFixed(4)),
+    MasterDetailRow('状态', c.status),
+    MasterDetailRow('旧编码', c.legacyId?.toString()),
+  ];
 
   static final _columns = <MasterColumnDef<CurrencyListItem>>[
+    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (c) => c.code),
     MasterColumnDef(
-        key: 'code', label: '编号', width: 120, value: (c) => c.code),
+      key: 'name',
+      label: '币种名称',
+      width: 200,
+      value: (c) => c.name,
+    ),
     MasterColumnDef(
-        key: 'name', label: '币种名称', width: 200, value: (c) => c.name),
+      key: 'exchangeRate',
+      label: '参考汇率',
+      width: 140,
+      type: 'money',
+      sortable: true,
+      value: (c) => c.exchangeRate?.toStringAsFixed(4),
+    ),
     MasterColumnDef(
-        key: 'exchangeRate',
-        label: '参考汇率',
-        width: 140,
-        type: 'money',
-        sortable: true,
-        value: (c) => c.exchangeRate?.toStringAsFixed(4)),
-    MasterColumnDef(
-        key: 'status', label: '状态', width: 100, value: (c) => c.status),
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (c) => c.status,
+    ),
   ];
 
   Future<void> _refresh() async {
@@ -331,11 +328,29 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
 
   /// 导出查询参数（与 _loadCurrencies 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
-        ...masterFilterQueryParams(_filters),
-        if (_sortKey != null) 'sort': _sortKey,
-        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
-      };
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    ...masterFilterQueryParams(_filters),
+    if (_sortKey != null) 'sort': _sortKey,
+    if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+  };
+
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final result = await ref.read(currencyRepositoryProvider).list(
+          page: 1,
+          size: 2000,
+          keyword: _keyword.trim().isEmpty ? null : _keyword,
+          filters: _filters,
+          sort: _sortKey,
+          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        );
+    return UtenPrintTable(
+      headers: [for (final c in _columns) c.label],
+      rows: [
+        for (final a in result.items) [for (final c in _columns) c.value(a) ?? ''],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -348,13 +363,6 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
-          UtenExportButton(
-            endpoint: '/master/currencies/export',
-            report: '',
-            queryParams: _exportQuery,
-            filename: '币种资料',
-            label: '导出币种',
-          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
@@ -370,18 +378,23 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.attach_money_rounded,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.attach_money_rounded,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       Text(
                         '币种 ($total)',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
@@ -407,6 +420,28 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                   child: MasterDataTableView<CurrencyListItem>(
                     columns: _columns,
                     items: _page?.items ?? const [],
+                    toolbarActions: [
+                      UtenPrintPreviewButton(
+                        title: '币种资料',
+                        subtitle: '最多前 2000 行',
+                        loader: _printLoader,
+                        exportEndpoint: '/master/currencies/export',
+                        exportReport: '',
+                        exportQuery: _exportQuery,
+                        exportFilename: '币种资料',
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                      UtenExportButton(
+                        endpoint: '/master/currencies/export',
+                        report: '',
+                        queryParams: _exportQuery,
+                        filename: '币种资料',
+                        label: '导出币种',
+                        type: UtenButtonType.primary,
+                        size: UtenButtonSize.large,
+                      ),
+                    ],
                     facets: _facets?.fields ?? const {},
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,

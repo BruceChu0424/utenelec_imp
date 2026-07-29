@@ -62,6 +62,8 @@ public class SubcontractOrderService {
     private final SubcontractOrderCostItemRepository costItemRepo;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
@@ -79,6 +81,7 @@ public class SubcontractOrderService {
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
@@ -108,6 +111,7 @@ public class SubcontractOrderService {
         tx.bind();
         SubcontractOrder r = new SubcontractOrder();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         orderRepo.save(r);
         List<OrderItemDto> items = saveItems(r, req.getItems());
@@ -150,6 +154,7 @@ public class SubcontractOrderService {
     public OrderDetail approve(UUID id) {
         tx.bind();
         SubcontractOrder r = requireOrder(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -168,6 +173,7 @@ public class SubcontractOrderService {
             }
         }
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         orderRepo.save(r);
         return detail(id);
     }
@@ -177,6 +183,7 @@ public class SubcontractOrderService {
     public OrderDetail reverse(UUID id) {
         tx.bind();
         SubcontractOrder r = requireOrder(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -291,7 +298,8 @@ public class SubcontractOrderService {
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getPurchaserId(), r.getMakerId(), r.getApproverId(), r.getDeliverDate(), r.isFulfill(),
                 r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(),
-                r.getSourceDocNo(), items);
+                r.getSourceDocNo(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 
     private SubcontractOrder requireOrder(UUID id) {

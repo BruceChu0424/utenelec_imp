@@ -36,4 +36,5 @@ public class DailyReportItemDto {
     private String clientName;
     private String sourceDocNo;
     private String remark;
+    private Boolean isFinal;
 }

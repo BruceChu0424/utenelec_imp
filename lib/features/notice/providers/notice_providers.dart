@@ -2,11 +2,12 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_client.dart';
 import '../models/notice.dart';
-import '../repositories/mock_notice_repository.dart';
+import '../repositories/notice_repository.dart';
 
-final noticeRepositoryProvider = Provider<MockNoticeRepository>((ref) {
-  return MockNoticeRepository();
+final noticeRepositoryProvider = Provider<NoticeRepository>((ref) {
+  return DioNoticeRepository(ref.watch(apiClientProvider));
 });
 
 /// 筛选：全部 / 仅未读 / 仅置顶
@@ -70,4 +71,12 @@ Future<void> markAllNoticeRead(WidgetRef ref) async {
   await ref.read(noticeRepositoryProvider).markAllRead();
   ref.invalidate(noticeListProvider);
   ref.invalidate(unreadNoticeCountProvider);
+}
+
+/// 批量删除（从当前用户列表移除），返回实际删除条数
+Future<int> deleteNotices(WidgetRef ref, List<String> ids) async {
+  final deleted = await ref.read(noticeRepositoryProvider).deleteMany(ids);
+  ref.invalidate(noticeListProvider);
+  ref.invalidate(unreadNoticeCountProvider);
+  return deleted;
 }

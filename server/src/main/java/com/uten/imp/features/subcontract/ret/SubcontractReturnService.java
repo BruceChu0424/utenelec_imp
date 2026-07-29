@@ -71,6 +71,8 @@ public class SubcontractReturnService {
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
@@ -109,6 +111,7 @@ public class SubcontractReturnService {
         tx.bind();
         SubcontractReturn r = new SubcontractReturn();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<ReturnItemDto> items = saveItems(r, req.getItems());
@@ -150,6 +153,7 @@ public class SubcontractReturnService {
     public ReturnDetail approve(UUID id) {
         tx.bind();
         SubcontractReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -187,6 +191,7 @@ public class SubcontractReturnService {
         // ③ 反向立应付（AP, SUBCONTRACT_RETURN, 金额取负 — 冲减进仓单立的应付）
         postAp(r, totalLocalOf(items), -1);
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setApPosted(true);
         returnRepo.save(r);
         return detail(id);
@@ -197,6 +202,7 @@ public class SubcontractReturnService {
     public ReturnDetail reverse(UUID id) {
         tx.bind();
         SubcontractReturn r = requireReturn(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -362,8 +368,9 @@ public class SubcontractReturnService {
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                r.getSettlementStyleLegacy(), r.getMakerLegacyId(), r.getMakerName(),
-                r.getApproverLegacyId(), r.getApproverName());
+                r.getSettlementStyleLegacy(), r.getMakerLegacyId(),
+                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
     }
 
     private SubcontractReturn requireReturn(UUID id) {

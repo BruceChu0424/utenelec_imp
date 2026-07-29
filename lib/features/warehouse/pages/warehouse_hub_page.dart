@@ -52,7 +52,7 @@ class WarehouseHubPage extends StatelessWidget {
                   borderRadius: UtenRadius.lgAll,
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    onTap: () => goFrom(context, RoutePath.stockDocList(t.code)),
+                    onTap: () => goFrom(context, RoutePath.stockDocNew(t.code)),
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(

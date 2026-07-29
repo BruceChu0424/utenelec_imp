@@ -1,12 +1,15 @@
 // UtenPagedGrid - 分页卡片网格（客户端切片）
 //
-// 解决「列表页一次性把全部数据铺进 UtenResponsiveGrid → Wrap 一次性构建全部子项」
+// 解决「列表页一次性把全部数据铺进 UtenResponsiveGrid 一次性构建全部子项」
 // 的卡顿（详见 docs/数据迁移/29 P2-5 / 30 §七-5）。
 //
-// 做法：**不改 UtenResponsiveGrid**（Wrap 真瀑布流是刻意的），而是在它外面包一层
-// 分页——只把「当页」pageSize 条数据交给 UtenResponsiveGrid，Wrap 子项永远 ≤ pageSize，
+// 做法：不改 UtenResponsiveGrid 的对外契约，而是在它外面包一层
+// 分页——只把「当页」pageSize 条数据交给 UtenResponsiveGrid，子项永远 ≤ pageSize，
 // 从根上消除一次性渲染。底部翻页条样式与 MasterDataTableView 对齐（上一页 / 第x/y页 /
 // 下一页，翻页后回顶）。总量 ≤ pageSize 时不显示翻页条，小数据零视觉污染。
+//
+// 注：UtenResponsiveGrid 已于 2026-07-29 重写为分栏瀑布流 v3
+// （Wrap 按行对齐导致矮卡片下方留白、两行视觉间隔过远），本组件行为不变。
 //
 // 用法（与原 UtenResponsiveGrid 几乎一致，仅把 itemCount 换成 items）：
 // ```dart

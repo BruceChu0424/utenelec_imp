@@ -14,7 +14,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/warehouse_node.dart';
@@ -61,7 +61,9 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       _pageNum = page;
     });
     try {
-      final result = await ref.read(warehouseRepositoryProvider).list(
+      final result = await ref
+          .read(warehouseRepositoryProvider)
+          .list(
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
@@ -117,35 +119,38 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 
   static const _fields = [
+    MasterFieldDef(key: 'name', label: '仓库名称', required: true, group: '基础'),
     MasterFieldDef(
-        key: 'name', label: '仓库名称', required: true, group: '基础'),
+      key: 'code',
+      label: '仓库编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(
-        key: 'code',
-        label: '仓库编号',
-        group: '基础',
-        readOnly: true,
-        hint: '保存后自动生成'),
+      key: 'location',
+      label: '仓库位置',
+      group: '基础',
+      hint: '如 总仓库/轨道仓',
+    ),
     MasterFieldDef(
-        key: 'location',
-        label: '仓库位置',
-        group: '基础',
-        hint: '如 总仓库/轨道仓'),
+      key: 'accountable',
+      label: '是否核算',
+      group: '基础',
+      type: MasterFieldType.select,
+      options: [
+        MasterSelectOption(value: 'true', label: '使用（参与核算）'),
+        MasterSelectOption(value: 'false', label: '不使用（不核算）'),
+      ],
+    ),
     MasterFieldDef(
-        key: 'accountable',
-        label: '是否核算',
-        group: '基础',
-        type: MasterFieldType.select,
-        options: [
-          MasterSelectOption(value: 'true', label: '使用（参与核算）'),
-          MasterSelectOption(value: 'false', label: '不使用（不核算）'),
-        ]),
-    MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础'),
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
   ];
 
   void _showCreate() {
@@ -159,21 +164,16 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 
   Future<bool> _doCreate(Map<String, dynamic> body) async {
-    try {
-      await ref.read(warehouseRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('仓库已创建');
-      await _loadWarehouses(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(warehouseRepositoryProvider).create(body);
+      },
+      success: '仓库已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadWarehouses(_pageNum);
+    return true;
   }
 
   void _showEdit(WarehouseDetail d) {
@@ -193,21 +193,16 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 
   Future<bool> _doUpdate(String id, Map<String, dynamic> body) async {
-    try {
-      await ref.read(warehouseRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('仓库已更新');
-      await _loadWarehouses(_pageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref.read(warehouseRepositoryProvider).update(id, body);
+      },
+      success: '仓库已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadWarehouses(_pageNum);
+    return true;
   }
 
   Future<void> _delete(WarehouseDetail d) async {
@@ -232,23 +227,18 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(warehouseRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('仓库已删除');
-      await _loadWarehouses(_pageNum);
-      if (mounted &&
-          _page != null &&
-          _page!.items.isEmpty &&
-          _page!.page > 1) {
-        await _loadWarehouses(_page!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试');
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(warehouseRepositoryProvider).delete(d.id);
+      },
+      success: '仓库已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadWarehouses(_pageNum);
+    if (mounted && _page != null && _page!.items.isEmpty && _page!.page > 1) {
+      await _loadWarehouses(_page!.page - 1);
     }
   }
 
@@ -293,30 +283,42 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 
   List<MasterDetailRow> _detailRows(WarehouseDetail w) => [
-        MasterDetailRow('编号', w.code),
-        MasterDetailRow('仓库名称', w.name),
-        MasterDetailRow('位置', w.location),
-        MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
-        MasterDetailRow('备注', w.remark),
-        MasterDetailRow('状态', w.status),
-        MasterDetailRow('旧车间ID', w.workshopLegacyId?.toString()),
-        MasterDetailRow('旧编码', w.legacyId?.toString()),
-      ];
+    MasterDetailRow('编号', w.code),
+    MasterDetailRow('仓库名称', w.name),
+    MasterDetailRow('位置', w.location),
+    MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
+    MasterDetailRow('备注', w.remark),
+    MasterDetailRow('状态', w.status),
+    MasterDetailRow('旧车间ID', w.workshopLegacyId?.toString()),
+    MasterDetailRow('旧编码', w.legacyId?.toString()),
+  ];
 
   static final _columns = <MasterColumnDef<WarehouseListItem>>[
+    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (w) => w.code),
     MasterColumnDef(
-        key: 'code', label: '编号', width: 120, value: (w) => w.code),
+      key: 'name',
+      label: '仓库名称',
+      width: 200,
+      value: (w) => w.name,
+    ),
     MasterColumnDef(
-        key: 'name', label: '仓库名称', width: 200, value: (w) => w.name),
+      key: 'location',
+      label: '位置',
+      width: 160,
+      value: (w) => w.location,
+    ),
     MasterColumnDef(
-        key: 'location', label: '位置', width: 160, value: (w) => w.location),
+      key: 'accountable',
+      label: '核算',
+      width: 90,
+      value: (w) => w.accountable ? '是' : '否',
+    ),
     MasterColumnDef(
-        key: 'accountable',
-        label: '核算',
-        width: 90,
-        value: (w) => w.accountable ? '是' : '否'),
-    MasterColumnDef(
-        key: 'status', label: '状态', width: 100, value: (w) => w.status),
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (w) => w.status,
+    ),
   ];
 
   Future<void> _refresh() async {
@@ -349,18 +351,23 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.warehouse_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.warehouse_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       Text(
                         '仓库 ($total)',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(

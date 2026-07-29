@@ -281,6 +281,8 @@ class ProductionPlanDetail {
     this.workerId,
     this.makerId,
     this.approverId,
+    this.makerName,
+    this.createdAt,
     this.makerLegacyId,
     this.approverLegacyId,
     this.remark,
@@ -306,6 +308,10 @@ class ProductionPlanDetail {
   final String? workerId;
   final String? makerId;
   final String? approverId;
+  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  final String? makerName;
+  /// 制单时间 ISO（审计 created_at，创建后不可变）
+  final String? createdAt;
   final int? makerLegacyId;
   final int? approverLegacyId;
   final String? remark;
@@ -331,6 +337,8 @@ class ProductionPlanDetail {
         sellerId: json['sellerId'] as String?,
         workerId: json['workerId'] as String?,
         makerId: json['makerId'] as String?,
+        makerName: json['makerName'] as String?,
+        createdAt: json['createdAt'] as String?,
         approverId: json['approverId'] as String?,
         makerLegacyId: _asInt(json['makerLegacyId']),
         approverLegacyId: _asInt(json['approverLegacyId']),

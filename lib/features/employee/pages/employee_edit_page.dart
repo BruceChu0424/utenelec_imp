@@ -382,7 +382,13 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       DropdownButtonFormField<String>(
                         initialValue: _status,
                         decoration: _deco(l10n.employeeFieldStatus),
+                        // 离职/复职走专用流程（账号冻结/启用+任职记录），编辑页不可直改：
+                        // 在职员工选项剔除 resigned；已离职员工锁定为 resigned。
                         items: _statusCodes
+                            .where(
+                              (c) =>
+                                  c != 'resigned' || _profile?.status == 'resigned',
+                            )
                             .map(
                               (c) => DropdownMenuItem(
                                 value: c,
@@ -390,8 +396,9 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                               ),
                             )
                             .toList(),
-                        onChanged: (v) =>
-                            setState(() => _status = v ?? _status),
+                        onChanged: _profile?.status == 'resigned'
+                            ? null
+                            : (v) => setState(() => _status = v ?? _status),
                       ),
                       _text(_workLocation, l10n.employeeFieldWorkLocation),
                       _text(_seatNo, l10n.employeeFieldSeatNo),

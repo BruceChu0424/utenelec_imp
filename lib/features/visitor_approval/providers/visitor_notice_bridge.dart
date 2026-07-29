@@ -71,7 +71,6 @@ Future<void> notifyVisitorApprovalOutcome(
     content: content,
     type: type,
     priority: priority,
-    publisher: '访客审批',
   );
 }
 
@@ -112,11 +111,14 @@ Future<void> notifyVisitorHostConfirm(
     content: content,
     type: type,
     priority: priority,
-    publisher: host,
   );
 }
 
 /// 入库 → 列表/角标失效刷新 → 按重要度弹到达提醒。
+///
+/// 已接真后端：发布人由后端取当前登录员工姓名快照（前端不再传 publisher）。
+/// 审批动作人可能无 notice:publish 权限（如普通员工确认接待）——
+/// 此时通知发布失败不应拖垮审批主流程，try/catch 静默降级为仅本地提醒。
 Future<void> _publishAndDispatch(
   BuildContext context,
   WidgetRef ref, {
@@ -124,16 +126,21 @@ Future<void> _publishAndDispatch(
   required String content,
   required NoticeType type,
   required NoticePriority priority,
-  required String publisher,
 }) async {
-  final notice = await ref.read(noticeRepositoryProvider).publish(
-        title: title,
-        content: content,
-        type: type,
-        publisher: publisher,
-        priority: priority,
-      );
-  ref.invalidate(noticeListProvider);
-  ref.invalidate(unreadNoticeCountProvider);
-  if (context.mounted) dispatchNoticeArrival(context, notice);
+  Notice? notice;
+  try {
+    notice = await ref.read(noticeRepositoryProvider).publish(
+          title: title,
+          content: content,
+          type: type,
+          priority: priority,
+        );
+    ref.invalidate(noticeListProvider);
+    ref.invalidate(unreadNoticeCountProvider);
+  } catch (_) {
+    // 无发布权限或网络异常：审批主流程已成功，通知落库失败可容忍
+  }
+  if (notice != null && context.mounted) {
+    dispatchNoticeArrival(context, notice);
+  }
 }

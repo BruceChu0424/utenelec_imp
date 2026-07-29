@@ -102,6 +102,18 @@ public class ClientService {
     private final TxSessionVars tx;
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
+    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+
+    // ===== 归属可见性（每个销售只看自己的客户，V86；判定逻辑统一在 OwnerVisibility） =====
+
+    /** facets 原生 SQL 片段：归属过滤 AND 子句（参数名 :__ownerEmp；无需绑参时 bindEmp[0]=false）。 */
+    private String ownerClause(boolean[] bindEmp) {
+        var scope = ownerVisibility.evaluate("client", "client:view:all");
+        if (scope.seeAll()) { bindEmp[0] = false; return ""; }
+        if (scope.visibleOwners().isEmpty()) { bindEmp[0] = false; return " and owner_employee_id is null"; }
+        bindEmp[0] = true;
+        return " and (owner_employee_id is null or owner_employee_id in (:__ownerEmp))";
+    }
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -112,6 +124,16 @@ public class ClientService {
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            // 归属可见性（每个销售只看自己的客户）：公共客户或可见归属人；超管/client:view:all 全见
+            var scope = ownerVisibility.evaluate("client", "client:view:all");
+            if (!scope.seeAll()) {
+                if (scope.visibleOwners().isEmpty()) {
+                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
+                } else {
+                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
+                            root.get("ownerEmployeeId").in(scope.visibleOwners())));
+                }
+            }
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
@@ -157,6 +179,14 @@ public class ClientService {
         Page<Client> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+    }
+
+    /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
+    @Transactional(readOnly = true)
+    public List<ClientListItem> dict() {
+        Specification<Client> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
+        return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
+                .map(this::toList).toList();
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Client> root,
@@ -251,28 +281,36 @@ public class ClientService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
         }
         List<UUID> ids = resolveSubtreeIds(categoryId);
+        // 归属可见性（每个销售只看自己的客户）：与 list() 同规则
+        boolean[] bindEmp = new boolean[1];
+        String ownerClause = ownerClause(bindEmp);
+        java.util.Set<UUID> ownerEmps = ownerVisibility.evaluate("client", "client:view:all").visibleOwners();
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = em.createNativeQuery(
+            var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from clients "
                             + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
-                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids)
-                    .getResultList();
+                            + ownerClause
+                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
+                    .setParameter("ids", ids);
+            if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
+            List<Object[]> rows = fq.getResultList();
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
             }
             buckets.put(field, bucketList);
-            Long nc = ((Number) em.createNativeQuery(
+            var nq = em.createNativeQuery(
                     "select count(*) from clients "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null")
-                    .setParameter("ids", ids)
-                    .getSingleResult()).longValue();
+                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null"
+                            + ownerClause)
+                    .setParameter("ids", ids);
+            if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
+            Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
         return new ClientFacets(
@@ -288,9 +326,22 @@ public class ClientService {
 
     // ===== 详情 / CRUD（不变） =====
 
+    /**
+     * 归属可见性守卫（详情/编辑前调用）：归属客户非本人且未授权 → 404（不透出存在性）。
+     */
+    private void requireVisible(Client m) {
+        var scope = ownerVisibility.evaluate("client", "client:view:all");
+        if (scope.seeAll() || m.getOwnerEmployeeId() == null) return;
+        if (!scope.visibleOwners().contains(m.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "客户不存在");
+        }
+    }
+
     @Transactional(readOnly = true)
     public ClientDetail detail(UUID id) {
-        return toDetail(requireClient(id));
+        Client m = requireClient(id);
+        requireVisible(m);
+        return toDetail(m);
     }
 
     @Transactional
@@ -308,6 +359,7 @@ public class ClientService {
     public ClientDetail update(UUID id, ClientSaveRequest req) {
         tx.bind();
         Client m = requireClient(id);
+        requireVisible(m);
         apply(req, m);
         repo.save(m);
         return toDetail(m);
@@ -317,6 +369,7 @@ public class ClientService {
     public void delete(UUID id) {
         tx.bind();
         Client m = requireClient(id);
+        requireVisible(m);
         m.setDeleted(true);
         m.setDeletedAt(OffsetDateTime.now());
         repo.save(m);
@@ -348,6 +401,7 @@ public class ClientService {
         m.setCredit(req.getCredit());
         m.setInitTotal(req.getInitTotal());
         m.setTday(req.getTday());
+        m.setCreditFloor(req.getCreditFloor());
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
     }
@@ -363,7 +417,7 @@ public class ClientService {
                 m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(), m.getAddress(),
                 m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getCredit(),
-                m.getInitTotal(), m.getTday(), m.getRemark());
+                m.getInitTotal(), m.getTday(), m.getCreditFloor(), m.getRemark());
     }
 
     private ClientListItem toList(Client m) {

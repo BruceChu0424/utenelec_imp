@@ -70,6 +70,8 @@ public class SubcontractReceiptService {
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
@@ -108,6 +110,7 @@ public class SubcontractReceiptService {
         tx.bind();
         SubcontractReceipt r = new SubcontractReceipt();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         receiptRepo.save(r);
         List<ReceiptItemDto> items = saveItems(r, req.getItems());
@@ -150,6 +153,7 @@ public class SubcontractReceiptService {
     public ReceiptDetail approve(UUID id) {
         tx.bind();
         SubcontractReceipt r = requireReceipt(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -180,6 +184,7 @@ public class SubcontractReceiptService {
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
         postAp(r, totalLocalOf(items), +1);
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setApPosted(true);
         receiptRepo.save(r);
         return detail(id);
@@ -190,6 +195,7 @@ public class SubcontractReceiptService {
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
         SubcontractReceipt r = requireReceipt(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -355,7 +361,9 @@ public class SubcontractReceiptService {
                 r.getSenderId(), r.getMakerId(), r.getApproverId(), r.getLastDate(), r.isApPosted(), r.getRemark(),
                 r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
                 r.getSettlementStyleLegacy(), r.getReceiverLegacyId(), r.getReceiverName(),
-                r.getMakerLegacyId(), r.getMakerName(), r.getApproverLegacyId(), r.getApproverName());
+                r.getMakerLegacyId(),
+                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
     }
 
     private SubcontractReceipt requireReceipt(UUID id) {

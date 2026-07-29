@@ -18,6 +18,7 @@ class SubcontractDocFilter {
     this.status,
     this.dateFrom,
     this.dateTo,
+    this.closed,
   });
   final String? keyword;
   final String? supplierId;
@@ -26,14 +27,19 @@ class SubcontractDocFilter {
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
 
+  /// 结案筛选（仅委外订货单）：false=未完成（部分入库）/ true=已结案
+  final bool? closed;
+
   Map<String, dynamic> toQuery() => <String, dynamic>{
-        if (keyword != null && keyword!.trim().isNotEmpty) 'keyword': keyword!.trim(),
-        if (supplierId != null) 'supplierId': supplierId,
-        if (warehouseId != null) 'warehouseId': warehouseId,
-        if (status != null) 'status': status,
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
-      };
+    if (keyword != null && keyword!.trim().isNotEmpty)
+      'keyword': keyword!.trim(),
+    if (supplierId != null) 'supplierId': supplierId,
+    if (warehouseId != null) 'warehouseId': warehouseId,
+    if (status != null) 'status': status,
+    if (dateFrom != null) 'dateFrom': dateFrom,
+    if (dateTo != null) 'dateTo': dateTo,
+    if (closed != null) 'closed': closed,
+  };
 }
 
 class SubcontractRepository {
@@ -52,15 +58,17 @@ class SubcontractRepository {
     String? sort,
     String? order,
   }) async {
-    final json = await api.get(_base, query: {
-      'page': page,
-      'size': size,
-      ...filter.toQuery(),
-      if (sort != null && sort.isNotEmpty) 'sort': sort,
-      if (order != null && order.isNotEmpty) 'order': order,
-    });
-    return PagedResult.fromJson(
-        json, SubcontractDocListItem.fromJson);
+    final json = await api.get(
+      _base,
+      query: {
+        'page': page,
+        'size': size,
+        ...filter.toQuery(),
+        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (order != null && order.isNotEmpty) 'order': order,
+      },
+    );
+    return PagedResult.fromJson(json, SubcontractDocListItem.fromJson);
   }
 
   Future<SubcontractDocDetail> detail(String id) async {
@@ -74,7 +82,9 @@ class SubcontractRepository {
   }
 
   Future<SubcontractDocDetail> update(
-      String id, Map<String, dynamic> body) async {
+    String id,
+    Map<String, dynamic> body,
+  ) async {
     final json = await api.put(_doc(id), body: body);
     return SubcontractDocDetail.fromJson(json);
   }
@@ -84,12 +94,12 @@ class SubcontractRepository {
   }
 
   Future<SubcontractDocDetail> approve(String id) async {
-    final json = await api.post('$_doc(id)/approve');
+    final json = await api.post('${_doc(id)}/approve');
     return SubcontractDocDetail.fromJson(json);
   }
 
   Future<SubcontractDocDetail> reverse(String id) async {
-    final json = await api.post('$_doc(id)/reverse');
+    final json = await api.post('${_doc(id)}/reverse');
     return SubcontractDocDetail.fromJson(json);
   }
 }
@@ -108,12 +118,15 @@ class SubcontractReportRepository {
     String? dateTo,
     int limit = 200,
   }) async {
-    final list = await api.getList('/subcontract/reports/monthly', query: {
-      if (docType != null) 'docType': docType,
-      if (dateFrom != null) 'dateFrom': dateFrom,
-      if (dateTo != null) 'dateTo': dateTo,
-      'limit': limit,
-    });
+    final list = await api.getList(
+      '/subcontract/reports/monthly',
+      query: {
+        if (docType != null) 'docType': docType,
+        if (dateFrom != null) 'dateFrom': dateFrom,
+        if (dateTo != null) 'dateTo': dateTo,
+        'limit': limit,
+      },
+    );
     return list;
   }
 }
@@ -121,10 +134,11 @@ class SubcontractReportRepository {
 /// 按 docType 的单据仓库 family。
 final subcontractRepositoryProvider =
     Provider.family<SubcontractRepository, SubcontractDocType>(
-  (ref, type) => SubcontractRepository(ref.watch(apiClientProvider), type),
-);
+      (ref, type) => SubcontractRepository(ref.watch(apiClientProvider), type),
+    );
 
 /// 报表仓库单例。
-final subcontractReportRepositoryProvider = Provider<SubcontractReportRepository>(
-  (ref) => SubcontractReportRepository(ref.watch(apiClientProvider)),
-);
+final subcontractReportRepositoryProvider =
+    Provider<SubcontractReportRepository>(
+      (ref) => SubcontractReportRepository(ref.watch(apiClientProvider)),
+    );

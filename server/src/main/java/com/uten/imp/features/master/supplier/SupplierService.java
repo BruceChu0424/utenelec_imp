@@ -278,7 +278,10 @@ public class SupplierService {
     /** 全量字典（采购单据页按 id 解析供应商名用）：全部未软删供应商，按名称排序。 */
     @Transactional(readOnly = true)
     public List<SupplierDictItem> dict() {
-        Specification<Supplier> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
+        // 排除内部车间（V100）：车间=部门，不再作为委外商可选
+        Specification<Supplier> spec = (root, q, cb) -> cb.and(
+                cb.isFalse(root.get("deleted")),
+                cb.isFalse(root.get("internalWorkshop")));
         return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
                 .map(m -> new SupplierDictItem(m.getId(), m.getCode(), m.getName()))
                 .toList();

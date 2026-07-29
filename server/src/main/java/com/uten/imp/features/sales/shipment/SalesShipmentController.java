@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -69,6 +70,14 @@ public class SalesShipmentController {
         return service.create(req);
     }
 
+    /** 批量发货开单（SOP §一9）：勾选可发行+本次数量，同客户合并一张出货草稿。 */
+    @PostMapping("/batch")
+    @PreAuthorize("hasAuthority('sales_shipment:edit')")
+    public List<ShipmentDetail> batchCreate(
+            @Valid @RequestBody com.uten.imp.features.sales.shipment.dto.BatchShipRequest req) {
+        return service.batchCreate(req);
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_shipment:edit')")
     public ShipmentDetail update(@PathVariable UUID id, @Valid @RequestBody ShipmentSaveRequest req) {
@@ -91,5 +100,26 @@ public class SalesShipmentController {
     @PreAuthorize("hasAuthority('sales_shipment:edit')")
     public ShipmentDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    /** 仓库驳回（备货异常）：释放预留 + 订单行回退待排产（V96）。 */
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority('sales_shipment:reject')")
+    public ShipmentDetail reject(@PathVariable UUID id, @RequestParam(required = false) String reason) {
+        return service.reject(id, reason);
+    }
+
+    /** C6 财务审核发货：现金结算客户须审后仓库才可审核出货；返回结算方式+未收余额辅助核对。 */
+    @PostMapping("/{id}/finance-audit")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public java.util.Map<String, Object> financeAudit(@PathVariable UUID id) {
+        return service.financeAudit(id);
+    }
+
+    /** C6 财务反审（仅未审核出货的单据）。 */
+    @PostMapping("/{id}/finance-audit-reverse")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public java.util.Map<String, Object> financeAuditReverse(@PathVariable UUID id) {
+        return service.financeAuditReverse(id);
     }
 }

@@ -222,7 +222,7 @@ class _BatchDetail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return FutureBuilder<List<Employee>>(
-      future: ref.read(employeeRepositoryProvider).list(department: department),
+      future: ref.read(mockEmployeeRepositoryProvider).list(department: department),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const Padding(

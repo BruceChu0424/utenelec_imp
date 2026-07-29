@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.employee.dto.EmployeeDetail;
@@ -46,6 +47,7 @@ public class EmployeeQueryService {
     private final EmployeeContractRepository contractRepo;
     private final EmploymentHistoryRepository historyRepo;
     private final DepartmentRepository deptRepo;
+    private final UserAccountRepository userRepo;
     private final TxSessionVars tx;
     private final DataAccessPolicy policy;
     private final SecurityContextCurrentUser currentUser;
@@ -127,6 +129,11 @@ public class EmployeeQueryService {
             d.setProbationEndDate(probationEnd(e.getHireDate(), current.getProbationMonths()));
         }
         d.setRenewCount((int) contractRepo.countByEmployeeId(id));
+
+        // 登录账号状态（离职冻结后 HR 在详情页可直接确认账号已停用）
+        d.setAccountStatus(userRepo.findByEmployeeId(id)
+                .map(u -> u.isDeleted() ? "disabled" : u.getStatus())
+                .orElse(null));
 
         fillSensitive(d, s, c, perms);
 

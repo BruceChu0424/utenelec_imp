@@ -73,6 +73,10 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "make_legacy_id")
     private Integer makeLegacyId;       // MakeID
 
+    /** 归属业务员（外贸系列按人授权；NULL=公共货品全员可见）。V85 新增。 */
+    @Column(name = "owner_employee_id")
+    private java.util.UUID ownerEmployeeId;
+
     // ===== 价格 / 数量 =====
     private Double price;               // Price (DOUBLE PRECISION)
     @Column(name = "a_price")

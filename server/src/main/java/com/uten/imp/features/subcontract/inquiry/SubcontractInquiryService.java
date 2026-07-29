@@ -14,6 +14,7 @@ import com.uten.imp.features.subcontract.inquiry.dto.InquiryListItem;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryQueryFilter;
 import com.uten.imp.features.subcontract.inquiry.dto.InquirySaveRequest;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -55,6 +56,9 @@ public class SubcontractInquiryService {
     private final SubcontractInquiryItemRepository itemRepo;
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
+    private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
 
     @Transactional(readOnly = true)
     public PageResponse<InquiryListItem> list(InquiryQueryFilter f, int page, int size, String sort, String order) {
@@ -92,6 +96,7 @@ public class SubcontractInquiryService {
         tx.bind();
         SubcontractInquiry r = new SubcontractInquiry();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         inquiryRepo.save(r);
         List<InquiryItemDto> items = saveItems(r, req.getItems());
@@ -131,6 +136,7 @@ public class SubcontractInquiryService {
     public InquiryDetail approve(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -138,6 +144,7 @@ public class SubcontractInquiryService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         inquiryRepo.save(r);
         return detail(id);
     }
@@ -147,6 +154,7 @@ public class SubcontractInquiryService {
     public InquiryDetail reverse(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -223,7 +231,8 @@ public class SubcontractInquiryService {
         return new InquiryDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(),
                 r.getMakerId(), r.getApproverId(), r.getDeliverDate(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items);
+                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 
     private SubcontractInquiry requireInquiry(UUID id) {

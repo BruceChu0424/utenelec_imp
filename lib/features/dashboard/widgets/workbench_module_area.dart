@@ -33,6 +33,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../hr_profile/widgets/hr_pending_badge.dart';
+import '../../production/widgets/production_pending_badge.dart';
 import '../../visitor_approval/widgets/visitor_pending_badge.dart';
 import '../providers/workbench_layout_provider.dart';
 
@@ -321,10 +322,12 @@ const _allGroups = <_ModuleGroup>[
     color: UtenColors.warning,
     items: [
       // 旧流水线看板/产量录入/产量统计（mock 数据）已下线，收敛为生产管理 hub 单卡。
+      // 徽标 = 待排产订单行数（已审订单未排产缺口），与生产调度列表同源。
       _ModuleItem(
         icon: Icons.factory_outlined,
         label: '生产管理',
         location: RouteName.production,
+        badge: ProductionPendingBadge(),
       ),
       // 空调控制：按需求置灰占位（功能规划接入中），与财税部 comingSoon 卡片同款，暂不跳转
       _ModuleItem(

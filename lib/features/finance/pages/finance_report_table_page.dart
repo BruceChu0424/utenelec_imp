@@ -7,13 +7,18 @@
 //   { columns, rows(显示就绪), facets, page, totalPages, total }。
 // UI：左筛选侧栏（报表类型 chip + 日期范围 + 搜索 + 查询 + 已选筛选）+ 右 Excel 风格表格
 //   （标题行每列可 autofilter + 横滚 + 翻页）。默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认；firstDate 仍 2010 可手选更早）。
+//
+// 筛选口径（报表变体/日期范围/facet/排序）按账号服务端持久化
+// （report.finance.detail|summary，ReportFilterPrefs；变体存下标字符串于 docType）；关键字不持久化。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -27,6 +32,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../config/finance_report_config.dart';
 
@@ -55,10 +61,56 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   ReportData? _data;
   bool _loading = false;
 
+  /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
+  bool _dirty = false;
+
+  /// 本页（cardId）对应的偏好 provider。
+  NotifierProvider<ReportFilterPrefsNotifier, ReportFilterPrefs>
+      get _prefsProvider => widget.cardId == 'summary'
+          ? financeSummaryReportPrefsProvider
+          : financeDetailReportPrefsProvider;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _applyPrefs(ref.read(_prefsProvider));
+      _load();
+    });
+  }
+
+  /// 应用偏好快照（空快照=未存过，保留页面默认；变体存下标字符串，越界则回落 0）。
+  void _applyPrefs(ReportFilterPrefs p) {
+    if (p.isEmpty) return;
+    setState(() {
+      final vi = p.docType == null ? null : int.tryParse(p.docType!);
+      if (vi != null && vi >= 0 && vi < _card.variants.length) {
+        _variantIndex = vi;
+      }
+      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
+      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
+      _filters
+        ..clear()
+        ..addAll(p.filters);
+      _sortKey = p.sortKey;
+      _sortAsc = p.sortAsc;
+    });
+  }
+
+  /// 当前筛选口径快照（不含关键字/分页；变体存下标字符串）。
+  ReportFilterPrefs _snapshot() => ReportFilterPrefs(
+        docType: _variantIndex.toString(),
+        from: _fmt(_from),
+        to: _fmt(_to),
+        filters: Map.of(_filters),
+        sortKey: _sortKey,
+        sortAsc: _sortAsc,
+      );
+
+  /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  void _persistPrefs() {
+    _dirty = true;
+    ref.read(_prefsProvider.notifier).update(_snapshot());
   }
 
   FinanceReportVariant get _variant => _card.variants[_variantIndex];
@@ -97,6 +149,21 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
         ...sortQueryParams(_sortKey, _sortAsc),
       };
 
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final api = ref.read(apiClientProvider);
+    final json = await api.get(_variant.endpoint,
+        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final data = parseReportResponse(json, 1);
+    return UtenPrintTable(
+      headers: [for (final c in data.columns) c.label],
+      rows: [
+        for (final r in data.rows)
+          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
+      ],
+    );
+  }
+
   Future<void> _load() async {
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
@@ -134,6 +201,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       _sortAsc = ascending;
       _page = 1;
     });
+    _persistPrefs();
     _load();
   }
 
@@ -146,6 +214,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       }
       _page = 1;
     });
+    _persistPrefs();
     _load();
   }
 
@@ -157,6 +226,7 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       _filters.clear();
       _data = null;
     });
+    _persistPrefs();
     _load();
   }
 
@@ -164,19 +234,19 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final title = _variant.label;
+    // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。
+    ref.listen(_prefsProvider, (prev, next) {
+      if (!_dirty && prev != next && !next.isEmpty && mounted) {
+        _applyPrefs(next);
+        _page = 1;
+        _load();
+      }
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
         leading: UtenBackButton(
             onPressed: () => backTo(context, defaultPath: RouteName.finance)),
-        actions: [
-          UtenExportButton(
-            endpoint: '/finance/reports/export',
-            report: _exportReport,
-            queryParams: _exportQuery,
-            filename: '钱流${_variant.label}',
-          ),
-        ],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -250,7 +320,10 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
                       firstDate: DateTime(2000),
                       lastDate: DateTime(2100),
                     );
-                    if (p != null) setState(() => _from = p);
+                    if (p != null) {
+                      setState(() => _from = p);
+                      _persistPrefs();
+                    }
                   },
                   icon: const Icon(Icons.event_outlined, size: 18),
                   label: Text('起 ${_fmt(_from)}'),
@@ -263,7 +336,10 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
                       firstDate: DateTime(2000),
                       lastDate: DateTime(2100),
                     );
-                    if (p != null) setState(() => _to = p);
+                    if (p != null) {
+                      setState(() => _to = p);
+                      _persistPrefs();
+                    }
                   },
                   icon: const Icon(Icons.event_outlined, size: 18),
                   label: Text('止 ${_fmt(_to)}'),
@@ -333,6 +409,27 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
       items: data.rows,
+      toolbarActions: [
+        UtenPrintPreviewButton(
+          title: '钱流${_variant.label}',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          loader: _printLoader,
+          exportEndpoint: '/finance/reports/export',
+          exportReport: _exportReport,
+          exportQuery: _exportQuery,
+          exportFilename: '钱流${_variant.label}',
+          type: UtenButtonType.primary,
+          size: UtenButtonSize.large,
+        ),
+        UtenExportButton(
+          endpoint: '/finance/reports/export',
+          report: _exportReport,
+          queryParams: _exportQuery,
+          filename: '钱流${_variant.label}',
+          type: UtenButtonType.primary,
+          size: UtenButtonSize.large,
+        ),
+      ],
       facets: data.facets,
       nullCounts: const {},
       filters: {for (final e in _filters.entries) e.key: e.value},
@@ -342,7 +439,6 @@ class _FinanceReportTablePageState extends ConsumerState<FinanceReportTablePage>
       onSortChange: _onSortChange,
       onRowTap: _onRowTap,
       isLoading: _loading,
-      emptyMessage: '暂无数据',
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

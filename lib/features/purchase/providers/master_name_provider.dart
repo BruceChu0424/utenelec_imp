@@ -36,6 +36,10 @@ class MasterNameService {
   Map<int, String> _colorByLegacy = {};
   Map<int, String> _unitByLegacy = {};
   final Map<String, String> _goods = {};
+  /// 部门（车间=部门）id→名（ensureLoaded 时从部门树展平）。
+  Map<String, String> _departments = {};
+  /// 员工 id→名（按需 N+1 getById 缓存；员工无 dict 端点）。
+  final Map<String, String> _employees = {};
   bool _loaded = false;
 
   Future<void> ensureLoaded() async {
@@ -74,6 +78,13 @@ class MasterNameService {
     } catch (_) {
       // 静默降级：解析不到显示 '—'，不阻塞列表
     }
+    // 部门树（车间=部门）：全量小表，展平成 id→名供列表/详情解析。
+    try {
+      _departments =
+          _flattenDeptTree(await api.getList(ApiEndpoints.departmentsTree));
+    } catch (_) {
+      // 静默降级
+    }
     _loaded = true;
   }
 
@@ -87,6 +98,23 @@ class MasterNameService {
         _goods[e['id'] as String] = ((e['name'] ?? '') as String);
       }
     } catch (_) {/* 静默 */}
+  }
+
+  /// 员工名按 id 批量解析（N+1 getById 缓存；员工无 dict 端点）。失败静默。
+  Future<void> loadEmployeeNames(Iterable<String?> ids) async {
+    final need = ids
+        .whereType<String>()
+        .where((id) => id.isNotEmpty && !_employees.containsKey(id))
+        .toSet();
+    if (need.isEmpty) return;
+    try {
+      await Future.wait(need.map((id) async {
+        final e = await api.get(ApiEndpoints.employee(id));
+        _employees[id] = (e['fullName'] as String?) ?? '';
+      }));
+    } catch (_) {
+      // 静默
+    }
   }
 
   /// 货品关键词搜索（编辑页 typeahead）。
@@ -115,6 +143,9 @@ class MasterNameService {
   String color(String? id) => _resolve(_colors, id);
   String unit(String? id) => _resolve(_units, id);
   String goods(String? id) => _resolve(_goods, id);
+  String department(String? id) => _resolve(_departments, id);
+  String employee(String? id) => _resolve(_employees, id);
+  Map<String, String> get departmentEntries => _departments;
 
   /// 由 legacy id 查颜色新库 UUID（选货品后回填用）；查不到返回 null。
   String? colorIdByLegacy(int? legacy) =>
@@ -124,6 +155,22 @@ class MasterNameService {
 
   String _resolve(Map<String, String> map, String? id) =>
       (id != null && id.isNotEmpty && map[id]?.isNotEmpty == true) ? map[id]! : '—';
+
+  /// 部门树（嵌套 children）展平成 id→名（递归）。
+  static Map<String, String> _flattenDeptTree(List<dynamic> nodes) {
+    final out = <String, String>{};
+    void walk(List<dynamic> list) {
+      for (final raw in list) {
+        final m = raw as Map<String, dynamic>;
+        final id = m['id'] as String?;
+        if (id != null) out[id] = (m['name'] ?? '') as String;
+        final kids = m['children'];
+        if (kids is List) walk(kids);
+      }
+    }
+    walk(nodes);
+    return out;
+  }
 }
 
 final masterNameServiceProvider = Provider<MasterNameService>(

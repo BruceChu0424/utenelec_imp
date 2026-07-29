@@ -11,11 +11,19 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../providers/master_name_provider.dart';
 import '../../report/shared/report_date_range.dart';
 
 class _Monthly {
-  const _Monthly(this.docType, this.ym, this.goodsId, this.supplierId, this.qty, this.amt);
+  const _Monthly(
+    this.docType,
+    this.ym,
+    this.goodsId,
+    this.supplierId,
+    this.qty,
+    this.amt,
+  );
   final String docType;
   final String ym;
   final String? goodsId;
@@ -59,13 +67,19 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
-      final m = await api.getList(ApiEndpoints.purchaseReportMonthly, query: {
-        'docType': _docType,
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        'limit': 200,
-      });
-      final p = await api.getList(ApiEndpoints.purchaseReportPending, query: {'limit': 200});
+      final m = await api.getList(
+        ApiEndpoints.purchaseReportMonthly,
+        query: {
+          'docType': _docType,
+          'dateFrom': _fmt(_from),
+          'dateTo': _fmt(_to),
+          'limit': 200,
+        },
+      );
+      final p = await api.getList(
+        ApiEndpoints.purchaseReportPending,
+        query: {'limit': 200},
+      );
       final allGoods = <String?>[
         ...m.map((e) => e['goodsId'] as String?),
         ...p.map((e) => e['goodsId'] as String?),
@@ -78,28 +92,32 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
       if (!mounted) return;
       setState(() {
         _monthly = m
-            .map((e) => _Monthly(
-                  (e['docType'] ?? '') as String,
-                  (e['ym'] ?? '') as String,
-                  e['goodsId'] as String?,
-                  e['supplierId'] as String?,
-                  (e['qty'] as num?)?.toDouble() ?? 0,
-                  (e['amt'] as num?)?.toDouble() ?? 0,
-                ))
+            .map(
+              (e) => _Monthly(
+                (e['docType'] ?? '') as String,
+                (e['ym'] ?? '') as String,
+                e['goodsId'] as String?,
+                e['supplierId'] as String?,
+                (e['qty'] as num?)?.toDouble() ?? 0,
+                (e['amt'] as num?)?.toDouble() ?? 0,
+              ),
+            )
             .toList();
         _pending = p
-            .map((e) => _Pending(
-                  e['goodsId'] as String?,
-                  e['colorId'] as String?,
-                  (e['pendingQty'] as num?)?.toDouble() ?? 0,
-                  (e['pendingAmt'] as num?)?.toDouble() ?? 0,
-                ))
+            .map(
+              (e) => _Pending(
+                e['goodsId'] as String?,
+                e['colorId'] as String?,
+                (e['pendingQty'] as num?)?.toDouble() ?? 0,
+                (e['pendingAmt'] as num?)?.toDouble() ?? 0,
+              ),
+            )
             .toList();
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('加载报表失败')));
+      context.appApiError(e, fallback: '加载报表失败');
       setState(() => _loading = false);
     }
   }
@@ -118,7 +136,8 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
       appBar: UtenAppBar(
         title: '采购报表',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
+          onPressed: () => backTo(context, defaultPath: RouteName.purchase),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -172,9 +191,12 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                       ],
                     ),
                     const SizedBox(height: UtenSpacing.s12),
-                    Text('月度汇总（${_docLabel(_docType!)}，共 ${_monthly.length} 条）',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      '月度汇总（${_docLabel(_docType!)}，共 ${_monthly.length} 条）',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     if (_monthly.isEmpty)
                       const Padding(
                         padding: EdgeInsets.all(16),
@@ -189,12 +211,16 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                           style: const TextStyle(fontSize: 11),
                         ),
                         trailing: Text(
-                            '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}'),
+                          '¥${r.amt.toStringAsFixed(0)} · ${r.qty.toStringAsFixed(1)}',
+                        ),
                       ),
                     const SizedBox(height: UtenSpacing.s12),
-                    Text('待交货订货汇总（共 ${_pending.length} 条）',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      '待交货订货汇总（共 ${_pending.length} 条）',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     if (_pending.isEmpty)
                       const Padding(
                         padding: EdgeInsets.all(16),
@@ -204,8 +230,10 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                       ListTile(
                         dense: true,
                         title: Text(names.goods(r.goodsId)),
-                        subtitle: Text(names.color(r.colorId),
-                            style: const TextStyle(fontSize: 11)),
+                        subtitle: Text(
+                          names.color(r.colorId),
+                          style: const TextStyle(fontSize: 11),
+                        ),
                         trailing: Text('待 ${r.qty.toStringAsFixed(1)}'),
                       ),
                   ],

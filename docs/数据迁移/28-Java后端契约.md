@@ -110,7 +110,9 @@ public record ArApPostingRequest(
 ```
 approve(id):
   @Transactional
-  doc = repo.findById(id); assert doc.status == 0 (草稿)
+  doc = repo.findById(id)
+  em.lock(doc, PESSIMISTIC_WRITE)               // 并发互斥：多账号同单审核/红冲序列化（2026-07-28 加固）
+  assert doc.status == 0 (草稿)
   doc.status = 1
   for item in items:
       stockService.recordMovement(...)        // 库存
@@ -122,6 +124,8 @@ approve(id):
 
 reverse/approveToDraft(id)（红冲 1→-1）:
   @Transactional
+  doc = repo.findById(id)
+  em.lock(doc, PESSIMISTIC_WRITE)               // 并发互斥：同上
   assert doc.status == 1
   arApService.reverseArAp(docId, srcType)     // 先校验无核销，否则抛错
   反向 stockService.recordMovement(...)        // direction/type 取反
@@ -130,6 +134,10 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 ```
 - `TxSessionVars tx` 审计绑定（照采购：`tx.bind()`）。
 - 金额双口径：amount_local = amount_original × exchange_rate（录单时算）。
+- **并发（2026-07-28 全量加固）**：所有单据 approve/reverse 入口先 `em.lock(doc, PESSIMISTIC_WRITE)`
+  再查状态——状态机迁移附带库存/立帐/回写副作用，行锁让并发者拿到「状态已变」明确拒绝，
+  避免副作用重跑（与 SAP 单据锁/用友审核锁同思路）。已覆盖 25 个 Service / 40 个入口，
+  详见 [37-业务联动-MRP与并发加固](37-业务联动-MRP与并发加固.md) §三。
 
 ---
 

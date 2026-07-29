@@ -107,6 +107,7 @@ class ProductionDailyReportItem {
     this.clientName,
     this.sourceDocNo,
     this.remark,
+    this.isFinal = false,
   });
 
   final String id;
@@ -134,6 +135,7 @@ class ProductionDailyReportItem {
   final String? clientName;
   final String? sourceDocNo;
   final String? remark;
+  final bool isFinal; // 报工完结标记（V95）：合格不足自动补产
 
   factory ProductionDailyReportItem.fromJson(Map<String, dynamic> json) =>
       ProductionDailyReportItem(
@@ -162,6 +164,7 @@ class ProductionDailyReportItem {
         clientName: json['clientName'] as String?,
         sourceDocNo: json['sourceDocNo'] as String?,
         remark: json['remark'] as String?,
+        isFinal: json['isFinal'] == true,
       );
 }
 
@@ -179,6 +182,8 @@ class ProductionDailyReportDetail {
     this.supplierId,
     this.makerId,
     this.approverId,
+    this.makerName,
+    this.createdAt,
     this.makerLegacyId,
     this.approverLegacyId,
     this.remark,
@@ -200,6 +205,10 @@ class ProductionDailyReportDetail {
   final String? supplierId;
   final String? makerId;
   final String? approverId;
+  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  final String? makerName;
+  /// 制单时间 ISO（审计 created_at，创建后不可变）
+  final String? createdAt;
   final int? makerLegacyId;
   final int? approverLegacyId;
   final String? remark;
@@ -221,6 +230,8 @@ class ProductionDailyReportDetail {
         workerId: json['workerId'] as String?,
         supplierId: json['supplierId'] as String?,
         makerId: json['makerId'] as String?,
+        makerName: json['makerName'] as String?,
+        createdAt: json['createdAt'] as String?,
         approverId: json['approverId'] as String?,
         makerLegacyId: _asInt(json['makerLegacyId']),
         approverLegacyId: _asInt(json['approverLegacyId']),

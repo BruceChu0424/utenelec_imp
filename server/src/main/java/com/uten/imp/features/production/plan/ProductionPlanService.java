@@ -7,12 +7,15 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemDto;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanListItem;
 import com.uten.imp.features.production.plan.dto.PlanQueryFilter;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
+import com.uten.imp.features.production.mrp.MrpRow;
+import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -37,17 +40,17 @@ import java.util.UUID;
 /**
  * 生产计划服务：CRUD（主+明细）+ 审核状态机 + is_closed 派生。
  *
- * <p><b>审核（status 0→1）</b>（design §4.1）：
+ * <p><b>审核（status 0→1）</b>：
  * <ul>
+ *   <li>业务链排产联动（V90）：写 plan_order_item_links + 回写 sales_order_items.planned_qty
+ *       + BOM 缺料检查（缺料行→3待物料 / 料够→4已排产）+ 防超排硬校验</li>
  *   <li>重算主表 {@code is_closed}（CheckFulfill4 派生：所有明细 {@code qty - iqty ≤ 0}）</li>
- *   <li>【本期后置】回写 sales_order_items 的 PQTY/LQTY/PlanNo（销售模块上线后）</li>
- *   <li>【本期后置】设 plan_items.step_legacy_id 首工序（车间模块上线后）</li>
- *   <li>【本期后置】填充 F_ProductingItem 按日产能（排产模块上线后）</li>
+ *   <li>【本期后置】设 plan_items.step_legacy_id 首工序 / 填 F_ProductingItem（车间/排产模块）</li>
  * </ul>
  *
  * <p><b>不调</b> {@code StockService}（计划不动库存）；<b>不调</b> {@code ArApLedgerService}（计划不立帐）。
  *
- * <p><b>红冲（1→-1）</b>：仅置状态（无库存/立帐可冲；下游累计量本期由仓库/采购/委外模块各自负责回写）。
+ * <p><b>红冲（1→-1）</b>：links 软删 + planned_qty 回退 + 行状态回退；已报工/已入库拒绝红冲。
  */
 @Service
 @RequiredArgsConstructor
@@ -57,6 +60,10 @@ public class ProductionPlanService {
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
 
+    /** 订单行链路状态（V90 chain_status）：排产落点两态。 */
+    private static final short CHAIN_WAIT_MATERIAL = 3;  // 待物料（缺料）
+    private static final short CHAIN_PLANNED = 4;        // 已排产
+
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of(
             "billDate", "billDate",
@@ -64,10 +71,14 @@ public class ProductionPlanService {
 
     private final ProductionPlanRepository planRepo;
     private final ProductionPlanItemRepository itemRepo;
+    private final PlanOrderItemLinkRepository linkRepo;
+    private final MrpService mrpService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final ChainNoticeService chainNotice;
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
@@ -103,7 +114,7 @@ public class ProductionPlanService {
         tx.bind();
         ProductionPlan p = new ProductionPlan();
         applyHeader(req, p);
-        p.setMakerId(currentUser.requireId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        p.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         p.setStatus(STATUS_DRAFT);
         planRepo.save(p);
         saveItems(p, req.getItems());
@@ -144,16 +155,111 @@ public class ProductionPlanService {
     public PlanDetail approve(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlan(id);
+        em.lock(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (itemRepo.findByPlanIdOrderByLineNoAsc(id).isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         p.setStatus(STATUS_APPROVED);
-        p.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        p.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         planRepo.save(p);
+        boolean shortage = linkOrderItems(id); // 业务链：写 plan_order_item_links + 回写 planned_qty + BOM 缺料标状态（V90）
         recomputeClosed(id);
-        // 本期后置：销售模块/车间模块/排产模块上线后在此回写 sales_order_items 与 F_ProductingItem（design §4.1）
+        chainNotice.notifyPlanScheduled(id, shortage); // 旁路通知：排产→销售（缺料→采购/调度），提交后发送
         return detail(id);
+    }
+
+    /**
+     * 排产联动（V90，docs/07-业务链路/02 §三）。两种来源：
+     * ① 合并排产（调度工作台）：links 已在创建时预建（一行可挂多订单行），审核只做校验+回写；
+     * ② 手工计划单：明细行带 salesOrderItemId（1:1），审核时按 qty 建行。
+     * 每笔分摊都做防超排硬校验（累计排产 ≤ 订货量 − 已预留 − 已排产）；
+     * 行状态推进：缺料→3待物料 / 料够→4已排产（只从 1/2 低态推进，不覆盖 6+ 后段状态）。
+     * @return 是否缺料（BOM 净需求 > 0），供审核后发缺料通知
+     */
+    private boolean linkOrderItems(UUID planId) {
+        List<ProductionPlanItem> items = itemRepo.findByPlanIdOrderByLineNoAsc(planId).stream()
+                .filter(i -> zeroIfNull(i.getQty()).signum() > 0)
+                .toList();
+        if (items.isEmpty()) return false;
+        short chain = materialShortage(planId) ? CHAIN_WAIT_MATERIAL : CHAIN_PLANNED;
+        for (ProductionPlanItem it : items) {
+            List<PlanOrderItemLink> prebuilt = linkRepo.findActiveByPlanItemIds(List.of(it.getId()));
+            if (!prebuilt.isEmpty()) {
+                // 合并排产：按预建 links 逐笔校验 + 回写
+                for (PlanOrderItemLink l : prebuilt) {
+                    applyAllocation(l.getOrderItemId(), l.getAllocatedQty(), chain);
+                }
+            } else if (it.getSalesOrderItemId() != null) {
+                // 手工计划单：1:1 建行
+                BigDecimal alloc = zeroIfNull(it.getQty());
+                applyAllocation(it.getSalesOrderItemId(), alloc, chain);
+                PlanOrderItemLink link = new PlanOrderItemLink();
+                link.setPlanItemId(it.getId());
+                link.setOrderItemId(it.getSalesOrderItemId());
+                link.setAllocatedQty(alloc);
+                linkRepo.save(link);
+            }
+        }
+        return chain == CHAIN_WAIT_MATERIAL;
+    }
+
+    /** 防超排校验 + planned_qty 回写 + 行状态推进（一笔分摊）。 */
+    private void applyAllocation(UUID orderItemId, BigDecimal alloc, short chain) {
+        Object[] r = (Object[]) em.createNativeQuery(
+                "SELECT qty, reserved_qty, planned_qty FROM sales_order_items WHERE id = :id")
+                .setParameter("id", orderItemId).getSingleResult();
+        BigDecimal need = bd(r[0]).subtract(bd(r[1])).subtract(bd(r[2]));
+        if (alloc.compareTo(need) > 0) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "排产量超过订单未满足需求（剩余可排 " + need.stripTrailingZeros().toPlainString() + "）");
+        }
+        em.createNativeQuery("""
+                UPDATE sales_order_items
+                SET planned_qty = COALESCE(planned_qty,0) + :a,
+                    chain_status = CASE WHEN COALESCE(chain_status,0) IN (1,2) THEN :st
+                                   ELSE chain_status END
+                WHERE id = :id
+                """).setParameter("a", alloc).setParameter("st", chain)
+                .setParameter("id", orderItemId).executeUpdate();
+    }
+
+    /** BOM 物料检查：任一外购物料净需求 > 0 即缺料（复用 MRP-lite 展开口径；无 BOM 视为不缺料）。 */
+    private boolean materialShortage(UUID planId) {
+        return mrpService.preview(planId).stream()
+                .anyMatch(r -> !r.selfMade() && r.net() != null && r.net().signum() > 0);
+    }
+
+    /**
+     * 红冲联动：软删 plan_order_item_links（留痕）+ 回退 planned_qty + 行状态回退
+     * （预留已覆盖→7可发货 / 未覆盖→2待排产）。已报工/已入库的计划禁止红冲。
+     */
+    private void unlinkOrderItems(UUID planId) {
+        List<UUID> itemIds = itemRepo.findByPlanIdOrderByLineNoAsc(planId).stream()
+                .map(ProductionPlanItem::getId).toList();
+        if (itemIds.isEmpty()) return;
+        for (PlanOrderItemLink l : linkRepo.findActiveByPlanItemIds(itemIds)) {
+            if (l.getInboundQty().signum() > 0 || l.getProducedQty().signum() > 0) {
+                throw new ApiException(ErrorCode.BUSINESS, "已有报工/完工入库，不能红冲计划");
+            }
+            l.setDeleted(true);
+            l.setDeletedAt(OffsetDateTime.now());
+            linkRepo.save(l);
+            em.createNativeQuery("""
+                    UPDATE sales_order_items
+                    SET planned_qty = GREATEST(0, COALESCE(planned_qty,0) - :a),
+                        chain_status = CASE WHEN COALESCE(chain_status,0) IN (3,4) THEN
+                            CASE WHEN COALESCE(reserved_qty,0) >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
+                                 THEN 7 ELSE 2 END
+                        ELSE chain_status END
+                    WHERE id = :id
+                    """).setParameter("a", l.getAllocatedQty())
+                    .setParameter("id", l.getOrderItemId()).executeUpdate();
+        }
+    }
+
+    private static BigDecimal bd(Object v) {
+        return v == null ? BigDecimal.ZERO : (BigDecimal) v;
     }
 
     /**
@@ -166,8 +272,10 @@ public class ProductionPlanService {
     public PlanDetail reverse(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlan(id);
+        em.lock(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        unlinkOrderItems(id); // 业务链：links 软删 + planned_qty 回退（已报工/入库则拒绝）
         p.setStatus(STATUS_REVERSED);
         planRepo.save(p);
         return detail(id);
@@ -294,7 +402,8 @@ public class ProductionPlanService {
                 p.getDeliveryDate(), p.getDepartmentId(), p.getWorkshopName(), p.getWorkerName(), p.getSellerName(),
                 p.getSellerId(), p.getWorkerId(),
                 p.getMakerId(), p.getApproverId(), p.getMakerLegacyId(), p.getApproverLegacyId(), p.getRemark(),
-                p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getSourceDocNo(), items);
+                p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getSourceDocNo(), items,
+                nameResolver.nameOf(p.getMakerId()), p.getCreatedAt());
     }
 
     private ProductionPlan requirePlan(UUID id) {

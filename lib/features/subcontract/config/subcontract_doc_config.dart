@@ -126,15 +126,15 @@ class SubcontractDocConfig {
 
   /// 单据号前缀（新建页预览占位用；询价/申请未启用→空，不预览）。
   String get billNoPrefix => switch (type) {
-        SubcontractDocType.inquiry => '',
-        SubcontractDocType.application => '',
-        SubcontractDocType.order => 'EO',
-        SubcontractDocType.receipt => 'EJ',
-        SubcontractDocType.materialIssue => 'EC',
-        SubcontractDocType.returnDoc => 'ET',
-        SubcontractDocType.materialReturn => 'ER',
-        SubcontractDocType.waste => 'EW',
-      };
+    SubcontractDocType.inquiry => '',
+    SubcontractDocType.application => '',
+    SubcontractDocType.order => 'EO',
+    SubcontractDocType.receipt => 'EJ',
+    SubcontractDocType.materialIssue => 'EC',
+    SubcontractDocType.returnDoc => 'ET',
+    SubcontractDocType.materialReturn => 'ER',
+    SubcontractDocType.waste => 'EW',
+  };
 
   /// 列表是否带金额合计列（无单价的三类没有金额）。
   bool get hasAmount => itemHasPrice;
@@ -189,6 +189,7 @@ class SubcontractDocConfig {
     linkToApplicationItem: true,
     showReceived: true,
     approveEffect: '审核将回写申请明细已订量（无库存/ArAp 联动）。',
+    skipListOnCreate: true,
   );
 
   /// 委外进仓单（收回成品；10732 行；链到订货；审核入库+立应付）。
@@ -211,6 +212,7 @@ class SubcontractDocConfig {
     itemHasStep: true,
     linkToOrderItem: true,
     approveEffect: '审核将正向入库（成品）+ 回写订货已收 + 立应付。',
+    skipListOnCreate: true,
   );
 
   /// 委外发料单（材料出仓；10627 行；链到订货；审核出库）。
@@ -233,6 +235,7 @@ class SubcontractDocConfig {
     showReturned: true,
     showWasted: true,
     approveEffect: '审核将出库（材料）+ 回写订货已发料。',
+    skipListOnCreate: true,
   );
 
   /// 委外退货单（成品退；442 行；链到进仓&订货；审核出库+反向立应付）。
@@ -256,6 +259,7 @@ class SubcontractDocConfig {
     linkToReceiptItem: true,
     linkToOrderItem: true,
     approveEffect: '审核将出库（成品退）+ 反向立应付。',
+    skipListOnCreate: true,
   );
 
   /// 委外材料退货单（65 行；链到发料&订货；审核入库）。

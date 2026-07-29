@@ -94,4 +94,9 @@ public class Supplier extends SoftDeletableEntity {
     // ===== 状态 / 备注 =====
     private String status;              // Status（使用/禁用）
     private String remark;              // Remark（备注）
+
+    /** 内部车间（V100）：铜柱/轨道/仪表车间——车间走部门通道（领料车间字段），
+     *  不再作为委外商可选（字典接口排除；历史单据引用保留）。 */
+    @Column(name = "is_internal_workshop", nullable = false)
+    private boolean internalWorkshop = false;
 }

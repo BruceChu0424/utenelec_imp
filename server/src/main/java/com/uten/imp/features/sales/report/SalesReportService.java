@@ -60,6 +60,21 @@ public class SalesReportService {
 
     private final EntityManager em;
     private final SystemSettingsService settings;
+    private final com.uten.imp.features.sales.order.SalesPriceMasker priceMasker;
+
+    /** 订货报表价格列（SOP §三8 脱敏键集合：明细金额族）。 */
+    private static final List<String> ORDER_PRICE_KEYS =
+            List.of("totalAmount", "machiningPrice", "price", "discount", "amount");
+
+    /** 价格脱敏：无 sales_order:price:view 时把订货明细报表的价格列置 null（导出同口径——导出走本方法分页累积）。 */
+    private void maskOrderPricesIfNeeded(ReportTableResponse r) {
+        if (priceMasker.canView()) return;
+        for (Map<String, Object> row : r.rows()) {
+            for (String k : ORDER_PRICE_KEYS) {
+                if (row.containsKey(k)) row.put(k, null);
+            }
+        }
+    }
 
     // ======================== 通用执行器（与采购同型） ========================
 
@@ -244,7 +259,9 @@ public class SalesReportService {
         List<FacetSpec> specs = List.of(
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"),
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        ReportTableResponse r = execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST", specs, facets, page, size, sort, order);
+        maskOrderPricesIfNeeded(r); // 价格脱敏（SOP §三8）：无权限者价格列置 null，导出同口径
+        return r;
     }
 
     // ----- 销售出货明细 -----
@@ -655,12 +672,13 @@ public class SalesReportService {
         q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
+        boolean mask = !priceMasker.canView(); // 价格脱敏（SOP §三8）：待交金额同口径置 null
         return rows.stream().map(r -> new PendingRow(
                 (UUID) r[0],
                 r[1] == null ? null : (UUID) r[1],
                 r[2] == null ? null : (UUID) r[2],
                 (BigDecimal) r[3],
-                (BigDecimal) r[4]
+                mask ? null : (BigDecimal) r[4]
         )).toList();
     }
 

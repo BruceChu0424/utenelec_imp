@@ -40,4 +40,8 @@ public class OtherShipmentDetail {
     private boolean closed;
     private String sourceDocNo;
     private List<OtherShipmentItemDto> items;
+    /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
+    private String makerName;
+    /** 制单时间（审计 created_at，创建后不可变）。 */
+    private java.time.Instant createdAt;
 }

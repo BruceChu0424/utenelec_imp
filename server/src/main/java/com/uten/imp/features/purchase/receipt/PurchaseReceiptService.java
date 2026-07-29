@@ -58,6 +58,7 @@ public class PurchaseReceiptService {
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
 
@@ -98,7 +99,7 @@ public class PurchaseReceiptService {
         tx.bind();
         PurchaseReceipt r = new PurchaseReceipt();
         applyHeader(req, r);
-        r.setMakerId(currentUser.requireId()); // 制单=当前登录用户
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
         receiptRepo.save(r);
         List<ReceiptItemDto> items = saveItems(r, req.getItems());
@@ -138,6 +139,7 @@ public class PurchaseReceiptService {
     public ReceiptDetail approve(UUID id) {
         tx.bind();
         PurchaseReceipt r = requireReceipt(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -161,7 +163,7 @@ public class PurchaseReceiptService {
             }
         }
         r.setStatus(STATUS_APPROVED);
-        r.setApproverId(currentUser.requireId()); // 审核=当前登录用户
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         receiptRepo.save(r);
         // 立应付（AP, PURCHASE_RECEIPT）：取代老库 P_In 触发器 TRI_PIStockItem 的 M_out 立帐分支。
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
@@ -181,6 +183,7 @@ public class PurchaseReceiptService {
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
         PurchaseReceipt r = requireReceipt(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -303,7 +306,8 @@ public class PurchaseReceiptService {
         return new ReceiptDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getSenderId(), r.getReceiverId(), r.getMakerId(), r.getApproverId(), r.getRemark(),
-                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items);
+                r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 
     private PurchaseReceipt requireReceipt(UUID id) {

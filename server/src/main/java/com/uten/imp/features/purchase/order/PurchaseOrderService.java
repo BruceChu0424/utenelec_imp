@@ -55,6 +55,7 @@ public class PurchaseOrderService {
     private final PurchaseOrderItemRepository itemRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
 
@@ -92,7 +93,7 @@ public class PurchaseOrderService {
         tx.bind();
         PurchaseOrder o = new PurchaseOrder();
         applyHeader(req, o);
-        o.setMakerId(currentUser.requireId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         o.setStatus(STATUS_DRAFT);
         orderRepo.save(o);
         List<OrderItemDto> items = saveItems(o, req.getItems());
@@ -128,6 +129,7 @@ public class PurchaseOrderService {
     public OrderDetail approve(UUID id) {
         tx.bind();
         PurchaseOrder o = requireOrder(id);
+        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
@@ -143,7 +145,7 @@ public class PurchaseOrderService {
             }
         }
         o.setStatus(STATUS_APPROVED);
-        o.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         orderRepo.save(o);
         return detail(id);
     }
@@ -152,6 +154,7 @@ public class PurchaseOrderService {
     public OrderDetail reverse(UUID id) {
         tx.bind();
         PurchaseOrder o = requireOrder(id);
+        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         for (PurchaseOrderItem it : itemRepo.findByOrderIdOrderByLineNoAsc(id)) {
@@ -251,7 +254,8 @@ public class PurchaseOrderService {
         return new OrderDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
                 o.getSupplierId(), o.getWarehouseId(), o.getCurrencyId(), o.getExchangeRate(), o.getTaxRate(),
                 o.getPurchaserId(), o.getMakerId(), o.getApproverId(), o.getDeliverDate(), o.getRemark(),
-                o.getTotalOriginal(), o.getTotalLocal(), o.getStatus(), o.isClosed(), o.getSourceDocNo(), items);
+                o.getTotalOriginal(), o.getTotalLocal(), o.getStatus(), o.isClosed(), o.getSourceDocNo(), items,
+                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt());
     }
 
     private PurchaseOrder requireOrder(UUID id) {

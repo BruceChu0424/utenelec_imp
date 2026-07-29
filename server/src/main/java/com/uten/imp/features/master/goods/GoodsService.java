@@ -101,6 +101,18 @@ public class GoodsService {
     private final TxSessionVars tx;
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
+    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+
+    // ===== 归属可见性（外贸系列按员工授权，V85；判定逻辑统一在 OwnerVisibility） =====
+
+    /** facets 原生 SQL 片段：归属过滤 AND 子句（参数名 :__ownerEmp；无需绑参时 bindEmp[0]=false）。 */
+    private String ownerClause(boolean[] bindEmp) {
+        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        if (scope.seeAll()) { bindEmp[0] = false; return ""; }
+        if (scope.visibleOwners().isEmpty()) { bindEmp[0] = false; return " and owner_employee_id is null"; }
+        bindEmp[0] = true;
+        return " and (owner_employee_id is null or owner_employee_id in (:__ownerEmp))";
+    }
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -111,6 +123,16 @@ public class GoodsService {
                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见
+            var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+            if (!scope.seeAll()) {
+                if (scope.visibleOwners().isEmpty()) {
+                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
+                } else {
+                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
+                            root.get("ownerEmployeeId").in(scope.visibleOwners())));
+                }
+            }
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
@@ -248,6 +270,10 @@ public class GoodsService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
         }
         List<UUID> ids = resolveSubtreeIds(categoryId);
+        // 归属可见性（外贸按人授权）：与 list() 同规则
+        boolean[] bindEmp = new boolean[1];
+        String ownerClause = ownerClause(bindEmp);
+        java.util.Set<java.util.UUID> ownerEmps = ownerVisibility.evaluate("goods", "goods:view:all").visibleOwners();
         // 颜色/单位 legacy_id → name（全量，表小）；颜色/单位桶 label 用名展示，筛选仍按 legacy id 回传。
         Map<Integer, String> colorNames = allColorNames();
         Map<Integer, String> unitNames = allUnitNames();
@@ -257,12 +283,14 @@ public class GoodsService {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = em.createNativeQuery(
+            var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from goods "
                             + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
-                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids)
-                    .getResultList();
+                            + ownerClause
+                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
+                    .setParameter("ids", ids);
+            if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
+            List<Object[]> rows = fq.getResultList();
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 String v = String.valueOf(row[0]);
@@ -270,11 +298,13 @@ public class GoodsService {
                 bucketList.add(new FacetBucket(v, c, labelFor(field, v, colorNames, unitNames)));
             }
             buckets.put(field, bucketList);
-            Long nc = ((Number) em.createNativeQuery(
+            var nq = em.createNativeQuery(
                     "select count(*) from goods "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null")
-                    .setParameter("ids", ids)
-                    .getSingleResult()).longValue();
+                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null"
+                            + ownerClause)
+                    .setParameter("ids", ids);
+            if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
+            Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
         return new GoodsFacets(
@@ -329,15 +359,30 @@ public class GoodsService {
     @Transactional(readOnly = true)
     public List<GoodsDictItem> lookup(Set<UUID> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
+        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
         return repo.findAllById(ids).stream()
                 .filter(g -> !g.isDeleted())
+                .filter(g -> scope.seeAll() || g.getOwnerEmployeeId() == null
+                        || scope.visibleOwners().contains(g.getOwnerEmployeeId()))
                 .map(g -> new GoodsDictItem(g.getId(), g.getCode(), g.getName()))
                 .toList();
+    }
+
+    /**
+     * 归属可见性守卫（详情/编辑前调用）：归属货品非本人且未授权 → 404（不透出存在性）。
+     */
+    private void requireVisible(Goods g) {
+        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        if (scope.seeAll() || g.getOwnerEmployeeId() == null) return;
+        if (!scope.visibleOwners().contains(g.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "货品不存在");
+        }
     }
 
     @Transactional(readOnly = true)
     public GoodsDetail detail(UUID id) {
         Goods g = requireGoods(id);
+        requireVisible(g);
         return toDetail(g, colorNameOf(g.getColorLegacyId()), unitNameOf(g.getUnitLegacyId()));
     }
 
@@ -356,6 +401,7 @@ public class GoodsService {
     public GoodsDetail update(UUID id, GoodsSaveRequest req) {
         tx.bind();
         Goods g = requireGoods(id);
+        requireVisible(g);
         apply(req, g);
         repo.save(g);
         return toDetail(g, colorNameOf(g.getColorLegacyId()), unitNameOf(g.getUnitLegacyId()));
@@ -365,6 +411,7 @@ public class GoodsService {
     public void delete(UUID id) {
         tx.bind();
         Goods g = requireGoods(id);
+        requireVisible(g);
         g.setDeleted(true);
         g.setDeletedAt(OffsetDateTime.now());
         repo.save(g);

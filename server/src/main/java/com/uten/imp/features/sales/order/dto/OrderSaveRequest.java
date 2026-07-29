@@ -36,6 +36,8 @@ public class OrderSaveRequest {
     private String shipAddr;
     private BigDecimal deposit;
     private String remark;
+    /** 来源单据号（报价转入时=报价单号，订货详情据此回联来源报价做价格比对）。 */
+    private String sourceDocNo;
 
     @Valid
     @NotNull

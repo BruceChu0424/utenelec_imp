@@ -21,6 +21,7 @@ import 'master_detail_sheet.dart';
 /// 弹出货品详情（页签式）。
 ///
 /// [onEdit]/[onDelete] 语义与 showMasterDetailSheet 一致（先 pop 本面板再回调）。
+/// [onViewMovements] 「出入库流水」按钮（查看动作，无编辑权也显示；先 pop 再回调跳流水页）。
 /// [onDataChanged] 在组装/成本数据变动后触发（调用方刷新货品列表行）。
 Future<void> showGoodsDetailDialog({
   required BuildContext context,
@@ -29,6 +30,7 @@ Future<void> showGoodsDetailDialog({
   bool canEdit = false,
   VoidCallback? onEdit,
   VoidCallback? onDelete,
+  VoidCallback? onViewMovements,
   VoidCallback? onDataChanged,
 }) {
   final body = _GoodsDetailBody(
@@ -37,6 +39,7 @@ Future<void> showGoodsDetailDialog({
     canEdit: canEdit,
     onEdit: onEdit,
     onDelete: onDelete,
+    onViewMovements: onViewMovements,
     onDataChanged: onDataChanged,
   );
   if (context.breakpoint.isCompact) {
@@ -75,6 +78,7 @@ class _GoodsDetailBody extends StatefulWidget {
     required this.canEdit,
     required this.onEdit,
     required this.onDelete,
+    required this.onViewMovements,
     required this.onDataChanged,
   });
 
@@ -83,6 +87,7 @@ class _GoodsDetailBody extends StatefulWidget {
   final bool canEdit;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onViewMovements;
   final VoidCallback? onDataChanged;
 
   @override
@@ -123,6 +128,7 @@ class _GoodsDetailBodyState extends State<_GoodsDetailBody> {
                     canEdit: widget.canEdit,
                     onEdit: widget.onEdit,
                     onDelete: widget.onDelete,
+                    onViewMovements: widget.onViewMovements,
                   ),
                   GoodsBomTab(
                     goodsId: widget.detail.id,
@@ -185,19 +191,21 @@ class _GoodsDetailBodyState extends State<_GoodsDetailBody> {
   }
 }
 
-/// 基本信息页签：原详情字段网格（与 master_detail_sheet 同款卡片格）+ 编辑/删除。
+/// 基本信息页签：原详情字段网格（与 master_detail_sheet 同款卡片格）+ 流水/编辑/删除。
 class _BasicInfoTab extends StatelessWidget {
   const _BasicInfoTab({
     required this.rows,
     required this.canEdit,
     required this.onEdit,
     required this.onDelete,
+    required this.onViewMovements,
   });
 
   final List<MasterDetailRow> rows;
   final bool canEdit;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final VoidCallback? onViewMovements;
 
   @override
   Widget build(BuildContext context) {
@@ -239,7 +247,8 @@ class _BasicInfoTab extends StatelessWidget {
             ),
           ),
         ),
-        if (canEdit && (onEdit != null || onDelete != null)) ...[
+        if (onViewMovements != null ||
+            (canEdit && (onEdit != null || onDelete != null))) ...[
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -247,7 +256,19 @@ class _BasicInfoTab extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (onEdit != null) ...[
+                if (onViewMovements != null) ...[
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.swap_vert_rounded,
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      onViewMovements!();
+                    },
+                    child: const Text('出入库流水'), // TODO(l10n): 补 arb
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                ],
+                if (canEdit && onEdit != null) ...[
                   UtenButton(
                     type: UtenButtonType.secondary,
                     icon: Icons.edit_outlined,
@@ -259,7 +280,7 @@ class _BasicInfoTab extends StatelessWidget {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                 ],
-                if (onDelete != null)
+                if (canEdit && onDelete != null)
                   UtenButton(
                     type: UtenButtonType.danger,
                     icon: Icons.delete_outline,

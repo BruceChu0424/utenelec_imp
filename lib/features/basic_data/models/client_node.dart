@@ -125,6 +125,7 @@ class ClientDetail {
     this.taxId,
     this.credit,
     this.initTotal,
+    this.creditFloor,
     this.tday,
     this.remark,
   });
@@ -158,6 +159,7 @@ class ClientDetail {
   final String? taxId; // 税号
   final double? credit; // 信用额度
   final double? initTotal; // 期初应收
+  final double? creditFloor; // 铺底额（V121）
   final int? tday; // 结算天数
   final String? remark; // 备注
 
@@ -191,6 +193,7 @@ class ClientDetail {
         taxId: (json['taxId'] ?? json['taxid']) as String?,
         credit: (json['credit'] as num?)?.toDouble(),
         initTotal: (json['initTotal'] as num?)?.toDouble(),
+        creditFloor: (json['creditFloor'] as num?)?.toDouble(),
         tday: (json['tday'] as num?)?.toInt(),
         remark: json['remark'] as String?,
       );

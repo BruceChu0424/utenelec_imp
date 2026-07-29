@@ -7,12 +7,18 @@
 //
 // 后端 GET /api/finance/reports/ar-ap/overview?dateFrom&dateTo&displayMode&keyword&categoryType&categoryId
 //   返回 ReportTableResponse；categoryType=CLIENT/SUPPLIER + categoryId 时后端按分类树递归下溯过滤。
+//
+// 筛选口径（类别导航/显示方式/日期范围/排序）按账号服务端持久化
+// （report.finance.arApOverview，ReportFilterPrefs：docType=categoryType、extra={categoryId,displayMode}）；
+// 关键字不持久化。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_client.dart';
@@ -28,6 +34,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
+import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
 import '../../basic_data/widgets/uten_category_tree_view.dart';
 
@@ -64,13 +71,53 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
   ReportData? _data;
   bool _loading = false;
 
+  /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
+  bool _dirty = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadTree();
+      _applyPrefs(ref.read(financeArApOverviewReportPrefsProvider));
       _load();
     });
+  }
+
+  /// 应用偏好快照（空快照=未存过，保留页面默认）。
+  void _applyPrefs(ReportFilterPrefs p) {
+    if (p.isEmpty) return;
+    setState(() {
+      _categoryType = p.docType;
+      _categoryId = p.extra['categoryId']?.toString();
+      final dm = p.extra['displayMode']?.toString();
+      if (dm != null && const ['ALL', 'ANY', 'AR_ONLY', 'AP_ONLY'].contains(dm)) {
+        _displayMode = dm;
+      }
+      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
+      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
+      _sortKey = p.sortKey;
+      _sortAsc = p.sortAsc;
+    });
+  }
+
+  /// 当前筛选口径快照（不含关键字/分页）。
+  ReportFilterPrefs _snapshot() => ReportFilterPrefs(
+        docType: _categoryType,
+        from: _fmt(_from),
+        to: _fmt(_to),
+        sortKey: _sortKey,
+        sortAsc: _sortAsc,
+        extra: {
+          if (_categoryId != null) 'categoryId': _categoryId,
+          'displayMode': _displayMode,
+        },
+      );
+
+  /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
+  void _persistPrefs() {
+    _dirty = true;
+    ref.read(financeArApOverviewReportPrefsProvider.notifier).update(_snapshot());
   }
 
   Future<void> _loadTree() async {
@@ -126,6 +173,7 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
       _categoryId = id;
       _page = 1;
     });
+    _persistPrefs();
     _load();
   }
 
@@ -166,6 +214,7 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
       _sortAsc = ascending;
       _page = 1;
     });
+    _persistPrefs();
     _load();
   }
 
@@ -183,10 +232,33 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
         ...sortQueryParams(_sortKey, _sortAsc),
       };
 
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final api = ref.read(apiClientProvider);
+    final json = await api.get('/finance/reports/ar-ap/overview',
+        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final data = parseReportResponse(json, 1);
+    return UtenPrintTable(
+      headers: [for (final c in data.columns) c.label],
+      rows: [
+        for (final r in data.rows)
+          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bp = context.breakpoint;
+    // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。
+    ref.listen(financeArApOverviewReportPrefsProvider, (prev, next) {
+      if (!_dirty && prev != next && !next.isEmpty && mounted) {
+        _applyPrefs(next);
+        _page = 1;
+        _load();
+      }
+    });
     final selectedLabel = _categoryType == null
         ? '全部'
         : _categoryId == null
@@ -225,12 +297,6 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
         title: '应收应付',
         leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.finance)),
         actions: [
-          UtenExportButton(
-            endpoint: '/finance/reports/export',
-            report: _exportReport,
-            queryParams: _exportQuery,
-            filename: '应收应付',
-          ),
           IconButton(
               icon: const Icon(Icons.refresh_rounded), tooltip: '刷新', onPressed: _load),
           if (bp == UtenBreakpoint.compact)
@@ -284,7 +350,10 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
                   TextButton.icon(
                     onPressed: () async {
                       final p = await showDatePicker(context: context, initialDate: _from, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                      if (p != null) setState(() => _from = p);
+                      if (p != null) {
+                        setState(() => _from = p);
+                        _persistPrefs();
+                      }
                     },
                     icon: const Icon(Icons.event_outlined, size: 18),
                     label: Text('起 ${_fmt(_from)}'),
@@ -292,7 +361,10 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
                   TextButton.icon(
                     onPressed: () async {
                       final p = await showDatePicker(context: context, initialDate: _to, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                      if (p != null) setState(() => _to = p);
+                      if (p != null) {
+                        setState(() => _to = p);
+                        _persistPrefs();
+                      }
                     },
                     icon: const Icon(Icons.event_outlined, size: 18),
                     label: Text('止 ${_fmt(_to)}'),
@@ -309,6 +381,7 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
                     onChanged: (v) {
                       if (v == null) return;
                       setState(() => _displayMode = v);
+                      _persistPrefs();
                     },
                   ),
                   SizedBox(width: 200, child: UtenSearchBar(hint: '搜索往来单位', initialValue: _keyword, onChanged: (v) => _keyword = v)),
@@ -351,6 +424,27 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
       items: data.rows,
+      toolbarActions: [
+        UtenPrintPreviewButton(
+          title: '应收应付',
+          subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
+          loader: _printLoader,
+          exportEndpoint: '/finance/reports/export',
+          exportReport: _exportReport,
+          exportQuery: _exportQuery,
+          exportFilename: '应收应付',
+          type: UtenButtonType.primary,
+          size: UtenButtonSize.large,
+        ),
+        UtenExportButton(
+          endpoint: '/finance/reports/export',
+          report: _exportReport,
+          queryParams: _exportQuery,
+          filename: '应收应付',
+          type: UtenButtonType.primary,
+          size: UtenButtonSize.large,
+        ),
+      ],
       facets: const {},
       nullCounts: const {},
       filters: const {},

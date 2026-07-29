@@ -13,17 +13,14 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/widgets/uten_location_field.dart';
 import '../models/product_category_node.dart';
 import 'uten_category_tree_view.dart';
 
 /// 对话框收集到的字段（新建时 code 必填，编辑时 code 为 null 不上送）。
 class CategoryEditResult {
-  const CategoryEditResult({
-    this.code,
-    required this.name,
-    this.parentId,
-  });
+  const CategoryEditResult({this.code, required this.name, this.parentId});
 
   final String? code;
   final String name;
@@ -93,10 +90,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   /// 新节点将落在的层级（根=0，子=父+1）。
   int get _resultLevel => (_parent?.level ?? -1) + 1;
 
-  ProductCategoryNode? _findById(
-    List<ProductCategoryNode> nodes,
-    String id,
-  ) {
+  ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
     for (final n in nodes) {
       if (n.id == id) return n;
       final f = _findById(n.children, id);
@@ -142,7 +136,15 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       name: _nameCtl.text.trim(),
       parentId: _parent?.id,
     );
-    final ok = await widget.onSubmit(result);
+    // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
+    late final bool ok;
+    try {
+      ok = await widget.onSubmit(result);
+    } catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+      return;
+    }
     if (!mounted) return;
     if (ok) Navigator.of(context).pop();
   }
@@ -202,7 +204,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               readOnly: _isEdit,
               decoration: InputDecoration(
                 labelText: '编码', // TODO(l10n): 补 arb
-                hintText: _isEdit ? null : '如 RAW-MAT（创建后不可修改）', // TODO(l10n): 补 arb
+                hintText: _isEdit
+                    ? null
+                    : '如 RAW-MAT（创建后不可修改）', // TODO(l10n): 补 arb
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -216,8 +220,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               Text(
                 '常用分类名称，点击填入', // TODO(l10n): 补 arb
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: UtenSpacing.s4),
               Wrap(
@@ -236,8 +241,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               const SizedBox(height: UtenSpacing.s12),
               Text(
                 _formError!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.error),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
               ),
             ],
           ],

@@ -33,10 +33,17 @@ import java.util.function.BiFunction;
  *   <li>{@link #pending} 待交货订货汇总（视图，保留）。</li>
  * </ol>
  *
- * <p>人员名：历史单据 {@code *_legacy_id} 保留，但 {@code employees.legacy_id} 尚未对齐 → 暂显空；
- * 员工档案录入 legacy_id 后自动出人名（{@code LEFT JOIN employees ... ON legacy_id = *_legacy_id}）。
+ * <p>人员名两类来源（与老库视图口径一致）：员工类（申请人/采购员/收货人= B_Worker）走
+ * {@code LEFT JOIN employees ... ON legacy_id = *_legacy_id}（迁移已建 resigned stub，HR 真名单自动覆盖）；
+ * 账号类（制单员/审核员 = Sys_Operator 登录账号，非员工档案）迁移时冻结进 {@code maker_name/approver_name}
+ * 文本列，报表 {@code COALESCE(employees 真名, 冻结名)}。
  *
- * <p>结帐方式：{@code settlement_style_legacy} 原值，按 {@link PurchaseSettlementStyle} 字典渲染（先显原值）。
+ * <p>部门：申请单 {@code department_legacy_id}（老库 StepID）→ {@code legacy_departments} 字典出名。
+ *
+ * <p>结帐方式：{@code settlement_style_legacy} 原值，按 {@link PurchaseSettlementStyle} 字典渲染
+ * （字典=老库 B_PStyle：1现金/2提货/3代付/4支票/6月结/7垫付/8汇款/10代收）。
+ *
+ * <p>编号：收货/退货明细按老视图口径渲染为「货品编号-颜色编号」（颜色编号为空则不加，如 280501084-3）。
  *
  * <p>_null 参数类型坑_：所有可选过滤用 {@code CAST(:param AS 类型) IS NULL OR ...} 或显式 CAST 绑定（见 MEMORY）。
  */
@@ -262,7 +269,7 @@ public class PurchaseReportService {
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", i.deliver_date AS "deliverDate",
                        em_app.full_name AS "applicantName", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved", o.is_closed AS "closed", o.is_stopped AS "stopped",
-                       i.production_no AS "productionNo", NULL AS "departmentName",
+                       i.production_no AS "productionNo", dept.name AS "departmentName",
                        g.series AS "series", g.code AS "goodsCode", g.model AS "model",
                        gsup.name AS "supplierName", g.c_number AS "customerModel", mc.name AS "categoryName",
                        g.name AS "goodsName", g.material AS "material", g.spec AS "spec", col.name AS "colorName",
@@ -276,6 +283,7 @@ public class PurchaseReportService {
                 FROM purchase_request_items i
                 JOIN purchase_requests o ON o.id = i.request_id
                 LEFT JOIN employees em_app ON em_app.legacy_id = o.applicant_legacy_id OR em_app.id = o.applicant_id
+                LEFT JOIN legacy_departments dept ON dept.legacy_id = o.department_legacy_id
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units un ON un.id = i.unit_id
@@ -304,7 +312,9 @@ public class PurchaseReportService {
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate",
-                       em_app.full_name AS "applicantName", em_mk.full_name AS "makerName", em_ap.full_name AS "approverName",
+                       em_app.full_name AS "applicantName",
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
+                       COALESCE(em_ap.full_name, o.approver_name) AS "approverName",
                        o.total_local AS "totalAmount", o.remark AS "remark",
                        o.id AS "__srcId"
                 """;
@@ -388,7 +398,8 @@ public class PurchaseReportService {
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
                        o.deliver_date AS "deliverDate", em_pur.full_name AS "purchaserName",
-                       o.settlement_style_legacy AS "settlementStyle", em_mk.full_name AS "makerName",
+                       o.settlement_style_legacy AS "settlementStyle",
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -432,10 +443,13 @@ public class PurchaseReportService {
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
-                       em_rec.full_name AS "receiverName", em_pur.full_name AS "purchaserName",
+                       em_rec.full_name AS "receiverName",
+                       COALESCE(em_sman.full_name, em_pur.full_name) AS "purchaserName",
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved",
-                       g.series AS "series", g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel",
+                       g.series AS "series",
+                       (g.code || CASE WHEN NULLIF(BTRIM(COALESCE(col.code, '')), '') IS NOT NULL THEN '-' || BTRIM(col.code) ELSE '' END) AS "goodsCode",
+                       g.model AS "model", g.c_number AS "customerModel",
                        g.name AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
                        i.weight AS "weight", oi.qty AS "orderQty", i.qty AS "qty", i.gift_qty AS "giftQty", i.price AS "price",
                        o.id AS "__srcId"
@@ -446,6 +460,7 @@ public class PurchaseReportService {
                 LEFT JOIN suppliers sup ON sup.id = o.supplier_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
                 LEFT JOIN employees em_rec ON em_rec.legacy_id = o.receiver_legacy_id OR em_rec.id = o.receiver_id
+                LEFT JOIN employees em_sman ON em_sman.legacy_id = o.purchaser_legacy_id
                 LEFT JOIN purchase_order_items oi ON oi.id = i.order_item_id
                 LEFT JOIN purchase_orders po ON po.id = oi.order_id
                 LEFT JOIN employees em_pur ON em_pur.legacy_id = po.purchaser_legacy_id OR em_pur.id = po.purchaser_id
@@ -477,7 +492,8 @@ public class PurchaseReportService {
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
-                       em_rec.full_name AS "receiverName", o.settlement_style_legacy AS "settlementStyle", em_mk.full_name AS "makerName",
+                       em_rec.full_name AS "receiverName", o.settlement_style_legacy AS "settlementStyle",
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -501,18 +517,18 @@ public class PurchaseReportService {
         return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no", specs, facets, page, size, sort, order);
     }
 
-    // ======================== ⑧ 采购退货明细（无开单日期、无围数） ========================
+    // ======================== ⑧ 采购退货明细（单号合并开单日期、无围数） ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse returnDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                             LocalDate dateFrom, LocalDate dateTo, String kw,
                                             Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
-                ReportColumn.text("billNo", "单号", 140), ReportColumn.text("supplierName", "供应商", 160),
+                ReportColumn.text("billNo", "单号", 200), ReportColumn.text("supplierName", "供应商", 160),
                 ReportColumn.text("warehouseName", "仓库", 120),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
                 ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
-                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsCode", "编号", 110),
+                ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsCode", "编号", 120),
                 ReportColumn.text("model", "型号", 100), ReportColumn.text("customerModel", "客户型号", 100),
                 ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("spec", "规格", 140),
                 ReportColumn.text("material", "材质", 90), ReportColumn.text("colorName", "颜色", 80),
@@ -520,10 +536,13 @@ public class PurchaseReportService {
                 ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
-                SELECT o.bill_no AS "billNo", sup.name AS "supplierName", wh.name AS "warehouseName",
+                SELECT (o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD')) AS "billNo",
+                       sup.name AS "supplierName", wh.name AS "warehouseName",
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved",
-                       g.series AS "series", g.code AS "goodsCode", g.model AS "model", g.c_number AS "customerModel",
+                       g.series AS "series",
+                       (g.code || CASE WHEN NULLIF(BTRIM(COALESCE(col.code, '')), '') IS NOT NULL THEN '-' || BTRIM(col.code) ELSE '' END) AS "goodsCode",
+                       g.model AS "model", g.c_number AS "customerModel",
                        g.name AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
                        i.weight AS "weight", i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        o.id AS "__srcId"
@@ -559,7 +578,9 @@ public class PurchaseReportService {
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
-                       o.settlement_style_legacy AS "settlementStyle", em_mk.full_name AS "makerName", em_ap.full_name AS "approverName",
+                       o.settlement_style_legacy AS "settlementStyle",
+                       COALESCE(em_mk.full_name, o.maker_name) AS "makerName",
+                       COALESCE(em_ap.full_name, o.approver_name) AS "approverName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """

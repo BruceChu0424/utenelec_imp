@@ -119,6 +119,8 @@ abstract final class ApiEndpoints {
   static String stockDoc(String id) => '/stock/docs/$id';
   static String stockDocApprove(String id) => '/stock/docs/$id/approve';
   static String stockDocReverse(String id) => '/stock/docs/$id/reverse';
+  static String stockDocIssue(String id) => '/stock/docs/$id/issue';
+  static String stockDocIssueReverse(String id) => '/stock/docs/$id/issue/reverse';
 
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
@@ -132,6 +134,7 @@ abstract final class ApiEndpoints {
   static String employeeTransfer(String id) => '/org/employees/$id/transfer';
   static String employeeOffboard(String id) => '/org/employees/$id/offboard';
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
+  static String employeeRehire(String id) => '/org/employees/$id/rehire';
 
   // 账号管理（HR）
   static const adminUsers = '/admin/users';
@@ -158,6 +161,14 @@ abstract final class ApiEndpoints {
   /// 员工有效权限（部门 ∪ 角色 ± 个人覆盖，后端计算）
   static String userEffectivePermissions(String id) =>
       '/admin/users/$id/effective-permissions';
+
+  /// 数据范围授权（用户 × 范围 × 可见归属人，V89）
+  static String userDataScopes(String id, String scope) =>
+      '/admin/users/$id/data-scopes?scope=$scope';
+
+  /// 授权归属人候选（范围内实际有归属数据的员工）
+  static String dataScopeOwners(String scope) =>
+      '/admin/data-scope-owners?scope=$scope';
 
   /// 审计日志（导出下载 / 登录 / 改密 等全员审计；超管只读）
   static const adminAuditLogs = '/admin/audit-logs';
@@ -207,6 +218,20 @@ abstract final class ApiEndpoints {
   // 用户偏好（任意 key-value；工作台布局等）
   static const userPreferences = '/user/preferences';
   static String userPreference(String key) => '/user/preferences/$key';
+
+  // 通知（广播 + 每用户已读/删除状态；后端 features/notice/NoticeController）
+  static const notices = '/notices';
+  static String notice(String id) => '/notices/$id';
+  static const noticesUnreadCount = '/notices/unread-count';
+  static const noticesReadAll = '/notices/read-all';
+  static const noticesBatchDelete = '/notices/batch-delete';
+  static String noticeRead(String id) => '/notices/$id/read';
+
+  // 建议箱（广场/我的/提交/点赞/官方回复；后端 features/suggestion/SuggestionController）
+  static const suggestions = '/suggestions';
+  static String suggestion(String id) => '/suggestions/$id';
+  static String suggestionLike(String id) => '/suggestions/$id/like';
+  static String suggestionReplies(String id) => '/suggestions/$id/replies';
 
   // 单据号预览（新建页占位显示；不消耗序列，并发时可能差1以保存后为准）
   static const docNumberPeek = '/doc-number/peek';

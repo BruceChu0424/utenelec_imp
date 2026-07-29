@@ -16,6 +16,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_import_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -77,6 +79,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   DateTime? _validUntil; // 报价有效期
   DateTime? _deliverDate; // 订货交货日
 
+  // 制单信息（服务端权威，只读展示）
+  String? _makerName;
+  String? _createdAt;
+
   final _grid = UtenEditableGridController<SalesGridRow>();
   final _scrollCtl = ScrollController();
   bool _saving = false;
@@ -110,13 +116,28 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(salesMasterNameServiceProvider).ensureLoaded();
+    if (widget.id == null && _cfg.hasWarehouse) {
+      // D1（王浩然）：新建出库单按「本人类型最近一张单的仓库」预填，减少手选。
+      try {
+        final last = await ref
+            .read(salesRepositoryProvider(widget.docType))
+            .list(size: 1);
+        if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+          _warehouseId = last.items.first.warehouseId;
+        }
+      } catch (_) {
+        /* 预填失败静默，用户手选 */
+      }
+    }
     if (widget.id != null) {
       try {
         final d = await ref
             .read(salesRepositoryProvider(widget.docType))
             .detail(widget.id!);
-        final goodsIds =
-            d.items.map((e) => e.goodsId).whereType<String>().toSet();
+        final goodsIds = d.items
+            .map((e) => e.goodsId)
+            .whereType<String>()
+            .toSet();
         await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
         await _preloadEmployees([d.sellerId, d.senderId]);
         if (!mounted) return;
@@ -142,6 +163,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _shipLinkPhone.text = d.linkPhone ?? '';
         _parcelCount.text = d.parcelCount?.toString() ?? '';
         _outType.text = d.outType ?? '';
+        _makerName = d.makerName;
+        _createdAt = d.createdAt;
         final rows = <SalesGridRow>[];
         for (final it in d.items) {
           final row = SalesGridRow()
@@ -149,7 +172,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                 ? null
                 : GoodsOption(
                     id: it.goodsId!,
-                    name: ref.read(salesMasterNameServiceProvider).goods(it.goodsId))
+                    name: ref
+                        .read(salesMasterNameServiceProvider)
+                        .goods(it.goodsId),
+                  )
             ..orderItemId = it.orderItemId
             ..outItemId = it.outItemId
             ..colorId = it.colorId
@@ -196,18 +222,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
     if (uniq.isEmpty) return;
     final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(uniq.map((id) async {
-      try {
-        final p = await repo.getById(id);
-        _empCache[id] = UtenEmployeePickerItem(
-          id: p.id,
-          name: p.fullName ?? '',
-          departmentName: p.departmentName,
-        );
-      } catch (_) {
-        // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-      }
-    }));
+    await Future.wait(
+      uniq.map((id) async {
+        try {
+          final p = await repo.getById(id);
+          _empCache[id] = UtenEmployeePickerItem(
+            id: p.id,
+            name: p.fullName ?? '',
+            departmentName: p.departmentName,
+          );
+        } catch (_) {
+          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
+        }
+      }),
+    );
   }
 
   Future<void> _pickGoods(SalesGridRow row) async {
@@ -225,8 +253,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   Future<void> _importFromUpstream() async {
     final picked = await showSalesDocLinkPicker(context, ref, _cfg);
     if (picked == null || picked.isEmpty) return;
-    final goodsIds =
-        picked.map((e) => e.goodsId).where((id) => id.isNotEmpty).toSet();
+    final goodsIds = picked
+        .map((e) => e.goodsId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
     if (goodsIds.isNotEmpty) {
       await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
     }
@@ -327,16 +357,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           'contractNo': _contractNo.text.trim(),
         if (_linkPhone.text.trim().isNotEmpty)
           'linkPhone': _linkPhone.text.trim(),
-        if (_signAddr.text.trim().isNotEmpty)
-          'signAddr': _signAddr.text.trim(),
-        if (_shipAddr.text.trim().isNotEmpty)
-          'shipAddr': _shipAddr.text.trim(),
+        if (_signAddr.text.trim().isNotEmpty) 'signAddr': _signAddr.text.trim(),
+        if (_shipAddr.text.trim().isNotEmpty) 'shipAddr': _shipAddr.text.trim(),
         if (_deposit.text.trim().isNotEmpty)
           'deposit': double.tryParse(_deposit.text.trim()),
       },
       if (_cfg.hasShipInfo) ...{
-        if (_shipAddr.text.trim().isNotEmpty)
-          'shipAddr': _shipAddr.text.trim(),
+        if (_shipAddr.text.trim().isNotEmpty) 'shipAddr': _shipAddr.text.trim(),
         if (_shipLinkPhone.text.trim().isNotEmpty)
           'linkPhone': _shipLinkPhone.text.trim(),
         if (_parcelCount.text.trim().isNotEmpty)
@@ -355,8 +382,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           : await repo.update(widget.id!, body);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
-      context.replace(
-          SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
+      context.replace(SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -375,16 +401,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     final names = ref.watch(salesMasterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-          showBackButton: true,
-          actions: _cfg.skipListOnCreate
-              ? [
-                  TextButton(
-                    onPressed: () => context.push('/sales/${_cfg.type.pathSegment}'),
-                    child: const Text('查看历史'),
-                  ),
-                ]
-              : null),
+        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        showBackButton: true,
+        actions: _cfg.skipListOnCreate
+            ? [
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  icon: Icons.history_rounded,
+                  onPressed: () =>
+                      context.push('/sales/${_cfg.type.pathSegment}'),
+                  child: const Text('查看历史'),
+                ),
+              ]
+            : null,
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -393,185 +423,230 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                   controller: _scrollCtl,
                   thumbVisibility: true,
                   child: ListView(
-                  controller: _scrollCtl,
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            UtenFormGrid(children: [
-                              // 单据号：系统自动生成，只读显示。
-                              TextFormField(
-                                readOnly: true,
-                                controller: _billNo,
-                                decoration: InputDecoration(
-                                  labelText: '单据号',
-                                  hintText:
-                                      _billNo.text.isEmpty ? '保存后自动生成' : null,
-                                  filled: _billNo.text.isEmpty,
-                                  suffixIcon: _billNo.text.isEmpty
-                                      ? const Icon(Icons.autorenew_outlined, size: 18)
-                                      : const Icon(Icons.lock_outline, size: 16),
-                                ),
+                    controller: _scrollCtl,
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              UtenFormGrid(
+                                children: [
+                                  // 单据号：系统自动生成，只读显示。
+                                  TextFormField(
+                                    readOnly: true,
+                                    controller: _billNo,
+                                    decoration: InputDecoration(
+                                      labelText: '单据号',
+                                      hintText: _billNo.text.isEmpty
+                                          ? '保存后自动生成'
+                                          : null,
+                                      filled: _billNo.text.isEmpty,
+                                      suffixIcon: _billNo.text.isEmpty
+                                          ? const Icon(
+                                              Icons.autorenew_outlined,
+                                              size: 18,
+                                            )
+                                          : const Icon(
+                                              Icons.lock_outline,
+                                              size: 16,
+                                            ),
+                                    ),
+                                  ),
+                                  // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                  ...utenMakerAuditCells(
+                                    ref,
+                                    makerName: _makerName,
+                                    createdAt: _createdAt,
+                                  ),
+                                  UtenDateField(
+                                    label: '单据日期',
+                                    required: true,
+                                    value: _billDate,
+                                    onChanged: (d) =>
+                                        setState(() => _billDate = d),
+                                  ),
+                                  _dropdown(
+                                    '客户',
+                                    _clientId,
+                                    names.clientEntries,
+                                    (v) => setState(() => _clientId = v),
+                                    required: _cfg.clientRequired,
+                                  ),
+                                  if (_cfg.hasWarehouse)
+                                    _dropdown(
+                                      '仓库',
+                                      _warehouseId,
+                                      names.warehouseEntries,
+                                      (v) => setState(() => _warehouseId = v),
+                                    ),
+                                  if (_cfg.hasCurrency) ...[
+                                    _dropdown(
+                                      '币种',
+                                      _currencyId,
+                                      names.currencyEntries,
+                                      (v) => setState(() => _currencyId = v),
+                                    ),
+                                    TextField(
+                                      controller: _rate,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '汇率',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _taxRate,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '税率(%)',
+                                      ),
+                                    ),
+                                  ],
+                                  // 人员字段（按 config 显隐）
+                                  if (_cfg.hasSeller)
+                                    _employeePicker(
+                                      label: '业务员',
+                                      currentId: _sellerId,
+                                      onChanged: (id) =>
+                                          setState(() => _sellerId = id),
+                                    ),
+                                  if (_cfg.hasSender)
+                                    _employeePicker(
+                                      label: '发货人',
+                                      currentId: _senderId,
+                                      onChanged: (id) =>
+                                          setState(() => _senderId = id),
+                                    ),
+                                  // 日期字段（按 config 显隐，统一 UtenDateField）
+                                  if (_cfg.hasValidUntil)
+                                    UtenDateField(
+                                      label: '有效期',
+                                      value: _validUntil,
+                                      onChanged: (d) =>
+                                          setState(() => _validUntil = d),
+                                    ),
+                                  if (_cfg.hasDeliverDate)
+                                    UtenDateField(
+                                      label: '交货日期',
+                                      value: _deliverDate,
+                                      onChanged: (d) =>
+                                          setState(() => _deliverDate = d),
+                                    ),
+                                  if (_cfg.hasContractInfo) ...[
+                                    TextField(
+                                      controller: _contractNo,
+                                      decoration: const InputDecoration(
+                                        labelText: '合同号',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _linkPhone,
+                                      decoration: const InputDecoration(
+                                        labelText: '联系电话',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _signAddr,
+                                      decoration: const InputDecoration(
+                                        labelText: '签约地点',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _shipAddr,
+                                      decoration: const InputDecoration(
+                                        labelText: '收货地址',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _deposit,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '订金',
+                                      ),
+                                    ),
+                                  ],
+                                  if (_cfg.hasShipInfo) ...[
+                                    TextField(
+                                      controller: _shipAddr,
+                                      decoration: const InputDecoration(
+                                        labelText: '收货地址',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _shipLinkPhone,
+                                      decoration: const InputDecoration(
+                                        labelText: '联系电话',
+                                      ),
+                                    ),
+                                    TextField(
+                                      controller: _parcelCount,
+                                      keyboardType: TextInputType.number,
+                                      decoration: const InputDecoration(
+                                        labelText: '件数',
+                                      ),
+                                    ),
+                                  ],
+                                  if (_cfg.hasOutType)
+                                    TextField(
+                                      controller: _outType,
+                                      decoration: const InputDecoration(
+                                        labelText: '出库类型',
+                                      ),
+                                    ),
+                                ],
                               ),
-                              UtenDateField(
-                                label: '单据日期',
-                                required: true,
-                                value: _billDate,
-                                onChanged: (d) => setState(() => _billDate = d),
+                              const SizedBox(height: UtenSpacing.s12),
+                              TextField(
+                                controller: _remark,
+                                decoration: const InputDecoration(
+                                  labelText: '备注',
+                                ),
+                                maxLines: 2,
                               ),
-                              _dropdown('客户', _clientId, names.clientEntries,
-                                  (v) => setState(() => _clientId = v),
-                                  required: _cfg.clientRequired),
-                              if (_cfg.hasWarehouse)
-                                _dropdown('仓库', _warehouseId, names.warehouseEntries,
-                                    (v) => setState(() => _warehouseId = v)),
-                              if (_cfg.hasCurrency) ...[
-                                _dropdown(
-                                    '币种',
-                                    _currencyId,
-                                    names.currencyEntries,
-                                    (v) => setState(() => _currencyId = v)),
-                                TextField(
-                                  controller: _rate,
-                                  keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true),
-                                  decoration:
-                                      const InputDecoration(labelText: '汇率'),
-                                ),
-                                TextField(
-                                  controller: _taxRate,
-                                  keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true),
-                                  decoration:
-                                      const InputDecoration(labelText: '税率(%)'),
-                                ),
-                              ],
-                              // 人员字段（按 config 显隐）
-                              if (_cfg.hasSeller)
-                                _employeePicker(
-                                  label: '业务员',
-                                  currentId: _sellerId,
-                                  onChanged: (id) =>
-                                      setState(() => _sellerId = id),
-                                ),
-                              if (_cfg.hasSender)
-                                _employeePicker(
-                                  label: '发货人',
-                                  currentId: _senderId,
-                                  onChanged: (id) =>
-                                      setState(() => _senderId = id),
-                                ),
-                              // 日期字段（按 config 显隐，统一 UtenDateField）
-                              if (_cfg.hasValidUntil)
-                                UtenDateField(
-                                  label: '有效期',
-                                  value: _validUntil,
-                                  onChanged: (d) =>
-                                      setState(() => _validUntil = d),
-                                ),
-                              if (_cfg.hasDeliverDate)
-                                UtenDateField(
-                                  label: '交货日期',
-                                  value: _deliverDate,
-                                  onChanged: (d) =>
-                                      setState(() => _deliverDate = d),
-                                ),
-                              if (_cfg.hasContractInfo) ...[
-                                TextField(
-                                  controller: _contractNo,
-                                  decoration: const InputDecoration(
-                                      labelText: '合同号'),
-                                ),
-                                TextField(
-                                  controller: _linkPhone,
-                                  decoration: const InputDecoration(
-                                      labelText: '联系电话'),
-                                ),
-                                TextField(
-                                  controller: _signAddr,
-                                  decoration: const InputDecoration(
-                                      labelText: '签约地点'),
-                                ),
-                                TextField(
-                                  controller: _shipAddr,
-                                  decoration: const InputDecoration(
-                                      labelText: '收货地址'),
-                                ),
-                                TextField(
-                                  controller: _deposit,
-                                  keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true),
-                                  decoration:
-                                      const InputDecoration(labelText: '订金'),
-                                ),
-                              ],
-                              if (_cfg.hasShipInfo) ...[
-                                TextField(
-                                  controller: _shipAddr,
-                                  decoration: const InputDecoration(
-                                      labelText: '收货地址'),
-                                ),
-                                TextField(
-                                  controller: _shipLinkPhone,
-                                  decoration: const InputDecoration(
-                                      labelText: '联系电话'),
-                                ),
-                                TextField(
-                                  controller: _parcelCount,
-                                  keyboardType: TextInputType.number,
-                                  decoration:
-                                      const InputDecoration(labelText: '件数'),
-                                ),
-                              ],
-                              if (_cfg.hasOutType)
-                                TextField(
-                                  controller: _outType,
-                                  decoration: const InputDecoration(
-                                      labelText: '出库类型'),
-                                ),
-                            ]),
-                            const SizedBox(height: UtenSpacing.s12),
-                            TextField(
-                              controller: _remark,
-                              decoration:
-                                  const InputDecoration(labelText: '备注'),
-                              maxLines: 2,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Row(
-                      children: [
-                        Text('明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        if (_cfg.hasUpstreamLink)
-                          TextButton.icon(
-                            onPressed: _importFromUpstream,
-                            icon: const Icon(Icons.link_rounded, size: 18),
-                            label: const Text('从上游引入'),
+                      const SizedBox(height: UtenSpacing.s12),
+                      Row(
+                        children: [
+                          Text(
+                            '明细 (${_grid.length})',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                      ],
-                    ),
-                    UtenEditableGrid<SalesGridRow>(
-                      controller: _grid,
-                      columns: salesGridColumns(
-                        onPickGoods: _pickGoods,
-                        docType: widget.docType,
-                        colorEntries: names.colorEntries,
-                        unitEntries: names.unitEntries,
+                          const Spacer(),
+                          if (_cfg.hasUpstreamLink)
+                            UtenImportButton(
+                              label: '从上游引入',
+                              onPressed: _importFromUpstream,
+                            ),
+                        ],
                       ),
-                      createBlankRow: () => SalesGridRow(),
-                    ),
-                  ],
-                ),
+                      UtenEditableGrid<SalesGridRow>(
+                        controller: _grid,
+                        columns: salesGridColumns(
+                          onPickGoods: _pickGoods,
+                          docType: widget.docType,
+                          colorEntries: names.colorEntries,
+                          unitEntries: names.unitEntries,
+                        ),
+                        createBlankRow: () => SalesGridRow(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -580,7 +655,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             border: Border(
-                top: BorderSide(color: theme.colorScheme.outlineVariant)),
+              top: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
@@ -590,8 +666,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                 valueListenable: _grid.totalListenable,
                 builder: (_, total, _) => Text(
                   '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s16),
@@ -644,15 +721,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     );
   }
 
-  Widget _dropdown(String label, String? value, Map<String, String> entries,
-      ValueChanged<String?> onChanged,
-      {bool required = false}) {
+  Widget _dropdown(
+    String label,
+    String? value,
+    Map<String, String> entries,
+    ValueChanged<String?> onChanged, {
+    bool required = false,
+  }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
       items: [
-        for (final e in entries.entries) UtenDropdownItem(value: e.key, label: e.value),
+        for (final e in entries.entries)
+          UtenDropdownItem(value: e.key, label: e.value),
         if (value != null && value.isNotEmpty && !entries.containsKey(value))
           UtenDropdownItem(value: value, label: value),
       ],

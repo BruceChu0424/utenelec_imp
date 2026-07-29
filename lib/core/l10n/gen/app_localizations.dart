@@ -1538,6 +1538,60 @@ abstract class AppLocalizations {
   /// **'{count}'**
   String employeeRenewCountValue(Object count);
 
+  /// No description provided for @employeeFieldAccountStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录账号'**
+  String get employeeFieldAccountStatus;
+
+  /// No description provided for @accountStatusActive.
+  ///
+  /// In zh, this message translates to:
+  /// **'正常'**
+  String get accountStatusActive;
+
+  /// No description provided for @accountStatusLocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'已锁定'**
+  String get accountStatusLocked;
+
+  /// No description provided for @accountStatusDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get accountStatusDisabled;
+
+  /// No description provided for @accountStatusNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'未开通'**
+  String get accountStatusNone;
+
+  /// No description provided for @employeeProbationExpiring.
+  ///
+  /// In zh, this message translates to:
+  /// **'试用期将于 {date} 到期（剩 {days} 天），请及时办理转正'**
+  String employeeProbationExpiring(Object date, Object days);
+
+  /// No description provided for @employeeProbationExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'试用期已于 {date} 到期，请尽快办理转正或离职'**
+  String employeeProbationExpired(Object date);
+
+  /// No description provided for @employeeContractExpiring.
+  ///
+  /// In zh, this message translates to:
+  /// **'劳动合同将于 {date} 到期（剩 {days} 天），请及时续签'**
+  String employeeContractExpiring(Object date, Object days);
+
+  /// No description provided for @employeeContractExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'劳动合同已于 {date} 到期，请尽快处理'**
+  String employeeContractExpired(Object date);
+
   /// No description provided for @employeeEditTitle.
   ///
   /// In zh, this message translates to:
@@ -1877,7 +1931,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOffboardCompleted.
   ///
   /// In zh, this message translates to:
-  /// **'离职办理完成（Mock）'**
+  /// **'离职办理完成'**
   String get employeeOffboardCompleted;
 
   /// No description provided for @employeeOffboardLoadFailed.
@@ -1885,6 +1939,132 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'加载失败'**
   String get employeeOffboardLoadFailed;
+
+  /// No description provided for @employeeActions.
+  ///
+  /// In zh, this message translates to:
+  /// **'更多操作'**
+  String get employeeActions;
+
+  /// No description provided for @employeeActionTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'调岗'**
+  String get employeeActionTransfer;
+
+  /// No description provided for @employeeActionConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'转正'**
+  String get employeeActionConfirm;
+
+  /// No description provided for @employeeActionOffboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'办理离职'**
+  String get employeeActionOffboard;
+
+  /// No description provided for @employeeActionRehire.
+  ///
+  /// In zh, this message translates to:
+  /// **'复职'**
+  String get employeeActionRehire;
+
+  /// No description provided for @employeeActionDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除档案'**
+  String get employeeActionDelete;
+
+  /// No description provided for @employeeTransferTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工调岗'**
+  String get employeeTransferTitle;
+
+  /// No description provided for @employeeTransferFieldDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'生效日期'**
+  String get employeeTransferFieldDate;
+
+  /// No description provided for @employeeTransferPickDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择日期'**
+  String get employeeTransferPickDate;
+
+  /// No description provided for @employeeTransferFieldRemark.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注'**
+  String get employeeTransferFieldRemark;
+
+  /// No description provided for @employeeTransferDateRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择生效日期'**
+  String get employeeTransferDateRequired;
+
+  /// No description provided for @employeeTransferSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'调岗完成'**
+  String get employeeTransferSuccess;
+
+  /// No description provided for @employeeConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认转正？'**
+  String get employeeConfirmTitle;
+
+  /// No description provided for @employeeConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'转正后员工状态将变为「在职」。'**
+  String get employeeConfirmBody;
+
+  /// No description provided for @employeeConfirmSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'转正完成'**
+  String get employeeConfirmSuccess;
+
+  /// No description provided for @employeeRehireTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认复职？'**
+  String get employeeRehireTitle;
+
+  /// No description provided for @employeeRehireBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'复职后员工状态将恢复为「在职」，其登录账号将重新启用（需重新登录）。'**
+  String get employeeRehireBody;
+
+  /// No description provided for @employeeRehireSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'复职完成'**
+  String get employeeRehireSuccess;
+
+  /// No description provided for @employeeDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认删除该员工档案？'**
+  String get employeeDeleteTitle;
+
+  /// No description provided for @employeeDeleteBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除后其登录账号将被停用，此操作不可恢复。'**
+  String get employeeDeleteBody;
+
+  /// No description provided for @employeeDeleteSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工档案已删除'**
+  String get employeeDeleteSuccess;
 
   /// No description provided for @resignTypeVoluntary.
   ///
@@ -2041,6 +2221,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'离职'**
   String get historyEventResign;
+
+  /// No description provided for @historyEventRehire.
+  ///
+  /// In zh, this message translates to:
+  /// **'复职'**
+  String get historyEventRehire;
 
   /// No description provided for @departmentTitle.
   ///

@@ -46,5 +46,6 @@ public class ClientDetail {
     private BigDecimal credit;      // 信用额度
     private BigDecimal initTotal;   // 期初应收
     private Integer tday;           // 结算天数
+    private BigDecimal creditFloor; // 铺底额（V121，应收管控下限）
     private String remark;          // 备注
 }

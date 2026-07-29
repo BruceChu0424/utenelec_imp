@@ -19,7 +19,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../models/payment_style_node.dart';
@@ -119,30 +119,29 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   }
 
   Future<bool> _doCreate(_EditResult r) async {
-    try {
-      await ref.read(paymentStyleRepositoryProvider).create(PaymentStyleSaveInput(
-            code: '', // 服务端自动生成（SK 前缀），前端不收集
-            name: r.name,
-            category: _category.value,
-            parentId: r.parentId,
-            receipt: r.receipt,
-            payment: r.payment,
-            departmental: r.departmental,
-            status: r.status,
-          ));
-      if (!mounted) return false;
-      context.appSuccess('类别已创建');
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(paymentStyleRepositoryProvider)
+            .create(
+              PaymentStyleSaveInput(
+                code: '', // 服务端自动生成（SK 前缀），前端不收集
+                name: r.name,
+                category: _category.value,
+                parentId: r.parentId,
+                receipt: r.receipt,
+                payment: r.payment,
+                departmental: r.departmental,
+                status: r.status,
+              ),
+            );
+      },
+      success: '类别已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   void _showEdit(PaymentStyleDetail detail) {
@@ -158,31 +157,28 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   }
 
   Future<bool> _doUpdate(String id, _EditResult r) async {
-    try {
-      await ref.read(paymentStyleRepositoryProvider).update(
-            id,
-            PaymentStyleUpdateInput(
-              name: r.name,
-              parentId: r.parentId,
-              receipt: r.receipt,
-              payment: r.payment,
-              departmental: r.departmental,
-              status: r.status,
-            ),
-          );
-      if (!mounted) return false;
-      context.appSuccess('类别已更新');
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试');
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(paymentStyleRepositoryProvider)
+            .update(
+              id,
+              PaymentStyleUpdateInput(
+                name: r.name,
+                parentId: r.parentId,
+                receipt: r.receipt,
+                payment: r.payment,
+                departmental: r.departmental,
+                status: r.status,
+              ),
+            );
+      },
+      success: '类别已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   Future<void> _delete(PaymentStyleNode node) async {
@@ -190,9 +186,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除类别'),
-        content: Text(
-          '确定删除「${node.name}」吗？若存在子类别或被引用，删除可能失败。',
-        ),
+        content: Text('确定删除「${node.name}」吗？若存在子类别或被引用，删除可能失败。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -207,19 +201,17 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(paymentStyleRepositoryProvider).delete(node.id);
-      if (!mounted) return;
-      context.appSuccess('类别已删除');
-      if (_selectedId == node.id) _selectedId = null;
-      await _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试');
-    }
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(paymentStyleRepositoryProvider).delete(node.id);
+      },
+      success: '类别已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    if (_selectedId == node.id) _selectedId = null;
+    await _load();
   }
 
   // ---- 树渲染 -------------------------------------------------------------
@@ -243,7 +235,9 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
               child: Text(
                 '${node.children.length}',
                 style: TextStyle(
-                    fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           if (_canEdit)
@@ -251,8 +245,11 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
               onTap: () => _delete(node),
               child: Padding(
                 padding: const EdgeInsets.all(2),
-                child: Icon(Icons.delete_outline,
-                    size: 16, color: theme.colorScheme.onSurfaceVariant),
+                child: Icon(
+                  Icons.delete_outline,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
         ],
@@ -266,8 +263,9 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bp = context.breakpoint;
-    final selected =
-        _selectedId == null ? null : _findById(_tree, _selectedId!);
+    final selected = _selectedId == null
+        ? null
+        : _findById(_tree, _selectedId!);
 
     Widget body;
     if (_loading) {
@@ -285,7 +283,11 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s4),
+              UtenSpacing.s8,
+              UtenSpacing.s8,
+              UtenSpacing.s8,
+              UtenSpacing.s4,
+            ),
             child: Wrap(
               spacing: 6,
               children: [
@@ -302,19 +304,19 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           Expanded(
             child: bp == UtenBreakpoint.compact
                 ? (selected == null
-                    ? const UtenEmpty(
-                        icon: Icons.account_tree_outlined,
-                        message: '请选择类别查看详情',
-                      )
-                    : UtenContentContainer(
-                        child: _DetailPane(
-                          nodeId: selected.id,
-                          canEdit: _canEdit,
-                          onAddChild: () => _showCreate(parent: selected),
-                          onEdit: _showEdit,
-                          onDelete: () => _delete(selected),
-                        ),
-                      ))
+                      ? const UtenEmpty(
+                          icon: Icons.account_tree_outlined,
+                          message: '请选择类别查看详情',
+                        )
+                      : UtenContentContainer(
+                          child: _DetailPane(
+                            nodeId: selected.id,
+                            canEdit: _canEdit,
+                            onAddChild: () => _showCreate(parent: selected),
+                            onEdit: _showEdit,
+                            onDelete: () => _delete(selected),
+                          ),
+                        ))
                 : Row(
                     children: [
                       SizedBox(
@@ -330,23 +332,23 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                               ),
                       ),
                       Container(
-                          width: 1,
-                          color: theme.colorScheme.outlineVariant),
+                        width: 1,
+                        color: theme.colorScheme.outlineVariant,
+                      ),
                       Expanded(
                         child: selected == null
                             ? Center(
                                 child: Text(
                                   '请选择左侧类别查看详情',
                                   style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme
-                                          .colorScheme.onSurfaceVariant),
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               )
                             : _DetailPane(
                                 nodeId: selected.id,
                                 canEdit: _canEdit,
-                                onAddChild: () =>
-                                    _showCreate(parent: selected),
+                                onAddChild: () => _showCreate(parent: selected),
                                 onEdit: _showEdit,
                                 onDelete: () => _delete(selected),
                               ),
@@ -420,7 +422,9 @@ class _DetailPaneState extends ConsumerState<_DetailPane> {
       _error = null;
     });
     try {
-      final d = await ref.read(paymentStyleRepositoryProvider).detail(widget.nodeId);
+      final d = await ref
+          .read(paymentStyleRepositoryProvider)
+          .detail(widget.nodeId);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -454,24 +458,29 @@ class _DetailPaneState extends ConsumerState<_DetailPane> {
     final d = _detail;
     if (d == null) {
       return Center(
-        child: Text(
-          '未选择类别',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        child: Text('未选择类别', style: Theme.of(context).textTheme.bodyMedium),
       );
     }
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(hPad, UtenSpacing.s16, hPad, UtenSpacing.s16),
+      padding: EdgeInsets.fromLTRB(
+        hPad,
+        UtenSpacing.s16,
+        hPad,
+        UtenSpacing.s16,
+      ),
       child: MasterDetailCard(
         title: d.name,
         icon: Icons.account_tree_outlined,
-        subtitle: '编码 ${d.code} · ${PaymentStyleCategory.labelOf(d.category)} · 层级 L${d.level}',
+        subtitle:
+            '编码 ${d.code} · ${PaymentStyleCategory.labelOf(d.category)} · 层级 L${d.level}',
         stats: [
           MasterDetailStat('子类别数', '${d.childCount}'),
           MasterDetailStat('父级', d.parentName),
-          MasterDetailStat('收款/付款',
-              '${d.receipt ? '是' : '否'} / ${d.payment ? '是' : '否'}'),
+          MasterDetailStat(
+            '收款/付款',
+            '${d.receipt ? '是' : '否'} / ${d.payment ? '是' : '否'}',
+          ),
           MasterDetailStat('状态', d.status),
           MasterDetailStat('旧编码', d.legacyId?.toString()),
         ],
@@ -578,14 +587,16 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
       return;
     }
     setState(() => _formError = null);
-    final ok = await widget.onSubmit(_EditResult(
-      name: _nameCtl.text.trim(),
-      parentId: _parent?.id,
-      receipt: _receipt,
-      payment: _payment,
-      departmental: _departmental,
-      status: _status,
-    ));
+    final ok = await widget.onSubmit(
+      _EditResult(
+        name: _nameCtl.text.trim(),
+        parentId: _parent?.id,
+        receipt: _receipt,
+        payment: _payment,
+        departmental: _departmental,
+        status: _status,
+      ),
+    );
     if (!mounted) return;
     if (ok) Navigator.of(context).pop();
   }
@@ -659,8 +670,13 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
             ),
             if (_formError != null) ...[
               const SizedBox(height: UtenSpacing.s8),
-              Text(_formError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12)),
+              Text(
+                _formError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
             ],
           ],
         ),
@@ -671,23 +687,24 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'),
         ),
-        UtenButton(
-          onPressed: _submit,
-          child: Text(_isEdit ? '保存' : '创建'),
-        ),
+        UtenButton(onPressed: _submit, child: Text(_isEdit ? '保存' : '创建')),
       ],
     );
   }
 
   /// 树扁平化为下拉项（带缩进表示层级）。
-  List<DropdownMenuItem<String?>> _flatOptions(List<PaymentStyleNode> nodes,
-      {int depth = 0}) {
+  List<DropdownMenuItem<String?>> _flatOptions(
+    List<PaymentStyleNode> nodes, {
+    int depth = 0,
+  }) {
     final out = <DropdownMenuItem<String?>>[];
     for (final n in nodes) {
-      out.add(DropdownMenuItem<String?>(
-        value: n.id,
-        child: Text('${'  ' * depth}${n.name}'),
-      ));
+      out.add(
+        DropdownMenuItem<String?>(
+          value: n.id,
+          child: Text('${'  ' * depth}${n.name}'),
+        ),
+      );
       if (n.hasChildren) {
         out.addAll(_flatOptions(n.children, depth: depth + 1));
       }

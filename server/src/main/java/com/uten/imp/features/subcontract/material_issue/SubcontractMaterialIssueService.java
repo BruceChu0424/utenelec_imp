@@ -65,6 +65,8 @@ public class SubcontractMaterialIssueService {
     private final StockService stockService;
     private final TxSessionVars tx;
     private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
 
     @Transactional(readOnly = true)
@@ -103,6 +105,7 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         SubcontractMaterialIssue r = new SubcontractMaterialIssue();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         issueRepo.save(r);
         List<MaterialIssueItemDto> items = saveItems(r, req.getItems());
@@ -144,6 +147,7 @@ public class SubcontractMaterialIssueService {
     public MaterialIssueDetail approve(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssue(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -170,6 +174,7 @@ public class SubcontractMaterialIssueService {
         }
         // 不立应付：材料发出不是加工费（加工费走进仓单 BOM 成本）
         r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         issueRepo.save(r);
         return detail(id);
     }
@@ -179,6 +184,7 @@ public class SubcontractMaterialIssueService {
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssue(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -308,7 +314,9 @@ public class SubcontractMaterialIssueService {
                 r.getSupplierId(), r.getWarehouseId(), r.getWorkerId(), r.getMakerId(), r.getApproverId(),
                 r.getDeliverDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), r.getSourceDocNo(), items, r.getOperatorLegacyId(), r.getOperatorName(),
-                r.getMakerLegacyId(), r.getMakerName(), r.getApproverLegacyId(), r.getApproverName());
+                r.getMakerLegacyId(),
+                (r.getMakerName() != null && !r.getMakerName().isBlank()) ? r.getMakerName() : nameResolver.nameOf(r.getMakerId()),
+                r.getApproverLegacyId(), r.getApproverName(), r.getCreatedAt());
     }
 
     private SubcontractMaterialIssue requireIssue(UUID id) {

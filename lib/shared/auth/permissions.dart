@@ -125,6 +125,7 @@ abstract final class Perm {
   static const salesOrderEdit = 'sales_order:edit';
   static const salesShipmentView = 'sales_shipment:view';
   static const salesShipmentEdit = 'sales_shipment:edit';
+  static const salesShipmentReject = 'sales_shipment:reject';
   static const salesOtherShipmentView = 'sales_other_shipment:view';
   static const salesOtherShipmentEdit = 'sales_other_shipment:edit';
   static const salesReturnView = 'sales_return:view';

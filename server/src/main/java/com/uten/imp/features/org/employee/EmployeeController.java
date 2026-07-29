@@ -74,6 +74,12 @@ public class EmployeeController {
         commandService.confirm(id);
     }
 
+    @PostMapping("/{id}/rehire")
+    @PreAuthorize("hasAuthority('employee:edit')")
+    public void rehire(@PathVariable UUID id) {
+        commandService.rehire(id);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:delete')")
     public void delete(@PathVariable UUID id) {

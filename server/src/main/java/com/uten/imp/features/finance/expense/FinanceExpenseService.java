@@ -59,8 +59,10 @@ public class FinanceExpenseService {
     private final FinanceExpenseItemRepository itemRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final com.uten.imp.features.finance.gl.GlPostingService glPosting;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceExpenseListItem> list(FinanceExpenseQueryFilter f, int page, int size, String sort, String order) {
@@ -99,7 +101,7 @@ public class FinanceExpenseService {
         FinanceExpense e = new FinanceExpense();
         applyHeader(req, e);
         e.setStatus(STATUS_DRAFT);
-        e.setMakerId(currentUser.requireId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
+        e.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         expenseRepo.save(e);
         List<FinanceExpenseItemDto> items = saveItems(e, req.getItems());
         applyTotals(e, items);
@@ -139,18 +141,23 @@ public class FinanceExpenseService {
     public FinanceExpenseDetail approve(UUID id) {
         tx.bind();
         FinanceExpense e = require(id);
+        em.lock(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (e.getStatus() == null || e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         if (e.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "费用单需指定付款账户");
         }
-        e.setApproverId(currentUser.requireId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        e.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         BigDecimal amountLocal = nz(e.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(e.getAccountId(), amountLocal);
         }
         insertReconciliation(e, amountLocal);
+        // C6：审核即自动过总账分录（借费用科目/贷付款账户），gl_status 置「已过账待确认」
+        UUID voucherId = glPosting.postExpenseDoc(id);
+        e.setGlVoucherId(voucherId);
+        e.setGlStatus((short) 1);
         e.setStatus(STATUS_APPROVED);
         expenseRepo.save(e);
         return detail(id);
@@ -161,6 +168,7 @@ public class FinanceExpenseService {
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
         FinanceExpense e = require(id);
+        em.lock(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -169,7 +177,28 @@ public class FinanceExpenseService {
             adjustAccount(e.getAccountId(), amountLocal.negate());
         }
         deleteReconciliation(e.getId());
+        // C6：红冲对称删总账分录，回到未过账
+        glPosting.removeExpenseDoc(e.getBillNo());
+        e.setGlVoucherId(null);
+        e.setGlStatus((short) 0);
         e.setStatus(STATUS_REVERSED);
+        expenseRepo.save(e);
+        return detail(id);
+    }
+
+    /** C6 财务确认：已过账（gl_status=1）的已审核费用单确认入账 → gl_status=2。 */
+    @Transactional
+    public FinanceExpenseDetail glConfirm(UUID id) {
+        tx.bind();
+        FinanceExpense e = require(id);
+        em.lock(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可财务确认");
+        }
+        if (e.getGlStatus() == null || e.getGlStatus() != 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已过账待确认的单据可财务确认");
+        }
+        e.setGlStatus((short) 2);
         expenseRepo.save(e);
         return detail(id);
     }
@@ -297,7 +326,8 @@ public class FinanceExpenseService {
         return new FinanceExpenseDetail(e.getId(), e.getLegacyId(), e.getBillNo(), e.getBillDate(),
                 e.getAccountId(), e.getCounterpartAccountId(), e.getCurrencyId(), e.getExchangeRate(),
                 e.getAmountOriginal(), e.getAmountLocal(), e.getOperatorId(), e.getMakerId(), e.getApproverId(),
-                e.getRemark(), e.getStatus(), e.isClosed(), items);
+                e.getRemark(), e.getStatus(), e.isClosed(), e.getGlStatus(), items,
+                nameResolver.nameOf(e.getMakerId()), e.getCreatedAt());
     }
 
     private FinanceExpense require(UUID id) {

@@ -14,6 +14,7 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 
@@ -64,7 +65,11 @@ class SubcontractHubPage extends StatelessWidget {
 
   /// 一个分组：标题 + 卡片网格。
   Widget _section(
-      BuildContext context, ThemeData theme, String title, List<_Entry> entries) {
+    BuildContext context,
+    ThemeData theme,
+    String title,
+    List<_Entry> entries,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
@@ -72,10 +77,15 @@ class SubcontractHubPage extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(
-                left: UtenSpacing.s4, bottom: UtenSpacing.s8),
-            child: Text(title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700)),
+              left: UtenSpacing.s4,
+              bottom: UtenSpacing.s8,
+            ),
+            child: Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           UtenResponsiveGrid(
             itemCount: entries.length,
@@ -101,15 +111,15 @@ class _Entry {
   });
 
   _Entry.fromCfg(SubcontractDocConfig cfg)
-      : this(
-          icon: cfg.icon,
-          label: cfg.label,
-          description: cfg.shortLabel,
-          location: cfg.skipListOnCreate
-              ? SubcontractRoute.newList(cfg.type.pathSegment)
-              : SubcontractRoute.list(cfg.type.pathSegment),
-          enabled: cfg.enabled,
-        );
+    : this(
+        icon: cfg.icon,
+        label: cfg.label,
+        description: cfg.shortLabel,
+        location: cfg.skipListOnCreate
+            ? SubcontractRoute.newList(cfg.type.pathSegment)
+            : SubcontractRoute.list(cfg.type.pathSegment),
+        enabled: cfg.enabled,
+      );
 
   final IconData icon;
   final String label;
@@ -125,8 +135,9 @@ class _EntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color =
-        entry.enabled ? theme.colorScheme.primary : theme.colorScheme.outline;
+    final color = entry.enabled
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outline;
     return Material(
       type: MaterialType.transparency,
       borderRadius: UtenRadius.lgAll,
@@ -134,12 +145,13 @@ class _EntryTile extends StatelessWidget {
       child: InkWell(
         onTap: entry.enabled
             ? () => goFrom(context, entry.location)
-            : () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('该单据类型暂未启用（老库无数据）'))),
+            : () => context.appInfo('该单据类型暂未启用（老库无数据）'),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(
-              vertical: UtenSpacing.s20, horizontal: UtenSpacing.s16),
+            vertical: UtenSpacing.s20,
+            horizontal: UtenSpacing.s16,
+          ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: UtenRadius.lgAll,
@@ -163,30 +175,42 @@ class _EntryTile extends StatelessWidget {
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.outlineVariant
-                            .withValues(alpha: 0.4),
+                        color: theme.colorScheme.outlineVariant.withValues(
+                          alpha: 0.4,
+                        ),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text('未启用',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant)),
+                      child: Text(
+                        '未启用',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   ],
                 ],
               ),
               const SizedBox(height: UtenSpacing.s12),
-              Text(entry.label,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: entry.enabled
-                          ? null
-                          : theme.colorScheme.onSurfaceVariant)),
+              Text(
+                entry.label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: entry.enabled
+                      ? null
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(entry.description,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                entry.description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),

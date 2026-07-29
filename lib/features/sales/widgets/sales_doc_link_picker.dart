@@ -60,15 +60,19 @@ Future<List<SalesLinkedItem>?> showSalesDocLinkPicker(
   WidgetRef ref,
   SalesDocConfig cfg,
 ) {
-  final sheet =
-      _UpstreamImportSheet(cfg: cfg, upstreamType: _upstreamType(cfg));
+  final sheet = _UpstreamImportSheet(
+    cfg: cfg,
+    upstreamType: _upstreamType(cfg),
+  );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<List<SalesLinkedItem>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
@@ -93,8 +97,10 @@ Future<List<SalesLinkedItem>?> showSalesDocLinkPicker(
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
       child: child,
     ),
   );
@@ -170,9 +176,10 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       _docsError = null;
     });
     try {
-      final r = await ref.read(salesRepositoryProvider(_upType)).list(
+      final r = await ref
+          .read(salesRepositoryProvider(_upType))
+          .list(
             page: page,
-            size: 20,
             // 业务约束：只引入已审单（草稿/红冲不可引入）。
             filter: SalesDocFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -223,8 +230,9 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       _upDetail = null;
     });
     try {
-      final detail =
-          await ref.read(salesRepositoryProvider(_upType)).detail(d.id);
+      final detail = await ref
+          .read(salesRepositoryProvider(_upType))
+          .detail(d.id);
       final goodsIds = detail.items
           .map((e) => e.goodsId)
           .whereType<String>()
@@ -287,19 +295,23 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       if (it.goodsId == null) continue;
       final q = double.tryParse(row.qty.text) ?? 0;
       if (q <= 0) continue;
-      out.add(SalesLinkedItem(
-        goodsId: it.goodsId!,
-        qty: q,
-        price: it.price,
-        orderItemId: widget.cfg.linkToOrderItem && _upType == SalesDocType.order
-            ? it.id
-            : null,
-        outItemId: widget.cfg.linkToOutItem && _upType == SalesDocType.shipment
-            ? it.id
-            : null,
-        colorId: it.colorId,
-        unitId: it.unitId,
-      ));
+      out.add(
+        SalesLinkedItem(
+          goodsId: it.goodsId!,
+          qty: q,
+          price: it.price,
+          orderItemId:
+              widget.cfg.linkToOrderItem && _upType == SalesDocType.order
+              ? it.id
+              : null,
+          outItemId:
+              widget.cfg.linkToOutItem && _upType == SalesDocType.shipment
+              ? it.id
+              : null,
+          colorId: it.colorId,
+          unitId: it.unitId,
+        ),
+      );
     }
     Navigator.of(context).pop(out);
   }
@@ -320,9 +332,10 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
             Expanded(
               child: inStep2
                   ? (_loadingItems
-                      ? const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2.5))
-                      : _buildStep2(theme, names))
+                        ? const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          )
+                        : _buildStep2(theme, names))
                   : _buildStep1(theme, names),
             ),
           ],
@@ -331,12 +344,21 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
     );
   }
 
-  Widget _buildHeader(ThemeData theme, bool inStep2, SalesMasterNameService names) {
+  Widget _buildHeader(
+    ThemeData theme,
+    bool inStep2,
+    SalesMasterNameService names,
+  ) {
     final title = inStep2
         ? '选择明细（${names.client(_upDetail!.clientId)}）'
         : '从${_upTypeLabel()}引入';
     return Padding(
-      padding: const EdgeInsets.fromLTRB(UtenSpacing.s8, UtenSpacing.s12, UtenSpacing.s4, UtenSpacing.s8),
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s8,
+        UtenSpacing.s12,
+        UtenSpacing.s4,
+        UtenSpacing.s8,
+      ),
       child: Row(
         children: [
           if (inStep2)
@@ -348,8 +370,9 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           Expanded(
             child: Text(
               title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           IconButton(
@@ -368,7 +391,11 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s12, UtenSpacing.s12, UtenSpacing.s12, UtenSpacing.s8),
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            UtenSpacing.s12,
+            UtenSpacing.s8,
+          ),
           child: Row(
             children: [
               Expanded(
@@ -379,7 +406,8 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
                     hintText: '搜索单据号', // TODO(l10n): 补 arb
                     isDense: true,
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   onChanged: _onKeywordChanged,
                 ),
@@ -391,14 +419,17 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
                   label: '客户',
                   value: _clientId ?? '',
                   items: [
-                    UtenDropdownItem(
-                        value: '', label: '全部客户'), // TODO(l10n): 补 arb
+                    const UtenDropdownItem(
+                      value: '',
+                      label: '全部客户',
+                    ), // TODO(l10n): 补 arb
                     for (final e in names.clientEntries.entries)
                       UtenDropdownItem(value: e.key, label: e.value),
                   ],
                   onChanged: (v) {
-                    setState(() => _clientId =
-                        (v == null || v.isEmpty) ? null : v);
+                    setState(
+                      () => _clientId = (v == null || v.isEmpty) ? null : v,
+                    );
                     _loadDocs(1);
                   },
                 ),
@@ -433,35 +464,43 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   }
 
   List<MasterColumnDef<SalesDocListItem>> _docColumns(
-          SalesMasterNameService names) =>
-      [
-        MasterColumnDef(
-            key: 'billNo', label: '单据号', width: 140, value: (d) => d.billNo),
-        MasterColumnDef(
-            key: 'billDate',
-            label: '日期',
-            width: 110,
-            type: 'date',
-            sortable: true,
-            value: (d) => (d.billDate ?? '').substring(0, 10)),
-        MasterColumnDef(
-            key: 'client',
-            label: '客户',
-            width: 200,
-            value: (d) => names.client(d.clientId)),
-        MasterColumnDef(
-            key: 'total',
-            label: '合计',
-            width: 120,
-            type: 'money',
-            sortable: true,
-            value: (d) => d.totalLocal?.toStringAsFixed(2)),
-        MasterColumnDef(
-            key: 'status',
-            label: '状态',
-            width: 90,
-            value: (d) => salesStatusLabel(d.status)),
-      ];
+    SalesMasterNameService names,
+  ) => [
+    MasterColumnDef(
+      key: 'billNo',
+      label: '单据号',
+      width: 140,
+      value: (d) => d.billNo,
+    ),
+    MasterColumnDef(
+      key: 'billDate',
+      label: '日期',
+      width: 110,
+      type: 'date',
+      sortable: true,
+      value: (d) => (d.billDate ?? '').substring(0, 10),
+    ),
+    MasterColumnDef(
+      key: 'client',
+      label: '客户',
+      width: 200,
+      value: (d) => names.client(d.clientId),
+    ),
+    MasterColumnDef(
+      key: 'total',
+      label: '合计',
+      width: 120,
+      type: 'money',
+      sortable: true,
+      value: (d) => d.totalLocal?.toStringAsFixed(2),
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 90,
+      value: (d) => salesStatusLabel(d.status),
+    ),
+  ];
 
   // ---- Step2 ------------------------------------------------------------
 
@@ -470,18 +509,25 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s12, UtenSpacing.s8, UtenSpacing.s12, UtenSpacing.s4),
+            UtenSpacing.s12,
+            UtenSpacing.s8,
+            UtenSpacing.s12,
+            UtenSpacing.s4,
+          ),
           child: Row(
             children: [
               TextButton(
-                  onPressed: () => _setSelectedAll(true),
-                  child: const Text('全选')), // TODO(l10n): 补 arb
+                onPressed: () => _setSelectedAll(true),
+                child: const Text('全选'),
+              ), // TODO(l10n): 补 arb
               TextButton(
-                  onPressed: _invertSelection,
-                  child: const Text('反选')), // TODO(l10n): 补 arb
+                onPressed: _invertSelection,
+                child: const Text('反选'),
+              ), // TODO(l10n): 补 arb
               TextButton(
-                  onPressed: () => _setSelectedAll(false),
-                  child: const Text('取消全选')), // TODO(l10n): 补 arb
+                onPressed: () => _setSelectedAll(false),
+                child: const Text('取消全选'),
+              ), // TODO(l10n): 补 arb
             ],
           ),
         ),
@@ -495,8 +541,9 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
               // showAddRow:false → 不显示"添加行"栏（这里是选明细不是编辑）。
               showAddRow: false,
               showRowDelete: false,
-              createBlankRow: () =>
-                  _UpstreamItemRow(SalesDocItem(id: null)), // 不会被调用
+              createBlankRow: () => _UpstreamItemRow(
+                const SalesDocItem(id: null),
+              ), // 不会被调用
               emptyMessage: '该单据无明细', // TODO(l10n): 补 arb
             ),
           ),
@@ -512,16 +559,20 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border:
-              Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            Text('已选 $n 行', // TODO(l10n): 补 arb
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              '已选 $n 行', // TODO(l10n): 补 arb
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(width: UtenSpacing.s12),
             FilledButton.icon(
               onPressed: n == 0 ? null : _submit,
@@ -535,70 +586,69 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   }
 
   List<EditableGridColumn<_UpstreamItemRow>> _itemColumns(
-          SalesMasterNameService names) =>
-      [
-        EditableGridColumn<_UpstreamItemRow>(
-          key: 'sel',
-          label: '',
-          width: 50,
-          cellBuilder: (context, row) => ValueListenableBuilder<bool>(
-            valueListenable: row.selectedNotifier,
-            builder: (_, sel, __) => Checkbox(
-              value: sel,
-              onChanged: (v) => _toggleRow(row, v ?? false),
-            ),
-          ),
-        ),
-        EditableGridColumn<_UpstreamItemRow>(
-          key: 'goods',
-          label: '货品',
-          width: 200,
-          cellBuilder: (context, row) =>
-              Text(names.goods(row.item.goodsId)),
-        ),
-        EditableGridColumn<_UpstreamItemRow>(
-          key: 'color',
-          label: '颜色',
-          width: 90,
-          cellBuilder: (context, row) => Text(names.color(row.item.colorId)),
-        ),
-        EditableGridColumn<_UpstreamItemRow>(
-          key: 'unit',
-          label: '单位',
-          width: 80,
-          cellBuilder: (context, row) => Text(names.unit(row.item.unitId)),
-        ),
-        EditableGridColumn<_UpstreamItemRow>(
-          key: 'qty',
-          label: _upType == SalesDocType.order ? '订货数' : '出货数',
-          width: 90,
-          numeric: true,
-          cellBuilder: (context, row) =>
-              Text((row.item.qty ?? 0).toStringAsFixed(1)),
-        ),
-        EditableGridColumn<_UpstreamItemRow>(
-          key: 'shipped',
-          label: _upType == SalesDocType.order ? '已发' : '已退',
-          width: 90,
-          numeric: true,
-          cellBuilder: (context, row) => Text((_upType == SalesDocType.order
-              ? (row.item.shippedQty ?? 0)
-              : (row.item.returnedQty ?? 0)).toStringAsFixed(1)),
-        ),
-        EditableGridColumn<_UpstreamItemRow>(
-          key: 'thisQty',
-          label: '本次数量',
-          width: 120,
-          numeric: true,
-          cellBuilder: (context, row) => TextField(
-            controller: row.qty,
-            textAlign: TextAlign.right,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(isDense: true, hintText: '0'),
-          ),
-        ),
-      ];
+    SalesMasterNameService names,
+  ) => [
+    EditableGridColumn<_UpstreamItemRow>(
+      key: 'sel',
+      label: '',
+      width: 50,
+      cellBuilder: (context, row) => ValueListenableBuilder<bool>(
+        valueListenable: row.selectedNotifier,
+        builder: (_, sel, _) =>
+            Checkbox(value: sel, onChanged: (v) => _toggleRow(row, v ?? false)),
+      ),
+    ),
+    EditableGridColumn<_UpstreamItemRow>(
+      key: 'goods',
+      label: '货品',
+      width: 200,
+      cellBuilder: (context, row) => Text(names.goods(row.item.goodsId)),
+    ),
+    EditableGridColumn<_UpstreamItemRow>(
+      key: 'color',
+      label: '颜色',
+      width: 90,
+      cellBuilder: (context, row) => Text(names.color(row.item.colorId)),
+    ),
+    EditableGridColumn<_UpstreamItemRow>(
+      key: 'unit',
+      label: '单位',
+      width: 80,
+      cellBuilder: (context, row) => Text(names.unit(row.item.unitId)),
+    ),
+    EditableGridColumn<_UpstreamItemRow>(
+      key: 'qty',
+      label: _upType == SalesDocType.order ? '订货数' : '出货数',
+      width: 90,
+      numeric: true,
+      cellBuilder: (context, row) =>
+          Text((row.item.qty ?? 0).toStringAsFixed(1)),
+    ),
+    EditableGridColumn<_UpstreamItemRow>(
+      key: 'shipped',
+      label: _upType == SalesDocType.order ? '已发' : '已退',
+      width: 90,
+      numeric: true,
+      cellBuilder: (context, row) => Text(
+        (_upType == SalesDocType.order
+                ? (row.item.shippedQty ?? 0)
+                : (row.item.returnedQty ?? 0))
+            .toStringAsFixed(1),
+      ),
+    ),
+    EditableGridColumn<_UpstreamItemRow>(
+      key: 'thisQty',
+      label: '本次数量',
+      width: 120,
+      numeric: true,
+      cellBuilder: (context, row) => TextField(
+        controller: row.qty,
+        textAlign: TextAlign.right,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      ),
+    ),
+  ];
 
   String _upTypeLabel() {
     switch (_upType) {

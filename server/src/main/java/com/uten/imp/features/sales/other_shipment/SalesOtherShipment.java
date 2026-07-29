@@ -57,6 +57,9 @@ public class SalesOtherShipment extends SoftDeletableEntity {
 
     @Column(name = "seller_id")
     private UUID sellerId;
+    /** 归属业务员（V91：每个销售只看自己的单据；NULL=公共）。 */
+    @Column(name = "owner_employee_id")
+    private java.util.UUID ownerEmployeeId;
 
     @Column(name = "sender_id")
     private UUID senderId;

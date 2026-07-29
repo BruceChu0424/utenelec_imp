@@ -12,7 +12,7 @@ cur.execute("SELECT id,login_account FROM users WHERE status='active' AND COALES
 def b64(b): return base64.urlsafe_b64encode(b).rstrip(b'=')
 def sign(p):
     h=b64(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode()); pl=b64(json.dumps(p,separators=(',',':')).encode())
-    return (h+b'.'+pl+b'.'+b64(hmac.new(SECRET,h+pl,hashlib.sha256).digest())).decode()
+    return (h+b'.'+pl+b'.'+b64(hmac.new(SECRET,h+b'.'+pl,hashlib.sha256).digest())).decode()
 now=int(time.time())
 PERMS=['stock:view','stock_doc:view','stock_doc:edit','purchase_report:view','goods:view','supplier:view','warehouse:view']
 tok=sign({'sub':str(UID),'typ':'staff','acc':ACC,'perms':PERMS,'roles':[],'mcp':False,'iss':'uten-imp','iat':now,'exp':now+3600})

@@ -62,12 +62,13 @@ public class StockReportService {
 
     private final EntityManager em;
     private final SystemSettingsService settings;
+    private final com.uten.imp.features.stock.StockQueryService stockQueryService;
 
     // ======================== 明细 / 汇总 派发 ========================
 
     @Transactional(readOnly = true)
     public ReportTableResponse detail(String docType, String billNo, UUID warehouseId, UUID clientId, Short status,
-                                      LocalDate dateFrom, LocalDate dateTo, String kw,
+                                      UUID departmentId, LocalDate dateFrom, LocalDate dateTo, String kw,
                                       Map<String, String> facets, int page, int size, String sort, String order) {
         String dt = normalizeDocType(docType);
         // 末尾追加隐藏 __srcId（= 单据头 stock_documents.id）：行点击跳该单据编辑页。
@@ -77,14 +78,14 @@ public class StockReportService {
         String fromJoin = DETAIL_FROM;
         WhereBuilder w = new WhereBuilder(
                 "WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND i.bill_type = '" + dt + "'");
-        addCommonFilters(w, billNo, warehouseId, clientId, status, dateFrom, dateTo, kw, true);
+        addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, true);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
                 "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST", commonFacets(), facets, page, size, sort, order);
     }
 
     @Transactional(readOnly = true)
     public ReportTableResponse summary(String docType, String billNo, UUID warehouseId, UUID clientId, Short status,
-                                       LocalDate dateFrom, LocalDate dateTo, String kw,
+                                       UUID departmentId, LocalDate dateFrom, LocalDate dateTo, String kw,
                                        Map<String, String> facets, int page, int size, String sort, String order) {
         String dt = normalizeDocType(docType);
         // 末尾追加隐藏 __srcId（= 单据头 stock_documents.id）：汇总一行一单，行点击跳该单据编辑页。
@@ -94,7 +95,7 @@ public class StockReportService {
         String fromJoin = SUMMARY_FROM;
         WhereBuilder w = new WhereBuilder(
                 "WHERE COALESCE(o.is_deleted,false)=false AND o.doc_type = '" + dt + "'");
-        addCommonFilters(w, billNo, warehouseId, clientId, status, dateFrom, dateTo, kw, false);
+        addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, false);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
                 "o.bill_date DESC, o.bill_no", commonFacets(), facets, page, size, sort, order);
     }
@@ -133,6 +134,7 @@ public class StockReportService {
             case DOC_DRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
+                    c("departmentName", "领料车间", "text", 110, "dp.name"),
                     c("clientName", "客户名称", "text", 150, "cl.name"),
                     c("assTeam", "装配班组", "text", 100, "o.ass_team"),
                     c("orderNo", "订单号", "text", 140, "o.source_doc_no"),
@@ -147,6 +149,7 @@ public class StockReportService {
                     c("colorName", "颜色", "text", 80, "col.name"),
                     c("weight", "重量", "number", null, "i.weight"),
                     c("drawQty", "领料数量", "number", null, "i.qty"),
+                    c("issuedQty", "已出库", "number", null, "i.issued_qty"),
                     c("actualQty", "实发数量", "number", null, "i.base_qty"));
             case DOC_WDRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
@@ -234,9 +237,12 @@ public class StockReportService {
                     c("billNo", "单号", "text", 150, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
                     c("warehouseName", "仓库", "text", 120, "wh.name"),
+                    c("departmentName", "领料车间", "text", 110, "dp.name"),
                     c("assTeam", "装配班组", "text", 100, "o.ass_team"),
                     c("clientName", "客户名称", "text", 150, "cl.name"),
                     c("orderNo", "订单号", "text", 140, "o.source_doc_no"),
+                    c("issueStatus", "出库进度", "text", 90,
+                            "CASE COALESCE(o.issue_status,0) WHEN 2 THEN '已出完' WHEN 1 THEN '部分出库' ELSE '未出库' END"),
                     c("workerName", "领料人", "text", 100, WK));
             case DOC_WDRAW, DOC_FINISHED_IN, DOC_FINISHED_OUT, DOC_CHECK -> List.of(
                     c("billNo", "单号", "text", 150, "o.bill_no"),
@@ -258,6 +264,7 @@ public class StockReportService {
             LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
             LEFT JOIN warehouses wh2 ON wh2.id = o.to_warehouse_id
             LEFT JOIN clients cl ON cl.id = o.client_id
+            LEFT JOIN departments dp ON dp.id = o.department_id
             LEFT JOIN employees em_wk ON em_wk.legacy_id = o.worker_legacy_id OR em_wk.id = o.worker_id
             LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
             LEFT JOIN employees em_ap ON em_ap.legacy_id = o.approver_legacy_id OR em_ap.id = o.approver_id
@@ -271,6 +278,7 @@ public class StockReportService {
             LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
             LEFT JOIN warehouses wh2 ON wh2.id = o.to_warehouse_id
             LEFT JOIN clients cl ON cl.id = o.client_id
+            LEFT JOIN departments dp ON dp.id = o.department_id
             LEFT JOIN employees em_wk ON em_wk.legacy_id = o.worker_legacy_id OR em_wk.id = o.worker_id
             LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
             LEFT JOIN employees em_ap ON em_ap.legacy_id = o.approver_legacy_id OR em_ap.id = o.approver_id
@@ -279,11 +287,13 @@ public class StockReportService {
     // ======================== 主过滤（公共） ========================
 
     private static void addCommonFilters(WhereBuilder w, String billNo, UUID warehouseId, UUID clientId, Short status,
+                                         UUID departmentId,
                                          LocalDate dateFrom, LocalDate dateTo, String kw, boolean hasItems) {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
         if (status != null) w.add("o.status = :status", "status", status);
+        if (departmentId != null) w.add("o.department_id = :departmentId", "departmentId", departmentId);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
@@ -320,6 +330,10 @@ public class StockReportService {
         if (report == null || report.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "report 必填");
         }
+        // 即时库存（V80 页面同款查询，report='instant-inventory'，走独立分支非 docType/kind）。
+        if ("instant-inventory".equals(report.trim())) {
+            return exportInstantInventory(p, sort, order);
+        }
         String[] parts = report.split("/");
         if (parts.length != 2) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表格式应为 docType/detail|summary: " + report);
@@ -330,16 +344,68 @@ public class StockReportService {
         UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
         UUID clientId = parseUuid(p == null ? null : p.get("clientId"));
         Short status = parseShort(p == null ? null : p.get("status"));
+        UUID departmentId = parseUuid(p == null ? null : p.get("departmentId"));
         LocalDate dateFrom = parseDate(p == null ? null : p.get("dateFrom"));
         LocalDate dateTo = parseDate(p == null ? null : p.get("dateTo"));
         String kw = p == null ? null : p.get("keyword");
         Map<String, String> facets = facetsOfMap(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (kind) {
             case "detail"  -> (pg, sz) -> detail(docType, billNo, warehouseId, clientId, status,
-                    dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+                    departmentId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "summary" -> (pg, sz) -> summary(docType, billNo, warehouseId, clientId, status,
-                    dateFrom, dateTo, kw, facets, pg, sz, sort, order);
+                    departmentId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表 kind: " + kind);
+        };
+        return paginateAll(loader);
+    }
+
+    /** 即时库存导出列（与页面 12 列一致）。 */
+    private static final List<ReportColumn> INSTANT_EXPORT_COLUMNS = List.of(
+            ReportColumn.text("category", "所属类型", 120),
+            ReportColumn.text("model", "型号", 110),
+            ReportColumn.text("cNumber", "客户型号", 120),
+            ReportColumn.text("name", "货品名称", 220),
+            ReportColumn.text("spec", "规格", 120),
+            ReportColumn.text("color", "颜色", 90),
+            ReportColumn.text("unit", "单位", 70),
+            ReportColumn.text("remark", "备注", 90),
+            ReportColumn.number("weight", "库存重量"),
+            ReportColumn.number("qty", "库存数量"),
+            ReportColumn.money("costAmount", "成本金额"),
+            ReportColumn.number("moreQty", "多排数量"));
+
+    /**
+     * 即时库存导出（report='instant-inventory'）：复用 {@code StockQueryService.instantInventory}
+     * 同口径查询（分类子树/仓库/含不良仓/关键字/排序），分页循环全量 → ExportPayload。
+     * 参数：categoryId/warehouseId/includeDefective(默认 true)/keyword + sort/order。
+     */
+    private ExportPayload exportInstantInventory(Map<String, String> p, String sort, String order) {
+        UUID categoryId = parseUuid(p == null ? null : p.get("categoryId"));
+        UUID warehouseId = parseUuid(p == null ? null : p.get("warehouseId"));
+        boolean includeDefective = !"false".equalsIgnoreCase(p == null ? null : p.get("includeDefective"));
+        String kw = p == null ? null : p.get("keyword");
+        BiFunction<Integer, Integer, ReportTableResponse> loader = (pg, sz) -> {
+            var r = stockQueryService.instantInventory(categoryId, warehouseId, includeDefective,
+                    kw, pg, sz, sort, order);
+            List<Map<String, Object>> rows = new ArrayList<>(r.getItems().size());
+            for (var it : r.getItems()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("category", it.getCategoryName());
+                m.put("model", it.getModel());
+                m.put("cNumber", it.getCNumber());
+                m.put("name", it.getName());
+                m.put("spec", it.getSpec());
+                m.put("color", it.getColorName());
+                m.put("unit", it.getUnitName());
+                m.put("remark", it.getRemark());
+                m.put("weight", it.getWeight());
+                m.put("qty", it.getQty());
+                m.put("costAmount", it.getCostAmount());
+                m.put("moreQty", it.getMoreQty());
+                rows.add(m);
+            }
+            return new ReportTableResponse(INSTANT_EXPORT_COLUMNS, rows, Map.of(),
+                    r.getPage(), r.getSize(), r.getTotal(), r.getTotalPages());
         };
         return paginateAll(loader);
     }

@@ -21,4 +21,9 @@ public class OrderListItem {
     private boolean closed;
     private boolean stopped;
     private Integer legacyId;
+    private LocalDate deliverDate;
+    /** 延期预警（业务链）：已审未结案且距交货日 ≤3 天（含已逾期），前端标红置顶。 */
+    private boolean delayWarning;
+    /** 价格脱敏（SOP §三8）：无 sales_order:price:view 时 true，totalLocal 已置 null，前端渲染 ***。 */
+    private boolean priceMasked;
 }

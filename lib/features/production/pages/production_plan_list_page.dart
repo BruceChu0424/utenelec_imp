@@ -23,6 +23,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../purchase/providers/master_name_provider.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
 
@@ -72,6 +73,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       _pageNum = page;
     });
     try {
+      await ref.read(masterNameServiceProvider).ensureLoaded();
       final r = await ref.read(productionPlanRepositoryProvider).list(
             page: page,
             filter: ProductionPlanFilter(
@@ -81,6 +83,9 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
+      // 跟单员名按需解析（部门名已在 ensureLoaded 加载）。
+      await ref.read(masterNameServiceProvider).loadEmployeeNames(
+          r.items.map((e) => e.sellerId).whereType<String>());
       if (!mounted) return;
       setState(() {
         _page = r;
@@ -115,7 +120,8 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     _load(1);
   }
 
-  List<MasterColumnDef<ProductionPlanListItem>> get _columns =>
+  List<MasterColumnDef<ProductionPlanListItem>> _columns(
+          MasterNameService names) =>
       <MasterColumnDef<ProductionPlanListItem>>[
         MasterColumnDef(
             key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
@@ -137,12 +143,12 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
             key: 'workshop',
             label: '车间',
             width: 160,
-            value: (it) => it.workshopName),
+            value: (it) => names.department(it.departmentId)),
         MasterColumnDef(
             key: 'seller',
             label: '跟单员',
             width: 140,
-            value: (it) => it.sellerName),
+            value: (it) => names.employee(it.sellerId)),
         MasterColumnDef(
             key: 'status',
             label: '状态',
@@ -153,6 +159,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final names = ref.watch(masterNameServiceProvider);
     final total = _page?.total ?? 0;
     return Scaffold(
       appBar: UtenAppBar(
@@ -233,7 +240,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                       ),
                     ),
                     tablePane: MasterDataTableView<ProductionPlanListItem>(
-                      columns: _columns,
+                      columns: _columns(names),
                       items: _page?.items ?? const [],
                       facets: const {},
                       nullCounts: const {},

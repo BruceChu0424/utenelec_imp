@@ -14,6 +14,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 
 /// 主档字段值类型：文本 / 整数 / 金额（double）/ 下拉选择。
 enum MasterFieldType { text, integer, money, select }
@@ -100,7 +101,9 @@ Future<void> showMasterEditDialog({
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
@@ -144,6 +147,7 @@ class _MasterEditBody extends StatefulWidget {
 
 class _MasterEditBodyState extends State<_MasterEditBody> {
   late final Map<String, TextEditingController> _controllers;
+
   /// select 字段的当前选中值（key → 选项 value，未选为 null）。其他类型用 [_controllers]。
   final Map<String, String?> _selectValues = {};
   String? _error;
@@ -164,7 +168,9 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
           for (final o in (f.options ?? const <MasterSelectOption>[])) o.value,
         };
         _selectValues[f.key] =
-            (init != null && init.isNotEmpty && vals.contains(init)) ? init : null;
+            (init != null && init.isNotEmpty && vals.contains(init))
+            ? init
+            : null;
       }
     }
   }
@@ -234,7 +240,15 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
       }
     }
     setState(() => _error = null);
-    final ok = await widget.onSubmit(body);
+    // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
+    late final bool ok;
+    try {
+      ok = await widget.onSubmit(body);
+    } catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+      return;
+    }
     if (!mounted) return;
     if (ok) Navigator.of(context).pop();
   }
@@ -275,8 +289,9 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
                       _error!,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.error),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
                     ),
                   ],
                 ],
@@ -303,8 +318,9 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
           Expanded(
             child: Text(
               widget.title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           IconButton(
@@ -392,7 +408,8 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
       allowClear: !f.required,
       hintText: f.hint,
       items: [
-        for (final o in options) UtenDropdownItem(value: o.value, label: o.label),
+        for (final o in options)
+          UtenDropdownItem(value: o.value, label: o.label),
       ],
       onChanged: (v) => setState(() => _selectValues[f.key] = v),
     );

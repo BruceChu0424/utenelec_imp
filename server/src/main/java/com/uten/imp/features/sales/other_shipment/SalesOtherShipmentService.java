@@ -15,6 +15,7 @@ import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentQueryFilter;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentSaveRequest;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -59,6 +60,10 @@ public class SalesOtherShipmentService {
     private final StockService stockService;
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
+    private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
+    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
 
     @Transactional(readOnly = true)
     public PageResponse<OtherShipmentListItem> list(OtherShipmentQueryFilter f, int page, int size, String sort, String order) {
@@ -66,6 +71,16 @@ public class SalesOtherShipmentService {
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            // 归属可见性（销售按人授权）：公共或可见归属人；超管/sales:view:all 全见
+            var ownerScope = ownerVisibility.evaluate("sales", "sales:view:all");
+            if (!ownerScope.seeAll()) {
+                if (ownerScope.visibleOwners().isEmpty()) {
+                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
+                } else {
+                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
+                            root.get("ownerEmployeeId").in(ownerScope.visibleOwners())));
+                }
+            }
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -96,6 +111,7 @@ public class SalesOtherShipmentService {
         tx.bind();
         SalesOtherShipment s = new SalesOtherShipment();
         applyHeader(req, s);
+        s.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         s.setStatus(STATUS_DRAFT);
         shipmentRepo.save(s);
         List<OtherShipmentItemDto> items = saveItems(s, req.getItems());
@@ -138,6 +154,7 @@ public class SalesOtherShipmentService {
     public OtherShipmentDetail approve(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireShipment(id);
+        em.lock(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -154,6 +171,7 @@ public class SalesOtherShipmentService {
             // 刻意不回写 order_item_id（业务上不挂订单）
         }
         s.setStatus(STATUS_APPROVED);
+        s.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         s.setLastDate(now);
         shipmentRepo.save(s);
         return detail(id);
@@ -164,6 +182,7 @@ public class SalesOtherShipmentService {
     public OtherShipmentDetail reverse(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireShipment(id);
+        em.lock(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (s.getStatus() == null || s.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -281,7 +300,8 @@ public class SalesOtherShipmentService {
                 s.getPaymentStyleId(), s.getSellerId(), s.getSenderId(), s.getMakerId(), s.getApproverId(),
                 s.getShipAddr(), s.getLinkPhone(), s.getParcelCount(), s.getPrintCount(), s.getLastDate(),
                 s.getOutType(), s.getRemark(), s.getTotalOriginal(), s.getTotalLocal(), s.getStatus(),
-                s.isClosed(), s.getSourceDocNo(), items);
+                s.isClosed(), s.getSourceDocNo(), items,
+                nameResolver.nameOf(s.getMakerId()), s.getCreatedAt());
     }
 
     private SalesOtherShipment requireShipment(UUID id) {

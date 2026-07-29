@@ -200,6 +200,10 @@ List<String>? requiredAnyPermFor(String location) {
   if (location.startsWith('/production/reports')) {
     return const [Perm.productionReportView];
   }
+  // 生产调度工作台（业务链 · 排产段）：view 可见列表，页面内按 edit 权限显隐合并排产面板
+  if (location == RouteName.productionSchedule) {
+    return const [Perm.productionPlanView];
+  }
   // 物料反查产成品（BOM where-used）：工程研发部 + 生产部共用入口
   if (location == RouteName.productionWhereUsed) {
     return const [Perm.productionWhereUsedView];
@@ -260,8 +264,8 @@ List<String>? requiredAnyPermFor(String location) {
     return null;
   }
 
-  // 生产辅助：库存 / 空调（保留旧 broad 守卫）
-  if (location.startsWith('/inventory') || location.startsWith('/hvac')) {
+  // 生产辅助：空调（保留旧 broad 守卫；库存 Mock 页已删除，真库存走 /stock/*）
+  if (location.startsWith('/hvac')) {
     return const ['production:view'];
   }
   // 访客审批 / 被访人 / 保安

@@ -56,6 +56,7 @@ public class ClientSaveRequest {
     private BigDecimal credit;   // Credit（信用额度）
     private BigDecimal initTotal;// InitTotal（期初应收）
     private Integer tday;        // TDay（结算天数）
+    private BigDecimal creditFloor; // 铺底额（V121，应收管控下限）
 
     // 状态
     private String status;       // Status（使用/禁用）

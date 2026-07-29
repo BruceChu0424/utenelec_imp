@@ -16,6 +16,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/security/input_validators.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/providers/session_provider.dart';
 
 class ChangePasswordPage extends ConsumerStatefulWidget {
@@ -55,12 +56,12 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       _error = null;
     });
     try {
-      await ref.read(sessionProvider.notifier).changePassword(
-            oldPassword: _old.text,
-            newPassword: _new.text,
-          );
+      await ref
+          .read(sessionProvider.notifier)
+          .changePassword(oldPassword: _old.text, newPassword: _new.text);
       if (!mounted) return;
       // 状态已变 authenticated；强制模式路由守卫会重定向到工作台
+      context.appSuccess('密码已修改');
       if (widget.forced) {
         context.go(RouteName.dashboard);
       } else {
@@ -102,20 +103,26 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Icon(
-                        widget.forced ? Icons.lock_reset_rounded : Icons.password_rounded,
+                        widget.forced
+                            ? Icons.lock_reset_rounded
+                            : Icons.password_rounded,
                         size: 40,
                         color: theme.colorScheme.primary,
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                       Text(
                         widget.forced ? '首次登录，请修改默认密码' : '修改密码',
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: UtenSpacing.s4),
                       Text(
                         '密码至少 8 位，需同时包含字母和数字',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: UtenSpacing.s20),
@@ -124,7 +131,8 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                         label: '原密码',
                         isPassword: true,
                         textInputAction: TextInputAction.next,
-                        validator: (v) => InputValidators.required(v, label: '原密码'),
+                        validator: (v) =>
+                            InputValidators.required(v, label: '原密码'),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                       UtenInput(
@@ -141,11 +149,17 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                         isPassword: true,
                         textInputAction: TextInputAction.go,
                         onFieldSubmitted: (_) => _submit(),
-                        validator: (v) => InputValidators.required(v, label: '确认密码'),
+                        validator: (v) =>
+                            InputValidators.required(v, label: '确认密码'),
                       ),
                       if (_error != null) ...[
                         const SizedBox(height: UtenSpacing.s12),
-                        Text(_error!, style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.error)),
+                        Text(
+                          _error!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: UtenColors.error,
+                          ),
+                        ),
                       ],
                       const SizedBox(height: UtenSpacing.s20),
                       UtenButton(

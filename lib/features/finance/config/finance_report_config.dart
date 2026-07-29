@@ -62,8 +62,60 @@ const FinanceReportCard financeSummaryCard = FinanceReportCard(
   ],
 );
 
+/// ⑥ 对账单（5 chip，C2 财务 5 张手工对账单自动生成；模板列结构照抄附件 Excel）。
+/// 委外加工/采购外放加工共用 subcontract 端点（附件 1 口径）；lossRate 默认 3%（后端参数）。
+const FinanceReportCard financeReconCard = FinanceReportCard(
+  id: 'recon',
+  title: '对账单',
+  variants: [
+    FinanceReportVariant(label: '委外加工对账单', endpoint: '/finance/reports/statements/subcontract'),
+    FinanceReportVariant(label: '采购外放加工对账单', endpoint: '/finance/reports/statements/subcontract'),
+    FinanceReportVariant(label: '供应商对账单', endpoint: '/finance/reports/statements/supplier'),
+    FinanceReportVariant(label: '其他应收款对账单', endpoint: '/finance/reports/statements/other-receivable'),
+    FinanceReportVariant(label: '客户对账单', endpoint: '/finance/reports/statements/client'),
+  ],
+);
+
+/// ⑦ 成本核算（8 chip，C4 王少春 4 项；附件 15/7/7-1/8/8-1/8-2/8-3）。
+const FinanceReportCard financeCostCard = FinanceReportCard(
+  id: 'cost',
+  title: '成本核算',
+  variants: [
+    FinanceReportVariant(label: '产品成本汇总', endpoint: '/finance/reports/cost/product'),
+    FinanceReportVariant(label: '销售成本核算汇总', endpoint: '/finance/reports/cost/sales-summary'),
+    FinanceReportVariant(label: '铜柱加工费核算', endpoint: '/finance/reports/cost/copper-fee'),
+    FinanceReportVariant(label: '插套酸洗入库明细', endpoint: '/finance/reports/cost/copper-pickling'),
+    FinanceReportVariant(label: '塑料耗用明细', endpoint: '/finance/reports/cost/plastic'),
+    FinanceReportVariant(label: '塑料领料明细', endpoint: '/finance/reports/cost/plastic-detail', fixedParams: {'kind': 'issue'}),
+    FinanceReportVariant(label: '塑料退料明细', endpoint: '/finance/reports/cost/plastic-detail', fixedParams: {'kind': 'return'}),
+    FinanceReportVariant(label: '产品入库明细', endpoint: '/finance/reports/cost/plastic-detail', fixedParams: {'kind': 'finished'}),
+  ],
+);
+
+/// ⑧ 总账报表（8 chip，C3；附 9~16 + 科目余额表。year/month 由通用页 dateTo 推导）。
+const FinanceReportCard financeGlCard = FinanceReportCard(
+  id: 'gl',
+  title: '总账报表',
+  variants: [
+    FinanceReportVariant(label: '科目余额表', endpoint: '/finance/reports/gl/trial-balance'),
+    FinanceReportVariant(label: '资产负债表', endpoint: '/finance/reports/gl/balance-sheet'),
+    FinanceReportVariant(label: '年度利润汇总表', endpoint: '/finance/reports/gl/profit-annual'),
+    FinanceReportVariant(label: '月度利润表', endpoint: '/finance/reports/gl/profit-monthly'),
+    FinanceReportVariant(label: '制造费用明细表', endpoint: '/finance/reports/gl/manufacturing-expense'),
+    FinanceReportVariant(label: '管理费用明细表', endpoint: '/finance/reports/gl/admin-expense'),
+    FinanceReportVariant(label: '销售费用明细表', endpoint: '/finance/reports/gl/sales-expense'),
+    FinanceReportVariant(label: '经营损益表', endpoint: '/finance/reports/gl/operating-pl'),
+    // C5 固定资产/长期待摊清单（管理 CRUD 走 /api/finance/fixed-assets|deferred-expenses，前端管理页待补）
+    FinanceReportVariant(label: '固定资产折旧清单', endpoint: '/finance/reports/fa/depreciation-schedule'),
+    FinanceReportVariant(label: '长期待摊摊销清单', endpoint: '/finance/reports/fa/amortization-schedule'),
+  ],
+);
+
 /// 按 id 取卡片（路由参数 → 卡片）。
 FinanceReportCard financeReportCardById(String id) {
   if (id == 'summary') return financeSummaryCard;
+  if (id == 'recon') return financeReconCard;
+  if (id == 'cost') return financeCostCard;
+  if (id == 'gl') return financeGlCard;
   return financeDetailCard;
 }

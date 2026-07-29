@@ -3,6 +3,11 @@
 > 路径：`lib/shared/providers/uten_page_prefs_notifier.dart` · Riverpod `Notifier` 抽象基类
 > 后端依赖：`user_preferences`（V27）键值接口 `GET/PUT /api/user/preferences[/{key}]`，无额外权限点
 > 已实现范例：工作台布局（`workbench.layout`）· 即时库存「含不良品仓」开关（`stock.instantInventory`）
+> · **报表筛选口径 17 页**（`report.warehouse.detail|summary`、`report.purchase.detail|summary|expediting`、
+> `report.sales.detail|summary`、`report.subcontract.detail|summary|inOutStatus`、
+> `report.production.detail|summary`、`report.finance.detail|summary|arApOverview|statement|accountFlow`：
+> 单据类型/状态/变体/类别/往来单位/账户/年度+日期范围+facet+排序，
+> 页面特有字段走 `extra` 槽位，见 `lib/features/report/shared/report_filter_prefs.dart`）
 
 ## 一、解决什么
 
@@ -74,3 +79,20 @@ ref.listen(myPagePrefsProvider, (prev, next) { /* 偏好变了 → 重查 */ });
 
 两个已回迁实现：`lib/features/dashboard/providers/workbench_layout_provider.dart`、
 `lib/features/stock/providers/instant_inventory_prefs_provider.dart`——照它们抄即可。
+
+## 六、复杂状态范例：报表筛选口径（ReportFilterPrefs）
+
+`lib/features/report/shared/report_filter_prefs.dart` 演示了多字段状态的完整接法
+（仓库/采购/销售 3 模块 × 明细/汇总（采购+催料）共 7 页在用）：
+
+1. **状态对象**：不可变 `ReportFilterPrefs`（单据类型 code / 状态 status + 日期起止 + facet Map + 排序
+   + **`extra` 通用槽位**（页面特有字段：钱流的类别/往来单位/账户/年度/视图等，仅透传 String/num/bool）），
+   全 null = 「未存过」（`isEmpty`），页面据此回落各自默认。
+   （生产报表无单据类型，用 `status` 字段存 全部/已审/草稿/红冲。）
+2. **抽象 Notifier**：`ReportFilterPrefsNotifier extends UtenPagePrefsNotifier<ReportFilterPrefs>`
+   实现 decode/encode/defaultValue，子类每页一行 `prefKey`。
+3. **页面接入四步**（三个报表页一致）：
+   - `initState` 先按页面默认初始化，postFrame 读 provider，非空则 `_applyPrefs` 后 `_load()`；
+   - 任何筛选变更 → `_persistPrefs()`（`_dirty=true` + `notifier.update(快照)`）；
+   - `ref.listen` 服务端同步晚到：**仅 `_dirty==false`** 才回灌重查（防覆盖在输状态）；
+   - 关键字不持久化（搜索是临时动作；口径=类型+日期+facet+排序）。

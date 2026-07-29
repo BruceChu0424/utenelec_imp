@@ -16,7 +16,6 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/notice.dart';
-import '../providers/notice_arrival.dart';
 import '../providers/notice_providers.dart';
 
 class NoticePublishPage extends ConsumerStatefulWidget {
@@ -102,17 +101,17 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
     );
     if (dialog != true) return;
 
-    // 3) 真实入库（mock 仓储），并映射类型 → 重要度：
+    // 3) 真实入库（后端 /api/notices），并映射类型 → 重要度：
     //    紧急类型 = urgent；置顶 = important；其余 = normal。
+    //    发布人由后端取当前登录员工姓名快照，前端不再传。
     final type = _typeToEnum(_type);
     final priority = type == NoticeType.urgent
         ? NoticePriority.urgent
         : (_topPriority ? NoticePriority.important : NoticePriority.normal);
-    final notice = await ref.read(noticeRepositoryProvider).publish(
+    await ref.read(noticeRepositoryProvider).publish(
           title: _title.text.trim(),
           content: _content.text.trim(),
           type: type,
-          publisher: '人事部',
           topPriority: _topPriority,
           priority: priority,
         );
@@ -121,10 +120,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
     ref.invalidate(unreadNoticeCountProvider);
     if (!mounted) return; // State 自己的 context 用 mounted 守卫足矣
     context.appSuccess(l10n.noticePublishPublished);
-    // 4) 全链路演示：模拟接收端收到这条通知——
-    //    紧急 → 屏幕正中红色弹窗；置顶(重要) → 正中橙色弹窗；其余 → 顶部弹条。
-    //    接真后端后，这段逻辑由推送/WebSocket 在接收端触发（dispatchNoticeArrival）。
-    dispatchNoticeArrival(context, notice);
+    // 已接真后端：接收端提醒由后端推送/WebSocket 触发 dispatchNoticeArrival，
+    // 发布者本地不再模拟弹窗。
     context.go('/notice');
   }
 

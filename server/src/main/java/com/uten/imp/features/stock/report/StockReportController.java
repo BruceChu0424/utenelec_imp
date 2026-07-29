@@ -53,7 +53,7 @@ public class StockReportController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
-    /** 明细报表（7 单据类型参数化；docType 决定列集 + 标签）。 */
+    /** 明细报表（7 单据类型参数化；docType 决定列集 + 标签）。departmentId 仅 DRAW 有意义（各车间领料统计）。 */
     @GetMapping("/{docType}/detail")
     @PreAuthorize("hasAuthority('stock_report:view')")
     public ReportTableResponse detail(
@@ -62,6 +62,7 @@ public class StockReportController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) UUID clientId,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String keyword,
@@ -70,7 +71,7 @@ public class StockReportController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.detail(docType, billNo, warehouseId, clientId, status, dateFrom, dateTo, keyword,
+        return service.detail(docType, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, keyword,
                 facetsOf(allParams), page, size, sort, order);
     }
 
@@ -83,6 +84,7 @@ public class StockReportController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) UUID clientId,
             @RequestParam(required = false) Short status,
+            @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String keyword,
@@ -91,7 +93,7 @@ public class StockReportController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.summary(docType, billNo, warehouseId, clientId, status, dateFrom, dateTo, keyword,
+        return service.summary(docType, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, keyword,
                 facetsOf(allParams), page, size, sort, order);
     }
 

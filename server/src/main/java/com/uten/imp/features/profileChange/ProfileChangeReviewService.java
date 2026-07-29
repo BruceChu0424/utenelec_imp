@@ -2,26 +2,34 @@ package com.uten.imp.features.profilechange;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.auth.model.UserAccount;
+import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.profilechange.dto.ProfileChangeDto;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /** HR 审批（事务内：校验 employee.version → 应用 → 写审计）与待办计数器。 */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProfileChangeReviewService {
 
     private final ProfileChangeRepository repo;
     private final EmployeeRepository employeeRepo;
+    private final UserAccountRepository userRepo;
+    private final NoticeService noticeService;
     private final ProfileFieldApplier applier;
     private final ProfileChangeMapper mapper;
     private final ProfileChangeAccess access;
@@ -32,6 +40,9 @@ public class ProfileChangeReviewService {
     public ProfileChangeDto.BatchDetail review(UUID batchId, ProfileChangeDto.ReviewAction req) {
         AuthUser reviewer = access.requireHr();
         UUID reviewerId = reviewer.getId();
+        // reviewed_by 的 FK 指向 employees(id)：必须写员工档案 id，不能写 users.id，
+        // 否则审批保存时触发 profile_change_requests_reviewed_by_fkey 外键违反（500）。
+        // 纯管理账号（未绑定员工档案）时为 null，审计仍由 tx.bindActor(reviewerId) 记录 users.id。
         UUID reviewerEmployeeId = reviewer.getEmployeeId();
 
         if (req == null || req.action() == null) {
@@ -77,13 +88,45 @@ public class ProfileChangeReviewService {
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知审批动作：" + action);
         }
         for (ProfileChangeRequest r : rs) {
-            r.setReviewedBy(reviewerId);
+            r.setReviewedBy(reviewerEmployeeId);
             r.setReviewedAt(now);
             r.setReviewComment(comment);
         }
         tx.bindActor(reviewerId);
         repo.saveAll(rs);
+        notifySubmitter(rs, action, comment, reviewerEmployeeId);
         return mapper.toBatchDetail(rs);
+    }
+
+    /** 审批结果定向通知申请人（仅本人可见）。通知失败不回滚审批。 */
+    private void notifySubmitter(List<ProfileChangeRequest> rs, String action,
+                                 String comment, UUID reviewerEmployeeId) {
+        try {
+            UUID submitterEmployeeId = rs.get(0).getSubmittedBy();
+            UUID submitterUserId = userRepo.findByEmployeeId(submitterEmployeeId)
+                    .map(UserAccount::getId)
+                    .orElse(null);
+            if (submitterUserId == null) return;    // 无登录账号（离职账号已删）跳过
+
+            String fields = rs.stream().map(ProfileChangeRequest::getFieldLabel)
+                    .distinct().limit(5).collect(Collectors.joining("、"));
+            String publisher = reviewerEmployeeId == null ? "系统"
+                    : employeeRepo.findById(reviewerEmployeeId).map(Employee::getFullName).orElse("系统");
+            if ("approve".equals(action)) {
+                noticeService.publishForUser(submitterUserId,
+                        "个人信息修改已批准",
+                        "您提交的 " + rs.size() + " 项个人信息修改（" + fields + "）已批准并生效。",
+                        "approval", publisher);
+            } else {
+                noticeService.publishForUser(submitterUserId,
+                        "个人信息修改被驳回",
+                        "您提交的 " + rs.size() + " 项个人信息修改（" + fields + "）已被驳回。"
+                                + (comment == null || comment.isBlank() ? "" : "驳回意见：" + comment),
+                        "approval", publisher);
+            }
+        } catch (Exception e) {
+            log.warn("审批结果通知发送失败（不影响审批本身）: {}", e.getMessage());
+        }
     }
 
     /** 某员工的待审数（员工详情 Hero 后区块用）。 */

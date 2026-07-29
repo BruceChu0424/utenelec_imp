@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -41,17 +42,40 @@ public class SalesOrderController {
             @RequestParam(required = false) Boolean closed,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) java.util.List<Short> chain,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo), page, size, sort, order);
+        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain), page, size, sort, order);
+    }
+
+    /** 工作台统计卡：待生产 / 生产中 / 待发货 / 本月完成（同列表数据范围）。 */
+    @GetMapping("/stats")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public com.uten.imp.features.sales.order.dto.OrderStats stats() {
+        return service.stats();
+    }
+
+    /** 批量发货可发行（SOP §一9）：reserved_qty>0 的订单行，归属隔离与列表同口径。 */
+    @GetMapping("/shippable-lines")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public List<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLines() {
+        return service.shippableLines();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_order:view')")
     public OrderDetail detail(@PathVariable UUID id) {
         return service.detail(id);
+    }
+
+    /** 排产进度（链路另一端）：每行 订货/可发/已排/已产 + 关联生产计划溯源。 */
+    @GetMapping("/{id}/plan-progress")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public List<com.uten.imp.features.sales.order.dto.PlanProgressLine> planProgress(
+            @PathVariable UUID id) {
+        return service.planProgress(id);
     }
 
     @PostMapping
@@ -89,5 +113,20 @@ public class SalesOrderController {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail setStopped(@PathVariable UUID id, @RequestParam boolean stopped) {
         return service.toggleStopped(id, stopped);
+    }
+
+    /** 订单改量（V100）：已审订单逐行改数量；涉及已排产行需生产部权限点。 */
+    @PostMapping("/{id}/change-qty")
+    @PreAuthorize("hasAuthority('sales_order:edit')")
+    public OrderDetail changeQty(@PathVariable UUID id,
+                                 @Valid @RequestBody com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest req) {
+        return service.changeQty(id, req);
+    }
+
+    /** 订单取消（V100）：已审未发货整单取消（释放预留+断排产联动）。 */
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('sales_order:edit')")
+    public OrderDetail cancel(@PathVariable UUID id) {
+        return service.cancel(id);
     }
 }

@@ -14,9 +14,13 @@
 // 性能：后端一次聚合分页（LIMIT/OFFSET + 排序白名单），前端不拉全量，万级数据秒开。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -127,6 +131,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     _load(1);
   }
 
+  /// 导出查询参数（与 _load 一致，不含 page/size；report 固定 'instant-inventory' 走后端独立分支）。
+  Map<String, dynamic> get _exportQuery => <String, dynamic>{
+        if (_categoryId != null) 'categoryId': _categoryId,
+        if (_warehouseId != null) 'warehouseId': _warehouseId,
+        'includeDefective': ref.read(instantInventoryPrefsProvider),
+        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+        if (_sortKey != null) 'sort': _sortKey,
+        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+      };
+
   /// 数字格式化：最多 2 位小数，去掉无意义的尾随 0（1.50→1.5；0→0）。
   static String _num(double? v) {
     if (v == null) return '—';
@@ -134,6 +148,27 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     return s.contains('.')
         ? s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '')
         : s;
+  }
+
+  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final r = await ref.read(stockQueryRepositoryProvider).instantInventory(
+          page: 1,
+          size: 2000,
+          categoryId: _categoryId,
+          warehouseId: _warehouseId,
+          includeDefective: ref.read(instantInventoryPrefsProvider),
+          keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+          sort: _sortKey,
+          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        );
+    final cols = _columns;
+    return UtenPrintTable(
+      headers: [for (final c in cols) c.label],
+      rows: [
+        for (final row in r.items) [for (final c in cols) c.value(row) ?? ''],
+      ],
+    );
   }
 
   List<MasterColumnDef<InstantInventoryRow>> get _columns =>
@@ -315,6 +350,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                         .read(instantInventoryPrefsProvider.notifier)
                         .setIncludeDefective(v),
               ),
+              // 加密 Excel 导出 / 预览打印：已移入表格工具条（表头设置旁，深绿大按钮）。
               Text('共 $total 项', // TODO(l10n): 补 arb
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
@@ -325,6 +361,29 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           child: MasterDataTableView<InstantInventoryRow>(
             columns: _columns,
             items: _page?.items ?? const [],
+            toolbarActions: [
+              // 加密 Excel 导出（stock_report:export 权限 + 限流 + AES-256 密码 + 10 万行上限 + 审计）
+              // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
+              UtenPrintPreviewButton(
+                title: '即时库存',
+                subtitle: '最多前 2000 行',
+                loader: _printLoader,
+                exportEndpoint: '/stock/reports/export',
+                exportReport: 'instant-inventory',
+                exportQuery: _exportQuery,
+                exportFilename: '即时库存',
+                type: UtenButtonType.primary,
+                size: UtenButtonSize.large,
+              ),
+              UtenExportButton(
+                endpoint: '/stock/reports/export',
+                report: 'instant-inventory',
+                queryParams: _exportQuery,
+                filename: '即时库存',
+                type: UtenButtonType.primary,
+                size: UtenButtonSize.large,
+              ),
+            ],
             facets: const {},
             nullCounts: const {},
             filters: const {},
@@ -332,7 +391,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             sortColumn: _sortKey,
             sortAscending: _sortAsc,
             onSortChange: _onSortChange,
-            onRowTap: (_) {},
+            // 行点击 → 出入库流水页（带该货品过滤，push 保活本页筛选；流水页可清除过滤看全部）
+            onRowTap: (r) {
+              final gid = r.goodsId;
+              if (gid == null || gid.isEmpty) return;
+              context.push('${RouteName.stockMovement}?goodsId=$gid');
+            },
             isLoading: _loading && _page == null,
             loadingMore: _loading && _page != null,
             error: _error,

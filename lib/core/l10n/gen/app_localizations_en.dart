@@ -748,6 +748,41 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get employeeFieldAccountStatus => 'Login account';
+
+  @override
+  String get accountStatusActive => 'Active';
+
+  @override
+  String get accountStatusLocked => 'Locked';
+
+  @override
+  String get accountStatusDisabled => 'Disabled';
+
+  @override
+  String get accountStatusNone => 'Not provisioned';
+
+  @override
+  String employeeProbationExpiring(Object date, Object days) {
+    return 'Probation ends on $date ($days days left) — confirm employment in time';
+  }
+
+  @override
+  String employeeProbationExpired(Object date) {
+    return 'Probation ended on $date — please confirm employment or offboard';
+  }
+
+  @override
+  String employeeContractExpiring(Object date, Object days) {
+    return 'Contract ends on $date ($days days left) — please renew in time';
+  }
+
+  @override
+  String employeeContractExpired(Object date) {
+    return 'Contract expired on $date — please handle it';
+  }
+
+  @override
   String get employeeEditTitle => 'Edit employee';
 
   @override
@@ -925,10 +960,75 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOffboardBack => 'Back';
 
   @override
-  String get employeeOffboardCompleted => 'Offboarding completed (mock)';
+  String get employeeOffboardCompleted => 'Offboarding completed';
 
   @override
   String get employeeOffboardLoadFailed => 'Failed to load';
+
+  @override
+  String get employeeActions => 'More actions';
+
+  @override
+  String get employeeActionTransfer => 'Transfer';
+
+  @override
+  String get employeeActionConfirm => 'Confirm employment';
+
+  @override
+  String get employeeActionOffboard => 'Offboard';
+
+  @override
+  String get employeeActionRehire => 'Rehire';
+
+  @override
+  String get employeeActionDelete => 'Delete record';
+
+  @override
+  String get employeeTransferTitle => 'Employee transfer';
+
+  @override
+  String get employeeTransferFieldDate => 'Effective date';
+
+  @override
+  String get employeeTransferPickDate => 'Pick a date';
+
+  @override
+  String get employeeTransferFieldRemark => 'Remark';
+
+  @override
+  String get employeeTransferDateRequired => 'Please pick the effective date';
+
+  @override
+  String get employeeTransferSuccess => 'Transfer completed';
+
+  @override
+  String get employeeConfirmTitle => 'Confirm regular employment?';
+
+  @override
+  String get employeeConfirmBody => 'The employee status will become Active.';
+
+  @override
+  String get employeeConfirmSuccess => 'Employment confirmed';
+
+  @override
+  String get employeeRehireTitle => 'Confirm rehire?';
+
+  @override
+  String get employeeRehireBody =>
+      'The employee will become Active again and the login account will be re-enabled (re-login required).';
+
+  @override
+  String get employeeRehireSuccess => 'Rehired';
+
+  @override
+  String get employeeDeleteTitle => 'Delete this employee record?';
+
+  @override
+  String get employeeDeleteBody =>
+      'The login account will be disabled. This cannot be undone.';
+
+  @override
+  String get employeeDeleteSuccess => 'Employee record deleted';
 
   @override
   String get resignTypeVoluntary => 'Voluntary';
@@ -1007,6 +1107,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get historyEventResign => 'Resign';
+
+  @override
+  String get historyEventRehire => 'Rehire';
 
   @override
   String get departmentTitle => 'Departments';

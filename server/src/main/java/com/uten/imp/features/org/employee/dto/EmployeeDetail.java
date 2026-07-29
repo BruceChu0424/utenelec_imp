@@ -73,6 +73,9 @@ public class EmployeeDetail {
     private LocalDate probationEndDate;
     private int renewCount;
 
+    // 登录账号状态（active/locked/disabled；null = 未开通账号）
+    private String accountStatus;
+
     // 嵌套
     private List<EmergencyContactDto> emergencyContacts;
     private List<EmploymentHistoryDto> history;

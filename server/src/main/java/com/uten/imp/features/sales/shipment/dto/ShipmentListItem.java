@@ -21,4 +21,5 @@ public class ShipmentListItem {
     private boolean closed;
     private boolean arPosted;
     private Integer legacyId;
+    private boolean rejected;
 }

@@ -196,9 +196,12 @@ class FinanceDocDetail {
     this.operatorId,
     this.makerId,
     this.approverId,
+    this.makerName,
+    this.createdAt,
     this.remark,
     this.status,
     this.closed = false,
+    this.glStatus,
     this.items = const [],
   });
 
@@ -222,9 +225,15 @@ class FinanceDocDetail {
   final String? operatorId;
   final String? makerId;
   final String? approverId;
+  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  final String? makerName;
+  /// 制单时间 ISO（审计 created_at，创建后不可变）
+  final String? createdAt;
   final String? remark;
   final int? status;
   final bool closed;
+  /// C6：0 未过账 / 1 已过账待确认 / 2 财务已确认（仅费用单）。
+  final int? glStatus;
   final List<FinanceDocItem> items;
 
   factory FinanceDocDetail.fromJson(Map<String, dynamic> json) =>
@@ -248,10 +257,13 @@ class FinanceDocDetail {
         invoiceNo: json['invoiceNo'] as String?,
         operatorId: json['operatorId'] as String?,
         makerId: json['makerId'] as String?,
+        makerName: json['makerName'] as String?,
+        createdAt: json['createdAt'] as String?,
         approverId: json['approverId'] as String?,
         remark: json['remark'] as String?,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
+        glStatus: (json['glStatus'] as num?)?.toInt(),
         items: (json['items'] as List?)
                 ?.map((e) => FinanceDocItem.fromJson(e as Map<String, dynamic>))
                 .toList() ??

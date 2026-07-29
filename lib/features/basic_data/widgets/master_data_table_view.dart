@@ -8,6 +8,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/master_facet.dart';
@@ -60,6 +61,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.currentPage = 1,
     this.totalPages = 1,
     this.onPageChange,
+    this.toolbarActions,
+    this.embedded = false,
   });
 
   final List<MasterColumnDef<T>> columns;
@@ -69,6 +72,14 @@ class MasterDataTableView<T> extends StatefulWidget {
   final Map<String, String?> filters;
   final void Function(String key, String? value) onFilterChanged;
   final void Function(T item) onRowTap;
+
+  /// 表头上方工具条的追加按钮（预览打印 / 下载表格等），排在「表头设置」右侧、
+  /// 左对齐挨在一起。调用方通常传深绿大号款（UtenButtonType.primary + large）。
+  final List<Widget>? toolbarActions;
+
+  /// 嵌入模式：用于详情页 ListView 等无界高度场景（单据明细只读表）。
+  /// 不渲染翻页条、不用 Expanded 撑满，表体按内容收缩。
+  final bool embedded;
 
   /// 当前排序的列 key（与 MasterColumnDef.key 对齐）；null = 不排序（用后端默认顺序）。
   final String? sortColumn;
@@ -119,6 +130,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   /// 当前选中（单击高亮）的行：滚动不刷新数据故高亮常驻，翻页/重查换对象后自然失效。
   T? _selectedItem;
 
+  /// 当前隐藏的列 key 集合：表头上方工具条「列」浮层勾选维护；
+  /// 列集合变化（如报表切 docType）时清空（默认全部显示）。
+  final Set<String> _hiddenKeys = {};
+
+  /// 全屏状态：true 时正常树让位成 SizedBox.shrink（ScrollController 只挂全屏路由一棵树），
+  /// 表格经 showGeneralDialog 全屏路由渲染——走 Navigator 路由栈，故全屏里再开
+  /// 「预览打印 / 下载表格」对话框会正常叠在全屏之上（手动 OverlayEntry 会压住路由弹窗）。
+  /// [_fsTick] 驱动全屏内容重建（数据/列宽/显隐变化时 bump）。
+  bool _fullscreen = false;
+  final ValueNotifier<int> _fsTick = ValueNotifier<int>(0);
+
   // —— 列宽自动适配 / 手动拖拽 常量 ——
   /// 拖拽命中区半宽：以列右边界为中心、半溢出到相邻列，便于精准抓住边界。
   static const double _gripHalf = 4;
@@ -158,6 +180,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
       _manualResized.clear();
       _widthsDirty = true;
+      _hiddenKeys.clear(); // 列显隐选择跟随列集合重置（默认全部显示）。
     } else if (oldWidget.items != widget.items) {
       // 数据变了（翻页/筛选/排序/加载更多）→ 标记重算；已手动调整的列在 _ensureWidths 保留。
       _widthsDirty = true;
@@ -170,6 +193,54 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     if (oldWidget.currentPage != widget.currentPage) {
       _pageCtrl.text = '${widget.currentPage}';
     }
+    // 全屏中：数据/列变化 bump tick，驱动全屏路由内的表格重建。
+    _fsTick.value++;
+  }
+
+  /// 全屏切换：进入时弹全屏路由（正常树让位）；全屏里再点「退出全屏」pop 该路由。
+  /// 注意：正常树重新接管表格的时机必须绑在全屏路由彻底 dispose（含退出动画结束）
+  /// 之后，不能挂在 await 返回点——否则退出动画播放期间正常树一旦挂回，同一批
+  /// ScrollController 会同时挂在全屏路由和正常树两棵树上，Scrollbar 每帧断言
+  /// "attached to more than one ScrollPosition"（2026-07-29 现场报错）。
+  Future<void> _toggleFullscreen() async {
+    if (_fullscreen) {
+      // 在全屏路由内点击：pop 全屏对话框（路由 dispose 后统一复位标志）。
+      Navigator.of(context, rootNavigator: true).pop();
+      return;
+    }
+    setState(() => _fullscreen = true);
+    await showGeneralDialog<void>(
+      context: context,
+      barrierLabel: '全屏表格', // TODO(l10n): 补 arb
+      barrierColor: Colors.transparent, // 内容整屏不透明，无需遮罩色
+      pageBuilder: (ctx, _, _) => _FullscreenDisposer(
+        // 路由完全移除后再让正常树接管同一批 ScrollController（见上方注释）。
+        onDisposed: () {
+          if (mounted) setState(() => _fullscreen = false);
+        },
+        child: ValueListenableBuilder<int>(
+          valueListenable: _fsTick,
+          builder: (ctx2, _, _) {
+            final theme = Theme.of(ctx2);
+            return Material(
+              color: theme.colorScheme.surface,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  child: Column(
+                    children: [
+                      Expanded(child: _buildTable(ctx2)),
+                      if (!widget.embedded && widget.totalPages > 1)
+                        _buildPager(ctx2),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   /// 两列集合的 key 序列是否一致（用于判定是否需要重置/重算列宽）。
@@ -231,16 +302,66 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
 
   @override
   void dispose() {
+    _fsTick.dispose();
     _headerH.dispose();
     _bodyH.dispose();
     _bodyV.dispose();
     super.dispose();
   }
 
-  double get _totalWidth => _widths.fold(0.0, (s, w) => s + w);
+  double get _totalWidth {
+    var s = 0.0;
+    for (final i in _visibleIndices) {
+      if (i < _widths.length) s += _widths[i];
+    }
+    return s;
+  }
+
+  /// 当前可见列在原列集合中的下标（隐藏列跳过，列宽仍按原下标存 [_widths]）。
+  List<int> get _visibleIndices => [
+        for (var i = 0; i < widget.columns.length; i++)
+          if (!_hiddenKeys.contains(widget.columns[i].key)) i,
+      ];
+
+  /// 可见列数（至少 1：[_toggleColumn] 拦住最后一列的隐藏）。
+  int get _visibleCount => widget.columns.length - _hiddenKeys.length;
+
+  /// 切换单列显隐：最后一列不允许隐藏，避免表格没列。
+  void _toggleColumn(String key) {
+    setState(() {
+      if (_hiddenKeys.contains(key)) {
+        _hiddenKeys.remove(key);
+      } else if (_visibleCount > 1) {
+        _hiddenKeys.add(key);
+      }
+    });
+    _fsTick.value++;
+  }
+
+  /// 全选(true)=全部显示；取消全选(false)=仅留首列（表格至少保留一列）。
+  void _toggleAllColumns(bool selectAll) {
+    setState(() {
+      _hiddenKeys.clear();
+      if (!selectAll && widget.columns.length > 1) {
+        _hiddenKeys.addAll(widget.columns.skip(1).map((c) => c.key));
+      }
+    });
+    _fsTick.value++;
+  }
 
   @override
   Widget build(BuildContext context) {
+    // 全屏中：表格在全屏路由里渲染，正常树让位（ScrollController 只挂一棵树）。
+    if (_fullscreen) {
+      return const SizedBox.shrink();
+    }
+    // 嵌入模式（详情页明细表）：无界高度场景按内容收缩、无翻页条。
+    if (widget.embedded) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [_buildTable(context)],
+      );
+    }
     return Column(
       children: [
         Expanded(child: _buildTable(context)),
@@ -280,6 +401,38 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // 表头上方工具条：左侧「表头设置」列显隐选择 + 追加按钮（预览打印/下载表格等），
+        // 全部左对齐挨在一起，与表格同属一块操作区。
+        Padding(
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+          child: Row(
+            children: [
+              _ColumnChooserButton(
+                columns: [
+                  for (final c in widget.columns) (key: c.key, label: c.label),
+                ],
+                hiddenKeys: _hiddenKeys,
+                onToggle: _toggleColumn,
+                onToggleAll: _toggleAllColumns,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），再点退出。
+              UtenButton(
+                size: UtenButtonSize.large,
+                icon: _fullscreen
+                    ? Icons.fullscreen_exit_rounded
+                    : Icons.fullscreen_rounded,
+                onPressed: _toggleFullscreen,
+                child: Text(_fullscreen ? '退出全屏' : '全屏'),
+              ),
+              if (widget.toolbarActions != null)
+                for (final a in widget.toolbarActions!) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  a,
+                ],
+            ],
+          ),
+        ),
         // 表头：横向跟随表体同步（无可见滚动条），竖向固定（sticky）。
         Material(
           color: theme.colorScheme.surfaceContainerHigh,
@@ -300,7 +453,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         // 表体：竖向按内容收缩（行少→横滚条贴最后一行），顶到 LayoutBuilder 上限则竖向滚动（行多→横滚条钉视口底）。
         // 用 Flexible(loose) 而非 Expanded，让 ListView(shrinkWrap) 在行少时真正收缩；
         // ConstrainedBox(maxHeight) 把高度封顶在可用空间，行多时转为可滚。
-        Flexible(
+        // embedded（详情页 ListView 等无界高度场景）不能用 Flexible：flex 在无界约束下
+        // 会直接抛 "non-zero flex but incoming height constraints are unbounded"。
+        _BodyFlex(
+          embedded: widget.embedded,
           child: LayoutBuilder(
             builder: (ctx, c) => Scrollbar(
               // 竖向滚动条（上下）：绑表体 ListView 的 _bodyV。置于横向滚动之外层，
@@ -358,7 +514,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   Widget _buildHeaderRow(ThemeData theme) {
     return Row(
       children: [
-        for (var i = 0; i < widget.columns.length; i++)
+        for (final i in _visibleIndices)
           Container(
             width: _widths[i],
             // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
@@ -416,6 +572,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       _widths[index] = next;
       _manualResized.add(index);
     });
+    _fsTick.value++;
   }
 
   Widget _buildDataRow(ThemeData theme, T item) {
@@ -425,17 +582,31 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。
         // 同时照常触发调用方 onRowTap（详情/跳源头单据等），不抢占既有交互。
         setState(() => _selectedItem = item);
+        _fsTick.value++;
         widget.onRowTap(item);
       },
-      child: ColoredBox(
+      child: DecoratedBox(
+        // 行间横线：逐行分隔（与表头竖线同 outline 色，网格更深、单元格边界清晰）。
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+          ),
+        ),
+        child: ColoredBox(
         color: selected
             ? theme.colorScheme.primary.withValues(alpha: 0.10)
             : Colors.transparent,
         child: Row(
           children: [
-            for (var i = 0; i < widget.columns.length; i++)
-              SizedBox(
+            for (final i in _visibleIndices)
+              Container(
                 width: _widths[i],
+                // 列间竖线：与表头竖线同位置同色，逐格勾勒单元格右边界。
+                decoration: BoxDecoration(
+                  border: Border(
+                    right: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+                  ),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: UtenSpacing.s12,
@@ -451,6 +622,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
               ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -840,4 +1012,225 @@ class _FilterCellState extends State<_FilterCell> {
       ),
     );
   }
+}
+
+/// 列显隐选择按钮：表头上方工具条左侧「列 x/y」，点开浮层勾选要显示的列
+/// （如只勾「单号」就只显示单号列），顶部「全选」一键全部显示 / 仅留首列。
+/// 浮层与 [_FilterCell] 同款：锚定按钮下方、限高竖滚、点外部关闭。
+class _ColumnChooserButton extends StatefulWidget {
+  const _ColumnChooserButton({
+    required this.columns,
+    required this.hiddenKeys,
+    required this.onToggle,
+    required this.onToggleAll,
+  });
+
+  /// 全部列（key + 展示名），按表格列顺序。
+  final List<({String key, String label})> columns;
+
+  /// 当前隐藏的列 key 集合（父组件持有，这里只读展示）。
+  final Set<String> hiddenKeys;
+
+  /// 切换单列显隐；最后一列不允许隐藏（父组件保证）。
+  final ValueChanged<String> onToggle;
+
+  /// 全选(true=全部显示) / 仅留首列(false)。
+  final ValueChanged<bool> onToggleAll;
+
+  @override
+  State<_ColumnChooserButton> createState() => _ColumnChooserButtonState();
+}
+
+class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
+  final LayerLink _link = LayerLink();
+  OverlayEntry? _overlay;
+
+  void _open() {
+    if (_overlay != null) return;
+    _overlay = OverlayEntry(builder: _buildOverlay);
+    Overlay.of(context, rootOverlay: true).insert(_overlay!);
+  }
+
+  void _close() {
+    _overlay?.remove();
+    _overlay = null;
+  }
+
+  /// 勾选后浮层内勾选态需同步刷新（OverlayEntry 不随父组件自动重建）。
+  void _toggle(String key) {
+    widget.onToggle(key);
+    _overlay?.markNeedsBuild();
+  }
+
+  void _toggleAll(bool selectAll) {
+    widget.onToggleAll(selectAll);
+    _overlay?.markNeedsBuild();
+  }
+
+  @override
+  void dispose() {
+    _close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = widget.columns.length - widget.hiddenKeys.length;
+    return CompositedTransformTarget(
+      link: _link,
+      // 深绿大号白字（UtenButton 默认 primary 实心深绿，与工具条「预览打印/下载表格」同款）。
+      child: UtenButton(
+        size: UtenButtonSize.large,
+        icon: Icons.view_column_outlined,
+        onPressed: _open,
+        child: Text('表头设置 $visible/${widget.columns.length}'),
+      ),
+    );
+  }
+
+  Widget _buildOverlay(BuildContext ctx) {
+    final theme = Theme.of(ctx);
+    final allVisible = widget.hiddenKeys.isEmpty;
+    final visibleCount = widget.columns.length - widget.hiddenKeys.length;
+    return Stack(
+      children: [
+        // 点菜单外空白关闭。
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _close,
+          ),
+        ),
+        CompositedTransformFollower(
+          link: _link,
+          targetAnchor: Alignment.bottomLeft,
+          offset: const Offset(0, 2),
+          child: TapRegion(
+            onTapOutside: (_) => _close(),
+            child: Material(
+              color: theme.colorScheme.surfaceContainerHigh,
+              elevation: 8,
+              borderRadius: BorderRadius.circular(8),
+              clipBehavior: Clip.antiAlias,
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 360, maxWidth: 240),
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    _checkRow(
+                      label: '全选', // TODO(l10n): 补 arb
+                      checked: allVisible,
+                      enabled: true,
+                      bold: true,
+                      onTap: () => _toggleAll(!allVisible),
+                      theme: theme,
+                    ),
+                    const Divider(height: 1, thickness: 1),
+                    for (final c in widget.columns)
+                      _checkRow(
+                        label: c.label,
+                        checked: !widget.hiddenKeys.contains(c.key),
+                        // 最后一列不允许再隐藏，避免表格没列。
+                        enabled: widget.hiddenKeys.contains(c.key) ||
+                            visibleCount > 1,
+                        onTap: () => _toggle(c.key),
+                        theme: theme,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _checkRow({
+    required String label,
+    required bool checked,
+    required bool enabled,
+    required VoidCallback onTap,
+    required ThemeData theme,
+    bool bold = false,
+  }) {
+    final disabledColor =
+        theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              checked
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank_rounded,
+              size: 18,
+              color: !enabled
+                  ? disabledColor
+                  : checked
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                  color: enabled ? null : disabledColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 全屏路由外壳：仅用于在路由彻底 dispose（含退出动画结束）时回调，
+/// 让正常树安全地重新接管同一批 ScrollController（避免退出动画期间
+/// 全屏路由与正常树双挂同一控制器，触发 Scrollbar 断言）。
+class _FullscreenDisposer extends StatefulWidget {
+  const _FullscreenDisposer({required this.onDisposed, required this.child});
+
+  final VoidCallback onDisposed;
+  final Widget child;
+
+  @override
+  State<_FullscreenDisposer> createState() => _FullscreenDisposerState();
+}
+
+class _FullscreenDisposerState extends State<_FullscreenDisposer> {
+  @override
+  void dispose() {
+    widget.onDisposed();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// 表体高度策略：embedded（详情页 ListView 等无界高度场景）直接按内容收缩——
+/// 不能用 Flexible（flex 在无界约束下会抛 "non-zero flex but incoming height
+/// constraints are unbounded"）；列表页有界场景用 Flexible(loose)，行少收缩、
+/// 行多顶到视口上限转竖向滚动。
+class _BodyFlex extends StatelessWidget {
+  const _BodyFlex({required this.embedded, required this.child});
+
+  final bool embedded;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      embedded ? child : Flexible(child: child);
 }

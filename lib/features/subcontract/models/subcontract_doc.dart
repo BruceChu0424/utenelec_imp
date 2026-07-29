@@ -21,8 +21,10 @@ enum SubcontractDocType {
   final String pathSegment;
 
   static SubcontractDocType byPath(String seg) =>
-      SubcontractDocType.values.firstWhere((e) => e.pathSegment == seg,
-          orElse: () => SubcontractDocType.receipt);
+      SubcontractDocType.values.firstWhere(
+        (e) => e.pathSegment == seg,
+        orElse: () => SubcontractDocType.receipt,
+      );
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲（后端 Short）。
@@ -209,6 +211,8 @@ class SubcontractDocDetail {
     this.workerId,
     this.makerId,
     this.approverId,
+    this.makerName,
+    this.createdAt,
     this.deliverDate,
     this.lastDate,
     this.bStyle,
@@ -239,6 +243,12 @@ class SubcontractDocDetail {
   final String? workerId;
   final String? makerId;
   final String? approverId;
+
+  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  final String? makerName;
+
+  /// 制单时间 ISO（审计 created_at，创建后不可变）
+  final String? createdAt;
   final String? deliverDate;
   final String? lastDate;
   final int? bStyle;
@@ -269,6 +279,8 @@ class SubcontractDocDetail {
         senderId: json['senderId'] as String?,
         workerId: json['workerId'] as String?,
         makerId: json['makerId'] as String?,
+        makerName: json['makerName'] as String?,
+        createdAt: json['createdAt'] as String?,
         approverId: json['approverId'] as String?,
         deliverDate: json['deliverDate'] as String?,
         lastDate: json['lastDate'] as String?,
@@ -283,9 +295,11 @@ class SubcontractDocDetail {
         apPosted: (json['apPosted'] as bool?) ?? false,
         fulfill: (json['fulfill'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
-        items: (json['items'] as List?)
-                ?.map((e) =>
-                    SubcontractDocItem.fromJson(e as Map<String, dynamic>))
+        items:
+            (json['items'] as List?)
+                ?.map(
+                  (e) => SubcontractDocItem.fromJson(e as Map<String, dynamic>),
+                )
                 .toList() ??
             const [],
       );

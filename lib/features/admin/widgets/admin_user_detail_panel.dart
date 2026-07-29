@@ -57,6 +57,182 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   bool _savingOverrides = false;
   bool _acting = false;
 
+  // ===== 数据范围（V89：客户/外贸货品「能看哪些业务员的」） =====
+  static const _scopeDefs = [
+    ('goods', '外贸货品可见业务员'),
+    ('client', '客户资料可见业务员'),
+    ('sales', '销售单据可见业务员'),
+  ];
+  bool _scopesLoading = false;
+  bool _scopesSaving = false;
+  String? _scopesError;
+  Map<String, Set<String>> _scopeGrants = {}; // scope → 归属人员工 id 集合
+  Map<String, List<DataScopeOwner>> _scopeCandidates = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadScopes());
+  }
+
+  @override
+  void didUpdateWidget(covariant AdminUserDetailPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user.id != widget.user.id) {
+      _localGrants = null;
+      _localRevokes = null;
+      _loadScopes();
+    }
+  }
+
+  Future<void> _loadScopes() async {
+    setState(() {
+      _scopesLoading = true;
+      _scopesError = null;
+    });
+    try {
+      final repo = ref.read(adminRepositoryProvider);
+      final grants = <String, Set<String>>{};
+      final cands = <String, List<DataScopeOwner>>{};
+      for (final (scope, _) in _scopeDefs) {
+        grants[scope] = (await repo.getUserDataScopes(widget.user.id, scope)).toSet();
+        cands[scope] = await repo.dataScopeOwners(scope);
+      }
+      if (!mounted) return;
+      setState(() {
+        _scopeGrants = grants;
+        _scopeCandidates = cands;
+        _scopesLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _scopesError = '数据范围加载失败';
+        _scopesLoading = false;
+      });
+    }
+  }
+
+  Future<void> _editScope(String scope, String label) async {
+    final candidates = _scopeCandidates[scope] ?? [];
+    final selected = {...?_scopeGrants[scope]};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text(label),
+          content: SizedBox(
+            width: 360,
+            child: candidates.isEmpty
+                ? const Text('该范围暂无归属数据，无可选业务员')
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      Text('勾选后，该用户可看到所选业务员的归属数据（公共数据不受影响）：',
+                          style: Theme.of(ctx).textTheme.bodySmall),
+                      const SizedBox(height: 8),
+                      for (final c in candidates)
+                        CheckboxListTile(
+                          dense: true,
+                          value: selected.contains(c.employeeId),
+                          title: Text(c.name),
+                          subtitle: Text('归属 ${c.count} 条'),
+                          onChanged: (v) => setD(() {
+                            v == true ? selected.add(c.employeeId) : selected.remove(c.employeeId);
+                          }),
+                        ),
+                    ],
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _scopesSaving = true);
+    try {
+      await ref.read(adminRepositoryProvider).updateUserDataScopes(
+          widget.user.id, scope, selected.toList());
+      if (!mounted) return;
+      setState(() => _scopeGrants[scope] = selected);
+      UtenToast.success(context, '$label已保存，即时生效');
+    } catch (_) {
+      if (!mounted) return;
+      UtenToast.error(context, '保存失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _scopesSaving = false);
+    }
+  }
+
+  Widget _dataScopeSection() {
+    final theme = Theme.of(context);
+    final isSuper = widget.user.status == 'active' &&
+        ref.read(adminEffectivePermissionsProvider(widget.user.id)).valueOrNull?.superAdmin == true;
+    return UtenCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('数据范围',
+              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(
+            '归属隔离的数据（外贸货品 / 客户资料）默认只有归属人本人可见；'
+            '在这里给该用户加看指定业务员的数据。「查看全部」权限点（*:view:all）优先级更高。',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          if (isSuper) ...[
+            const SizedBox(height: 6),
+            Text('该账号是超级管理员，默认可见全部数据，无需配置。',
+                style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.warning)),
+          ],
+          const SizedBox(height: 8),
+          if (_scopesLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else if (_scopesError != null)
+            Text(_scopesError!, style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.error))
+          else
+            for (final (scope, label) in _scopeDefs)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 2),
+                          Text(
+                            (_scopeGrants[scope] ?? {}).isEmpty
+                                ? '仅本人（默认）'
+                                : '加看：${(_scopeGrants[scope]!).map((id) => (_scopeCandidates[scope] ?? []).where((c) => c.employeeId == id).map((c) => c.name).firstOrNull ?? '未知').join('、')}',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    UtenButton(
+                      type: UtenButtonType.ghost,
+                      size: UtenButtonSize.small,
+                      isLoading: _scopesSaving,
+                      onPressed: isSuper ? null : () => _editScope(scope, label),
+                      child: const Text('编辑'),
+                    ),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+
   // ===== 账号操作 =====
 
   Future<void> _runAccountAction({
@@ -171,6 +347,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             ),
           ),
         _accountSection(),
+        const SizedBox(height: 12),
+        _dataScopeSection(),
         const SizedBox(height: 12),
         _permSection(effectiveAsync, catalogAsync),
       ],

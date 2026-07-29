@@ -35,6 +35,7 @@ import '../../features/expense/pages/expense_list_page.dart';
 import '../../features/expense/pages/expense_new_page.dart';
 import '../../features/finance/models/finance_doc.dart';
 import '../../features/finance/pages/finance_ar_ap_page.dart';
+import '../../features/finance/pages/finance_assets_page.dart';
 import '../../features/finance/pages/finance_doc_detail_page.dart';
 import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
@@ -48,8 +49,6 @@ import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
 import '../../features/hvac/pages/hvac_control_page.dart';
 import '../../features/hvac/pages/hvac_overview_page.dart';
-import '../../features/inventory/pages/inventory_list_page.dart';
-import '../../features/inventory/pages/inventory_movement_page.dart';
 import '../../features/lab/pages/lab_test_list_page.dart';
 import '../../features/lab/pages/lab_test_report_page.dart';
 import '../../features/lab/pages/lab_test_upload_page.dart';
@@ -88,6 +87,7 @@ import '../../features/production/pages/production_plan_detail_page.dart';
 import '../../features/production/pages/production_plan_edit_page.dart';
 import '../../features/production/pages/production_plan_list_page.dart';
 import '../../features/production/pages/production_report_page.dart';
+import '../../features/production/pages/production_schedule_page.dart';
 import '../../features/production/pages/where_used_report_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
@@ -541,7 +541,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.stockMovement,
             name: 'stock-movement',
-            builder: (_, _) => const StockMovementPage(),
+            // goodsId / warehouseId 查询参数：即时库存/余额/货品详情行点击带入过滤
+            builder: (_, state) => StockMovementPage(
+                goodsId: state.uri.queryParameters['goodsId'],
+                warehouseId: state.uri.queryParameters['warehouseId']),
           ),
           GoRoute(
             path: RouteName.stockInstantInventory,
@@ -743,6 +746,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const ProductionHubPage(),
           ),
           GoRoute(
+            path: RouteName.productionSchedule,
+            name: 'production-schedule',
+            builder: (_, _) => const ProductionSchedulePage(),
+          ),
+          GoRoute(
             path: '/production/plans/new',
             name: 'production-plan-new',
             builder: (_, _) => const ProductionPlanEditPage(),
@@ -845,6 +853,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const FinanceAccountFlowPage(),
           ),
           GoRoute(
+            path: RouteName.financeReportRecon,
+            name: 'finance-report-recon',
+            builder: (_, _) => const FinanceReportTablePage(cardId: 'recon'),
+          ),
+          GoRoute(
+            path: RouteName.financeReportCost,
+            name: 'finance-report-cost',
+            builder: (_, _) => const FinanceReportTablePage(cardId: 'cost'),
+          ),
+          GoRoute(
+            path: RouteName.financeReportGl,
+            name: 'finance-report-gl',
+            builder: (_, _) => const FinanceReportTablePage(cardId: 'gl'),
+          ),
+          GoRoute(
             path: RouteName.financeArAp,
             name: 'finance-ar-ap',
             builder: (_, _) => const FinanceArApPage(),
@@ -859,6 +882,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'finance-checks',
             builder: (_, _) => const AccountPage(
                 initialAccountTypeFilter: 'CHECK'),
+          ),
+          GoRoute(
+            path: RouteName.financeAssets,
+            name: 'finance-assets',
+            builder: (_, _) => const FinanceAssetsPage(),
           ),
           GoRoute(
             path: '/finance/:seg/new',
@@ -889,18 +917,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => FinanceDocListPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
             ),
-          ),
-
-          // —— 库存 ——
-          GoRoute(
-            path: '/inventory',
-            name: 'inventory-list',
-            builder: (_, _) => const InventoryListPage(),
-          ),
-          GoRoute(
-            path: '/inventory/movement',
-            name: 'inventory-movement',
-            builder: (_, _) => const InventoryMovementPage(),
           ),
 
           // —— 访客审批 / 被访人 / 保安扫码 ——

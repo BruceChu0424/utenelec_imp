@@ -30,6 +30,8 @@ class UtenExportButton extends ConsumerStatefulWidget {
     required this.queryParams,
     this.filename,
     this.label = '下载表格',
+    this.type = UtenButtonType.tonal,
+    this.size = UtenButtonSize.small,
   });
 
   final String endpoint;
@@ -39,6 +41,11 @@ class UtenExportButton extends ConsumerStatefulWidget {
 
   /// 按钮文字（公司年长用户多，文字比纯图标易懂；默认"下载表格"，调用方可覆盖如"下载货品表"）。
   final String label;
+
+  /// 按钮样式/尺寸：默认 tonal/small（AppBar 紧凑款）；
+  /// 表格工具条场景传 primary/large（实心深绿 + 白字白 icon 大按钮）。
+  final UtenButtonType type;
+  final UtenButtonSize size;
 
   @override
   ConsumerState<UtenExportButton> createState() => _UtenExportButtonState();
@@ -53,7 +60,8 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       context: context,
       builder: (_) => const _ExportPasswordDialog(),
     );
-    if (pwd == null || pwd.isEmpty || !mounted) return;
+    // null=取消；空串=用户选「不设密码」明文导出；非空=加密导出。
+    if (pwd == null || !mounted) return;
     await _doExport(pwd);
   }
 
@@ -68,7 +76,8 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       final name = '${widget.filename ?? 'export_${widget.report}'}.xlsx';
       final saved = await saveBytes(bytes, name);
       if (!mounted) return;
-      context.appSuccess(kIsWeb ? '已开始下载 $name' : '已保存：$saved');
+      final encNote = password.isEmpty ? '（未加密）' : '';
+      context.appSuccess(kIsWeb ? '已开始下载 $name$encNote' : '已保存：$saved$encNote');
     } on ApiException catch (e) {
       if (!mounted) return;
       context.appError(e.message);
@@ -84,8 +93,8 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   Widget build(BuildContext context) {
     // 文字按钮（年长用户多，文字"下载表格"比纯图标易懂）；loading 时 UtenButton 自带转圈并禁用。
     return UtenButton(
-      type: UtenButtonType.tonal,
-      size: UtenButtonSize.small,
+      type: widget.type,
+      size: widget.size,
       icon: Icons.download_rounded,
       isLoading: _loading,
       onPressed: _onTap,
@@ -94,7 +103,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   }
 }
 
-/// 导出密码对话框：密码 + 确认密码（至少 6 位且一致）。确认返回密码，取消返回 null。
+/// 导出对话框：两种导出方式二选一——
+/// ① 设密码（≥6 位 + 确认）加密导出；② 「不设密码」直接明文导出（返回空串）。
+/// 确认返回密码（或空串），取消返回 null。
 class _ExportPasswordDialog extends StatefulWidget {
   const _ExportPasswordDialog();
 
@@ -117,7 +128,7 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
   void _submit() {
     final p = _pwd.text;
     if (p.length < 6) {
-      setState(() => _error = '密码至少 6 位'); // TODO(l10n): 补 arb
+      setState(() => _error = '密码至少 6 位（不想加密可点下方「不设密码」）'); // TODO(l10n): 补 arb
       return;
     }
     if (p != _confirm.text) {
@@ -131,13 +142,13 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: const Text('导出加密 Excel'), // TODO(l10n): 补 arb
+      title: const Text('导出 Excel'), // TODO(l10n): 补 arb
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '设置打开密码（Excel/WPS 打开时需输入）。请妥善保管，密码丢失无法找回。',
+            '可设打开密码（Excel/WPS 打开时需输入），也可不设密码直接导出明文表格。',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
@@ -146,7 +157,7 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
             obscureText: true,
             autofocus: true,
             decoration: const InputDecoration(
-              labelText: '密码', // TODO(l10n): 补 arb
+              labelText: '密码（可留空不设）', // TODO(l10n): 补 arb
               border: OutlineInputBorder(),
               isDense: true,
             ),
@@ -174,7 +185,17 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'), // TODO(l10n): 补 arb
         ),
-        FilledButton(onPressed: _submit, child: const Text('导出')), // TODO(l10n): 补 arb
+        // 不设密码：返回空串 → 后端 EncryptedWorkbookService 放行明文 xlsx。
+        TextButton.icon(
+          onPressed: () => Navigator.of(context).pop(''),
+          icon: const Icon(Icons.lock_open_rounded, size: 18),
+          label: const Text('不设密码'), // TODO(l10n): 补 arb
+        ),
+        FilledButton.icon(
+          onPressed: _submit,
+          icon: const Icon(Icons.lock_outline_rounded, size: 18),
+          label: const Text('加密导出'), // TODO(l10n): 补 arb
+        ),
       ],
     );
   }

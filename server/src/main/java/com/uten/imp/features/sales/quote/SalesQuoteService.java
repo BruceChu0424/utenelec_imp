@@ -14,6 +14,7 @@ import com.uten.imp.features.sales.quote.dto.QuoteListItem;
 import com.uten.imp.features.sales.quote.dto.QuoteQueryFilter;
 import com.uten.imp.features.sales.quote.dto.QuoteSaveRequest;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -53,6 +54,10 @@ public class SalesQuoteService {
     private final SalesQuoteItemRepository itemRepo;
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
+    private final EntityManager em;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
+    private final com.uten.imp.features.sales.order.SalesOrderService salesOrderService;
 
     @Transactional(readOnly = true)
     public PageResponse<QuoteListItem> list(QuoteQueryFilter f, int page, int size, String sort, String order) {
@@ -88,6 +93,7 @@ public class SalesQuoteService {
         tx.bind();
         SalesQuote q = new SalesQuote();
         applyHeader(req, q);
+        q.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         q.setStatus(STATUS_DRAFT);
         quoteRepo.save(q);
         List<QuoteItemDto> items = saveItems(q, req.getItems());
@@ -127,6 +133,7 @@ public class SalesQuoteService {
     public QuoteDetail approve(UUID id) {
         tx.bind();
         SalesQuote q = requireQuote(id);
+        em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -134,6 +141,7 @@ public class SalesQuoteService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         q.setStatus(STATUS_APPROVED);
+        q.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         quoteRepo.save(q);
         return detail(id);
     }
@@ -143,12 +151,60 @@ public class SalesQuoteService {
     public QuoteDetail reverse(UUID id) {
         tx.bind();
         SalesQuote q = requireQuote(id);
+        em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (q.getStatus() == null || q.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         q.setStatus(STATUS_REVERSED);
         quoteRepo.save(q);
         return detail(id);
+    }
+
+    /**
+     * 报价转订货（SOP §三1）：已审报价一键生成订货草稿。
+     * 行带入货品/颜色/单位/数量/价格；主表与各行 sourceDocNo=报价单号，
+     * 订货详情据此回联来源报价（sourceQuoteId + 行级 quotePrice 比对，价格留痕）。
+     * 转入为普通草稿：数量/价格可再改，审核才走库存检查+软预留（订货既有链路）。
+     */
+    @Transactional
+    public com.uten.imp.features.sales.order.dto.OrderDetail convertToOrder(UUID id) {
+        tx.bind();
+        SalesQuote q = requireQuote(id);
+        em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 防并发重复转入
+        if (q.getStatus() == null || q.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核报价单可转订货单");
+        }
+        List<SalesQuoteItem> qitems = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
+        if (qitems.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可转入");
+        }
+        com.uten.imp.features.sales.order.dto.OrderSaveRequest req =
+                new com.uten.imp.features.sales.order.dto.OrderSaveRequest();
+        req.setBillDate(java.time.LocalDate.now());
+        req.setClientId(q.getClientId());
+        req.setSourceDocNo(q.getBillNo());
+        req.setRemark("从报价单 " + q.getBillNo() + " 转入"
+                + (q.getRemark() == null || q.getRemark().isBlank() ? "" : "；" + q.getRemark()));
+        List<com.uten.imp.features.sales.order.dto.OrderItemLine> lines = new ArrayList<>(qitems.size());
+        for (SalesQuoteItem qi : qitems) {
+            com.uten.imp.features.sales.order.dto.OrderItemLine l =
+                    new com.uten.imp.features.sales.order.dto.OrderItemLine();
+            l.setLineNo(qi.getLineNo());
+            l.setGoodsId(qi.getGoodsId());
+            l.setColorId(qi.getColorId());
+            l.setUnitId(qi.getUnitId());
+            l.setUnitRate(qi.getUnitRate());
+            l.setQty(qi.getQty());
+            l.setPrice(qi.getPrice());
+            l.setAmountOriginal(qi.getAmountOriginal());
+            l.setAmountLocal(qi.getAmountLocal());
+            l.setWeight(qi.getWeight());
+            l.setSourceDocNo(q.getBillNo());
+            l.setRemark(qi.getRemark());
+            lines.add(l);
+        }
+        req.setItems(lines);
+        return salesOrderService.create(req);
     }
 
     private void applyHeader(QuoteSaveRequest req, SalesQuote q) {
@@ -214,7 +270,8 @@ public class SalesQuoteService {
     private QuoteDetail toDetail(SalesQuote q, List<QuoteItemDto> items) {
         return new QuoteDetail(q.getId(), q.getLegacyId(), q.getBillNo(), q.getBillDate(),
                 q.getClientId(), q.getMakerId(), q.getApproverId(), q.getValidUntil(), q.getRemark(),
-                q.getTotalOriginal(), q.getTotalLocal(), q.getStatus(), q.isClosed(), q.getSourceDocNo(), items);
+                q.getTotalOriginal(), q.getTotalLocal(), q.getStatus(), q.isClosed(), q.getSourceDocNo(), items,
+                nameResolver.nameOf(q.getMakerId()), q.getCreatedAt());
     }
 
     private SalesQuote requireQuote(UUID id) {

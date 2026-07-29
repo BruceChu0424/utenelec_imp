@@ -13,7 +13,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -22,6 +25,8 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -61,6 +66,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+  // 制单信息（服务端权威，只读展示）
+  String? _makerName;
+  String? _createdAt;
 
   @override
   void initState() {
@@ -108,6 +116,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         _currencyId = d.currencyId;
         _rate.text = d.exchangeRate?.toString() ?? '1';
         _operatorId = d.operatorId;
+        _makerName = d.makerName;
+        _createdAt = d.createdAt;
         final rows = <FinanceGridRow>[];
         for (final it in d.items) {
           final row = FinanceGridRow(mode: _cfg.itemMode)
@@ -272,10 +282,17 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     return Scaffold(
       appBar: UtenAppBar(
           title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-          showBackButton: true,
+          // 既可能从列表 push 进（回列表），也可能从 hub 卡片 go 直达新建
+          // （栈空，回钱流管理 hub）；故用 popOrBackTo 兼顾两种入口。
+          leading: UtenBackButton(
+            onPressed: () =>
+                popOrBackTo(context, defaultPath: RouteName.finance),
+          ),
           actions: _cfg.skipListOnCreate
               ? [
-                  TextButton(
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.history_rounded,
                     onPressed: () =>
                         context.push('/finance/${_cfg.type.pathSegment}'),
                     child: const Text('查看历史'),
@@ -317,6 +334,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                           size: 16),
                                 ),
                               ),
+                              // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                              ...utenMakerAuditCells(ref,
+                                  makerName: _makerName, createdAt: _createdAt),
                               UtenDateField(
                                 label: '单据日期',
                                 required: true,
@@ -398,10 +418,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                                 ?.copyWith(fontWeight: FontWeight.w600)),
                         const Spacer(),
                         if (_cfg.hasArApLink)
-                          TextButton.icon(
+                          UtenImportButton(
+                            label: '从应收应付引入',
                             onPressed: _importFromArAp,
-                            icon: const Icon(Icons.link_rounded, size: 18),
-                            label: const Text('从应收应付引入'),
                           ),
                       ],
                     ),

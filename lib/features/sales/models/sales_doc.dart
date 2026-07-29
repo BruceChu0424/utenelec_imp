@@ -25,8 +25,9 @@ enum SalesDocType {
   final String pathSegment;
 
   static SalesDocType byPath(String seg) => SalesDocType.values.firstWhere(
-      (e) => e.pathSegment == seg,
-      orElse: () => SalesDocType.quote);
+    (e) => e.pathSegment == seg,
+    orElse: () => SalesDocType.quote,
+  );
 }
 
 /// 报表 docType 参数（对应 GET /api/sales/reports/{docType}/detail 的 path 取值）。
@@ -77,6 +78,126 @@ Color salesStatusColor(int? code, ThemeData theme) {
   }
 }
 
+/// 订单行链路状态（V90 chain_status）标签。
+String chainStatusLabel(int? code) {
+  switch (code) {
+    case 1:
+      return '部分预留';
+    case 2:
+      return '待排产';
+    case 3:
+      return '待物料';
+    case 4:
+      return '已排产';
+    case 5:
+      return '生产中';
+    case 6:
+      return '部分完工';
+    case 7:
+      return '可发货';
+    case 8:
+      return '部分发货';
+    case 9:
+      return '已发货';
+    case -1:
+      return '已取消';
+    default:
+      return '—';
+  }
+}
+
+/// 链路状态色（绿=可发货/完成，橙=进行中，红=缺料，灰=未上链）。
+Color chainStatusColor(int? code, ThemeData theme) {
+  switch (code) {
+    case 7:
+    case 9:
+      return Colors.green;
+    case 3:
+      return theme.colorScheme.error;
+    case 1:
+    case 2:
+    case 4:
+    case 5:
+    case 6:
+    case 8:
+      return Colors.orange;
+    default:
+      return theme.colorScheme.onSurfaceVariant;
+  }
+}
+
+/// 订货工作台统计卡（GET /api/sales/orders/stats）。
+class SalesOrderStats {
+  const SalesOrderStats({
+    this.pendingProduction = 0,
+    this.inProduction = 0,
+    this.shippable = 0,
+    this.monthDone = 0,
+  });
+  final int pendingProduction;
+  final int inProduction;
+  final int shippable;
+  final int monthDone;
+
+  factory SalesOrderStats.fromJson(Map<String, dynamic> json) =>
+      SalesOrderStats(
+        pendingProduction: (json['pendingProduction'] as num?)?.toInt() ?? 0,
+        inProduction: (json['inProduction'] as num?)?.toInt() ?? 0,
+        shippable: (json['shippable'] as num?)?.toInt() ?? 0,
+        monthDone: (json['monthDone'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// 批量发货可发行（GET /api/sales/orders/shippable-lines；SOP §一9）。
+/// 已审未结案订单中 reservedQty>0 的明细行，归属隔离与订单列表同口径。
+class ShippableLine {
+  const ShippableLine({
+    required this.orderItemId,
+    required this.orderId,
+    this.billNo,
+    this.clientId,
+    this.deliverDate,
+    this.goodsId,
+    this.colorId,
+    this.unitId,
+    this.unitRate,
+    this.qty,
+    this.shippedQty,
+    this.reservedQty,
+    this.price,
+  });
+
+  final String orderItemId;
+  final String orderId;
+  final String? billNo;
+  final String? clientId;
+  final String? deliverDate;
+  final String? goodsId;
+  final String? colorId;
+  final String? unitId;
+  final double? unitRate;
+  final double? qty;
+  final double? shippedQty;
+  final double? reservedQty;
+  final double? price;
+
+  factory ShippableLine.fromJson(Map<String, dynamic> json) => ShippableLine(
+    orderItemId: json['orderItemId'] as String,
+    orderId: json['orderId'] as String,
+    billNo: json['billNo'] as String?,
+    clientId: json['clientId'] as String?,
+    deliverDate: json['deliverDate'] as String?,
+    goodsId: json['goodsId'] as String?,
+    colorId: json['colorId'] as String?,
+    unitId: json['unitId'] as String?,
+    unitRate: (json['unitRate'] as num?)?.toDouble(),
+    qty: (json['qty'] as num?)?.toDouble(),
+    shippedQty: (json['shippedQty'] as num?)?.toDouble(),
+    reservedQty: (json['reservedQty'] as num?)?.toDouble(),
+    price: (json['price'] as num?)?.toDouble(),
+  );
+}
+
 class SalesDocListItem {
   const SalesDocListItem({
     required this.id,
@@ -92,6 +213,10 @@ class SalesDocListItem {
     this.stopped = false,
     this.arPosted = false,
     this.legacyId,
+    this.deliverDate,
+    this.delayWarning = false,
+    this.rejected = false,
+    this.priceMasked = false,
   });
 
   final String id;
@@ -107,6 +232,10 @@ class SalesDocListItem {
   final bool stopped;
   final bool arPosted;
   final int? legacyId;
+  final String? deliverDate; // 订货单交货日期
+  final bool delayWarning; // 延期预警：已审未结案且距交货 ≤3 天（后端派生）
+  final bool rejected; // 仓库驳回（V96，出货单）：备货异常，草稿终态
+  final bool priceMasked; // 价格脱敏（SOP §三8）：无 sales_order:price:view 时合计渲染 ***
 
   factory SalesDocListItem.fromJson(Map<String, dynamic> json) =>
       SalesDocListItem(
@@ -123,6 +252,10 @@ class SalesDocListItem {
         stopped: (json['stopped'] as bool?) ?? false,
         arPosted: (json['arPosted'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        deliverDate: json['deliverDate'] as String?,
+        delayWarning: (json['delayWarning'] as bool?) ?? false,
+        rejected: (json['rejected'] as bool?) ?? false,
+        priceMasked: (json['priceMasked'] as bool?) ?? false,
       );
 }
 
@@ -168,6 +301,13 @@ class SalesDocItem {
     this.materialPrice,
     this.dieCastPrice,
     this.remark,
+    // V90 业务链（订货行）：可发/已排/已产 + 链路状态（系统回写，只读）
+    this.reservedQty,
+    this.plannedQty,
+    this.producedQty,
+    this.chainStatus,
+    // 报价转入（SOP §三1）：来源报价行单价（价格留痕比对，系统回联填充，只读）
+    this.quotePrice,
   });
 
   final String? id;
@@ -207,45 +347,58 @@ class SalesDocItem {
   final double? materialPrice;
   final double? dieCastPrice;
   final String? remark;
+  // V90 业务链字段（详见构造函数注释）
+  final double? reservedQty;
+  final double? plannedQty;
+  final double? producedQty;
+  final int? chainStatus;
+
+  /// 报价转入：来源报价行单价（只读，价格比对用；非转入单为 null）
+  final double? quotePrice;
 
   factory SalesDocItem.fromJson(Map<String, dynamic> json) => SalesDocItem(
-        id: json['id'] as String?,
-        lineNo: (json['lineNo'] as num?)?.toInt(),
-        goodsId: json['goodsId'] as String?,
-        colorId: json['colorId'] as String?,
-        unitId: json['unitId'] as String?,
-        unitRate: (json['unitRate'] as num?)?.toDouble(),
-        qty: (json['qty'] as num?)?.toDouble(),
-        price: (json['price'] as num?)?.toDouble(),
-        amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        shippedQty: (json['shippedQty'] as num?)?.toDouble(),
-        returnedQty: (json['returnedQty'] as num?)?.toDouble(),
-        flagQty: (json['flagQty'] as num?)?.toDouble(),
-        discount: (json['discount'] as num?)?.toDouble(),
-        taxAmount: (json['taxAmount'] as num?)?.toDouble(),
-        costAmount: (json['costAmount'] as num?)?.toDouble(),
-        returnedAmount: (json['returnedAmount'] as num?)?.toDouble(),
-        weight: (json['weight'] as num?)?.toDouble(),
-        parcelQty: (json['parcelQty'] as num?)?.toDouble(),
-        cartonCount: (json['cartonCount'] as num?)?.toDouble(),
-        clientNo: json['clientNo'] as String?,
-        clientModel: json['clientModel'] as String?,
-        solution: json['solution'] as String?,
-        responsible: json['responsible'] as String?,
-        orderItemId: json['orderItemId'] as String?,
-        outItemId: json['outItemId'] as String?,
-        deliverDate: json['deliverDate'] as String?,
-        sourceDocNo: json['sourceDocNo'] as String?,
-        machiningPrice: (json['machiningPrice'] as num?)?.toDouble(),
-        circumference: (json['circumference'] as num?)?.toDouble(),
-        inboundQty: (json['inboundQty'] as num?)?.toDouble(),
-        inNo: json['inNo'] as String?,
-        outNo: json['outNo'] as String?,
-        materialPrice: (json['materialPrice'] as num?)?.toDouble(),
-        dieCastPrice: (json['dieCastPrice'] as num?)?.toDouble(),
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String?,
+    lineNo: (json['lineNo'] as num?)?.toInt(),
+    goodsId: json['goodsId'] as String?,
+    colorId: json['colorId'] as String?,
+    unitId: json['unitId'] as String?,
+    unitRate: (json['unitRate'] as num?)?.toDouble(),
+    qty: (json['qty'] as num?)?.toDouble(),
+    price: (json['price'] as num?)?.toDouble(),
+    amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    shippedQty: (json['shippedQty'] as num?)?.toDouble(),
+    returnedQty: (json['returnedQty'] as num?)?.toDouble(),
+    flagQty: (json['flagQty'] as num?)?.toDouble(),
+    discount: (json['discount'] as num?)?.toDouble(),
+    taxAmount: (json['taxAmount'] as num?)?.toDouble(),
+    costAmount: (json['costAmount'] as num?)?.toDouble(),
+    returnedAmount: (json['returnedAmount'] as num?)?.toDouble(),
+    weight: (json['weight'] as num?)?.toDouble(),
+    parcelQty: (json['parcelQty'] as num?)?.toDouble(),
+    cartonCount: (json['cartonCount'] as num?)?.toDouble(),
+    clientNo: json['clientNo'] as String?,
+    clientModel: json['clientModel'] as String?,
+    solution: json['solution'] as String?,
+    responsible: json['responsible'] as String?,
+    orderItemId: json['orderItemId'] as String?,
+    outItemId: json['outItemId'] as String?,
+    deliverDate: json['deliverDate'] as String?,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    machiningPrice: (json['machiningPrice'] as num?)?.toDouble(),
+    circumference: (json['circumference'] as num?)?.toDouble(),
+    inboundQty: (json['inboundQty'] as num?)?.toDouble(),
+    inNo: json['inNo'] as String?,
+    outNo: json['outNo'] as String?,
+    materialPrice: (json['materialPrice'] as num?)?.toDouble(),
+    dieCastPrice: (json['dieCastPrice'] as num?)?.toDouble(),
+    remark: json['remark'] as String?,
+    reservedQty: (json['reservedQty'] as num?)?.toDouble(),
+    plannedQty: (json['plannedQty'] as num?)?.toDouble(),
+    producedQty: (json['producedQty'] as num?)?.toDouble(),
+    chainStatus: (json['chainStatus'] as num?)?.toInt(),
+    quotePrice: (json['quotePrice'] as num?)?.toDouble(),
+  );
 }
 
 class SalesDocDetail {
@@ -264,6 +417,8 @@ class SalesDocDetail {
     this.senderId,
     this.makerId,
     this.approverId,
+    this.makerName,
+    this.createdAt,
     this.validUntil,
     this.deliverDate,
     this.contractNo,
@@ -283,7 +438,13 @@ class SalesDocDetail {
     this.stopped = false,
     this.arPosted = false,
     this.sourceDocNo,
+    this.sourceQuoteId,
     this.items = const [],
+    this.rejected = false,
+    this.rejectReason,
+    this.financeAudit,
+    this.financeAuditedAt,
+    this.priceMasked = false,
   });
 
   final String id;
@@ -300,6 +461,12 @@ class SalesDocDetail {
   final String? senderId;
   final String? makerId;
   final String? approverId;
+
+  /// 制单员姓名（服务端解析；只读展示，不可修改）
+  final String? makerName;
+
+  /// 制单时间 ISO（审计 created_at，创建后不可变）
+  final String? createdAt;
   final String? validUntil;
   final String? deliverDate;
   final String? contractNo;
@@ -319,45 +486,155 @@ class SalesDocDetail {
   final bool stopped;
   final bool arPosted;
   final String? sourceDocNo;
+
+  /// 来源报价单 ID（报价转入的订单详情由后端回联填充；用于跳转报价详情）
+  final String? sourceQuoteId;
   final List<SalesDocItem> items;
+  final bool rejected; // 仓库驳回（V96，出货单）
+  final String? rejectReason;
+
+  /// C6 财务发货审核：0 未审 / 1 已审发货（出货单）。
+  final int? financeAudit;
+  final String? financeAuditedAt;
+
+  /// 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族字段渲染 ***
+  final bool priceMasked;
 
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
-        id: json['id'] as String,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        billNo: json['billNo'] as String?,
-        billDate: json['billDate'] as String?,
-        clientId: json['clientId'] as String?,
-        warehouseId: json['warehouseId'] as String?,
-        currencyId: json['currencyId'] as String?,
-        exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-        taxRate: (json['taxRate'] as num?)?.toDouble(),
-        paymentStyleId: (json['paymentStyleId'] as num?)?.toInt(),
-        sellerId: json['sellerId'] as String?,
-        senderId: json['senderId'] as String?,
-        makerId: json['makerId'] as String?,
-        approverId: json['approverId'] as String?,
-        validUntil: json['validUntil'] as String?,
-        deliverDate: json['deliverDate'] as String?,
-        contractNo: json['contractNo'] as String?,
-        linkPhone: json['linkPhone'] as String?,
-        signAddr: json['signAddr'] as String?,
-        shipAddr: json['shipAddr'] as String?,
-        deposit: (json['deposit'] as num?)?.toDouble(),
-        parcelCount: (json['parcelCount'] as num?)?.toInt(),
-        printCount: (json['printCount'] as num?)?.toInt(),
-        lastDate: json['lastDate'] as String?,
-        outType: json['outType'] as String?,
-        remark: json['remark'] as String?,
-        totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
-        totalLocal: (json['totalLocal'] as num?)?.toDouble(),
-        status: (json['status'] as num?)?.toInt(),
-        closed: (json['closed'] as bool?) ?? false,
-        stopped: (json['stopped'] as bool?) ?? false,
-        arPosted: (json['arPosted'] as bool?) ?? false,
-        sourceDocNo: json['sourceDocNo'] as String?,
-        items: (json['items'] as List?)
-                ?.map((e) => SalesDocItem.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            const [],
+    id: json['id'] as String,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    billNo: json['billNo'] as String?,
+    billDate: json['billDate'] as String?,
+    clientId: json['clientId'] as String?,
+    warehouseId: json['warehouseId'] as String?,
+    currencyId: json['currencyId'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    taxRate: (json['taxRate'] as num?)?.toDouble(),
+    paymentStyleId: (json['paymentStyleId'] as num?)?.toInt(),
+    sellerId: json['sellerId'] as String?,
+    senderId: json['senderId'] as String?,
+    makerId: json['makerId'] as String?,
+    makerName: json['makerName'] as String?,
+    createdAt: json['createdAt'] as String?,
+    approverId: json['approverId'] as String?,
+    validUntil: json['validUntil'] as String?,
+    deliverDate: json['deliverDate'] as String?,
+    contractNo: json['contractNo'] as String?,
+    linkPhone: json['linkPhone'] as String?,
+    signAddr: json['signAddr'] as String?,
+    shipAddr: json['shipAddr'] as String?,
+    deposit: (json['deposit'] as num?)?.toDouble(),
+    parcelCount: (json['parcelCount'] as num?)?.toInt(),
+    printCount: (json['printCount'] as num?)?.toInt(),
+    lastDate: json['lastDate'] as String?,
+    outType: json['outType'] as String?,
+    remark: json['remark'] as String?,
+    totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
+    totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+    status: (json['status'] as num?)?.toInt(),
+    closed: (json['closed'] as bool?) ?? false,
+    stopped: (json['stopped'] as bool?) ?? false,
+    arPosted: (json['arPosted'] as bool?) ?? false,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    sourceQuoteId: json['sourceQuoteId'] as String?,
+    items:
+        (json['items'] as List?)
+            ?.map((e) => SalesDocItem.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+    rejected: (json['rejected'] as bool?) ?? false,
+    rejectReason: json['rejectReason'] as String?,
+    financeAudit: (json['financeAudit'] as num?)?.toInt(),
+    financeAuditedAt: json['financeAuditedAt'] as String?,
+    priceMasked: (json['priceMasked'] as bool?) ?? false,
+  );
+}
+
+/// 订单行排产进度（GET /api/sales/orders/{id}/plan-progress）。
+/// 销售端看链路另一端：订货/可发/已排/已产/已发 + 关联生产计划溯源。
+class OrderPlanProgressLine {
+  const OrderPlanProgressLine({
+    required this.orderItemId,
+    this.lineNo,
+    this.goodsCode,
+    this.goodsName,
+    this.spec,
+    this.colorName,
+    this.unitName,
+    this.qty,
+    this.reservedQty,
+    this.plannedQty,
+    this.producedQty,
+    this.shippedQty,
+    this.chainStatus,
+    this.links = const [],
+  });
+  final String orderItemId;
+  final int? lineNo;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? spec;
+  final String? colorName;
+  final String? unitName;
+  final double? qty;
+  final double? reservedQty;
+  final double? plannedQty;
+  final double? producedQty;
+  final double? shippedQty;
+  final int? chainStatus;
+  final List<OrderPlanLink> links;
+
+  factory OrderPlanProgressLine.fromJson(Map<String, dynamic> j) =>
+      OrderPlanProgressLine(
+        orderItemId: j['orderItemId'] as String,
+        lineNo: (j['lineNo'] as num?)?.toInt(),
+        goodsCode: j['goodsCode'] as String?,
+        goodsName: j['goodsName'] as String?,
+        spec: j['spec'] as String?,
+        colorName: j['colorName'] as String?,
+        unitName: j['unitName'] as String?,
+        qty: (j['qty'] as num?)?.toDouble(),
+        reservedQty: (j['reservedQty'] as num?)?.toDouble(),
+        plannedQty: (j['plannedQty'] as num?)?.toDouble(),
+        producedQty: (j['producedQty'] as num?)?.toDouble(),
+        shippedQty: (j['shippedQty'] as num?)?.toDouble(),
+        chainStatus: (j['chainStatus'] as num?)?.toInt(),
+        links: [
+          for (final l in (j['links'] as List? ?? const []))
+            OrderPlanLink.fromJson(l as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// 关联生产计划（plan_order_item_links 溯源）。
+class OrderPlanLink {
+  const OrderPlanLink({
+    required this.planId,
+    this.planNo,
+    this.planStatus,
+    this.planClosed = false,
+    this.billDate,
+    this.allocatedQty,
+    this.producedQty,
+    this.inboundQty,
+  });
+  final String planId;
+  final String? planNo;
+  final int? planStatus; // 0草稿 1已审 -1红冲
+  final bool planClosed;
+  final String? billDate;
+  final double? allocatedQty;
+  final double? producedQty;
+  final double? inboundQty;
+
+  factory OrderPlanLink.fromJson(Map<String, dynamic> j) => OrderPlanLink(
+        planId: j['planId'] as String,
+        planNo: j['planNo'] as String?,
+        planStatus: (j['planStatus'] as num?)?.toInt(),
+        planClosed: j['planClosed'] == true,
+        billDate: j['billDate'] as String?,
+        allocatedQty: (j['allocatedQty'] as num?)?.toDouble(),
+        producedQty: (j['producedQty'] as num?)?.toDouble(),
+        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
       );
 }

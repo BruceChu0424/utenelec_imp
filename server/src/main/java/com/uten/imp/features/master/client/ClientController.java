@@ -102,6 +102,13 @@ public class ClientController {
         return service.facets(categoryId);
     }
 
+    /** 全量字典（单据客户名解析用；client:view 全员有）。 */
+    @GetMapping("/dict")
+    @PreAuthorize("hasAuthority('client:view')")
+    public java.util.List<com.uten.imp.features.master.client.dto.ClientListItem> dict() {
+        return service.dict();
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('client:view')")
     public ClientDetail detail(@PathVariable UUID id) {

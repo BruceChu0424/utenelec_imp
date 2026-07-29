@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -29,7 +30,9 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../purchase/providers/master_name_provider.dart';
 import '../../sales/widgets/sales_order_picker.dart';
+import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
+import '../widgets/plan_order_import_sheet.dart';
 import '../widgets/production_grid_columns.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
@@ -62,6 +65,9 @@ class _ProductionPlanEditPageState
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+  // 制单信息（服务端权威，只读展示）
+  String? _makerName;
+  String? _createdAt;
 
   @override
   void initState() {
@@ -103,6 +109,8 @@ class _ProductionPlanEditPageState
         _workshopName = d.workshopName; // 部门名冗余（老库可能为编号字符串）
         _sellerId = d.sellerId;
         _workerId = d.workerId;
+        _makerName = d.makerName;
+        _createdAt = d.createdAt;
         final rows = <ProductionGridRow>[];
         for (final it in d.items) {
           final row = ProductionGridRow()
@@ -111,6 +119,11 @@ class _ProductionPlanEditPageState
             ..remark.text = it.remark ?? ''
             ..colorId = it.colorId
             ..unitId = it.unitId
+            ..salesOrderItemId = it.salesOrderItemId
+            ..clientName = it.clientName
+            ..unitRate = it.unitRate
+            ..orderDate = it.orderDate
+            ..outboundDate = it.outboundDate
             ..goods = it.goodsId == null
                 ? null
                 : GoodsOption(
@@ -169,9 +182,59 @@ class _ProductionPlanEditPageState
 
   Future<void> _pickSourceOrder() async {
     final d = await showSalesOrderPicker(context, ref);
-    if (d == null) return;
+    if (d == null || !mounted) return;
     setState(() => _sourceDocNo.text = d.billNo ?? '');
+    // 选订单后列出该订单货品（含缺口/零件清单），勾选行直接带入明细网格，
+    // 行携 salesOrderItemId —— 审核时回写订单行 planned_qty，业务链闭合。
+    final lines = await showPlanOrderImportSheet(context, ref,
+        orderId: d.id, billNo: d.billNo ?? '');
+    if (lines == null || lines.isEmpty || !mounted) return;
+    // 已在网格中的订单行不重复带入（后端审核也有防超排硬校验兜底）
+    final existing = _grid.rows
+        .map((r) => r.salesOrderItemId)
+        .whereType<String>()
+        .toSet();
+    final fresh = lines
+        .where((l) => !existing.contains(l.orderItemId))
+        .toList(growable: false);
+    if (fresh.isEmpty) {
+      context.appInfo('所选货品行已在明细中，未重复带入');
+      return;
+    }
+    setState(() {
+      // 清掉新建时的占位空行（未选货品的空行）
+      for (var i = _grid.length - 1; i >= 0; i--) {
+        final r = _grid.rows[i];
+        if (r.goods == null && r.productNo.text.trim().isEmpty) {
+          _grid.removeAt(i);
+        }
+      }
+      for (final l in fresh) {
+        final row = ProductionGridRow()
+          ..productNo.text = '${d.billNo ?? ''}-${l.lineNo ?? ''}'
+          ..salesOrderNo.text = d.billNo ?? ''
+          ..qty.text = _numText(l.needQty)
+          ..oqty.text = _numText(l.qty)
+          ..salesOrderItemId = l.orderItemId
+          ..clientName = l.clientName
+          ..unitRate = l.unitRate
+          ..outboundDate = l.deliverDate
+          ..colorId = l.colorId
+          ..unitId = l.unitId
+          ..goods = l.goodsId == null
+              ? null
+              : GoodsOption(
+                  id: l.goodsId!,
+                  code: l.goodsCode,
+                  name: l.goodsName ?? l.goodsCode ?? '');
+        _grid.addRow(row);
+      }
+    });
   }
+
+  String _numText(double? v) => v == null
+      ? ''
+      : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
 
   Future<void> _save() async {
     final rows = _grid.rows;
@@ -202,6 +265,12 @@ class _ProductionPlanEditPageState
           'oqty': double.tryParse(r.oqty.text),
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
+        if (r.salesOrderItemId != null) 'salesOrderItemId': r.salesOrderItemId,
+        if (r.clientName != null && r.clientName!.isNotEmpty)
+          'clientName': r.clientName,
+        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.outboundDate != null && r.outboundDate!.isNotEmpty)
+          'outboundDate': r.outboundDate,
         if (r.salesOrderNo.text.trim().isNotEmpty)
           'salesOrderNo': r.salesOrderNo.text.trim(),
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
@@ -275,9 +344,9 @@ class _ProductionPlanEditPageState
       onTap: _pickSourceOrder,
       borderRadius: BorderRadius.circular(UtenSpacing.s8),
       child: InputDecorator(
-        decoration: InputDecoration(
+        decoration: const InputDecoration(
           labelText: '来源单号',
-          suffixIcon: const Icon(Icons.search_rounded, size: 18),
+          suffixIcon: Icon(Icons.search_rounded, size: 18),
         ),
         child: Text(
           _sourceDocNo.text.isEmpty ? '点击选择销售订单' : _sourceDocNo.text,
@@ -295,10 +364,19 @@ class _ProductionPlanEditPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
+    final workshopTree = ref.watch(productionWorkshopTreeProvider).valueOrNull;
     return Scaffold(
       appBar: UtenAppBar(
           title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',
-          showBackButton: true),
+          showBackButton: true,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.tonal,
+              icon: Icons.history_rounded,
+              onPressed: () => context.push('/production/plans'),
+              child: const Text('查看历史'),
+            ),
+          ]),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -334,6 +412,9 @@ class _ProductionPlanEditPageState
                                             size: 16),
                                   ),
                                 ),
+                                // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                ...utenMakerAuditCells(ref,
+                                    makerName: _makerName, createdAt: _createdAt),
                                 UtenDateField(
                                   label: '单据日期',
                                   required: true,
@@ -352,6 +433,7 @@ class _ProductionPlanEditPageState
                                   mode: UtenDepartmentPickerMode.single,
                                   label: '车间',
                                   hint: '选择生产车间（部门）',
+                                  treeOverride: workshopTree,
                                   initialSelection: _departmentId == null
                                       ? const []
                                       : [

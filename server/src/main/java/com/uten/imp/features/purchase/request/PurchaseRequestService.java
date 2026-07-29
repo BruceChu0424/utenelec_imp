@@ -49,7 +49,9 @@ public class PurchaseRequestService {
     private final PurchaseRequestItemRepository itemRepo;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final jakarta.persistence.EntityManager em;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -86,7 +88,7 @@ public class PurchaseRequestService {
         tx.bind();
         PurchaseRequest r = new PurchaseRequest();
         applyHeader(req, r);
-        r.setMakerId(currentUser.requireId()); // 制单=当前登录用户
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
         requestRepo.save(r);
         List<RequestItemDto> items = saveItems(r, req.getItems());
@@ -122,12 +124,13 @@ public class PurchaseRequestService {
     public RequestDetail approve(UUID id) {
         tx.bind();
         PurchaseRequest r = requireRequest(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (itemRepo.findByRequestIdOrderByLineNoAsc(id).isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         r.setStatus(STATUS_APPROVED);
-        r.setApproverId(currentUser.requireId()); // 审核=当前登录用户
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         requestRepo.save(r);
         return detail(id);
     }
@@ -136,6 +139,7 @@ public class PurchaseRequestService {
     public RequestDetail reverse(UUID id) {
         tx.bind();
         PurchaseRequest r = requireRequest(id);
+        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         r.setStatus(STATUS_REVERSED);
@@ -207,7 +211,8 @@ public class PurchaseRequestService {
         return new RequestDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(),
-                r.getStatus(), r.isClosed(), r.getSourceDocNo(), items);
+                r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
     }
 
     private PurchaseRequest requireRequest(UUID id) {

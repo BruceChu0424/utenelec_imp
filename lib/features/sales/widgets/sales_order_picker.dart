@@ -28,7 +28,9 @@ Future<SalesDocListItem?> showSalesOrderPicker(
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
@@ -49,12 +51,18 @@ Future<SalesDocListItem?> showSalesOrderPicker(
       alignment: Alignment.centerRight,
       child: Material(
         color: Theme.of(ctx).colorScheme.surface,
-        child: SizedBox(width: 840, height: double.infinity, child: sheet),
+        child: const SizedBox(
+          width: 840,
+          height: double.infinity,
+          child: sheet,
+        ),
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
       child: child,
     ),
   );
@@ -68,7 +76,8 @@ class _SalesOrderPickerSheet extends ConsumerStatefulWidget {
       _SalesOrderPickerSheetState();
 }
 
-class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet> {
+class _SalesOrderPickerSheetState
+    extends ConsumerState<_SalesOrderPickerSheet> {
   PagedResult<SalesDocListItem>? _page;
   bool _loading = false;
   String? _error;
@@ -99,9 +108,10 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet> 
       _error = null;
     });
     try {
-      final r = await ref.read(salesRepositoryProvider(SalesDocType.order)).list(
+      final r = await ref
+          .read(salesRepositoryProvider(SalesDocType.order))
+          .list(
             page: page,
-            size: 20,
             // 业务约束：只选已审订单作来源（草稿/红冲不可）。
             filter: SalesDocFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -154,14 +164,19 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet> 
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s8, UtenSpacing.s12, UtenSpacing.s4, UtenSpacing.s8),
+                UtenSpacing.s8,
+                UtenSpacing.s12,
+                UtenSpacing.s4,
+                UtenSpacing.s8,
+              ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       '选择销售订单（来源单号）',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -174,7 +189,11 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet> 
             const Divider(height: 1),
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s12, UtenSpacing.s12, UtenSpacing.s12, UtenSpacing.s8),
+                UtenSpacing.s12,
+                UtenSpacing.s12,
+                UtenSpacing.s12,
+                UtenSpacing.s8,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -182,10 +201,11 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet> 
                       controller: _keywordCtl,
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                        hintText: '搜索单据号',
+                        hintText: '搜索单据号 / 客户名称',
                         isDense: true,
                         border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                       onChanged: _onKeyword,
                     ),
@@ -202,8 +222,9 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet> 
                           UtenDropdownItem(value: e.key, label: e.value),
                       ],
                       onChanged: (v) {
-                        setState(() =>
-                            _clientId = (v == null || v.isEmpty) ? null : v);
+                        setState(
+                          () => _clientId = (v == null || v.isEmpty) ? null : v,
+                        );
                         _load(1);
                       },
                     ),
@@ -240,35 +261,43 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet> 
   }
 
   List<MasterColumnDef<SalesDocListItem>> _columns(
-          SalesMasterNameService names) =>
-      [
-        MasterColumnDef(
-            key: 'billNo', label: '单据号', width: 140, value: (d) => d.billNo),
-        MasterColumnDef(
-            key: 'billDate',
-            label: '日期',
-            width: 110,
-            type: 'date',
-            sortable: true,
-            value: (d) => (d.billDate != null && d.billDate!.length >= 10)
-                ? d.billDate!.substring(0, 10)
-                : (d.billDate ?? '')),
-        MasterColumnDef(
-            key: 'client',
-            label: '客户',
-            width: 200,
-            value: (d) => names.client(d.clientId)),
-        MasterColumnDef(
-            key: 'total',
-            label: '合计',
-            width: 120,
-            type: 'money',
-            sortable: true,
-            value: (d) => d.totalLocal?.toStringAsFixed(2)),
-        MasterColumnDef(
-            key: 'status',
-            label: '状态',
-            width: 90,
-            value: (d) => salesStatusLabel(d.status)),
-      ];
+    SalesMasterNameService names,
+  ) => [
+    MasterColumnDef(
+      key: 'billNo',
+      label: '单据号',
+      width: 140,
+      value: (d) => d.billNo,
+    ),
+    MasterColumnDef(
+      key: 'billDate',
+      label: '日期',
+      width: 110,
+      type: 'date',
+      sortable: true,
+      value: (d) => (d.billDate != null && d.billDate!.length >= 10)
+          ? d.billDate!.substring(0, 10)
+          : (d.billDate ?? ''),
+    ),
+    MasterColumnDef(
+      key: 'client',
+      label: '客户',
+      width: 200,
+      value: (d) => names.client(d.clientId),
+    ),
+    MasterColumnDef(
+      key: 'total',
+      label: '合计',
+      width: 120,
+      type: 'money',
+      sortable: true,
+      value: (d) => d.totalLocal?.toStringAsFixed(2),
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 90,
+      value: (d) => salesStatusLabel(d.status),
+    ),
+  ];
 }

@@ -23,7 +23,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/mould_node.dart';
@@ -100,13 +100,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
   }
 
   /// 新建分类时的常用名称建议（降低起名门槛；模具类常用维度）。
-  static const _categorySuggestions = [
-    '注塑模具',
-    '冲压模具',
-    '压铸模具',
-    '锻压模具',
-    '夹具工装',
-  ];
+  static const _categorySuggestions = ['注塑模具', '冲压模具', '压铸模具', '锻压模具', '夹具工装'];
 
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
@@ -123,27 +117,24 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
   }
 
   Future<bool> _doCreate(CategoryEditResult r) async {
-    try {
-      await ref.read(mouldCategoryRepositoryProvider).create(
-            ProductCategorySaveInput(
-              code: r.code!,
-              name: r.name,
-              parentId: r.parentId,
-            ),
-          );
-      if (!mounted) return false;
-      context.appSuccess('分类已创建'); // TODO(l10n): 补 arb
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(mouldCategoryRepositoryProvider)
+            .create(
+              ProductCategorySaveInput(
+                code: r.code!,
+                name: r.name,
+                parentId: r.parentId,
+              ),
+            );
+      },
+      success: '分类已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   void _showEditDialog(ProductCategoryDetail detail) {
@@ -158,27 +149,21 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
   }
 
   Future<bool> _doUpdate(String id, CategoryEditResult r) async {
-    try {
-      await ref.read(mouldCategoryRepositoryProvider).update(
-            id,
-            ProductCategoryUpdateInput(
-              name: r.name,
-              parentId: r.parentId,
-            ),
-          );
-      if (!mounted) return false;
-      context.appSuccess('分类已更新'); // TODO(l10n): 补 arb
-      await _load();
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await ref
+            .read(mouldCategoryRepositoryProvider)
+            .update(
+              id,
+              ProductCategoryUpdateInput(name: r.name, parentId: r.parentId),
+            );
+      },
+      success: '分类已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _load();
+    return true;
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
@@ -203,26 +188,22 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       ),
     );
     if (ok != true) return;
-    try {
-      await ref.read(mouldCategoryRepositoryProvider).delete(node.id);
-      if (!mounted) return;
-      context.appSuccess('分类已删除'); // TODO(l10n): 补 arb
-      if (_selectedId == node.id) _selectedId = null;
-      await _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
-    }
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await ref.read(mouldCategoryRepositoryProvider).delete(node.id);
+      },
+      success: '分类已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    if (_selectedId == node.id) _selectedId = null;
+    await _load();
   }
 
   // ---- 树渲染 -------------------------------------------------------------
 
-  Widget _buildTree({
-    required void Function(String id) onSelect,
-  }) {
+  Widget _buildTree({required void Function(String id) onSelect}) {
     final theme = Theme.of(context);
     final canEdit = _canEdit;
     return UtenCategoryTreeView(
@@ -479,7 +460,9 @@ class _DetailPaneState extends State<_DetailPane> {
       _mouldPageNum = page;
     });
     try {
-      final result = await widget.ref.read(mouldRepositoryProvider).list(
+      final result = await widget.ref
+          .read(mouldRepositoryProvider)
+          .list(
             widget.nodeId,
             page: page,
             keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -508,8 +491,9 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 拉字段 facet（筛选栏下拉选项）。失败不阻塞列表，静默降级为空下拉。
   Future<void> _loadFacets() async {
     try {
-      final f =
-          await widget.ref.read(mouldRepositoryProvider).facets(widget.nodeId);
+      final f = await widget.ref
+          .read(mouldRepositoryProvider)
+          .facets(widget.nodeId);
       if (!mounted) return;
       setState(() => _facets = f);
     } on ApiException catch (e) {
@@ -542,15 +526,21 @@ class _DetailPaneState extends State<_DetailPane> {
   static const _mouldFields = [
     MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
     MasterFieldDef(
-        key: 'code', label: '编号', group: '基础', readOnly: true, hint: '保存后自动生成'),
+      key: 'code',
+      label: '编号',
+      group: '基础',
+      readOnly: true,
+      hint: '保存后自动生成',
+    ),
     MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
     MasterFieldDef(
-        key: 'status',
-        label: '状态',
-        type: MasterFieldType.select,
-        options: kMasterStatusOptions,
-        required: true,
-        group: '基础'),
+      key: 'status',
+      label: '状态',
+      type: MasterFieldType.select,
+      options: kMasterStatusOptions,
+      required: true,
+      group: '基础',
+    ),
     MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
     MasterFieldDef(
       key: 'tqty',
@@ -581,21 +571,16 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   Future<bool> _doCreateMould(Map<String, dynamic> body) async {
-    try {
-      await widget.ref.read(mouldRepositoryProvider).create(body);
-      if (!mounted) return false;
-      context.appSuccess('模具已创建'); // TODO(l10n): 补 arb
-      await _loadMoulds(_mouldPageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('创建失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await widget.ref.read(mouldRepositoryProvider).create(body);
+      },
+      success: '模具已创建', // TODO(l10n): 补 arb
+      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadMoulds(_mouldPageNum);
+    return true;
   }
 
   void _showMouldEdit(MouldDetail d) {
@@ -621,21 +606,16 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   Future<bool> _doUpdateMould(String id, Map<String, dynamic> body) async {
-    try {
-      await widget.ref.read(mouldRepositoryProvider).update(id, body);
-      if (!mounted) return false;
-      context.appSuccess('模具已更新'); // TODO(l10n): 补 arb
-      await _loadMoulds(_mouldPageNum);
-      return true;
-    } on ApiException catch (e) {
-      if (!mounted) return false;
-      context.appError(e.message);
-      return false;
-    } catch (_) {
-      if (!mounted) return false;
-      context.appError('更新失败，请稍后重试'); // TODO(l10n): 补 arb
-      return false;
-    }
+    final ok = await context.guardRun(
+      () async {
+        await widget.ref.read(mouldRepositoryProvider).update(id, body);
+      },
+      success: '模具已更新', // TODO(l10n): 补 arb
+      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!ok) return false;
+    await _loadMoulds(_mouldPageNum);
+    return true;
   }
 
   Future<void> _deleteMould(MouldDetail d) async {
@@ -660,24 +640,22 @@ class _DetailPaneState extends State<_DetailPane> {
       ),
     );
     if (ok != true) return;
-    try {
-      await widget.ref.read(mouldRepositoryProvider).delete(d.id);
-      if (!mounted) return;
-      context.appSuccess('模具已删除'); // TODO(l10n): 补 arb
-      await _loadMoulds(_mouldPageNum);
-      // 删空当前页时回退上一页，避免列表显示空白
-      if (mounted &&
-          _mouldPage != null &&
-          _mouldPage!.items.isEmpty &&
-          _mouldPage!.page > 1) {
-        await _loadMoulds(_mouldPage!.page - 1);
-      }
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
-    } catch (_) {
-      if (!mounted) return;
-      context.appError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
+    if (!mounted) return;
+    final deleted = await context.guardRun(
+      () async {
+        await widget.ref.read(mouldRepositoryProvider).delete(d.id);
+      },
+      success: '模具已删除', // TODO(l10n): 补 arb
+      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+    );
+    if (!deleted || !mounted) return;
+    await _loadMoulds(_mouldPageNum);
+    // 删空当前页时回退上一页，避免列表显示空白
+    if (mounted &&
+        _mouldPage != null &&
+        _mouldPage!.items.isEmpty &&
+        _mouldPage!.page > 1) {
+      await _loadMoulds(_mouldPage!.page - 1);
     }
   }
 
@@ -738,19 +716,19 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   List<MasterDetailRow> _mouldDetailRows(MouldDetail d) => [
-        MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
-        MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
-        MasterDetailRow('备用编号', d.mnumber), // TODO(l10n): 补 arb
-        MasterDetailRow('数量', d.qty), // TODO(l10n): 补 arb
-        MasterDetailRow('总数量', d.tqty?.toStringAsFixed(2)), // TODO(l10n): 补 arb
-        MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
-        MasterDetailRow('车间', d.place), // TODO(l10n): 补 arb
-        MasterDetailRow('保管人', d.keeper), // TODO(l10n): 补 arb
-        MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
-        MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
-        MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
-        MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
-      ];
+    MasterDetailRow('编号', d.code), // TODO(l10n): 补 arb
+    MasterDetailRow('名称', d.name), // TODO(l10n): 补 arb
+    MasterDetailRow('备用编号', d.mnumber), // TODO(l10n): 补 arb
+    MasterDetailRow('数量', d.qty), // TODO(l10n): 补 arb
+    MasterDetailRow('总数量', d.tqty?.toStringAsFixed(2)), // TODO(l10n): 补 arb
+    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
+    MasterDetailRow('车间', d.place), // TODO(l10n): 补 arb
+    MasterDetailRow('保管人', d.keeper), // TODO(l10n): 补 arb
+    MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
+    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
+    MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
+    MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -783,16 +761,26 @@ class _DetailPaneState extends State<_DetailPane> {
         children: [
           // 固定：分类信息卡（含编辑按钮）
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(0, UtenSpacing.s16, 0, UtenSpacing.s12),
+            padding: const EdgeInsets.fromLTRB(
+              0,
+              UtenSpacing.s16,
+              0,
+              UtenSpacing.s12,
+            ),
             child: MasterDetailCard(
               title: d.name,
               icon: Icons.precision_manufacturing_outlined,
               subtitle: '编码 ${d.code} · 层级 L${d.level}', // TODO(l10n): 补 arb
               stats: [
-                MasterDetailStat('子分类数', '${d.childCount}'), // TODO(l10n): 补 arb
+                MasterDetailStat(
+                  '子分类数',
+                  '${d.childCount}',
+                ), // TODO(l10n): 补 arb
                 MasterDetailStat('父级', d.parentName), // TODO(l10n): 补 arb
-                MasterDetailStat('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
+                MasterDetailStat(
+                  '旧编码',
+                  d.legacyId?.toString(),
+                ), // TODO(l10n): 补 arb
               ],
               path: d.path.isEmpty ? null : d.path,
               canEdit: widget.canEdit,
@@ -808,13 +796,17 @@ class _DetailPaneState extends State<_DetailPane> {
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: Row(
               children: [
-                Icon(Icons.precision_manufacturing_outlined,
-                    size: 18, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.precision_manufacturing_outlined,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: UtenSpacing.s8),
                 Text(
                   '模具 ($total)', // TODO(l10n): 补 arb
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
@@ -873,27 +865,59 @@ class _DetailPaneState extends State<_DetailPane> {
   ///   （下拉只显示"所有"），后端忽略其 query 参数。
   static final _mouldColumns = <MasterColumnDef<MouldListItem>>[
     MasterColumnDef(
-        key: 'code', label: '模具编号', width: 120, value: (m) => m.code),
+      key: 'code',
+      label: '模具编号',
+      width: 120,
+      value: (m) => m.code,
+    ),
     MasterColumnDef(
-        key: 'name', label: '模具名称', width: 180, value: (m) => m.name),
+      key: 'name',
+      label: '模具名称',
+      width: 180,
+      value: (m) => m.name,
+    ),
     MasterColumnDef(
-        key: 'cavities', label: '模数', width: 80, value: (_) => null),
+      key: 'cavities',
+      label: '模数',
+      width: 80,
+      value: (_) => null,
+    ),
+    MasterColumnDef(key: 'sets', label: '套数', width: 80, value: (_) => null),
     MasterColumnDef(
-        key: 'sets', label: '套数', width: 80, value: (_) => null),
+      key: 'mouldType',
+      label: '模具类型',
+      width: 120,
+      value: (_) => null,
+    ),
     MasterColumnDef(
-        key: 'mouldType', label: '模具类型', width: 120, value: (_) => null),
+      key: 'place',
+      label: '存放位置',
+      width: 140,
+      value: (m) => m.place,
+    ),
     MasterColumnDef(
-        key: 'place', label: '存放位置', width: 140, value: (m) => m.place),
+      key: 'manufacturer',
+      label: '制造商',
+      width: 140,
+      value: (_) => null,
+    ),
     MasterColumnDef(
-        key: 'manufacturer', label: '制造商', width: 140, value: (_) => null),
+      key: 'mstatus',
+      label: '制造日期',
+      width: 110,
+      value: (m) => m.mstatus,
+    ),
     MasterColumnDef(
-        key: 'mstatus',
-        label: '制造日期',
-        width: 110,
-        value: (m) => m.mstatus),
+      key: 'remark',
+      label: '备注',
+      width: 200,
+      value: (m) => m.remark,
+    ),
     MasterColumnDef(
-        key: 'remark', label: '备注', width: 200, value: (m) => m.remark),
-    MasterColumnDef(
-        key: 'status', label: '状态', width: 80, value: (m) => m.status),
+      key: 'status',
+      label: '状态',
+      width: 80,
+      value: (m) => m.status,
+    ),
   ];
 }

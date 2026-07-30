@@ -28,6 +28,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../sales/widgets/sales_order_picker.dart';
 import '../providers/production_department_provider.dart';
@@ -90,6 +91,14 @@ class _ProductionPlanEditPageState
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    if (widget.id == null) {
+      // 跟单员默认当前登录人（生产工是车间侧人员，不预填）。
+      final meId = ref.read(sessionProvider).user?.employeeId;
+      if (meId != null && meId.isNotEmpty) {
+        _sellerId = meId;
+        await _preloadEmployees([meId]);
+      }
+    }
     if (widget.id != null) {
       try {
         final d = await ref

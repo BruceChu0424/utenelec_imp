@@ -30,6 +30,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -95,6 +96,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     if (_cfg.isAllocate) {
       await ref.read(financeNameServiceProvider).loadStyleCategory(
           _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME');
+    }
+    if (widget.id == null) {
+      // 经办人默认当前登录人，界面上可改。
+      final meId = ref.read(sessionProvider).user?.employeeId;
+      if (meId != null && meId.isNotEmpty) {
+        _operatorId = meId;
+        await _preloadEmployees([meId]);
+      }
     }
     if (widget.id != null) {
       try {

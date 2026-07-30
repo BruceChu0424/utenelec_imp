@@ -46,6 +46,15 @@ class SalesLinkedItem {
   final String? unitId;
 }
 
+/// 「从上游引入」的确认返回：所选明细 + 上游单据客户 id
+///（编辑页表头未选客户时，据此外填表头客户并联动地址/电话）。
+class SalesLinkPickResult {
+  const SalesLinkPickResult({required this.items, this.clientId});
+
+  final List<SalesLinkedItem> items;
+  final String? clientId;
+}
+
 /// 决定引入源（订货 / 出货）。退货同时双挂时优先出货（outItemId 真骨干），
 /// 订货 orderItemId 由编辑页"再引入一次订货"补全（v1 简化，逻辑沿用）。
 SalesDocType _upstreamType(SalesDocConfig cfg) {
@@ -54,18 +63,21 @@ SalesDocType _upstreamType(SalesDocConfig cfg) {
   return SalesDocType.order;
 }
 
-/// 弹出"从上游引入"右滑入大面板；返回所选明细（null 表示取消）。
-Future<List<SalesLinkedItem>?> showSalesDocLinkPicker(
+/// 弹出"从上游引入"右滑入大面板；返回所选明细 + 上游客户（null 表示取消）。
+/// [initialClientId]：编辑页表头已选客户时传入，面板客户筛选默认锁定该客户。
+Future<SalesLinkPickResult?> showSalesDocLinkPicker(
   BuildContext context,
   WidgetRef ref,
-  SalesDocConfig cfg,
-) {
+  SalesDocConfig cfg, {
+  String? initialClientId,
+}) {
   final sheet = _UpstreamImportSheet(
     cfg: cfg,
     upstreamType: _upstreamType(cfg),
+    initialClientId: initialClientId,
   );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<List<SalesLinkedItem>>(
+    return showModalBottomSheet<SalesLinkPickResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -83,7 +95,7 @@ Future<List<SalesLinkedItem>?> showSalesDocLinkPicker(
       ),
     );
   }
-  return showGeneralDialog<List<SalesLinkedItem>>(
+  return showGeneralDialog<SalesLinkPickResult>(
     context: context,
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
@@ -123,10 +135,17 @@ class _UpstreamItemRow extends EditableGridRow {
 }
 
 class _UpstreamImportSheet extends ConsumerStatefulWidget {
-  const _UpstreamImportSheet({required this.cfg, required this.upstreamType});
+  const _UpstreamImportSheet({
+    required this.cfg,
+    required this.upstreamType,
+    this.initialClientId,
+  });
 
   final SalesDocConfig cfg;
   final SalesDocType upstreamType;
+
+  /// 编辑页表头已选客户：面板客户筛选默认锁定该客户（可改）。
+  final String? initialClientId;
 
   @override
   ConsumerState<_UpstreamImportSheet> createState() =>
@@ -150,11 +169,14 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   SalesDocDetail? _upDetail;
   late final UtenEditableGridController<_UpstreamItemRow> _grid;
   bool _loadingItems = false;
+  String _gridEmptyMessage = '该单据无明细';
 
   @override
   void initState() {
     super.initState();
     _grid = UtenEditableGridController<_UpstreamItemRow>();
+    // 表头已选客户 → 面板客户筛选默认锁定该客户（用户可改）。
+    _clientId = widget.initialClientId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(salesMasterNameServiceProvider).ensureLoaded();
       _loadDocs(1);
@@ -239,14 +261,21 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           .toSet();
       await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
-      final rows = detail.items.map((it) {
+      // 只显示有剩余可引量的明细：已发完（出货←订货）/已退完（退货←出货/订货）的行不显示。
+      final visible = detail.items.where((it) => _remainQty(it) > 0).toList();
+      final rows = visible.map((it) {
         final row = _UpstreamItemRow(it);
-        row.qty.text = _defaultQty(it).toString();
+        row.qty.text = _remainQty(it).toString();
         return row;
       }).toList();
       _grid.replaceAll(rows);
       setState(() {
         _upDetail = detail;
+        _gridEmptyMessage = detail.items.isEmpty
+            ? '该单据无明细'
+            : visible.isEmpty
+            ? '该单据明细已全部完成，无剩余可引入'
+            : '该单据无明细';
         _loadingItems = false;
       });
     } catch (_) {
@@ -256,14 +285,18 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
     }
   }
 
-  /// 默认本次数量：出货引入订货 → max(0, qty - shippedQty)；其它 → qty。
-  double _defaultQty(SalesDocItem it) {
+  /// 上游明细剩余可引量（也是"本次数量"默认值）：
+  /// 出货←订货 = 订货数 − 已发；退货←出货/订货 = 原单数 − 已退；其它 = 全额。
+  double _remainQty(SalesDocItem it) {
+    final q = it.qty ?? 0;
     if (_upType == SalesDocType.order &&
         widget.cfg.type == SalesDocType.shipment) {
-      final remain = (it.qty ?? 0) - (it.shippedQty ?? 0);
-      return remain < 0 ? 0 : remain;
+      return q - (it.shippedQty ?? 0);
     }
-    return it.qty ?? 0;
+    if (widget.cfg.type == SalesDocType.returnDoc) {
+      return q - (it.returnedQty ?? 0);
+    }
+    return q;
   }
 
   void _setSelectedAll(bool v) {
@@ -313,7 +346,9 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
         ),
       );
     }
-    Navigator.of(context).pop(out);
+    Navigator.of(context).pop(
+      SalesLinkPickResult(items: out, clientId: _upDetail?.clientId),
+    );
   }
 
   // ---- build ------------------------------------------------------------
@@ -544,7 +579,7 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
               createBlankRow: () => _UpstreamItemRow(
                 const SalesDocItem(id: null),
               ), // 不会被调用
-              emptyMessage: '该单据无明细', // TODO(l10n): 补 arb
+              emptyMessage: _gridEmptyMessage, // TODO(l10n): 补 arb
             ),
           ),
         ),

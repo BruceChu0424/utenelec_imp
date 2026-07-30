@@ -72,7 +72,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 报价转订货：已审报价一键生成订货草稿（行带入+价格留痕），转后跳订货编辑页。
   Future<void> _convertToOrder() async {
-    if (_busy) return;
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -146,7 +149,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   Future<void> _approve() async => _doAction(
-    '审核后将驱动下游（库存/应收），确认审核？',
+    // 出货单未财务审核发货时提前告知前置条件（现金客户会被后端拒绝），
+    // 避免用户点完没反应、不知道为什么。
+    _cfg.type == SalesDocType.shipment && _detail?.financeAudit != 1
+        ? '该出货单尚未「财务审核发货」；现金结算客户须先财务审核，否则审核会被拒绝。确认继续审核？'
+        : '审核后将驱动下游（库存/应收），确认审核？',
     (repo) => repo.approve(widget.id),
     '已审核',
   );
@@ -162,7 +169,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 订单改量（V100）：弹窗逐行改数量（增量重走预留/减量释放，已排产行需生产部权限）。
   Future<void> _changeQty() async {
-    if (_busy || _detail == null) return;
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
+    if (_detail == null) return;
     final ctrls = <String, TextEditingController>{};
     for (final it in _detail!.items) {
       if (it.id != null) {
@@ -264,7 +275,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// C6 财务审核发货（出货单）：响应带结算方式+未收余额，审核后刷新详情。
   Future<void> _financeAudit() async {
-    if (_busy) return;
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -306,7 +320,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// C6 财务反审（仅未审核出货的单据）。
   Future<void> _financeAuditReverse() async {
-    if (_busy) return;
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -344,7 +361,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 仓库驳回（V96）：填原因 → 释放预留 + 订单行回退待排产。
   Future<void> _reject() async {
-    if (_busy) return;
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
     final reasonCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
@@ -392,7 +412,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     Future<SalesDocDetail> Function(SalesRepository) fn,
     String ok,
   ) async {
-    if (_busy) return;
+    if (_busy) {
+      // 上一个操作仍在途（网络慢时最长 10~20s）：明确提示，不再静默吞点击。
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -427,7 +451,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   Future<void> _delete() async {
-    if (_busy) return;
+    if (_busy) {
+      context.appInfo('正在处理，请稍候…');
+      return;
+    }
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -499,7 +526,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 ),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
+      // 处理中底栏不消失（旧逻辑 _busy 时置 null，用户点了审核像"没反应"），
+      // 换成常驻进度条 + 文案，操作完成/失败 toast 后恢复按钮。
+      bottomNavigationBar: _detail == null
+          ? null
+          : _busy
+          ? const _BusyBar()
+          : _actions(theme),
     );
   }
 
@@ -1037,4 +1070,38 @@ class _KV {
   final String label;
   final String? value;
   final Widget? badge;
+}
+
+/// 操作处理中的底栏（替代旧逻辑 _busy 时底栏整体消失）：
+/// 常驻进度条 + 文案，让用户明确知道"点了有反应，正在处理"。
+class _BusyBar extends StatelessWidget {
+  const _BusyBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+        ),
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: UtenSpacing.s12),
+            Text('正在处理，请稍候…'),
+          ],
+        ),
+      ),
+    );
+  }
 }

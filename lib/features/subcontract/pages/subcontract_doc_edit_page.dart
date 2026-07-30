@@ -34,6 +34,7 @@ import '../../../shared/providers/master_name_provider.dart'
     show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
@@ -124,6 +125,26 @@ class _SubcontractDocEditPageState
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(mn.masterNameServiceProvider).ensureLoaded();
+    if (widget.id == null) {
+      // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
+      try {
+        final last = await ref
+            .read(subcontractRepositoryProvider(widget.docType))
+            .list(size: 1);
+        if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+          _warehouseId = last.items.first.warehouseId;
+        }
+      } catch (_) {
+        /* 预填失败静默，用户手选 */
+      }
+      // 采购员/经办人默认当前登录人（交货人是委外商侧人员，不预填）。
+      final meId = ref.read(sessionProvider).user?.employeeId;
+      if (meId != null && meId.isNotEmpty) {
+        if (_cfg.hasPurchaser) _purchaserId = meId;
+        if (_cfg.hasWorker) _workerId = meId;
+        await _preloadEmployees([meId]);
+      }
+    }
     if (widget.id != null) {
       try {
         final d = await ref
@@ -232,10 +253,16 @@ class _SubcontractDocEditPageState
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
+  /// 表头已选委外商 → 面板默认按该委外商筛选；表头未选 → 引入后以上游单据委外商回填。
   Future<void> _importFromUpstream() async {
-    final picked = await showSubcontractLinkPicker(context, ref, _cfg);
-    if (picked == null || picked.isEmpty) return;
-    final goodsIds = picked
+    final result = await showSubcontractLinkPicker(
+      context,
+      ref,
+      _cfg,
+      initialSupplierId: _supplierId,
+    );
+    if (result == null || result.items.isEmpty) return;
+    final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
         .toSet();
@@ -244,7 +271,7 @@ class _SubcontractDocEditPageState
     }
     if (!mounted) return;
     final rows = <SubcontractGridRow>[];
-    for (final li in picked) {
+    for (final li in result.items) {
       if (li.goodsId.isEmpty) continue;
       final goods = GoodsOption(
         id: li.goodsId,
@@ -253,6 +280,11 @@ class _SubcontractDocEditPageState
       rows.add(SubcontractGridRow.fromLinked(li, goods));
     }
     _grid.addRows(rows);
+    // 表头未选委外商 → 以上游单据委外商回填。
+    final sid = result.supplierId;
+    if (_supplierId == null && sid != null && sid.isNotEmpty) {
+      setState(() => _supplierId = sid);
+    }
   }
 
   Future<void> _save() async {

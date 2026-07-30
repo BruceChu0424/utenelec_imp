@@ -30,7 +30,9 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../basic_data/repositories/client_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -94,14 +96,24 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   /// 对应输入框描红；字段改值即时清除。
   final Set<String> _errors = {};
 
+  /// 已挂「件数自动汇总」监听的数量控制器（随行增删同步挂载/卸除）。
+  final Set<TextEditingController> _qtyListened = {};
+
   @override
   void initState() {
     super.initState();
+    // 明细行增删 → 重新挂载数量监听并重算件数（行内数量改动走各行 qty 监听）。
+    _grid.addListener(_onGridRowsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   @override
   void dispose() {
+    _grid.removeListener(_onGridRowsChanged);
+    for (final c in _qtyListened) {
+      c.removeListener(_recalcParcelCount);
+    }
+    _qtyListened.clear();
     _billNo.dispose();
     _remark.dispose();
     _rate.dispose();
@@ -133,6 +145,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         }
       } catch (_) {
         /* 预填失败静默，用户手选 */
+      }
+    }
+    if (widget.id == null && (_cfg.hasSeller || _cfg.hasSender)) {
+      // 业务员/发货人默认当前登录人（员工档案 id），界面上可改。
+      final meId = ref.read(sessionProvider).user?.employeeId;
+      if (meId != null && meId.isNotEmpty) {
+        if (_cfg.hasSeller) _sellerId = meId;
+        if (_cfg.hasSender) _senderId = meId;
+        await _preloadEmployees([meId]);
       }
     }
     if (widget.id != null) {
@@ -254,13 +275,21 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
       ..colorId = names.colorIdByLegacy(g.colorLegacyId)
       ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+    // 货品选定后该行数量才计入件数（先填数量后选货品的情形）。
+    _recalcParcelCount();
   }
 
   /// 「从上游引入」：弹选择器，把所选 SalesLinkedItem 映射成行追加。
+  /// 表头已选客户 → 面板默认按该客户筛选；表头未选 → 引入后以上游单据客户回填。
   Future<void> _importFromUpstream() async {
-    final picked = await showSalesDocLinkPicker(context, ref, _cfg);
-    if (picked == null || picked.isEmpty) return;
-    final goodsIds = picked
+    final result = await showSalesDocLinkPicker(
+      context,
+      ref,
+      _cfg,
+      initialClientId: _clientId,
+    );
+    if (result == null || result.items.isEmpty) return;
+    final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
         .toSet();
@@ -269,7 +298,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
     if (!mounted) return;
     final rows = <SalesGridRow>[];
-    for (final li in picked) {
+    for (final li in result.items) {
       if (li.goodsId.isEmpty) continue;
       final goods = GoodsOption(
         id: li.goodsId,
@@ -278,6 +307,73 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       rows.add(SalesGridRow.fromLinked(li, goods));
     }
     _grid.addRows(rows);
+    // 表头未选客户 → 以上游单据客户回填，并联动收货地址/联系电话。
+    final cid = result.clientId;
+    if (_clientId == null && cid != null && cid.isNotEmpty) {
+      await _onClientChanged(cid);
+    }
+  }
+
+  /// 表头客户变更（手动选择或上游引入回填）：查客户主档，把收货地址/联系电话
+  /// 带出来（订货合同信息 / 出货类发货信息字段；带不出则清空，均可继续手改）。
+  Future<void> _onClientChanged(String? id) async {
+    setState(() => _clientId = id);
+    _clearError('client');
+    if (id == null || id.isEmpty) return;
+    if (!(_cfg.hasShipInfo || _cfg.hasContractInfo)) return;
+    try {
+      final c = await ref.read(clientRepositoryProvider).detail(id);
+      // 竞态守卫：await 期间用户又改了客户 → 丢弃本次结果。
+      if (!mounted || _clientId != id) return;
+      // 收货地址优先主档「收货地址」，无则取「地址」；电话依次 电话→手机→备用电话。
+      String firstOf(Iterable<String?> vs) => vs
+          .map((e) => e?.trim() ?? '')
+          .firstWhere((e) => e.isNotEmpty, orElse: () => '');
+      final addr = firstOf([c.shipAddress, c.address]);
+      final phone = firstOf([c.phone, c.mobile, c.phone2]);
+      setState(() {
+        _shipAddr.text = addr; // 订货合同信息 / 出货类发货信息共用该控制器
+        if (_cfg.hasShipInfo) _shipLinkPhone.text = phone;
+        if (_cfg.hasContractInfo) _linkPhone.text = phone;
+      });
+    } catch (_) {
+      // 查询失败静默：不阻塞开单，地址/电话可手填。
+    }
+  }
+
+  /// 明细行增删（grid 通知）→ 重新挂载各行数量监听并重算件数。
+  void _onGridRowsChanged() {
+    final current = _grid.rows.map((r) => r.qty).toSet();
+    for (final c in _qtyListened.difference(current)) {
+      c.removeListener(_recalcParcelCount);
+    }
+    for (final c in current.difference(_qtyListened)) {
+      c.addListener(_recalcParcelCount);
+    }
+    _qtyListened
+      ..clear()
+      ..addAll(current);
+    _recalcParcelCount();
+  }
+
+  /// 件数 = 明细各行（已选货品）数量之和，四舍五入取整；无有效行返回 null。
+  int? _computedParcelCount() {
+    var sum = 0.0;
+    var has = false;
+    for (final r in _grid.rows) {
+      if (r.goods == null) continue;
+      has = true;
+      sum += double.tryParse(r.qty.text.trim()) ?? 0;
+    }
+    return has ? sum.round() : null;
+  }
+
+  /// 件数自动汇总（仅出货类 hasShipInfo 单据）：数量改动/行增删时刷新只读框。
+  void _recalcParcelCount() {
+    if (!_cfg.hasShipInfo) return;
+    final n = _computedParcelCount();
+    final text = n == null ? '' : n.toString();
+    if (_parcelCount.text != text) _parcelCount.text = text;
   }
 
   /// 必填校验：返回第一条错误文案；并把未填的表头字段记入 [_errors]（红框）、
@@ -440,8 +536,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         if (_shipAddr.text.trim().isNotEmpty) 'shipAddr': _shipAddr.text.trim(),
         if (_shipLinkPhone.text.trim().isNotEmpty)
           'linkPhone': _shipLinkPhone.text.trim(),
-        if (_parcelCount.text.trim().isNotEmpty)
-          'parcelCount': int.tryParse(_parcelCount.text.trim()),
+        // 件数由明细数量自动汇总（不依赖只读框文本）。
+        if (_computedParcelCount() != null)
+          'parcelCount': _computedParcelCount(),
       },
       if (_cfg.hasOutType && _outType.text.trim().isNotEmpty)
         'outType': _outType.text.trim(),
@@ -548,10 +645,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     '客户',
                                     _clientId,
                                     names.clientEntries,
-                                    (v) {
-                                      setState(() => _clientId = v);
-                                      _clearError('client');
-                                    },
+                                    // 选客户后联动带出主档收货地址/联系电话。
+                                    (v) => _onClientChanged(v),
                                     required: _cfg.clientRequired,
                                     errorText: _errors.contains('client')
                                         ? '请选择客户'
@@ -691,11 +786,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                         labelText: '联系电话',
                                       ),
                                     ),
+                                    // 件数：按明细数量自动汇总，只读（保存时同样按明细重算）。
                                     TextField(
                                       controller: _parcelCount,
-                                      keyboardType: TextInputType.number,
+                                      readOnly: true,
                                       decoration: const InputDecoration(
                                         labelText: '件数',
+                                        hintText: '按明细数量自动汇总',
+                                        filled: true,
+                                        suffixIcon: Icon(
+                                          Icons.calculate_outlined,
+                                          size: 16,
+                                        ),
                                       ),
                                     ),
                                   ],

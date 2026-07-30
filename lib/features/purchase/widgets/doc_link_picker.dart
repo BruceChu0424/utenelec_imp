@@ -10,7 +10,6 @@
 //
 // 上游类型由 cfg 决定：linkToReceiptItem→收货（退货优先收货），linkToOrderItem→订货，
 // linkToRequestItem→申请。
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,6 +46,14 @@ class LinkedItem {
   final String? unitId;
 }
 
+/// 「从上游引入」的确认返回：所选明细 + 上游单据供应商 id（编辑页表头未选供应商时回填用）。
+class PurchaseLinkPickResult {
+  const PurchaseLinkPickResult({required this.items, this.supplierId});
+
+  final List<LinkedItem> items;
+  final String? supplierId;
+}
+
 /// 从 cfg 推断上游单据类型。退货同时可链收货/订货时优先收货。
 PurchaseDocType _upstreamType(PurchaseDocConfig cfg) {
   if (cfg.linkToReceiptItem) return PurchaseDocType.receipt;
@@ -54,15 +61,22 @@ PurchaseDocType _upstreamType(PurchaseDocConfig cfg) {
   return PurchaseDocType.request;
 }
 
-/// 弹出"从上游引入"右滑入大面板；返回所选明细（null 表示用户取消）。
-Future<List<LinkedItem>?> showDocLinkPicker(
+/// 弹出"从上游引入"右滑入大面板；返回所选明细 + 上游供应商（null 表示用户取消）。
+/// [initialSupplierId]：编辑页表头已选供应商时传入，面板供应商筛选默认锁定该供应商。
+Future<PurchaseLinkPickResult?> showDocLinkPicker(
   BuildContext context,
   WidgetRef ref,
-  PurchaseDocConfig cfg,
+  PurchaseDocConfig cfg, {
+  String? initialSupplierId,
+}
 ) {
-  final sheet = _UpstreamImportSheet(cfg: cfg, upstreamType: _upstreamType(cfg));
+  final sheet = _UpstreamImportSheet(
+    cfg: cfg,
+    upstreamType: _upstreamType(cfg),
+    initialSupplierId: initialSupplierId,
+  );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<List<LinkedItem>>(
+    return showModalBottomSheet<PurchaseLinkPickResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -80,7 +94,7 @@ Future<List<LinkedItem>?> showDocLinkPicker(
       ),
     );
   }
-  return showGeneralDialog<List<LinkedItem>>(
+  return showGeneralDialog<PurchaseLinkPickResult>(
     context: context,
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
@@ -120,10 +134,17 @@ class _UpstreamItemRow extends EditableGridRow {
 }
 
 class _UpstreamImportSheet extends ConsumerStatefulWidget {
-  const _UpstreamImportSheet({required this.cfg, required this.upstreamType});
+  const _UpstreamImportSheet({
+    required this.cfg,
+    required this.upstreamType,
+    this.initialSupplierId,
+  });
 
   final PurchaseDocConfig cfg;
   final PurchaseDocType upstreamType;
+
+  /// 编辑页表头已选供应商：面板供应商筛选默认锁定该供应商（可改）。
+  final String? initialSupplierId;
 
   @override
   ConsumerState<_UpstreamImportSheet> createState() =>
@@ -147,11 +168,14 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   PurchaseDocDetail? _upDetail;
   late final UtenEditableGridController<_UpstreamItemRow> _grid;
   bool _loadingItems = false;
+  String _gridEmptyMessage = '该单据无明细';
 
   @override
   void initState() {
     super.initState();
     _grid = UtenEditableGridController<_UpstreamItemRow>();
+    // 表头已选供应商 → 面板供应商筛选默认锁定该供应商（用户可改）。
+    _supplierId = widget.initialSupplierId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
       _loadDocs(1);
@@ -236,14 +260,21 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
-      final rows = detail.items.map((it) {
+      // 只显示有剩余可引量的明细：已收完（收货←订货）/已退完（退货←收货/订货）的行不显示。
+      final visible = detail.items.where((it) => _remainQty(it) > 0).toList();
+      final rows = visible.map((it) {
         final row = _UpstreamItemRow(it);
-        row.qty.text = _defaultQty(it).toString();
+        row.qty.text = _remainQty(it).toString();
         return row;
       }).toList();
       _grid.replaceAll(rows);
       setState(() {
         _upDetail = detail;
+        _gridEmptyMessage = detail.items.isEmpty
+            ? '该单据无明细'
+            : visible.isEmpty
+            ? '该单据明细已全部完成，无剩余可引入'
+            : '该单据无明细';
         _loadingItems = false;
       });
     } catch (_) {
@@ -253,13 +284,18 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
     }
   }
 
-  /// 默认本次数量：收货引入订货 → max(0, qty - receivedQty)；其它 → qty。
-  double _defaultQty(PurchaseDocItem it) {
+  /// 上游明细剩余可引量（也是"本次数量"默认值）：
+  /// 收货←订货 = 订货数 − 已收；退货←收货/订货 = 原单数 − 已退；其它 = 全额。
+  double _remainQty(PurchaseDocItem it) {
+    final q = it.qty ?? 0;
+    if (widget.cfg.type == PurchaseDocType.returnDoc) {
+      return q - (it.returnedQty ?? 0);
+    }
     if (_upType == PurchaseDocType.order &&
         widget.cfg.type == PurchaseDocType.receipt) {
-      return math.max(0.0, (it.qty ?? 0) - (it.receivedQty ?? 0));
+      return q - (it.receivedQty ?? 0);
     }
-    return it.qty ?? 0;
+    return q;
   }
 
   void _setSelectedAll(bool v) {
@@ -302,7 +338,9 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
         ),
       );
     }
-    Navigator.of(context).pop(out);
+    Navigator.of(context).pop(
+      PurchaseLinkPickResult(items: out, supplierId: _upDetail?.supplierId),
+    );
   }
 
   // ---- build ------------------------------------------------------------
@@ -530,7 +568,7 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
               createBlankRow: () => _UpstreamItemRow(
                 const PurchaseDocItem(id: null),
               ), // 不会被调用
-              emptyMessage: '该单据无明细', // TODO(l10n): 补 arb
+              emptyMessage: _gridEmptyMessage, // TODO(l10n): 补 arb
             ),
           ),
         ),

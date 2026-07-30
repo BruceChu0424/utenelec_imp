@@ -74,6 +74,19 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    if (widget.id == null) {
+      // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
+      try {
+        final last = await ref
+            .read(stockDocRepositoryProvider(widget.docType))
+            .list(size: 1);
+        if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+          _warehouseId = last.items.first.warehouseId;
+        }
+      } catch (_) {
+        /* 预填失败静默，用户手选 */
+      }
+    }
     if (widget.id != null) {
       try {
         final d = await ref.read(stockDocRepositoryProvider(widget.docType)).detail(widget.id!);

@@ -105,6 +105,7 @@ class SubcontractDocItem {
     this.checkQty,
     this.orderQty,
     this.receivedQty,
+    this.issuedQty,
     this.returnedQty,
     this.wastedQty,
     this.endingQty,
@@ -138,6 +139,9 @@ class SubcontractDocItem {
   final double? checkQty;
   final double? orderQty;
   final double? receivedQty;
+
+  /// 已发料（订货明细；后端 subcontract_order_items.issued_qty，发料审核回写）。
+  final double? issuedQty;
   final double? returnedQty;
   final double? wastedQty;
   // 损耗特有
@@ -175,6 +179,7 @@ class SubcontractDocItem {
         checkQty: (json['checkQty'] as num?)?.toDouble(),
         orderQty: (json['orderQty'] as num?)?.toDouble(),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
+        issuedQty: (json['issuedQty'] as num?)?.toDouble(),
         returnedQty: (json['returnedQty'] as num?)?.toDouble(),
         wastedQty: (json['wastedQty'] as num?)?.toDouble(),
         endingQty: (json['endingQty'] as num?)?.toDouble(),

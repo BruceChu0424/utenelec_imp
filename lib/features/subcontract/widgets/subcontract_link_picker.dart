@@ -45,6 +45,14 @@ class LinkedItem {
   final String? unitId;
 }
 
+/// 「从上游引入」的确认返回：所选明细 + 上游单据委外商 id（编辑页表头未选委外商时回填用）。
+class SubcontractLinkPickResult {
+  const SubcontractLinkPickResult({required this.items, this.supplierId});
+
+  final List<LinkedItem> items;
+  final String? supplierId;
+}
+
 /// 由 cfg 推断上游单据类型。退货/材料退双链时优先进仓/发料（更接近源头）。
 SubcontractDocType upstreamTypeOf(SubcontractDocConfig cfg) {
   if (cfg.linkToReceiptItem) return SubcontractDocType.receipt;
@@ -53,15 +61,22 @@ SubcontractDocType upstreamTypeOf(SubcontractDocConfig cfg) {
   return SubcontractDocType.application;
 }
 
-/// 弹出"从上游引入"右滑入大面板。null=取消，空列表理论上不会发生。
-Future<List<LinkedItem>?> showSubcontractLinkPicker(
+/// 弹出"从上游引入"右滑入大面板。null=取消；返回所选明细 + 上游委外商。
+/// [initialSupplierId]：编辑页表头已选委外商时传入，面板委外商筛选默认锁定该委外商。
+Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   BuildContext context,
   WidgetRef ref,
-  SubcontractDocConfig cfg,
+  SubcontractDocConfig cfg, {
+  String? initialSupplierId,
+}
 ) {
-  final sheet = _UpstreamImportSheet(cfg: cfg, upstream: upstreamTypeOf(cfg));
+  final sheet = _UpstreamImportSheet(
+    cfg: cfg,
+    upstream: upstreamTypeOf(cfg),
+    initialSupplierId: initialSupplierId,
+  );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<List<LinkedItem>>(
+    return showModalBottomSheet<SubcontractLinkPickResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -79,7 +94,7 @@ Future<List<LinkedItem>?> showSubcontractLinkPicker(
       ),
     );
   }
-  return showGeneralDialog<List<LinkedItem>>(
+  return showGeneralDialog<SubcontractLinkPickResult>(
     context: context,
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
@@ -119,9 +134,16 @@ class _UpstreamItemRow extends EditableGridRow {
 }
 
 class _UpstreamImportSheet extends ConsumerStatefulWidget {
-  const _UpstreamImportSheet({required this.cfg, required this.upstream});
+  const _UpstreamImportSheet({
+    required this.cfg,
+    required this.upstream,
+    this.initialSupplierId,
+  });
   final SubcontractDocConfig cfg;
   final SubcontractDocType upstream;
+
+  /// 编辑页表头已选委外商：面板委外商筛选默认锁定该委外商（可改）。
+  final String? initialSupplierId;
 
   @override
   ConsumerState<_UpstreamImportSheet> createState() =>
@@ -145,11 +167,14 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   SubcontractDocDetail? _upDetail;
   late final UtenEditableGridController<_UpstreamItemRow> _grid;
   bool _loadingItems = false;
+  String _gridEmptyMessage = '该单据无明细';
 
   @override
   void initState() {
     super.initState();
     _grid = UtenEditableGridController<_UpstreamItemRow>();
+    // 表头已选委外商 → 面板委外商筛选默认锁定该委外商（用户可改）。
+    _supplierId = widget.initialSupplierId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
       _loadDocs(1);
@@ -234,20 +259,51 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           .toSet();
       await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
-      final rows = detail.items.map((it) {
+      // 只显示有剩余可引量的明细：已收完/已发完料/已退完/已损耗完的行不显示。
+      final visible = detail.items.where((it) => _remainQty(it) > 0).toList();
+      final rows = visible.map((it) {
         final row = _UpstreamItemRow(it);
-        row.qty.text = (it.qty ?? 0).toString();
+        row.qty.text = _remainQty(it).toString();
         return row;
       }).toList();
       _grid.replaceAll(rows);
       setState(() {
         _upDetail = detail;
+        _gridEmptyMessage = detail.items.isEmpty
+            ? '该单据无明细'
+            : visible.isEmpty
+            ? '该单据明细已全部完成，无剩余可引入'
+            : '该单据无明细';
         _loadingItems = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingItems = false);
       // 静默降级（与 v1 一致）
+    }
+  }
+
+  /// 上游明细剩余可引量（也是"本次数量"默认值）：
+  /// 进仓←订货 = 订货数 − 已收；发料←订货 = 订货数 − 已发料；
+  /// 退货←进仓/订货 = 原单数 − 已退；材料退/损耗←发料 = 发出数 − 已退 − 已损耗；
+  /// 其它（订货←申请）= 全额。
+  double _remainQty(SubcontractDocItem it) {
+    final q = it.qty ?? 0;
+    switch (_upstream) {
+      case SubcontractDocType.order:
+        if (widget.cfg.type == SubcontractDocType.receipt) {
+          return q - (it.receivedQty ?? 0);
+        }
+        if (widget.cfg.type == SubcontractDocType.materialIssue) {
+          return q - (it.issuedQty ?? 0);
+        }
+        return q - (it.returnedQty ?? 0);
+      case SubcontractDocType.receipt:
+        return q - (it.returnedQty ?? 0);
+      case SubcontractDocType.materialIssue:
+        return q - (it.returnedQty ?? 0) - (it.wastedQty ?? 0);
+      default:
+        return q;
     }
   }
 
@@ -291,7 +347,9 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
         ),
       );
     }
-    Navigator.of(context).pop(out);
+    Navigator.of(context).pop(
+      SubcontractLinkPickResult(items: out, supplierId: _upDetail?.supplierId),
+    );
   }
 
   String get _upstreamLabel {
@@ -534,7 +592,7 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
               createBlankRow: () => _UpstreamItemRow(
                 const SubcontractDocItem(id: null),
               ), // 不会被调用
-              emptyMessage: '该单据无明细', // TODO(l10n): 补 arb
+              emptyMessage: _gridEmptyMessage, // TODO(l10n): 补 arb
             ),
           ),
         ),

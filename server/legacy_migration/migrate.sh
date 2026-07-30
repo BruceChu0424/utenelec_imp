@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # =====================================================================
-# 老库数据一键迁移（不启动 server）
+# 老库数据引导迁移（不启动 server）
 # =====================================================================
-# 跑这个脚本就把老库数据迁进新库 PostgreSQL，跑完再开 server 测前端。
+# 这些 SQL 会重建目标模块数据，只能用于尚未切流模块的首次导入/演练。
+# 已切流模块必须走增量迁移，不得再次运行本脚本。
 #
 # 用法：
-#   bash server/legacy_migration/migrate.sh              # 迁全部已实现模块
+#   # 无参数/未知参数只显示帮助并失败，不会执行任何迁移
 #   bash server/legacy_migration/migrate.sh --goods      # 只迁货品分类
 #   bash server/legacy_migration/migrate.sh --goods-bom  # 只迁货品组装信息（BOM → V79 goods_bom_items）
 #   bash server/legacy_migration/migrate.sh --mould      # 只迁模具分类
@@ -19,6 +20,8 @@
 #   bash server/legacy_migration/migrate.sh --hr-workers # 只迁人事老库（B_Worker 全量试迁，含加密敏感信息）
 #   bash server/legacy_migration/migrate.sh --goods-owner # 只迁货品归属（外贸按人授权，V85）
 #   bash server/legacy_migration/migrate.sh --client-owner # 只迁客户归属（业务员按人授权，V86）
+#   UTEN_CONFIRM_DESTRUCTIVE_MIGRATION=RESET_uten_imp \
+#     bash server/legacy_migration/migrate.sh --bootstrap-all
 #
 # 当前已实现：货品/模具/客户/供应商（分类+主档）、颜色/单位/币种/仓库主档、采购四单据、
 #   仓库管理 9 单据（统一 stock_documents + 台账余额 + 流水）、销售五单据（含 BOM 成本子表）、
@@ -35,16 +38,152 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 CONTAINER="${PG_CONTAINER:-uten-imp-postgres}"
 PG_USER="${PG_USER:-uten}"
 PG_DB="${PG_DB:-uten_imp}"
-TARGET="${1:---all}"
+TARGET=""
+CONFIRMED=0
 # docker 可执行文件自动探测（Windows git bash 常不在 PATH，可用 DOCKER 环境变量覆盖）
 DOCKER="${DOCKER:-$(command -v docker || command -v docker.exe || echo '/c/Program Files/Docker/Docker/resources/bin/docker.exe')}"
+LOCK_DIR="/tmp/uten-legacy-migration.lock"
+REMOTE_TMP_FILES=()
+LOCAL_KEY_FILE=""
+RUN_ID=""
+RUN_STATUS="FAILED"
+
+usage () {
+    cat <<EOF
+用法：
+  bash server/legacy_migration/migrate.sh <目标> --confirm-destructive
+
+目标：
+  --goods | --goods-data | --goods-bom
+  --mould | --mould-data
+  --client | --client-data | --client-owner
+  --supplier | --supplier-data
+  --color-data | --unit-data | --currency-data | --warehouse-data
+  --purchase | --stock-docs | --sales | --sales-owner
+  --subcontract | --production | --finance | --hr-workers
+  --goods-owner
+  --bootstrap-all（兼容别名：--all、-a）
+
+安全确认（二选一）：
+  1. 第二个参数传 --confirm-destructive
+  2. 环境变量 UTEN_CONFIRM_DESTRUCTIVE_MIGRATION=RESET_${PG_DB}
+
+注意：这些迁移会 TRUNCATE/重建目标模块，只能用于首次导入或迁移演练。
+EOF
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --confirm-destructive)
+            CONFIRMED=1
+            ;;
+        --goods|-g|--goods-data|--goods-owner|--goods-bom|\
+        --mould|-m|--mould-data|--client|--client-data|--client-owner|\
+        --supplier|--supplier-data|--color-data|--unit-data|--currency-data|\
+        --warehouse-data|--purchase|--stock-docs|--sales|--sales-owner|\
+        --subcontract|--production|--finance|--hr-workers|\
+        --bootstrap-all|--all|-a)
+            if [ -n "$TARGET" ]; then
+                echo "✗ 一次只能执行一个迁移目标：$TARGET、$arg" >&2
+                usage >&2
+                exit 64
+            fi
+            TARGET="$arg"
+            ;;
+        *)
+            echo "✗ 未知参数：$arg；已拒绝执行，未修改数据库。" >&2
+            usage >&2
+            exit 64
+            ;;
+    esac
+done
+
+if [ -z "$TARGET" ]; then
+    echo "✗ 必须显式指定迁移目标；已拒绝执行，未修改数据库。" >&2
+    usage >&2
+    exit 64
+fi
+
+EXPECTED_CONFIRMATION="RESET_${PG_DB}"
+if [ "$CONFIRMED" -ne 1 ] && \
+   [ "${UTEN_CONFIRM_DESTRUCTIVE_MIGRATION:-}" != "$EXPECTED_CONFIRMATION" ]; then
+    echo "✗ 该操作会重建目标模块数据，缺少破坏性操作确认；未修改数据库。" >&2
+    echo "  请传 --confirm-destructive，或设置 UTEN_CONFIRM_DESTRUCTIVE_MIGRATION=$EXPECTED_CONFIRMATION" >&2
+    exit 65
+fi
+
+finish_run () {
+    local exit_code=$?
+    set +e
+
+    if [ -n "$LOCAL_KEY_FILE" ]; then
+        rm -f "$LOCAL_KEY_FILE"
+    fi
+    if [ "${#REMOTE_TMP_FILES[@]}" -gt 0 ]; then
+        "$DOCKER" exec "$CONTAINER" rm -f "${REMOTE_TMP_FILES[@]}" >/dev/null 2>&1
+    fi
+    "$DOCKER" exec "$CONTAINER" rm -f /tmp/_uten_keys.sql >/dev/null 2>&1
+
+    if [ -n "$RUN_ID" ]; then
+        if [ "$exit_code" -eq 0 ]; then
+            RUN_STATUS="SUCCESS"
+        fi
+        "$DOCKER" exec -i "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+            -v ON_ERROR_STOP=1 \
+            -c "UPDATE legacy_migration_runs
+                SET status = '$RUN_STATUS',
+                    finished_at = CURRENT_TIMESTAMP,
+                    exit_code = $exit_code
+                WHERE run_id = '$RUN_ID'::uuid" >/dev/null 2>&1
+    fi
+
+    "$DOCKER" exec "$CONTAINER" rmdir "$LOCK_DIR" >/dev/null 2>&1
+    exit "$exit_code"
+}
+trap finish_run EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+preflight () {
+    echo "→ 预检 Docker、数据库、迁移版本与并发锁..."
+    "$DOCKER" version >/dev/null
+    [ "$("$DOCKER" inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ] || {
+        echo "✗ PostgreSQL 容器未运行：$CONTAINER" >&2
+        exit 69
+    }
+    "$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 -Atqc "SELECT 1" >/dev/null
+    [ "$("$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+        -Atqc "SELECT to_regclass('public.legacy_migration_runs') IS NOT NULL")" = "t" ] || {
+        echo "✗ 数据库未应用迁移运行审计表，请先启动 server 完成最新 Flyway。" >&2
+        exit 69
+    }
+    "$DOCKER" exec "$CONTAINER" mkdir "$LOCK_DIR" 2>/dev/null || {
+        echo "✗ 已有迁移正在运行（锁：$LOCK_DIR）；已拒绝并发执行。" >&2
+        exit 75
+    }
+    RUN_ID=$("$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 -Atqc \
+        "INSERT INTO legacy_migration_runs(target, status)
+         VALUES ('$TARGET', 'RUNNING')
+         RETURNING run_id")
+}
 
 run_sql () {  # $1 = sql 文件名（HERE 下）
     "$DOCKER" exec -i "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 < "$HERE/$1"
 }
 
 copy_csv () {  # $1 = csv 文件名（HERE/data 下）；自动去 CRLF（Windows 导出兼容）
+    if [ ! -s "$HERE/data/$1" ]; then
+        echo "✗ CSV 不存在或为空：$HERE/data/$1" >&2
+        exit 66
+    fi
     "$DOCKER" cp "$HERE/data/$1" "$CONTAINER:/tmp/$1"
+    REMOTE_TMP_FILES+=("/tmp/$1")
     "$DOCKER" exec "$CONTAINER" sh -c "tr -d '\r' < /tmp/$1 > /tmp/$1.lf && mv /tmp/$1.lf /tmp/$1" 2>/dev/null || true
 }
 
@@ -249,6 +388,11 @@ migrate_hr_workers () {
     echo "→ [人事老库] 注入加密密钥（临时文件，用后删除）..."
     local envf="$HERE/../.env" keyf="$HERE/.uten_keys.tmp.sql"
     local pgp_key pgp_ver hmac_key
+    if [ ! -f "$envf" ]; then
+        echo "✗ 找不到 server/.env，无法注入人事加密密钥" >&2
+        exit 66
+    fi
+    LOCAL_KEY_FILE="$keyf"
     pgp_key=$(grep '^UTEN_PGP_MASTER_KEY=' "$envf" | cut -d= -f2-)
     pgp_ver=$(grep '^UTEN_PGP_KEY_VERSION=' "$envf" | cut -d= -f2-)
     hmac_key=$(grep '^UTEN_HMAC_KEY=' "$envf" | cut -d= -f2-)
@@ -262,7 +406,9 @@ migrate_hr_workers () {
         printf "\\set hmac_key '%s'\n" "${hmac_key//\'/\'\'}"
     } > "$keyf"
     "$DOCKER" cp "$keyf" "$CONTAINER:/tmp/_uten_keys.sql"
+    REMOTE_TMP_FILES+=("/tmp/_uten_keys.sql")
     rm -f "$keyf"
+    LOCAL_KEY_FILE=""
     echo "→ [人事老库] 执行迁移 SQL（部门映射 + 职位建档 + 员工/敏感信息 upsert）..."
     run_sql migrate_hr_workers.sql
     "$DOCKER" exec "$CONTAINER" rm -f /tmp/_uten_keys.sql
@@ -289,6 +435,8 @@ migrate_sales_owner () {
     run_sql migrate_sales_owner.sql
 }
 
+preflight
+
 case "$TARGET" in
     --goods|-g) migrate_goods ;;
     --goods-data) migrate_goods_data ;;
@@ -313,7 +461,7 @@ case "$TARGET" in
     --production) migrate_production ;;
     --finance) migrate_finance ;;
     --hr-workers) migrate_hr_workers ;;
-    --all|-a|*)
+    --bootstrap-all|--all|-a)
         migrate_goods
         migrate_goods_data
         migrate_goods_bom
@@ -340,5 +488,9 @@ case "$TARGET" in
         ;;
 esac
 
+echo "→ 更新 PostgreSQL 统计信息..."
+"$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+    -v ON_ERROR_STOP=1 -c "ANALYZE" >/dev/null
+
 echo ""
-echo "✔ 全部迁移完成。现在可以启动 server 测试前端了。"
+echo "✔ 迁移完成（运行号：$RUN_ID）。请执行对账清单后再切流。"

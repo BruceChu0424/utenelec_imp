@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import '../models/purchase_doc.dart';
 
 class PurchaseStatusBadge extends StatelessWidget {
-  const PurchaseStatusBadge({super.key, required this.status, this.closed = false});
+  const PurchaseStatusBadge({
+    super.key,
+    required this.status,
+    this.closed = false,
+  });
   final int? status;
   final bool closed;
 
@@ -23,7 +27,9 @@ class PurchaseStatusBadge extends StatelessWidget {
       child: Text(
         closed && status == 1 ? '已审·结案' : label,
         style: theme.textTheme.labelSmall?.copyWith(
-            color: color, fontWeight: FontWeight.w600),
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

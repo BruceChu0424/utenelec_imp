@@ -1,9 +1,11 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -21,6 +23,7 @@ public class GenerateSubplansRequest {
 
     @NotEmpty(message = "至少选择一行自制件")
     @Valid
+    @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<Line> items;
 
     @Getter

@@ -56,7 +56,8 @@ class DioMouldRepository implements MouldRepository {
       'categoryId': categoryId,
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };

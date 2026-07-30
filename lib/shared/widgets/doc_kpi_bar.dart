@@ -44,13 +44,15 @@ class _DocKpiBarState extends State<DocKpiBar> {
 
   Future<void> _load() async {
     // 并行取 4 个状态计数（-1 表示失败，显示 '—'）。
-    final vals = await Future.wait(_statuses.map((s) async {
-      try {
-        return await widget.counter(s.value);
-      } catch (_) {
-        return -1;
-      }
-    }));
+    final vals = await Future.wait(
+      _statuses.map((s) async {
+        try {
+          return await widget.counter(s.value);
+        } catch (_) {
+          return -1;
+        }
+      }),
+    );
     if (!mounted) return;
     setState(() {
       for (var i = 0; i < _statuses.length; i++) {
@@ -84,7 +86,12 @@ class _DocKpiBarState extends State<DocKpiBar> {
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.kpi, required this.count, required this.selected, required this.onTap});
+  const _Card({
+    required this.kpi,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
   final _Kpi kpi;
   final int? count;
   final bool selected;
@@ -96,8 +103,8 @@ class _Card extends StatelessWidget {
     final color = kpi.color == _KpiColor.positive
         ? Colors.green
         : kpi.color == _KpiColor.negative
-            ? theme.colorScheme.error
-            : theme.colorScheme.primary;
+        ? theme.colorScheme.error
+        : theme.colorScheme.primary;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -106,7 +113,9 @@ class _Card extends StatelessWidget {
         width: 104,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.12) : theme.colorScheme.surface,
+          color: selected
+              ? color.withValues(alpha: 0.12)
+              : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: selected ? color : theme.colorScheme.outlineVariant,
@@ -117,11 +126,13 @@ class _Card extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(kpi.label,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: selected ? color : theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                )),
+            Text(
+              kpi.label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: selected ? color : theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             Text(
               count == null ? '—' : _fmt(count!),
               style: theme.textTheme.titleLarge?.copyWith(

@@ -7,6 +7,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.waste.dto.WasteDetail;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemDto;
@@ -65,6 +67,7 @@ public class SubcontractWasteService {
     private final SubcontractWasteRepository wasteRepo;
     private final SubcontractWasteItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
@@ -161,6 +164,21 @@ public class SubcontractWasteService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validateSubcontractWaste(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.materialIssueSource(
+                                it.getMaterialIssueItemId(),
+                                null,
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId(),
+                                null,
+                                null))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractWasteItem it : items) {
             // ① 出库（DIR_OUT=-1）
@@ -191,6 +209,9 @@ public class SubcontractWasteService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractWasteItem> items = itemRepo.findByWasteIdOrderByLineNoAsc(id);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractWasteItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);

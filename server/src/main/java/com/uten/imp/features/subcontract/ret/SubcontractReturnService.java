@@ -7,8 +7,10 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.ret.dto.ReturnDetail;
 import com.uten.imp.features.subcontract.ret.dto.ReturnItemDto;
@@ -68,6 +70,7 @@ public class SubcontractReturnService {
     private final SubcontractReturnRepository returnRepo;
     private final SubcontractReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
@@ -167,6 +170,19 @@ public class SubcontractReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validateSubcontractReturn(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.receiptSource(
+                                it.getReceiptItemId(),
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractReturnItem it : items) {
             // ① 出库（DIR_OUT=-1）
@@ -208,6 +224,9 @@ public class SubcontractReturnService {
         }
         arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
         List<SubcontractReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (SubcontractReturnItem it : items) {

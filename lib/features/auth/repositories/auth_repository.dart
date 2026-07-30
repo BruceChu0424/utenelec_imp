@@ -9,7 +9,11 @@ import '../models/auth_session.dart';
 abstract interface class AuthRepository {
   Future<AuthResult> login(String loginAccount, String password);
   Future<AuthResult> refresh(String refreshToken);
-  Future<void> logout(String? refreshToken);
+  Future<void> logout(
+    String? refreshToken, {
+    String? accessToken,
+    bool clearLocal = true,
+  });
   Future<AuthResult> changePassword(String oldPassword, String newPassword);
   Future<UserProfile> me();
 }
@@ -22,44 +26,68 @@ class DioAuthRepository implements AuthRepository {
 
   @override
   Future<AuthResult> login(String loginAccount, String password) async {
-    final json = await api.post(ApiEndpoints.authLogin, body: {
-      'loginAccount': loginAccount,
-      'password': password,
-    });
+    final json = await api.post(
+      ApiEndpoints.authLogin,
+      body: {'loginAccount': loginAccount, 'password': password},
+    );
     final res = AuthResult.fromJson(json);
-    await storage.saveTokens(accessToken: res.accessToken, refreshToken: res.refreshToken);
+    await storage.saveTokens(
+      accessToken: res.accessToken,
+      refreshToken: res.refreshToken,
+    );
     await storage.saveLoginAccount(loginAccount);
     return res;
   }
 
   @override
   Future<AuthResult> refresh(String refreshToken) async {
-    final json = await api.post(ApiEndpoints.authRefresh, body: {'refreshToken': refreshToken});
+    final json = await api.post(
+      ApiEndpoints.authRefresh,
+      body: {'refreshToken': refreshToken},
+    );
     final res = AuthResult.fromJson(json);
-    await storage.saveTokens(accessToken: res.accessToken, refreshToken: res.refreshToken);
+    await storage.saveTokens(
+      accessToken: res.accessToken,
+      refreshToken: res.refreshToken,
+    );
     return res;
   }
 
   @override
-  Future<void> logout(String? refreshToken) async {
+  Future<void> logout(
+    String? refreshToken, {
+    String? accessToken,
+    bool clearLocal = true,
+  }) async {
     try {
-      await api.post(ApiEndpoints.authLogout, body: {
-        if (refreshToken != null) 'refreshToken': refreshToken,
-      });
+      await api.post(
+        ApiEndpoints.authLogout,
+        body: {'refreshToken': ?refreshToken},
+        headers: {
+          if (accessToken != null && accessToken.isNotEmpty)
+            'Authorization': 'Bearer $accessToken',
+        },
+      );
     } finally {
-      await storage.clear();
+      if (clearLocal) await storage.clear();
     }
   }
 
   @override
-  Future<AuthResult> changePassword(String oldPassword, String newPassword) async {
-    final json = await api.post(ApiEndpoints.authChangePassword, body: {
-      'oldPassword': oldPassword,
-      'newPassword': newPassword,
-    });
+  Future<AuthResult> changePassword(
+    String oldPassword,
+    String newPassword,
+  ) async {
+    final json = await api.post(
+      ApiEndpoints.authChangePassword,
+      body: {'oldPassword': oldPassword, 'newPassword': newPassword},
+    );
     final res = AuthResult.fromJson(json);
     // 改密返回新令牌对：保存后当前设备保持登录（其他设备令牌已被后端撤销）
-    await storage.saveTokens(accessToken: res.accessToken, refreshToken: res.refreshToken);
+    await storage.saveTokens(
+      accessToken: res.accessToken,
+      refreshToken: res.refreshToken,
+    );
     return res;
   }
 
@@ -71,5 +99,8 @@ class DioAuthRepository implements AuthRepository {
 }
 
 final authRepositoryProvider = Provider<AuthRepository>(
-  (ref) => DioAuthRepository(ref.watch(apiClientProvider), ref.watch(secureStorageProvider)),
+  (ref) => DioAuthRepository(
+    ref.watch(apiClientProvider),
+    ref.watch(secureStorageProvider),
+  ),
 );

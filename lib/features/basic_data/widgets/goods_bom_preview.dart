@@ -15,13 +15,15 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/print/pdf_printer.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/goods_bom_item.dart';
 import '../repositories/goods_bom_repository.dart';
 
@@ -106,7 +108,11 @@ class _GoodsBomPreviewDialogState
       final rows = <_PreviewRow>[];
 
       Future<void> walk(
-          String goodsId, int depth, Set<String> path, String prefix) async {
+        String goodsId,
+        int depth,
+        Set<String> path,
+        String prefix,
+      ) async {
         if (depth > _maxDepth) return;
         final items = await repo.list(goodsId);
         for (var i = 0; i < items.length; i++) {
@@ -114,8 +120,10 @@ class _GoodsBomPreviewDialogState
           final seq = prefix.isEmpty ? '${i + 1}' : '$prefix.${i + 1}';
           rows.add(_PreviewRow(it, depth, seq));
           if (it.hasChildren && !path.contains(it.componentGoodsId)) {
-            await walk(it.componentGoodsId, depth + 1,
-                {...path, it.componentGoodsId}, seq);
+            await walk(it.componentGoodsId, depth + 1, {
+              ...path,
+              it.componentGoodsId,
+            }, seq);
           }
         }
       }
@@ -136,7 +144,8 @@ class _GoodsBomPreviewDialogState
   Future<void> _print() async {
     final rows = _rows ?? const <_PreviewRow>[];
     try {
-      final fontData = await rootBundle.load('assets/fonts/NotoSansSC.ttf');
+      // UI 使用常用字子集降低首屏体积；打印按需加载完整字体，确保货品名称中的生僻字不丢失。
+      final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
       final font = pw.Font.ttf(fontData);
       final doc = pw.Document();
       doc.addPage(
@@ -148,7 +157,10 @@ class _GoodsBomPreviewDialogState
               child: pw.Text(
                 _title,
                 style: pw.TextStyle(
-                    font: font, fontSize: 18, fontWeight: pw.FontWeight.bold),
+                  font: font,
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
               ),
             ),
             pw.SizedBox(height: 12),
@@ -160,11 +172,13 @@ class _GoodsBomPreviewDialogState
                 2: pw.FlexColumnWidth(2),
               },
               children: [
-                pw.TableRow(children: [
-                  _pdfCell(font, '产品名称：${widget.productName ?? ''}'),
-                  _pdfCell(font, '产品型号：${widget.productModel ?? ''}'),
-                  _pdfCell(font, '备注：'),
-                ]),
+                pw.TableRow(
+                  children: [
+                    _pdfCell(font, '产品名称：${widget.productName ?? ''}'),
+                    _pdfCell(font, '产品型号：${widget.productModel ?? ''}'),
+                    _pdfCell(font, '备注：'),
+                  ],
+                ),
               ],
             ),
             pw.Table(
@@ -182,34 +196,43 @@ class _GoodsBomPreviewDialogState
               children: [
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(
-                      color: PdfColor.fromInt(0xFFEFEFEF)),
+                    color: PdfColor.fromInt(0xFFEFEFEF),
+                  ),
                   children: [
                     for (final h in const [
-                      '序号', '物料编号', '物料名称', '规格', '颜色', '数量', '材质', '备注',
+                      '序号',
+                      '物料编号',
+                      '物料名称',
+                      '规格',
+                      '颜色',
+                      '数量',
+                      '材质',
+                      '备注',
                     ])
                       _pdfCell(font, h, bold: true, center: true),
                   ],
                 ),
                 for (var i = 0; i < rows.length; i++)
-                  pw.TableRow(children: [
-                    _pdfCell(font, rows[i].indentedSeq),
-                    _pdfCell(font, rows[i].markedCode),
-                    _pdfCell(font, rows[i].plainName),
-                    _pdfCell(font, rows[i].item.componentSpec ?? ''),
-                    _pdfCell(font, rows[i].item.componentColorName ?? ''),
-                    _pdfCell(font, _qty(rows[i].item.qty), center: true),
-                    _pdfCell(font, rows[i].item.componentMaterial ?? ''),
-                    _pdfCell(font, rows[i].item.summary ?? ''),
-                  ]),
+                  pw.TableRow(
+                    children: [
+                      _pdfCell(font, rows[i].indentedSeq),
+                      _pdfCell(font, rows[i].markedCode),
+                      _pdfCell(font, rows[i].plainName),
+                      _pdfCell(font, rows[i].item.componentSpec ?? ''),
+                      _pdfCell(font, rows[i].item.componentColorName ?? ''),
+                      _pdfCell(font, _qty(rows[i].item.qty), center: true),
+                      _pdfCell(font, rows[i].item.componentMaterial ?? ''),
+                      _pdfCell(font, rows[i].item.summary ?? ''),
+                    ],
+                  ),
               ],
             ),
           ],
         ),
       );
-      await Printing.layoutPdf(
-        onLayout: (_) async => doc.save(),
-        name:
-            '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}.pdf',
+      await printPdfBytes(
+        await doc.save(),
+        '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}.pdf',
       );
     } catch (_) {
       if (!mounted) return;
@@ -217,8 +240,12 @@ class _GoodsBomPreviewDialogState
     }
   }
 
-  pw.Widget _pdfCell(pw.Font font, String text,
-      {bool bold = false, bool center = false}) {
+  pw.Widget _pdfCell(
+    pw.Font font,
+    String text, {
+    bool bold = false,
+    bool center = false,
+  }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       child: pw.Text(
@@ -255,28 +282,33 @@ class _GoodsBomPreviewDialogState
             children: [
               // 头部：标题 + 操作
               Padding(
-                padding: const EdgeInsets.fromLTRB(UtenSpacing.s16,
-                    UtenSpacing.s12, UtenSpacing.s8, UtenSpacing.s12),
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16,
+                  UtenSpacing.s12,
+                  UtenSpacing.s8,
+                  UtenSpacing.s12,
+                ),
                 child: Row(
                   children: [
                     Expanded(
                       child: Text(
                         '预览 · $_title', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     UtenButton(
                       type: UtenButtonType.tonal,
                       size: UtenButtonSize.small,
                       icon: Icons.print_outlined,
-                      onPressed:
-                          (rows == null || rows.isEmpty) ? null : _print,
+                      onPressed: (rows == null || rows.isEmpty) ? null : _print,
                       child: const Text('打印'), // TODO(l10n): 补 arb
                     ),
                     const SizedBox(width: UtenSpacing.s8),
                     UtenExportButton(
                       endpoint: ApiEndpoints.goodsBomExport(widget.goodsId),
+                      requiredPermission: Perm.goodsExport,
                       report: '',
                       queryParams: const {},
                       filename:
@@ -298,14 +330,14 @@ class _GoodsBomPreviewDialogState
                   child: _error != null
                       ? Center(child: Text(_error!))
                       : rows == null
-                          ? const Center(child: CircularProgressIndicator())
-                          : SingleChildScrollView(
-                              padding: const EdgeInsets.all(UtenSpacing.s16),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: _a4Paper(theme, rows),
-                              ),
-                            ),
+                      ? const Center(child: CircularProgressIndicator())
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.all(UtenSpacing.s16),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: _a4Paper(theme, rows),
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -323,9 +355,7 @@ class _GoodsBomPreviewDialogState
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: theme.colorScheme.outlineVariant),
-        boxShadow: const [
-          BoxShadow(blurRadius: 12, color: Colors.black26),
-        ],
+        boxShadow: const [BoxShadow(blurRadius: 12, color: Colors.black26)],
       ),
       padding: const EdgeInsets.all(28),
       child: Column(
@@ -352,11 +382,13 @@ class _GoodsBomPreviewDialogState
               2: FlexColumnWidth(2),
             },
             children: [
-              TableRow(children: [
-                _paperCell('产品名称：${widget.productName ?? ''}'),
-                _paperCell('产品型号：${widget.productModel ?? ''}'),
-                _paperCell('备注：'),
-              ]),
+              TableRow(
+                children: [
+                  _paperCell('产品名称：${widget.productName ?? ''}'),
+                  _paperCell('产品型号：${widget.productModel ?? ''}'),
+                  _paperCell('备注：'),
+                ],
+              ),
             ],
           ),
           // 配件表（整树平铺：编号前缀 *=子级 **=孙级）
@@ -374,25 +406,34 @@ class _GoodsBomPreviewDialogState
             },
             children: [
               TableRow(
-                decoration: const BoxDecoration(color: Color(0xFFEFEFEF)),
+                decoration: const BoxDecoration(color: UtenColors.slate100),
                 children: [
                   for (final h in const [
-                    '序号', '物料编号', '物料名称', '规格', '颜色', '数量', '材质', '备注',
+                    '序号',
+                    '物料编号',
+                    '物料名称',
+                    '规格',
+                    '颜色',
+                    '数量',
+                    '材质',
+                    '备注',
                   ])
                     _paperCell(h, bold: true, center: true),
                 ],
               ),
               for (var i = 0; i < rows.length; i++)
-                TableRow(children: [
-                  _paperCell(rows[i].indentedSeq),
-                  _paperCell(rows[i].markedCode),
-                  _paperCell(rows[i].plainName),
-                  _paperCell(rows[i].item.componentSpec ?? ''),
-                  _paperCell(rows[i].item.componentColorName ?? ''),
-                  _paperCell(_qty(rows[i].item.qty), center: true),
-                  _paperCell(rows[i].item.componentMaterial ?? ''),
-                  _paperCell(rows[i].item.summary ?? ''),
-                ]),
+                TableRow(
+                  children: [
+                    _paperCell(rows[i].indentedSeq),
+                    _paperCell(rows[i].markedCode),
+                    _paperCell(rows[i].plainName),
+                    _paperCell(rows[i].item.componentSpec ?? ''),
+                    _paperCell(rows[i].item.componentColorName ?? ''),
+                    _paperCell(_qty(rows[i].item.qty), center: true),
+                    _paperCell(rows[i].item.componentMaterial ?? ''),
+                    _paperCell(rows[i].item.summary ?? ''),
+                  ],
+                ),
             ],
           ),
         ],

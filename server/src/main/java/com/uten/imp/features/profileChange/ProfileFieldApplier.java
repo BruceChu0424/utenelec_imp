@@ -7,6 +7,7 @@ import com.uten.imp.features.org.employee.EmergencyContactRepository;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeSensitive;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
+import com.uten.imp.features.org.employee.EmployeePiiWriter;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +25,7 @@ public class ProfileFieldApplier {
 
     private final EmergencyContactRepository emergencyRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
+    private final EmployeePiiWriter piiWriter;
     private final TxSessionVars tx;
 
     private record FieldAccess(
@@ -34,14 +36,16 @@ public class ProfileFieldApplier {
     private final Map<String, FieldAccess> fields;
 
     public ProfileFieldApplier(EmergencyContactRepository emergencyRepo,
-                               EmployeeSensitiveRepository sensitiveRepo, TxSessionVars tx) {
+                               EmployeeSensitiveRepository sensitiveRepo,
+                               EmployeePiiWriter piiWriter, TxSessionVars tx) {
         this.emergencyRepo = emergencyRepo;
         this.sensitiveRepo = sensitiveRepo;
+        this.piiWriter = piiWriter;
         this.tx = tx;
         BiConsumer<Employee, String> phoneWriter = (emp, newValue) -> {
             EmployeeSensitive s = sensitiveRepo.findByEmployeeId(emp.getId())
                     .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
-            s.setPhoneEnc(safeEncrypt(newValue));
+            piiWriter.applyPhone(s, newValue);
             sensitiveRepo.save(s);
         };
         this.fields = Map.ofEntries(

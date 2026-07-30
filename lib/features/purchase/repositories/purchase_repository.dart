@@ -68,8 +68,10 @@ class PurchaseRepository {
   }
 
   Future<PurchaseDocDetail> update(String id, Map<String, dynamic> body) async {
-    final json =
-        await api.put(ApiEndpoints.purchaseDoc(type.pathSegment, id), body: body);
+    final json = await api.put(
+      ApiEndpoints.purchaseDoc(type.pathSegment, id),
+      body: body,
+    );
     return PurchaseDocDetail.fromJson(json);
   }
 
@@ -78,12 +80,16 @@ class PurchaseRepository {
   }
 
   Future<PurchaseDocDetail> approve(String id) async {
-    final json = await api.post(ApiEndpoints.purchaseApprove(type.pathSegment, id));
+    final json = await api.post(
+      ApiEndpoints.purchaseApprove(type.pathSegment, id),
+    );
     return PurchaseDocDetail.fromJson(json);
   }
 
   Future<PurchaseDocDetail> reverse(String id) async {
-    final json = await api.post(ApiEndpoints.purchaseReverse(type.pathSegment, id));
+    final json = await api.post(
+      ApiEndpoints.purchaseReverse(type.pathSegment, id),
+    );
     return PurchaseDocDetail.fromJson(json);
   }
 }
@@ -91,5 +97,5 @@ class PurchaseRepository {
 /// 按 docType 的仓库 family。
 final purchaseRepositoryProvider =
     Provider.family<PurchaseRepository, PurchaseDocType>(
-  (ref, type) => PurchaseRepository(ref.watch(apiClientProvider), type),
-);
+      (ref, type) => PurchaseRepository(ref.watch(apiClientProvider), type),
+    );

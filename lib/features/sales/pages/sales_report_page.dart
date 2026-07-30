@@ -30,7 +30,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -54,7 +56,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   // 默认单据类型：明细=订货、汇总=订货（用户可在左栏切换）。
   SalesReportDocType _docType = SalesReportDocType.order;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
@@ -483,6 +485,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/sales/reports/export',
+          exportPermission: Perm.salesReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '销售${_docType.label}${_kind.shortLabel}报表',
@@ -491,6 +494,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         ),
         UtenExportButton(
           endpoint: '/sales/reports/export',
+          requiredPermission: Perm.salesReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '销售${_docType.label}${_kind.shortLabel}报表',

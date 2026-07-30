@@ -5,9 +5,9 @@
 // - itemMode: settle(receipt/payment AR/AP 核销) / allocate(expense/otherIncome 部门分摊) /
 //   transfer(bankTransfer 转入行)
 // - hasCurrency/hasBankFee/hasInvoice 等表头开关
-// 权限点用字符串常量（finance_*:view/edit），暂不进 permissions.dart（由用户统一接线）。
 import 'package:flutter/material.dart';
 
+import '../../../shared/auth/permissions.dart';
 import '../models/finance_doc.dart';
 
 /// 5 单据的往来方模式。
@@ -75,26 +75,24 @@ class FinanceDocConfig {
 
   /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
   String get billNoPrefix => switch (type) {
-        FinanceDocType.receipt => 'XS',
-        FinanceDocType.payment => 'CF',
-        FinanceDocType.expense => 'YF',
-        FinanceDocType.otherIncome => 'QS',
-        FinanceDocType.bankTransfer => 'YC',
-      };
+    FinanceDocType.receipt => 'XS',
+    FinanceDocType.payment => 'CF',
+    FinanceDocType.expense => 'YF',
+    FinanceDocType.otherIncome => 'QS',
+    FinanceDocType.bankTransfer => 'YC',
+  };
 
   static const receipt = FinanceDocConfig(
     type: FinanceDocType.receipt,
     label: '销售收款单',
     shortLabel: '收款',
     icon: Icons.south_west_outlined,
-    listPerm: 'finance_receipt:view',
-    editPerm: 'finance_receipt:edit',
+    listPerm: Perm.financeReceiptView,
+    editPerm: Perm.financeReceiptEdit,
     partyMode: PartyMode.client,
-    itemMode: ItemMode.settle,
     hasBankFee: true,
     hasOtherFee: true,
     hasInvoiceNo: true,
-    accountLabel: '收款账户',
     partyLabel: '客户',
     skipListOnCreate: true,
   );
@@ -104,10 +102,9 @@ class FinanceDocConfig {
     label: '采购付款单',
     shortLabel: '付款',
     icon: Icons.north_east_outlined,
-    listPerm: 'finance_payment:view',
-    editPerm: 'finance_payment:edit',
+    listPerm: Perm.financePaymentView,
+    editPerm: Perm.financePaymentEdit,
     partyMode: PartyMode.supplier,
-    itemMode: ItemMode.settle,
     accountLabel: '付款账户',
     partyLabel: '供应商',
     skipListOnCreate: true,
@@ -118,8 +115,8 @@ class FinanceDocConfig {
     label: '一般费用单',
     shortLabel: '费用',
     icon: Icons.outbound_outlined,
-    listPerm: 'finance_expense:view',
-    editPerm: 'finance_expense:edit',
+    listPerm: Perm.financeExpenseView,
+    editPerm: Perm.financeExpenseEdit,
     itemMode: ItemMode.allocate,
     accountLabel: '费用账户',
     amountLabel: '费用金额',
@@ -131,8 +128,8 @@ class FinanceDocConfig {
     label: '其它收入单',
     shortLabel: '收入',
     icon: Icons.south_west_outlined,
-    listPerm: 'finance_other_income:view',
-    editPerm: 'finance_other_income:edit',
+    listPerm: Perm.financeOtherIncomeView,
+    editPerm: Perm.financeOtherIncomeEdit,
     itemMode: ItemMode.allocate,
     accountLabel: '收入账户',
     amountLabel: '收入金额',
@@ -144,8 +141,8 @@ class FinanceDocConfig {
     label: '银行存取款单',
     shortLabel: '存取款',
     icon: Icons.swap_horiz_rounded,
-    listPerm: 'finance_bank_transfer:view',
-    editPerm: 'finance_bank_transfer:edit',
+    listPerm: Perm.financeBankTransferView,
+    editPerm: Perm.financeBankTransferEdit,
     itemMode: ItemMode.transfer,
     hasInvoiceNo: true,
     accountLabel: '转出账户',

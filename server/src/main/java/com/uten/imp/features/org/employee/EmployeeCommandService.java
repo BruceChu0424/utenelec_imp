@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -20,6 +21,7 @@ import com.uten.imp.features.profilechange.ProfileChangeRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +39,7 @@ public class EmployeeCommandService {
 
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
+    private final EmployeePiiWriter piiWriter;
     private final EmployeeCompensationRepository compensationRepo;
     private final EmployeeCredentialRepository credentialRepo;
     private final EmployeeEducationRepository educationRepo;
@@ -49,12 +52,16 @@ public class EmployeeCommandService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final EmployeeQueryService queryService;
+    private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
 
     // ===== 更新 =====
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public EmployeeDetail update(UUID id, UpdateEmployeeRequest r) {
+        sensitiveWritePolicy.assertUpdateAllowed(r);
         tx.bind();
         Employee e = queryService.requireEmployee(id);
+        assertSensitiveUpdateAllowed(id, r);
         if (nn(r.fullName())) e.setFullName(r.fullName());
         if (nn(r.gender())) e.setGender(r.gender());
         if (nn(r.birthDate())) e.setBirthDate(r.birthDate());
@@ -93,7 +100,7 @@ public class EmployeeCommandService {
         e.setVersion(e.getVersion() + 1);   // 乐观锁：HR 直改使在途申请审批时 409（防丢更新）
         empRepo.save(e);
 
-        updateSensitive(id, r);
+        updateSensitive(e, r);
         updateCompensation(id, r);
         replaceCertificates(e, r);
         replaceEducations(e, r);
@@ -132,33 +139,46 @@ public class EmployeeCommandService {
         }
     }
 
-    private void updateSensitive(UUID id, UpdateEmployeeRequest r) {
-        if (isBlank(r.idNumber()) && isBlank(r.phone()) && isBlank(r.bankAccount()) && isBlank(r.bankBranch())) {
+    private void updateSensitive(Employee employee, UpdateEmployeeRequest r) {
+        if (!EmployeeSensitiveWritePolicy.hasPiiWrite(r)) {
             return;
         }
+        UUID id = employee.getId();
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id).orElseGet(() -> {
             EmployeeSensitive ns = new EmployeeSensitive();
             ns.setEmployeeId(id);
             return ns;
         });
         if (!isBlank(r.idNumber())) {
-            s.setIdCardEnc(tx.encrypt(r.idNumber()));
-            s.setIdCardLast4(IdCardUtil.last4(r.idNumber()));
-            String idHash = tx.hmac(r.idNumber());
-            if (idHash != null && sensitiveRepo.existsByIdCardHashAndEmployeeIdNot(idHash, id)) {
-                throw new ApiException(ErrorCode.CONFLICT, "该身份证号已被其他员工使用");
+            piiWriter.applyIdentity(s, id, employee.getIdType(), r.idNumber());
+            if ("身份证".equals(employee.getIdType())) {
+                String normalized = IdCardUtil.normalize(r.idNumber());
+                employee.setBirthDate(IdCardUtil.birthDate(normalized));
+                employee.setGender(IdCardUtil.gender(normalized));
             }
-            s.setIdCardHash(idHash);
         }
-        if (!isBlank(r.phone())) s.setPhoneEnc(tx.encrypt(r.phone()));
+        if (!isBlank(r.phone())) piiWriter.applyPhone(s, r.phone());
         if (!isBlank(r.bankAccount())) s.setBankAccountEnc(tx.encrypt(r.bankAccount()));
         if (!isBlank(r.bankBranch())) s.setBankBranchEnc(tx.encrypt(r.bankBranch()));
         sensitiveRepo.save(s);
     }
 
+    /** HR may maintain normal employees, but encrypted PII/compensation of a super admin is immutable here. */
+    private void assertSensitiveUpdateAllowed(UUID employeeId, UpdateEmployeeRequest r) {
+        boolean changesSensitive = EmployeeSensitiveWritePolicy.hasPiiWrite(r)
+                || EmployeeSensitiveWritePolicy.hasCompensationWrite(r);
+        if (!changesSensitive) {
+            return;
+        }
+        userRepo.findByEmployeeId(employeeId).ifPresent(account -> {
+            if (account.isSuperAdmin()) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "禁止通过员工管理修改超级管理员的敏感信息");
+            }
+        });
+    }
+
     private void updateCompensation(UUID id, UpdateEmployeeRequest r) {
-        if (isBlank(r.baseSalary()) && isBlank(r.perfSalary()) && isBlank(r.socialInsuranceBase())
-                && isBlank(r.housingFundBase()) && isBlank(r.allowanceStandard()) && isBlank(r.socialInsuranceLocation())) {
+        if (!EmployeeSensitiveWritePolicy.hasCompensationWrite(r)) {
             return;
         }
         EmployeeCompensation c = compensationRepo.findByEmployeeId(id).orElseGet(() -> {
@@ -195,6 +215,7 @@ public class EmployeeCommandService {
         });
     }
 
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public void transfer(UUID id, TransferRequest req) {
         tx.bind();
@@ -226,6 +247,7 @@ public class EmployeeCommandService {
         empRepo.save(e);
     }
 
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public void offboard(UUID id, OffboardRequest req) {
         tx.bind();
@@ -267,6 +289,7 @@ public class EmployeeCommandService {
         });
     }
 
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public void confirm(UUID id) {
         tx.bind();
@@ -275,12 +298,13 @@ public class EmployeeCommandService {
             throw new ApiException(ErrorCode.CONFLICT, "仅试用期员工可转正");
         }
         e.setStatus("active");
-        e.setConfirmedAt(LocalDate.now());
+        e.setConfirmedAt(BusinessTime.today());
         e.setVersion(e.getVersion() + 1);   // 乐观锁：转正也是档案变更
         empRepo.save(e);
     }
 
     /** 复职：离职员工恢复在职，写一条 rehire 任职记录并重新启用登录账号。 */
+    @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public void rehire(UUID id) {
         tx.bind();
@@ -294,7 +318,7 @@ public class EmployeeCommandService {
         h.setEventType("rehire");
         h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
         h.setToDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
-        h.setEventDate(LocalDate.now());
+        h.setEventDate(BusinessTime.today());
         h.setRemark("复职");
         historyRepo.save(h);
 
@@ -309,6 +333,7 @@ public class EmployeeCommandService {
         });
     }
 
+    @PreAuthorize("hasAuthority('employee:view')")
     @Transactional(readOnly = true)
     public List<NestedDtos.EmploymentHistoryDto> history(UUID id) {
         queryService.requireEmployee(id);
@@ -316,6 +341,7 @@ public class EmployeeCommandService {
                 .map(queryService::toHistory).toList();
     }
 
+    @PreAuthorize("hasAuthority('employee:delete')")
     @Transactional
     public void delete(UUID id) {
         tx.bind();

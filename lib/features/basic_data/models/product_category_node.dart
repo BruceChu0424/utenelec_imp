@@ -116,11 +116,11 @@ class ProductCategorySaveInput {
   final int? sortOrder;
 
   Map<String, dynamic> toJson() => {
-        'code': code,
-        'name': name,
-        if (parentId != null) 'parentId': parentId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-      };
+    'code': code,
+    'name': name,
+    if (parentId != null) 'parentId': parentId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+  };
 }
 
 /// 编辑分类请求体：{name,parentId?,sortOrder?}（code 不可改，不在体内）。
@@ -136,8 +136,8 @@ class ProductCategoryUpdateInput {
   final int? sortOrder;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (parentId != null) 'parentId': parentId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-      };
+    'name': name,
+    if (parentId != null) 'parentId': parentId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+  };
 }

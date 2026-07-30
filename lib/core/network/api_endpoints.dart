@@ -53,6 +53,7 @@ abstract final class ApiEndpoints {
   // 客户主档（基础资料 / master-data）—— 分类下客户分页 + 详情 + 字段 facet
   static const clients = '/master/clients';
   static const clientsFacets = '$clients/facets';
+  static const clientsDict = '$clients/dict';
   static String client(String id) => '/master/clients/$id';
 
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
@@ -101,8 +102,10 @@ abstract final class ApiEndpoints {
   // [doc] = requests | orders | receipts | returns（与后端 @RequestMapping 对齐）。
   static String purchaseBase(String doc) => '/purchase/$doc';
   static String purchaseDoc(String doc, String id) => '/purchase/$doc/$id';
-  static String purchaseApprove(String doc, String id) => '/purchase/$doc/$id/approve';
-  static String purchaseReverse(String doc, String id) => '/purchase/$doc/$id/reverse';
+  static String purchaseApprove(String doc, String id) =>
+      '/purchase/$doc/$id/approve';
+  static String purchaseReverse(String doc, String id) =>
+      '/purchase/$doc/$id/reverse';
 
   // 采购报表（采购管理）：月度汇总（MV 上卷）+ 待交货订货汇总。明细报表复用 4 单据列表。
   static const purchaseReportMonthly = '/purchase/reports/monthly';
@@ -120,7 +123,8 @@ abstract final class ApiEndpoints {
   static String stockDocApprove(String id) => '/stock/docs/$id/approve';
   static String stockDocReverse(String id) => '/stock/docs/$id/reverse';
   static String stockDocIssue(String id) => '/stock/docs/$id/issue';
-  static String stockDocIssueReverse(String id) => '/stock/docs/$id/issue/reverse';
+  static String stockDocIssueReverse(String id) =>
+      '/stock/docs/$id/issue/reverse';
 
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
@@ -173,7 +177,7 @@ abstract final class ApiEndpoints {
   /// 审计日志（导出下载 / 登录 / 改密 等全员审计；超管只读）
   static const adminAuditLogs = '/admin/audit-logs';
 
-  /// 系统设置（安全/业务策略阈值；超管 user:manage，改设置二次密码确认）
+  /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
 
   /// 公共运行时设置（仅需登录，前端读会话空闲超时阈值等）
@@ -191,8 +195,7 @@ abstract final class ApiEndpoints {
   static String visitorApplication(String id) => '/visitor/applications/$id';
   static const visitorApproval = '/visitor-approval';
   static const visitorApprovalAsHost = '/visitor-approval/as-host';
-  static const visitorApprovalPendingCount =
-      '/visitor-approval/pending-count';
+  static const visitorApprovalPendingCount = '/visitor-approval/pending-count';
   static const visitorApprovalHostPendingCount =
       '/visitor-approval/host-pending-count';
   static String visitorApprovalById(String id) => '/visitor-approval/$id';

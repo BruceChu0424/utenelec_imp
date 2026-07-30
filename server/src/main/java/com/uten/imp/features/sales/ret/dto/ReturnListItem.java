@@ -21,4 +21,6 @@ public class ReturnListItem {
     private boolean closed;
     private boolean arPosted;
     private Integer legacyId;
+    /** Current caller may mutate this document (functional permission + owner scope). */
+    private boolean writable;
 }

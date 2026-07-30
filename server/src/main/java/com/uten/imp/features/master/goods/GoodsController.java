@@ -5,7 +5,9 @@ import com.uten.imp.common.export.EncryptedWorkbookService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.goods.dto.GoodsDetail;
@@ -29,8 +31,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 
@@ -95,6 +95,11 @@ public class GoodsController {
     @GetMapping("/lookup")
     @PreAuthorize("hasAuthority('goods:view')")
     public java.util.List<GoodsDictItem> lookup(@RequestParam("ids") Set<UUID> ids) {
+        if (ids == null || ids.isEmpty() || ids.size() > RequestLimits.LOOKUP_IDS) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "货品 ID 数量必须为 1-" + RequestLimits.LOOKUP_IDS);
+        }
         return service.lookup(ids);
     }
 
@@ -125,10 +130,7 @@ public class GoodsController {
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestBody ExportPasswordRequest body) {
-        if (body == null || body.password() == null || body.password().length() < 4) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出密码至少 4 位");
-        }
+            @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 colorLegacyId, unitLegacyId, sourceType), sort, order);
@@ -137,9 +139,8 @@ public class GoodsController {
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_goods", "master_data", String.valueOf(payload.total()), "success"));
         String filename = "goods.xlsx";
-        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename*=UTF-8''" + encoded)
+                .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(encrypted);

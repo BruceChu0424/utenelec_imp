@@ -45,7 +45,8 @@ class DioWarehouseRepository implements WarehouseRepository {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
     };
     final nullFields = <String>[];
     filters.forEach((k, v) {

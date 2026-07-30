@@ -4,12 +4,14 @@ import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.master.client.dto.ClientDetail;
+import com.uten.imp.features.master.client.dto.ClientDictItem;
 import com.uten.imp.features.master.client.dto.ClientFacets;
 import com.uten.imp.features.master.client.dto.ClientListItem;
 import com.uten.imp.features.master.client.dto.ClientQueryFilter;
@@ -183,10 +185,15 @@ public class ClientService {
 
     /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
     @Transactional(readOnly = true)
-    public List<ClientListItem> dict() {
+    public List<ClientDictItem> dict() {
         Specification<Client> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
         return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
-                .map(this::toList).toList();
+                .map(client -> new ClientDictItem(
+                        client.getId(),
+                        client.getCode(),
+                        client.getName(),
+                        "\u4f7f\u7528".equals(client.getStatus())))
+                .toList();
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Client> root,
@@ -298,7 +305,7 @@ public class ClientService {
                             + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
                     .setParameter("ids", ids);
             if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
-            List<Object[]> rows = fq.getResultList();
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));

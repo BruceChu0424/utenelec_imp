@@ -4,18 +4,29 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 
 import '../../security/secure_storage.dart';
+import '../network_policy.dart';
 import '../visitor_session_event_bus.dart';
+import 'token_refresh_result.dart';
 
 class VisitorAuthInterceptor extends Interceptor {
-  VisitorAuthInterceptor({required this.storage, required this.baseUrl});
+  VisitorAuthInterceptor({
+    required this.storage,
+    required this.baseUrl,
+    Dio Function()? dioFactory,
+  }) : _dioFactory = dioFactory ?? (() => Dio(buildApiBaseOptions(baseUrl)));
 
   final SecureStorage storage;
   final String baseUrl;
+  final Dio Function() _dioFactory;
 
-  Completer<String?>? _refreshing;
+  Completer<TokenRefreshResult>? _refreshing;
+  Future<void>? _expiring;
 
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  void onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
     final token = await storage.getVisitorAccessToken();
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
@@ -33,61 +44,114 @@ class VisitorAuthInterceptor extends Interceptor {
       return;
     }
     if (err.requestOptions.extra['retried'] == true) {
-      _expire();
       handler.next(err);
       return;
     }
-    final newToken = await _refresh();
-    if (newToken == null) {
-      _expire();
-      handler.next(err);
+    final refreshResult = await _refresh();
+    if (refreshResult.disposition == TokenRefreshDisposition.rejected) {
+      await _expire();
+      handler.next(refreshResult.error ?? err);
       return;
     }
+    if (refreshResult.disposition == TokenRefreshDisposition.unavailable) {
+      handler.next(refreshResult.error ?? err);
+      return;
+    }
+    final newToken = refreshResult.token!;
     try {
       final opts = err.requestOptions
         ..extra['retried'] = true
         ..headers['Authorization'] = 'Bearer $newToken';
-      final retryDio = Dio(BaseOptions(baseUrl: baseUrl));
+      final retryDio = _dioFactory();
       final resp = await retryDio.fetch<dynamic>(opts);
       handler.resolve(resp);
-    } catch (_) {
-      _expire();
-      handler.next(err);
+    } on DioException catch (retryError) {
+      handler.next(retryError);
+    } catch (error, stackTrace) {
+      handler.next(
+        DioException(
+          requestOptions: err.requestOptions,
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
     }
   }
 
-  Future<String?> _refresh() async {
+  Future<TokenRefreshResult> _refresh() async {
     if (_refreshing != null) return _refreshing!.future;
-    final c = Completer<String?>();
+    final c = Completer<TokenRefreshResult>();
     _refreshing = c;
     try {
       final refresh = await storage.getVisitorRefreshToken();
       if (refresh == null || refresh.isEmpty) {
-        c.complete(null);
-        return null;
+        const result = TokenRefreshResult.rejected();
+        c.complete(result);
+        return result;
       }
-      final dio = Dio(BaseOptions(baseUrl: baseUrl));
-      final resp = await dio.post<dynamic>('/visitor/auth/refresh', data: {'refreshToken': refresh});
-      final data = resp.data as Map<String, dynamic>;
-      final access = data['accessToken'] as String?;
-      final newRefresh = data['refreshToken'] as String?;
-      if (access != null) {
-        await storage.saveVisitorTokens(accessToken: access, refreshToken: newRefresh);
-        c.complete(access);
-        return access;
+      final dio = _dioFactory();
+      final resp = await dio.post<dynamic>(
+        '/visitor/auth/refresh',
+        data: {'refreshToken': refresh},
+      );
+      final data = resp.data;
+      final body = data is Map<String, dynamic> ? data : null;
+      final access = body?['accessToken'] as String?;
+      final newRefresh = body?['refreshToken'] as String?;
+      if (access != null && access.isNotEmpty) {
+        await storage.saveVisitorTokens(
+          accessToken: access,
+          refreshToken: newRefresh,
+        );
+        final result = TokenRefreshResult.refreshed(access);
+        c.complete(result);
+        return result;
       }
-      c.complete(null);
-      return null;
-    } catch (_) {
-      c.complete(null);
-      return null;
+      final error = invalidRefreshResponse(resp);
+      final result = TokenRefreshResult.unavailable(error);
+      c.complete(result);
+      return result;
+    } on DioException catch (error) {
+      final result = isDefinitiveRefreshRejection(error.response?.statusCode)
+          ? TokenRefreshResult.rejected(error)
+          : TokenRefreshResult.unavailable(error);
+      c.complete(result);
+      return result;
+    } catch (error, stackTrace) {
+      final result = TokenRefreshResult.unavailable(
+        DioException(
+          requestOptions: RequestOptions(path: '/visitor/auth/refresh'),
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
+      c.complete(result);
+      return result;
     } finally {
       _refreshing = null;
     }
   }
 
-  void _expire() {
-    storage.clearVisitorTokens();
-    VisitorSessionEventBus.instance.expire();
+  Future<void> _expire() {
+    final active = _expiring;
+    if (active != null) return active;
+
+    final expiration = _clearAndPublishExpiration();
+    _expiring = expiration;
+    return expiration.whenComplete(() {
+      if (identical(_expiring, expiration)) {
+        _expiring = null;
+      }
+    });
+  }
+
+  Future<void> _clearAndPublishExpiration() async {
+    try {
+      await storage.clearVisitorTokens();
+    } catch (_) {
+      // 即使平台安全存储异常，也必须让内存访客会话立即失效。
+    } finally {
+      VisitorSessionEventBus.instance.expire();
+    }
   }
 }

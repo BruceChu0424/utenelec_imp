@@ -25,19 +25,20 @@ class ProductionPendingCount {
 /// 有 production_plan:view 权限时 60s 轮询待排产数；其它角色返回 0。
 /// count 为 0 时徽章不渲染。
 final productionPendingCountProvider =
-    StateNotifierProvider<ProductionPendingCountNotifier, ProductionPendingCount>(
-  (ref) {
-    final notifier = ProductionPendingCountNotifier(ref);
-    notifier.start();
-    ref.onDispose(notifier.stop);
-    return notifier;
-  },
-);
+    StateNotifierProvider<
+      ProductionPendingCountNotifier,
+      ProductionPendingCount
+    >((ref) {
+      final notifier = ProductionPendingCountNotifier(ref);
+      notifier.start();
+      ref.onDispose(notifier.stop);
+      return notifier;
+    });
 
 class ProductionPendingCountNotifier
     extends StateNotifier<ProductionPendingCount> {
   ProductionPendingCountNotifier(this.ref)
-      : super(const ProductionPendingCount(0, 0));
+    : super(const ProductionPendingCount(0, 0));
 
   final Ref ref;
   Timer? _timer;
@@ -55,17 +56,23 @@ class ProductionPendingCountNotifier
   Future<void> _tick() async {
     // 仅在有生产计划查看权限时拉取；普通用户静默返回 0。
     final allowed =
-        ref.read(currentPermissionsProvider).contains(Perm.productionPlanView) ||
-            ref.read(isSuperAdminProvider);
+        ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.productionPlanView) ||
+        ref.read(isSuperAdminProvider);
     if (!allowed) {
       state = const ProductionPendingCount(0, 0);
       return;
     }
     try {
-      final r =
-          await ref.read(productionPlanRepositoryProvider).schedulePendingCount();
+      final r = await ref
+          .read(productionPlanRepositoryProvider)
+          .schedulePendingCount();
       state = ProductionPendingCount(
-          r['count'] ?? 0, r['urgent'] ?? 0, r['overdue'] ?? 0);
+        r['count'] ?? 0,
+        r['urgent'] ?? 0,
+        r['overdue'] ?? 0,
+      );
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
     }
@@ -78,14 +85,12 @@ class ProductionPendingCountNotifier
 /// PMC 缺料待备料计数（采购管理卡片徽标）：计划已审但 BOM 净需求不足的订单行数。
 /// 有 生产计划查看 或 采购申请查看 权限时 60s 轮询；其它角色返回 0。
 final pmcShortageCountProvider =
-    StateNotifierProvider<PmcShortageCountNotifier, int>(
-  (ref) {
-    final notifier = PmcShortageCountNotifier(ref);
-    notifier.start();
-    ref.onDispose(notifier.stop);
-    return notifier;
-  },
-);
+    StateNotifierProvider<PmcShortageCountNotifier, int>((ref) {
+      final notifier = PmcShortageCountNotifier(ref);
+      notifier.start();
+      ref.onDispose(notifier.stop);
+      return notifier;
+    });
 
 class PmcShortageCountNotifier extends StateNotifier<int> {
   PmcShortageCountNotifier(this.ref) : super(0);
@@ -105,7 +110,8 @@ class PmcShortageCountNotifier extends StateNotifier<int> {
 
   Future<void> _tick() async {
     final perms = ref.read(currentPermissionsProvider);
-    final allowed = perms.contains(Perm.productionPlanView) ||
+    final allowed =
+        perms.contains(Perm.productionPlanView) ||
         perms.contains(Perm.purchaseRequestView) ||
         ref.read(isSuperAdminProvider);
     if (!allowed) {

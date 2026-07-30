@@ -48,8 +48,7 @@ class UtenBackButton extends StatelessWidget {
       context.pop();
       return;
     }
-    final returnTo =
-        GoRouterState.of(context).uri.queryParameters['returnTo'];
+    final returnTo = GoRouterState.of(context).uri.queryParameters['returnTo'];
     context.go(returnTo ?? RouteName.dashboard);
   }
 }

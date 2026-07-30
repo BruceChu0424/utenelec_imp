@@ -11,6 +11,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -35,6 +36,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
 
   Map<String, String?> _filters = {};
   String _keyword = '';
@@ -54,7 +56,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       ref.read(currentPermissionsProvider).contains(Perm.warehouseEdit);
 
   Future<void> _loadWarehouses(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -68,19 +70,19 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
             keyword: _keyword.trim().isEmpty ? null : _keyword,
             filters: _filters,
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载仓库列表失败';
         _loading = false;
@@ -93,10 +95,8 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       final f = await ref.read(warehouseRepositoryProvider).facets();
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      debugPrint('warehouse facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('warehouse facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 

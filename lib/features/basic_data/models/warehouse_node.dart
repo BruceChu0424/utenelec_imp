@@ -93,8 +93,10 @@ class WarehouseFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];

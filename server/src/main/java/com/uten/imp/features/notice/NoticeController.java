@@ -3,6 +3,7 @@ package com.uten.imp.features.notice;
 import com.uten.imp.features.notice.dto.NoticeBatchDeleteRequest;
 import com.uten.imp.features.notice.dto.NoticeDto;
 import com.uten.imp.features.notice.dto.NoticePublishRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -57,7 +58,7 @@ public class NoticeController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('notice:publish')")
-    public NoticeDto publish(@RequestBody NoticePublishRequest req) {
+    public NoticeDto publish(@Valid @RequestBody NoticePublishRequest req) {
         return service.publish(req);
     }
 
@@ -75,7 +76,7 @@ public class NoticeController {
 
     @PostMapping("/batch-delete")
     @PreAuthorize("hasAuthority('notice:read')")
-    public Map<String, Object> batchDelete(@RequestBody NoticeBatchDeleteRequest req) {
+    public Map<String, Object> batchDelete(@Valid @RequestBody NoticeBatchDeleteRequest req) {
         return Map.of("deleted", service.deleteForCurrentUser(req.ids()));
     }
 }

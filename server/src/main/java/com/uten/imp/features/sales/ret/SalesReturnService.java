@@ -9,12 +9,14 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.ret.dto.ReturnDetail;
 import com.uten.imp.features.sales.ret.dto.ReturnItemDto;
 import com.uten.imp.features.sales.ret.dto.ReturnItemLine;
 import com.uten.imp.features.sales.ret.dto.ReturnListItem;
 import com.uten.imp.features.sales.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.sales.ret.dto.ReturnSaveRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -26,14 +28,18 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -80,24 +86,17 @@ public class SalesReturnService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
-    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+    private final SalesDocumentAccessPolicy accessPolicy;
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_return:view')")
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = accessPolicy.scope();
         Specification<SalesReturn> spec = (Root<SalesReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                            CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            // 归属可见性（销售按人授权）：公共或可见归属人；超管/sales:view:all 全见
-            var ownerScope = ownerVisibility.evaluate("sales", "sales:view:all");
-            if (!ownerScope.seeAll()) {
-                if (ownerScope.visibleOwners().isEmpty()) {
-                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
-                } else {
-                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
-                            root.get("ownerEmployeeId").in(ownerScope.visibleOwners())));
-                }
-            }
+            ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
                 // 关键字同时匹配 单据号 / 客户名称（日常检索按客户找单）
@@ -120,49 +119,84 @@ public class SalesReturnService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        boolean canEdit = accessPolicy.hasAuthority("sales_return:edit");
+        return new PageResponse<>(p.map(r -> toList(r,
+                        canEdit && accessPolicy.canWrite(r.getOwnerEmployeeId(), readScope))).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_return:view')")
     public ReturnDetail detail(UUID id) {
-        SalesReturn r = requireReturn(id);
-        List<ReturnItemDto> items = itemRepo.findByReturnIdOrderByLineNoAsc(id).stream()
-                .map(this::toItemDto).toList();
-        return toDetail(r, items);
+        SalesReturn r = requireReadableReturn(id);
+        List<SalesReturnItem> entities = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        Set<UUID> readableShipmentItems = readableShipmentItemIds(entities.stream()
+                .map(SalesReturnItem::getOutItemId).filter(Objects::nonNull).toList());
+        Set<UUID> readableOrderItems = readableOrderItemIds(entities.stream()
+                .map(SalesReturnItem::getOrderItemId).filter(Objects::nonNull).toList());
+        List<ReturnItemDto> items = entities.stream().map(item -> {
+            boolean shipmentReadable = item.getOutItemId() == null
+                    || readableShipmentItems.contains(item.getOutItemId());
+            boolean orderReadable = item.getOrderItemId() == null
+                    || readableOrderItems.contains(item.getOrderItemId());
+            return toItemDto(item, shipmentReadable, orderReadable);
+        }).toList();
+        boolean hasLinkedSource = entities.stream()
+                .anyMatch(item -> item.getOutItemId() != null || item.getOrderItemId() != null);
+        boolean headerSourceReadable = r.getSourceDocNo() == null || r.getSourceDocNo().isBlank()
+                || (hasLinkedSource
+                ? entities.stream().allMatch(item ->
+                        (item.getOutItemId() == null
+                                || readableShipmentItems.contains(item.getOutItemId()))
+                                && (item.getOrderItemId() == null
+                                || readableOrderItems.contains(item.getOrderItemId())))
+                : isSourceDocReadable(r.getSourceDocNo()));
+        return toDetail(r, items, headerSourceReadable,
+                accessPolicy.hasAuthority("sales_return:edit")
+                        && accessPolicy.canWrite(r.getOwnerEmployeeId()));
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
+        LinkedSource source = validateLinkedSources(req);
         SalesReturn r = new SalesReturn();
         applyHeader(req, r);
+        r.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(source.ownerEmployeeId()));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         r.setStatus(STATUS_DRAFT);
         returnRepo.save(r);
         List<ReturnItemDto> items = saveItems(r, req.getItems());
         applyTotals(r, items);
-        return toDetail(r, items);
+        return toDetail(r, items, true, true);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
-        SalesReturn r = requireReturn(id);
+        SalesReturn r = requireWritableReturn(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        }
+        LinkedSource source = validateLinkedSources(req);
+        if (source.present() && !Objects.equals(source.ownerEmployeeId(), r.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源单据与退货单归属不一致");
         }
         applyHeader(req, r);
         itemRepo.deleteByReturnId(id);
         itemRepo.flush();
         List<ReturnItemDto> items = saveItems(r, req.getItems());
         applyTotals(r, items);
-        return toDetail(r, items);
+        return toDetail(r, items, true, true);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_return:edit')")
     public void delete(UUID id) {
         tx.bind();
-        SalesReturn r = requireReturn(id);
+        SalesReturn r = requireWritableReturn(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -176,9 +210,10 @@ public class SalesReturnService {
      * + 立红字应收（AR, SALES_RETURN, BStyle=18, 负数）+ 订货结案重算。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
-        SalesReturn r = requireReturn(id);
+        SalesReturn r = requireWritableReturn(id);
         em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -193,6 +228,10 @@ public class SalesReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        assertStoredSources(r, items, true);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
 
         OffsetDateTime now = OffsetDateTime.now();
         for (SalesReturnItem it : items) {
@@ -228,13 +267,19 @@ public class SalesReturnService {
      * + 订货结案重算 + ar_posted=false。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail reverse(UUID id) {
         tx.bind();
-        SalesReturn r = requireReturn(id);
+        SalesReturn r = requireWritableReturn(id);
         em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        assertStoredSources(r, items, false);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
 
         // 1. 钱流先校验：若已有收款核销 → reverseArAp 抛 IllegalStateException（阻止红冲）
         if (r.isArPosted()) {
@@ -244,7 +289,6 @@ public class SalesReturnService {
 
         // 2. 反向库存（type=4 dir=-1 倒回）+ 回减 returned_qty
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
-        List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         OffsetDateTime now = OffsetDateTime.now();
         for (SalesReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
@@ -306,6 +350,239 @@ public class SalesReturnService {
                     WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
                 ) WHERE o.id = (SELECT order_id FROM sales_order_items WHERE id = :iid)
                 """).setParameter("iid", orderItemId).executeUpdate();
+    }
+
+    /**
+     * Validate the complete return source chain before persisting the draft.
+     * Shipment links automatically inherit their order-item link, preventing a
+     * caller from returning against one shipment while writing back another
+     * order.
+     */
+    private LinkedSource validateLinkedSources(ReturnSaveRequest req) {
+        if (req.getItems() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "退货明细不能为空");
+        }
+        List<ReturnItemLine> lines = req.getItems();
+        List<UUID> outIds = lines.stream().map(ReturnItemLine::getOutItemId)
+                .filter(Objects::nonNull).toList();
+        if (Set.copyOf(outIds).size() != outIds.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一出货行不能在退货单中重复关联");
+        }
+        if (!outIds.isEmpty() && !accessPolicy.hasAuthority("sales_shipment:view")) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售出货单");
+        }
+        Map<UUID, Object[]> outById = new HashMap<>();
+        if (!outIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                    SELECT i.id, i.goods_id, o.client_id, o.owner_employee_id,
+                           i.order_item_id, o.status
+                    FROM sales_shipment_items i
+                    JOIN sales_shipments o ON o.id = i.shipment_id
+                    WHERE i.id IN (:ids)
+                      AND COALESCE(i.is_deleted,false)=false
+                      AND COALESCE(o.is_deleted,false)=false
+                    """).setParameter("ids", outIds).getResultList();
+            for (Object[] row : rows) {
+                outById.put((UUID) row[0], row);
+            }
+        }
+
+        for (ReturnItemLine line : lines) {
+            if (line.getOutItemId() == null) {
+                continue;
+            }
+            Object[] out = outById.get(line.getOutItemId());
+            if (out == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "来源出货行不存在或已删除");
+            }
+            UUID sourceOrderItemId = (UUID) out[4];
+            if (sourceOrderItemId != null) {
+                if (line.getOrderItemId() == null) {
+                    line.setOrderItemId(sourceOrderItemId);
+                } else if (!sourceOrderItemId.equals(line.getOrderItemId())) {
+                    throw new ApiException(ErrorCode.CONFLICT, "退货关联的出货行与订单行不一致");
+                }
+            }
+        }
+
+        List<UUID> orderIds = lines.stream().map(ReturnItemLine::getOrderItemId)
+                .filter(Objects::nonNull).toList();
+        if (!orderIds.isEmpty() && !accessPolicy.hasAuthority("sales_order:view")) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售订单");
+        }
+        Map<UUID, Object[]> orderById = new HashMap<>();
+        if (!orderIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                    SELECT i.id, i.goods_id, o.client_id, o.owner_employee_id, o.status
+                    FROM sales_order_items i
+                    JOIN sales_orders o ON o.id = i.order_id
+                    WHERE i.id IN (:ids)
+                      AND COALESCE(i.is_deleted,false)=false
+                      AND COALESCE(o.is_deleted,false)=false
+                    """).setParameter("ids", orderIds).getResultList();
+            for (Object[] row : rows) {
+                orderById.put((UUID) row[0], row);
+            }
+        }
+
+        var writeScope = accessPolicy.scope();
+        List<UUID> sourceOwners = new ArrayList<>();
+        for (ReturnItemLine line : lines) {
+            if (line.getOutItemId() != null) {
+                Object[] out = outById.get(line.getOutItemId());
+                UUID owner = (UUID) out[3];
+                accessPolicy.requireWritable(owner, "无权引用该销售出货行", writeScope);
+                sourceOwners.add(owner);
+                if (!Objects.equals(req.getClientId(), out[2])) {
+                    throw new ApiException(ErrorCode.CONFLICT, "退货客户与来源出货客户不一致");
+                }
+                if (!Objects.equals(line.getGoodsId(), out[1])) {
+                    throw new ApiException(ErrorCode.CONFLICT, "退货货品与来源出货行不一致");
+                }
+                if (out[5] == null || ((Number) out[5]).shortValue() != STATUS_APPROVED) {
+                    throw new ApiException(ErrorCode.BUSINESS, "仅可退已审核的销售出货");
+                }
+            }
+            if (line.getOrderItemId() != null) {
+                Object[] order = orderById.get(line.getOrderItemId());
+                if (order == null) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "来源订单行不存在或已删除");
+                }
+                UUID owner = (UUID) order[3];
+                accessPolicy.requireWritable(owner, "无权引用该销售订单行", writeScope);
+                sourceOwners.add(owner);
+                if (!Objects.equals(req.getClientId(), order[2])) {
+                    throw new ApiException(ErrorCode.CONFLICT, "退货客户与来源订单客户不一致");
+                }
+                if (!Objects.equals(line.getGoodsId(), order[1])) {
+                    throw new ApiException(ErrorCode.CONFLICT, "退货货品与来源订单行不一致");
+                }
+                if (order[4] == null || ((Number) order[4]).shortValue() != STATUS_APPROVED) {
+                    throw new ApiException(ErrorCode.BUSINESS, "仅可引用已审核销售订单");
+                }
+            }
+        }
+        if (sourceOwners.isEmpty()) {
+            return new LinkedSource(false, null);
+        }
+        UUID commonOwner = sourceOwners.get(0);
+        if (sourceOwners.stream().anyMatch(owner -> !Objects.equals(commonOwner, owner))) {
+            throw new ApiException(ErrorCode.CONFLICT, "退货来源单据归属不一致");
+        }
+        return new LinkedSource(true, commonOwner);
+    }
+
+    private void assertStoredSources(SalesReturn salesReturn,
+                                     List<SalesReturnItem> items,
+                                     boolean completeMissingOrderLink) {
+        ReturnSaveRequest snapshot = new ReturnSaveRequest();
+        snapshot.setClientId(salesReturn.getClientId());
+        List<ReturnItemLine> links = new ArrayList<>(items.size());
+        for (SalesReturnItem item : items) {
+            ReturnItemLine line = new ReturnItemLine();
+            line.setOutItemId(item.getOutItemId());
+            line.setOrderItemId(item.getOrderItemId());
+            line.setGoodsId(item.getGoodsId());
+            links.add(line);
+        }
+        snapshot.setItems(links);
+        LinkedSource source = validateLinkedSources(snapshot);
+        if (source.present()
+                && !Objects.equals(source.ownerEmployeeId(), salesReturn.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源单据与退货单归属不一致");
+        }
+        // Old drafts may only have out_item_id. Complete the safe dual link
+        // before approval so shipment and order counters stay in sync.
+        if (completeMissingOrderLink) {
+            for (int index = 0; index < items.size(); index++) {
+                SalesReturnItem item = items.get(index);
+                UUID resolvedOrderItemId = links.get(index).getOrderItemId();
+                if (item.getOrderItemId() == null && resolvedOrderItemId != null) {
+                    item.setOrderItemId(resolvedOrderItemId);
+                    itemRepo.save(item);
+                }
+            }
+        }
+    }
+
+    private Set<UUID> readableShipmentItemIds(List<UUID> ids) {
+        if (ids.isEmpty() || !accessPolicy.hasAuthority("sales_shipment:view")) {
+            return Set.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, o.owner_employee_id
+                FROM sales_shipment_items i
+                JOIN sales_shipments o ON o.id = i.shipment_id
+                WHERE i.id IN (:ids)
+                  AND COALESCE(i.is_deleted,false)=false
+                  AND COALESCE(o.is_deleted,false)=false
+                """).setParameter("ids", ids).getResultList();
+        var readScope = accessPolicy.scope("finance_shipment_audit", "sales_shipment:reject");
+        java.util.HashSet<UUID> readable = new java.util.HashSet<>();
+        for (Object[] row : rows) {
+            if (accessPolicy.canRead((UUID) row[1], readScope)) {
+                readable.add((UUID) row[0]);
+            }
+        }
+        return readable;
+    }
+
+    private Set<UUID> readableOrderItemIds(List<UUID> ids) {
+        if (ids.isEmpty() || !accessPolicy.hasAuthority("sales_order:view")) {
+            return Set.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, o.owner_employee_id
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id IN (:ids)
+                  AND COALESCE(i.is_deleted,false)=false
+                  AND COALESCE(o.is_deleted,false)=false
+                """).setParameter("ids", ids).getResultList();
+        var readScope = accessPolicy.scope();
+        java.util.HashSet<UUID> readable = new java.util.HashSet<>();
+        for (Object[] row : rows) {
+            if (accessPolicy.canRead((UUID) row[1], readScope)) {
+                readable.add((UUID) row[0]);
+            }
+        }
+        return readable;
+    }
+
+    private boolean isSourceDocReadable(String sourceDocNo) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> sources = em.createNativeQuery("""
+                SELECT 'SHIPMENT'::text, owner_employee_id
+                FROM sales_shipments
+                WHERE bill_no = :billNo
+                  AND COALESCE(is_deleted,false)=false
+                UNION ALL
+                SELECT 'ORDER'::text, owner_employee_id
+                FROM sales_orders
+                WHERE bill_no = :billNo
+                  AND COALESCE(is_deleted,false)=false
+                """)
+                .setParameter("billNo", sourceDocNo)
+                .getResultList();
+        if (sources.isEmpty()) {
+            return true;
+        }
+        boolean shipmentPermission = accessPolicy.hasAuthority("sales_shipment:view");
+        boolean orderPermission = accessPolicy.hasAuthority("sales_order:view");
+        var shipmentScope = shipmentPermission
+                ? accessPolicy.scope("finance_shipment_audit", "sales_shipment:reject")
+                : null;
+        var orderScope = orderPermission ? accessPolicy.scope() : null;
+        return sources.stream().allMatch(source ->
+                "SHIPMENT".equals(source[0])
+                        ? shipmentPermission
+                        && accessPolicy.canRead((UUID) source[1], shipmentScope)
+                        : orderPermission
+                        && accessPolicy.canRead((UUID) source[1], orderScope));
     }
 
     private void applyHeader(ReturnSaveRequest req, SalesReturn r) {
@@ -371,30 +648,53 @@ public class SalesReturnService {
         returnRepo.save(r);
     }
 
-    private ReturnListItem toList(SalesReturn r) {
+    private ReturnListItem toList(SalesReturn r, boolean writable) {
         return new ReturnListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getClientId(),
-                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.isArPosted(), r.getLegacyId());
+                r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.isArPosted(),
+                r.getLegacyId(), writable);
     }
 
     private ReturnItemDto toItemDto(SalesReturnItem it) {
-        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getOutItemId(), it.getOrderItemId(),
+        return toItemDto(it, true, true);
+    }
+
+    private ReturnItemDto toItemDto(SalesReturnItem it, boolean shipmentReadable, boolean orderReadable) {
+        boolean sourceReadable = shipmentReadable && orderReadable;
+        return new ReturnItemDto(it.getId(), it.getLineNo(),
+                shipmentReadable ? it.getOutItemId() : null,
+                orderReadable ? it.getOrderItemId() : null,
                 it.getGoodsId(), it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getWeight(),
                 it.getClientNo(), it.getClientModel(), it.getSolution(), it.getResponsible(),
-                it.getDiscount(), it.getSourceDocNo(), it.getRemark());
+                it.getDiscount(), sourceReadable ? it.getSourceDocNo() : null, it.getRemark());
     }
 
-    private ReturnDetail toDetail(SalesReturn r, List<ReturnItemDto> items) {
+    private ReturnDetail toDetail(SalesReturn r, List<ReturnItemDto> items,
+                                  boolean sourceReadable, boolean writable) {
         return new ReturnDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getClientId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getPaymentStyleId(), r.getSellerId(), r.getMakerId(), r.getApproverId(),
                 r.getLastDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
-                r.isClosed(), r.getSourceDocNo(), r.isArPosted(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                r.isClosed(), sourceReadable ? r.getSourceDocNo() : null, r.isArPosted(), items,
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable);
     }
 
     private SalesReturn requireReturn(UUID id) {
         return returnRepo.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售退货单不存在"));
     }
+
+    private SalesReturn requireReadableReturn(UUID id) {
+        SalesReturn salesReturn = requireReturn(id);
+        accessPolicy.requireReadable(salesReturn.getOwnerEmployeeId(), "销售退货单不存在");
+        return salesReturn;
+    }
+
+    private SalesReturn requireWritableReturn(UUID id) {
+        SalesReturn salesReturn = requireReturn(id);
+        accessPolicy.requireWritable(salesReturn.getOwnerEmployeeId(), "只能操作本人负责的销售退货单");
+        return salesReturn;
+    }
+
+    private record LinkedSource(boolean present, UUID ownerEmployeeId) {}
 }

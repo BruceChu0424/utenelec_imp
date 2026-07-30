@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -13,9 +14,11 @@ import java.util.UUID;
 class AdminUserSupport {
 
     private final UserAccountRepository userRepo;
+    private final SecurityContextCurrentUser currentUser;
 
-    AdminUserSupport(UserAccountRepository userRepo) {
+    AdminUserSupport(UserAccountRepository userRepo, SecurityContextCurrentUser currentUser) {
         this.userRepo = userRepo;
+        this.currentUser = currentUser;
     }
 
     UserAccount require(UUID id) {
@@ -27,6 +30,33 @@ class AdminUserSupport {
     void requireNotSuperAdmin(UserAccount target) {
         if (target.isSuperAdmin()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "不能修改超级管理员的权限");
+        }
+    }
+
+    /** Routine HR support must never operate on itself or a super administrator. */
+    void requireAccountSupportTarget(UserAccount target) {
+        requireNotSuperAdmin(target);
+        UUID actorId = currentUser.requireId();
+        if (actorId.equals(target.getId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "不能对本人执行账号支持操作");
+        }
+    }
+
+    /** Authorization policy is a super-admin-only boundary, independent of JWT permission claims. */
+    void requireCurrentSuperAdmin() {
+        var actor = currentUser.get()
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        if (!actor.isSuperAdmin()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "仅超级管理员可管理授权策略");
+        }
+    }
+
+    /** Authorization changes additionally forbid self-targeting and super-admin targets. */
+    void requireAuthorizationTarget(UserAccount target) {
+        requireCurrentSuperAdmin();
+        requireNotSuperAdmin(target);
+        if (currentUser.requireId().equals(target.getId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "不能修改本人的授权策略");
         }
     }
 }

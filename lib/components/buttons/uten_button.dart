@@ -178,8 +178,7 @@ class _UtenButtonState extends State<UtenButton> {
     return switch (widget.type) {
       // 主按钮：浅色 / 深色都用 teal500（青绿），统一品牌。
       // 背景是品牌绿，文字/icon 统一用白色，保证品牌色背景下的视觉一致性。
-      UtenButtonType.primary =>
-        (UtenColors.teal500, Colors.white, null),
+      UtenButtonType.primary => (UtenColors.teal500, Colors.white, null),
       // 次要按钮：浅灰背景 + 深文字（类似 macOS / Linear 的次按钮）
       UtenButtonType.secondary =>
         isDark
@@ -187,9 +186,10 @@ class _UtenButtonState extends State<UtenButton> {
             : (UtenColors.surfaceMid, UtenColors.textPrimary, null),
       // 品牌色调实心按钮：深绿底（teal700）+ 白字。
       // 原为浅青绿底深绿字，现场反馈"按钮看不见"，统一改为深绿实心白字（2026-07）。
-      UtenButtonType.tonal => isDark
-          ? (UtenColors.teal600, Colors.white, null)
-          : (UtenColors.teal700, Colors.white, null),
+      UtenButtonType.tonal =>
+        isDark
+            ? (UtenColors.teal600, Colors.white, null)
+            : (UtenColors.teal700, Colors.white, null),
       // 幽灵按钮：透明 + 细边框
       UtenButtonType.ghost => (
         Colors.transparent,

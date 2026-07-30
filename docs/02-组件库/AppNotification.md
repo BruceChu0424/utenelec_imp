@@ -26,7 +26,7 @@
 | 普通 toast 式提示 | `context.appInfo(...)` |
 | 阻塞性错误 | 用 `UtenDialog` 确认对话框，**不要**用通知 |
 | 重要/紧急强提醒（必须被看见） | 用 `UtenNotify.alert(...)` 居中弹窗（见 [UtenNotify.md](UtenNotify.md)），**不要**用顶部弹条 |
-| 进度提示（非瞬时反馈） | 用 `UtenLoading` loading 组件，**不要**用通知 |
+| 进度提示（非瞬时反馈） | 使用按钮 loading、`UtenSkeleton` 或主题化进度指示器，**不要**用通知 |
 
 > 旧代码里 `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(...)))`
 > 在 **Phase 1.0+ 已全面迁移** 为 `AppNotification`。新功能禁止再使用底部 SnackBar。
@@ -41,7 +41,7 @@
 context.appSuccess('员工入职成功');          // 顶部绿色
 context.appError('工号已存在');            // 顶部红色
 context.appWarning('即将离开');            // 顶部橙
-context.appInfo('已生成工资条 PDF（Mock）'); // 顶部中性
+context.appInfo('正在准备工资条 PDF');       // 顶部中性
 
 // 自动从 ApiException 提取 message + fieldErrors
 context.appApiError(e, fallback: '提交失败');

@@ -16,6 +16,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/hvac_device.dart';
 import '../providers/hvac_providers.dart';
@@ -57,107 +58,119 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
               children: [
                 _Hero(device: _device!),
                 const SizedBox(height: UtenSpacing.s20),
-                    UtenCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                UtenCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 开关
+                      Row(
                         children: [
-                          // 开关
-                          Row(
-                            children: [
-                              const Expanded(child: Text('电源',
-                                  style: TextStyle(fontWeight: FontWeight.w600))),
-                              Switch(
-                                value: _device!.power,
-                                onChanged: _guard.isBusy
-                                    ? null
-                                    : (v) => _update(
-                                        _device!.copyWith(power: v),
-                                        v ? '开机' : '关机',
-                                      ),
-                              ),
-                            ],
+                          const Expanded(
+                            child: Text(
+                              '电源',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
                           ),
-                          const Divider(),
-                          // 温度
-                          Row(
-                            children: [
-                              const Text('目标温度'),
-                              const Spacer(),
-                              Text('${_device!.targetTemp.toStringAsFixed(0)}°C',
-                                  style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w700,
-                                      fontFeatures: [
-                                        FontFeature.tabularFigures()
-                                      ])),
-                            ],
-                          ),
-                          Slider(
-                            min: 16, max: 30, divisions: 14,
-                            value: _device!.targetTemp,
-                            activeColor: UtenColors.teal600,
-                            onChanged: (_device!.power && !_guard.isBusy)
-                                ? (v) => setState(() =>
-                                    _device = _device!.copyWith(targetTemp: v))
-                                : null,
-                            onChangeEnd: _guard.isBusy
+                          Switch(
+                            value: _device!.power,
+                            onChanged: _guard.isBusy
                                 ? null
                                 : (v) => _update(
-                                    _device!.copyWith(targetTemp: v),
-                                    '调温 ${v.toStringAsFixed(0)}°C',
+                                    _device!.copyWith(power: v),
+                                    v ? '开机' : '关机',
                                   ),
-                          ),
-                          const Divider(),
-                          // 模式
-                          const Padding(
-                            padding: EdgeInsets.only(top: 4, bottom: 8),
-                            child: Text('模式'),
-                          ),
-                          SegmentedButton<HvacMode>(
-                            selected: {_device!.mode},
-                            onSelectionChanged: (_device!.power && !_guard.isBusy)
-                                ? (s) => _update(
-                                    _device!.copyWith(mode: s.first),
-                                    '切换${s.first.label}',
-                                  )
-                                : null,
-                            segments: [
-                              for (final m in HvacMode.values)
-                                ButtonSegment(
-                                    value: m,
-                                    icon: Icon(m.icon),
-                                    label: Text(m.label)),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // 风速
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 8),
-                            child: Text('风速'),
-                          ),
-                          SegmentedButton<HvacFan>(
-                            selected: {_device!.fan},
-                            onSelectionChanged: (_device!.power && !_guard.isBusy)
-                                ? (s) => _update(
-                                    _device!.copyWith(fan: s.first),
-                                    '风速${s.first.label}',
-                                  )
-                                : null,
-                            segments: [
-                              for (final f in HvacFan.values)
-                                ButtonSegment(value: f, label: Text(f.label)),
-                            ],
                           ),
                         ],
                       ),
-                    ),
+                      const Divider(),
+                      // 温度
+                      Row(
+                        children: [
+                          const Text('目标温度'),
+                          const Spacer(),
+                          Text(
+                            '${_device!.targetTemp.toStringAsFixed(0)}°C',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
+                      ),
+                      Slider(
+                        min: 16,
+                        max: 30,
+                        divisions: 14,
+                        value: _device!.targetTemp,
+                        activeColor: UtenColors.teal600,
+                        onChanged: (_device!.power && !_guard.isBusy)
+                            ? (v) => setState(
+                                () =>
+                                    _device = _device!.copyWith(targetTemp: v),
+                              )
+                            : null,
+                        onChangeEnd: _guard.isBusy
+                            ? null
+                            : (v) => _update(
+                                _device!.copyWith(targetTemp: v),
+                                '调温 ${v.toStringAsFixed(0)}°C',
+                              ),
+                      ),
+                      const Divider(),
+                      // 模式
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4, bottom: 8),
+                        child: Text('模式'),
+                      ),
+                      SegmentedButton<HvacMode>(
+                        selected: {_device!.mode},
+                        onSelectionChanged: (_device!.power && !_guard.isBusy)
+                            ? (s) => _update(
+                                _device!.copyWith(mode: s.first),
+                                '切换${s.first.label}',
+                              )
+                            : null,
+                        segments: [
+                          for (final m in HvacMode.values)
+                            ButtonSegment(
+                              value: m,
+                              icon: Icon(m.icon),
+                              label: Text(m.label),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // 风速
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: Text('风速'),
+                      ),
+                      SegmentedButton<HvacFan>(
+                        selected: {_device!.fan},
+                        onSelectionChanged: (_device!.power && !_guard.isBusy)
+                            ? (s) => _update(
+                                _device!.copyWith(fan: s.first),
+                                '风速${s.first.label}',
+                              )
+                            : null,
+                        segments: [
+                          for (final f in HvacFan.values)
+                            ButtonSegment(value: f, label: Text(f.label)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: UtenSpacing.s20),
                 const UtenSectionHeader(title: '指令历史'),
                 const SizedBox(height: UtenSpacing.s8),
                 UtenCard(
                   child: _history.isEmpty
-                      ? const Text('暂无指令',
-                          style: TextStyle(color: UtenColors.slate400))
+                      ? const Text(
+                          '暂无指令',
+                          style: TextStyle(color: UtenColors.slate400),
+                        )
                       : Column(
                           children: [
                             for (var i = 0; i < _history.length; i++) ...[
@@ -190,7 +203,7 @@ class _HvacControlPageState extends ConsumerState<HvacControlPage> {
     // 没守住就会一次发多个 PUT。本页用 _guard 让上一个请求回来之前不再触发。
     final f = _guard.run(() async {
       setState(() => _device = next);
-      _history.insert(0, _Cmd(action: action, time: DateTime.now()));
+      _history.insert(0, _Cmd(action: action, time: ChinaDateTime.now()));
       await ref.read(hvacRepositoryProvider).update(next);
       if (mounted) context.appInfo('$action（Mock）');
     });
@@ -211,7 +224,11 @@ class _HistoryItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.chevron_right_rounded, color: UtenColors.teal600, size: 18),
+        const Icon(
+          Icons.chevron_right_rounded,
+          color: UtenColors.teal600,
+          size: 18,
+        ),
         const SizedBox(width: 4),
         Expanded(child: Text(cmd.action)),
         Text(
@@ -247,13 +264,16 @@ class _Hero extends StatelessWidget {
               Icon(device.mode.icon, color: Colors.white70),
               const SizedBox(width: 6),
               Expanded(
-                child: Text(device.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600)),
+                child: Text(
+                  device.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
               const SizedBox(width: UtenSpacing.s8),
               UtenStatusBadge(
@@ -269,10 +289,11 @@ class _Hero extends StatelessWidget {
           Text(
             online ? '${device.currentTemp.toStringAsFixed(0)}°' : '--',
             style: const TextStyle(
-                color: Colors.white,
-                fontSize: 56,
-                fontWeight: FontWeight.w300,
-                fontFeatures: [FontFeature.tabularFigures()]),
+              color: Colors.white,
+              fontSize: 56,
+              fontWeight: FontWeight.w300,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(

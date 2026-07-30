@@ -1,22 +1,32 @@
 package com.uten.imp.features.org.employee.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * 入职 payload（对应前端 5 步向导）。一个原子事务内创建
- * employee + sensitive + compensation + contract + history + user(账号,密码由身份证后六位派生) + userRoles。
+ * employee + sensitive + compensation + contract + history + user(高熵一次性密码) + userRoles。
  */
 public record OnboardingRequest(
-        Profile profile,
-        Employment employment,
-        Compensation compensation,
-        Contract contract,
-        List<EmergencyContactInput> emergencyContacts,
-        List<CredentialInput> certificates,
-        List<EducationInput> educations,
-        Account account
+        @Valid Profile profile,
+        @Valid Employment employment,
+        @Valid Compensation compensation,
+        @Valid Contract contract,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<@Valid EmergencyContactInput> emergencyContacts,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<@Valid CredentialInput> certificates,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<@Valid EducationInput> educations,
+        @Valid Account account
 ) {
     public record Profile(
             String code, String fullName, String gender, String idType, String idNumber,
@@ -55,6 +65,7 @@ public record OnboardingRequest(
 
     /** roles 默认 [employee]；loginAccount 默认 = 工号（不填则用 profile.code）。 */
     public record Account(
-            List<String> roles, String loginAccount
+            @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS) List<String> roles,
+            String loginAccount
     ) {}
 }

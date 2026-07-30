@@ -64,7 +64,9 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize {
     final bottomHeight = bottom?.preferredSize.height ?? 0;
-    return Size.fromHeight(subtitle != null ? 64 + bottomHeight : 56 + bottomHeight);
+    return Size.fromHeight(
+      subtitle != null ? 64 + bottomHeight : 56 + bottomHeight,
+    );
   }
 
   @override
@@ -73,15 +75,18 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     final baseColor =
-        backgroundColor ?? theme.appBarTheme.backgroundColor ??
-            (isDark ? UtenColors.darkBackground : UtenColors.background);
-    final dividerColor = theme.dividerTheme.color ??
+        backgroundColor ??
+        theme.appBarTheme.backgroundColor ??
+        (isDark ? UtenColors.darkBackground : UtenColors.background);
+    final dividerColor =
+        theme.dividerTheme.color ??
         (isDark ? UtenColors.darkBorder : UtenColors.divider);
 
     final appBar = AppBar(
       title: _buildTitleArea(theme, isDark),
       leading:
-          leading ?? (showBackButton ? const UtenBackButton() : const SizedBox.shrink()),
+          leading ??
+          (showBackButton ? const UtenBackButton() : const SizedBox.shrink()),
       automaticallyImplyLeading: false,
       actions: actions,
       centerTitle: centerTitle,
@@ -120,10 +125,7 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
         ?titleCol,
         Expanded(
           child: Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: centerWidget!,
-            ),
+            child: FittedBox(fit: BoxFit.scaleDown, child: centerWidget!),
           ),
         ),
       ],
@@ -152,7 +154,8 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
               style: TextStyle(
                 fontSize: 12,
                 height: 1.3,
-                color: foregroundColor?.withValues(alpha: 0.7) ??
+                color:
+                    foregroundColor?.withValues(alpha: 0.7) ??
                     (isDark
                         ? UtenColors.darkTextTertiary
                         : UtenColors.textTertiary),

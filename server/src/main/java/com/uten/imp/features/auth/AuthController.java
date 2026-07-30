@@ -21,7 +21,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest req, HttpServletRequest http) {
-        // 限流键用连接 IP（getRemoteAddr，不可被 X-Forwarded-For 伪造）；审计 IP 仍由 AuditService 取 XFF
+        // 限流与审计均记录容器看到的连接 IP；可信反向代理应在边界层清洗并终结转发头。
         return loginService.login(req, http.getRemoteAddr());
     }
 
@@ -31,7 +31,7 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public void logout(@RequestBody(required = false) RefreshRequest req) {
+    public void logout(@Valid @RequestBody(required = false) RefreshRequest req) {
         String raw = req == null ? null : req.refreshToken();
         tokenIssuer.logout(raw);
         currentUser.get().ifPresent(u ->

@@ -9,8 +9,8 @@
 //   ...utenMakerAuditCells(ref, makerName: _makerName, createdAt: _createdAt),
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
+import '../../core/utils/china_datetime.dart';
 import '../../shared/providers/session_provider.dart';
 
 /// 制单信息两个只读格子：制单员 + 制单时间。
@@ -53,11 +53,8 @@ List<Widget> utenMakerAuditCells(
   ];
 }
 
-/// ISO 时间串 → 本地 'yyyy-MM-dd HH:mm'；空/解析失败返回 ''。
+/// ISO 时间串 → 中国标准时间 'yyyy-MM-dd HH:mm'；空/解析失败返回 ''。
 /// 制单时间等审计时间展示共用（编辑页只读格 + 详情页信息行）。
 String utenFmtIsoTime(String? iso) {
-  if (iso == null || iso.isEmpty) return '';
-  final d = DateTime.tryParse(iso);
-  if (d == null) return '';
-  return DateFormat('yyyy-MM-dd HH:mm').format(d.toLocal());
+  return ChinaDateTime.formatIsoInstant(iso);
 }

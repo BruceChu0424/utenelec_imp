@@ -7,6 +7,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.finance.EmployeeClaimPostingPort;
+import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemDto;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemInput;
@@ -44,7 +46,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class FinanceExpenseService {
+public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -142,25 +144,109 @@ public class FinanceExpenseService {
         tx.bind();
         FinanceExpense e = require(id);
         em.lock(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        approveInternal(e, currentUser.requireEmployeeId());
+        return detail(id);
+    }
+
+    /**
+     * 员工报销批准后的受控财务入账入口。
+     *
+     * <p>调用方必须已经持有报销单悲观锁并完成 {@code expense:pay}、非自付、
+     * 状态和幂等校验。本方法不暴露 Controller，在同一事务中创建一般费用单、
+     * 扣减有效账户、写对账流水并生成总账凭证；任一步失败都会连同报销状态回滚。
+     */
+    @Transactional
+    @Override
+    public UUID postEmployeeClaim(EmployeeClaimPosting posting) {
+        tx.bind();
+        if (posting == null || posting.claimId() == null || posting.paymentDate() == null
+                || posting.accountId() == null || posting.expenseStyleId() == null
+                || posting.amount() == null || posting.amount().signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销记账参数不完整");
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> accountRows = em.createNativeQuery("""
+                        SELECT id, currency_id
+                        FROM accounts
+                        WHERE id = :id
+                          AND COALESCE(is_deleted, false) = false
+                          AND status = '使用'
+                        FOR UPDATE
+                        """)
+                .setParameter("id", posting.accountId())
+                .getResultList();
+        if (accountRows.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "付款账户不存在或已禁用");
+        }
+        Number validStyles = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM payment_styles
+                        WHERE id = :id
+                          AND COALESCE(is_deleted, false) = false
+                          AND status = '使用'
+                          AND category = 'EXPENSE'
+                        """)
+                .setParameter("id", posting.expenseStyleId())
+                .getSingleResult();
+        if (validStyles.longValue() != 1L) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用类别不存在、已禁用或不是费用类");
+        }
+
+        UUID actor = currentUser.requireEmployeeId();
+        FinanceExpense expense = new FinanceExpense();
+        expense.setBillNo(docNumberService.nextNumber(DocNumberPrefix.FIN_EXPENSE));
+        expense.setBillDate(posting.paymentDate());
+        expense.setAccountId(posting.accountId());
+        expense.setCurrencyId((UUID) accountRows.getFirst()[1]);
+        expense.setExchangeRate(BigDecimal.ONE);
+        expense.setAmountOriginal(posting.amount());
+        expense.setAmountLocal(posting.amount());
+        expense.setOperatorId(actor);
+        expense.setMakerId(actor);
+        expense.setStatus(STATUS_DRAFT);
+        expense.setRemark("员工报销 " + posting.claimId());
+        expenseRepo.save(expense);
+
+        FinanceExpenseItem item = new FinanceExpenseItem();
+        item.setExpenseId(expense.getId());
+        item.setBillNo(expense.getBillNo());
+        item.setBillDate(expense.getBillDate());
+        item.setLineNo(1);
+        item.setExpenseStyleId(posting.expenseStyleId());
+        item.setDepartmentId(posting.departmentId());
+        item.setQty(BigDecimal.ONE);
+        item.setPrice(posting.amount());
+        item.setAmountOriginal(posting.amount());
+        item.setAmountLocal(posting.amount());
+        item.setSummary("员工报销");
+        itemRepo.save(item);
+
+        approveInternal(expense, actor);
+        return expense.getId();
+    }
+
+    private void approveInternal(FinanceExpense e, UUID approverId) {
         if (e.getStatus() == null || e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         if (e.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "费用单需指定付款账户");
         }
-        e.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        e.setApproverId(approverId); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         BigDecimal amountLocal = nz(e.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(e.getAccountId(), amountLocal);
         }
         insertReconciliation(e, amountLocal);
         // C6：审核即自动过总账分录（借费用科目/贷付款账户），gl_status 置「已过账待确认」
-        UUID voucherId = glPosting.postExpenseDoc(id);
+        expenseRepo.flush();
+        itemRepo.flush();
+        UUID voucherId = glPosting.postExpenseDoc(e.getId());
         e.setGlVoucherId(voucherId);
         e.setGlStatus((short) 1);
         e.setStatus(STATUS_APPROVED);
         expenseRepo.save(e);
-        return detail(id);
     }
 
     /** 红冲：status 1→-1，反向。 */
@@ -213,12 +299,14 @@ public class FinanceExpenseService {
                     payments_total  = COALESCE(payments_total, 0) + :amt,
                     updated_at = now()
                 WHERE id = :id
+                  AND COALESCE(is_deleted, false) = false
+                  AND status = '使用'
                 """)
                 .setParameter("amt", delta)
                 .setParameter("id", accountId)
                 .executeUpdate();
         if (rows == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "账户不存在：" + accountId);
+            throw new ApiException(ErrorCode.BUSINESS, "账户不存在或已禁用：" + accountId);
         }
     }
 

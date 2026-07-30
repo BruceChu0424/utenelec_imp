@@ -14,21 +14,17 @@ import 'package:flutter/material.dart';
 import '../../core/constants/assets.dart';
 
 class UtenWordmarkLogo extends StatelessWidget {
-  const UtenWordmarkLogo({
-    super.key,
-    this.width = 240,
-    this.height = 44,
-  });
+  const UtenWordmarkLogo({super.key, this.width = 240, this.height = 44});
 
   /// 启动屏常用尺寸（略大，居中感更强）
   const UtenWordmarkLogo.splash({super.key})
-      : width = 320,
-        height = 320 / (405 / 74);
+    : width = 320,
+      height = 320 / (405 / 74);
 
   /// 紧凑尺寸（卡片内、行内、Avatar 旁的小标识）
   const UtenWordmarkLogo.compact({super.key})
-      : width = 120,
-        height = 120 / (405 / 74);
+    : width = 120,
+      height = 120 / (405 / 74);
 
   /// 渲染宽度（默认 240）。null 时让图片按原始尺寸渲染。
   final double width;

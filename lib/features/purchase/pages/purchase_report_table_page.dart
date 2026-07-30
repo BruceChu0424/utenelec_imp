@@ -30,7 +30,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -45,15 +47,17 @@ class PurchaseReportTablePage extends ConsumerStatefulWidget {
   final PurchaseReportKind kind;
 
   @override
-  ConsumerState<PurchaseReportTablePage> createState() => _PurchaseReportTablePageState();
+  ConsumerState<PurchaseReportTablePage> createState() =>
+      _PurchaseReportTablePageState();
 }
 
-class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePage> {
+class _PurchaseReportTablePageState
+    extends ConsumerState<PurchaseReportTablePage> {
   late final PurchaseReportKind _kind = widget.kind;
   // 默认单据类型：订货（用户可在左栏切换；催料页不显示切换）。
   PurchaseReportDocType _docType = PurchaseReportDocType.order;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
@@ -70,7 +74,8 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
   bool _dirty = false;
 
   /// 本页（kind）对应的偏好 provider：催料独立 key，明细/汇总各一。
-  NotifierProvider<ReportFilterPrefsNotifier, ReportFilterPrefs> get _prefsProvider {
+  NotifierProvider<ReportFilterPrefsNotifier, ReportFilterPrefs>
+  get _prefsProvider {
     if (_kind.isStandalone) return purchaseExpeditingReportPrefsProvider;
     return _kind.isDetail
         ? purchaseDetailReportPrefsProvider
@@ -91,8 +96,10 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
     if (p.isEmpty) return;
     setState(() {
       if (!_kind.isStandalone && p.docType != null) {
-        _docType = PurchaseReportDocType.values
-            .firstWhere((t) => t.code == p.docType, orElse: () => _docType);
+        _docType = PurchaseReportDocType.values.firstWhere(
+          (t) => t.code == p.docType,
+          orElse: () => _docType,
+        );
       }
       if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
       if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
@@ -106,13 +113,13 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
 
   /// 当前筛选口径快照（不含关键字/分页；催料页不带 docType）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
-        docType: _kind.isStandalone ? null : _docType.code,
-        from: _fmt(_from),
-        to: _fmt(_to),
-        filters: Map.of(_filters),
-        sortKey: _sortKey,
-        sortAsc: _sortAsc,
-      );
+    docType: _kind.isStandalone ? null : _docType.code,
+    from: _fmt(_from),
+    to: _fmt(_to),
+    filters: Map.of(_filters),
+    sortKey: _sortKey,
+    sortAsc: _sortAsc,
+  );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
   void _persistPrefs() {
@@ -204,26 +211,23 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
       : '${_docType.label}${_kind.shortLabel}报表';
 
   /// 导出报表 key（与 GET 路径一致：催料=endpoint，其余=docType/endpoint）。
-  String get _exportReport =>
-      _kind.isStandalone ? _kind.endpoint : '${_docType.code}/${_kind.endpoint}';
+  String get _exportReport => _kind.isStandalone
+      ? _kind.endpoint
+      : '${_docType.code}/${_kind.endpoint}';
 
   /// 导出查询参数（过滤+排序，与 _load 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        if (_keyword.isNotEmpty) 'keyword': _keyword,
-        for (final e in _filters.entries) 'f.${e.key}': e.value,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
+    'dateFrom': _fmt(_from),
+    'dateTo': _fmt(_to),
+    if (_keyword.isNotEmpty) 'keyword': _keyword,
+    for (final e in _filters.entries) 'f.${e.key}': e.value,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final query = <String, dynamic>{
-      ..._exportQuery,
-      'page': 1,
-      'size': 2000,
-    };
+    final query = <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000};
     final path = _kind.isStandalone
         ? '/purchase/reports/${_kind.endpoint}'
         : '/purchase/reports/${_docType.code}/${_kind.endpoint}';
@@ -252,7 +256,9 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
     return Scaffold(
       appBar: UtenAppBar(
         title: _title,
-        leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
+        leading: UtenBackButton(
+          onPressed: () => backTo(context, defaultPath: RouteName.purchase),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -263,18 +269,32 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
                 // 页面头：Icon + 标题 + 计数（内联 Icon+Text，勿换 UtenSectionHeader）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(_kind.icon, size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        _kind.icon,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text(_title,
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        _title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       if (_data != null)
-                        Text('共 ${_data!.total} ${_kind.isStandalone || _kind.isDetail ? '条明细' : '张单'}',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          '共 ${_data!.total} ${_kind.isStandalone || _kind.isDetail ? '条明细' : '张单'}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -383,8 +403,10 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
               children: [
                 for (final e in _filters.entries)
                   Chip(
-                    label: Text('${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                        style: const TextStyle(fontSize: 11)),
+                    label: Text(
+                      '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
                     onDeleted: () => _onFilterChanged(e.key, null),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -405,14 +427,16 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
       return const Center(child: Text('点击「查询」加载'));
     }
     final columns = data.columns
-        .map((c) => MasterColumnDef<Map<String, dynamic>>(
-              key: c.key,
-              label: c.label,
-              width: (c.width ?? 120).toDouble(),
-              type: c.type,
-              sortable: isSortableReportType(c.type),
-              value: (row) => formatReportCell(c, row),
-            ))
+        .map(
+          (c) => MasterColumnDef<Map<String, dynamic>>(
+            key: c.key,
+            label: c.label,
+            width: (c.width ?? 120).toDouble(),
+            type: c.type,
+            sortable: isSortableReportType(c.type),
+            value: (row) => formatReportCell(c, row),
+          ),
+        )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
@@ -423,6 +447,7 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/purchase/reports/export',
+          exportPermission: Perm.purchaseReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '采购$_title',
@@ -431,6 +456,7 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
         ),
         UtenExportButton(
           endpoint: '/purchase/reports/export',
+          requiredPermission: Perm.purchaseReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '采购$_title',
@@ -447,7 +473,9 @@ class _PurchaseReportTablePageState extends ConsumerState<PurchaseReportTablePag
       onSortChange: _onSortChange,
       onRowTap: _onRowTap,
       isLoading: _loading,
-      emptyMessage: (_kind.isStandalone || _kind.isDetail) ? '暂无明细数据' : '暂无汇总数据',
+      emptyMessage: (_kind.isStandalone || _kind.isDetail)
+          ? '暂无明细数据'
+          : '暂无汇总数据',
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: (p) {

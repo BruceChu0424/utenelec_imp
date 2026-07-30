@@ -407,10 +407,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
               columns: _columns(),
               showAddRow: false,
               showRowDelete: false,
-              createBlankRow: () => _LedgerRow(
-                const ArApLedgerItem(id: ''),
-                false,
-              ), // 不会被调用
+              createBlankRow: () =>
+                  _LedgerRow(const ArApLedgerItem(id: ''), false), // 不会被调用
               emptyMessage: '没有匹配的台账行', // TODO(l10n): 补 arb
             ),
           ),
@@ -484,8 +482,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       label: '立帐金额',
       width: 110,
       numeric: true,
-      cellBuilder: (context, row) =>
-          Text(_fmt(row.item.amountOriginalLocal)),
+      cellBuilder: (context, row) => Text(_fmt(row.item.amountOriginalLocal)),
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'settled',

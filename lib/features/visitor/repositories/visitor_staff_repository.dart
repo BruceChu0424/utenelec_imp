@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/models/paged_result.dart';
 import '../models/visitor_application.dart';
 import 'visitor_repository.dart';
 
@@ -32,7 +34,8 @@ class SecurityVerifyResult {
   final DateTime? plannedVisitAt;
   final DateTime? checkInAt;
 
-  factory SecurityVerifyResult.fromJson(Map<String, dynamic> j) => SecurityVerifyResult(
+  factory SecurityVerifyResult.fromJson(Map<String, dynamic> j) =>
+      SecurityVerifyResult(
         valid: j['valid'] == true,
         color: (j['color'] ?? '').toString(),
         reason: (j['reason'] ?? '').toString(),
@@ -42,9 +45,11 @@ class SecurityVerifyResult {
         hostName: j['hostName'] as String?,
         plateNo: j['plateNo'] as String?,
         plannedVisitAt: j['plannedVisitAt'] is String
-            ? DateTime.tryParse(j['plannedVisitAt'] as String)
+            ? ChinaDateTime.tryParse(j['plannedVisitAt'] as String)
             : null,
-        checkInAt: j['checkInAt'] is String ? DateTime.tryParse(j['checkInAt'] as String) : null,
+        checkInAt: j['checkInAt'] is String
+            ? ChinaDateTime.tryParse(j['checkInAt'] as String)
+            : null,
       );
 }
 
@@ -54,10 +59,15 @@ class VisitorStaffRepository {
   final ApiClient _api;
 
   // —— HR 审批 ——
-  Future<List<VisitorApplication>> approvalList({String? status}) async {
-    final list = await _api.getList(ApiEndpoints.visitorApproval,
-        query: status == null ? null : {'status': status});
-    return list.map(VisitorApplication.fromJson).toList();
+  Future<PagedResult<VisitorApplication>> approvalList({
+    String? status,
+    int page = 1,
+    int size = 20,
+  }) async {
+    final query = <String, dynamic>{'page': page, 'size': size};
+    if (status != null) query['status'] = status;
+    final response = await _api.get(ApiEndpoints.visitorApproval, query: query);
+    return PagedResult.fromJson(response, VisitorApplication.fromJson);
   }
 
   /// HR 访客待办数（工作台/导航徽章）。
@@ -75,42 +85,68 @@ class VisitorStaffRepository {
   Future<VisitorApplicationDetail> approvalDetail(String id) async {
     final r = await _api.get(ApiEndpoints.visitorApprovalById(id));
     final app = VisitorApplication.fromJson(r);
-    final steps = (r['steps'] as List?)
-            ?.map((e) => VisitorApprovalStep.fromJson(e as Map<String, dynamic>))
+    final steps =
+        (r['steps'] as List?)
+            ?.map(
+              (e) => VisitorApprovalStep.fromJson(e as Map<String, dynamic>),
+            )
             .toList() ??
         const [];
     return VisitorApplicationDetail(application: app, steps: steps);
   }
 
-  Future<VisitorApplication> action(String id,
-      {required String action, String? comment, String? rejectReason}) async {
-    final r = await _api.post(ApiEndpoints.visitorApprovalAction(id), body: {
-      'action': action,
-      'comment': comment,
-      'rejectReason': rejectReason,
-    });
+  Future<VisitorApplication> action(
+    String id, {
+    required String action,
+    String? comment,
+    String? rejectReason,
+  }) async {
+    final r = await _api.post(
+      ApiEndpoints.visitorApprovalAction(id),
+      body: {
+        'action': action,
+        'comment': comment,
+        'rejectReason': rejectReason,
+      },
+    );
     return VisitorApplication.fromJson(r);
   }
 
-  Future<void> hostConfirm(String id, {required bool confirmed, String? comment}) async {
-    await _api.post(ApiEndpoints.visitorHostConfirm(id), body: {
-      'confirmed': confirmed,
-      'comment': comment,
-    });
+  Future<void> hostConfirm(
+    String id, {
+    required bool confirmed,
+    String? comment,
+  }) async {
+    await _api.post(
+      ApiEndpoints.visitorHostConfirm(id),
+      body: {'confirmed': confirmed, 'comment': comment},
+    );
   }
 
   // —— 被访人 ——
-  Future<List<VisitorApplication>> myAsHost() async {
-    final list = await _api.getList(ApiEndpoints.visitorApprovalAsHost);
-    return list.map(VisitorApplication.fromJson).toList();
+  Future<PagedResult<VisitorApplication>> myAsHost({
+    String? status,
+    int page = 1,
+    int size = 20,
+  }) async {
+    final query = <String, dynamic>{'page': page, 'size': size};
+    if (status != null) query['status'] = status;
+    final response = await _api.get(
+      ApiEndpoints.visitorApprovalAsHost,
+      query: query,
+    );
+    return PagedResult.fromJson(response, VisitorApplication.fromJson);
   }
 
   // —— 保安核验 ——
-  Future<SecurityVerifyResult> verify({String? qrToken, String? passcode}) async {
-    final r = await _api.post(ApiEndpoints.securityVerify, body: {
-      if (qrToken != null) 'qrToken': qrToken,
-      if (passcode != null) 'passcode': passcode,
-    });
+  Future<SecurityVerifyResult> verify({
+    String? qrToken,
+    String? passcode,
+  }) async {
+    final r = await _api.post(
+      ApiEndpoints.securityVerify,
+      body: {'qrToken': ?qrToken, 'passcode': ?passcode},
+    );
     return SecurityVerifyResult.fromJson(r);
   }
 

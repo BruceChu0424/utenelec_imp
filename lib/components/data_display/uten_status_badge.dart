@@ -72,50 +72,50 @@ class UtenStatusBadge extends StatelessWidget {
     if (isDark) {
       return switch (t) {
         UtenStatusBadgeType.neutral => (
-            UtenColors.slate400.withValues(alpha: 0.18),
-            UtenColors.slate300,
-          ),
+          UtenColors.slate400.withValues(alpha: 0.18),
+          UtenColors.slate300,
+        ),
         UtenStatusBadgeType.info => (
-            UtenColors.info.withValues(alpha: 0.18),
-            const Color(0xFF60A5FA),
-          ),
+          UtenColors.info.withValues(alpha: 0.18),
+          UtenColors.infoOnDark,
+        ),
         UtenStatusBadgeType.success => (
-            UtenColors.success.withValues(alpha: 0.18),
-            const Color(0xFF34D399),
-          ),
+          UtenColors.success.withValues(alpha: 0.18),
+          UtenColors.successOnDark,
+        ),
         UtenStatusBadgeType.warning => (
-            UtenColors.warning.withValues(alpha: 0.18),
-            const Color(0xFFFBBF24),
-          ),
+          UtenColors.warning.withValues(alpha: 0.18),
+          UtenColors.warningOnDark,
+        ),
         UtenStatusBadgeType.danger => (
-            UtenColors.error.withValues(alpha: 0.18),
-            const Color(0xFFF87171),
-          ),
+          UtenColors.error.withValues(alpha: 0.18),
+          UtenColors.errorOnDark,
+        ),
         UtenStatusBadgeType.accent => (
-            UtenColors.teal500.withValues(alpha: 0.18),
-            UtenColors.teal300,
-          ),
+          UtenColors.teal500.withValues(alpha: 0.18),
+          UtenColors.teal300,
+        ),
       };
     }
     return switch (t) {
       UtenStatusBadgeType.neutral => (
-          UtenColors.surfaceMid,
-          UtenColors.textSecondary,
-        ),
+        UtenColors.surfaceMid,
+        UtenColors.textSecondary,
+      ),
       UtenStatusBadgeType.info => (UtenColors.infoBg, UtenColors.infoText),
       UtenStatusBadgeType.success => (
-          UtenColors.successBg,
-          UtenColors.successText,
-        ),
+        UtenColors.successBg,
+        UtenColors.successText,
+      ),
       UtenStatusBadgeType.warning => (
-          UtenColors.warningBg,
-          UtenColors.warningText,
-        ),
+        UtenColors.warningBg,
+        UtenColors.warningText,
+      ),
       UtenStatusBadgeType.danger => (UtenColors.errorBg, UtenColors.errorText),
       UtenStatusBadgeType.accent => (
-          UtenColors.tealSurface,
-          UtenColors.teal700,
-        ),
+        UtenColors.tealSurface,
+        UtenColors.teal700,
+      ),
     };
   }
 }
@@ -142,8 +142,4 @@ enum UtenStatusBadgeType {
 }
 
 /// 徽章尺寸
-enum UtenStatusBadgeSize {
-  small,
-  medium,
-  large,
-}
+enum UtenStatusBadgeSize { small, medium, large }

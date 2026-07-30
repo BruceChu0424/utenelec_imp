@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -21,8 +22,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -61,6 +62,11 @@ public class SecurityConfig {
                 };
         http
                 .csrf(AbstractHttpConfigurer::disable)
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable)
+                .logout(AbstractHttpConfigurer::disable)
+                .requestCache(AbstractHttpConfigurer::disable)
+                .rememberMe(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource(securityProps)))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
@@ -80,7 +86,7 @@ public class SecurityConfig {
                 }));
 
         if (securityProps.isRequireHttps()) {
-            http.requiresChannel(c -> c.anyRequest().requiresSecure());
+            http.redirectToHttps(Customizer.withDefaults());
         }
         return http.build();
     }
@@ -94,13 +100,44 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource(SecurityProperties securityProps) {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(Arrays.asList(securityProps.getCorsAllowedOrigins().split(",")));
+        List<String> origins = java.util.Arrays
+                .stream(securityProps.getCorsAllowedOrigins().split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
+        if (origins.isEmpty()) {
+            throw new IllegalStateException("uten.security.cors-allowed-origins must not be empty");
+        }
+        origins.forEach(SecurityConfig::validateCorsOrigin);
+        cfg.setAllowedOrigins(origins);
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        cfg.setAllowedHeaders(List.of("*"));
-        cfg.setAllowCredentials(true);
+        cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+        cfg.setExposedHeaders(List.of("Content-Disposition"));
+        // Authentication is carried only in an explicit Bearer header, never cookies.
+        cfg.setAllowCredentials(false);
         cfg.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
         src.registerCorsConfiguration("/**", cfg);
         return src;
+    }
+
+    private static void validateCorsOrigin(String origin) {
+        URI uri;
+        try {
+            uri = URI.create(origin);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException("Invalid CORS origin: " + origin, ex);
+        }
+        boolean validScheme = "https".equalsIgnoreCase(uri.getScheme())
+                || "http".equalsIgnoreCase(uri.getScheme());
+        boolean originOnly = uri.getHost() != null
+                && uri.getUserInfo() == null
+                && (uri.getPath() == null || uri.getPath().isEmpty())
+                && uri.getQuery() == null
+                && uri.getFragment() == null;
+        if ("*".equals(origin) || !validScheme || !originOnly) {
+            throw new IllegalStateException(
+                    "CORS entries must be explicit HTTP(S) origins without paths: " + origin);
+        }
     }
 }

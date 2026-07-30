@@ -16,7 +16,9 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
     price.addListener(_recalc);
   }
 
-  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(null);
+  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
+    null,
+  );
   GoodsOption? get goods => goodsNotifier.value;
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
@@ -38,8 +40,9 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
   bool get isFinal => finalNotifier.value;
   set isFinal(bool v) => finalNotifier.value = v;
 
-  void _recalc() => recalcAmount(() =>
-      (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0));
+  void _recalc() => recalcAmount(
+    () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+  );
 
   @override
   void dispose() {
@@ -155,10 +158,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       width: 56,
       cellBuilder: (context, row) => ValueListenableBuilder<bool>(
         valueListenable: row.finalNotifier,
-        builder: (_, v, _) => Checkbox(
-          value: v,
-          onChanged: (nv) => row.isFinal = nv ?? false,
-        ),
+        builder: (_, v, _) =>
+            Checkbox(value: v, onChanged: (nv) => row.isFinal = nv ?? false),
       ),
     ),
     EditableGridColumn<DailyGridRow>(
@@ -187,8 +188,9 @@ Widget _readOnlyMasterCell(
       final hasName = name != null && name.isNotEmpty;
       return Text(
         hasName ? name : '—',
-        style:
-            TextStyle(color: hasName ? null : theme.colorScheme.onSurfaceVariant),
+        style: TextStyle(
+          color: hasName ? null : theme.colorScheme.onSurfaceVariant,
+        ),
       );
     },
   );

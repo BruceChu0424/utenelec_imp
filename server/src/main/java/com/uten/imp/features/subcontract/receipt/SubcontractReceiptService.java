@@ -7,8 +7,10 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemDto;
@@ -67,6 +69,7 @@ public class SubcontractReceiptService {
     private final SubcontractReceiptRepository receiptRepo;
     private final SubcontractReceiptItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
@@ -167,6 +170,18 @@ public class SubcontractReceiptService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validateSubcontractReceipt(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.orderSource(
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractReceiptItem it : items) {
             // ① 正向入库（关键：DIR_IN=+1，不照搬老库反向）
@@ -202,6 +217,13 @@ public class SubcontractReceiptService {
         // 先反立帐（若有核销 amount_settled<>0 抛 IllegalStateException，对齐老库文案）
         arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
         List<SubcontractReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
+            throw new ApiException(ErrorCode.BUSINESS, "委外进仓已有退货记录，请先红冲下游退货单");
+        }
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (SubcontractReceiptItem it : items) {

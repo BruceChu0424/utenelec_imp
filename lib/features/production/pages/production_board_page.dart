@@ -20,6 +20,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../providers/production_board_sort_provider.dart';
@@ -37,34 +38,62 @@ class ProductionBoardPage extends ConsumerStatefulWidget {
       _ProductionBoardPageState();
 }
 
-class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
+class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  late int _activeTab;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeTab = widget.initialTab.clamp(0, 2);
+    _tabController = TabController(
+      length: 3,
+      initialIndex: _activeTab,
+      vsync: this,
+    )..addListener(_handleTabChange);
+  }
+
+  void _handleTabChange() {
+    final next = _tabController.index;
+    if (next != _activeTab && mounted) {
+      setState(() => _activeTab = next);
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController
+      ..removeListener(_handleTabChange)
+      ..dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      initialIndex: widget.initialTab.clamp(0, 2),
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: '生产调度与进度',
-          leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production),
-          ),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: '待排产'),
-              Tab(text: '进行中'),
-              Tab(text: '已完成'),
-            ],
-          ),
+    return Scaffold(
+      appBar: UtenAppBar(
+        title: '生产调度与进度',
+        leading: UtenBackButton(
+          onPressed: () => backTo(context, defaultPath: RouteName.production),
         ),
-        body: const SafeArea(
-          child: TabBarView(
-            children: [
-              _PendingPanel(),
-              _PlanPanel(closed: false),
-              _PlanPanel(closed: true),
-            ],
-          ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: '待排产'),
+            Tab(text: '进行中'),
+            Tab(text: '已完成'),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _PendingPanel(active: _activeTab == 0),
+            _PlanPanel(closed: false, active: _activeTab == 1),
+            _PlanPanel(closed: true, active: _activeTab == 2),
+          ],
         ),
       ),
     );
@@ -74,7 +103,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
 // ═════════════════════════ Tab1 待排产（原调度页） ═════════════════════════
 
 class _PendingPanel extends ConsumerStatefulWidget {
-  const _PendingPanel();
+  const _PendingPanel({required this.active});
+
+  final bool active;
 
   @override
   ConsumerState<_PendingPanel> createState() => _PendingPanelState();
@@ -101,13 +132,28 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   final _searchCtrl = TextEditingController();
   String _keyword = '';
   Timer? _debounce;
+  bool _hasLoaded = false;
 
   List<SchedulePendingRow> get _rows => _page?.items ?? const [];
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _loadWhenActive();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PendingPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) _loadWhenActive();
+  }
+
+  void _loadWhenActive() {
+    if (!widget.active || _hasLoaded) return;
+    _hasLoaded = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -176,7 +222,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 
   Future<void> _pickDate(bool begin) async {
-    final now = DateTime.now();
+    final now = ChinaDateTime.today();
     final d = await showDatePicker(
       context: context,
       initialDate: begin ? (_beginDate ?? now) : (_endDate ?? now),
@@ -188,7 +234,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   /// 交货日期范围筛选（从/至；互相纠偏）。
   Future<void> _pickDeliverDate(bool begin) async {
-    final now = DateTime.now();
+    final now = ChinaDateTime.today();
     final d = await showDatePicker(
       context: context,
       initialDate: begin ? (_deliverFrom ?? now) : (_deliverTo ?? now),
@@ -317,8 +363,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                     controller: _searchCtrl,
                     decoration: InputDecoration(
                       isDense: true,
-                      prefixIcon:
-                          const Icon(Icons.search_rounded, size: 20),
+                      prefixIcon: const Icon(Icons.search_rounded, size: 20),
                       hintText: '搜索订单号 / 客户 / 货品',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -327,8 +372,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                     onChanged: (v) {
                       // 服务端筛选：400ms 防抖，避免逐字打请求
                       _debounce?.cancel();
-                      _debounce =
-                          Timer(const Duration(milliseconds: 400), () {
+                      _debounce = Timer(const Duration(milliseconds: 400), () {
                         _keyword = v;
                         _reload();
                       });
@@ -339,20 +383,24 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   onPressed: () => _pickDeliverDate(true),
                   icon: const Icon(Icons.date_range_rounded, size: 16),
                   label: Text(
-                      _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!)),
+                    _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!),
+                  ),
                   style: _deliverFrom != null
                       ? OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary)
+                          foregroundColor: theme.colorScheme.primary,
+                        )
                       : null,
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _pickDeliverDate(false),
                   icon: const Icon(Icons.event_rounded, size: 16),
-                  label:
-                      Text(_deliverTo == null ? '交货至' : _fmtDate(_deliverTo!)),
+                  label: Text(
+                    _deliverTo == null ? '交货至' : _fmtDate(_deliverTo!),
+                  ),
                   style: _deliverTo != null
                       ? OutlinedButton.styleFrom(
-                          foregroundColor: theme.colorScheme.primary)
+                          foregroundColor: theme.colorScheme.primary,
+                        )
                       : null,
                 ),
                 if (_deliverFrom != null || _deliverTo != null)
@@ -369,10 +417,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   TextButton.icon(
                     icon: const Icon(Icons.auto_awesome_rounded, size: 18),
                     label: Text('建议计划（本页 ${_rows.length} 行）'),
-                    onPressed:
-                        _rows.isEmpty || _submitting
-                            ? null
-                            : _suggestAllAndSubmit,
+                    onPressed: _rows.isEmpty || _submitting
+                        ? null
+                        : _suggestAllAndSubmit,
                   ),
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded),
@@ -399,15 +446,21 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
       child: Row(
         children: [
-          Text('共 $total 行',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            '共 $total 行',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
           if (_selected.isNotEmpty) ...[
             const SizedBox(width: UtenSpacing.s8),
-            Text('已选 ${_selected.length} 行',
-                style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              '已选 ${_selected.length} 行',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
           const Spacer(),
           DropdownButton<int>(
@@ -434,8 +487,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   }
                 : null,
           ),
-          Text(pages == 0 ? '0 / 0' : '$_pageNo / $pages',
-              style: theme.textTheme.bodySmall),
+          Text(
+            pages == 0 ? '0 / 0' : '$_pageNo / $pages',
+            style: theme.textTheme.bodySmall,
+          ),
           IconButton(
             icon: const Icon(Icons.chevron_right_rounded),
             tooltip: '下一页',
@@ -474,11 +529,11 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     final rows = _rows;
     if (rows.isEmpty) {
       return Center(
-        child: Text(_keyword.isEmpty &&
-                _deliverFrom == null &&
-                _deliverTo == null
-            ? '暂无待排产的订单行'
-            : '没有匹配的待排产行'),
+        child: Text(
+          _keyword.isEmpty && _deliverFrom == null && _deliverTo == null
+              ? '暂无待排产的订单行'
+              : '没有匹配的待排产行',
+        ),
       );
     }
     return Stack(
@@ -500,8 +555,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   Widget _pendingRow(ThemeData theme, SchedulePendingRow r) {
     final checked = _selected.containsKey(r.orderItemId);
-    final deliver =
-        r.deliverDate == null ? '—' : r.deliverDate!.substring(0, 10);
+    final deliver = r.deliverDate == null
+        ? '—'
+        : r.deliverDate!.substring(0, 10);
     final color = r.urgent ? theme.colorScheme.error : null;
     return Material(
       color: r.urgent
@@ -698,7 +754,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 }
 
-
 // ═════════════════════ Tab2/3 进行中 / 已完成（进度卡片） ═════════════════════
 
 /// 进行中/已完成列表排序方式（置顶的计划始终排最前）。
@@ -706,9 +761,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 enum _PlanSort { billDate, billDateDesc, deliveryDate, progress }
 
 class _PlanPanel extends ConsumerStatefulWidget {
-  const _PlanPanel({required this.closed});
+  const _PlanPanel({required this.closed, required this.active});
 
   final bool closed;
+  final bool active;
 
   @override
   ConsumerState<_PlanPanel> createState() => _PlanPanelState();
@@ -731,6 +787,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   DateTime? _to; // 开单日期范围（至）
   Timer? _debounce;
   final Set<String> _expanded = {};
+  bool _hasLoaded = false;
 
   /// 显示设置（Excel 列显隐思路）：卡片上哪些信息块可见。
   bool _showWorkshop = true;
@@ -756,7 +813,21 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    _loadWhenActive();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlanPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) _loadWhenActive();
+  }
+
+  void _loadWhenActive() {
+    if (!widget.active || _hasLoaded) return;
+    _hasLoaded = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -829,8 +900,11 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   /// 置顶 / 重要标注：成功后重新加载（置顶影响服务端排序与分页位置）。
-  Future<void> _toggleFlag(PlanProgressRow r,
-      {bool? pinned, bool? important}) async {
+  Future<void> _toggleFlag(
+    PlanProgressRow r, {
+    bool? pinned,
+    bool? important,
+  }) async {
     final ok = await context.guardRun(
       () => ref
           .read(productionPlanRepositoryProvider)
@@ -844,7 +918,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   Future<void> _pickDate(bool begin) async {
-    final now = DateTime.now();
+    final now = ChinaDateTime.today();
     final d = await showDatePicker(
       context: context,
       initialDate: begin ? (_from ?? now) : (_to ?? now),
@@ -877,8 +951,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                 SizedBox(
                   width: 264,
                   child: SingleChildScrollView(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s8,
+                    ),
                     child: _controls(theme, vertical: true),
                   ),
                 ),
@@ -906,9 +981,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('筛选与排序',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            '筛选与排序',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: UtenSpacing.s8),
           _searchField(),
           const SizedBox(height: UtenSpacing.s8),
@@ -918,13 +996,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
           const SizedBox(height: UtenSpacing.s8),
           Align(alignment: Alignment.centerLeft, child: _dateRange()),
           const SizedBox(height: UtenSpacing.s4),
-          Row(
-            children: [
-              _settingsMenu(),
-              const Spacer(),
-              _refreshBtn(),
-            ],
-          ),
+          Row(children: [_settingsMenu(), const Spacer(), _refreshBtn()]),
         ],
       );
     }
@@ -968,8 +1040,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
 
   Widget _workshopDropdown() {
     // 防御：已选车间已不在最新选项里（计划结案后车间消失）时回退「全部」，避免断言
-    final value =
-        (_workshop != null && _workshops.contains(_workshop)) ? _workshop! : '';
+    final value = (_workshop != null && _workshops.contains(_workshop))
+        ? _workshop!
+        : '';
     return DropdownButtonFormField<String>(
       initialValue: value,
       decoration: const InputDecoration(
@@ -1017,7 +1090,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
           label: Text(_from == null ? '开单从' : _fmtDate(_from!)),
           style: _from != null
               ? OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.primary)
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                )
               : null,
         ),
         OutlinedButton.icon(
@@ -1026,7 +1100,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
           label: Text(_to == null ? '开单至' : _fmtDate(_to!)),
           style: _to != null
               ? OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.primary)
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                )
               : null,
         ),
         if (_from != null || _to != null)
@@ -1049,11 +1124,16 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       tooltip: '显示设置',
       itemBuilder: (_) => [
         _checkItem(
-            '车间标签', _showWorkshop, (v) => setState(() => _showWorkshop = v)),
+          '车间标签',
+          _showWorkshop,
+          (v) => setState(() => _showWorkshop = v),
+        ),
+        _checkItem('工期窗口', _showWindow, (v) => setState(() => _showWindow = v)),
         _checkItem(
-            '工期窗口', _showWindow, (v) => setState(() => _showWindow = v)),
-        _checkItem(
-            '单据/交货日期', _showDates, (v) => setState(() => _showDates = v)),
+          '单据/交货日期',
+          _showDates,
+          (v) => setState(() => _showDates = v),
+        ),
         _checkItem('数量明细', _showQty, (v) => setState(() => _showQty = v)),
       ],
     );
@@ -1068,7 +1148,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   PopupMenuItem<void> _checkItem(
-      String label, bool value, ValueChanged<bool> onChanged) {
+    String label,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     return PopupMenuItem(
       child: StatefulBuilder(
         builder: (_, setM) => CheckboxListTile(
@@ -1133,9 +1216,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
       child: Row(
         children: [
-          Text('共 $total 张',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          Text(
+            '共 $total 张',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
           const Spacer(),
           DropdownButton<int>(
             value: _pageSize,
@@ -1192,9 +1278,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
             const SizedBox(height: UtenSpacing.s8),
             UtenButton(
-                type: UtenButtonType.tonal,
-                onPressed: _load,
-                child: const Text('重试')),
+              type: UtenButtonType.tonal,
+              onPressed: _load,
+              child: const Text('重试'),
+            ),
           ],
         ),
       );
@@ -1202,20 +1289,23 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final rows = _rows;
     if (rows.isEmpty) {
       return Center(
-        child: Text(widget.closed
-            ? '暂无已完成计划'
-            : (_keyword.isEmpty && _workshop == null && _from == null && _to == null
-                ? '暂无在产计划（已审未结案的计划会出现在这里）'
-                : '没有匹配的计划')),
+        child: Text(
+          widget.closed
+              ? '暂无已完成计划'
+              : (_keyword.isEmpty &&
+                        _workshop == null &&
+                        _from == null &&
+                        _to == null
+                    ? '暂无在产计划（已审未结案的计划会出现在这里）'
+                    : '没有匹配的计划'),
+        ),
       );
     }
     return Stack(
       children: [
         ListView(
           padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-          children: [
-            for (final r in rows) _planCard(theme, r),
-          ],
+          children: [for (final r in rows) _planCard(theme, r)],
         ),
         if (_loading)
           const Align(
@@ -1243,8 +1333,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       color: overdue
           ? theme.colorScheme.error.withValues(alpha: 0.10)
           : urgent
-              ? theme.colorScheme.error.withValues(alpha: 0.04)
-              : null,
+          ? theme.colorScheme.error.withValues(alpha: 0.04)
+          : null,
       shape: overdue
           ? RoundedRectangleBorder(
               side: BorderSide(color: theme.colorScheme.error, width: 1.2),
@@ -1273,16 +1363,20 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                             if (r.pinned)
                               Padding(
                                 padding: const EdgeInsets.only(right: 4),
-                                child: Icon(Icons.push_pin_rounded,
-                                    size: 14,
-                                    color:
-                                        theme.colorScheme.onSurfaceVariant),
+                                child: Icon(
+                                  Icons.push_pin_rounded,
+                                  size: 14,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             if (r.important)
                               const Padding(
                                 padding: EdgeInsets.only(right: 4),
-                                child: Icon(Icons.star_rounded,
-                                    size: 16, color: Colors.amber),
+                                child: Icon(
+                                  Icons.star_rounded,
+                                  size: 16,
+                                  color: Colors.amber,
+                                ),
                               ),
                             Flexible(
                               child: Text(
@@ -1305,8 +1399,11 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                             if (_showWorkshop &&
                                 r.workshopName != null &&
                                 r.workshopName!.isNotEmpty)
-                              _meta(theme, Icons.factory_outlined,
-                                  r.workshopName!),
+                              _meta(
+                                theme,
+                                Icons.factory_outlined,
+                                r.workshopName!,
+                              ),
                             if (_showDates)
                               _meta(
                                 theme,
@@ -1318,17 +1415,30 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                                 bold: overdue,
                               ),
                             if (_showDates && r.billDate != null)
-                              _meta(theme, Icons.edit_calendar_outlined,
-                                  '开单 ${r.billDate!.substring(0, 10)}'),
+                              _meta(
+                                theme,
+                                Icons.edit_calendar_outlined,
+                                '开单 ${r.billDate!.substring(0, 10)}',
+                              ),
                             if (_showWindow && window != null)
-                              _meta(theme, Icons.date_range_rounded,
-                                  '工期 $window'),
-                            _meta(theme, Icons.list_alt_outlined,
-                                '${r.lineCount} 行'),
+                              _meta(
+                                theme,
+                                Icons.date_range_rounded,
+                                '工期 $window',
+                              ),
+                            _meta(
+                              theme,
+                              Icons.list_alt_outlined,
+                              '${r.lineCount} 行',
+                            ),
                             if ((r.todayQty ?? 0) > 0)
-                              _meta(theme, Icons.today_rounded,
-                                  '今日完工 +${_fmt(r.todayQty)}',
-                                  color: Colors.green.shade700, bold: true),
+                              _meta(
+                                theme,
+                                Icons.today_rounded,
+                                '今日完工 +${_fmt(r.todayQty)}',
+                                color: Colors.green.shade700,
+                                bold: true,
+                              ),
                           ],
                         ),
                       ],
@@ -1338,11 +1448,16 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('已完工 ${_fmt(r.inboundQty)}',
-                            style: theme.textTheme.bodySmall),
-                        Text('排产 ${_fmt(r.totalQty)}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          '已完工 ${_fmt(r.inboundQty)}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        Text(
+                          '排产 ${_fmt(r.totalQty)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
                     ),
                   if (_canEdit)
@@ -1362,8 +1477,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                           child: ListTile(
                             dense: true,
                             contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.push_pin_outlined,
-                                size: 18),
+                            leading: const Icon(
+                              Icons.push_pin_outlined,
+                              size: 18,
+                            ),
                             title: Text(r.pinned ? '取消置顶' : '置顶'),
                           ),
                         ),
@@ -1372,8 +1489,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                           child: ListTile(
                             dense: true,
                             contentPadding: EdgeInsets.zero,
-                            leading: const Icon(Icons.star_outline_rounded,
-                                size: 18),
+                            leading: const Icon(
+                              Icons.star_outline_rounded,
+                              size: 18,
+                            ),
                             title: Text(r.important ? '取消重要标注' : '标注重要'),
                           ),
                         ),
@@ -1385,12 +1504,15 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                 const Divider(height: UtenSpacing.s16),
                 InkWell(
                   borderRadius: UtenRadius.mdAll,
-                  onTap: () => setState(() => expanded
-                      ? _expanded.remove(r.planId)
-                      : _expanded.add(r.planId)),
+                  onTap: () => setState(
+                    () => expanded
+                        ? _expanded.remove(r.planId)
+                        : _expanded.add(r.planId),
+                  ),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s4,
+                    ),
                     child: Row(
                       children: [
                         Icon(
@@ -1404,7 +1526,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                         Text(
                           '子计划 ${r.subplans.length} 张（点开展示进度）',
                           style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -1428,7 +1551,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       onTap: () => context.push(RoutePath.productionPlanDetail(s.planId)),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            vertical: UtenSpacing.s4, horizontal: UtenSpacing.s8),
+          vertical: UtenSpacing.s4,
+          horizontal: UtenSpacing.s8,
+        ),
         child: Row(
           children: [
             ProgressRing(value: pct, size: 34, fontSize: 9, done: done),
@@ -1449,17 +1574,22 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                     ),
                   ),
                   if (s.workshopName != null && s.workshopName!.isNotEmpty)
-                    Text(s.workshopName!,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: theme.colorScheme.onSurfaceVariant)),
+                    Text(
+                      s.workshopName!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                 ],
               ),
             ),
             Text(
               '${_fmt(s.inboundQty)} / ${_fmt(s.totalQty)}',
               style: TextStyle(
-                  fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                fontSize: 11,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(width: UtenSpacing.s8),
             _miniStatus(theme, s, done),
@@ -1469,15 +1599,19 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     );
   }
 
-  Widget _statusChip(ThemeData theme, PlanProgressRow r, bool done,
-      {bool overdue = false}) {
+  Widget _statusChip(
+    ThemeData theme,
+    PlanProgressRow r,
+    bool done, {
+    bool overdue = false,
+  }) {
     final (label, color) = done
         ? ('已完成 ✓', Colors.green)
         : overdue
-            ? ('已逾期', theme.colorScheme.error)
-            : r.urgent
-                ? ('紧急', theme.colorScheme.error)
-                : ('进行中', Colors.orange);
+        ? ('已逾期', theme.colorScheme.error)
+        : r.urgent
+        ? ('紧急', theme.colorScheme.error)
+        : ('进行中', Colors.orange);
     return _chip(label, color);
   }
 
@@ -1485,10 +1619,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final (label, color) = s.status == -1
         ? ('红冲', theme.colorScheme.onSurfaceVariant)
         : s.status == 0
-            ? ('草稿', Colors.orange)
-            : done
-                ? ('已完成 ✓', Colors.green)
-                : ('进行中', Colors.orange);
+        ? ('草稿', Colors.orange)
+        : done
+        ? ('已完成 ✓', Colors.green)
+        : ('进行中', Colors.orange);
     return _chip(label, color, fontSize: 10);
   }
 
@@ -1502,24 +1636,35 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       child: Text(
         label,
         style: TextStyle(
-            fontSize: fontSize, fontWeight: FontWeight.w600, color: color),
+          fontSize: fontSize,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }
 
-  Widget _meta(ThemeData theme, IconData icon, String text,
-      {Color? color, bool bold = false}) {
+  Widget _meta(
+    ThemeData theme,
+    IconData icon,
+    String text, {
+    Color? color,
+    bool bold = false,
+  }) {
     final c = color ?? theme.colorScheme.onSurfaceVariant;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 13, color: c),
         const SizedBox(width: 3),
-        Text(text,
-            style: TextStyle(
-                fontSize: 11,
-                color: c,
-                fontWeight: bold ? FontWeight.w700 : FontWeight.normal)),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 11,
+            color: c,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
+          ),
+        ),
       ],
     );
   }

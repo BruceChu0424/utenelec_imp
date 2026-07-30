@@ -16,7 +16,7 @@ abstract interface class EmployeeRepository {
     bool includeSubtree = false,
   });
   Future<EmployeeProfile> getById(String id);
-  Future<EmployeeProfile> create(EmployeeOnboardingInput input);
+  Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input);
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
   Future<void> transfer(String id, Map<String, dynamic> body);
   Future<void> offboard(String id, Map<String, dynamic> body);
@@ -42,9 +42,10 @@ class DioEmployeeRepository implements EmployeeRepository {
       'page': page,
       'size': size,
       if (search != null && search.isNotEmpty) 'search': search,
-      if (departmentId != null) 'departmentId': departmentId,
+      'departmentId': ?departmentId,
       'includeSubtree': includeSubtree,
-      if (statuses != null && statuses.isNotEmpty) 'statuses': statuses.toList(),
+      if (statuses != null && statuses.isNotEmpty)
+        'statuses': statuses.toList(),
     };
     final json = await api.get(ApiEndpoints.employees, query: query);
     return PagedResult.fromJson(json, EmployeeSummary.fromJson);
@@ -57,9 +58,19 @@ class DioEmployeeRepository implements EmployeeRepository {
   }
 
   @override
-  Future<EmployeeProfile> create(EmployeeOnboardingInput input) async {
+  Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input) async {
     final json = await api.post(ApiEndpoints.employees, body: input.toJson());
-    return EmployeeProfile.fromJson(json);
+    final employee = json['employee'];
+    final temporaryPassword = json['temporaryPassword'];
+    if (employee is! Map<String, dynamic> ||
+        temporaryPassword is! String ||
+        temporaryPassword.trim().isEmpty) {
+      throw const FormatException('入职响应缺少员工资料或一次性临时密码');
+    }
+    return EmployeeOnboardingResult(
+      employee: EmployeeProfile.fromJson(employee),
+      temporaryPassword: temporaryPassword,
+    );
   }
 
   @override
@@ -77,8 +88,7 @@ class DioEmployeeRepository implements EmployeeRepository {
       api.post(ApiEndpoints.employeeOffboard(id), body: body);
 
   @override
-  Future<void> confirm(String id) =>
-      api.post(ApiEndpoints.employeeConfirm(id));
+  Future<void> confirm(String id) => api.post(ApiEndpoints.employeeConfirm(id));
 
   @override
   Future<void> rehire(String id) => api.post(ApiEndpoints.employeeRehire(id));
@@ -90,3 +100,13 @@ class DioEmployeeRepository implements EmployeeRepository {
 final employeeRepositoryProvider = Provider<EmployeeRepository>(
   (ref) => DioEmployeeRepository(ref.watch(apiClientProvider)),
 );
+
+class EmployeeOnboardingResult {
+  const EmployeeOnboardingResult({
+    required this.employee,
+    required this.temporaryPassword,
+  });
+
+  final EmployeeProfile employee;
+  final String temporaryPassword;
+}

@@ -112,55 +112,55 @@ abstract final class UtenElevation {
 
   /// 低层级阴影：常规卡片
   static List<BoxShadow> low({bool isDark = false}) => [
-        BoxShadow(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.30)
-              : _lightShadowColor.withValues(alpha: 0.05),
-          blurRadius: 2,
-          offset: const Offset(0, 1),
-        ),
-        BoxShadow(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.24)
-              : _lightShadowColor.withValues(alpha: 0.04),
-          blurRadius: 8,
-          offset: const Offset(0, 2),
-        ),
-      ];
+    BoxShadow(
+      color: isDark
+          ? Colors.black.withValues(alpha: 0.30)
+          : _lightShadowColor.withValues(alpha: 0.05),
+      blurRadius: 2,
+      offset: const Offset(0, 1),
+    ),
+    BoxShadow(
+      color: isDark
+          ? Colors.black.withValues(alpha: 0.24)
+          : _lightShadowColor.withValues(alpha: 0.04),
+      blurRadius: 8,
+      offset: const Offset(0, 2),
+    ),
+  ];
 
   /// 中层级阴影：悬浮卡片、下拉菜单
   static List<BoxShadow> mid({bool isDark = false}) => [
-        BoxShadow(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.34)
-              : _lightShadowColor.withValues(alpha: 0.05),
-          blurRadius: 4,
-          offset: const Offset(0, 2),
-        ),
-        BoxShadow(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.28)
-              : _lightShadowColor.withValues(alpha: 0.07),
-          blurRadius: 24,
-          offset: const Offset(0, 8),
-        ),
-      ];
+    BoxShadow(
+      color: isDark
+          ? Colors.black.withValues(alpha: 0.34)
+          : _lightShadowColor.withValues(alpha: 0.05),
+      blurRadius: 4,
+      offset: const Offset(0, 2),
+    ),
+    BoxShadow(
+      color: isDark
+          ? Colors.black.withValues(alpha: 0.28)
+          : _lightShadowColor.withValues(alpha: 0.07),
+      blurRadius: 24,
+      offset: const Offset(0, 8),
+    ),
+  ];
 
   /// 高层级阴影：对话框、弹层、Popover
   static List<BoxShadow> high({bool isDark = false}) => [
-        BoxShadow(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.40)
-              : _lightShadowColor.withValues(alpha: 0.06),
-          blurRadius: 8,
-          offset: const Offset(0, 4),
-        ),
-        BoxShadow(
-          color: isDark
-              ? Colors.black.withValues(alpha: 0.32)
-              : _lightShadowColor.withValues(alpha: 0.10),
-          blurRadius: 40,
-          offset: const Offset(0, 16),
-        ),
-      ];
+    BoxShadow(
+      color: isDark
+          ? Colors.black.withValues(alpha: 0.40)
+          : _lightShadowColor.withValues(alpha: 0.06),
+      blurRadius: 8,
+      offset: const Offset(0, 4),
+    ),
+    BoxShadow(
+      color: isDark
+          ? Colors.black.withValues(alpha: 0.32)
+          : _lightShadowColor.withValues(alpha: 0.10),
+      blurRadius: 40,
+      offset: const Offset(0, 16),
+    ),
+  ];
 }

@@ -1,5 +1,8 @@
 package com.uten.imp.features.notice.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
+import jakarta.validation.constraints.Size;
+
 import java.util.List;
 
 /**
@@ -12,5 +15,5 @@ public record NoticePublishRequest(
         String type,
         Boolean topPriority,
         String priority,
-        List<String> attachments) {
+        @Size(max = RequestLimits.NOTICE_ATTACHMENTS) List<String> attachments) {
 }

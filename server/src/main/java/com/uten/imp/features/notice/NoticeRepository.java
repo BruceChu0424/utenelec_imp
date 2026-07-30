@@ -1,8 +1,37 @@
 package com.uten.imp.features.notice;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface NoticeRepository extends JpaRepository<Notice, UUID> {
+
+    @Query("""
+            SELECT n
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE (n.audienceUserId IS NULL OR n.audienceUserId = :userId)
+              AND (s IS NULL OR s.deletedAt IS NULL)
+              AND (:onlyUnread = false OR s IS NULL OR s.readAt IS NULL)
+            ORDER BY n.topPriority DESC, n.publishedAt DESC
+            """)
+    List<Notice> findVisible(
+            @Param("userId") UUID userId,
+            @Param("onlyUnread") boolean onlyUnread,
+            Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(n)
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE (n.audienceUserId IS NULL OR n.audienceUserId = :userId)
+              AND (s IS NULL OR (s.deletedAt IS NULL AND s.readAt IS NULL))
+            """)
+    long countVisibleUnread(@Param("userId") UUID userId);
 }

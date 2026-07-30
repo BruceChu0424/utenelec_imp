@@ -26,7 +26,8 @@ class SystemSettingEntry {
   final int sortOrder;
   final String? updatedAt; // 最后修改时间（ISO 字符串）
 
-  factory SystemSettingEntry.fromJson(Map<String, dynamic> j) => SystemSettingEntry(
+  factory SystemSettingEntry.fromJson(Map<String, dynamic> j) =>
+      SystemSettingEntry(
         key: (j['key'] ?? '').toString(),
         value: (j['value'] ?? '').toString(),
         valueType: (j['valueType'] ?? 'int').toString(),

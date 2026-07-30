@@ -1,6 +1,7 @@
 package com.uten.imp.features.profilechange;
 
 import com.uten.imp.features.profilechange.dto.ProfileChangeDto;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -38,7 +39,8 @@ public class ProfileChangeController {
 
     @PostMapping("/api/profile/me/changes")
     @PreAuthorize("hasAuthority('profile:edit:self')")
-    public ProfileChangeDto.SubmitResponse submit(@RequestBody ProfileChangeDto.SubmitRequest req) {
+    public ProfileChangeDto.SubmitResponse submit(
+            @Valid @RequestBody ProfileChangeDto.SubmitRequest req) {
         return submitService.submit(req);
     }
 
@@ -84,7 +86,7 @@ public class ProfileChangeController {
     @PostMapping("/api/hr/profile-changes/{batchId}/review")
     @PreAuthorize("hasAuthority('profile:review')")
     public ProfileChangeDto.BatchDetail review(@PathVariable UUID batchId,
-                                               @RequestBody ProfileChangeDto.ReviewAction req) {
+                                               @Valid @RequestBody ProfileChangeDto.ReviewAction req) {
         return reviewService.review(batchId, req);
     }
 

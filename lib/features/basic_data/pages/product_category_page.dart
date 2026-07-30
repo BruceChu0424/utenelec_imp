@@ -466,10 +466,8 @@ class _DetailPaneState extends State<_DetailPane> {
               ),
         ];
       });
-    } on ApiException catch (e) {
-      debugPrint('color/unit dict load failed: ${e.message}');
     } catch (_) {
-      debugPrint('color/unit dict load failed');
+      // Picker dictionaries are optional; the primary list remains usable.
     }
   }
 
@@ -561,11 +559,8 @@ class _DetailPaneState extends State<_DetailPane> {
           .facets(widget.nodeId);
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      // facet 拉取失败：列表仍可用，仅下拉为空；不强提示打扰用户。
-      debugPrint('goods facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('goods facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 
@@ -606,9 +601,10 @@ class _DetailPaneState extends State<_DetailPane> {
 
   /// 打印预览数据：按当前分类/筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await widget.ref.read(goodsRepositoryProvider).list(
+    final result = await widget.ref
+        .read(goodsRepositoryProvider)
+        .list(
           widget.nodeId,
-          page: 1,
           size: 2000,
           keyword: _keyword.trim().isEmpty ? null : _keyword,
           filters: _filters,
@@ -1021,6 +1017,7 @@ class _DetailPaneState extends State<_DetailPane> {
                   subtitle: '最多前 2000 行',
                   loader: _printLoader,
                   exportEndpoint: '/master/goods/export',
+                  exportPermission: Perm.goodsExport,
                   exportReport: '',
                   exportQuery: _exportQuery,
                   exportFilename: '货品资料',
@@ -1029,6 +1026,7 @@ class _DetailPaneState extends State<_DetailPane> {
                 ),
                 UtenExportButton(
                   endpoint: '/master/goods/export',
+                  requiredPermission: Perm.goodsExport,
                   report: '',
                   queryParams: _exportQuery,
                   filename: '货品资料',

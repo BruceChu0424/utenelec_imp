@@ -189,7 +189,8 @@ class _SubcontractDocDetailPageState
           UtenButton(
             type: UtenButtonType.tonal,
             icon: Icons.history_rounded,
-            onPressed: () => context.push('/subcontract/${_cfg.type.pathSegment}'),
+            onPressed: () =>
+                context.push('/subcontract/${_cfg.type.pathSegment}'),
             child: const Text('查看历史'),
           ),
         ],

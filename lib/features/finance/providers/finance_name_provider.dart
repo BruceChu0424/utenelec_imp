@@ -6,6 +6,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
 import '../../basic_data/repositories/payment_style_repository.dart';
@@ -23,25 +24,20 @@ class FinanceNameService {
   final ApiClient api;
   final PaymentStyleRepository _paymentStyleRepo;
 
-  // 老库 dict 端点（部分主档未提供 dict 时降级为空）。
-  static const _clientsDict = '/master/clients/dict';
-  static const _suppliersDict = '/master/suppliers/dict';
-
   Map<String, String> _clients = {};
   Map<String, String> _suppliers = {};
   Map<String, String> _accounts = {};
   Map<String, String> _currencies = {};
-  bool _loaded = false;
+  Future<void>? _load;
 
   // 收付款类别：按 category 缓存（EXPENSE/INCOME）。
   final Map<String, List<FinanceStyleOption>> _stylesByCategory = {};
 
-  Future<void> ensureLoaded() async {
-    if (_loaded) return;
+  Future<void> ensureLoaded() => _load ??= _ensureLoaded();
+
+  Future<void> _ensureLoaded() async {
     // 各 dict 独立加载、独立容错：单个端点失败不影响其它。
-    // 主档端点不统一：suppliers/accounts/currencies 提供 /dict（数组）；
-    // clients 暂无 /dict，降级走分页 ?size=10000 取 items。
-    Future<Map<String, String>> loadDict(String dictUrl, String listUrl) async {
+    Future<Map<String, String>> loadDict(String dictUrl) async {
       try {
         final list = await api.getList(dictUrl);
         return {
@@ -49,32 +45,20 @@ class FinanceNameService {
             (e['id'] as String): ((e['name'] ?? '') as String),
         };
       } catch (_) {
-        try {
-          final json =
-              await api.get(listUrl, query: {'page': 1, 'size': 10000});
-          final items = json['items'];
-          if (items is! List) return const {};
-          return {
-            for (final e in items.cast<Map<String, dynamic>>())
-              (e['id'] as String): ((e['name'] ?? '') as String),
-          };
-        } catch (_) {
-          return const {};
-        }
+        return const {};
       }
     }
 
     final results = await Future.wait<Map<String, String>>([
-      loadDict(_clientsDict, '/master/clients'),
-      loadDict(_suppliersDict, '/master/suppliers'),
-      loadDict(AccountEndpoints.dict, AccountEndpoints.base),
-      loadDict('/master/currencies/dict', '/master/currencies'),
+      loadDict(ApiEndpoints.clientsDict),
+      loadDict(ApiEndpoints.suppliersDict),
+      loadDict(AccountEndpoints.dict),
+      loadDict(ApiEndpoints.currenciesDict),
     ]);
     _clients = results[0];
     _suppliers = results[1];
     _accounts = results[2];
     _currencies = results[3];
-    _loaded = true;
   }
 
   /// 加载某大类的收付款类别（EXPENSE/INCOME）扁平化选项（含子节点）。
@@ -89,6 +73,7 @@ class FinanceNameService {
           if (n.hasChildren) walk(n.children);
         }
       }
+
       walk(tree);
       _stylesByCategory[category] = flat;
     } catch (_) {
@@ -103,7 +88,7 @@ class FinanceNameService {
     final list = _stylesByCategory[category];
     final hit = list?.firstWhere(
       (s) => s.id == id,
-      orElse: () => const FinanceStyleOption(id: '', name: null),
+      orElse: () => const FinanceStyleOption(id: ''),
     );
     return hit?.name ?? '—';
   }
@@ -120,8 +105,8 @@ class FinanceNameService {
 
   String _resolve(Map<String, String> map, String? id) =>
       (id != null && id.isNotEmpty && map[id]?.isNotEmpty == true)
-          ? map[id]!
-          : '—';
+      ? map[id]!
+      : '—';
 }
 
 final financeNameServiceProvider = Provider<FinanceNameService>(

@@ -2,6 +2,7 @@
 // 文档：docs/02-组件库/UtenInput.md（待写）
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Uten 输入框
 class UtenInput extends StatefulWidget {
@@ -23,6 +24,8 @@ class UtenInput extends StatefulWidget {
     this.textInputAction,
     this.focusNode,
     this.autofillHints,
+    this.inputFormatters,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   /// 标签
@@ -72,6 +75,11 @@ class UtenInput extends StatefulWidget {
 
   /// 自动填充提示
   final Iterable<String>? autofillHints;
+
+  /// 字段级输入约束。姓名、单位、地址等中文自然语言字段通常不应设置。
+  final List<TextInputFormatter>? inputFormatters;
+
+  final TextCapitalization textCapitalization;
 
   @override
   State<UtenInput> createState() => _UtenInputState();
@@ -130,6 +138,8 @@ class _UtenInputState extends State<UtenInput> {
           textInputAction: widget.textInputAction,
           focusNode: widget.focusNode,
           autofillHints: widget.autofillHints,
+          inputFormatters: widget.inputFormatters,
+          textCapitalization: widget.textCapitalization,
           style: theme.textTheme.bodyLarge,
           decoration: InputDecoration(
             hintText: widget.hint,

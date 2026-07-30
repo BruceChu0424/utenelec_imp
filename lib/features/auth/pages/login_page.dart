@@ -1,5 +1,5 @@
 // LoginPage - 登录页（v2 - 响应式认证布局）
-// 文档：docs/03-页面/登录页.md（待写）
+// 文档：docs/03-页面/登录页.md
 //
 // 设计：
 // - compact（<600dp）：全屏洁净布局——无卡片，品牌吉祥物 + 字标 + 表单
@@ -45,7 +45,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
   final _formKey = GlobalKey<FormState>();
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _rememberDevice = false;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -84,11 +83,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
       final account = _accountController.text.trim();
       await ref
           .read(sessionProvider.notifier)
-          .login(
-            account: account,
-            password: _passwordController.text,
-            rememberDevice: _rememberDevice,
-          );
+          .login(account: account, password: _passwordController.text);
       // 登录成功：记住账号（只记账号不记密码）
       await ref.read(accountHistoryProvider).add(account);
 
@@ -239,9 +234,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
             isLoading: _isLoading,
             isExpanded: true,
             size: UtenButtonSize.large,
-            child: Text(
-              _isLoading ? l10n.loginLoggingIn : l10n.loginButton,
-            ),
+            child: Text(_isLoading ? l10n.loginLoggingIn : l10n.loginButton),
           ),
           const SizedBox(height: UtenSpacing.s24),
           Text(

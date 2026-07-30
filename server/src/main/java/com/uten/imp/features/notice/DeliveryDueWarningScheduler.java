@@ -1,14 +1,13 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.common.time.BusinessTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -30,10 +29,10 @@ public class DeliveryDueWarningScheduler {
     private final JdbcTemplate jdbc;
     private final ChainNoticeService chainNotice;
 
-    @Scheduled(cron = "0 23 8 * * *")
+    @Scheduled(cron = "0 23 8 * * *", zone = "Asia/Shanghai")
     public void scan() {
         try {
-            LocalDate today = LocalDate.now();
+            LocalDate today = BusinessTime.today();
             LocalDate deadline = today.plusDays(DUE_DAYS);
             // 只管业务链订单（chain_status > 0）：历史迁移单 chain=0 不预警，避免老库遗留单刷屏
             List<Map<String, Object>> rows = jdbc.queryForList("""

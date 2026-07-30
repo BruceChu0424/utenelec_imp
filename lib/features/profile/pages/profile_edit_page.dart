@@ -32,6 +32,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/security/input_validators.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -93,10 +94,10 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         _error = e.message;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = AppLocalizations.of(context).commonError;
         _loading = false;
       });
     }
@@ -179,12 +180,10 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   Future<void> _submit() async {
     // 防连续点击：重入直接返回；_saving 全程覆盖（提交按钮 loading + disabled）
     if (_saving) {
-      debugPrint('[submit] REENTRY blocked');
       return;
     }
     final l10n = AppLocalizations.of(context);
     final dirty = _collectDirty();
-    debugPrint('[submit] dirty=${dirty.length} codes=${dirty.map((c) => c.fieldCode).toList()}');
     if (dirty.isEmpty) {
       context.appInfo(l10n.profileChangeSubmitApplied);
       context.go(RouteName.profile);
@@ -193,24 +192,19 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     final hasReview = dirty.any(
       (c) => ProfileFieldPolicy.isRequiresReview(c.fieldCode),
     );
-    debugPrint('[submit] hasReview=$hasReview');
 
     setState(() => _saving = true);
     try {
       if (hasReview) {
         final pwd = await _askPassword();
-        debugPrint('[submit] pwd empty=${pwd == null || pwd.isEmpty}');
         if (pwd == null || pwd.isEmpty) return;
         try {
           await ref.read(profileChangeRepositoryProvider).verifyPassword(pwd);
-          debugPrint('[submit] verifyPassword OK');
         } on ApiException catch (e) {
-          debugPrint('[submit] verifyPassword ApiException: ${e.code} ${e.message}');
           if (!mounted) return;
           context.appError(_mapVerifyError(e));
           return;
-        } catch (e) {
-          debugPrint('[submit] verifyPassword threw: $e');
+        } catch (_) {
           if (!mounted) return;
           context.appError(l10n.profileChangePasswordWrong);
           return;
@@ -218,16 +212,13 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       }
 
       final idem = DateTime.now().microsecondsSinceEpoch.toString();
-      debugPrint('[submit] calling submit API...');
       await ref
           .read(profileChangeRepositoryProvider)
           .submit(SubmitProfileChangeRequest(changes: dirty, idemKey: idem));
-      debugPrint('[submit] submit API returned, mounted=$mounted');
       if (!mounted) return;
       final onlyDirect = dirty.every(
         (c) => ProfileFieldPolicy.isDirectEdit(c.fieldCode),
       );
-      debugPrint('[submit] onlyDirect=$onlyDirect → ${onlyDirect ? "go /profile" : "go /profile/me/changes"}');
       // 失效申请列表 + pending 计数，让"我的修改申请"页与 /profile 快捷入口刷新
       ref.invalidate(myProfileChangesProvider);
       if (onlyDirect) {
@@ -240,11 +231,9 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         context.go(RouteName.profileMyChanges);
       }
     } on ApiException catch (e) {
-      debugPrint('[submit] submit ApiException: ${e.code} ${e.message}');
       if (!mounted) return;
       context.appError(_mapSubmitError(e));
-    } catch (e) {
-      debugPrint('[submit] submit threw: $e');
+    } catch (_) {
       if (!mounted) return;
       context.appError(l10n.profileChangeSubmitFailed);
     } finally {
@@ -278,11 +267,10 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
         actions: [
           UtenButton(
             type: UtenButtonType.ghost,
-            onPressed: () => Navigator.pop(ctx, null),
+            onPressed: () => Navigator.pop(ctx),
             child: Text(l10n.profileChangeCancel2),
           ),
           UtenButton(
-            type: UtenButtonType.primary,
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: Text(l10n.profileChangeConfirm),
           ),
@@ -339,7 +327,9 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
                     child: UtenButton(
                       type: UtenButtonType.ghost,
                       isExpanded: true,
-                      onPressed: _saving ? null : () => context.go(RouteName.profile),
+                      onPressed: _saving
+                          ? null
+                          : () => context.go(RouteName.profile),
                       child: Text(l10n.profileChangeCancel2),
                     ),
                   ),
@@ -347,7 +337,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
                   Expanded(
                     flex: 2,
                     child: UtenButton(
-                      type: UtenButtonType.primary,
                       isExpanded: true,
                       isLoading: _saving,
                       onPressed: _saving ? null : _submit,
@@ -377,57 +366,57 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
         children: [
-        UtenSectionHeader(title: l10n.profileChangeSectionBasic),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (int i = 0; i < basic.length; i++) ...[
-                _buildField(basic[i], l10n, review: false),
-                if (i < basic.length - 1)
-                  const SizedBox(height: UtenSpacing.s12),
+          UtenSectionHeader(title: l10n.profileChangeSectionBasic),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (int i = 0; i < basic.length; i++) ...[
+                  _buildField(basic[i], l10n, review: false),
+                  if (i < basic.length - 1)
+                    const SizedBox(height: UtenSpacing.s12),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: UtenSpacing.s24),
-        UtenSectionHeader(title: l10n.profileChangeSectionReview),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (int i = 0; i < review.length; i++) ...[
-                _buildField(review[i], l10n, review: true),
-                if (i < review.length - 1)
-                  const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s24),
+          UtenSectionHeader(title: l10n.profileChangeSectionReview),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (int i = 0; i < review.length; i++) ...[
+                  _buildField(review[i], l10n, review: true),
+                  if (i < review.length - 1)
+                    const SizedBox(height: UtenSpacing.s12),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: UtenSpacing.s24),
-        UtenSectionHeader(title: l10n.profileChangeEditHrOnlyHint),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenCard(
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-          child: Column(
-            children: [
-              for (final def in ProfileFieldPolicy.hrOnlyFields)
-                ListTile(
-                  dense: true,
-                  leading: Icon(
-                    Icons.lock_outline,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant,
+          const SizedBox(height: UtenSpacing.s24),
+          UtenSectionHeader(title: l10n.profileChangeEditHrOnlyHint),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+            child: Column(
+              children: [
+                for (final def in ProfileFieldPolicy.hrOnlyFields)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(
+                      Icons.lock_outline,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(_mapL10n(l10n, def.labelKey)),
+                    subtitle: Text(l10n.profileChangeFieldHrOnly),
                   ),
-                  title: Text(_mapL10n(l10n, def.labelKey)),
-                  subtitle: Text(l10n.profileChangeFieldHrOnly),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 80), // 底部固定操作栏留白
+          const SizedBox(height: 80), // 底部固定操作栏留白
         ],
       ),
     );
@@ -476,6 +465,16 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
               ? TextInputType.emailAddress
               : TextInputType.text,
           validator: _validatorFor(def.code),
+          autofillHints: switch (def.code) {
+            ProfileFieldPolicy.fullName => const [AutofillHints.name],
+            ProfileFieldPolicy.phone => const [AutofillHints.telephoneNumber],
+            ProfileFieldPolicy.email => const [AutofillHints.email],
+            ProfileFieldPolicy.hujiAddress ||
+            ProfileFieldPolicy.residenceAddress => const [
+              AutofillHints.fullStreetAddress,
+            ],
+            _ => null,
+          },
         ),
       ],
     );
@@ -488,16 +487,11 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       if (value.isEmpty) return null;
       switch (code) {
         case ProfileFieldPolicy.email:
-          if (!RegExp(r'^[\w.+-]+@[\w-]+\.[\w.-]+$').hasMatch(value)) {
-            return '请输入正确的邮箱';
-          }
-          break;
+          return InputValidators.email(value);
         case ProfileFieldPolicy.phone:
+          return InputValidators.phone(value);
         case ProfileFieldPolicy.officePhone:
-          if (!RegExp(r'^\d{11}$').hasMatch(value)) {
-            return '请输入 11 位手机号';
-          }
-          break;
+          return InputValidators.telephone(value);
       }
       return null;
     };

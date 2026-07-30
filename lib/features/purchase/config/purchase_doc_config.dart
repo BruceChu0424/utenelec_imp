@@ -71,11 +71,11 @@ class PurchaseDocConfig {
 
   /// 单据号前缀（新建页预览占位用，与后端 DocNumberPrefix 对齐）。
   String get billNoPrefix => switch (type) {
-        PurchaseDocType.request => 'CS',
-        PurchaseDocType.order => 'CD',
-        PurchaseDocType.receipt => 'CJ',
-        PurchaseDocType.returnDoc => 'CT',
-      };
+    PurchaseDocType.request => 'CS',
+    PurchaseDocType.order => 'CD',
+    PurchaseDocType.receipt => 'CJ',
+    PurchaseDocType.returnDoc => 'CT',
+  };
 
   static const request = PurchaseDocConfig(
     type: PurchaseDocType.request,

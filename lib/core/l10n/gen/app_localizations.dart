@@ -248,12 +248,6 @@ abstract class AppLocalizations {
   /// **'请输入密码'**
   String get loginPasswordRequired;
 
-  /// No description provided for @loginRememberMe.
-  ///
-  /// In zh, this message translates to:
-  /// **'记住此设备'**
-  String get loginRememberMe;
-
   /// No description provided for @loginForgotPassword.
   ///
   /// In zh, this message translates to:
@@ -835,6 +829,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请输入姓名'**
   String get visitorApplyValidateName;
+
+  /// No description provided for @visitorApplyValidateIdCard.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入正确的 18 位居民身份证号'**
+  String get visitorApplyValidateIdCard;
 
   /// No description provided for @visitorApplyValidatePurpose.
   ///
@@ -1715,7 +1715,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardSuccess.
   ///
   /// In zh, this message translates to:
-  /// **'入职成功：账号=工号，初始密码=身份证后六位（首登需改）'**
+  /// **'入职成功，一次性临时密码已交付'**
   String get employeeOnboardSuccess;
 
   /// No description provided for @employeeOnboardSubmitFailed.
@@ -1727,8 +1727,50 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后将自动创建登录账号：账号=工号，初始密码=身份证后六位，首次登录必须修改密码。'**
+  /// **'提交后将自动创建登录账号（账号=工号）并生成高熵一次性临时密码；首次登录必须修改密码。'**
   String get employeeOnboardNote;
+
+  /// No description provided for @employeeOnboardCredentialTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已创建'**
+  String get employeeOnboardCredentialTitle;
+
+  /// No description provided for @employeeOnboardCredentialWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。'**
+  String get employeeOnboardCredentialWarning;
+
+  /// No description provided for @employeeOnboardAccountLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录账号'**
+  String get employeeOnboardAccountLabel;
+
+  /// No description provided for @employeeOnboardTemporaryPasswordLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'一次性临时密码'**
+  String get employeeOnboardTemporaryPasswordLabel;
+
+  /// No description provided for @employeeOnboardCopyTemporaryPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制密码'**
+  String get employeeOnboardCopyTemporaryPassword;
+
+  /// No description provided for @employeeOnboardTemporaryPasswordCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'临时密码已复制'**
+  String get employeeOnboardTemporaryPasswordCopied;
+
+  /// No description provided for @employeeOnboardCredentialSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'我已妥善保存'**
+  String get employeeOnboardCredentialSaved;
 
   /// No description provided for @employeeOnboardHintCode.
   ///
@@ -2519,7 +2561,7 @@ abstract class AppLocalizations {
   /// No description provided for @payrollSubmitted.
   ///
   /// In zh, this message translates to:
-  /// **'已提交审核，等待财务审核（Mock）'**
+  /// **'已提交审核，等待财务审核'**
   String get payrollSubmitted;
 
   /// No description provided for @payrollLoadFailed.
@@ -2627,7 +2669,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticePublishDraftSaved.
   ///
   /// In zh, this message translates to:
-  /// **'已保存草稿（Mock）'**
+  /// **'已保存草稿'**
   String get noticePublishDraftSaved;
 
   /// No description provided for @noticePublishPublishButton.
@@ -2723,7 +2765,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticePublishPublished.
   ///
   /// In zh, this message translates to:
-  /// **'通知已发布（Mock）'**
+  /// **'通知已发布'**
   String get noticePublishPublished;
 
   /// No description provided for @noticeTypeAnnouncement.

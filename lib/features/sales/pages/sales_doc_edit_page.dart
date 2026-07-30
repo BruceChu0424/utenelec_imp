@@ -30,6 +30,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/repositories/client_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -56,7 +57,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
   final _taxRate = TextEditingController();
-  DateTime _billDate = DateTime.now();
+  DateTime _billDate = ChinaDateTime.today();
 
   // 合同信息（订货）
   final _contractNo = TextEditingController();
@@ -161,6 +162,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         final d = await ref
             .read(salesRepositoryProvider(widget.docType))
             .detail(widget.id!);
+        if (!mounted) return;
+        if (!d.writable) {
+          context.appInfo('该单据不在你的可写数据范围内，已切换为只读详情');
+          context.replace(
+            SalesRoutePath.docDetail(_cfg.type.pathSegment, widget.id!),
+          );
+          return;
+        }
         final goodsIds = d.items
             .map((e) => e.goodsId)
             .whereType<String>()
@@ -280,7 +289,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   }
 
   /// 「从上游引入」：弹选择器，把所选 SalesLinkedItem 映射成行追加。
-  /// 表头已选客户 → 面板默认按该客户筛选；表头未选 → 引入后以上游单据客户回填。
+  /// 表头已选客户 → 面板锁定该客户；表头未选 → 引入后以上游单据客户回填。
   Future<void> _importFromUpstream() async {
     final result = await showSalesDocLinkPicker(
       context,
@@ -288,7 +297,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       _cfg,
       initialClientId: _clientId,
     );
+    if (!mounted) return;
     if (result == null || result.items.isEmpty) return;
+    if (_clientId != null && result.clientId != _clientId) {
+      context.appError('上游单据客户与表头客户不一致，已阻止引入');
+      return;
+    }
     final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
@@ -341,7 +355,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
   }
 
-  /// 明细行增删（grid 通知）→ 重新挂载各行数量监听并重算件数。
+  /// Only active clients are offered; keep the current client when editing history.
+  Map<String, String> _clientOptions(SalesMasterNameService names) {
+    final entries = Map<String, String>.of(names.selectableClientEntries);
+    final selectedId = _clientId;
+    if (selectedId != null && !entries.containsKey(selectedId)) {
+      final selectedName = names.clientEntries[selectedId];
+      if (selectedName != null && selectedName.isNotEmpty) {
+        entries[selectedId] = selectedName;
+      }
+    }
+    return entries;
+  }
+
+  /// Rebind quantity listeners and recalculate parcel totals after row changes.
   void _onGridRowsChanged() {
     final current = _grid.rows.map((r) => r.qty).toSet();
     for (final c in _qtyListened.difference(current)) {
@@ -465,9 +492,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       final body = <String, dynamic>{
         'goodsId': r.goods!.id,
         'qty': qty,
-        if (price != null) 'price': price,
-        if (price != null) 'amountOriginal': qty * price,
-        if (price != null) 'amountLocal': qty * price,
+        if (price case final price?) ...{
+          'price': price,
+          'amountOriginal': qty * price,
+          'amountLocal': qty * price,
+        },
         if (r.orderItemId != null) 'orderItemId': r.orderItemId,
         if (r.outItemId != null) 'outItemId': r.outItemId,
         if (r.colorId != null) 'colorId': r.colorId,
@@ -574,7 +603,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       appBar: UtenAppBar(
         title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
         leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+          onPressed: () =>
+              popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
         actions: _cfg.skipListOnCreate
             ? [
@@ -644,7 +674,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                   _dropdown(
                                     '客户',
                                     _clientId,
-                                    names.clientEntries,
+                                    _clientOptions(names),
                                     // 选客户后联动带出主档收货地址/联系电话。
                                     (v) => _onClientChanged(v),
                                     required: _cfg.clientRequired,

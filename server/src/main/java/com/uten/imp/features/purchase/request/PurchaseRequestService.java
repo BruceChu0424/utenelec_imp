@@ -142,6 +142,11 @@ public class PurchaseRequestService {
         em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        List<PurchaseRequestItem> items = itemRepo.findByRequestIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                it.getOrderedQty() != null && it.getOrderedQty().signum() > 0)) {
+            throw new ApiException(ErrorCode.BUSINESS, "采购申请已有订货记录，请先红冲下游订货单");
+        }
         r.setStatus(STATUS_REVERSED);
         requestRepo.save(r);
         return detail(id);

@@ -7,7 +7,10 @@
 > 全部复用 [全局机制](../05-架构/全局机制.md) 的**审批流**与**视角选择器**。
 > 上层：[页面总览](页面总览.md)。
 >
-> 📍 **现状（2026-07-27）**：本组 4 页**全链路接真实后端**。**财务报表**已远超原单页设计——演化为 **22 张钱流报表 5 卡**（应收应付 Z 树 + 明细 7 + 汇总 6 + 往来对帐 4 + 账户流水 3），并新增完整**钱流管理**单据模块（销售收款/采购付款/一般费用/其它收入/银行存取款 + 应收应付台账 + 账户/收付款类别主档），见 [页面总览 §业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端)。
+> 📍 **现状（2026-07-30）**：钱流单据与财务报表使用真实后端；员工报销和工资前端已切 Dio，
+> V133 已建立独立领域结构，审批/支付/发布 API 和报销付款会计副作用已有源码实现，但
+> 服务端分页也已有源码；审批口径、权限职责分离、长周期容量、真实数据库与 E2E 仍待生产验收。
+> `/api/finance/expenses` 是一般费用单，不是员工报销申请。财务数据还受历史委外发料、总账开账和材料结转阻断约束。
 
 ---
 
@@ -19,9 +22,9 @@ finance 在**桌面端**处理：审批员工报销、审核 hr 生成的工资�
 
 | # | 页面 | 路由 | 文档 | 状态 |
 |---|---|---|---|---|
-| 1 | 报销审批列表 | `/expense/approval` | [报销审批列表页.md](报销审批列表页.md) | ✅ 真实后端 |
-| 2 | 报销审批详情 | `/expense/approval/:id` | [报销审批详情页.md](报销审批详情页.md) | ✅ 真实后端 |
-| 3 | 工资条审核 | `/payroll/review` | [工资条审核页.md](工资条审核页.md) | ✅ 真实后端 |
+| 1 | 员工报销审批列表 | `/expense/approval` | [报销审批列表页.md](报销审批列表页.md) | 🟡 真实 API 与服务端分页源码已接，待容量/权限/E2E 验收 |
+| 2 | 员工报销审批详情 | `/expense/approval/:id` | [报销审批详情页.md](报销审批详情页.md) | 🟡 单阶段审批和事务化付款已有源码，待会计/E2E 验收 |
+| 3 | 工资条审核 | `/payroll/review` | [工资条审核页.md](工资条审核页.md) | 🟡 状态机与分页已有源码，待职责分离/容量/E2E 验收 |
 | 4 | 财务报表（22 报表 5 卡 + 钱流管理 hub） | `/finance`、`/finance/report` | [财务报表页.md](财务报表页.md) | ✅ 真实后端（[doc26](../数据迁移/)） |
 
 > **钱流管理**（销售收款/采购付款/一般费用/其它收入/银行存取款 + 应收应付台账 + 往来对帐 + 账户流水 + 账户/收付款类别主档）以独立业务模块形式落地，路由前缀 `/finance`，hub 页聚合单据 + 报表双卡。
@@ -34,22 +37,26 @@ finance 在**桌面端**处理：审批员工报销、审核 hr 生成的工资�
 | 工资条审核 | ✅ 审核 | ✅ 只读 | ✅ | ❌ |
 | 财务报表 | ✅ | ✅ 只读 | ✅ | ❌ |
 
-权限点：`expense:approve`、`payroll:review`、`payroll:view:all`、`finance_report:view` / `finance_report:export`、`ar_ap:*` / `bank_account:*`（详见权限管理页目录，按部门/个人配置）。
+权限点：`expense:approve` / `expense:pay`、`payroll:generate` / `payroll:review` / `payroll:publish` /
+`payroll:view:all`、`finance_report:view` / `finance_report:export`、`finance_shipment_audit`
+（销售发货财务审核）、`ar_ap:*` / `bank_account:*`（详见权限管理页目录，按部门/个人配置）。
+查看钱流报表不能替代报销打款、工资发布或发货审核权限；V136 已把 `expense:pay` 写入财税部现行
+`department_permissions`，不能依赖已下线的角色授权。
 
-## 四、审批流复用
+## 四、当前审批流
 
-- 报销审批：接 [全局机制 §3.3](../05-架构/全局机制.md#33-报销审批流expenseclaim)（员工提交 → 主管 → 财务 → 打款）。
-- 工资条审核：接 [全局机制 §3.4](../05-架构/全局机制.md#34-工资条审批流payrollslip--payrollbatch)（hr 提交 → 财务审核 → hr 发布）。
-- 两处都用 `UtenTimeline` 展示审批轨迹，审批带**版本号**防并发。
+- 报销：`DRAFT → SUBMITTED → APPROVED/REJECTED → PAID`。当前是单阶段审批；付款在同一事务内扣减账户并生成费用、对账和总账记录。页面时间线由报销单时间字段合成，没有通用 `ApprovalRecord`。
+- 工资：`DRAFT → SUBMITTED → APPROVED/REJECTED → PUBLISHED`。工资条在草稿创建时生成，发布后才对员工可见；驳回为终态。
+- 两类状态变更均使用后端行锁，但仍须验证真实数据库并发和权限矩阵。详见 [全局机制 §3.3](../05-架构/全局机制.md#33-报销审批流expenseclaim) 与 [§3.4](../05-架构/全局机制.md#34-工资条审批流payrollslip--payrollbatch)。
 
 ## 五、视角选择器
 
-报销审批列表、工资条审核、财务报表都跟随 `ViewContextProvider`（finance/manager 可切部门/员工/全公司）。
+`ViewContextProvider` 仍是规划能力；当前不得宣称报销、工资和财务报表已经统一跟随视角切换。
 
 ## 六、依赖组件
 
-`MasterDataTableView`（统一表格：报表/审批列表/单据明细，列排序 + autofilter + 加密导出，[文档](../02-组件库/MasterDataTableView.md)）、`UtenTimeline`（审批轨迹）、`UtenConfirmDialog`、`UtenActionButton`、`UtenExportButton`（加密 Excel 导出，[文档](../02-组件库/UtenExportButton.md)）、`UtenCategoryTreeView`（应收应付客户/供应商类别树）。
+财务报表使用 `MasterDataTableView`（统一表格：列排序 + autofilter + 加密导出，[文档](../02-组件库/MasterDataTableView.md)）与 `UtenExportButton`；报销/工资当前使用 `UtenPagedGrid`、`UtenCard`、`UtenStatusBadge`、`UtenBottomActionBar` 和自有状态时间线。钱流主档使用 `UtenCategoryTreeView`。
 
 ---
 
-**最后更新**：2026-07-27 · **状态**：4 页全链路接真实后端；财务报表演化为 22 报表 5 卡 + 钱流管理模块；UX 总览作为页面文档索引保留
+**最后更新**：2026-07-30 · **状态**：钱流/报表真实；报销与工资源码链路已接通、生产验收未完成；财务历史数据和总账仍有上线阻断

@@ -14,8 +14,7 @@ enum LabFilter { all, qualified, unqualified }
 final labFilterProvider = StateProvider<LabFilter>((ref) => LabFilter.all);
 final labSearchProvider = StateProvider<String>((ref) => '');
 
-final labListProvider =
-    FutureProvider.autoDispose<List<LabTest>>((ref) async {
+final labListProvider = FutureProvider.autoDispose<List<LabTest>>((ref) async {
   final filter = ref.watch(labFilterProvider);
   final search = ref.watch(labSearchProvider);
   final bool? q = switch (filter) {
@@ -26,7 +25,9 @@ final labListProvider =
   return ref.watch(labRepositoryProvider).list(search: search, qualified: q);
 });
 
-final labDetailProvider =
-    FutureProvider.autoDispose.family<LabTest?, String>((ref, id) async {
+final labDetailProvider = FutureProvider.autoDispose.family<LabTest?, String>((
+  ref,
+  id,
+) async {
   return ref.watch(labRepositoryProvider).getById(id);
 });

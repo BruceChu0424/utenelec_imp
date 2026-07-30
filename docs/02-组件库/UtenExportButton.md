@@ -56,10 +56,10 @@ UtenExportButton(
 ## 五、后端新增导出端点（报表范式，复制即可）
 
 1. `*ReportService.export(report, allParams, sort, order)`：switch 分发到各报表方法 + `paginateAll`（循环 size=500 累积全部行，>10 万抛错）→ `ExportPayload`（列映射 `ReportColumn→ExportColumn`）。参考 `PurchaseReportService.export`。
-2. `*ReportController POST /export`：注入 `XlsxExportService`+`EncryptedWorkbookService`+`AuditService`+`SecurityContextCurrentUser`；`@RequestBody ExportPasswordRequest{password}`；过滤/排序 `@RequestParam`；`ResponseEntity<byte[]>` + `Content-Disposition: filename*=UTF-8''<encoded>.xlsx`；`audit.logExplicit("export_<module>_report", ...)`。
+2. `*ReportController POST /export`：注入 `XlsxExportService`+`EncryptedWorkbookService`+`AuditService`+`SecurityContextCurrentUser`；统一使用 `@Valid @RequestBody ExportPasswordRequest{password}`，DTO 与加密服务都强制密码非空且 6–128 字符，永不返回明文工作簿；过滤/排序 `@RequestParam`；`ResponseEntity<byte[]>` + `Content-Disposition: filename*=UTF-8''<encoded>.xlsx`；`audit.logExplicit("export_<module>_report", ...)`。
 
 主档导出为变体：列定义服务端权威（不信前端），循环既有 `list` 分页累积，名称在 `toList` 已解析。
 
 ---
 
-**最后更新**：2026-07-27 · 组件建成（文字按钮 + 密码弹窗 + 跨端下载），采购报表端到端验证通过；其余报表族 + 主档导出推广中。
+**最后更新**：2026-07-30 · 组件统一为强制密码（6–128 字符）加密导出，不保留明文降级路径；采购报表端到端验证通过，其余报表族 + 主档导出推广中。

@@ -24,12 +24,11 @@ class IdleTimeoutState {
     DateTime? lastActivity,
     int? thresholdMinutes,
     bool? timedOut,
-  }) =>
-      IdleTimeoutState(
-        lastActivity: lastActivity ?? this.lastActivity,
-        thresholdMinutes: thresholdMinutes ?? this.thresholdMinutes,
-        timedOut: timedOut ?? this.timedOut,
-      );
+  }) => IdleTimeoutState(
+    lastActivity: lastActivity ?? this.lastActivity,
+    thresholdMinutes: thresholdMinutes ?? this.thresholdMinutes,
+    timedOut: timedOut ?? this.timedOut,
+  );
 }
 
 class IdleTimeoutNotifier extends Notifier<IdleTimeoutState> {
@@ -75,7 +74,9 @@ class IdleTimeoutNotifier extends Notifier<IdleTimeoutState> {
 }
 
 final idleTimeoutProvider =
-    NotifierProvider<IdleTimeoutNotifier, IdleTimeoutState>(IdleTimeoutNotifier.new);
+    NotifierProvider<IdleTimeoutNotifier, IdleTimeoutState>(
+      IdleTimeoutNotifier.new,
+    );
 
 /// 阈值刷新信号：超管在「系统设置」保存 session_idle_timeout_minutes 后自增，
 /// IdleTimeoutGuard 监听到变化立即重拉阈值（当前会话即时生效，不必下次登录）。

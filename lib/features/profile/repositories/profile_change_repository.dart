@@ -178,7 +178,7 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
   ) async {
     final json = await api.post(
       ApiEndpoints.hrProfileChangeReview(batchId),
-      body: {'action': action, if (comment != null) 'comment': comment},
+      body: {'action': action, 'comment': ?comment},
     );
     return ProfileChangeBatch.fromJson(json);
   }

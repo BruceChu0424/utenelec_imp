@@ -13,7 +13,10 @@ import org.springframework.stereotype.Component;
 public class SmsProperties {
 
     /** 短信网关：log（开发期）/ aliyun（阿里云，生产）。 */
-    private String provider = "log";
+    private String provider = "disabled";
+
+    /** Only a local development profile may return the code in an API response. */
+    private boolean exposeCode = false;
 
     /** 阿里云 AccessKey Id。 */
     private String accessKeyId = "";
@@ -26,6 +29,9 @@ public class SmsProperties {
 
     /** 验证码模板 CODE（模板含 ${code} 占位）。 */
     private String templateCode = "";
+
+    /** 阿里云国内短信服务地址。 */
+    private String endpoint = "dysmsapi.aliyuncs.com";
 
     /** 验证码有效期（分钟）。 */
     private int codeTtlMinutes = 5;

@@ -9,7 +9,7 @@ import '../../department/repositories/department_repository.dart';
 /// 树加载前为空（picker 回退默认整树），加载后只显示车间。
 final productionWorkshopTreeProvider =
     FutureProvider.autoDispose<List<DepartmentNode>>((ref) async {
-  final tree = await ref.read(departmentRepositoryProvider).tree();
-  final prod = findDepartmentByCode(tree, kDeptCodeProduction);
-  return prod?.children ?? const [];
-});
+      final tree = await ref.read(departmentRepositoryProvider).tree();
+      final prod = findDepartmentByCode(tree, kDeptCodeProduction);
+      return prod?.children ?? const [];
+    });

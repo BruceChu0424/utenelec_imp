@@ -51,11 +51,7 @@ Future<List<ScheduleOrderLine>?> showPlanOrderImportSheet(
       alignment: Alignment.centerRight,
       child: Material(
         color: Theme.of(ctx).colorScheme.surface,
-        child: SizedBox(
-          width: 760,
-          height: double.infinity,
-          child: sheet,
-        ),
+        child: SizedBox(width: 760, height: double.infinity, child: sheet),
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(
@@ -101,9 +97,9 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
         _lines = lines;
         _selected
           ..clear()
-          ..addAll(lines
-              .where((l) => (l.needQty ?? 0) > 0)
-              .map((l) => l.orderItemId));
+          ..addAll(
+            lines.where((l) => (l.needQty ?? 0) > 0).map((l) => l.orderItemId),
+          );
       });
     } catch (e) {
       if (!mounted) return;
@@ -121,15 +117,19 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s8, UtenSpacing.s12, UtenSpacing.s4, UtenSpacing.s8,
+                UtenSpacing.s8,
+                UtenSpacing.s12,
+                UtenSpacing.s4,
+                UtenSpacing.s8,
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       '订单 ${widget.billNo} 的货品',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
@@ -141,13 +141,18 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16, 0, UtenSpacing.s16, UtenSpacing.s8),
+                UtenSpacing.s16,
+                0,
+                UtenSpacing.s16,
+                UtenSpacing.s8,
+              ),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   '勾选要排产的货品行带入计划明细；点行可展开查看该产品的零件（BOM）',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -158,9 +163,10 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_error!,
-                              style:
-                                  TextStyle(color: theme.colorScheme.error)),
+                          Text(
+                            _error!,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
                           const SizedBox(height: UtenSpacing.s8),
                           UtenButton(
                             type: UtenButtonType.tonal,
@@ -171,18 +177,18 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                       ),
                     )
                   : lines == null
-                      ? const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2.5))
-                      : lines.isEmpty
-                          ? const Center(child: Text('该订单没有可排产的货品行'))
-                          : ListView.separated(
-                              padding:
-                                  const EdgeInsets.all(UtenSpacing.s12),
-                              itemCount: lines.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: UtenSpacing.s8),
-                              itemBuilder: (_, i) => _lineCard(lines[i]),
-                            ),
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : lines.isEmpty
+                  ? const Center(child: Text('该订单没有可排产的货品行'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
+                      itemCount: lines.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: UtenSpacing.s8),
+                      itemBuilder: (_, i) => _lineCard(lines[i]),
+                    ),
             ),
             const Divider(height: 1),
             Padding(
@@ -192,8 +198,9 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                 children: [
                   Text(
                     '已选 ${_selected.length} 行',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(width: UtenSpacing.s16),
                   UtenButton(
@@ -207,9 +214,9 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     onPressed: _selected.isEmpty || lines == null
                         ? null
                         : () => Navigator.of(context).pop([
-                              for (final l in lines)
-                                if (_selected.contains(l.orderItemId)) l,
-                            ]),
+                            for (final l in lines)
+                              if (_selected.contains(l.orderItemId)) l,
+                          ]),
                     child: const Text('带入明细'),
                   ),
                 ],
@@ -246,12 +253,12 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             value: checked,
             onChanged: plannable
                 ? (v) => setState(() {
-                      if (v ?? false) {
-                        _selected.add(l.orderItemId);
-                      } else {
-                        _selected.remove(l.orderItemId);
-                      }
-                    })
+                    if (v ?? false) {
+                      _selected.add(l.orderItemId);
+                    } else {
+                      _selected.remove(l.orderItemId);
+                    }
+                  })
                 : null,
           ),
           title: Row(
@@ -262,13 +269,17 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                   '${l.spec != null && l.spec!.isNotEmpty ? ' · ${l.spec}' : ''}'
                   '${l.colorName != null ? ' · ${l.colorName}' : ''}',
                   style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               if (l.bom.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
@@ -276,7 +287,9 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                   child: Text(
                     '${l.bom.length} 种零件',
                     style: TextStyle(
-                        fontSize: 11, color: theme.colorScheme.primary),
+                      fontSize: 11,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
             ],
@@ -297,15 +310,20 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             if (l.bom.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s16, 0, UtenSpacing.s16, UtenSpacing.s12),
+                  UtenSpacing.s16,
+                  0,
+                  UtenSpacing.s16,
+                  UtenSpacing.s12,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       '零件清单（按缺口 ${_fmt(l.needQty)} 折算需求）',
                       style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurfaceVariant),
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     const SizedBox(height: UtenSpacing.s4),
                     for (final b in l.bom) _bomRow(b),
@@ -335,16 +353,20 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             ),
           ),
           _bomNum(theme, '单件', b.perQty),
-          _bomNum(theme, '需求', b.needQty,
-              highlight: true, danger: shortage),
+          _bomNum(theme, '需求', b.needQty, highlight: true, danger: shortage),
           _bomNum(theme, '库存', b.onhand, danger: shortage),
         ],
       ),
     );
   }
 
-  Widget _bomNum(ThemeData theme, String label, double? v,
-      {bool highlight = false, bool danger = false}) {
+  Widget _bomNum(
+    ThemeData theme,
+    String label,
+    double? v, {
+    bool highlight = false,
+    bool danger = false,
+  }) {
     return SizedBox(
       width: 72,
       child: Column(
@@ -354,21 +376,25 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             _fmt(v),
             style: TextStyle(
               fontSize: 12,
-              fontWeight:
-                  highlight || danger ? FontWeight.w700 : FontWeight.normal,
+              fontWeight: highlight || danger
+                  ? FontWeight.w700
+                  : FontWeight.normal,
               color: danger ? theme.colorScheme.error : null,
             ),
           ),
           Text(
             label,
             style: TextStyle(
-                fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+              fontSize: 10,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
     );
   }
 
-  String _fmt(double? v) =>
-      v == null ? '—' : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+  String _fmt(double? v) => v == null
+      ? '—'
+      : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
 }

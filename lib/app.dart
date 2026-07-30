@@ -43,7 +43,7 @@ class UtenApp extends ConsumerWidget {
 
       // 国际化
       locale: locale,
-      supportedLocales: AppLocalizations.supportedLocales,
+      supportedLocales: supportedLocales,
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,

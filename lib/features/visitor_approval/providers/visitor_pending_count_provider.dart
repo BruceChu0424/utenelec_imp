@@ -13,11 +13,11 @@ const Duration _kPendingPollInterval = Duration(seconds: 60);
 /// 返回 0 时不渲染徽章。
 final visitorPendingCountProvider =
     StateNotifierProvider<VisitorPendingCountNotifier, int>((ref) {
-  final notifier = VisitorPendingCountNotifier(ref);
-  notifier.start();
-  ref.onDispose(notifier.stop);
-  return notifier;
-});
+      final notifier = VisitorPendingCountNotifier(ref);
+      notifier.start();
+      ref.onDispose(notifier.stop);
+      return notifier;
+    });
 
 class VisitorPendingCountNotifier extends StateNotifier<int> {
   VisitorPendingCountNotifier(this.ref) : super(0);
@@ -38,14 +38,16 @@ class VisitorPendingCountNotifier extends StateNotifier<int> {
   Future<void> _tick() async {
     // 仅在有 HR 审批权限时拉取；普通用户静默返回 0。
     final perms = ref.read(currentPermissionsProvider);
-    final allowed = perms.contains(Perm.visitorApprove) ||
-        ref.read(isSuperAdminProvider);
+    final allowed =
+        perms.contains(Perm.visitorApprove) || ref.read(isSuperAdminProvider);
     if (!allowed) {
       state = 0;
       return;
     }
     try {
-      final count = await ref.read(visitorStaffRepositoryProvider).pendingCount();
+      final count = await ref
+          .read(visitorStaffRepositoryProvider)
+          .pendingCount();
       state = count;
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
@@ -59,11 +61,11 @@ class VisitorPendingCountNotifier extends StateNotifier<int> {
 /// 被访人待确认数（visitor:host-confirm）：60s 轮询；无权限返回 0。
 final visitorHostPendingCountProvider =
     StateNotifierProvider<VisitorHostPendingCountNotifier, int>((ref) {
-  final notifier = VisitorHostPendingCountNotifier(ref);
-  notifier.start();
-  ref.onDispose(notifier.stop);
-  return notifier;
-});
+      final notifier = VisitorHostPendingCountNotifier(ref);
+      notifier.start();
+      ref.onDispose(notifier.stop);
+      return notifier;
+    });
 
 class VisitorHostPendingCountNotifier extends StateNotifier<int> {
   VisitorHostPendingCountNotifier(this.ref) : super(0);
@@ -84,15 +86,17 @@ class VisitorHostPendingCountNotifier extends StateNotifier<int> {
   Future<void> _tick() async {
     // 仅在有被访人确认权限时拉取；普通用户静默返回 0。
     final perms = ref.read(currentPermissionsProvider);
-    final allowed = perms.contains(Perm.visitorHostConfirm) ||
+    final allowed =
+        perms.contains(Perm.visitorHostConfirm) ||
         ref.read(isSuperAdminProvider);
     if (!allowed) {
       state = 0;
       return;
     }
     try {
-      final count =
-          await ref.read(visitorStaffRepositoryProvider).hostPendingCount();
+      final count = await ref
+          .read(visitorStaffRepositoryProvider)
+          .hostPendingCount();
       state = count;
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁

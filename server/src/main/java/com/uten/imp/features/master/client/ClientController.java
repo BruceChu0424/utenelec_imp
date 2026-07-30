@@ -5,10 +5,10 @@ import com.uten.imp.common.export.EncryptedWorkbookService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.client.dto.ClientDetail;
+import com.uten.imp.features.master.client.dto.ClientDictItem;
 import com.uten.imp.features.master.client.dto.ClientFacets;
 import com.uten.imp.features.master.client.dto.ClientListItem;
 import com.uten.imp.features.master.client.dto.ClientQueryFilter;
@@ -29,8 +29,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 
@@ -105,7 +103,7 @@ public class ClientController {
     /** 全量字典（单据客户名解析用；client:view 全员有）。 */
     @GetMapping("/dict")
     @PreAuthorize("hasAuthority('client:view')")
-    public java.util.List<com.uten.imp.features.master.client.dto.ClientListItem> dict() {
+    public java.util.List<ClientDictItem> dict() {
         return service.dict();
     }
 
@@ -146,10 +144,7 @@ public class ClientController {
             @RequestParam(required = false) String website,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestBody ExportPasswordRequest body) {
-        if (body == null || body.password() == null || body.password().length() < 4) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出密码至少 4 位");
-        }
+            @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new ClientQueryFilter(categoryId, keyword, nullFields,
                 code, name, fullName, clientXz, tday, region, placeId, empId,
                 legalPerson, linkman, mobile, phone, phone2, fax, postcode,
@@ -159,9 +154,8 @@ public class ClientController {
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_client", "master_data", String.valueOf(payload.total()), "success"));
         String filename = "clients.xlsx";
-        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename*=UTF-8''" + encoded)
+                .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(encrypted);

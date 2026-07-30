@@ -69,7 +69,6 @@ public class XlsxExportService {
             }
             sheet.createFreezePane(0, 1); // 冻结首行
             wb.write(out);
-            wb.dispose(); // 清理 SXSSF 临时文件
             return out.toByteArray();
         } catch (IOException e) {
             throw new RuntimeException("生成 Excel 失败", e);

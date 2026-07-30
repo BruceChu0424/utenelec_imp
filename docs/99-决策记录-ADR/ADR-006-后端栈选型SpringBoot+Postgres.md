@@ -25,10 +25,12 @@ Uten IMP 长期为纯前端 Mock 阶段（ADR-001..005 都聚焦前端）。Phas
 
 ## 鉴权与安全（配套决策，见顶层计划 §四/§十三）
 
-- 密码 Argon2id；默认密码=身份证后六位（仅内存派生，绝不落库/日志/返回）；首登强制改密；密码历史最近 5。
+- 密码 Argon2id；入职和账号重置统一由 `TemporaryPasswordGenerator` 使用 `SecureRandom` 生成 20 位高熵一次性临时密码，明文只在当前响应返回一次、服务端不持久化且不得记日志；首登强制改密；密码历史最近 5。身份证后六位方案已废止，禁止回退到任何可推测默认密码。
 - 无状态 access JWT(15min) + 不透明轮换 refresh(7d，哈希入库，重用检测)。
 - 登录防枚举（账号不存在与密码错同错误 + 时序抹平）+ 限流(5/min/IP) + 锁定(5次/15min)。
-- DTO 按角色脱敏：身份证/银行仅 hr+admin、薪资 hr+finance+admin、manager/员工永不触碰。
+- DTO 按权限点脱敏：身份证/手机/银行由 `employee:pii:view` 控制，薪酬由
+  `employee:compensation:view` 控制；V141 起对应写入另需 `employee:pii:edit` /
+  `employee:compensation:edit`。角色映射已被 ADR-011/V29 取代。
 - HTTPS 强制、CORS 严格、CSRF 关闭（JWT 走头）、令牌进 flutter_secure_storage（不入 shared_preferences）、备份加密。
 
 ## 后果
@@ -47,4 +49,5 @@ Uten IMP 长期为纯前端 Mock 阶段（ADR-001..005 都聚焦前端）。Phas
 
 ---
 
-**最后更新**：2026-07-22
+**最后更新**：2026-07-30（废止身份证后六位默认密码；统一高熵一次性临时密码；按
+ADR-011/V29/V141 校准敏感字段读写权限）

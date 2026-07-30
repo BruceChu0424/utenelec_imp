@@ -7,12 +7,14 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentDetail;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentItemDto;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentItemLine;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentListItem;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentQueryFilter;
 import com.uten.imp.features.sales.other_shipment.dto.OtherShipmentSaveRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -24,14 +26,18 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -63,24 +69,17 @@ public class SalesOtherShipmentService {
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
-    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+    private final SalesDocumentAccessPolicy accessPolicy;
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_other_shipment:view')")
     public PageResponse<OtherShipmentListItem> list(OtherShipmentQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = accessPolicy.scope();
         Specification<SalesOtherShipment> spec = (Root<SalesOtherShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            // 归属可见性（销售按人授权）：公共或可见归属人；超管/sales:view:all 全见
-            var ownerScope = ownerVisibility.evaluate("sales", "sales:view:all");
-            if (!ownerScope.seeAll()) {
-                if (ownerScope.visibleOwners().isEmpty()) {
-                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
-                } else {
-                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
-                            root.get("ownerEmployeeId").in(ownerScope.visibleOwners())));
-                }
-            }
+            ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
                 // 关键字同时匹配 单据号 / 客户名称（日常检索按客户找单）
@@ -103,49 +102,76 @@ public class SalesOtherShipmentService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOtherShipment> p = shipmentRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        boolean canEdit = accessPolicy.hasAuthority("sales_other_shipment:edit");
+        return new PageResponse<>(p.map(s -> toList(s,
+                        canEdit && accessPolicy.canWrite(s.getOwnerEmployeeId(), readScope))).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_other_shipment:view')")
     public OtherShipmentDetail detail(UUID id) {
-        SalesOtherShipment s = requireShipment(id);
-        List<OtherShipmentItemDto> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id).stream()
-                .map(this::toItemDto).toList();
-        return toDetail(s, items);
+        SalesOtherShipment s = requireReadableShipment(id);
+        List<SalesOtherShipmentItem> entities = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        Set<UUID> readableOrderItems = readableOrderItemIds(entities.stream()
+                .map(SalesOtherShipmentItem::getOrderItemId).filter(Objects::nonNull).toList());
+        List<OtherShipmentItemDto> items = entities.stream()
+                .map(item -> toItemDto(item,
+                        item.getOrderItemId() == null || readableOrderItems.contains(item.getOrderItemId())))
+                .toList();
+        boolean hasLinkedSource = entities.stream().anyMatch(item -> item.getOrderItemId() != null);
+        boolean headerSourceReadable = s.getSourceDocNo() == null || s.getSourceDocNo().isBlank()
+                || (hasLinkedSource
+                ? entities.stream()
+                        .filter(item -> item.getOrderItemId() != null)
+                        .allMatch(item -> readableOrderItems.contains(item.getOrderItemId()))
+                : isOrderSourceDocReadable(s.getSourceDocNo()));
+        return toDetail(s, items, headerSourceReadable,
+                accessPolicy.hasAuthority("sales_other_shipment:edit")
+                        && accessPolicy.canWrite(s.getOwnerEmployeeId()));
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
     public OtherShipmentDetail create(OtherShipmentSaveRequest req) {
         tx.bind();
+        LinkedSource source = validateLinkedOrderItems(req);
         SalesOtherShipment s = new SalesOtherShipment();
         applyHeader(req, s);
+        s.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(source.ownerEmployeeId()));
         s.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         s.setStatus(STATUS_DRAFT);
         shipmentRepo.save(s);
         List<OtherShipmentItemDto> items = saveItems(s, req.getItems());
         applyTotals(s, items);
-        return toDetail(s, items);
+        return toDetail(s, items, true, true);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
     public OtherShipmentDetail update(UUID id, OtherShipmentSaveRequest req) {
         tx.bind();
-        SalesOtherShipment s = requireShipment(id);
+        SalesOtherShipment s = requireWritableShipment(id);
         if (s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        }
+        LinkedSource source = validateLinkedOrderItems(req);
+        if (source.present() && !Objects.equals(source.ownerEmployeeId(), s.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源订单与其它出货单归属不一致");
         }
         applyHeader(req, s);
         itemRepo.deleteByShipmentId(id);
         itemRepo.flush();
         List<OtherShipmentItemDto> items = saveItems(s, req.getItems());
         applyTotals(s, items);
-        return toDetail(s, items);
+        return toDetail(s, items, true, true);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
     public void delete(UUID id) {
         tx.bind();
-        SalesOtherShipment s = requireShipment(id);
+        SalesOtherShipment s = requireWritableShipment(id);
         if (s.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -159,9 +185,10 @@ public class SalesOtherShipmentService {
      * 不回写订单、不立应收（design 20 §4.1）。client_id 可空（内部领用）。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
     public OtherShipmentDetail approve(UUID id) {
         tx.bind();
-        SalesOtherShipment s = requireShipment(id);
+        SalesOtherShipment s = requireWritableShipment(id);
         em.lock(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -173,6 +200,9 @@ public class SalesOtherShipmentService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SalesOtherShipmentItem it : items) {
             applyMovement(s, it, StockService.DIR_OUT, now, null);
@@ -187,16 +217,21 @@ public class SalesOtherShipmentService {
 
     /** 红冲：status 1→-1，反向入库（无 ar 校验，无回写）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_other_shipment:edit')")
     public OtherShipmentDetail reverse(UUID id) {
         tx.bind();
-        SalesOtherShipment s = requireShipment(id);
+        SalesOtherShipment s = requireWritableShipment(id);
         em.lock(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (s.getStatus() == null || s.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        List<SalesOtherShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
-        for (SalesOtherShipmentItem it : itemRepo.findByShipmentIdOrderByLineNoAsc(id)) {
+        for (SalesOtherShipmentItem it : items) {
             applyMovement(s, it, StockService.DIR_IN, now, null);
         }
         s.setStatus(STATUS_REVERSED);
@@ -214,6 +249,103 @@ public class SalesOtherShipmentService {
                 s.getId(), it.getId(), it.getGoodsId(), it.getColorId(), s.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
                 direction < 0 ? null : "红冲"));
+    }
+
+    private LinkedSource validateLinkedOrderItems(OtherShipmentSaveRequest req) {
+        if (req.getItems() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "其它出货明细不能为空");
+        }
+        List<OtherShipmentItemLine> linked = req.getItems().stream()
+                .filter(line -> line.getOrderItemId() != null).toList();
+        if (linked.isEmpty()) {
+            return new LinkedSource(false, null);
+        }
+        if (!accessPolicy.hasAuthority("sales_order:view")) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售订单");
+        }
+        List<UUID> ids = linked.stream().map(OtherShipmentItemLine::getOrderItemId).toList();
+        if (Set.copyOf(ids).size() != ids.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一订单行不能重复关联");
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, i.goods_id, o.client_id, o.owner_employee_id, o.status
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id IN (:ids)
+                  AND COALESCE(i.is_deleted,false)=false
+                  AND COALESCE(o.is_deleted,false)=false
+                """).setParameter("ids", ids).getResultList();
+        Map<UUID, Object[]> byId = new HashMap<>();
+        for (Object[] row : rows) {
+            byId.put((UUID) row[0], row);
+        }
+        var writeScope = accessPolicy.scope();
+        UUID commonOwner = null;
+        boolean ownerInitialized = false;
+        for (OtherShipmentItemLine line : linked) {
+            Object[] row = byId.get(line.getOrderItemId());
+            if (row == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "来源订单行不存在或已删除");
+            }
+            UUID owner = (UUID) row[3];
+            accessPolicy.requireWritable(owner, "无权引用该销售订单行", writeScope);
+            if (!ownerInitialized) {
+                commonOwner = owner;
+                ownerInitialized = true;
+            } else if (!Objects.equals(commonOwner, owner)) {
+                throw new ApiException(ErrorCode.CONFLICT, "一张其它出货单不能合并不同归属人的订单行");
+            }
+            if (!Objects.equals(req.getClientId(), row[2])) {
+                throw new ApiException(ErrorCode.CONFLICT, "其它出货客户与来源订单客户不一致");
+            }
+            if (!Objects.equals(line.getGoodsId(), row[1])) {
+                throw new ApiException(ErrorCode.CONFLICT, "其它出货货品与来源订单行不一致");
+            }
+            if (row[4] == null || ((Number) row[4]).shortValue() != STATUS_APPROVED) {
+                throw new ApiException(ErrorCode.BUSINESS, "仅可引用已审核销售订单");
+            }
+        }
+        return new LinkedSource(true, commonOwner);
+    }
+
+    private Set<UUID> readableOrderItemIds(List<UUID> ids) {
+        if (ids.isEmpty() || !accessPolicy.hasAuthority("sales_order:view")) {
+            return Set.of();
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, o.owner_employee_id
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id IN (:ids)
+                  AND COALESCE(i.is_deleted,false)=false
+                  AND COALESCE(o.is_deleted,false)=false
+                """).setParameter("ids", ids).getResultList();
+        var readScope = accessPolicy.scope();
+        java.util.HashSet<UUID> readable = new java.util.HashSet<>();
+        for (Object[] row : rows) {
+            if (accessPolicy.canRead((UUID) row[1], readScope)) {
+                readable.add((UUID) row[0]);
+            }
+        }
+        return readable;
+    }
+
+    private boolean isOrderSourceDocReadable(String sourceDocNo) {
+        @SuppressWarnings("unchecked")
+        List<UUID> owners = em.createNativeQuery("""
+                SELECT owner_employee_id
+                FROM sales_orders
+                WHERE bill_no = :billNo
+                  AND COALESCE(is_deleted,false)=false
+                LIMIT 1
+                """)
+                .setParameter("billNo", sourceDocNo)
+                .getResultList();
+        return owners.isEmpty()
+                || accessPolicy.hasAuthority("sales_order:view")
+                && accessPolicy.canRead(owners.getFirst());
     }
 
     private void applyHeader(OtherShipmentSaveRequest req, SalesOtherShipment s) {
@@ -287,33 +419,55 @@ public class SalesOtherShipmentService {
         shipmentRepo.save(s);
     }
 
-    private OtherShipmentListItem toList(SalesOtherShipment s) {
+    private OtherShipmentListItem toList(SalesOtherShipment s, boolean writable) {
         return new OtherShipmentListItem(s.getId(), s.getBillNo(), s.getBillDate(), s.getClientId(),
-                s.getWarehouseId(), s.getOutType(), s.getTotalLocal(), s.getStatus(), s.isClosed(), s.getLegacyId());
+                s.getWarehouseId(), s.getOutType(), s.getTotalLocal(), s.getStatus(), s.isClosed(),
+                s.getLegacyId(), writable);
     }
 
     private OtherShipmentItemDto toItemDto(SalesOtherShipmentItem it) {
-        return new OtherShipmentItemDto(it.getId(), it.getLineNo(), it.getOrderItemId(), it.getGoodsId(),
+        return toItemDto(it, true);
+    }
+
+    private OtherShipmentItemDto toItemDto(SalesOtherShipmentItem it, boolean sourceReadable) {
+        return new OtherShipmentItemDto(it.getId(), it.getLineNo(),
+                sourceReadable ? it.getOrderItemId() : null, it.getGoodsId(),
                 it.getColorId(), it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getCostAmount(), it.getWeight(),
                 it.getParcelQty(), it.getCartonCount(), it.getClientNo(), it.getClientModel(),
                 it.getMaterialPrice(), it.getDieCastPrice(), it.getMachiningPrice(), it.getCircumference(),
-                it.getDiscount(), it.getReturnedQty(), it.getReturnedAmount(), it.getSourceDocNo(),
+                it.getDiscount(), it.getReturnedQty(), it.getReturnedAmount(),
+                sourceReadable ? it.getSourceDocNo() : null,
                 it.getRemark());
     }
 
-    private OtherShipmentDetail toDetail(SalesOtherShipment s, List<OtherShipmentItemDto> items) {
+    private OtherShipmentDetail toDetail(SalesOtherShipment s, List<OtherShipmentItemDto> items,
+                                         boolean sourceReadable, boolean writable) {
         return new OtherShipmentDetail(s.getId(), s.getLegacyId(), s.getBillNo(), s.getBillDate(),
                 s.getClientId(), s.getWarehouseId(), s.getCurrencyId(), s.getExchangeRate(), s.getTaxRate(),
                 s.getPaymentStyleId(), s.getSellerId(), s.getSenderId(), s.getMakerId(), s.getApproverId(),
                 s.getShipAddr(), s.getLinkPhone(), s.getParcelCount(), s.getPrintCount(), s.getLastDate(),
                 s.getOutType(), s.getRemark(), s.getTotalOriginal(), s.getTotalLocal(), s.getStatus(),
-                s.isClosed(), s.getSourceDocNo(), items,
-                nameResolver.nameOf(s.getMakerId()), s.getCreatedAt());
+                s.isClosed(), sourceReadable ? s.getSourceDocNo() : null, items,
+                nameResolver.nameOf(s.getMakerId()), s.getCreatedAt(), writable);
     }
 
     private SalesOtherShipment requireShipment(UUID id) {
         return shipmentRepo.findById(id).filter(s -> !s.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "其它出货单不存在"));
     }
+
+    private SalesOtherShipment requireReadableShipment(UUID id) {
+        SalesOtherShipment shipment = requireShipment(id);
+        accessPolicy.requireReadable(shipment.getOwnerEmployeeId(), "其它出货单不存在");
+        return shipment;
+    }
+
+    private SalesOtherShipment requireWritableShipment(UUID id) {
+        SalesOtherShipment shipment = requireShipment(id);
+        accessPolicy.requireWritable(shipment.getOwnerEmployeeId(), "只能操作本人负责的其它出货单");
+        return shipment;
+    }
+
+    private record LinkedSource(boolean present, UUID ownerEmployeeId) {}
 }

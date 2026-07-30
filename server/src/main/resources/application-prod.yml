@@ -1,12 +1,32 @@
 # 生产环境：严格、静默、强制 HTTPS（建议前置反向代理终结 TLS）
 server:
+  # 只有受信代理的连接才允许改写 remoteAddr/proto；应用端口仍必须由防火墙限制为仅代理可达。
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: '${UTEN_TRUSTED_PROXY_REGEX:10\..*|192\.168\..*|172\.(1[6-9]|2[0-9]|3[0-1])\..*|127\..*|::1}'
   ssl:
     enabled: ${UTEN_SSL_ENABLED:false}   # 由反向代理终结 TLS 时保持 false 并配 X-Forwarded-Proto
 
+spring:
+  # 生产不得继承 application.yml 的本地开发账号；任一变量缺失都应在启动期失败。
+  datasource:
+    url: ${UTEN_DB_URL}
+    username: ${UTEN_DB_USER}
+    password: ${UTEN_DB_PASSWORD}
+
 uten:
+  jwt:
+    # 即使不同环境误用了同一密钥，也拒绝跨环境 token。
+    issuer: ${UTEN_JWT_ISSUER}
   security:
+    # 生产来源必须显式配置，禁止误用 localhost 开发白名单。
+    cors-allowed-origins: ${UTEN_CORS_ORIGINS}
     require-https: ${UTEN_REQUIRE_HTTPS:true}
     swagger-enabled: false
+  sms:
+    provider: ${UTEN_SMS_PROVIDER:disabled}
+    expose-code: false
 
 # 生产关闭 OpenAPI 文档与 swagger-ui（端点不注册 → 404；配合上方白名单关闭双重保险）
 springdoc:

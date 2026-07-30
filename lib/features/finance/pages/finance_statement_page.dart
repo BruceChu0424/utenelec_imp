@@ -21,10 +21,13 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
@@ -44,7 +47,8 @@ class FinanceStatementPage extends ConsumerStatefulWidget {
   const FinanceStatementPage({super.key});
 
   @override
-  ConsumerState<FinanceStatementPage> createState() => _FinanceStatementPageState();
+  ConsumerState<FinanceStatementPage> createState() =>
+      _FinanceStatementPageState();
 }
 
 class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
@@ -53,9 +57,9 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   String? _partyId;
   List<_Party> _partyList = const [];
   bool _partyLoading = false;
-  int _year = DateTime.now().year;
+  int _year = ChinaDateTime.today().year;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
@@ -87,7 +91,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       if (p.docType == 'AR' || p.docType == 'AP') _side = p.docType!;
       final v = p.extra['view']?.toString();
       if (v != null) {
-        _view = _StmtView.values.firstWhere((e) => e.name == v, orElse: () => _view);
+        _view = _StmtView.values.firstWhere(
+          (e) => e.name == v,
+          orElse: () => _view,
+        );
       }
       _partyId = p.extra['partyId']?.toString();
       final y = p.extra['year'];
@@ -101,17 +108,17 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   /// 当前筛选口径快照（不含关键字/分页）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
-        docType: _side,
-        from: _fmt(_from),
-        to: _fmt(_to),
-        sortKey: _sortKey,
-        sortAsc: _sortAsc,
-        extra: {
-          'view': _view.name,
-          if (_partyId != null) 'partyId': _partyId,
-          'year': _year,
-        },
-      );
+    docType: _side,
+    from: _fmt(_from),
+    to: _fmt(_to),
+    sortKey: _sortKey,
+    sortAsc: _sortAsc,
+    extra: {
+      'view': _view.name,
+      if (_partyId != null) 'partyId': _partyId,
+      'year': _year,
+    },
+  );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
   void _persistPrefs() {
@@ -123,11 +130,19 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     setState(() => _partyLoading = true);
     final api = ref.read(apiClientProvider);
     try {
-      final path = _side == 'AR' ? '/master/clients' : '/master/suppliers';
-      final list = await api.getList(path, query: {'size': 9999});
-      final parties = list.map((j) {
-        return _Party(j['id']?.toString() ?? '', j['name']?.toString() ?? '');
-      }).where((p) => p.id.isNotEmpty).toList();
+      final path = _side == 'AR'
+          ? ApiEndpoints.clientsDict
+          : ApiEndpoints.suppliersDict;
+      final list = await api.getList(path);
+      final parties = list
+          .map((j) {
+            return _Party(
+              j['id']?.toString() ?? '',
+              j['name']?.toString() ?? '',
+            );
+          })
+          .where((p) => p.id.isNotEmpty)
+          .toList();
       if (!mounted) return;
       setState(() {
         _partyList = parties;
@@ -144,10 +159,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   }
 
   String get _endpoint => switch (_view) {
-        _StmtView.flow => '/finance/reports/statement/flow',
-        _StmtView.detail => '/finance/reports/statement/detail',
-        _StmtView.annual => '/finance/reports/statement/annual',
-      };
+    _StmtView.flow => '/finance/reports/statement/flow',
+    _StmtView.detail => '/finance/reports/statement/detail',
+    _StmtView.annual => '/finance/reports/statement/annual',
+  };
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -194,28 +209,30 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   /// 导出报表 key（与 GET 路径一致：statement/{flow,detail,annual}）。
   String get _exportReport => switch (_view) {
-        _StmtView.flow => 'statement/flow',
-        _StmtView.detail => 'statement/detail',
-        _StmtView.annual => 'statement/annual',
-      };
+    _StmtView.flow => 'statement/flow',
+    _StmtView.detail => 'statement/detail',
+    _StmtView.annual => 'statement/annual',
+  };
 
   /// 导出查询参数（与 _load 一致，不含 page/size）。year/日期按报表类型给。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        if (_partyId != null) 'partyId': _partyId,
-        'side': _side,
-        if (_view != _StmtView.annual) ...{
-          'dateFrom': _fmt(_from),
-          'dateTo': _fmt(_to),
-        },
-        if (_view == _StmtView.annual) 'year': _year,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
+    if (_partyId != null) 'partyId': _partyId,
+    'side': _side,
+    if (_view != _StmtView.annual) ...{
+      'dateFrom': _fmt(_from),
+      'dateTo': _fmt(_to),
+    },
+    if (_view == _StmtView.annual) 'year': _year,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
 
   /// 打印预览数据：按当前视图/往来单位口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(_endpoint,
-        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final json = await api.get(
+      _endpoint,
+      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+    );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
       headers: [for (final c in data.columns) c.label],
@@ -228,10 +245,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   /// 当前视图标签（build 与表格工具条共用）。
   String get _viewLabel => switch (_view) {
-        _StmtView.flow => _side == 'AR' ? '单客户流水对帐单' : '单供应商流水对帐单',
-        _StmtView.detail => _side == 'AR' ? '单客户明细对帐单' : '单供应商明细对帐单',
-        _StmtView.annual => _side == 'AR' ? '客户年度对帐单' : '供应商年度对帐单',
-      };
+    _StmtView.flow => _side == 'AR' ? '单客户流水对帐单' : '单供应商流水对帐单',
+    _StmtView.detail => _side == 'AR' ? '单客户明细对帐单' : '单供应商明细对帐单',
+    _StmtView.annual => _side == 'AR' ? '客户年度对帐单' : '供应商年度对帐单',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +266,9 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '往来对帐单',
-        leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.finance)),
+        leading: UtenBackButton(
+          onPressed: () => backTo(context, defaultPath: RouteName.finance),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -258,16 +277,33 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+                  padding: const EdgeInsets.only(
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.receipt_long_outlined, size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.receipt_long_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text(viewLabel, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        viewLabel,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       if (_data != null)
-                        Text('共 ${_data!.total} 条',
-                            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          '共 ${_data!.total} 条',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -293,41 +329,96 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _filterLabel('方向'),
-            Wrap(spacing: 6, runSpacing: 4, children: [
-              ChoiceChip(label: const Text('应收（客户）'), selected: _side == 'AR', onSelected: (_) {
-                setState(() { _side = 'AR'; _partyId = null; _page = 1; _data = null; });
-                _persistPrefs();
-                _loadParties();
-                _load();
-              }),
-              ChoiceChip(label: const Text('应付（供应商）'), selected: _side == 'AP', onSelected: (_) {
-                setState(() { _side = 'AP'; _partyId = null; _page = 1; _data = null; });
-                _persistPrefs();
-                _loadParties();
-                _load();
-              }),
-            ]),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                ChoiceChip(
+                  label: const Text('应收（客户）'),
+                  selected: _side == 'AR',
+                  onSelected: (_) {
+                    setState(() {
+                      _side = 'AR';
+                      _partyId = null;
+                      _page = 1;
+                      _data = null;
+                    });
+                    _persistPrefs();
+                    _loadParties();
+                    _load();
+                  },
+                ),
+                ChoiceChip(
+                  label: const Text('应付（供应商）'),
+                  selected: _side == 'AP',
+                  onSelected: (_) {
+                    setState(() {
+                      _side = 'AP';
+                      _partyId = null;
+                      _page = 1;
+                      _data = null;
+                    });
+                    _persistPrefs();
+                    _loadParties();
+                    _load();
+                  },
+                ),
+              ],
+            ),
             const SizedBox(height: UtenSpacing.s12),
             _filterLabel('报表类型'),
-            Wrap(spacing: 6, runSpacing: 4, children: [
-              ChoiceChip(label: const Text('流水对帐'), selected: _view == _StmtView.flow, onSelected: (_) => _changeView(_StmtView.flow)),
-              ChoiceChip(label: const Text('明细对帐'), selected: _view == _StmtView.detail, onSelected: (_) => _changeView(_StmtView.detail)),
-              ChoiceChip(label: const Text('年度对帐'), selected: _view == _StmtView.annual, onSelected: (_) => _changeView(_StmtView.annual)),
-            ]),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                ChoiceChip(
+                  label: const Text('流水对帐'),
+                  selected: _view == _StmtView.flow,
+                  onSelected: (_) => _changeView(_StmtView.flow),
+                ),
+                ChoiceChip(
+                  label: const Text('明细对帐'),
+                  selected: _view == _StmtView.detail,
+                  onSelected: (_) => _changeView(_StmtView.detail),
+                ),
+                ChoiceChip(
+                  label: const Text('年度对帐'),
+                  selected: _view == _StmtView.annual,
+                  onSelected: (_) => _changeView(_StmtView.annual),
+                ),
+              ],
+            ),
             const SizedBox(height: UtenSpacing.s12),
             _filterLabel(_side == 'AR' ? '客户' : '供应商'),
             if (_partyLoading)
-              const Padding(padding: EdgeInsets.all(8), child: LinearProgressIndicator())
+              const Padding(
+                padding: EdgeInsets.all(8),
+                child: LinearProgressIndicator(),
+              )
             else
               DropdownButtonFormField<String?>(
                 initialValue: _partyId,
                 isExpanded: true,
-                decoration: const InputDecoration(isDense: true, hintText: '选择往来单位'),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: '选择往来单位',
+                ),
                 items: [
-                  for (final p in _partyList) DropdownMenuItem<String?>(value: p.id, child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  for (final p in _partyList)
+                    DropdownMenuItem<String?>(
+                      value: p.id,
+                      child: Text(
+                        p.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                 ],
                 onChanged: (v) {
-                  setState(() { _partyId = v; _page = 1; });
+                  setState(() {
+                    _partyId = v;
+                    _page = 1;
+                  });
                   _persistPrefs();
                   _load();
                 },
@@ -335,39 +426,90 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
             if (_view == _StmtView.annual) ...[
               const SizedBox(height: UtenSpacing.s12),
               _filterLabel('年度'),
-              Row(children: [
-                IconButton(icon: const Icon(Icons.chevron_left), onPressed: () { setState(() => _year--); _page = 1; _persistPrefs(); _load(); }),
-                Text('$_year', style: theme.textTheme.titleMedium),
-                IconButton(icon: const Icon(Icons.chevron_right), onPressed: () { setState(() => _year++); _page = 1; _persistPrefs(); _load(); }),
-              ]),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: () {
+                      setState(() => _year--);
+                      _page = 1;
+                      _persistPrefs();
+                      _load();
+                    },
+                  ),
+                  Text('$_year', style: theme.textTheme.titleMedium),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () {
+                      setState(() => _year++);
+                      _page = 1;
+                      _persistPrefs();
+                      _load();
+                    },
+                  ),
+                ],
+              ),
             ] else ...[
               const SizedBox(height: UtenSpacing.s12),
               _filterLabel('日期范围'),
-              Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                TextButton.icon(onPressed: () async {
-                  final p = await showDatePicker(context: context, initialDate: _from, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                  if (p != null) {
-                    setState(() => _from = p);
-                    _persistPrefs();
-                  }
-                }, icon: const Icon(Icons.event_outlined, size: 18), label: Text('起 ${_fmt(_from)}')),
-                TextButton.icon(onPressed: () async {
-                  final p = await showDatePicker(context: context, initialDate: _to, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                  if (p != null) {
-                    setState(() => _to = p);
-                    _persistPrefs();
-                  }
-                }, icon: const Icon(Icons.event_outlined, size: 18), label: Text('止 ${_fmt(_to)}')),
-              ]),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      final p = await showDatePicker(
+                        context: context,
+                        initialDate: _from,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (p != null) {
+                        setState(() => _from = p);
+                        _persistPrefs();
+                      }
+                    },
+                    icon: const Icon(Icons.event_outlined, size: 18),
+                    label: Text('起 ${_fmt(_from)}'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final p = await showDatePicker(
+                        context: context,
+                        initialDate: _to,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (p != null) {
+                        setState(() => _to = p);
+                        _persistPrefs();
+                      }
+                    },
+                    icon: const Icon(Icons.event_outlined, size: 18),
+                    label: Text('止 ${_fmt(_to)}'),
+                  ),
+                ],
+              ),
               const SizedBox(height: UtenSpacing.s12),
               _filterLabel('搜索'),
-              UtenSearchBar(hint: '搜索单号', initialValue: _keyword, onChanged: (v) => _keyword = v),
+              UtenSearchBar(
+                hint: '搜索单号',
+                initialValue: _keyword,
+                onChanged: (v) => _keyword = v,
+              ),
               const SizedBox(height: UtenSpacing.s12),
-              SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
-                onPressed: () { _page = 1; _load(); },
-                icon: const Icon(Icons.search_rounded, size: 18),
-                label: const Text('查询'),
-              )),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: () {
+                    _page = 1;
+                    _load();
+                  },
+                  icon: const Icon(Icons.search_rounded, size: 18),
+                  label: const Text('查询'),
+                ),
+              ),
             ],
           ],
         ),
@@ -377,7 +519,11 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   void _changeView(_StmtView v) {
     if (v == _view) return;
-    setState(() { _view = v; _page = 1; _data = null; });
+    setState(() {
+      _view = v;
+      _page = 1;
+      _data = null;
+    });
     _persistPrefs();
     _load();
   }
@@ -394,12 +540,16 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       return const Center(child: Text('点击「查询」加载'));
     }
     final columns = data.columns
-        .map((c) => MasterColumnDef<Map<String, dynamic>>(
-              key: c.key, label: c.label, width: (c.width ?? 120).toDouble(),
-              type: c.type,
-              sortable: isSortableReportType(c.type),
-              value: (row) => formatReportCell(c, row),
-            ))
+        .map(
+          (c) => MasterColumnDef<Map<String, dynamic>>(
+            key: c.key,
+            label: c.label,
+            width: (c.width ?? 120).toDouble(),
+            type: c.type,
+            sortable: isSortableReportType(c.type),
+            value: (row) => formatReportCell(c, row),
+          ),
+        )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
@@ -413,6 +563,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
               : '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
+          exportPermission: Perm.financeReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '往来对帐单',
@@ -421,6 +572,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         ),
         UtenExportButton(
           endpoint: '/finance/reports/export',
+          requiredPermission: Perm.financeReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '往来对帐单',
@@ -431,7 +583,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       facets: const {},
       nullCounts: const {},
       filters: const {},
-      onFilterChanged: (_, __) {},
+      onFilterChanged: (_, _) {},
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
@@ -440,7 +592,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       emptyMessage: '暂无对帐数据',
       currentPage: data.page,
       totalPages: data.totalPages,
-      onPageChange: (p) { _page = p; _load(); },
+      onPageChange: (p) {
+        _page = p;
+        _load();
+      },
     );
   }
 
@@ -448,8 +603,14 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-      child: Text(text, style: theme.textTheme.labelLarge?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600, letterSpacing: 0.4)),
+      child: Text(
+        text,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.4,
+        ),
+      ),
     );
   }
 }

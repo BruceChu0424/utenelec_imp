@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 enum HvacMode { cool, heat, fan }
+
 enum HvacFan { low, mid, high, auto }
 
 class HvacDevice {
@@ -38,39 +39,38 @@ class HvacDevice {
     double? targetTemp,
     HvacMode? mode,
     HvacFan? fan,
-  }) =>
-      HvacDevice(
-        id: id,
-        name: name,
-        building: building,
-        floor: floor,
-        online: online ?? this.online,
-        power: power ?? this.power,
-        currentTemp: currentTemp ?? this.currentTemp,
-        targetTemp: targetTemp ?? this.targetTemp,
-        mode: mode ?? this.mode,
-        fan: fan ?? this.fan,
-      );
+  }) => HvacDevice(
+    id: id,
+    name: name,
+    building: building,
+    floor: floor,
+    online: online ?? this.online,
+    power: power ?? this.power,
+    currentTemp: currentTemp ?? this.currentTemp,
+    targetTemp: targetTemp ?? this.targetTemp,
+    mode: mode ?? this.mode,
+    fan: fan ?? this.fan,
+  );
 }
 
 extension HvacModeX on HvacMode {
   String get label => switch (this) {
-        HvacMode.cool => '制冷',
-        HvacMode.heat => '制热',
-        HvacMode.fan => '送风',
-      };
+    HvacMode.cool => '制冷',
+    HvacMode.heat => '制热',
+    HvacMode.fan => '送风',
+  };
   IconData get icon => switch (this) {
-        HvacMode.cool => Icons.ac_unit_rounded,
-        HvacMode.heat => Icons.local_fire_department_rounded,
-        HvacMode.fan => Icons.air_rounded,
-      };
+    HvacMode.cool => Icons.ac_unit_rounded,
+    HvacMode.heat => Icons.local_fire_department_rounded,
+    HvacMode.fan => Icons.air_rounded,
+  };
 }
 
 extension HvacFanX on HvacFan {
   String get label => switch (this) {
-        HvacFan.low => '低',
-        HvacFan.mid => '中',
-        HvacFan.high => '高',
-        HvacFan.auto => '自动',
-      };
+    HvacFan.low => '低',
+    HvacFan.mid => '中',
+    HvacFan.high => '高',
+    HvacFan.auto => '自动',
+  };
 }

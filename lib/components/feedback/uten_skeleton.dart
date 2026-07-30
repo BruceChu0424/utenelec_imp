@@ -72,11 +72,7 @@ class _UtenSkeletonState extends ConsumerState<UtenSkeleton>
           width: widget.width,
           height: widget.height,
           decoration: BoxDecoration(
-            color: Color.lerp(
-              baseColor,
-              highlightColor,
-              _controller.value,
-            ),
+            color: Color.lerp(baseColor, highlightColor, _controller.value),
             borderRadius: BorderRadius.circular(widget.borderRadius),
           ),
         );

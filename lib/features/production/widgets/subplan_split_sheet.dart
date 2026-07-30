@@ -35,8 +35,9 @@ Future<List<Map<String, dynamic>>?> showSubplanSplitSheet(
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
@@ -61,8 +62,10 @@ Future<List<Map<String, dynamic>>?> showSubplanSplitSheet(
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
       child: child,
     ),
   );
@@ -70,7 +73,7 @@ Future<List<Map<String, dynamic>>?> showSubplanSplitSheet(
 
 class _LineState {
   _LineState(this.row, String defaultQty)
-      : qtyCtrl = TextEditingController(text: defaultQty);
+    : qtyCtrl = TextEditingController(text: defaultQty);
   final MrpRow row;
   bool checked = true;
   final TextEditingController qtyCtrl;
@@ -140,7 +143,8 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
       }
       if (qty > net + 1e-6) {
         context.appError(
-            '${l.row.goodsName ?? l.row.goodsCode} 超过净需求 ${_fmt(net)}');
+          '${l.row.goodsName ?? l.row.goodsCode} 超过净需求 ${_fmt(net)}',
+        );
         return;
       }
       items.add({
@@ -170,14 +174,21 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(UtenSpacing.s8,
-                  UtenSpacing.s12, UtenSpacing.s4, UtenSpacing.s8),
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s8,
+                UtenSpacing.s12,
+                UtenSpacing.s4,
+                UtenSpacing.s8,
+              ),
               child: Row(
                 children: [
                   Expanded(
-                    child: Text('按车间拆分生成子计划',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    child: Text(
+                      '按车间拆分生成子计划',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded),
@@ -188,13 +199,18 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16, 0, UtenSpacing.s16, UtenSpacing.s8),
+                UtenSpacing.s16,
+                0,
+                UtenSpacing.s16,
+                UtenSpacing.s8,
+              ),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   '勾选要拆的自制件、改数量、选车间——按车间分组，每个车间生成一张草稿子计划',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -214,9 +230,12 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('已选 $checkedCount 行 · 分 $_groupCount 个车间',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600)),
+                  Text(
+                    '已选 $checkedCount 行 · 分 $_groupCount 个车间',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(width: UtenSpacing.s16),
                   UtenButton(
                     type: UtenButtonType.secondary,
@@ -238,7 +257,11 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
     );
   }
 
-  Widget _lineCard(ThemeData theme, _LineState l, List<DepartmentNode>? workshops) {
+  Widget _lineCard(
+    ThemeData theme,
+    _LineState l,
+    List<DepartmentNode>? workshops,
+  ) {
     final r = l.row;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -262,15 +285,18 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                     '${r.goodsName ?? r.goodsCode ?? '—'}'
                     '${r.spec != null && r.spec!.isNotEmpty ? ' · ${r.spec}' : ''}',
                     style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '毛需求 ${_fmt(r.gross)} · 库存 ${_fmt(r.onhand)} · '
                     '在途 ${_fmt(r.openPo)} · 净需求 ${_fmt(r.net)}',
                     style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant),
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: UtenSpacing.s8),
                   Row(
@@ -281,7 +307,8 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                           controller: l.qtyCtrl,
                           enabled: l.checked,
                           keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                            decimal: true,
+                          ),
                           decoration: InputDecoration(
                             isDense: true,
                             labelText: '本次排产（≤${_fmt(r.net)}）',
@@ -300,25 +327,30 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
                           ),
                           items: [
                             const DropdownMenuItem(
-                                value: '', child: Text('未指定车间')),
-                            for (final w in workshops ?? const <DepartmentNode>[])
+                              value: '',
+                              child: Text('未指定车间'),
+                            ),
+                            for (final w
+                                in workshops ?? const <DepartmentNode>[])
                               DropdownMenuItem(
-                                  value: w.id,
-                                  child: Text(w.name)),
+                                value: w.id,
+                                child: Text(w.name),
+                              ),
                           ],
                           onChanged: l.checked
                               ? (v) => setState(() {
-                                    if (v == null || v.isEmpty) {
-                                      l.departmentId = null;
-                                      l.workshopName = null;
-                                    } else {
-                                      l.departmentId = v;
-                                      l.workshopName = (workshops ?? const <DepartmentNode>[])
-                                          .where((w) => w.id == v)
-                                          .map((w) => w.name)
-                                          .firstOrNull;
-                                    }
-                                  })
+                                  if (v == null || v.isEmpty) {
+                                    l.departmentId = null;
+                                    l.workshopName = null;
+                                  } else {
+                                    l.departmentId = v;
+                                    l.workshopName =
+                                        (workshops ?? const <DepartmentNode>[])
+                                            .where((w) => w.id == v)
+                                            .map((w) => w.name)
+                                            .firstOrNull;
+                                  }
+                                })
                               : null,
                         ),
                       ),

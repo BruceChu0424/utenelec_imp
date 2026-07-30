@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderItemDto;
 import com.uten.imp.features.purchase.order.dto.OrderItemLine;
@@ -53,6 +54,7 @@ public class PurchaseOrderService {
 
     private final PurchaseOrderRepository orderRepo;
     private final PurchaseOrderItemRepository itemRepo;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
@@ -134,6 +136,14 @@ public class PurchaseOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        sourceIntegrity.validatePurchaseOrder(items.stream()
+                .map(it -> new LinkedDocumentIntegrityService.QuantityLinkedLine(
+                        it.getRequestItemId(),
+                        it.getGoodsId(),
+                        it.getColorId(),
+                        it.getUnitId(),
+                        it.getQty()))
+                .toList());
         for (PurchaseOrderItem it : items) {
             if (it.getRequestItemId() != null) {
                 em.createNativeQuery(
@@ -157,7 +167,14 @@ public class PurchaseOrderService {
         em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        for (PurchaseOrderItem it : itemRepo.findByOrderIdOrderByLineNoAsc(id)) {
+        List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                positive(it.getReceivedQty()) || positive(it.getReturnedQty()))) {
+            throw new ApiException(ErrorCode.BUSINESS, "采购订货已有收货/退货记录，请先红冲下游单据");
+        }
+        sourceIntegrity.lockPurchaseRequestItemsForReversal(
+                items.stream().map(PurchaseOrderItem::getRequestItemId).toList());
+        for (PurchaseOrderItem it : items) {
             if (it.getRequestItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE purchase_request_items SET ordered_qty = COALESCE(ordered_qty,0) - :q WHERE id = :id")
@@ -170,6 +187,10 @@ public class PurchaseOrderService {
         o.setStatus(STATUS_REVERSED);
         orderRepo.save(o);
         return detail(id);
+    }
+
+    private static boolean positive(BigDecimal value) {
+        return value != null && value.signum() > 0;
     }
 
     private void recalcRequestClosed(UUID requestItemId) {

@@ -1,5 +1,6 @@
 // API 客户端：基于 Dio，注入 AuthInterceptor；统一把 DioException 转成 ApiException。
-// 基址由 --dart-define=API_BASE_URL 指定，默认本地后端。
+// 基址由 api_base_url.dart 统一校验：Web release 默认同源 /api，
+// 移动/桌面 release 必须显式传 HTTPS，避免误请求用户设备 localhost。
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -7,14 +8,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../security/secure_storage.dart';
+import 'api_base_url.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
 import 'interceptors/auth_interceptor.dart';
-
-const _baseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'http://localhost:8080/api',
-);
+import 'interceptors/safe_request_retry_interceptor.dart';
+import 'network_policy.dart';
 
 class ApiClient {
   ApiClient(this._dio);
@@ -53,9 +52,19 @@ class ApiClient {
     }
   }
 
-  Future<Map<String, dynamic>> post(String path, {Object? body}) async {
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
     try {
-      final r = await _dio.post<dynamic>(path, data: body);
+      final r = await _dio.post<dynamic>(
+        path,
+        data: body,
+        queryParameters: query,
+        options: headers == null ? null : Options(headers: headers),
+      );
       return _asMap(r.data);
     } on DioException catch (e) {
       throw _convert(e);
@@ -63,7 +72,10 @@ class ApiClient {
   }
 
   /// POST 且响应为 JSON 数组（如批量生成结果列表）。
-  Future<List<Map<String, dynamic>>> postList(String path, {Object? body}) async {
+  Future<List<Map<String, dynamic>>> postList(
+    String path, {
+    Object? body,
+  }) async {
     try {
       final r = await _dio.post<dynamic>(path, data: body);
       final data = r.data;
@@ -106,14 +118,20 @@ class ApiClient {
 
   /// 下载二进制（加密 Excel 导出用）：POST [path]，密码走 [body]，过滤/排序走 [query]，
   /// 以 bytes 接收。AuthInterceptor 自动管 401 刷新。错误体（bytes）尝试解 JSON 取业务消息。
-  Future<Uint8List> downloadBytes(String path,
-      {Object? body, Map<String, dynamic>? query}) async {
+  Future<Uint8List> downloadBytes(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async {
     try {
       final r = await _dio.post<List<int>>(
         path,
         data: body,
         queryParameters: query,
-        options: Options(responseType: ResponseType.bytes),
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: apiDownloadReceiveTimeout,
+        ),
       );
       return Uint8List.fromList(r.data ?? const []);
     } on DioException catch (e) {
@@ -123,6 +141,8 @@ class ApiClient {
 
   /// bytes 响应的错误转换：业务错误体可能是 UTF-8 JSON 字节，尝试解出 ApiError 取消息。
   ApiException _convertBytes(DioException e) {
+    final connectionFailure = _connectionException(e);
+    if (connectionFailure != null) return connectionFailure;
     final data = e.response?.data;
     ApiError? body;
     if (data is List<int>) {
@@ -137,16 +157,11 @@ class ApiClient {
   }
 
   /// 便捷：路径无需前导斜杠时补齐（endpoints 已带前导斜杠）。
-  String get baseUrl => _baseUrl;
+  String get baseUrl => apiBaseUrl;
 
   ApiException _convert(DioException e) {
-    final type = e.type;
-    if (type == DioExceptionType.connectionTimeout ||
-        type == DioExceptionType.receiveTimeout ||
-        type == DioExceptionType.connectionError ||
-        type == DioExceptionType.unknown && e.response == null) {
-      return NetworkException();
-    }
+    final connectionFailure = _connectionException(e);
+    if (connectionFailure != null) return connectionFailure;
     ApiError? body;
     final data = e.response?.data;
     if (data is Map<String, dynamic>) {
@@ -154,19 +169,27 @@ class ApiClient {
     }
     return ApiExceptionFactory.fromDioStatusCode(e.response?.statusCode, body);
   }
+
+  ApiException? _connectionException(DioException e) {
+    final type = e.type;
+    if (type == DioExceptionType.connectionTimeout ||
+        type == DioExceptionType.sendTimeout ||
+        type == DioExceptionType.receiveTimeout) {
+      return NetworkTimeoutException();
+    }
+    if (type == DioExceptionType.connectionError ||
+        type == DioExceptionType.unknown && e.response == null) {
+      return NetworkException();
+    }
+    return null;
+  }
 }
 
 /// 全局 API 客户端 Provider。
 final apiClientProvider = Provider<ApiClient>((ref) {
   final storage = ref.watch(secureStorageProvider);
-  final dio = Dio(
-    BaseOptions(
-      baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  );
-  dio.interceptors.add(AuthInterceptor(storage: storage, baseUrl: _baseUrl));
+  final dio = Dio(buildApiBaseOptions(apiBaseUrl));
+  dio.interceptors.add(AuthInterceptor(storage: storage, baseUrl: apiBaseUrl));
+  dio.interceptors.add(SafeRequestRetryInterceptor(dio));
   return ApiClient(dio);
 });

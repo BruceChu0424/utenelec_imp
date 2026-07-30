@@ -3,6 +3,7 @@ package com.uten.imp.features.admin;
 import com.uten.imp.features.admin.dto.PermissionDto;
 import com.uten.imp.features.rbac.PermissionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,6 +16,7 @@ import java.util.List;
  */
 @Service
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
 public class RoleAdminService {
 
     private final PermissionRepository permissionRepo;

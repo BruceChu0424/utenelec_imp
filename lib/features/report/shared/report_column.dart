@@ -18,9 +18,9 @@ class ReportColumn {
   final double? width;
 
   factory ReportColumn.fromJson(Map<String, dynamic> j) => ReportColumn(
-        key: (j['key'] ?? '').toString(),
-        label: (j['label'] ?? '').toString(),
-        type: (j['type'] ?? 'text').toString(),
-        width: (j['width'] as num?)?.toDouble(),
-      );
+    key: (j['key'] ?? '').toString(),
+    label: (j['label'] ?? '').toString(),
+    type: (j['type'] ?? 'text').toString(),
+    width: (j['width'] as num?)?.toDouble(),
+  );
 }

@@ -46,7 +46,7 @@ public class EmployeeController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('employee:create')")
-    public EmployeeDetail onboard(@Valid @RequestBody OnboardingRequest req) {
+    public EmployeeOnboardingResult onboard(@Valid @RequestBody OnboardingRequest req) {
         return onboardingService.onboard(req);
     }
 

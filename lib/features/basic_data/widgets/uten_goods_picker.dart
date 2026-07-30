@@ -30,11 +30,11 @@ const _excludedLegacyIds = {2113, 2480, -1};
 
 /// 名称兜底判断（legacyId 缺失或新增同名分类时仍能排除）。
 bool _isExcludedCategory(ProductCategoryNode n) {
-  if (n.legacyId != null && _excludedLegacyIds.contains(n.legacyId)) return true;
+  if (n.legacyId != null && _excludedLegacyIds.contains(n.legacyId)) {
+    return true;
+  }
   final name = n.name;
-  return name.contains('原材料') ||
-      name.contains('辅料') ||
-      name.contains('未分类');
+  return name.contains('原材料') || name.contains('辅料') || name.contains('未分类');
 }
 
 /// 递归过滤分类树：命中排除规则的节点整子树丢弃；其余保留并对 children 递归过滤。
@@ -43,16 +43,18 @@ List<ProductCategoryNode> _filterExcludedTree(List<ProductCategoryNode> nodes) {
   final out = <ProductCategoryNode>[];
   for (final n in nodes) {
     if (_isExcludedCategory(n)) continue; // 整子树丢弃
-    out.add(ProductCategoryNode(
-      id: n.id,
-      code: n.code,
-      name: n.name,
-      level: n.level,
-      parentId: n.parentId,
-      sortOrder: n.sortOrder,
-      legacyId: n.legacyId,
-      children: _filterExcludedTree(n.children),
-    ));
+    out.add(
+      ProductCategoryNode(
+        id: n.id,
+        code: n.code,
+        name: n.name,
+        level: n.level,
+        parentId: n.parentId,
+        sortOrder: n.sortOrder,
+        legacyId: n.legacyId,
+        children: _filterExcludedTree(n.children),
+      ),
+    );
   }
   return out;
 }
@@ -78,7 +80,9 @@ Future<GoodsListItem?> showUtenGoodsPicker(
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
@@ -173,7 +177,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       final PagedResult<GoodsListItem> r;
       if (_selectedCategoryId != null) {
         // 选了分类：在分类子树内搜（keyword 可空）。
-        r = await ref.read(goodsRepositoryProvider).list(
+        r = await ref
+            .read(goodsRepositoryProvider)
+            .list(
               _selectedCategoryId!,
               page: _page,
               keyword: kw.isEmpty ? null : kw,
@@ -217,8 +223,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
               Expanded(
                 child: Text(
                   '选择货品',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               IconButton(
@@ -316,16 +323,19 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (ctx, i) {
         final g = page.items[i];
-        final sub = [g.spec, g.colorName, g.unitName]
-            .where((s) => s != null && s.isNotEmpty)
-            .join(' · ');
+        final sub = [
+          g.spec,
+          g.colorName,
+          g.unitName,
+        ].where((s) => s != null && s.isNotEmpty).join(' · ');
         return ListTile(
           title: Text(
             '${g.name ?? '—'}'
             '${g.code != null && g.code!.isNotEmpty ? '（${g.code}）' : ''}',
           ),
-          subtitle:
-              sub.isEmpty ? null : Text(sub, style: const TextStyle(fontSize: 12)),
+          subtitle: sub.isEmpty
+              ? null
+              : Text(sub, style: const TextStyle(fontSize: 12)),
           onTap: () => Navigator.of(context).pop(g),
         );
       },

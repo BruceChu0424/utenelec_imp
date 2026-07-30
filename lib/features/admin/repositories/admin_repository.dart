@@ -67,7 +67,9 @@ abstract interface class AdminRepository {
   Future<void> unlockUser(String userId);
   Future<void> disableUser(String userId);
   Future<void> enableUser(String userId);
-  Future<void> resetPassword(String userId);
+
+  /// 重置后返回仅本次响应可见的临时密码；调用方不得持久化或记录日志。
+  Future<String> resetPassword(String userId);
 }
 
 class DioAdminRepository implements AdminRepository {
@@ -127,7 +129,9 @@ class DioAdminRepository implements AdminRepository {
 
   @override
   Future<List<String>> departmentPermissions(String departmentId) async {
-    final json = await api.get(ApiEndpoints.departmentPermissions(departmentId));
+    final json = await api.get(
+      ApiEndpoints.departmentPermissions(departmentId),
+    );
     return (json['permissions'] as List<dynamic>? ?? const [])
         .map((e) => e as String)
         .toList();
@@ -159,11 +163,10 @@ class DioAdminRepository implements AdminRepository {
     String userId,
     String scope,
     List<String> ownerEmployeeIds,
-  ) =>
-      api.put(
-        ApiEndpoints.userDataScopes(userId, scope),
-        body: {'ownerEmployeeIds': ownerEmployeeIds},
-      );
+  ) => api.put(
+    ApiEndpoints.userDataScopes(userId, scope),
+    body: {'ownerEmployeeIds': ownerEmployeeIds},
+  );
 
   @override
   Future<List<DataScopeOwner>> dataScopeOwners(String scope) async {
@@ -188,8 +191,14 @@ class DioAdminRepository implements AdminRepository {
       api.post(ApiEndpoints.userEnable(userId));
 
   @override
-  Future<void> resetPassword(String userId) =>
-      api.post(ApiEndpoints.userResetPassword(userId));
+  Future<String> resetPassword(String userId) async {
+    final json = await api.post(ApiEndpoints.userResetPassword(userId));
+    final temporaryPassword = json['temporaryPassword'];
+    if (temporaryPassword is! String || temporaryPassword.trim().isEmpty) {
+      throw const FormatException('重置密码响应缺少 temporaryPassword');
+    }
+    return temporaryPassword;
+  }
 }
 
 final adminRepositoryProvider = Provider<AdminRepository>(

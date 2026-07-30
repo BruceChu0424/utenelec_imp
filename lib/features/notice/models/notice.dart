@@ -40,9 +40,9 @@ enum NoticeType {
   /// 是否工作类通知（任务/审批/流程）——工作平台的核心标识，
   /// 与公告类（announcement/policy/benefit/system/urgent）区分。
   bool get isWork => switch (this) {
-        NoticeType.task || NoticeType.approval || NoticeType.workflow => true,
-        _ => false,
-      };
+    NoticeType.task || NoticeType.approval || NoticeType.workflow => true,
+    _ => false,
+  };
 }
 
 /// 通知重要度（驱动卡片样式与到达时的弹出通道）

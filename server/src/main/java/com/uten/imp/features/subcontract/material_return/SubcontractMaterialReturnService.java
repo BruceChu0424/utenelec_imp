@@ -7,6 +7,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemDto;
@@ -61,6 +63,7 @@ public class SubcontractMaterialReturnService {
     private final SubcontractMaterialReturnRepository returnRepo;
     private final SubcontractMaterialReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
@@ -156,6 +159,21 @@ public class SubcontractMaterialReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validateSubcontractMaterialReturn(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.materialIssueSource(
+                                it.getMaterialIssueItemId(),
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId(),
+                                it.getParentGoodsId(),
+                                it.getParentColorId()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialReturnItem it : items) {
             // ① 入库（DIR_IN=+1）
@@ -193,6 +211,9 @@ public class SubcontractMaterialReturnService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractMaterialReturnItem> items = itemRepo.findByMaterialReturnIdOrderByLineNoAsc(id);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);

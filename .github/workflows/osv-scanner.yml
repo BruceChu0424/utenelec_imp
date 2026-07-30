@@ -1,0 +1,59 @@
+name: Dependency Vulnerability Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "30 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  prepare:
+    name: Generate dependency inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: server/pom.xml
+
+      - name: Generate transitive Maven SBOM
+        working-directory: server
+        run: mvn --batch-mode --no-transfer-progress -DskipTests package
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: osv-inputs
+          path: |
+            server/target/classes/META-INF/sbom/application.cdx.json
+            pubspec.lock
+          if-no-files-found: error
+          retention-days: 1
+
+  scan:
+    needs: prepare
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    with:
+      download-artifact: osv-inputs
+      scan-args: |-
+        --sbom
+        ./server/target/classes/META-INF/sbom/application.cdx.json
+        --lockfile
+        ./pubspec.lock
+    permissions:
+      actions: read
+      contents: read
+      security-events: write

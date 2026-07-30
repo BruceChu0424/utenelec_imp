@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.arap;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,28 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         if (req.direction() == null || (!req.direction().equals("AR") && !req.direction().equals("AP"))) {
             throw new IllegalArgumentException("postArAp: direction must be AR or AP, got " + req.direction());
         }
+        if (req.sourceDocId() == null || req.sourceDocType() == null
+                || req.sourceDocType().isBlank()) {
+            throw new IllegalArgumentException(
+                    "postArAp: sourceDocId/sourceDocType required");
+        }
+        if ("AR".equals(req.direction()) && req.clientId() == null) {
+            throw new IllegalArgumentException("postArAp: AR requires clientId");
+        }
+        if ("AP".equals(req.direction()) && req.supplierId() == null) {
+            throw new IllegalArgumentException("postArAp: AP requires supplierId");
+        }
+        BigDecimal exchangeRate = req.exchangeRate() == null
+                ? BigDecimal.ONE
+                : req.exchangeRate();
+        if (exchangeRate.signum() <= 0) {
+            throw new IllegalArgumentException("postArAp: exchangeRate must be positive");
+        }
+        if (!repo.findBySourceForUpdate(req.sourceDocId(), req.sourceDocType()).isEmpty()) {
+            throw new IllegalStateException(
+                    "source document is already posted: "
+                            + req.sourceDocType() + "/" + req.sourceDocId());
+        }
         BigDecimal originalLocal = nz(req.amountOriginalLocal());
 
         ArApLedger l = new ArApLedger();
@@ -62,7 +85,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setSourceDocId(req.sourceDocId());
         l.setSourceDocNo(req.sourceDocNo());
         l.setBillNo(req.sourceDocNo() != null ? req.sourceDocNo() : "DIRECT-" + System.nanoTime());
-        l.setBillDate(req.billDate() != null ? req.billDate() : LocalDate.now());
+        l.setBillDate(req.billDate() != null ? req.billDate() : BusinessTime.today());
         if ("AR".equals(req.direction())) {
             l.setClientId(req.clientId());
             l.setSupplierId(null);
@@ -71,7 +94,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
             l.setClientId(null);
         }
         l.setCurrencyId(req.currencyId());
-        l.setExchangeRate(nz(req.exchangeRate()));
+        l.setExchangeRate(exchangeRate);
         // 多币种场景下原币由调用方未传时，缺省与本币相同（单币种兼容）。
         l.setAmountOriginal(originalLocal);
         l.setAmountOriginalLocal(originalLocal);
@@ -93,7 +116,8 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
      * {@link IllegalStateException}("此单已经存在收/付款，请先反审")，阻止红冲（对齐老库 RAISERROR 文案）。
      *
      * <p>物理 DELETE（非软删）—— 立帐行是审核派生数据，红冲后不应保留污染报表。
-     * 找不到立帐行（如历史数据缺失）静默忽略，幂等。
+     * 来源必须且只能命中一条有效立帐；缺失或历史重复均 fail closed，避免业务单已红冲但
+     * 财务派生数据未被完整撤销。
      */
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -102,16 +126,19 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         if (sourceDocId == null || sourceDocType == null) {
             throw new IllegalArgumentException("reverseArAp: sourceDocId/sourceDocType required");
         }
-        List<ArApLedger> rows = repo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(sourceDocId, sourceDocType);
+        List<ArApLedger> rows = repo.findBySourceForUpdate(sourceDocId, sourceDocType);
+        if (rows.size() != 1) {
+            throw new IllegalStateException(
+                    "source posting is missing or duplicated: "
+                            + sourceDocType + "/" + sourceDocId);
+        }
         for (ArApLedger l : rows) {
             BigDecimal settled = nz(l.getAmountSettled());
             if (settled.signum() != 0) {
                 throw new IllegalStateException("此单已经存在收/付款，请先反审");
             }
         }
-        if (!rows.isEmpty()) {
-            repo.deleteAll(rows);
-        }
+        repo.deleteAll(rows);
     }
 
     private static BigDecimal nz(BigDecimal x) {

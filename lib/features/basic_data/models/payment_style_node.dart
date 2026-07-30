@@ -199,19 +199,19 @@ class PaymentStyleSaveInput {
   final String? status;
 
   Map<String, dynamic> toJson() => {
-        'code': code,
-        'name': name,
-        'category': category,
-        if (parentId != null) 'parentId': parentId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-        'departmental': departmental,
-        'receipt': receipt,
-        'payment': payment,
-        if (linkedAccountLegacyId != null)
-          'linkedAccountLegacyId': linkedAccountLegacyId,
-        if (initBalance != null) 'initBalance': initBalance,
-        if (status != null) 'status': status,
-      };
+    'code': code,
+    'name': name,
+    'category': category,
+    if (parentId != null) 'parentId': parentId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+    'departmental': departmental,
+    'receipt': receipt,
+    'payment': payment,
+    if (linkedAccountLegacyId != null)
+      'linkedAccountLegacyId': linkedAccountLegacyId,
+    if (initBalance != null) 'initBalance': initBalance,
+    if (status != null) 'status': status,
+  };
 }
 
 /// 编辑请求体：{name,parentId?,sortOrder?,flags...,linkedAccountLegacyId?,initBalance?,status?}。
@@ -240,15 +240,15 @@ class PaymentStyleUpdateInput {
   final String? status;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (parentId != null) 'parentId': parentId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-        'departmental': departmental,
-        'receipt': receipt,
-        'payment': payment,
-        if (linkedAccountLegacyId != null)
-          'linkedAccountLegacyId': linkedAccountLegacyId,
-        if (initBalance != null) 'initBalance': initBalance,
-        if (status != null) 'status': status,
-      };
+    'name': name,
+    if (parentId != null) 'parentId': parentId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+    'departmental': departmental,
+    'receipt': receipt,
+    'payment': payment,
+    if (linkedAccountLegacyId != null)
+      'linkedAccountLegacyId': linkedAccountLegacyId,
+    if (initBalance != null) 'initBalance': initBalance,
+    if (status != null) 'status': status,
+  };
 }

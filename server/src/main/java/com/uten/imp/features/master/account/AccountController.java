@@ -5,8 +5,7 @@ import com.uten.imp.common.export.EncryptedWorkbookService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.account.dto.AccountDetail;
 import com.uten.imp.features.master.account.dto.AccountFacets;
@@ -28,8 +27,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -110,10 +107,7 @@ public class AccountController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestBody ExportPasswordRequest body) {
-        if (body == null || body.password() == null || body.password().length() < 4) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出密码至少 4 位");
-        }
+            @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(
                 new AccountQueryFilter(keyword, nullFields, code, name, accountType, currencyId, status),
                 sort, order);
@@ -122,9 +116,8 @@ public class AccountController {
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_account", "master_data", String.valueOf(payload.total()), "success"));
         String filename = "accounts.xlsx";
-        String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
         return ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename*=UTF-8''" + encoded)
+                .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(encrypted);

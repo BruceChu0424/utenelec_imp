@@ -18,6 +18,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../models/lab_test.dart';
 import '../providers/lab_providers.dart';
 
@@ -66,7 +67,7 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
       result: _result.text,
       standard: _standard.text,
       qualified: _qualified,
-      testDate: DateTime.now(),
+      testDate: ChinaDateTime.now(),
       testerName: _tester.text,
     );
     await ref.read(labRepositoryProvider).create(test);

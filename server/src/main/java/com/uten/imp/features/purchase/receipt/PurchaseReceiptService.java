@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemDto;
@@ -14,6 +15,7 @@ import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptListItem;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptQueryFilter;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -55,6 +57,7 @@ public class PurchaseReceiptService {
     private final PurchaseReceiptRepository receiptRepo;
     private final PurchaseReceiptItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
@@ -150,6 +153,18 @@ public class PurchaseReceiptService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validatePurchaseReceipt(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.orderSource(
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReceiptItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
@@ -189,6 +204,13 @@ public class PurchaseReceiptService {
         }
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
+            throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
+        }
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (PurchaseReceiptItem it : items) {

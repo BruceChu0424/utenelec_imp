@@ -52,7 +52,7 @@ class UtenResponsiveGrid extends StatelessWidget {
   /// 子项构造器
   /// 返回的 Widget 宽度会被强制设为单格宽，高度自定义
   final Widget Function(BuildContext context, int index, double itemWidth)
-      itemBuilder;
+  itemBuilder;
 
   /// 列与列之间的横向间距
   final double spacing;

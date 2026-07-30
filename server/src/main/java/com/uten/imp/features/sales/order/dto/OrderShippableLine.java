@@ -21,5 +21,7 @@ public record OrderShippableLine(
         BigDecimal qty,
         BigDecimal shippedQty,
         BigDecimal reservedQty,
-        BigDecimal price
+        BigDecimal price,
+        /** Current caller may use this row as a source for a shipment. */
+        boolean writable
 ) {}

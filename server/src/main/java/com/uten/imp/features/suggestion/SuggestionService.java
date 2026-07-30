@@ -2,6 +2,8 @@ package com.uten.imp.features.suggestion;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.suggestion.dto.SuggestionDto;
@@ -11,13 +13,18 @@ import com.uten.imp.features.suggestion.dto.SuggestionSubmitRequest;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -41,25 +48,61 @@ public class SuggestionService {
     private final EmployeeRepository employeeRepo;
     private final SecurityContextCurrentUser currentUser;
 
-    /** 广场列表（全员，时间倒序）或我的建议。category 可空。 */
+    /**
+     * 广场/我的建议服务端分页。
+     *
+     * <p>排序必须带 UUID 兜底，否则相同提交时间的记录跨页时可能重复或遗漏。
+     * 点赞态、点赞数和回复数只按当前页批量查询，不随历史数据量增长。
+     */
     @Transactional(readOnly = true)
-    public List<SuggestionDto> list(String scope, String category) {
+    public PageResponse<SuggestionDto> list(
+            String scope,
+            String category,
+            int page,
+            int size) {
         AuthUser u = requireStaff();
-        List<Suggestion> rows;
-        if ("mine".equals(scope)) {
-            rows = suggestionRepo.findBySubmitterIdOrderBySubmittedAtDesc(u.getId());
-        } else if (category != null && !category.isBlank()) {
-            rows = suggestionRepo.findByCategoryOrderBySubmittedAtDesc(category);
+        String normalizedScope = normalizeScope(scope);
+        String normalizedCategory = normalizeCategory(category);
+        validatePage(page, size);
+
+        Pageable pageable = Pageables.of(page, size, Sort.by(
+                Sort.Order.desc("submittedAt"),
+                Sort.Order.desc("id")));
+        Page<Suggestion> result;
+        if ("mine".equals(normalizedScope) && normalizedCategory != null) {
+            result = suggestionRepo.findBySubmitterIdAndCategory(
+                    u.getId(), normalizedCategory, pageable);
+        } else if ("mine".equals(normalizedScope)) {
+            result = suggestionRepo.findBySubmitterId(u.getId(), pageable);
+        } else if (normalizedCategory != null) {
+            result = suggestionRepo.findByCategory(normalizedCategory, pageable);
         } else {
-            rows = suggestionRepo.findAllByOrderBySubmittedAtDesc();
+            result = suggestionRepo.findAll(pageable);
         }
-        Set<UUID> likedIds = likedSuggestionIds(u.getId());
+
+        List<Suggestion> rows = result.getContent();
+        List<UUID> ids = rows.stream().map(Suggestion::getId).toList();
+        Set<UUID> likedIds = ids.isEmpty()
+                ? Set.of()
+                : new HashSet<>(likeRepo.findLikedSuggestionIds(u.getId(), ids));
+        Map<UUID, Long> likeCounts = likeCounts(ids);
+        Map<UUID, Long> replyCounts = replyCounts(ids);
         List<SuggestionDto> out = new ArrayList<>(rows.size());
         for (Suggestion s : rows) {
-            // 广场列表不展开回复（详情才带），避免 N+1
-            out.add(toDto(s, u, likedIds.contains(s.getId()), List.of()));
+            out.add(toDto(
+                    s,
+                    u,
+                    likedIds.contains(s.getId()),
+                    likeCounts.getOrDefault(s.getId(), 0L),
+                    replyCounts.getOrDefault(s.getId(), 0L),
+                    List.of()));
         }
-        return out;
+        return new PageResponse<>(
+                out,
+                result.getNumber() + 1,
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages());
     }
 
     /** 详情（含回复，按回复时间升序）。 */
@@ -75,7 +118,13 @@ public class SuggestionService {
                     r.getContent(), r.getRepliedAt()));
         }
         boolean liked = likeRepo.existsById(new SuggestionLikeId(id, u.getId()));
-        return toDto(s, u, liked, replies);
+        return toDto(
+                s,
+                u,
+                liked,
+                likeRepo.countByIdSuggestionId(id),
+                replies.size(),
+                replies);
     }
 
     /** 提交建议（suggestion:submit）。提交人取当前员工姓名快照。 */
@@ -103,14 +152,19 @@ public class SuggestionService {
         s.setSubmittedAt(Instant.now());
         suggestionRepo.save(s);
         // 提交回执对本人不脱敏（本人当然知道自己是谁）
-        return toDto(s, u, false, List.of());
+        return toDto(s, u, false, 0, 0, List.of());
     }
 
-    /** 点赞切换（有则取消、无则点赞），返回最新建议。 */
+    /**
+     * 点赞切换（有则取消、无则点赞）。
+     *
+     * <p>先锁建议主行，再检查关联行。所有实例都遵循相同数据库行锁，因此同一建议上的
+     * 并发 toggle 不会发生 exists-then-insert TOCTOU 或唯一键异常。
+     */
     @Transactional
     public SuggestionDto toggleLike(UUID id) {
         AuthUser u = requireStaff();
-        Suggestion s = suggestionRepo.findById(id)
+        Suggestion s = suggestionRepo.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "建议不存在"));
         SuggestionLikeId likeId = new SuggestionLikeId(id, u.getId());
         boolean nowLiked;
@@ -123,23 +177,33 @@ public class SuggestionService {
             likeRepo.save(like);
             nowLiked = true;
         }
-        return toDto(s, u, nowLiked, List.of());
+        likeRepo.flush();
+        return toDto(
+                s,
+                u,
+                nowLiked,
+                likeRepo.countByIdSuggestionId(id),
+                replyRepo.countBySuggestionId(id),
+                List.of());
     }
 
-    /** 官方回复（suggestion:reply）。可顺带推进状态（newStatus 可空）。 */
+    /**
+     * 官方回复（suggestion:reply）。
+     *
+     * <p>不传 newStatus 表示仅补充同状态回复；显式传当前状态也视为同状态回复。
+     * 真正的状态变更只允许 submitted → reviewing → resolved/rejected，终态不可倒退
+     * 或互相切换。主行悲观锁保证并发回复按数据库提交顺序逐一校验。
+     */
     @Transactional
     public SuggestionDto reply(UUID id, SuggestionReplyRequest req) {
         AuthUser u = requireStaff();
-        Suggestion s = suggestionRepo.findById(id)
+        Suggestion s = suggestionRepo.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "建议不存在"));
         if (req.content() == null || req.content().isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "回复内容不能为空");
         }
-        if (req.newStatus() != null && !req.newStatus().isBlank()) {
-            if (!STATUSES.contains(req.newStatus())) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法状态: " + req.newStatus());
-            }
-            s.setStatus(req.newStatus());
+        boolean changed = advanceStatus(s, req.newStatus());
+        if (changed) {
             suggestionRepo.save(s);
         }
 
@@ -150,14 +214,19 @@ public class SuggestionService {
         r.setReplierRole(departmentName(u));
         r.setContent(req.content().trim());
         r.setRepliedAt(Instant.now());
-        replyRepo.save(r);
-        return getById(id);
+        replyRepo.saveAndFlush(r);
+        return detailDto(s, u);
     }
 
     // ---------- 内部 ----------
 
-    private SuggestionDto toDto(Suggestion s, AuthUser viewer, boolean likedByMe,
-                                List<SuggestionReplyDto> replies) {
+    private SuggestionDto toDto(
+            Suggestion s,
+            AuthUser viewer,
+            boolean likedByMe,
+            long likes,
+            long replyCount,
+            List<SuggestionReplyDto> replies) {
         boolean mine = s.getSubmitterId().equals(viewer.getId());
         boolean canSeeRealName = !s.isAnonymous() || mine || canReply(viewer);
         String name = canSeeRealName ? s.getSubmitterName() : maskName(s.getSubmitterName());
@@ -172,8 +241,9 @@ public class SuggestionService {
                 s.getStatus(),
                 s.getSubmittedAt(),
                 s.isAnonymous(),
-                likeRepo.countByIdSuggestionId(s.getId()),
+                likes,
                 likedByMe,
+                replyCount,
                 replies);
     }
 
@@ -187,12 +257,90 @@ public class SuggestionService {
         return u.isSuperAdmin() || u.getPermissions().contains("suggestion:reply");
     }
 
-    private Set<UUID> likedSuggestionIds(UUID userId) {
-        Set<UUID> ids = new HashSet<>();
-        for (SuggestionLike like : likeRepo.findByIdUserId(userId)) {
-            ids.add(like.getId().getSuggestionId());
+    private SuggestionDto detailDto(Suggestion suggestion, AuthUser viewer) {
+        List<SuggestionReplyDto> replies = new ArrayList<>();
+        for (SuggestionReply reply
+                : replyRepo.findBySuggestionIdOrderByRepliedAtAsc(suggestion.getId())) {
+            replies.add(new SuggestionReplyDto(
+                    reply.getId().toString(),
+                    reply.getReplierName(),
+                    reply.getReplierRole(),
+                    reply.getContent(),
+                    reply.getRepliedAt()));
         }
-        return ids;
+        boolean liked = likeRepo.existsById(
+                new SuggestionLikeId(suggestion.getId(), viewer.getId()));
+        return toDto(
+                suggestion,
+                viewer,
+                liked,
+                likeRepo.countByIdSuggestionId(suggestion.getId()),
+                replies.size(),
+                replies);
+    }
+
+    private Map<UUID, Long> likeCounts(List<UUID> suggestionIds) {
+        Map<UUID, Long> counts = new HashMap<>();
+        if (suggestionIds.isEmpty()) return counts;
+        for (SuggestionLikeRepository.SuggestionCount row
+                : likeRepo.countBySuggestionIds(suggestionIds)) {
+            counts.put(row.getSuggestionId(), row.getTotal());
+        }
+        return counts;
+    }
+
+    private Map<UUID, Long> replyCounts(List<UUID> suggestionIds) {
+        Map<UUID, Long> counts = new HashMap<>();
+        if (suggestionIds.isEmpty()) return counts;
+        for (SuggestionReplyRepository.SuggestionCount row
+                : replyRepo.countBySuggestionIds(suggestionIds)) {
+            counts.put(row.getSuggestionId(), row.getTotal());
+        }
+        return counts;
+    }
+
+    private static String normalizeScope(String scope) {
+        if (scope == null || scope.isBlank() || "square".equals(scope)) {
+            return "square";
+        }
+        if ("mine".equals(scope)) return "mine";
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法建议范围: " + scope);
+    }
+
+    private static String normalizeCategory(String category) {
+        if (category == null || category.isBlank()) return null;
+        if (!CATEGORIES.contains(category)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法建议类别: " + category);
+        }
+        return category;
+    }
+
+    private static void validatePage(int page, int size) {
+        if (page < 1) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "页码必须大于等于 1");
+        }
+        if (size < 1 || size > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "每页条数必须在 1 到 100 之间");
+        }
+    }
+
+    private static boolean advanceStatus(Suggestion suggestion, String requested) {
+        if (requested == null || requested.isBlank()) return false;
+        if (!STATUSES.contains(requested)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法状态: " + requested);
+        }
+        String current = suggestion.getStatus();
+        if (requested.equals(current)) return false;
+        boolean allowed = "submitted".equals(current) && "reviewing".equals(requested)
+                || "reviewing".equals(current)
+                && ("resolved".equals(requested) || "rejected".equals(requested));
+        if (!allowed) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "建议状态不允许从 " + current + " 变更为 " + requested);
+        }
+        suggestion.setStatus(requested);
+        return true;
     }
 
     private String employeeName(AuthUser u) {

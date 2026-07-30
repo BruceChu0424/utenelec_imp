@@ -2,6 +2,7 @@ package com.uten.imp;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 
 /**
  * Uten IMP 后端入口。
@@ -13,7 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 引导超管账号（admin）由 BootstrapRunner 在首次启动时按 {@code BOOTSTRAP_ADMIN_PASSWORD}
  * 用 Argon2id 哈希创建，首登强制改密。
  */
-@SpringBootApplication
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 public class UtenImpApplication {
 
     public static void main(String[] args) {

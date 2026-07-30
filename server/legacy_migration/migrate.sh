@@ -47,6 +47,11 @@ REMOTE_TMP_FILES=()
 LOCAL_KEY_FILE=""
 RUN_ID=""
 RUN_STATUS="FAILED"
+EXPORT_MANIFEST_SHA256=""
+CHECKSUM_MANIFEST_SHA256=""
+MIGRATION_REPOSITORY_COMMIT="unknown"
+MIGRATION_SCRIPT_SHA256=""
+MAPPING_VERSION="bootstrap-v2"
 
 usage () {
     cat <<EOF
@@ -137,7 +142,26 @@ finish_run () {
             -c "UPDATE legacy_migration_runs
                 SET status = '$RUN_STATUS',
                     finished_at = CURRENT_TIMESTAMP,
-                    exit_code = $exit_code
+                    exit_code = $exit_code,
+                    rejected_count = (
+                        SELECT COUNT(*)
+                        FROM legacy_migration_rejects
+                        WHERE run_id = '$RUN_ID'::uuid
+                    ),
+                    reconciliation_status = CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM legacy_migration_reconciliation_items
+                            WHERE run_id = '$RUN_ID'::uuid
+                              AND passed = FALSE
+                        ) THEN 'FAILED'
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM legacy_migration_reconciliation_items
+                            WHERE run_id = '$RUN_ID'::uuid
+                        ) THEN 'PASSED'
+                        ELSE 'NOT_RUN'
+                    END
                 WHERE run_id = '$RUN_ID'::uuid" >/dev/null 2>&1
     fi
 
@@ -150,6 +174,40 @@ trap 'exit 143' TERM
 
 preflight () {
     echo "→ 预检 Docker、数据库、迁移版本与并发锁..."
+    local export_manifest="$HERE/data/export_manifest.json"
+    local checksum_manifest="$HERE/data/export_manifest.sha256"
+    if [ ! -s "$export_manifest" ] || [ ! -s "$checksum_manifest" ]; then
+        echo "✗ 缺少完整导出清单，请先用 export_legacy.ps1 重新导出一致性快照。" >&2
+        exit 66
+    fi
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        echo "✗ 缺少 sha256sum，无法校验迁移输入。" >&2
+        exit 69
+    fi
+
+    EXPORT_MANIFEST_SHA256=$(sha256sum "$export_manifest" | awk '{print tolower($1)}')
+    CHECKSUM_MANIFEST_SHA256=$(sha256sum "$checksum_manifest" | awk '{print tolower($1)}')
+    local declared_checksum_hash
+    declared_checksum_hash=$(
+        grep -m1 '"checksumManifestSha256"' "$export_manifest" \
+            | sed 's/.*:[[:space:]]*"\([0-9A-Fa-f]*\)".*/\1/' \
+            | tr 'A-F' 'a-f'
+    )
+    if [[ ! "$declared_checksum_hash" =~ ^[0-9a-f]{64}$ ]] \
+        || [ "$declared_checksum_hash" != "$CHECKSUM_MANIFEST_SHA256" ]; then
+        echo "✗ export_manifest.json 与 export_manifest.sha256 不属于同一次导出；已拒绝迁移。" >&2
+        exit 66
+    fi
+
+    MIGRATION_SCRIPT_SHA256=$(sha256sum "$HERE/migrate.sh" | awk '{print tolower($1)}')
+    if command -v git >/dev/null 2>&1; then
+        local repository_commit
+        repository_commit=$(git -C "$HERE/../.." rev-parse HEAD 2>/dev/null || true)
+        if [[ "$repository_commit" =~ ^[0-9A-Fa-f]{40,64}$ ]]; then
+            MIGRATION_REPOSITORY_COMMIT=$(printf '%s' "$repository_commit" | tr 'A-F' 'a-f')
+        fi
+    fi
+
     "$DOCKER" version >/dev/null
     [ "$("$DOCKER" inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ] || {
         echo "✗ PostgreSQL 容器未运行：$CONTAINER" >&2
@@ -158,8 +216,15 @@ preflight () {
     "$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
         -v ON_ERROR_STOP=1 -Atqc "SELECT 1" >/dev/null
     [ "$("$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
-        -Atqc "SELECT to_regclass('public.legacy_migration_runs') IS NOT NULL")" = "t" ] || {
-        echo "✗ 数据库未应用迁移运行审计表，请先启动 server 完成最新 Flyway。" >&2
+        -Atqc "SELECT to_regclass('public.legacy_migration_run_files') IS NOT NULL
+               AND EXISTS (
+                   SELECT 1
+                   FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND table_name = 'legacy_migration_runs'
+                     AND column_name = 'export_manifest_sha256'
+               )")" = "t" ] || {
+        echo "✗ 数据库未应用最新迁移追溯结构，请先启动 server 完成 Flyway。" >&2
         exit 69
     }
     "$DOCKER" exec "$CONTAINER" mkdir "$LOCK_DIR" 2>/dev/null || {
@@ -168,8 +233,26 @@ preflight () {
     }
     RUN_ID=$("$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
         -v ON_ERROR_STOP=1 -Atqc \
-        "INSERT INTO legacy_migration_runs(target, status)
-         VALUES ('$TARGET', 'RUNNING')
+        "INSERT INTO legacy_migration_runs(
+             target,
+             status,
+             migration_mode,
+             export_manifest_sha256,
+             checksum_manifest_sha256,
+             migration_repository_commit,
+             migration_script_sha256,
+             mapping_version
+         )
+         VALUES (
+             '$TARGET',
+             'RUNNING',
+             'BOOTSTRAP',
+             '$EXPORT_MANIFEST_SHA256',
+             '$CHECKSUM_MANIFEST_SHA256',
+             '$MIGRATION_REPOSITORY_COMMIT',
+             '$MIGRATION_SCRIPT_SHA256',
+             '$MAPPING_VERSION'
+         )
          RETURNING run_id")
 }
 
@@ -177,14 +260,43 @@ run_sql () {  # $1 = sql 文件名（HERE 下）
     "$DOCKER" exec -i "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" -v ON_ERROR_STOP=1 < "$HERE/$1"
 }
 
-copy_csv () {  # $1 = csv 文件名（HERE/data 下）；自动去 CRLF（Windows 导出兼容）
+copy_csv () {  # $1 = csv 文件名（HERE/data 下）；按校验后的原始字节导入
     if [ ! -s "$HERE/data/$1" ]; then
         echo "✗ CSV 不存在或为空：$HERE/data/$1" >&2
         exit 66
     fi
+    local checksum_manifest="$HERE/data/export_manifest.sha256"
+    if [ ! -s "$checksum_manifest" ]; then
+        echo "✗ 缺少 export_manifest.sha256，请先用 export_legacy.ps1 重新导出一致性快照。" >&2
+        exit 66
+    fi
+    local checksum_line
+    checksum_line=$(grep -F " *$1" "$checksum_manifest" || true)
+    if [ -z "$checksum_line" ]; then
+        echo "✗ 导出指纹不包含 $1，请按本次目标重新导出。" >&2
+        exit 66
+    fi
+    if ! (cd "$HERE/data" && printf '%s\n' "$checksum_line" | sha256sum -c - >/dev/null); then
+        echo "✗ CSV 校验和不匹配：$1；已拒绝迁移。" >&2
+        exit 66
+    fi
+    local verified_sha
+    local file_bytes
+    verified_sha=$(printf '%s' "$checksum_line" | awk '{print tolower($1)}')
+    file_bytes=$(wc -c < "$HERE/data/$1" | tr -d '[:space:]')
+    if [[ ! "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
+        || [[ ! "$verified_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || [[ ! "$file_bytes" =~ ^[1-9][0-9]*$ ]]; then
+        echo "✗ CSV 审计元数据非法：$1；已拒绝迁移。" >&2
+        exit 66
+    fi
     "$DOCKER" cp "$HERE/data/$1" "$CONTAINER:/tmp/$1"
     REMOTE_TMP_FILES+=("/tmp/$1")
-    "$DOCKER" exec "$CONTAINER" sh -c "tr -d '\r' < /tmp/$1 > /tmp/$1.lf && mv /tmp/$1.lf /tmp/$1" 2>/dev/null || true
+    "$DOCKER" exec "$CONTAINER" psql -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 \
+        -c "INSERT INTO legacy_migration_run_files(run_id, file_name, sha256, byte_size)
+            VALUES ('$RUN_ID'::uuid, '$1', '$verified_sha', $file_bytes)
+            ON CONFLICT (run_id, file_name) DO NOTHING" >/dev/null
 }
 
 migrate_goods () {

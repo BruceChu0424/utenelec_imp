@@ -32,8 +32,7 @@ ReportData parseReportResponse(Map<String, dynamic> json, int fallbackPage) {
   final cols = (json['columns'] as List? ?? const [])
       .map((c) => ReportColumn.fromJson(c as Map<String, dynamic>))
       .toList();
-  final rows = (json['rows'] as List? ?? const [])
-      .cast<Map<String, dynamic>>();
+  final rows = (json['rows'] as List? ?? const []).cast<Map<String, dynamic>>();
   final facets = <String, List<MasterFacetBucket>>{};
   final fjson = json['facets'];
   if (fjson is Map) {

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
@@ -77,7 +78,6 @@ import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
-import '../../features/placeholder/pages/feature_placeholder_page.dart';
 import '../../features/production/production_routes.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
@@ -115,6 +115,7 @@ import '../../features/visitor/providers/visitor_session_provider.dart';
 import '../../shared/providers/session_provider.dart';
 import '../../features/auth/pages/change_password_page.dart';
 import 'permission_by_path.dart';
+import 'route_access_policy.dart';
 import 'route_names.dart';
 
 /// App 路由 Provider
@@ -128,7 +129,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isEntry = loc == RouteName.entry;
       final isLogin = loc == RouteName.login;
       final isChangePw = loc == RouteName.changePassword;
-      final isVisitorPath = loc.startsWith('/visitor');
+      final isVisitorPath = isVisitorPortalLocation(loc);
 
       // 1) 员工首登强制改密（最高优先）
       if (session.status == AuthStatus.mustChangePassword) {
@@ -168,6 +169,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final requiredAny = requiredAnyPermFor(loc);
           if (requiredAny != null &&
               !(session.user?.canAny(requiredAny) ?? false)) {
+            return RouteName.dashboard;
+          }
+          final requiredAll = requiredAllPermsFor(loc);
+          if (requiredAll.isNotEmpty &&
+              !requiredAll.every(session.user?.can ?? (_) => false)) {
             return RouteName.dashboard;
           }
           return null;
@@ -275,30 +281,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           // /finance/report 在下方「钱流管理」段统一注册（与 /finance hub 同段）。
 
-          // —— 财税部新模块（占位页：权限已可配置，功能规划接入中）——
+          // —— 财税部主数据别名入口（复用基础资料真实页面）——
           GoRoute(
             path: RouteName.financeCustomers,
             name: 'finance-customers',
-            builder: (_, _) => const FeaturePlaceholderPage(
-              title: '客户资料',
-              icon: Icons.people_alt_outlined,
-            ),
+            builder: (_, _) => const ClientCategoryPage(),
           ),
           GoRoute(
             path: RouteName.financeSuppliers,
             name: 'finance-suppliers',
-            builder: (_, _) => const FeaturePlaceholderPage(
-              title: '供应商资料',
-              icon: Icons.local_shipping_outlined,
-            ),
+            builder: (_, _) => const SupplierCategoryPage(),
           ),
           GoRoute(
             path: RouteName.financeAccounts,
             name: 'finance-accounts',
-            builder: (_, _) => const FeaturePlaceholderPage(
-              title: '账户资料',
-              icon: Icons.account_balance_outlined,
-            ),
+            builder: (_, _) => const AccountPage(),
           ),
 
           // —— 报销（approval 静态段在 :id 前）——
@@ -471,33 +468,41 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.purchaseRequestList,
             name: 'purchase-request-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.request),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.request),
           ),
           GoRoute(
             path: RouteName.purchaseOrderList,
             name: 'purchase-order-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.order),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.order),
           ),
           GoRoute(
             path: RouteName.purchaseReceiptList,
             name: 'purchase-receipt-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.receipt),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.receipt),
           ),
           GoRoute(
             path: RouteName.purchaseReturnList,
             name: 'purchase-return-list',
-            builder: (_, _) => const PurchaseDocListPage(docType: PurchaseDocType.returnDoc),
+            builder: (_, _) =>
+                const PurchaseDocListPage(docType: PurchaseDocType.returnDoc),
           ),
           // 采购报表（9 张，参数化）：必须在 /purchase/:doc/:id 之前，literal "report" 段优先。
           GoRoute(
             path: '/purchase/report/:kind',
             name: 'purchase-report-table',
-            builder: (_, s) => PurchaseReportTablePage(kind: PurchaseReportKind.byName(s.pathParameters['kind']!)),
+            builder: (_, s) => PurchaseReportTablePage(
+              kind: PurchaseReportKind.byName(s.pathParameters['kind']!),
+            ),
           ),
           GoRoute(
             path: '/purchase/:doc/new',
             name: 'purchase-doc-new',
-            builder: (_, s) => PurchaseDocEditPage(docType: PurchaseDocType.byPath(s.pathParameters['doc']!)),
+            builder: (_, s) => PurchaseDocEditPage(
+              docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
+            ),
           ),
           GoRoute(
             path: '/purchase/:doc/:id/edit',
@@ -532,8 +537,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-movement',
             // goodsId / warehouseId 查询参数：即时库存/余额/货品详情行点击带入过滤
             builder: (_, state) => StockMovementPage(
-                goodsId: state.uri.queryParameters['goodsId'],
-                warehouseId: state.uri.queryParameters['warehouseId']),
+              goodsId: state.uri.queryParameters['goodsId'],
+              warehouseId: state.uri.queryParameters['warehouseId'],
+            ),
           ),
           GoRoute(
             path: RouteName.stockInstantInventory,
@@ -560,20 +566,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: 'detail',
                 name: 'warehouse-report-detail',
                 builder: (_, _) => const WarehouseReportTablePage(
-                    kind: WarehouseReportKind.detail),
+                  kind: WarehouseReportKind.detail,
+                ),
               ),
               GoRoute(
                 path: 'summary',
                 name: 'warehouse-report-summary',
                 builder: (_, _) => const WarehouseReportTablePage(
-                    kind: WarehouseReportKind.summary),
+                  kind: WarehouseReportKind.summary,
+                ),
               ),
             ],
           ),
           GoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
-            builder: (_, s) => StockDocEditPage(docType: StockDocType.byCode(s.pathParameters['code']!)),
+            builder: (_, s) => StockDocEditPage(
+              docType: StockDocType.byCode(s.pathParameters['code']!),
+            ),
           ),
           GoRoute(
             path: '/warehouse/:code/:id/edit',
@@ -594,7 +604,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code',
             name: 'stock-doc-list',
-            builder: (_, s) => StockDocListPage(docType: StockDocType.byCode(s.pathParameters['code']!)),
+            builder: (_, s) => StockDocListPage(
+              docType: StockDocType.byCode(s.pathParameters['code']!),
+            ),
           ),
 
           // —— 实验室（upload 在 :id 前）——
@@ -646,12 +658,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'detail',
                 name: 'sales-report-detail',
-                builder: (_, _) => const SalesReportPage(kind: SalesReportKind.detail),
+                builder: (_, _) =>
+                    const SalesReportPage(kind: SalesReportKind.detail),
               ),
               GoRoute(
                 path: 'summary',
                 name: 'sales-report-summary',
-                builder: (_, _) => const SalesReportPage(kind: SalesReportKind.summary),
+                builder: (_, _) =>
+                    const SalesReportPage(kind: SalesReportKind.summary),
               ),
             ],
           ),
@@ -702,7 +716,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/subcontract/report/:kind',
             name: 'subcontract-report-table',
             builder: (_, s) => SubcontractReportTablePage(
-                kind: SubcontractReportKind.byRouteSegment(s.pathParameters['kind']!)),
+              kind: SubcontractReportKind.byRouteSegment(
+                s.pathParameters['kind']!,
+              ),
+            ),
           ),
           GoRoute(
             path: '/subcontract/:seg/new',
@@ -803,8 +820,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.financeChecks,
             name: 'finance-checks',
-            builder: (_, _) => const AccountPage(
-                initialAccountTypeFilter: 'CHECK'),
+            builder: (_, _) =>
+                const AccountPage(initialAccountTypeFilter: 'CHECK'),
           ),
           GoRoute(
             path: RouteName.financeAssets,
@@ -931,9 +948,10 @@ class _ErrorPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('页面不存在')),
-      body: Center(child: Text(error.toString())),
+      body: Center(child: Text(l10n.commonError)),
     );
   }
 }

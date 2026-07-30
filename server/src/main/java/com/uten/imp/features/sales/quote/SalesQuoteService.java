@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.quote;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -7,6 +8,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.quote.dto.QuoteDetail;
 import com.uten.imp.features.sales.quote.dto.QuoteItemDto;
 import com.uten.imp.features.sales.quote.dto.QuoteItemLine;
@@ -23,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,13 +61,18 @@ public class SalesQuoteService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final com.uten.imp.features.sales.order.SalesOrderService salesOrderService;
+    private final SalesDocumentAccessPolicy accessPolicy;
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote:view')")
     public PageResponse<QuoteListItem> list(QuoteQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = accessPolicy.scope();
         Specification<SalesQuote> spec = (Root<SalesQuote> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                           CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            // 报价表没有独立 owner 列，maker_id 是其有效归属人。
+            ps.add(accessPolicy.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
                 // 关键字同时匹配 单据号 / 客户名称（日常检索按客户找单）
@@ -85,18 +93,24 @@ public class SalesQuoteService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesQuote> p = quoteRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        boolean canEdit = accessPolicy.hasAuthority("sales_quote:edit");
+        return new PageResponse<>(p.map(q -> toList(q,
+                        canEdit && accessPolicy.canWrite(q.getMakerId(), readScope))).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote:view')")
     public QuoteDetail detail(UUID id) {
-        SalesQuote q = requireQuote(id);
+        SalesQuote q = requireReadableQuote(id);
         List<QuoteItemDto> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(q, items);
+        return toDetail(q, items, accessPolicy.hasAuthority("sales_quote:edit")
+                && accessPolicy.canWrite(q.getMakerId()));
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail create(QuoteSaveRequest req) {
         tx.bind();
         SalesQuote q = new SalesQuote();
@@ -106,13 +120,14 @@ public class SalesQuoteService {
         quoteRepo.save(q);
         List<QuoteItemDto> items = saveItems(q, req.getItems());
         applyTotals(q, items);
-        return toDetail(q, items);
+        return toDetail(q, items, true);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail update(UUID id, QuoteSaveRequest req) {
         tx.bind();
-        SalesQuote q = requireQuote(id);
+        SalesQuote q = requireWritableQuote(id);
         if (q.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -121,13 +136,14 @@ public class SalesQuoteService {
         itemRepo.flush();
         List<QuoteItemDto> items = saveItems(q, req.getItems());
         applyTotals(q, items);
-        return toDetail(q, items);
+        return toDetail(q, items, true);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
     public void delete(UUID id) {
         tx.bind();
-        SalesQuote q = requireQuote(id);
+        SalesQuote q = requireWritableQuote(id);
         if (q.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -138,9 +154,10 @@ public class SalesQuoteService {
 
     /** 审核：status 0→1（报价无库存/应收副作用）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail approve(UUID id) {
         tx.bind();
-        SalesQuote q = requireQuote(id);
+        SalesQuote q = requireWritableQuote(id);
         em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -156,9 +173,10 @@ public class SalesQuoteService {
 
     /** 红冲：status 1→-1。 */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail reverse(UUID id) {
         tx.bind();
-        SalesQuote q = requireQuote(id);
+        SalesQuote q = requireWritableQuote(id);
         em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (q.getStatus() == null || q.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -175,9 +193,10 @@ public class SalesQuoteService {
      * 转入为普通草稿：数量/价格可再改，审核才走库存检查+软预留（订货既有链路）。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit') and hasAuthority('sales_quote:view')")
     public com.uten.imp.features.sales.order.dto.OrderDetail convertToOrder(UUID id) {
         tx.bind();
-        SalesQuote q = requireQuote(id);
+        SalesQuote q = requireWritableQuote(id);
         em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 防并发重复转入
         if (q.getStatus() == null || q.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核报价单可转订货单");
@@ -188,7 +207,7 @@ public class SalesQuoteService {
         }
         com.uten.imp.features.sales.order.dto.OrderSaveRequest req =
                 new com.uten.imp.features.sales.order.dto.OrderSaveRequest();
-        req.setBillDate(java.time.LocalDate.now());
+        req.setBillDate(BusinessTime.today());
         req.setClientId(q.getClientId());
         req.setSourceDocNo(q.getBillNo());
         req.setRemark("从报价单 " + q.getBillNo() + " 转入"
@@ -212,7 +231,7 @@ public class SalesQuoteService {
             lines.add(l);
         }
         req.setItems(lines);
-        return salesOrderService.create(req);
+        return salesOrderService.createFromQuote(req, q.getMakerId());
     }
 
     private void applyHeader(QuoteSaveRequest req, SalesQuote q) {
@@ -264,9 +283,9 @@ public class SalesQuoteService {
         quoteRepo.save(q);
     }
 
-    private QuoteListItem toList(SalesQuote q) {
+    private QuoteListItem toList(SalesQuote q, boolean writable) {
         return new QuoteListItem(q.getId(), q.getBillNo(), q.getBillDate(), q.getClientId(),
-                q.getTotalLocal(), q.getStatus(), q.isClosed(), q.getLegacyId());
+                q.getTotalLocal(), q.getStatus(), q.isClosed(), q.getLegacyId(), writable);
     }
 
     private QuoteItemDto toItemDto(SalesQuoteItem it) {
@@ -275,15 +294,27 @@ public class SalesQuoteService {
                 it.getAmountLocal(), it.getWeight(), it.getRemark());
     }
 
-    private QuoteDetail toDetail(SalesQuote q, List<QuoteItemDto> items) {
+    private QuoteDetail toDetail(SalesQuote q, List<QuoteItemDto> items, boolean writable) {
         return new QuoteDetail(q.getId(), q.getLegacyId(), q.getBillNo(), q.getBillDate(),
                 q.getClientId(), q.getMakerId(), q.getApproverId(), q.getValidUntil(), q.getRemark(),
                 q.getTotalOriginal(), q.getTotalLocal(), q.getStatus(), q.isClosed(), q.getSourceDocNo(), items,
-                nameResolver.nameOf(q.getMakerId()), q.getCreatedAt());
+                nameResolver.nameOf(q.getMakerId()), q.getCreatedAt(), writable);
     }
 
     private SalesQuote requireQuote(UUID id) {
         return quoteRepo.findById(id).filter(q -> !q.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在"));
+    }
+
+    private SalesQuote requireReadableQuote(UUID id) {
+        SalesQuote quote = requireQuote(id);
+        accessPolicy.requireReadable(quote.getMakerId(), "销售报价单不存在");
+        return quote;
+    }
+
+    private SalesQuote requireWritableQuote(UUID id) {
+        SalesQuote quote = requireQuote(id);
+        accessPolicy.requireWritable(quote.getMakerId(), "只能操作本人负责的销售报价单");
+        return quote;
     }
 }

@@ -25,6 +25,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/workbench_module_area.dart';
 
@@ -97,7 +98,7 @@ class DashboardPage extends ConsumerWidget {
               ),
               const SizedBox(height: UtenSpacing.s4),
               Text(
-                _formatDate(DateTime.now()),
+                _formatDate(ChinaDateTime.today()),
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.3,

@@ -1,8 +1,17 @@
 // 访客来访申请模型（对应后端 VisitorApplication / VisitorListItem / VisitorDetail）。
 
+import '../../../core/utils/china_datetime.dart';
+
 /// 申请状态：pending 申请中 / hostReviewing 转被访人 / approved 已批准 /
 /// rejected 已拒绝 / checkedIn 已签到 / cancelled 已取消。
-enum VisitorApplicationStatus { pending, hostReviewing, approved, rejected, checkedIn, cancelled }
+enum VisitorApplicationStatus {
+  pending,
+  hostReviewing,
+  approved,
+  rejected,
+  checkedIn,
+  cancelled,
+}
 
 VisitorApplicationStatus visitorStatusFromCode(String? code) {
   switch (code) {
@@ -62,8 +71,8 @@ class VisitorApplication {
 
   factory VisitorApplication.fromJson(Map<String, dynamic> j) {
     DateTime parse(Object? v) => v is String && v.isNotEmpty
-        ? DateTime.tryParse(v) ?? DateTime.now()
-        : DateTime.now();
+        ? ChinaDateTime.tryParse(v) ?? ChinaDateTime.now()
+        : ChinaDateTime.now();
     return VisitorApplication(
       id: (j['id'] ?? '').toString(),
       visitorName: (j['visitorName'] ?? '').toString(),
@@ -74,7 +83,9 @@ class VisitorApplication {
       company: j['company'] as String?,
       hostName: j['hostName'] as String?,
       hostDepartment: j['hostDepartment'] as String?,
-      plannedLeaveAt: j['plannedLeaveAt'] == null ? null : parse(j['plannedLeaveAt']),
+      plannedLeaveAt: j['plannedLeaveAt'] == null
+          ? null
+          : parse(j['plannedLeaveAt']),
       approvedAt: j['approvedAt'] == null ? null : parse(j['approvedAt']),
       hasVehicle: j['hasVehicle'] == true,
       plateNo: j['plateNo'] as String?,
@@ -100,13 +111,15 @@ class VisitorApprovalStep {
   final DateTime actedAt;
   final String? comment;
 
-  factory VisitorApprovalStep.fromJson(Map<String, dynamic> j) => VisitorApprovalStep(
+  factory VisitorApprovalStep.fromJson(Map<String, dynamic> j) =>
+      VisitorApprovalStep(
         action: (j['action'] ?? '').toString(),
         actorType: (j['actorType'] ?? '').toString(),
         actorName: (j['actorName'] ?? '').toString(),
         actedAt: j['actedAt'] is String && (j['actedAt'] as String).isNotEmpty
-            ? DateTime.tryParse(j['actedAt'] as String) ?? DateTime.now()
-            : DateTime.now(),
+            ? ChinaDateTime.tryParse(j['actedAt'] as String) ??
+                  ChinaDateTime.now()
+            : ChinaDateTime.now(),
         comment: j['comment'] as String?,
       );
 }

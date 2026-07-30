@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/utils/china_datetime.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
 class UtenDateField extends StatefulWidget {
@@ -48,7 +49,7 @@ class UtenDateField extends StatefulWidget {
 
 class _UtenDateFieldState extends State<UtenDateField> {
   Future<void> _pick() async {
-    final now = DateTime.now();
+    final now = ChinaDateTime.today();
     final picked = await showDatePicker(
       context: context,
       initialDate: widget.value ?? now,
@@ -57,9 +58,6 @@ class _UtenDateFieldState extends State<UtenDateField> {
     );
     if (picked != null && mounted) widget.onChanged(picked);
   }
-
-  String _fmt(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +76,7 @@ class _UtenDateFieldState extends State<UtenDateField> {
             suffixIcon: const Icon(Icons.event_outlined, size: 18),
           ),
           child: Text(
-            hasValue ? _fmt(widget.value!) : '未选择',
+            hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',
             style: hasValue
                 ? TextStyle(color: theme.colorScheme.onSurface)
                 : TextStyle(color: theme.colorScheme.onSurfaceVariant),

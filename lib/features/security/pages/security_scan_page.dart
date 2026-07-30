@@ -51,19 +51,26 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
     _navigating = true;
     _controller?.stop();
     Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => VisitorCheckResultPage(qrToken: code)))
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => VisitorCheckResultPage(qrToken: code),
+          ),
+        )
         .then((_) {
-      if (!mounted) return;
-      _navigating = false;
-      _controller?.start();
-    });
+          if (!mounted) return;
+          _navigating = false;
+          _controller?.start();
+        });
   }
 
   void _manualGo() {
     final t = _manualCtl.text.trim();
     if (t.isEmpty) return;
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => VisitorCheckResultPage(passcode: t)));
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => VisitorCheckResultPage(passcode: t),
+      ),
+    );
   }
 
   @override
@@ -77,7 +84,12 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
           if (!kIsWeb && _controller != null)
             MobileScanner(controller: _controller!, onDetect: _onDetect)
           else
-            Center(child: Text(l10n.securityScanManual, style: theme.textTheme.bodyLarge)),
+            Center(
+              child: Text(
+                l10n.securityScanManual,
+                style: theme.textTheme.bodyLarge,
+              ),
+            ),
           Center(
             child: Container(
               width: 240,
@@ -100,10 +112,15 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12, vertical: UtenSpacing.s4),
-                  child: Text(l10n.securityScanHint,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: Colors.white)),
+                    horizontal: UtenSpacing.s12,
+                    vertical: UtenSpacing.s4,
+                  ),
+                  child: Text(
+                    l10n.securityScanHint,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -112,7 +129,11 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16, 0, UtenSpacing.s16, UtenSpacing.s24),
+                UtenSpacing.s16,
+                0,
+                UtenSpacing.s16,
+                UtenSpacing.s24,
+              ),
               child: SafeArea(
                 top: false,
                 child: UtenCard(
@@ -128,7 +149,10 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
                         ),
                       ),
                       const SizedBox(width: UtenSpacing.s8),
-                      UtenButton(onPressed: _manualGo, child: Text(l10n.commonConfirm)),
+                      UtenButton(
+                        onPressed: _manualGo,
+                        child: Text(l10n.commonConfirm),
+                      ),
                     ],
                   ),
                 ),

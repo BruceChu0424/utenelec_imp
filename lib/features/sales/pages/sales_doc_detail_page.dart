@@ -57,18 +57,33 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  /// 服务端已合并功能权限与负责人范围；不能仅凭前端权限常量开放对象写操作。
+  bool get _canEdit => _detail?.writable ?? false;
 
   /// 仓库驳回权限（V96，仅出货单）：PMC/销售可在草稿（待备货）态驳回。
   bool get _canReject =>
-      widget.docType == SalesDocType.shipment &&
-      ref.read(currentPermissionsProvider).contains(Perm.salesShipmentReject);
+      widget.docType == SalesDocType.shipment && (_detail?.canReject ?? false);
 
   /// 报价转订货权限（SOP §三1，仅报价单）：写订货单需 sales_order:edit。
   bool get _canConvert =>
       widget.docType == SalesDocType.quote &&
+      (_detail?.writable ?? false) &&
       ref.read(currentPermissionsProvider).contains(Perm.salesOrderEdit);
+
+  bool get _canChangePlanned => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.salesOrderChangePlanned);
+
+  bool _touchesPlanned(SalesDocItem item) =>
+      (item.plannedQty ?? 0) > 0 || (item.producedQty ?? 0) > 0;
+
+  bool get _orderHasPlanned => _detail?.items.any(_touchesPlanned) ?? false;
+
+  bool get _canChangeAnyOrderQty =>
+      _canChangePlanned ||
+      (_detail?.items.any((item) => !_touchesPlanned(item)) ?? false);
+
+  bool get _canCancelOrder => !_orderHasPlanned || _canChangePlanned;
 
   /// 报价转订货：已审报价一键生成订货草稿（行带入+价格留痕），转后跳订货编辑页。
   Future<void> _convertToOrder() async {
@@ -161,11 +176,17 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
   /// 订单取消（V100）：整单取消=释放预留+断排产联动；已发货订单后端会拒绝并提示改量。
-  Future<void> _cancel() async => _doAction(
-    '取消将释放全部预留并断开排产联动，确认取消订单？',
-    (repo) => repo.cancel(widget.id),
-    '已取消',
-  );
+  Future<void> _cancel() async {
+    if (!_canCancelOrder) {
+      context.appError('订单已涉及排产，需“改量/取消已排产订单”权限');
+      return;
+    }
+    await _doAction(
+      '取消将释放全部预留并断开排产联动，确认取消订单？',
+      (repo) => repo.cancel(widget.id),
+      '已取消',
+    );
+  }
 
   /// 订单改量（V100）：弹窗逐行改数量（增量重走预留/减量释放，已排产行需生产部权限）。
   Future<void> _changeQty() async {
@@ -191,6 +212,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           child: ListView(
             shrinkWrap: true,
             children: [
+              if (_orderHasPlanned && !_canChangePlanned)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+                  child: Text(
+                    '已排产/已生产行仅生产确认人员可改，当前为只读。',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
               for (final it in _detail!.items)
                 if (it.id != null)
                   Padding(
@@ -209,6 +238,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                           width: 100,
                           child: TextField(
                             controller: ctrls[it.id!],
+                            enabled: _canChangePlanned || !_touchesPlanned(it),
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -497,7 +527,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
         leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+          onPressed: () =>
+              popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
         actions: [
           UtenButton(
@@ -668,7 +699,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               value: (it) {
                 final base =
                     '${names.goods(it.goodsId)}（${names.color(it.colorId)} · ${names.unit(it.unitId)}）';
-                return (isOrder && it.chainStatus != null && it.chainStatus != 0)
+                return (isOrder &&
+                        it.chainStatus != null &&
+                        it.chainStatus != 0)
                     ? '$base · ${chainStatusLabel(it.chainStatus)}'
                     : base;
               },
@@ -763,7 +796,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// D3（李主管）：订单物料分析底表——BOM 展开 毛需求/库存/在途/净需求（自制件标记）。
   Future<void> _showMrpAnalysis() async {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => DraggableScrollableSheet(
@@ -876,7 +909,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           (ref.read(isSuperAdminProvider) ||
               ref
                   .read(currentPermissionsProvider)
-                  .contains('finance_report:view'))) {
+                  .contains(Perm.financeShipmentAudit))) {
         if (_detail!.financeAudit == 1) {
           children
             ..add(
@@ -931,8 +964,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           );
       }
       if (_canReject) {
-        if (children.isNotEmpty)
+        if (children.isNotEmpty) {
           children.add(const SizedBox(width: UtenSpacing.s8));
+        }
         children.add(
           UtenButton(
             type: UtenButtonType.danger,
@@ -988,16 +1022,19 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           ..add(const SizedBox(width: UtenSpacing.s8));
       }
       if (_cfg.type == SalesDocType.order && !_detail!.stopped) {
+        if (_canChangeAnyOrderQty) {
+          children
+            ..add(
+              UtenButton(
+                type: UtenButtonType.secondary,
+                icon: Icons.edit_note_outlined,
+                onPressed: _changeQty,
+                child: const Text('改量'),
+              ),
+            )
+            ..add(const SizedBox(width: UtenSpacing.s8));
+        }
         children
-          ..add(
-            UtenButton(
-              type: UtenButtonType.secondary,
-              icon: Icons.edit_note_outlined,
-              onPressed: _changeQty,
-              child: const Text('改量'),
-            ),
-          )
-          ..add(const SizedBox(width: UtenSpacing.s8))
           // D3（李主管）：收到确定订单后即物料分析（BOM 展开 毛/净需求）
           ..add(
             UtenButton(
@@ -1013,21 +1050,23 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             UtenButton(
               type: UtenButtonType.secondary,
               icon: Icons.precision_manufacturing_outlined,
-              onPressed: () =>
-                  showPlanProgressSheet(context, ref, widget.id),
+              onPressed: () => showPlanProgressSheet(context, ref, widget.id),
               child: const Text('排产进度'),
             ),
           )
-          ..add(const SizedBox(width: UtenSpacing.s8))
-          ..add(
-            UtenButton(
-              type: UtenButtonType.danger,
-              icon: Icons.cancel_outlined,
-              onPressed: _cancel,
-              child: const Text('取消订单'),
-            ),
-          )
           ..add(const SizedBox(width: UtenSpacing.s8));
+        if (_canCancelOrder) {
+          children
+            ..add(
+              UtenButton(
+                type: UtenButtonType.danger,
+                icon: Icons.cancel_outlined,
+                onPressed: _cancel,
+                child: const Text('取消订单'),
+              ),
+            )
+            ..add(const SizedBox(width: UtenSpacing.s8));
+        }
       }
       children.add(
         UtenButton(

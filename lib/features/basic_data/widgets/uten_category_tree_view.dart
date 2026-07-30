@@ -127,7 +127,9 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
         widget.initiallyCollapsedNames.any((k) => n.name.contains(k));
     void walk(List<T> nodes, int depth) {
       for (final n in nodes) {
-        if (n.hasChildren && depth < widget.initiallyExpandDepth && !collapsed(n)) {
+        if (n.hasChildren &&
+            depth < widget.initiallyExpandDepth &&
+            !collapsed(n)) {
           out.add(n.id);
         }
         walk(n.children, depth + 1);
@@ -236,9 +238,7 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  node.code.isEmpty
-                      ? node.name
-                      : '${node.name}（${node.code}）',
+                  node.code.isEmpty ? node.name : '${node.name}（${node.code}）',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,
@@ -315,7 +315,8 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
                   padding: const EdgeInsets.all(24),
                   child: Center(
                     child: Text(
-                      widget.emptySearchText ?? '未找到匹配「$_query」的分类', // TODO(l10n): 补 arb
+                      widget.emptySearchText ??
+                          '未找到匹配「$_query」的分类', // TODO(l10n): 补 arb
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),

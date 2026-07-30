@@ -16,12 +16,13 @@
 #   powershell -ExecutionPolicy Bypass -File export_legacy.ps1 MouldCategory
 #   powershell -ExecutionPolicy Bypass -File export_legacy.ps1 MouldData
 #   powershell -ExecutionPolicy Bypass -File export_legacy.ps1 GoodsCategory
+#   powershell -ExecutionPolicy Bypass -File export_legacy.ps1 GoodsData
 #   powershell -ExecutionPolicy Bypass -File export_legacy.ps1 All
 #
 # Output lands in ./data/ (next to goods_categories.csv / goods.csv).
 # =====================================================================
 param(
-    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'GoodsBom', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'HrWorkers', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
+    [Parameter(Position = 0)] [ValidateSet('MouldCategory', 'MouldData', 'GoodsCategory', 'GoodsData', 'GoodsBom', 'ClientCategory', 'ClientData', 'SupplierCategory', 'SupplierData', 'ColorData', 'UnitData', 'CurrencyData', 'WarehouseData', 'PurchaseApplication', 'PurchaseOrder', 'PurchaseReceipt', 'PurchaseReturn', 'WarehouseDocs', 'SalesQuote', 'SalesOrder', 'SalesShipment', 'SalesOtherShipment', 'SalesReturn', 'SalesDocs', 'SubcontractData', 'ProductionData', 'HrWorkers', 'M_Acc', 'M_Style', 'M_in', 'M_out', 'M_Get', 'M_Paid', 'M_DPaid', 'M_DPaidItem', 'M_OGet', 'M_OGetItem', 'M_Bank', 'M_AllCheck', 'All')]
     [string]$Target = 'All'
 )
 
@@ -31,7 +32,12 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dataDir = Join-Path $here 'data'
 if (-not (Test-Path $dataDir)) { New-Item -ItemType Directory -Path $dataDir | Out-Null }
 
-$cs = 'Server=(localdb)\MSSQLLocalDB;Database=YTDQ_2023;Integrated Security=true;TrustServerCertificate=true;'
+$cs = if ([string]::IsNullOrWhiteSpace($env:LEGACY_DB_CONNECTION_STRING)) {
+    'Server=(localdb)\MSSQLLocalDB;Database=YTDQ_2023;Integrated Security=true;TrustServerCertificate=true;'
+} else {
+    $env:LEGACY_DB_CONNECTION_STRING
+}
+$script:exportResults = @()
 
 function Export-Query {
     param(
@@ -52,6 +58,7 @@ function Export-Query {
         try {
             $headers = for ($i = 0; $i -lt $r.FieldCount; $i++) { $r.GetName($i) }
             $w.WriteLine(($headers -join $Delimiter))
+            $rowCount = 0
             while ($r.Read()) {
                 $vals = for ($i = 0; $i -lt $r.FieldCount; $i++) {
                     if ($r.IsDBNull($i)) {
@@ -69,6 +76,7 @@ function Export-Query {
                     }
                 }
                 $w.WriteLine(($vals -join $Delimiter))
+                $rowCount++
             }
         }
         finally {
@@ -76,7 +84,15 @@ function Export-Query {
         }
     }
     finally { $conn.Close() }
-    Write-Host ('OK  ' + $OutPath + '  (' + (Get-Item $OutPath).Length + ' bytes)')
+    $file = Get-Item $OutPath
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $OutPath).Hash.ToLowerInvariant()
+    $script:exportResults += [pscustomobject]@{
+        file = $file.Name
+        rows = $rowCount
+        bytes = $file.Length
+        sha256 = $hash
+    }
+    Write-Host ('OK  ' + $OutPath + '  (' + $rowCount + ' rows, ' + $file.Length + ' bytes)')
 }
 
 # --- SQL as single-line single-quoted strings (no here-strings, no '' literals;
@@ -90,6 +106,10 @@ $mouldDataSql = 'SELECT ID AS legacy_id, ISNULL(ParentID,0) AS parent_legacy, Mo
 
 # Goods category tree: ItemclassID=1 (reconciliation vs goods_categories.csv).
 $goodsCatSql = 'SELECT ItemID AS legacy_id, ISNULL(ParentID,0) AS parent_legacy, Number AS code, Name AS name FROM SystemItem WHERE ItemclassID=1 ORDER BY ItemID'
+
+# Goods master: B_Goods. Column order MUST match migrate_goods_data.sql goods_stage.
+# Binary image columns are intentionally excluded; V32 keeps bytea placeholders for a separate image import.
+$goodsDataSql = 'SELECT ID AS legacy_id, ANumber AS code, Goods_Name AS name, Short_Name AS short_name, Number AS model, Standard AS spec, ISNULL(ParentID,0) AS parent_legacy, UnitID AS unit_legacy_id, MColorID AS color_legacy_id, MouldID AS mould_legacy_id, ClientID AS client_legacy_id, VendID AS vend_legacy_id, VendID2 AS vend2_legacy_id, AssTeamID AS assteam_legacy_id, VeilID AS veil_legacy_id, ApproverID AS approver_legacy_id, MakeID AS make_legacy_id, Price AS price, APrice AS a_price, Price2 AS price2, Max_QTY AS max_qty, Min_QTY AS min_qty, InitStock AS init_stock, InitCount AS init_count, InitWeight AS init_weight, KQTY AS kqty, KQTY2 AS kqty2, Pieces AS pieces, LostRate AS lost_rate, CAP AS cap, Material AS material, Thickness AS thickness, LStyle AS l_style, ZWeight AS z_weight, MWeight AS m_weight, Pack AS pack, BPack AS b_pack, Paper AS paper, Series AS series, ChartID AS chart_id, Lights AS lights, StockPlace AS stock_place, CNumber AS c_number, VNumber AS v_number, BSTest AS bs_test, [Require] AS require_remark, SourceE AS source_e, WorkE AS work_e, LacquerE AS lacquer_e, IncidentalE AS incidental_e, PlatingE AS plating_e, CasingE AS casing_e, ManageE AS manage_e, PolishE AS polish_e, ElectricE AS electric_e, MachiningE AS machining_e, LostE AS lost_e, RentE AS rent_e, MakeE AS make_e, WorkRate AS work_rate, MakeRate AS make_rate, RentRate AS rent_rate, Total AS total, CTotal AS c_total, GTotal AS g_total, BomStatus AS bom_status, [Status] AS status, AppStatus AS app_status, AppStatus2 AS app_status2, GStyle AS g_style, ck AS ck, zk AS zk FROM B_Goods ORDER BY ID'
 
 # Goods assembly BOM: B_BomItem (218k rows). BillID=parent goods (B_Goods.ID), GoodsID=component goods.
 # Col order MUST match migrate_goods_bom.sql bom_stage.
@@ -271,6 +291,7 @@ switch ($Target) {
     'MouldCategory'   { Export-Query -Sql $mouldCatSql    -OutPath (Join-Path $dataDir 'mould_categories.csv') }
     'MouldData'       { Export-Query -Sql $mouldDataSql   -OutPath (Join-Path $dataDir 'mould.csv') }
     'GoodsCategory'   { Export-Query -Sql $goodsCatSql    -OutPath (Join-Path $dataDir 'goods_categories.csv') }
+    'GoodsData'       { Export-Query -Sql $goodsDataSql   -OutPath (Join-Path $dataDir 'goods.csv') }
     'GoodsBom'        { Export-Query -Sql $goodsBomSql    -OutPath (Join-Path $dataDir 'goods_bom.csv') }
     'ClientCategory'  { Export-Query -Sql $clientCatSql   -OutPath (Join-Path $dataDir 'client_categories.csv') }
     'ClientData'      { Export-Query -Sql $clientDataSql  -OutPath (Join-Path $dataDir 'client.csv') }
@@ -407,6 +428,7 @@ switch ($Target) {
     'M_AllCheck'   { Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv') }
     'All' {
         Export-Query -Sql $goodsCatSql     -OutPath (Join-Path $dataDir 'goods_categories.csv')
+        Export-Query -Sql $goodsDataSql    -OutPath (Join-Path $dataDir 'goods.csv')
         Export-Query -Sql $goodsBomSql     -OutPath (Join-Path $dataDir 'goods_bom.csv')
         Export-Query -Sql $mouldCatSql     -OutPath (Join-Path $dataDir 'mould_categories.csv')
         Export-Query -Sql $mouldDataSql    -OutPath (Join-Path $dataDir 'mould.csv')
@@ -506,3 +528,38 @@ switch ($Target) {
         Export-Query -Sql $mAllcheckSql   -OutPath (Join-Path $dataDir 'm_allcheck.csv')
     }
 }
+
+# A successful export always writes a machine-readable fingerprint. The
+# connection string itself is never persisted because it may contain secrets.
+$csBuilder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder($cs)
+$repoRoot = (Resolve-Path (Join-Path $here '..\..')).Path
+$repositoryCommit = (& git -C $repoRoot rev-parse HEAD 2>$null)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repositoryCommit)) {
+    $repositoryCommit = 'unknown'
+}
+# sha256sum-compatible sidecar is written first so the JSON manifest can bind
+# itself to the exact checksum list. This prevents a valid JSON file from being
+# paired with CSV hashes from a different export.
+$checksumPath = Join-Path $dataDir 'export_manifest.sha256'
+$checksumLines = $script:exportResults | ForEach-Object {
+    $_.sha256 + ' *' + $_.file
+}
+$checksumLines | Set-Content -LiteralPath $checksumPath -Encoding ASCII
+$checksumManifestSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $checksumPath).Hash.ToLowerInvariant()
+Write-Host ('OK  ' + $checksumPath + '  (migration input gate)')
+
+$manifest = [ordered]@{
+    formatVersion = 2
+    target = $Target
+    exportedAtUtc = [DateTime]::UtcNow.ToString('o')
+    sourceServer = $csBuilder.DataSource
+    sourceDatabase = $csBuilder.InitialCatalog
+    consistency = 'offline-backup-required'
+    repositoryCommit = $repositoryCommit.Trim()
+    exportScriptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath).Hash.ToLowerInvariant()
+    checksumManifestSha256 = $checksumManifestSha256
+    files = $script:exportResults
+}
+$manifestPath = Join-Path $dataDir 'export_manifest.json'
+$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+Write-Host ('OK  ' + $manifestPath + '  (export fingerprint; no credentials)')

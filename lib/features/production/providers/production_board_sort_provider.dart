@@ -9,7 +9,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/uten_page_prefs_notifier.dart';
 
 class ProductionBoardSortNotifier extends UtenPagePrefsNotifier<String> {
-  static const values = {'billDate', 'billDateDesc', 'deliveryDate', 'progress'};
+  static const values = {
+    'billDate',
+    'billDateDesc',
+    'deliveryDate',
+    'progress',
+  };
 
   @override
   String get prefKey => 'productionBoard.sort';
@@ -28,4 +33,5 @@ class ProductionBoardSortNotifier extends UtenPagePrefsNotifier<String> {
 /// 看板排序方式（进行中/已完成两 Tab 共用一份偏好）。
 final productionBoardSortProvider =
     NotifierProvider<ProductionBoardSortNotifier, String>(
-        ProductionBoardSortNotifier.new);
+      ProductionBoardSortNotifier.new,
+    );

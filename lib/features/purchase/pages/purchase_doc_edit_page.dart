@@ -26,6 +26,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../config/purchase_doc_config.dart';
@@ -44,7 +45,8 @@ class PurchaseDocEditPage extends ConsumerStatefulWidget {
   final String? id; // null=新建
 
   @override
-  ConsumerState<PurchaseDocEditPage> createState() => _PurchaseDocEditPageState();
+  ConsumerState<PurchaseDocEditPage> createState() =>
+      _PurchaseDocEditPageState();
 }
 
 class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
@@ -52,7 +54,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
-  DateTime _billDate = DateTime.now();
+  DateTime _billDate = ChinaDateTime.today();
   String? _supplierId;
   String? _warehouseId;
   String? _currencyId;
@@ -121,7 +123,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         final d = await ref
             .read(purchaseRepositoryProvider(widget.docType))
             .detail(widget.id!);
-        final goodsIds = d.items.map((e) => e.goodsId).whereType<String>().toSet();
+        final goodsIds = d.items
+            .map((e) => e.goodsId)
+            .whereType<String>()
+            .toSet();
         await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
         await _preloadEmployees([
           d.applicantId,
@@ -154,9 +159,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                 ? null
                 : GoodsOption(
                     id: it.goodsId!,
-                    name: ref.read(masterNameServiceProvider).goods(it.goodsId))
+                    name: ref.read(masterNameServiceProvider).goods(it.goodsId),
+                  )
             // 优先级与 _linkItemKey 一致（receipt > order > request），保证 round-trip。
-            ..upstreamItemId = it.receiptItemId ?? it.orderItemId ?? it.requestItemId
+            ..upstreamItemId =
+                it.receiptItemId ?? it.orderItemId ?? it.requestItemId
             ..colorId = it.colorId
             ..unitId = it.unitId;
           row.qty.text = it.qty?.toString() ?? '';
@@ -182,18 +189,20 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
     if (uniq.isEmpty) return;
     final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(uniq.map((id) async {
-      try {
-        final p = await repo.getById(id);
-        _empCache[id] = UtenEmployeePickerItem(
-          id: p.id,
-          name: p.fullName ?? '',
-          departmentName: p.departmentName,
-        );
-      } catch (_) {
-        // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-      }
-    }));
+    await Future.wait(
+      uniq.map((id) async {
+        try {
+          final p = await repo.getById(id);
+          _empCache[id] = UtenEmployeePickerItem(
+            id: p.id,
+            name: p.fullName ?? '',
+            departmentName: p.departmentName,
+          );
+        } catch (_) {
+          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
+        }
+      }),
+    );
   }
 
   Future<void> _pickGoods(PurchaseGridRow row) async {
@@ -207,19 +216,31 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
-  /// 表头已选供应商 → 面板默认按该供应商筛选；表头未选 → 引入后以上游单据供应商回填。
+  /// 表头已选供应商 → 面板锁定该供应商；表头未选 → 引入后以上游单据供应商回填。
   Future<void> _importFromUpstream() async {
     // 上游为申请单（仅 linkToRequestItem）时无供应商概念，不锁定也不回填。
     final upstreamIsRequest =
-        _cfg.linkToRequestItem && !_cfg.linkToOrderItem && !_cfg.linkToReceiptItem;
+        _cfg.linkToRequestItem &&
+        !_cfg.linkToOrderItem &&
+        !_cfg.linkToReceiptItem;
     final result = await showDocLinkPicker(
       context,
       ref,
       _cfg,
       initialSupplierId: upstreamIsRequest ? null : _supplierId,
     );
+    if (!mounted) return;
     if (result == null || result.items.isEmpty) return;
-    final goodsIds = result.items.map((e) => e.goodsId).where((id) => id.isNotEmpty).toSet();
+    if (!upstreamIsRequest &&
+        _supplierId != null &&
+        result.supplierId != _supplierId) {
+      context.appError('上游单据供应商与表头供应商不一致，已阻止引入');
+      return;
+    }
+    final goodsIds = result.items
+        .map((e) => e.goodsId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
     if (goodsIds.isNotEmpty) {
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
     }
@@ -259,9 +280,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
-        if (price != null) 'price': price,
-        if (price != null) 'amountOriginal': qty * price,
-        if (price != null) 'amountLocal': qty * price,
+        if (price case final price?) ...{
+          'price': price,
+          'amountOriginal': qty * price,
+          'amountLocal': qty * price,
+        },
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
@@ -275,8 +298,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       if (_warehouseId != null) 'warehouseId': _warehouseId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
-      if (_cfg.hasApplicant && _applicantId != null) 'applicantId': _applicantId,
-      if (_cfg.hasPurchaser && _purchaserId != null) 'purchaserId': _purchaserId,
+      if (_cfg.hasApplicant && _applicantId != null)
+        'applicantId': _applicantId,
+      if (_cfg.hasPurchaser && _purchaserId != null)
+        'purchaserId': _purchaserId,
       if (_cfg.hasSender && _senderId != null) 'senderId': _senderId,
       if (_cfg.hasReceiver && _receiverId != null) 'receiverId': _receiverId,
       if (_cfg.hasNeedDate && _needDate != null) 'needDate': _fmt(_needDate!),
@@ -321,20 +346,23 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     final names = ref.watch(masterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-          leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: RouteName.purchase),
+        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        leading: UtenBackButton(
+          onPressed: () =>
+              popOrBackTo(context, defaultPath: RouteName.purchase),
         ),
-          actions: _cfg.skipListOnCreate
-              ? [
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.history_rounded,
-                    onPressed: () => context.push('/purchase/${_cfg.type.pathSegment}'),
-                    child: const Text('查看历史'),
-                  ),
-                ]
-              : null),
+        actions: _cfg.skipListOnCreate
+            ? [
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  icon: Icons.history_rounded,
+                  onPressed: () =>
+                      context.push('/purchase/${_cfg.type.pathSegment}'),
+                  child: const Text('查看历史'),
+                ),
+              ]
+            : null,
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -343,125 +371,165 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                   controller: _scrollCtl,
                   thumbVisibility: true,
                   child: ListView(
-                  controller: _scrollCtl,
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            UtenFormGrid(children: [
-                              // 单据号：系统自动生成，只读显示。
-                              TextFormField(
-                                readOnly: true,
-                                controller: _billNo,
-                                decoration: InputDecoration(
-                                  labelText: '单据号',
-                                  hintText:
-                                      _billNo.text.isEmpty ? '保存后自动生成' : null,
-                                  filled: _billNo.text.isEmpty,
-                                  suffixIcon: _billNo.text.isEmpty
-                                      ? const Icon(Icons.autorenew_outlined, size: 18)
-                                      : const Icon(Icons.lock_outline, size: 16),
-                                ),
+                    controller: _scrollCtl,
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              UtenFormGrid(
+                                children: [
+                                  // 单据号：系统自动生成，只读显示。
+                                  TextFormField(
+                                    readOnly: true,
+                                    controller: _billNo,
+                                    decoration: InputDecoration(
+                                      labelText: '单据号',
+                                      hintText: _billNo.text.isEmpty
+                                          ? '保存后自动生成'
+                                          : null,
+                                      filled: _billNo.text.isEmpty,
+                                      suffixIcon: _billNo.text.isEmpty
+                                          ? const Icon(
+                                              Icons.autorenew_outlined,
+                                              size: 18,
+                                            )
+                                          : const Icon(
+                                              Icons.lock_outline,
+                                              size: 16,
+                                            ),
+                                    ),
+                                  ),
+                                  // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                  ...utenMakerAuditCells(
+                                    ref,
+                                    makerName: _makerName,
+                                    createdAt: _createdAt,
+                                  ),
+                                  UtenDateField(
+                                    label: '单据日期',
+                                    required: true,
+                                    value: _billDate,
+                                    onChanged: (d) =>
+                                        setState(() => _billDate = d),
+                                  ),
+                                  if (_cfg.hasSupplier)
+                                    _dropdown(
+                                      '供应商',
+                                      _supplierId,
+                                      names.supplierEntries,
+                                      (v) => setState(() => _supplierId = v),
+                                      required: _cfg.supplierRequired,
+                                    ),
+                                  _dropdown(
+                                    '仓库',
+                                    _warehouseId,
+                                    names.warehouseEntries,
+                                    (v) => setState(() => _warehouseId = v),
+                                  ),
+                                  if (_cfg.hasCurrency) ...[
+                                    _dropdown(
+                                      '币种',
+                                      _currencyId,
+                                      names.currencyEntries,
+                                      (v) => setState(() => _currencyId = v),
+                                    ),
+                                    TextField(
+                                      controller: _rate,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '汇率',
+                                      ),
+                                    ),
+                                  ],
+                                  // 人员字段（按 config 显隐）
+                                  if (_cfg.hasApplicant)
+                                    _employeePicker(
+                                      label: '申请人',
+                                      currentId: _applicantId,
+                                      onChanged: (id) =>
+                                          setState(() => _applicantId = id),
+                                    ),
+                                  if (_cfg.hasPurchaser)
+                                    _employeePicker(
+                                      label: '采购员',
+                                      currentId: _purchaserId,
+                                      onChanged: (id) =>
+                                          setState(() => _purchaserId = id),
+                                    ),
+                                  if (_cfg.hasSender)
+                                    _employeePicker(
+                                      label: '交货人',
+                                      currentId: _senderId,
+                                      onChanged: (id) =>
+                                          setState(() => _senderId = id),
+                                    ),
+                                  if (_cfg.hasReceiver)
+                                    _employeePicker(
+                                      label: '收货人',
+                                      currentId: _receiverId,
+                                      onChanged: (id) =>
+                                          setState(() => _receiverId = id),
+                                    ),
+                                  // 日期字段（按 config 显隐，统一 UtenDateField）
+                                  if (_cfg.hasNeedDate)
+                                    UtenDateField(
+                                      label: '需求日期',
+                                      value: _needDate,
+                                      onChanged: (d) =>
+                                          setState(() => _needDate = d),
+                                    ),
+                                  if (_cfg.hasDeliverDate)
+                                    UtenDateField(
+                                      label: '交货日期',
+                                      value: _deliverDate,
+                                      onChanged: (d) =>
+                                          setState(() => _deliverDate = d),
+                                    ),
+                                ],
                               ),
-                              // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                              ...utenMakerAuditCells(ref,
-                                  makerName: _makerName, createdAt: _createdAt),
-                              UtenDateField(
-                                label: '单据日期',
-                                required: true,
-                                value: _billDate,
-                                onChanged: (d) => setState(() => _billDate = d),
+                              const SizedBox(height: UtenSpacing.s12),
+                              TextField(
+                                controller: _remark,
+                                decoration: const InputDecoration(
+                                  labelText: '备注',
+                                ),
+                                maxLines: 2,
                               ),
-                              if (_cfg.hasSupplier)
-                                _dropdown('供应商', _supplierId, names.supplierEntries,
-                                    (v) => setState(() => _supplierId = v),
-                                    required: _cfg.supplierRequired),
-                              _dropdown('仓库', _warehouseId, names.warehouseEntries,
-                                  (v) => setState(() => _warehouseId = v)),
-                              if (_cfg.hasCurrency) ...[
-                                _dropdown('币种', _currencyId, names.currencyEntries,
-                                    (v) => setState(() => _currencyId = v)),
-                                TextField(
-                                  controller: _rate,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: const InputDecoration(labelText: '汇率'),
-                                ),
-                              ],
-                              // 人员字段（按 config 显隐）
-                              if (_cfg.hasApplicant)
-                                _employeePicker(
-                                  label: '申请人',
-                                  currentId: _applicantId,
-                                  onChanged: (id) => setState(() => _applicantId = id),
-                                ),
-                              if (_cfg.hasPurchaser)
-                                _employeePicker(
-                                  label: '采购员',
-                                  currentId: _purchaserId,
-                                  onChanged: (id) => setState(() => _purchaserId = id),
-                                ),
-                              if (_cfg.hasSender)
-                                _employeePicker(
-                                  label: '交货人',
-                                  currentId: _senderId,
-                                  onChanged: (id) => setState(() => _senderId = id),
-                                ),
-                              if (_cfg.hasReceiver)
-                                _employeePicker(
-                                  label: '收货人',
-                                  currentId: _receiverId,
-                                  onChanged: (id) => setState(() => _receiverId = id),
-                                ),
-                              // 日期字段（按 config 显隐，统一 UtenDateField）
-                              if (_cfg.hasNeedDate)
-                                UtenDateField(
-                                  label: '需求日期',
-                                  value: _needDate,
-                                  onChanged: (d) => setState(() => _needDate = d),
-                                ),
-                              if (_cfg.hasDeliverDate)
-                                UtenDateField(
-                                  label: '交货日期',
-                                  value: _deliverDate,
-                                  onChanged: (d) => setState(() => _deliverDate = d),
-                                ),
-                            ]),
-                            const SizedBox(height: UtenSpacing.s12),
-                            TextField(
-                              controller: _remark,
-                              decoration: const InputDecoration(labelText: '备注'),
-                              maxLines: 2,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Row(
-                      children: [
-                        Text('明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        if (_cfg.hasUpstreamLink)
-                          UtenImportButton(
-                            label: '从上游引入',
-                            onPressed: _importFromUpstream,
+                      const SizedBox(height: UtenSpacing.s12),
+                      Row(
+                        children: [
+                          Text(
+                            '明细 (${_grid.length})',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                      ],
-                    ),
-                    UtenEditableGrid<PurchaseGridRow>(
-                      controller: _grid,
-                      columns: purchaseGridColumns(_pickGoods),
-                      createBlankRow: () => PurchaseGridRow(),
-                    ),
-                  ],
-                ),
+                          const Spacer(),
+                          if (_cfg.hasUpstreamLink)
+                            UtenImportButton(
+                              label: '从上游引入',
+                              onPressed: _importFromUpstream,
+                            ),
+                        ],
+                      ),
+                      UtenEditableGrid<PurchaseGridRow>(
+                        controller: _grid,
+                        columns: purchaseGridColumns(_pickGoods),
+                        createBlankRow: () => PurchaseGridRow(),
+                      ),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -469,7 +537,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         child: Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+            border: Border(
+              top: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
@@ -479,8 +549,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                 valueListenable: _grid.totalListenable,
                 builder: (_, total, _) => Text(
                   '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s16),
@@ -533,15 +604,20 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     );
   }
 
-  Widget _dropdown(String label, String? value, Map<String, String> entries,
-      ValueChanged<String?> onChanged,
-      {bool required = false}) {
+  Widget _dropdown(
+    String label,
+    String? value,
+    Map<String, String> entries,
+    ValueChanged<String?> onChanged, {
+    bool required = false,
+  }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
       items: [
-        for (final e in entries.entries) UtenDropdownItem(value: e.key, label: e.value),
+        for (final e in entries.entries)
+          UtenDropdownItem(value: e.key, label: e.value),
         if (value != null && value.isNotEmpty && !entries.containsKey(value))
           UtenDropdownItem(value: value, label: value),
       ],

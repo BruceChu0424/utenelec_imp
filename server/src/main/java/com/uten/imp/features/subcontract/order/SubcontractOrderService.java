@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.subcontract.order.dto.OrderCostItemDto;
 import com.uten.imp.features.subcontract.order.dto.OrderDetail;
 import com.uten.imp.features.subcontract.order.dto.OrderItemDto;
@@ -60,6 +61,7 @@ public class SubcontractOrderService {
     private final SubcontractOrderRepository orderRepo;
     private final SubcontractOrderItemRepository itemRepo;
     private final SubcontractOrderCostItemRepository costItemRepo;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
@@ -162,6 +164,16 @@ public class SubcontractOrderService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        sourceIntegrity.validateSubcontractOrder(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> new LinkedDocumentIntegrityService.QuantityLinkedLine(
+                                it.getApplicationItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId(),
+                                it.getQty()))
+                        .toList());
         for (SubcontractOrderItem it : items) {
             if (it.getApplicationItemId() != null) {
                 em.createNativeQuery(
@@ -188,6 +200,17 @@ public class SubcontractOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                positive(it.getReceivedQty())
+                        || positive(it.getReturnedQty())
+                        || positive(it.getIssuedQty())
+                        || positive(it.getMaterialReturnedQty()))) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    "委外订货已有进仓/退货/发料/退料记录，请先红冲下游单据");
+        }
+        sourceIntegrity.lockSubcontractApplicationItemsForReversal(
+                items.stream().map(SubcontractOrderItem::getApplicationItemId).toList());
         for (SubcontractOrderItem it : items) {
             if (it.getApplicationItemId() != null) {
                 em.createNativeQuery(
@@ -201,6 +224,10 @@ public class SubcontractOrderService {
         r.setStatus(STATUS_REVERSED);
         orderRepo.save(r);
         return detail(id);
+    }
+
+    private static boolean positive(BigDecimal value) {
+        return value != null && value.signum() > 0;
     }
 
     /** 重算申请单结案：所有明细 qty - ordered_qty ≤ 0 → is_closed=true。 */

@@ -57,13 +57,14 @@ class ProductionPlanFilter {
   final String? dateTo;
 
   Map<String, dynamic> toQuery() => <String, dynamic>{
-        if (keyword != null && keyword!.trim().isNotEmpty) 'keyword': keyword!.trim(),
-        if (departmentId != null) 'departmentId': departmentId,
-        if (status != null) 'status': status,
-        if (closed != null) 'closed': closed,
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
-      };
+    if (keyword != null && keyword!.trim().isNotEmpty)
+      'keyword': keyword!.trim(),
+    if (departmentId != null) 'departmentId': departmentId,
+    if (status != null) 'status': status,
+    if (closed != null) 'closed': closed,
+    if (dateFrom != null) 'dateFrom': dateFrom,
+    if (dateTo != null) 'dateTo': dateTo,
+  };
 }
 
 class ProductionPlanRepository {
@@ -98,7 +99,10 @@ class ProductionPlanRepository {
     return ProductionPlanDetail.fromJson(json);
   }
 
-  Future<ProductionPlanDetail> update(String id, Map<String, dynamic> body) async {
+  Future<ProductionPlanDetail> update(
+    String id,
+    Map<String, dynamic> body,
+  ) async {
     final json = await api.put('/production/plans/$id', body: body); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);
   }
@@ -129,16 +133,19 @@ class ProductionPlanRepository {
     String? dateFrom,
     String? dateTo,
   }) async {
-    final json = await api.get('/production/plans/progress', query: {
-      'closed': closed,
-      'sort': sort,
-      'page': page,
-      'size': size,
-      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-      if (workshop.isNotEmpty) 'workshop': workshop,
-      'dateFrom': ?dateFrom,
-      'dateTo': ?dateTo,
-    }); // ENDPOINT
+    final json = await api.get(
+      '/production/plans/progress',
+      query: {
+        'closed': closed,
+        'sort': sort,
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (workshop.isNotEmpty) 'workshop': workshop,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    ); // ENDPOINT
     return PagedResult.fromJson(json, PlanProgressRow.fromJson);
   }
 
@@ -150,19 +157,24 @@ class ProductionPlanRepository {
     String? dateFrom,
     String? dateTo,
   }) async {
-    return api.get('/production/plans/progress/summary', query: {
-      'closed': closed,
-      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-      if (workshop.isNotEmpty) 'workshop': workshop,
-      'dateFrom': ?dateFrom,
-      'dateTo': ?dateTo,
-    }); // ENDPOINT
+    return api.get(
+      '/production/plans/progress/summary',
+      query: {
+        'closed': closed,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (workshop.isNotEmpty) 'workshop': workshop,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    ); // ENDPOINT
   }
 
   /// 进度看板车间筛选选项（去重车间名，不受当前筛选影响）。
   Future<List<String>> planProgressWorkshops({bool closed = false}) async {
-    final list = await api.getList('/production/plans/progress/workshops',
-        query: {'closed': closed}); // ENDPOINT
+    final list = await api.getList(
+      '/production/plans/progress/workshops',
+      query: {'closed': closed},
+    ); // ENDPOINT
     return [
       for (final e in list)
         if (e['name'] is String) e['name'] as String,
@@ -170,12 +182,15 @@ class ProductionPlanRepository {
   }
 
   /// 看板标记（V127）：置顶 / 重要；传 null 的字段保持不变。
-  Future<void> updatePlanFlags(String id,
-      {bool? pinned, bool? important}) async {
-    await api.post('/production/plans/$id/flags', body: {
-      'pinned': ?pinned,
-      'important': ?important,
-    }); // ENDPOINT
+  Future<void> updatePlanFlags(
+    String id, {
+    bool? pinned,
+    bool? important,
+  }) async {
+    await api.post(
+      '/production/plans/$id/flags',
+      body: {'pinned': ?pinned, 'important': ?important},
+    ); // ENDPOINT
   }
 
   // ───────────────────────── MRP-lite（物料需求 → 采购申请） ─────────────────────────
@@ -190,52 +205,70 @@ class ProductionPlanRepository {
   /// D3：strategy=gross 按毛需求开单（不扣库存/在途）。
   Future<MrpGenerateResult> mrpGenerate(String id, {String? strategy}) async {
     final json = await api.post(
-        '/production/plans/$id/mrp/generate${strategy != null ? '?strategy=$strategy' : ''}'); // ENDPOINT
+      '/production/plans/$id/mrp/generate${strategy != null ? '?strategy=$strategy' : ''}',
+    ); // ENDPOINT
     return MrpGenerateResult.fromJson(json);
   }
 
   /// D3 订单物料分析：已审销售订货单直接 BOM 展开。
   Future<List<MrpRow>> mrpOrderPreview(String orderId) async {
-    final list = await api.getList('/production/mrp/order-preview',
-        query: {'orderId': orderId}); // ENDPOINT
+    final list = await api.getList(
+      '/production/mrp/order-preview',
+      query: {'orderId': orderId},
+    ); // ENDPOINT
     return list.map(MrpRow.fromJson).toList();
   }
 
   /// 按 BOM 毛需求生成生产领料单（草稿，需指定仓库）。
-  Future<MrpGenerateResult> mrpGenerateDraw(String id, String warehouseId) async {
-    final json = await api.post('/production/plans/$id/mrp/generate-draw',
-        body: {'warehouseId': warehouseId}); // ENDPOINT
+  Future<MrpGenerateResult> mrpGenerateDraw(
+    String id,
+    String warehouseId,
+  ) async {
+    final json = await api.post(
+      '/production/plans/$id/mrp/generate-draw',
+      body: {'warehouseId': warehouseId},
+    ); // ENDPOINT
     return MrpGenerateResult.fromJson(json);
   }
 
   /// 按计划明细（排产量−已入库量）生成成品入库单（草稿，需指定仓库）。
-  Future<MrpGenerateResult> mrpGenerateFinishedIn(String id, String warehouseId) async {
-    final json = await api.post('/production/plans/$id/mrp/generate-finished-in',
-        body: {'warehouseId': warehouseId}); // ENDPOINT
+  Future<MrpGenerateResult> mrpGenerateFinishedIn(
+    String id,
+    String warehouseId,
+  ) async {
+    final json = await api.post(
+      '/production/plans/$id/mrp/generate-finished-in',
+      body: {'warehouseId': warehouseId},
+    ); // ENDPOINT
     return MrpGenerateResult.fromJson(json);
   }
 
   /// 自制件按净需求生成下层生产计划（草稿）；多层 BOM 可在子计划上继续生成。
   Future<MrpGenerateResult> mrpGenerateSubplan(String id) async {
-    final json =
-        await api.post('/production/plans/$id/mrp/generate-subplan'); // ENDPOINT
+    final json = await api.post(
+      '/production/plans/$id/mrp/generate-subplan',
+    ); // ENDPOINT
     return MrpGenerateResult.fromJson(json);
   }
 
   /// 已生成的自制件子计划溯源（父计划 MRP 面板展示，可跳子计划详情）。
   Future<List<MrpSubplanRef>> mrpSubplans(String id) async {
-    final list =
-        await api.getList('/production/plans/$id/mrp/subplans'); // ENDPOINT
+    final list = await api.getList(
+      '/production/plans/$id/mrp/subplans',
+    ); // ENDPOINT
     return list.map(MrpSubplanRef.fromJson).toList();
   }
 
   /// 按车间拆分生成子计划：自选自制件行+数量+车间，按车间分组各生成一张草稿。
   /// body items: [{goodsId, colorId?, unitId?, qty, departmentId?, workshopName?}]
   Future<List<SubplanCreated>> mrpGenerateSubplans(
-      String id, List<Map<String, dynamic>> items) async {
+    String id,
+    List<Map<String, dynamic>> items,
+  ) async {
     final list = await api.postList(
-        '/production/plans/$id/mrp/generate-subplans', // ENDPOINT
-        body: {'items': items});
+      '/production/plans/$id/mrp/generate-subplans', // ENDPOINT
+      body: {'items': items},
+    );
     return list.map(SubplanCreated.fromJson).toList();
   }
 
@@ -249,19 +282,24 @@ class ProductionPlanRepository {
     String? dateFrom,
     String? dateTo,
   }) async {
-    final json = await api.get('/production/schedule/pending', query: {
-      'page': page,
-      'size': size,
-      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-      'dateFrom': ?dateFrom,
-      'dateTo': ?dateTo,
-    }); // ENDPOINT
+    final json = await api.get(
+      '/production/schedule/pending',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    ); // ENDPOINT
     return PagedResult.fromJson(json, SchedulePendingRow.fromJson);
   }
 
   /// 待排产计数（生产部工作台徽标）：{'count': n, 'urgent': m, 'overdue': k}。
   Future<Map<String, int>> schedulePendingCount() async {
-    final json = await api.get('/production/schedule/pending-count'); // ENDPOINT
+    final json = await api.get(
+      '/production/schedule/pending-count',
+    ); // ENDPOINT
     return {
       'count': (json['count'] as num?)?.toInt() ?? 0,
       'urgent': (json['urgent'] as num?)?.toInt() ?? 0,
@@ -271,26 +309,36 @@ class ProductionPlanRepository {
 
   /// 缺料待备料计数（PMC 采购管理徽标）：{'count': n}。
   Future<Map<String, int>> scheduleShortageCount() async {
-    final json = await api.get('/production/schedule/shortage-count'); // ENDPOINT
+    final json = await api.get(
+      '/production/schedule/shortage-count',
+    ); // ENDPOINT
     return {'count': (json['count'] as num?)?.toInt() ?? 0};
   }
 
   /// 已审订单明细 + 每行货品一层 BOM 零件（新建计划单「从订单带明细」用）。
   Future<List<ScheduleOrderLine>> scheduleOrderLines(String orderId) async {
-    final list = await api.getList('/production/schedule/order-lines',
-        query: {'orderId': orderId}); // ENDPOINT
+    final list = await api.getList(
+      '/production/schedule/order-lines',
+      query: {'orderId': orderId},
+    ); // ENDPOINT
     return list.map(ScheduleOrderLine.fromJson).toList();
   }
 
   /// 合并排产：勾选订单行 → 草稿计划（同货合并行 + 预建 links）；返回计划 id。
   Future<String> createMergePlan(Map<String, dynamic> body) async {
-    final json = await api.post('/production/schedule/merge-plan', body: body); // ENDPOINT
+    final json = await api.post(
+      '/production/schedule/merge-plan',
+      body: body,
+    ); // ENDPOINT
     return json['planId'] as String;
   }
 
   /// D2 建议完工日期（历史日均完工×BOM 层级缓冲）。
   Future<Map<String, dynamic>> suggestFinish(Map<String, dynamic> body) async {
-    final json = await api.post('/production/schedule/suggest-finish', body: body); // ENDPOINT
+    final json = await api.post(
+      '/production/schedule/suggest-finish',
+      body: body,
+    ); // ENDPOINT
     return Map<String, dynamic>.from(json as Map);
   }
 }
@@ -501,52 +549,52 @@ class PlanProgressRow {
   final List<SubPlanProgress> subplans;
 
   factory PlanProgressRow.fromJson(Map<String, dynamic> j) => PlanProgressRow(
-        planId: j['planId'] as String,
-        billNo: j['billNo'] as String?,
-        billDate: j['billDate'] as String?,
-        deliveryDate: j['deliveryDate'] as String?,
-        workshopName: j['workshopName'] as String?,
-        departmentId: j['departmentId'] as String?,
-        lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
-        totalQty: (j['totalQty'] as num?)?.toDouble(),
-        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
-        planBeginDate: j['planBeginDate'] as String?,
-        planEndDate: j['planEndDate'] as String?,
-        percent: (j['percent'] as num?)?.toDouble() ?? 0,
-        closed: j['closed'] == true,
-        urgent: j['urgent'] == true,
-        overdue: j['overdue'] == true,
-        pinned: j['pinned'] == true,
-        important: j['important'] == true,
-        todayQty: (j['todayQty'] as num?)?.toDouble(),
-        subplans: [
-          for (final s in (j['subplans'] as List? ?? const []))
-            SubPlanProgress.fromJson(s as Map<String, dynamic>),
-        ],
-      );
+    planId: j['planId'] as String,
+    billNo: j['billNo'] as String?,
+    billDate: j['billDate'] as String?,
+    deliveryDate: j['deliveryDate'] as String?,
+    workshopName: j['workshopName'] as String?,
+    departmentId: j['departmentId'] as String?,
+    lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
+    totalQty: (j['totalQty'] as num?)?.toDouble(),
+    inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    planBeginDate: j['planBeginDate'] as String?,
+    planEndDate: j['planEndDate'] as String?,
+    percent: (j['percent'] as num?)?.toDouble() ?? 0,
+    closed: j['closed'] == true,
+    urgent: j['urgent'] == true,
+    overdue: j['overdue'] == true,
+    pinned: j['pinned'] == true,
+    important: j['important'] == true,
+    todayQty: (j['todayQty'] as num?)?.toDouble(),
+    subplans: [
+      for (final s in (j['subplans'] as List? ?? const []))
+        SubPlanProgress.fromJson(s as Map<String, dynamic>),
+    ],
+  );
 
   /// 看板标记本地乐观更新用（置顶/重要）。
   PlanProgressRow copyWith({bool? pinned, bool? important}) => PlanProgressRow(
-        planId: planId,
-        billNo: billNo,
-        billDate: billDate,
-        deliveryDate: deliveryDate,
-        workshopName: workshopName,
-        departmentId: departmentId,
-        lineCount: lineCount,
-        totalQty: totalQty,
-        inboundQty: inboundQty,
-        planBeginDate: planBeginDate,
-        planEndDate: planEndDate,
-        percent: percent,
-        closed: closed,
-        urgent: urgent,
-        overdue: overdue,
-        pinned: pinned ?? this.pinned,
-        important: important ?? this.important,
-        todayQty: todayQty,
-        subplans: subplans,
-      );
+    planId: planId,
+    billNo: billNo,
+    billDate: billDate,
+    deliveryDate: deliveryDate,
+    workshopName: workshopName,
+    departmentId: departmentId,
+    lineCount: lineCount,
+    totalQty: totalQty,
+    inboundQty: inboundQty,
+    planBeginDate: planBeginDate,
+    planEndDate: planEndDate,
+    percent: percent,
+    closed: closed,
+    urgent: urgent,
+    overdue: overdue,
+    pinned: pinned ?? this.pinned,
+    important: important ?? this.important,
+    todayQty: todayQty,
+    subplans: subplans,
+  );
 }
 
 /// 子计划嵌套进度（对应后端 PlanProgressRow.SubProgress）。
@@ -571,22 +619,31 @@ class SubPlanProgress {
   final double percent;
 
   factory SubPlanProgress.fromJson(Map<String, dynamic> j) => SubPlanProgress(
-        planId: j['planId'] as String,
-        billNo: j['billNo'] as String?,
-        workshopName: j['workshopName'] as String?,
-        status: (j['status'] as num?)?.toInt(),
-        closed: j['closed'] == true,
-        totalQty: (j['totalQty'] as num?)?.toDouble(),
-        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
-        percent: (j['percent'] as num?)?.toDouble() ?? 0,
-      );
+    planId: j['planId'] as String,
+    billNo: j['billNo'] as String?,
+    workshopName: j['workshopName'] as String?,
+    status: (j['status'] as num?)?.toInt(),
+    closed: j['closed'] == true,
+    totalQty: (j['totalQty'] as num?)?.toDouble(),
+    inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    percent: (j['percent'] as num?)?.toDouble() ?? 0,
+  );
 }
 
 /// MRP 预览行。
-class MrpRow {  const MrpRow({
-    required this.goodsId, this.goodsCode, this.goodsName, this.spec,
-    this.colorId, this.gross, this.onhand, this.openPo, this.net,
-    required this.selfMade, this.unitId,
+class MrpRow {
+  const MrpRow({
+    required this.goodsId,
+    this.goodsCode,
+    this.goodsName,
+    this.spec,
+    this.colorId,
+    this.gross,
+    this.onhand,
+    this.openPo,
+    this.net,
+    required this.selfMade,
+    this.unitId,
   });
   final String goodsId;
   final String? goodsCode;
@@ -601,28 +658,33 @@ class MrpRow {  const MrpRow({
   final String? unitId;
 
   factory MrpRow.fromJson(Map<String, dynamic> j) => MrpRow(
-        goodsId: j['goodsId'] as String,
-        goodsCode: j['goodsCode'] as String?,
-        goodsName: j['goodsName'] as String?,
-        spec: j['spec'] as String?,
-        colorId: j['colorId'] as String?,
-        gross: (j['gross'] as num?)?.toDouble(),
-        onhand: (j['onhand'] as num?)?.toDouble(),
-        openPo: (j['openPo'] as num?)?.toDouble(),
-        net: (j['net'] as num?)?.toDouble(),
-        selfMade: j['selfMade'] == true,
-        unitId: j['unitId'] as String?,
-      );
+    goodsId: j['goodsId'] as String,
+    goodsCode: j['goodsCode'] as String?,
+    goodsName: j['goodsName'] as String?,
+    spec: j['spec'] as String?,
+    colorId: j['colorId'] as String?,
+    gross: (j['gross'] as num?)?.toDouble(),
+    onhand: (j['onhand'] as num?)?.toDouble(),
+    openPo: (j['openPo'] as num?)?.toDouble(),
+    net: (j['net'] as num?)?.toDouble(),
+    selfMade: j['selfMade'] == true,
+    unitId: j['unitId'] as String?,
+  );
 }
 
 /// MRP 生成结果。
 class MrpGenerateResult {
-  const MrpGenerateResult({required this.requestId, required this.requestBillNo, required this.lineCount});
+  const MrpGenerateResult({
+    required this.requestId,
+    required this.requestBillNo,
+    required this.lineCount,
+  });
   final String requestId;
   final String requestBillNo;
   final int lineCount;
 
-  factory MrpGenerateResult.fromJson(Map<String, dynamic> j) => MrpGenerateResult(
+  factory MrpGenerateResult.fromJson(Map<String, dynamic> j) =>
+      MrpGenerateResult(
         requestId: j['requestId'] as String,
         requestBillNo: j['requestBillNo'] as String,
         lineCount: (j['lineCount'] as num).toInt(),
@@ -643,11 +705,11 @@ class SubplanCreated {
   final String? workshopName;
 
   factory SubplanCreated.fromJson(Map<String, dynamic> j) => SubplanCreated(
-        planId: j['planId'] as String,
-        billNo: j['billNo'] as String?,
-        lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
-        workshopName: j['workshopName'] as String?,
-      );
+    planId: j['planId'] as String,
+    billNo: j['billNo'] as String?,
+    lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
+    workshopName: j['workshopName'] as String?,
+  );
 }
 
 /// 自制件子计划溯源行（父计划 MRP 面板/详情页进度区展示用，含完工进度）。
@@ -674,16 +736,16 @@ class MrpSubplanRef {
   final double percent;
 
   factory MrpSubplanRef.fromJson(Map<String, dynamic> j) => MrpSubplanRef(
-        planId: j['planId'] as String,
-        billNo: j['billNo'] as String?,
-        status: (j['status'] as num?)?.toInt(),
-        closed: j['closed'] == true,
-        billDate: j['billDate'] as String?,
-        deliveryDate: j['deliveryDate'] as String?,
-        totalQty: (j['totalQty'] as num?)?.toDouble(),
-        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
-        percent: (j['percent'] as num?)?.toDouble() ?? 0,
-      );
+    planId: j['planId'] as String,
+    billNo: j['billNo'] as String?,
+    status: (j['status'] as num?)?.toInt(),
+    closed: j['closed'] == true,
+    billDate: j['billDate'] as String?,
+    deliveryDate: j['deliveryDate'] as String?,
+    totalQty: (j['totalQty'] as num?)?.toDouble(),
+    inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    percent: (j['percent'] as num?)?.toDouble() ?? 0,
+  );
 }
 
 // ───────────────────────── 生产日报（空结构保未来） ─────────────────────────
@@ -708,14 +770,15 @@ class ProductionDailyReportFilter {
   final String? dateTo;
 
   Map<String, dynamic> toQuery() => <String, dynamic>{
-        if (keyword != null && keyword!.trim().isNotEmpty) 'keyword': keyword!.trim(),
-        if (warehouseId != null) 'warehouseId': warehouseId,
-        if (departmentId != null) 'departmentId': departmentId,
-        if (workerId != null) 'workerId': workerId,
-        if (status != null) 'status': status,
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
-      };
+    if (keyword != null && keyword!.trim().isNotEmpty)
+      'keyword': keyword!.trim(),
+    if (warehouseId != null) 'warehouseId': warehouseId,
+    if (departmentId != null) 'departmentId': departmentId,
+    if (workerId != null) 'workerId': workerId,
+    if (status != null) 'status': status,
+    if (dateFrom != null) 'dateFrom': dateFrom,
+    if (dateTo != null) 'dateTo': dateTo,
+  };
 }
 
 class ProductionDailyReportRepository {
@@ -736,7 +799,10 @@ class ProductionDailyReportRepository {
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
-    final json = await api.get('/production/daily-reports', query: query); // ENDPOINT
+    final json = await api.get(
+      '/production/daily-reports',
+      query: query,
+    ); // ENDPOINT
     return PagedResult.fromJson(json, ProductionDailyReportListItem.fromJson);
   }
 
@@ -746,12 +812,21 @@ class ProductionDailyReportRepository {
   }
 
   Future<ProductionDailyReportDetail> create(Map<String, dynamic> body) async {
-    final json = await api.post('/production/daily-reports', body: body); // ENDPOINT
+    final json = await api.post(
+      '/production/daily-reports',
+      body: body,
+    ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
   }
 
-  Future<ProductionDailyReportDetail> update(String id, Map<String, dynamic> body) async {
-    final json = await api.put('/production/daily-reports/$id', body: body); // ENDPOINT
+  Future<ProductionDailyReportDetail> update(
+    String id,
+    Map<String, dynamic> body,
+  ) async {
+    final json = await api.put(
+      '/production/daily-reports/$id',
+      body: body,
+    ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
   }
 
@@ -760,12 +835,16 @@ class ProductionDailyReportRepository {
   }
 
   Future<ProductionDailyReportDetail> approve(String id) async {
-    final json = await api.post('/production/daily-reports/$id/approve'); // ENDPOINT
+    final json = await api.post(
+      '/production/daily-reports/$id/approve',
+    ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
   }
 
   Future<ProductionDailyReportDetail> reverse(String id) async {
-    final json = await api.post('/production/daily-reports/$id/reverse'); // ENDPOINT
+    final json = await api.post(
+      '/production/daily-reports/$id/reverse',
+    ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
   }
 }
@@ -795,20 +874,20 @@ class ProductionReportFilter {
   final int limit;
 
   Map<String, dynamic> toDetailQuery() => <String, dynamic>{
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
-        if (goodsId != null) 'goodsId': goodsId,
-        if (status != null) 'status': status,
-        if (billNo != null && billNo!.trim().isNotEmpty) 'billNo': billNo!.trim(),
-        'page': page,
-        'size': size,
-      };
+    if (dateFrom != null) 'dateFrom': dateFrom,
+    if (dateTo != null) 'dateTo': dateTo,
+    if (goodsId != null) 'goodsId': goodsId,
+    if (status != null) 'status': status,
+    if (billNo != null && billNo!.trim().isNotEmpty) 'billNo': billNo!.trim(),
+    'page': page,
+    'size': size,
+  };
 
   Map<String, dynamic> toSummaryQuery() => <String, dynamic>{
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
-        'limit': limit,
-      };
+    if (dateFrom != null) 'dateFrom': dateFrom,
+    if (dateTo != null) 'dateTo': dateTo,
+    'limit': limit,
+  };
 }
 
 class ProductionReportRepository {
@@ -819,7 +898,10 @@ class ProductionReportRepository {
   Future<List<ProductionPlanDetailReportRow>> planDetail({
     ProductionReportFilter filter = const ProductionReportFilter(),
   }) async {
-    final list = await api.getList('/production/reports/plan/detail', query: filter.toDetailQuery()); // ENDPOINT
+    final list = await api.getList(
+      '/production/reports/plan/detail',
+      query: filter.toDetailQuery(),
+    ); // ENDPOINT
     return list.map(ProductionPlanDetailReportRow.fromJson).toList();
   }
 
@@ -827,7 +909,10 @@ class ProductionReportRepository {
   Future<List<ProductionMonthlySummaryRow>> planSummary({
     ProductionReportFilter filter = const ProductionReportFilter(),
   }) async {
-    final list = await api.getList('/production/reports/plan/summary', query: filter.toSummaryQuery()); // ENDPOINT
+    final list = await api.getList(
+      '/production/reports/plan/summary',
+      query: filter.toSummaryQuery(),
+    ); // ENDPOINT
     return list.map(ProductionMonthlySummaryRow.fromJson).toList();
   }
 
@@ -835,7 +920,10 @@ class ProductionReportRepository {
   Future<List<ProductionDailyDetailReportRow>> dailyDetail({
     ProductionReportFilter filter = const ProductionReportFilter(),
   }) async {
-    final list = await api.getList('/production/reports/daily/detail', query: filter.toDetailQuery()); // ENDPOINT
+    final list = await api.getList(
+      '/production/reports/daily/detail',
+      query: filter.toDetailQuery(),
+    ); // ENDPOINT
     return list.map(ProductionDailyDetailReportRow.fromJson).toList();
   }
 
@@ -843,7 +931,10 @@ class ProductionReportRepository {
   Future<List<ProductionMonthlySummaryRow>> dailySummary({
     ProductionReportFilter filter = const ProductionReportFilter(),
   }) async {
-    final list = await api.getList('/production/reports/daily/summary', query: filter.toSummaryQuery()); // ENDPOINT
+    final list = await api.getList(
+      '/production/reports/daily/summary',
+      query: filter.toSummaryQuery(),
+    ); // ENDPOINT
     return list.map(ProductionMonthlySummaryRow.fromJson).toList();
   }
 }
@@ -858,8 +949,8 @@ final productionPlanRepositoryProvider = Provider<ProductionPlanRepository>(
 
 final productionDailyReportRepositoryProvider =
     Provider<ProductionDailyReportRepository>(
-  (ref) => ProductionDailyReportRepository(ref.watch(apiClientProvider)),
-);
+      (ref) => ProductionDailyReportRepository(ref.watch(apiClientProvider)),
+    );
 
 final productionReportRepositoryProvider = Provider<ProductionReportRepository>(
   (ref) => ProductionReportRepository(ref.watch(apiClientProvider)),
@@ -887,13 +978,23 @@ Future<ProductionReportData> loadProductionReport(
 ) async {
   switch (type) {
     case ProductionReportType.planDetail:
-      return ProductionReportDetailData(await repo.planDetail(filter: filter), const []);
+      return ProductionReportDetailData(
+        await repo.planDetail(filter: filter),
+        const [],
+      );
     case ProductionReportType.dailyDetail:
-      return ProductionReportDetailData(const [], await repo.dailyDetail(filter: filter));
+      return ProductionReportDetailData(
+        const [],
+        await repo.dailyDetail(filter: filter),
+      );
     case ProductionReportType.planSummary:
-      return ProductionReportSummaryData(await repo.planSummary(filter: filter));
+      return ProductionReportSummaryData(
+        await repo.planSummary(filter: filter),
+      );
     case ProductionReportType.dailySummary:
-      return ProductionReportSummaryData(await repo.dailySummary(filter: filter));
+      return ProductionReportSummaryData(
+        await repo.dailySummary(filter: filter),
+      );
   }
 }
 

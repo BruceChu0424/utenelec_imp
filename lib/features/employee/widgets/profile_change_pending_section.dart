@@ -63,8 +63,10 @@ class ProfileChangePendingSection extends ConsumerWidget {
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.error.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
@@ -99,9 +101,7 @@ class ProfileChangePendingSection extends ConsumerWidget {
                   type: UtenButtonType.ghost,
                   size: UtenButtonSize.small,
                   onPressed: () => context.push(RouteName.hrProfileChanges),
-                  child: Text(
-                    '${l10n.profilePendingSectionViewAll}（$more）',
-                  ),
+                  child: Text('${l10n.profilePendingSectionViewAll}（$more）'),
                 ),
               ),
             ],

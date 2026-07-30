@@ -258,7 +258,10 @@ Widget _invalidFrame(
       if (!invalid || !showWhen()) return child!;
       return DecoratedBox(
         decoration: BoxDecoration(
-          border: Border.all(color: Theme.of(context).colorScheme.error, width: 1.5),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.error,
+            width: 1.5,
+          ),
           borderRadius: BorderRadius.circular(6),
         ),
         child: child,

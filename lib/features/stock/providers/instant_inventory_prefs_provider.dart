@@ -41,5 +41,5 @@ class InstantInventoryPrefsNotifier extends UtenPagePrefsNotifier<bool> {
 
 final instantInventoryPrefsProvider =
     NotifierProvider<InstantInventoryPrefsNotifier, bool>(
-  InstantInventoryPrefsNotifier.new,
-);
+      InstantInventoryPrefsNotifier.new,
+    );

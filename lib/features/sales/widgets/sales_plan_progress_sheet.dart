@@ -14,14 +14,17 @@ import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
 
 /// 弹排产进度底表（仅订货单）。
-void showPlanProgressSheet(BuildContext context, WidgetRef ref, String orderId) {
+void showPlanProgressSheet(
+  BuildContext context,
+  WidgetRef ref,
+  String orderId,
+) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     shape: const RoundedRectangleBorder(
-      borderRadius:
-          BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
     ),
     builder: (ctx) => DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -59,22 +62,26 @@ class _ProgressList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final canViewPlan =
-        ref.watch(currentPermissionsProvider).contains(Perm.productionPlanView) ||
-            ref.watch(isSuperAdminProvider);
+        ref
+            .watch(currentPermissionsProvider)
+            .contains(Perm.productionPlanView) ||
+        ref.watch(isSuperAdminProvider);
     return ListView(
       controller: controller,
       padding: const EdgeInsets.all(UtenSpacing.s12),
       children: [
         Text(
           '排产进度（生产链路溯源）',
-          style:
-              theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: UtenSpacing.s4),
         Text(
           '已排 = 已进生产计划量；已产 = 完工入库量。点计划单号可看生产计划详情。',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: UtenSpacing.s8),
         if (lines.isEmpty)
@@ -87,8 +94,12 @@ class _ProgressList extends ConsumerWidget {
     );
   }
 
-  Widget _lineCard(BuildContext context, ThemeData theme,
-      OrderPlanProgressLine l, bool canViewPlan) {
+  Widget _lineCard(
+    BuildContext context,
+    ThemeData theme,
+    OrderPlanProgressLine l,
+    bool canViewPlan,
+  ) {
     final chainColor = chainStatusColor(l.chainStatus, theme);
     return Card(
       margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -105,12 +116,16 @@ class _ProgressList extends ConsumerWidget {
                     '${l.spec != null && l.spec!.isNotEmpty ? ' · ${l.spec}' : ''}'
                     '${l.colorName != null ? ' · ${l.colorName}' : ''}',
                     style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: chainColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
@@ -118,9 +133,10 @@ class _ProgressList extends ConsumerWidget {
                   child: Text(
                     chainStatusLabel(l.chainStatus),
                     style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: chainColor),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: chainColor,
+                    ),
                   ),
                 ),
               ],
@@ -142,8 +158,9 @@ class _ProgressList extends ConsumerWidget {
               const Divider(height: UtenSpacing.s16),
               Text(
                 '尚未排产',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ],
@@ -153,17 +170,21 @@ class _ProgressList extends ConsumerWidget {
   }
 
   Widget _planRow(
-      BuildContext context, ThemeData theme, OrderPlanLink p, bool canViewPlan) {
+    BuildContext context,
+    ThemeData theme,
+    OrderPlanLink p,
+    bool canViewPlan,
+  ) {
     final statusText = p.planStatus == 0
         ? '草稿'
         : p.planStatus == 1
-            ? (p.planClosed ? '已审·已结案' : '已审核')
-            : '红冲';
+        ? (p.planClosed ? '已审·已结案' : '已审核')
+        : '红冲';
     final statusColor = p.planStatus == 0
         ? theme.colorScheme.onSurfaceVariant
         : p.planStatus == 1
-            ? Colors.green
-            : theme.colorScheme.error;
+        ? Colors.green
+        : theme.colorScheme.error;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -182,8 +203,7 @@ class _ProgressList extends ConsumerWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: canViewPlan ? theme.colorScheme.primary : null,
-                  decoration:
-                      canViewPlan ? TextDecoration.underline : null,
+                  decoration: canViewPlan ? TextDecoration.underline : null,
                 ),
               ),
             ),
@@ -191,24 +211,32 @@ class _ProgressList extends ConsumerWidget {
           Text(
             statusText,
             style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w600, color: statusColor),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: statusColor,
+            ),
           ),
           const SizedBox(width: UtenSpacing.s12),
           Text(
             '排 ${_fmt(p.allocatedQty)} · 产 ${_fmt(p.producedQty)} · 入 ${_fmt(p.inboundQty)}',
             style: TextStyle(
-                fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+              fontSize: 11,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _num(ThemeData theme, String label, double? v,
-      {bool highlight = false}) {
+  Widget _num(
+    ThemeData theme,
+    String label,
+    double? v, {
+    bool highlight = false,
+  }) {
     return Expanded(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             _fmt(v),
@@ -221,7 +249,9 @@ class _ProgressList extends ConsumerWidget {
           Text(
             label,
             style: TextStyle(
-                fontSize: 10, color: theme.colorScheme.onSurfaceVariant),
+              fontSize: 10,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

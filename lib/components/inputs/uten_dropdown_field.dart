@@ -162,22 +162,29 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 320, maxWidth: 300),
+                constraints: const BoxConstraints(
+                  maxHeight: 320,
+                  maxWidth: 300,
+                ),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = _searchCtl?.text.trim().toLowerCase() ?? '';
                     final filtered = q.isEmpty
                         ? widget.items
                         : widget.items
-                            .where((it) => it.label.toLowerCase().contains(q))
-                            .toList();
+                              .where((it) => it.label.toLowerCase().contains(q))
+                              .toList();
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (searchable)
                           Padding(
                             padding: const EdgeInsets.fromLTRB(
-                                UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s8, UtenSpacing.s4),
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                            ),
                             child: TextField(
                               controller: _searchCtl,
                               focusNode: _searchFocus,
@@ -186,13 +193,21 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               decoration: InputDecoration(
                                 isDense: true,
                                 hintText: '输入关键字搜索',
-                                prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                                prefixIconConstraints:
-                                    const BoxConstraints(minWidth: 32, minHeight: 32),
+                                prefixIcon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                ),
+                                prefixIconConstraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
                                 suffixIcon: q.isEmpty
                                     ? null
                                     : IconButton(
-                                        icon: const Icon(Icons.close_rounded, size: 16),
+                                        icon: const Icon(
+                                          Icons.close_rounded,
+                                          size: 16,
+                                        ),
                                         onPressed: () {
                                           _searchCtl!.clear();
                                           setOverlayState(() {});
@@ -202,11 +217,15 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: UtenSpacing.s8, vertical: UtenSpacing.s8),
+                                  horizontal: UtenSpacing.s8,
+                                  vertical: UtenSpacing.s8,
+                                ),
                               ),
                               onChanged: (_) => setOverlayState(() {}),
                               onSubmitted: (_) {
-                                if (filtered.isNotEmpty) _select(filtered.first.value);
+                                if (filtered.isNotEmpty) {
+                                  _select(filtered.first.value);
+                                }
                               },
                             ),
                           ),
@@ -216,24 +235,33 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                             padding: EdgeInsets.zero,
                             children: <Widget>[
                               if (widget.allowClear)
-                                _item(ctx,
-                                    label: '不选',
-                                    selected: widget.value == null,
-                                    onTap: () => _select(null),
-                                    theme: theme),
+                                _item(
+                                  ctx,
+                                  label: '不选',
+                                  selected: widget.value == null,
+                                  onTap: () => _select(null),
+                                  theme: theme,
+                                ),
                               for (final it in filtered)
-                                _item(ctx,
-                                    label: it.label,
-                                    selected: it.value == widget.value,
-                                    onTap: () => _select(it.value),
-                                    theme: theme),
+                                _item(
+                                  ctx,
+                                  label: it.label,
+                                  selected: it.value == widget.value,
+                                  onTap: () => _select(it.value),
+                                  theme: theme,
+                                ),
                               if (filtered.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: UtenSpacing.s12, vertical: UtenSpacing.s12),
-                                  child: Text('无匹配项',
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                          color: theme.colorScheme.onSurfaceVariant)),
+                                    horizontal: UtenSpacing.s12,
+                                    vertical: UtenSpacing.s12,
+                                  ),
+                                  child: Text(
+                                    '无匹配项',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
                                 ),
                             ],
                           ),
@@ -271,7 +299,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
             SizedBox(
               width: 18,
               child: selected
-                  ? Icon(Icons.check_rounded, size: 18, color: theme.colorScheme.primary)
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    )
                   : null,
             ),
             const SizedBox(width: UtenSpacing.s4),

@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueDetail;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemDto;
@@ -155,6 +156,9 @@ public class SubcontractMaterialIssueService {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
         }
         List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
@@ -189,6 +193,13 @@ public class SubcontractMaterialIssueService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
+        if (items.stream().anyMatch(it ->
+                positive(it.getReturnedQty()) || positive(it.getWastedQty()))) {
+            throw new ApiException(ErrorCode.BUSINESS, "委外发料已有退料/损耗记录，请先红冲下游单据");
+        }
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
@@ -204,6 +215,10 @@ public class SubcontractMaterialIssueService {
         r.setStatus(STATUS_REVERSED);
         issueRepo.save(r);
         return detail(id);
+    }
+
+    private static boolean positive(BigDecimal value) {
+        return value != null && value.signum() > 0;
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */

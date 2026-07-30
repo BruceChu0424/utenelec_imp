@@ -2,7 +2,7 @@
 //
 // 谁在什么时候做了什么：导出下载 / 登录 / 改密 / 数据变更（DB 触发器写入）。
 // 写侧由各模块 audit.logExplicit(...) / 触发器落 audit_log 表，本页是读侧。
-// 仅超级管理员（user:manage）可见：路由守卫 permission_by_path.dart 对 /admin/ 前缀统一守卫。
+// 仅超级管理员（authorization:manage + 后端 superAdmin）可见。
 //
 // 复刻 account_page.dart 的 MasterDataTableView + 翻页 + 搜索范式，但：
 //   * 无 autofilter（审计日志无需列筛选，用动作 chip 替代）
@@ -10,16 +10,17 @@
 //   * 动作 chip：全部 / 仅导出 / 登录 / 改密 / 数据变更（单一选择，前缀匹配后端 action）
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/audit_log_entry.dart';
@@ -44,6 +45,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
 
   /// 动作 chip 定义：(label, 前缀|null)。null 表示"全部"。
   static const _actionChips = <(String, String?)>[
@@ -61,31 +63,33 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(auditLogRepositoryProvider).list(
+      final r = await ref
+          .read(auditLogRepositoryProvider)
+          .list(
             page: page,
             action: _actionFilter,
             actorAccount: _search.trim().isEmpty ? null : _search.trim(),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载审计日志失败';
         _loading = false;
@@ -106,12 +110,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _load(1);
   }
 
-  /// createdAt ISO → 本地 'yyyy-MM-dd HH:mm' 展示。解析失败回退原值。
+  /// createdAt ISO → 中国标准时间 'yyyy-MM-dd HH:mm'。解析失败回退原值。
   static String _fmtTime(String? iso) {
-    if (iso == null || iso.isEmpty) return '';
-    final d = DateTime.tryParse(iso);
-    if (d == null) return iso;
-    return DateFormat('yyyy-MM-dd HH:mm').format(d.toLocal());
+    return ChinaDateTime.formatIsoInstant(iso, fallback: iso ?? '');
   }
 
   /// 动作 → 友好标签（导出动作归一为"导出 xxx 报表"）。
@@ -237,13 +238,17 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.receipt_long_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.receipt_long_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       Text(
                         '审计日志 ($total)',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
@@ -261,8 +266,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                   height: 38,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s4,
+                    ),
                     children: [
                       for (final (label, prefix) in _actionChips)
                         Padding(

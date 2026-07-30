@@ -1,9 +1,11 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.HostConfirmRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,14 +39,20 @@ public class VisitorApprovalController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('visitor:approve')")
-    public List<VisitorListItem> list(@RequestParam(required = false) String status) {
-        return hrApprovalService.listForApproval(status);
+    public PageResponse<VisitorListItem> list(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return hrApprovalService.listForApproval(status, page, size);
     }
 
     @GetMapping("/as-host")
     @PreAuthorize("hasAuthority('visitor:host-confirm')")
-    public List<VisitorListItem> asHost() {
-        return hostConfirmService.myAsHost();
+    public PageResponse<VisitorListItem> asHost(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return hostConfirmService.myAsHost(status, page, size);
     }
 
     @GetMapping("/pending-count")
@@ -61,20 +68,20 @@ public class VisitorApprovalController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('visitor:host-confirm')")
+    @PreAuthorize("hasAnyAuthority('visitor:approve', 'visitor:host-confirm')")
     public VisitorDetail detail(@PathVariable UUID id) {
         return hrApprovalService.getDetailForStaff(id);
     }
 
     @PostMapping("/{id}/action")
     @PreAuthorize("hasAuthority('visitor:approve')")
-    public VisitorDetail action(@PathVariable UUID id, @RequestBody VisitorApproveRequest req) {
+    public VisitorDetail action(@PathVariable UUID id, @Valid @RequestBody VisitorApproveRequest req) {
         return hrApprovalService.handleAction(id, req);
     }
 
     @PostMapping("/{id}/host-confirm")
     @PreAuthorize("hasAuthority('visitor:host-confirm')")
-    public VisitorDetail hostConfirm(@PathVariable UUID id, @RequestBody HostConfirmRequest req) {
+    public VisitorDetail hostConfirm(@PathVariable UUID id, @Valid @RequestBody HostConfirmRequest req) {
         return hostConfirmService.hostConfirm(id, req);
     }
 }

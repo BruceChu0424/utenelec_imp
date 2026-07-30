@@ -1,14 +1,23 @@
 spring:
   application:
     name: uten-imp-server
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
   profiles:
-    active: ${UTEN_PROFILE:dev}
+    # Fail closed: an omitted profile starts with production constraints.
+    # Local development must explicitly set UTEN_PROFILE=dev.
+    active: ${UTEN_PROFILE:prod}
   datasource:
     url: ${UTEN_DB_URL:jdbc:postgresql://localhost:5432/uten_imp}
     username: ${UTEN_DB_USER:uten}
     password: ${UTEN_DB_PASSWORD:uten}
     hikari:
-      maximum-pool-size: 20
+      pool-name: uten-imp
+      maximum-pool-size: ${UTEN_DB_POOL_MAX:20}
+      minimum-idle: ${UTEN_DB_POOL_MIN_IDLE:2}
+      connection-timeout: ${UTEN_DB_CONNECTION_TIMEOUT_MS:10000}
+      idle-timeout: ${UTEN_DB_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${UTEN_DB_MAX_LIFETIME_MS:1800000}
   jpa:
     hibernate:
       ddl-auto: validate          # schema 由 Flyway 管理
@@ -17,11 +26,20 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+          batch_size: 50
+          batch_versioned_data: true
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
         default_schema: public
   flyway:
     enabled: true
     locations: classpath:db/migration
-    baseline-on-migrate: true
+    baseline-on-migrate: ${UTEN_FLYWAY_BASELINE_ON_MIGRATE:false}
+    clean-disabled: true
+    validate-migration-naming: true
+    validate-on-migrate: true
   jackson:
     time-zone: UTC
     serialization:
@@ -30,23 +48,35 @@ spring:
 
 server:
   port: 8080
-  forward-headers-strategy: framework
+  shutdown: graceful
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force-response: true
+  # 默认不信任任何 Forwarded/X-Forwarded-* 请求头，避免后端端口被直接访问时伪造客户端 IP。
+  # 生产环境仅在 application-prod.yml 中对明确的内网/回环代理启用 Tomcat RemoteIpValve。
+  forward-headers-strategy: none
 
 uten:
+  http:
+    # JSON API 请求体的全局上限；覆盖 chunked 请求。multipart/二进制上传不走此限制。
+    max-json-body-bytes: ${UTEN_MAX_JSON_BODY_BYTES:1048576}
   jwt:
     # 必填：HS256 密钥（≥32 字节）。走 server/.env 的 UTEN_JWT_SECRET 或环境变量；缺省 fail-fast。
     secret: ${UTEN_JWT_SECRET}
     access-ttl-minutes: 15
     refresh-ttl-days: 7
-    issuer: uten-imp
+    issuer: ${UTEN_JWT_ISSUER:uten-imp-dev}
   security:
     cors-allowed-origins: ${UTEN_CORS_ORIGINS:http://localhost:53764,http://localhost:8080}
     login-rate-limit-per-minute: 5
+    export-max-concurrent: ${UTEN_EXPORT_MAX_CONCURRENT:2}
     lockout-threshold: 5
     lockout-minutes: 15
     password-history-size: 5
-    # swagger 白名单开关：dev 默认放行；prod 在 application-prod.yml 关闭（同时 springdoc 整体禁用）
-    swagger-enabled: ${UTEN_SWAGGER_ENABLED:true}
+    # 安全基线默认关闭；application-dev.yml 才为本地开发显式开启。
+    swagger-enabled: ${UTEN_SWAGGER_ENABLED:false}
   crypto:
     # 必填：pgcrypto 主密钥（PII 加密）。走 server/.env 或环境变量；缺省 fail-fast。生产放 Vault/KMS。
     pgp-master-key: ${UTEN_PGP_MASTER_KEY}
@@ -56,18 +86,25 @@ uten:
     hmac-key: ${UTEN_HMAC_KEY}
   bootstrap:
     admin-login: admin
-    # 必填：引导超管一次性密码。走 server/.env 或环境变量；首登强制改。
-    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD}
+    # 仅空库首次创建 admin 时必填；账号已存在后可从密钥管理中删除。首登强制改密。
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
   sms:
-    # 网关：log（开发期打印日志，验证码见后端日志；不真实发送）/ aliyun（阿里云，需配 AK/SK/签名/模板）
-    provider: ${UTEN_SMS_PROVIDER:log}
+    # 网关：log（开发期模拟发送，验证码不写日志）/ aliyun（阿里云，需配 AK/SK/签名/模板）
+    provider: ${UTEN_SMS_PROVIDER:disabled}
+    expose-code: ${UTEN_SMS_EXPOSE_CODE:false}
     access-key-id: ${UTEN_SMS_ACCESS_KEY_ID:}
     access-key-secret: ${UTEN_SMS_ACCESS_KEY_SECRET:}
     sign-name: ${UTEN_SMS_SIGN_NAME:}
     template-code: ${UTEN_SMS_TEMPLATE_CODE:}
+    endpoint: ${UTEN_SMS_ENDPOINT:dysmsapi.aliyuncs.com}
     code-ttl-minutes: 5
     send-interval-seconds: 60
     daily-limit: 10
+  reporting:
+    materialized-view-refresh:
+      enabled: ${UTEN_REPORT_REFRESH_ENABLED:true}
+      interval-ms: ${UTEN_REPORT_REFRESH_INTERVAL_MS:300000}
+      initial-delay-ms: ${UTEN_REPORT_REFRESH_INITIAL_DELAY_MS:60000}
 
 app:
   legacy:
@@ -83,7 +120,7 @@ springdoc:
 
 logging:
   level:
-    com.uten.imp: DEBUG
+    com.uten.imp: INFO
     org.hibernate.SQL: WARN
 
 management:

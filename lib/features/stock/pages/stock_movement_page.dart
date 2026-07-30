@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -40,6 +41,7 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String? _warehouseId;
   String? _goodsId;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 transactionDate DESC）；_sortAsc=升序。
@@ -63,30 +65,36 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(stockQueryRepositoryProvider).movements(
+      final r = await ref
+          .read(stockQueryRepositoryProvider)
+          .movements(
             page: page,
             warehouseId: _warehouseId,
             goodsId: _goodsId,
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      final goodsIds =
-          r.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final goodsIds = r.items
+          .map((e) => e.goodsId)
+          .whereType<String>()
+          .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _page = r);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _error = '加载失败'); // TODO(l10n): 补 arb
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _loadRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -94,42 +102,47 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
     final names = ref.read(masterNameServiceProvider);
     return <MasterColumnDef<MovementRow>>[
       MasterColumnDef(
-          key: 'date',
-          label: '日期', // TODO(l10n): 补 arb
-          width: 120,
-          type: 'date',
-          sortable: true,
-          value: (m) => m.transactionDate == null
-              ? null
-              : (m.transactionDate!.length >= 10
+        key: 'date',
+        label: '日期', // TODO(l10n): 补 arb
+        width: 120,
+        type: 'date',
+        sortable: true,
+        value: (m) => m.transactionDate == null
+            ? null
+            : (m.transactionDate!.length >= 10
                   ? m.transactionDate!.substring(0, 10)
-                  : m.transactionDate)),
+                  : m.transactionDate),
+      ),
       MasterColumnDef(
-          key: 'type',
-          label: '类型', // TODO(l10n): 补 arb
-          width: 120,
-          value: (m) => movementTypeLabel(m.movementType)),
+        key: 'type',
+        label: '类型', // TODO(l10n): 补 arb
+        width: 120,
+        value: (m) => movementTypeLabel(m.movementType),
+      ),
       MasterColumnDef(
-          key: 'goods',
-          label: '货品', // TODO(l10n): 补 arb
-          width: 220,
-          value: (m) => names.goods(m.goodsId)),
+        key: 'goods',
+        label: '货品', // TODO(l10n): 补 arb
+        width: 220,
+        value: (m) => names.goods(m.goodsId),
+      ),
       MasterColumnDef(
-          key: 'warehouse',
-          label: '仓库', // TODO(l10n): 补 arb
-          width: 160,
-          value: (m) => names.warehouse(m.warehouseId)),
+        key: 'warehouse',
+        label: '仓库', // TODO(l10n): 补 arb
+        width: 160,
+        value: (m) => names.warehouse(m.warehouseId),
+      ),
       MasterColumnDef(
-          key: 'qty',
-          label: '数量', // TODO(l10n): 补 arb
-          width: 120,
-          type: 'number',
-          sortable: true,
-          value: (m) {
-            if (m.qty == null) return null;
-            final sign = m.direction == 1 ? '+' : '-';
-            return '$sign${m.qty!.toStringAsFixed(2)}';
-          }),
+        key: 'qty',
+        label: '数量', // TODO(l10n): 补 arb
+        width: 120,
+        type: 'number',
+        sortable: true,
+        value: (m) {
+          if (m.qty == null) return null;
+          final sign = m.direction == 1 ? '+' : '-';
+          return '$sign${m.qty!.toStringAsFixed(2)}';
+        },
+      ),
     ];
   }
 
@@ -151,7 +164,8 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
       appBar: UtenAppBar(
         title: '出入库流水', // TODO(l10n): 补 arb
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.purchase)),
+          onPressed: () => backTo(context, defaultPath: RouteName.purchase),
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -162,17 +176,24 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
                 // 页面头：Icon + 标题 + 计数
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.swap_vert_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.swap_vert_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('流水 ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '流水 ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -181,20 +202,27 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // 货品过滤（即时库存带入）：chip 可清除，清除=全部货品
                           if (_goodsId != null) ...[
-                            Text('货品',
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600)),
+                            Text(
+                              '货品',
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const SizedBox(height: UtenSpacing.s4),
                             InputChip(
-                              label: Text(names.goods(_goodsId),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                              label: Text(
+                                names.goods(_goodsId),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               onDeleted: () {
                                 setState(() => _goodsId = null);
                                 _load(1);
@@ -208,13 +236,18 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
                               initialValue: _warehouseId,
                               isExpanded: true,
                               decoration: const InputDecoration(
-                                  isDense: true, labelText: '仓库'),
+                                isDense: true,
+                                labelText: '仓库',
+                              ),
                               items: [
                                 const DropdownMenuItem<String?>(
-                                    child: Text('全部仓库')),
+                                  child: Text('全部仓库'),
+                                ),
                                 for (final e in names.warehouseEntries.entries)
                                   DropdownMenuItem<String?>(
-                                      value: e.key, child: Text(e.value)),
+                                    value: e.key,
+                                    child: Text(e.value),
+                                  ),
                               ],
                               onChanged: (v) {
                                 setState(() => _warehouseId = v);

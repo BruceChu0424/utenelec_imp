@@ -24,7 +24,8 @@ class EmployeeSummary {
   final String? employmentType;
   final String? hireDate; // yyyy-MM-dd
 
-  factory EmployeeSummary.fromJson(Map<String, dynamic> json) => EmployeeSummary(
+  factory EmployeeSummary.fromJson(Map<String, dynamic> json) =>
+      EmployeeSummary(
         id: json['id'] as String,
         code: json['code'] as String,
         fullName: json['fullName'] as String,
@@ -38,13 +39,19 @@ class EmployeeSummary {
 }
 
 class EmergencyContactView {
-  const EmergencyContactView({this.id, this.name, this.phone, this.relationship});
+  const EmergencyContactView({
+    this.id,
+    this.name,
+    this.phone,
+    this.relationship,
+  });
   final String? id;
   final String? name;
   final String? phone; // 已按角色脱敏
   final String? relationship;
 
-  factory EmergencyContactView.fromJson(Map<String, dynamic> json) => EmergencyContactView(
+  factory EmergencyContactView.fromJson(Map<String, dynamic> json) =>
+      EmergencyContactView(
         id: json['id'] as String?,
         name: json['name'] as String?,
         phone: json['phone'] as String?,
@@ -68,7 +75,8 @@ class EmploymentHistoryView {
   final String? eventDate;
   final String? remark;
 
-  factory EmploymentHistoryView.fromJson(Map<String, dynamic> json) => EmploymentHistoryView(
+  factory EmploymentHistoryView.fromJson(Map<String, dynamic> json) =>
+      EmploymentHistoryView(
         id: json['id'] as String?,
         eventType: json['eventType'] as String?,
         fromDeptName: json['fromDeptName'] as String?,
@@ -233,8 +241,12 @@ class EmployeeProfile {
       probationEndDate: json['probationEndDate'] as String?,
       renewCount: json['renewCount'] as int?,
       accountStatus: json['accountStatus'] as String?,
-      emergencyContacts: ec.map((e) => EmergencyContactView.fromJson(e as Map<String, dynamic>)).toList(),
-      history: hist.map((e) => EmploymentHistoryView.fromJson(e as Map<String, dynamic>)).toList(),
+      emergencyContacts: ec
+          .map((e) => EmergencyContactView.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      history: hist
+          .map((e) => EmploymentHistoryView.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
@@ -258,13 +270,13 @@ class EmployeeOnboardingInput {
   final AccountInput account;
 
   Map<String, dynamic> toJson() => {
-        'profile': profile,
-        'employment': employment,
-        if (compensation != null) 'compensation': compensation,
-        if (contract != null) 'contract': contract,
-        'emergencyContacts': emergencyContacts,
-        'account': account.toJson(),
-      };
+    'profile': profile,
+    'employment': employment,
+    if (compensation != null) 'compensation': compensation,
+    if (contract != null) 'contract': contract,
+    'emergencyContacts': emergencyContacts,
+    'account': account.toJson(),
+  };
 }
 
 class AccountInput {
@@ -273,7 +285,7 @@ class AccountInput {
   final String? loginAccount;
 
   Map<String, dynamic> toJson() => {
-        'roles': roles,
-        if (loginAccount != null) 'loginAccount': loginAccount,
-      };
+    'roles': roles,
+    if (loginAccount != null) 'loginAccount': loginAccount,
+  };
 }

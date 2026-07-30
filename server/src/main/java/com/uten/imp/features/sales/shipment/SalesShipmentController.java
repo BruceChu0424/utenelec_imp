@@ -70,7 +70,7 @@ public class SalesShipmentController {
         return service.create(req);
     }
 
-    /** 批量发货开单（SOP §一9）：勾选可发行+本次数量，同客户合并一张出货草稿。 */
+    /** 批量发货开单（SOP §一9）：勾选可发行+本次数量，同客户且同归属人合并一张草稿。 */
     @PostMapping("/batch")
     @PreAuthorize("hasAuthority('sales_shipment:edit')")
     public List<ShipmentDetail> batchCreate(
@@ -111,14 +111,14 @@ public class SalesShipmentController {
 
     /** C6 财务审核发货：现金结算客户须审后仓库才可审核出货；返回结算方式+未收余额辅助核对。 */
     @PostMapping("/{id}/finance-audit")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
     public java.util.Map<String, Object> financeAudit(@PathVariable UUID id) {
         return service.financeAudit(id);
     }
 
     /** C6 财务反审（仅未审核出货的单据）。 */
     @PostMapping("/{id}/finance-audit-reverse")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_shipment_audit')")
     public java.util.Map<String, Object> financeAuditReverse(@PathVariable UUID id) {
         return service.financeAuditReverse(id);
     }

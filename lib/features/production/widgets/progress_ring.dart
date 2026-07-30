@@ -26,8 +26,8 @@ class ProgressRing extends StatelessWidget {
     final color = done || v >= 0.7
         ? Colors.green
         : v >= 0.3
-            ? Colors.orange
-            : theme.colorScheme.error;
+        ? Colors.orange
+        : theme.colorScheme.error;
     return SizedBox(
       width: size,
       height: size,

@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.UUID;
 
 /**
@@ -54,6 +55,16 @@ public class StockService {
     private final StockMovementRepository movementRepo;
     private final StockBalanceRepository balanceRepo;
     private final TxSessionVars tx;
+    private final InventoryMutationLock inventoryLock;
+
+    /**
+     * Pre-locks all dimensions of a multi-line document in stable order.
+     * Callers should invoke this once before their movement loop.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void lockInventory(Collection<InventoryKey> keys) {
+        inventoryLock.lockAll(keys);
+    }
 
     /** 出入库请求值对象。qty 为基本单位量（已乘 unit_rate）；amountLocal 为本币金额。
      *  weight 为基本单位重量（已乘 unit_rate，V80 即时库存重量联动；null=不维护重量）。 */
@@ -101,9 +112,22 @@ public class StockService {
      *
      * @param req 方向已体现在 direction（+1/-1），qty/amountLocal 传正数
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void recordMovement(MovementRequest req) {
         tx.bind();
+        if (req == null || req.goodsId() == null || req.warehouseId() == null
+                || req.sourceDocType() == null || req.sourceDocType().isBlank()) {
+            throw new IllegalArgumentException("inventory movement identity is incomplete");
+        }
+        if (req.direction() != DIR_IN && req.direction() != DIR_OUT) {
+            throw new IllegalArgumentException("inventory movement direction must be +1 or -1");
+        }
+        if (req.qty() == null || req.qty().signum() <= 0) {
+            throw new IllegalArgumentException("inventory movement quantity must be positive");
+        }
+        // Re-entrant when the top-level document already batch-locked its keys;
+        // mandatory as a safe fallback for future single-movement callers.
+        inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
         OffsetDateTime ts = req.transactionDate() != null ? req.transactionDate() : OffsetDateTime.now();
 
         StockMovement m = new StockMovement();

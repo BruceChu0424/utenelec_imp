@@ -65,4 +65,14 @@ public class UserAccount extends SoftDeletableEntity {
      */
     @Column(name = "is_super_admin", nullable = false)
     private boolean superAdmin = false;
+
+    /**
+     * Authorization snapshot version maintained by database triggers.
+     *
+     * <p>Read-only in JPA so a stale entity save can never overwrite a trigger
+     * increment. The value is copied into access JWTs and compared on every
+     * request.
+     */
+    @Column(name = "auth_version", nullable = false, insertable = false, updatable = false)
+    private long authVersion;
 }

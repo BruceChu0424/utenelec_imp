@@ -6,8 +6,10 @@ import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +63,7 @@ public class SalesReportService {
     private final EntityManager em;
     private final SystemSettingsService settings;
     private final com.uten.imp.features.sales.order.SalesPriceMasker priceMasker;
+    private final SalesDocumentAccessPolicy accessPolicy;
 
     /** 订货报表价格列（SOP §三8 脱敏键集合：明细金额族）。 */
     private static final List<String> ORDER_PRICE_KEYS =
@@ -79,6 +82,7 @@ public class SalesReportService {
     // ======================== 通用执行器（与采购同型） ========================
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
@@ -202,9 +206,15 @@ public class SalesReportService {
                     "kw", "%" + kw.toLowerCase() + "%");
     }
 
+    private void addOwnerReadFilter(WhereBuilder where, String ownerColumn, String parameterName) {
+        var scope = accessPolicy.nativeReadScope(ownerColumn, parameterName);
+        where.add(scope.predicate(), scope.parameterName(), scope.owners());
+    }
+
     // ======================== 明细报表（按 docType 派发） ========================
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse detail(String docType, String billNo, UUID clientId, UUID warehouseId, Short status,
                                       LocalDate dateFrom, LocalDate dateTo, String kw,
                                       Map<String, String> facets, int page, int size, String sort, String order) {
@@ -220,6 +230,7 @@ public class SalesReportService {
 
     // ----- 销售订货明细 -----
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse orderDetail(String billNo, UUID clientId, Short status, LocalDate dateFrom,
                                            LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
@@ -259,6 +270,7 @@ public class SalesReportService {
                 LEFT JOIN (SELECT goods_id, SUM(qty) AS stock_qty FROM stock_balances GROUP BY goods_id) sb ON sb.goods_id = i.goods_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
         addCommonDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetClient(),
@@ -271,6 +283,7 @@ public class SalesReportService {
 
     // ----- 销售出货明细 -----
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse shipmentDetail(String billNo, UUID clientId, Short status, LocalDate dateFrom,
                                               LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
@@ -296,6 +309,7 @@ public class SalesReportService {
                 LEFT JOIN goods g ON g.id = i.goods_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
         addCommonDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetClient(),
@@ -306,6 +320,7 @@ public class SalesReportService {
 
     // ----- 销售退货明细 -----
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse returnDetail(String billNo, UUID clientId, Short status, LocalDate dateFrom,
                                             LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
@@ -335,6 +350,7 @@ public class SalesReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
         addCommonDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetClient(),
@@ -344,6 +360,7 @@ public class SalesReportService {
 
     // ----- 其它出货明细 -----
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse otherShipmentDetail(String billNo, UUID clientId, UUID warehouseId, Short status,
                                                    LocalDate dateFrom, LocalDate dateTo, String kw,
                                                    Map<String, String> facets, int page, int size, String sort, String order) {
@@ -395,6 +412,7 @@ public class SalesReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        addOwnerReadFilter(w, "o.owner_employee_id", "salesOwners");
         addCommonDocFilters(w, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, "i.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetClient(), facetWarehouse("warehouseName"),
@@ -411,6 +429,7 @@ public class SalesReportService {
     // execute（COUNT(*)=客户数、列排序按别名、facet 走 t."__clientId"）。
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse summary(String docType, String billNo, UUID clientId, UUID warehouseId, Short status,
                                        LocalDate dateFrom, LocalDate dateTo, String kw,
                                        Map<String, String> facets, int page, int size, String sort, String order) {
@@ -446,6 +465,7 @@ public class SalesReportService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse orderSummary(String billNo, UUID clientId, Short status, LocalDate dateFrom,
                                             LocalDate dateTo, String kw, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
@@ -458,6 +478,7 @@ public class SalesReportService {
                        t."__clientId"
                 """;
         WhereBuilder innerW = summaryInnerWhere(billNo, clientId, null, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
         WhereBuilder.Built inner = innerW.build(null);
         String fromJoin = """
                 FROM (
@@ -486,6 +507,7 @@ public class SalesReportService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse shipmentSummary(String billNo, UUID clientId, UUID warehouseId, Short status,
                                                LocalDate dateFrom, LocalDate dateTo, String kw,
                                                Map<String, String> facets, int page, int size, String sort, String order) {
@@ -500,6 +522,7 @@ public class SalesReportService {
                        t."dealAmount", t."__clientId"
                 """;
         WhereBuilder innerW = summaryInnerWhere(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
         WhereBuilder.Built inner = innerW.build(null);
         String fromJoin = """
                 FROM (
@@ -528,6 +551,7 @@ public class SalesReportService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse returnSummary(String billNo, UUID clientId, UUID warehouseId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String kw,
                                              Map<String, String> facets, int page, int size, String sort, String order) {
@@ -541,6 +565,7 @@ public class SalesReportService {
                        t."__clientId"
                 """;
         WhereBuilder innerW = summaryInnerWhere(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
         WhereBuilder.Built inner = innerW.build(null);
         String fromJoin = """
                 FROM (
@@ -568,6 +593,7 @@ public class SalesReportService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public ReportTableResponse otherShipmentSummary(String billNo, UUID clientId, UUID warehouseId, Short status,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw,
                                                     Map<String, String> facets, int page, int size, String sort, String order) {
@@ -582,6 +608,7 @@ public class SalesReportService {
                        t."actualAmount", t."__clientId"
                 """;
         WhereBuilder innerW = summaryInnerWhere(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw);
+        addOwnerReadFilter(innerW, "o.owner_employee_id", "salesOwners");
         WhereBuilder.Built inner = innerW.build(null);
         String fromJoin = """
                 FROM (
@@ -626,6 +653,7 @@ public class SalesReportService {
      * （{docType}/{detail|summary}，docType 大写）：ORDER/detail 等 8 个。
      */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:export')")
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         String billNo = p == null ? null : p.get("billNo");
         UUID clientId = parseUuid(p == null ? null : p.get("clientId"));
@@ -692,10 +720,18 @@ public class SalesReportService {
     // ======================== 保留：月度汇总（MV）+ 待交货（视图） ========================
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public List<MonthlySummaryRow> monthly(String docType, UUID clientId, UUID goodsId,
                                            LocalDate dateFrom, LocalDate dateTo, int limit) {
         String dt = docType == null ? null : docType.trim().toUpperCase();
+        if (dt != null && !java.util.Set.of("QUOTE", DOC_ORDER, DOC_SHIPMENT,
+                DOC_OTHER_SHIPMENT, DOC_RETURN).contains(dt)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知销售月报类型：" + docType);
+        }
         int safeLimit = Math.min(Math.max(1, limit), 2000);
+        var ownerScope = accessPolicy.scope();
+        var scopedOwners = accessPolicy.nativeReadScopeWithLegacySentinel(
+                "owner_employee_id", "salesOwners", NIL, ownerScope);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, client_id,
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
@@ -705,10 +741,12 @@ public class SalesReportService {
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
                   AND (CAST(:clientId AS uuid) IS NULL OR client_id = :clientId)
                   AND (CAST(:goodsId AS uuid) IS NULL OR goods_id = :goodsId)
+                  AND """ + scopedOwners.predicate() + """
                 GROUP BY doc_type, ym, goods_id, client_id
                 ORDER BY amt DESC NULLS LAST
                 LIMIT :limit
                 """);
+        scopedOwners.bind(q);
         q.setParameter("docType", dt);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
@@ -729,12 +767,37 @@ public class SalesReportService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_report:view')")
     public List<PendingRow> pending(UUID clientId, int limit) {
         int safeLimit = Math.min(Math.max(1, limit), 2000);
-        String sql = "SELECT goods_id, color_id, client_id, pending_qty, pending_amt FROM sales_order_pending_v";
-        if (clientId != null) sql += " WHERE client_id = :clientId";
+        var ownerScope = accessPolicy.scope();
+        SalesDocumentAccessPolicy.NativeReadScope scopedOwners = null;
+        String sql;
+        if (ownerScope.seeAll()) {
+            sql = "SELECT goods_id, color_id, client_id, pending_qty, pending_amt FROM sales_order_pending_v";
+            if (clientId != null) sql += " WHERE client_id = :clientId";
+        } else {
+            scopedOwners = accessPolicy.nativeReadScope(
+                    "o.owner_employee_id", "salesOwners", ownerScope);
+            sql = """
+                    SELECT i.goods_id, i.color_id, o.client_id,
+                           SUM(i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) AS pending_qty,
+                           SUM((i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) * i.price) AS pending_amt
+                    FROM sales_order_items i
+                    JOIN sales_orders o ON o.id = i.order_id
+                    WHERE COALESCE(i.is_deleted,false)=false
+                      AND COALESCE(o.is_deleted,false)=false
+                      AND """ + scopedOwners.predicate()
+                    + (clientId == null ? "" : " AND o.client_id = :clientId") + """
+                    GROUP BY i.goods_id, i.color_id, o.client_id
+                    HAVING SUM(i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) > 0
+                    """;
+        }
         sql += " ORDER BY pending_qty DESC LIMIT :limit";
         var q = em.createNativeQuery(sql);
+        if (scopedOwners != null) {
+            scopedOwners.bind(q);
+        }
         if (clientId != null) q.setParameter("clientId", clientId);
         q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")

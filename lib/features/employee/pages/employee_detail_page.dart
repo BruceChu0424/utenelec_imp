@@ -17,6 +17,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
@@ -115,192 +116,190 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                     ProfileChangePendingSection(employeeId: widget.employeeId),
                     ..._expiryBanners(theme, l10n),
                     const SizedBox(height: UtenSpacing.s16),
-                  _section(l10n.employeeDetailBasic, [
-                    UtenInfoRow(
-                      label: l10n.employeeFieldCode,
-                      value: _p.code,
-                      showDivider: false,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldName,
-                      value: _p.fullName,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldGender,
-                      value: _genderText(l10n, _p.gender),
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldIdType,
-                      value: _p.idType,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldIdNumber,
-                      value: _p.idNumber,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldBirthDate,
-                      value: _p.birthDate,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldEthnicity,
-                      value: _p.ethnicity,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldPoliticalStatus,
-                      value: _p.politicalStatus,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldMaritalStatus,
-                      value: _p.maritalStatus,
-                      showDivider: false,
-                    ),
-                  ]),
-                  _section(l10n.employeeDetailContact, [
-                    UtenInfoRow(
-                      label: l10n.employeeFieldPhone,
-                      value: _p.phone,
-                      showDivider: false,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldOfficePhone,
-                      value: _p.officePhone,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldEmail,
-                      value: _p.email,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldHujiAddress,
-                      value: _p.hujiAddress,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldResidenceAddress,
-                      value: _p.residenceAddress,
-                      showDivider: false,
-                    ),
-                  ]),
-                  _section(l10n.employeeDetailOrg, [
-                    UtenInfoRow(
-                      label: l10n.employeeFieldDepartment,
-                      value: _p.departmentName,
-                      showDivider: false,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldPosition,
-                      value: _p.positionName,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldSupervisor,
-                      value: _p.supervisorName,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldHireDate,
-                      value: _p.hireDate,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldConfirmedDate,
-                      value: _p.confirmedAt,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldStatus,
-                      value: null,
-                      valueWidget: EmployeeStatusBadge(
-                        status: _p.status,
-                        size: UtenStatusBadgeSize.medium,
-                      ),
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldAccountStatus,
-                      value: null,
-                      valueWidget: _accountStatusBadge(theme, l10n),
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldEmploymentType,
-                      value: _employmentTypeText(l10n, _p.employmentType),
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldWorkLocation,
-                      value: _p.workLocation,
-                    ),
-                    UtenInfoRow(
-                      label: l10n.employeeFieldSeatNo,
-                      value: _p.seatNo,
-                      showDivider: false,
-                    ),
-                  ]),
-                  if (_p.contractType != null ||
-                      _p.baseSalary != null ||
-                      _p.bankAccount != null)
-                    _section(l10n.employeeDetailContract, [
+                    _section(l10n.employeeDetailBasic, [
                       UtenInfoRow(
-                        label: l10n.employeeFieldContractType,
-                        value: _contractTypeText(l10n, _p.contractType),
+                        label: l10n.employeeFieldCode,
+                        value: _p.code,
                         showDivider: false,
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldContractPeriod,
-                        value: _p.contractStart == null
-                            ? null
-                            : l10n.employeeContractPeriodValue(
-                                _p.contractStart!,
-                                _p.contractEnd ?? '',
-                              ),
+                        label: l10n.employeeFieldName,
+                        value: _p.fullName,
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldProbation,
-                        value: _p.probationMonths == null
-                            ? null
-                            : l10n.employeeProbationValue(
-                                _p.probationMonths!,
-                                _p.probationEndDate ?? '',
-                              ),
+                        label: l10n.employeeFieldGender,
+                        value: _genderText(l10n, _p.gender),
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldRenewCount,
-                        value: _p.renewCount == null
-                            ? null
-                            : l10n.employeeRenewCountValue(_p.renewCount!),
+                        label: l10n.employeeFieldIdType,
+                        value: _p.idType,
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldBaseSalary,
-                        value: _p.baseSalary,
+                        label: l10n.employeeFieldIdNumber,
+                        value: _p.idNumber,
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldPerfSalary,
-                        value: _p.perfSalary,
+                        label: l10n.employeeFieldBirthDate,
+                        value: _p.birthDate,
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldSocialBase,
-                        value: _p.socialInsuranceBase,
+                        label: l10n.employeeFieldEthnicity,
+                        value: _p.ethnicity,
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldHousingBase,
-                        value: _p.housingFundBase,
+                        label: l10n.employeeFieldPoliticalStatus,
+                        value: _p.politicalStatus,
                       ),
                       UtenInfoRow(
-                        label: l10n.employeeFieldBankBranch,
-                        value: _p.bankBranch,
-                      ),
-                      UtenInfoRow(
-                        label: l10n.employeeFieldBankAccount,
-                        value: _p.bankAccount,
+                        label: l10n.employeeFieldMaritalStatus,
+                        value: _p.maritalStatus,
                         showDivider: false,
                       ),
                     ]),
-                  if (_p.emergencyContacts.isNotEmpty)
-                    _section(l10n.employeeDetailEmergency, [
-                      for (final c in _p.emergencyContacts)
-                        UtenInfoRow(
-                          label: '${c.relationship ?? ''} ${c.name ?? ''}',
-                          value: c.phone,
-                          showDivider: c != _p.emergencyContacts.last,
+                    _section(l10n.employeeDetailContact, [
+                      UtenInfoRow(
+                        label: l10n.employeeFieldPhone,
+                        value: _p.phone,
+                        showDivider: false,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldOfficePhone,
+                        value: _p.officePhone,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldEmail,
+                        value: _p.email,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldHujiAddress,
+                        value: _p.hujiAddress,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldResidenceAddress,
+                        value: _p.residenceAddress,
+                        showDivider: false,
+                      ),
+                    ]),
+                    _section(l10n.employeeDetailOrg, [
+                      UtenInfoRow(
+                        label: l10n.employeeFieldDepartment,
+                        value: _p.departmentName,
+                        showDivider: false,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldPosition,
+                        value: _p.positionName,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldSupervisor,
+                        value: _p.supervisorName,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldHireDate,
+                        value: _p.hireDate,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldConfirmedDate,
+                        value: _p.confirmedAt,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldStatus,
+                        value: null,
+                        valueWidget: EmployeeStatusBadge(
+                          status: _p.status,
+                          size: UtenStatusBadgeSize.medium,
                         ),
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldAccountStatus,
+                        value: null,
+                        valueWidget: _accountStatusBadge(theme, l10n),
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldEmploymentType,
+                        value: _employmentTypeText(l10n, _p.employmentType),
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldWorkLocation,
+                        value: _p.workLocation,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldSeatNo,
+                        value: _p.seatNo,
+                        showDivider: false,
+                      ),
                     ]),
+                    if (_p.contractType != null ||
+                        _p.baseSalary != null ||
+                        _p.bankAccount != null)
+                      _section(l10n.employeeDetailContract, [
+                        UtenInfoRow(
+                          label: l10n.employeeFieldContractType,
+                          value: _contractTypeText(l10n, _p.contractType),
+                          showDivider: false,
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldContractPeriod,
+                          value: _p.contractStart == null
+                              ? null
+                              : l10n.employeeContractPeriodValue(
+                                  _p.contractStart!,
+                                  _p.contractEnd ?? '',
+                                ),
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldProbation,
+                          value: _p.probationMonths == null
+                              ? null
+                              : l10n.employeeProbationValue(
+                                  _p.probationMonths!,
+                                  _p.probationEndDate ?? '',
+                                ),
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldRenewCount,
+                          value: _p.renewCount == null
+                              ? null
+                              : l10n.employeeRenewCountValue(_p.renewCount!),
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldBaseSalary,
+                          value: _p.baseSalary,
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldPerfSalary,
+                          value: _p.perfSalary,
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldSocialBase,
+                          value: _p.socialInsuranceBase,
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldHousingBase,
+                          value: _p.housingFundBase,
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldBankBranch,
+                          value: _p.bankBranch,
+                        ),
+                        UtenInfoRow(
+                          label: l10n.employeeFieldBankAccount,
+                          value: _p.bankAccount,
+                          showDivider: false,
+                        ),
+                      ]),
+                    if (_p.emergencyContacts.isNotEmpty)
+                      _section(l10n.employeeDetailEmergency, [
+                        for (final c in _p.emergencyContacts)
+                          UtenInfoRow(
+                            label: '${c.relationship ?? ''} ${c.name ?? ''}',
+                            value: c.phone,
+                            showDivider: c != _p.emergencyContacts.last,
+                          ),
+                      ]),
                     if (_p.history.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: UtenSpacing.s24,
-                        ),
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -357,11 +356,20 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
 
     final items = <PopupMenuEntry<String>>[
       if (canEdit && !resigned)
-        PopupMenuItem(value: 'transfer', child: Text(l10n.employeeActionTransfer)),
+        PopupMenuItem(
+          value: 'transfer',
+          child: Text(l10n.employeeActionTransfer),
+        ),
       if (canEdit && p.status == 'probation')
-        PopupMenuItem(value: 'confirm', child: Text(l10n.employeeActionConfirm)),
+        PopupMenuItem(
+          value: 'confirm',
+          child: Text(l10n.employeeActionConfirm),
+        ),
       if (canEdit && !resigned)
-        PopupMenuItem(value: 'offboard', child: Text(l10n.employeeActionOffboard)),
+        PopupMenuItem(
+          value: 'offboard',
+          child: Text(l10n.employeeActionOffboard),
+        ),
       if (canEdit && resigned)
         PopupMenuItem(value: 'rehire', child: Text(l10n.employeeActionRehire)),
       if (canDelete)
@@ -607,10 +615,13 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
   List<Widget> _expiryBanners(ThemeData theme, AppLocalizations l10n) {
     if (_p.status == 'resigned') return const [];
     final banners = <Widget>[];
-    final today = DateUtils.dateOnly(DateTime.now());
+    final today = ChinaDateTime.today();
 
-    String? check(String? dateStr, String Function(String date, int days) expiring,
-        String Function(String date) expired) {
+    String? check(
+      String? dateStr,
+      String Function(String date, int days) expiring,
+      String Function(String date) expired,
+    ) {
       if (dateStr == null) return null;
       final d = DateTime.tryParse(dateStr);
       if (d == null) return null;
@@ -647,8 +658,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
             ),
             child: Row(
               children: [
-                Icon(Icons.event_busy_rounded,
-                    size: 18, color: Colors.orange.shade800),
+                Icon(
+                  Icons.event_busy_rounded,
+                  size: 18,
+                  color: Colors.orange.shade800,
+                ),
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
                   child: Text(

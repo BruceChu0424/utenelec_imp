@@ -46,6 +46,7 @@ class Suggestion {
     this.isAnonymous = false,
     this.likes = 0,
     this.likedByMe = false,
+    this.replyCount = 0,
     this.replies = const [],
   });
 
@@ -77,6 +78,9 @@ class Suggestion {
   /// 我是否已点赞
   final bool likedByMe;
 
+  /// 回复总数。列表接口只返回计数，不展开回复正文。
+  final int replyCount;
+
   /// 回复列表（人事/管理层回复）
   final List<SuggestionReply> replies;
 
@@ -84,6 +88,7 @@ class Suggestion {
     SuggestionStatus? status,
     int? likes,
     bool? likedByMe,
+    int? replyCount,
     List<SuggestionReply>? replies,
   }) {
     return Suggestion(
@@ -98,21 +103,14 @@ class Suggestion {
       isAnonymous: isAnonymous,
       likes: likes ?? this.likes,
       likedByMe: likedByMe ?? this.likedByMe,
+      replyCount: replyCount ?? this.replyCount,
       replies: replies ?? this.replies,
     );
   }
 
-  /// 显示名（匿名处理）
-  String get displayName {
-    if (isAnonymous) {
-      final name = submitterName;
-      if (name.length > 1) {
-        return '${name[0]}**';
-      }
-      return '匿名用户';
-    }
-    return submitterName;
-  }
+  /// 服务端已按当前查看人的权限完成匿名脱敏，前端不得二次推断或改写。
+  String get displayName =>
+      submitterName.trim().isEmpty ? '匿名用户' : submitterName;
 }
 
 /// 建议回复

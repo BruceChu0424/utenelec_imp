@@ -25,6 +25,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -46,7 +47,7 @@ class _ProductionDailyReportEditPageState
     extends ConsumerState<ProductionDailyReportEditPage> {
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
-  DateTime _billDate = DateTime.now();
+  DateTime _billDate = ChinaDateTime.today();
 
   String? _warehouseId;
   // 车间 = 部门
@@ -87,8 +88,10 @@ class _ProductionDailyReportEditPageState
         final d = await ref
             .read(productionDailyReportRepositoryProvider)
             .detail(widget.id!);
-        final goodsIds =
-            d.items.map((e) => e.goodsId).whereType<String>().toSet();
+        final goodsIds = d.items
+            .map((e) => e.goodsId)
+            .whereType<String>()
+            .toSet();
         await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
         await _preloadEmployees([d.workerId]);
         if (!mounted) return;
@@ -114,7 +117,8 @@ class _ProductionDailyReportEditPageState
                 ? null
                 : GoodsOption(
                     id: it.goodsId!,
-                    name: ref.read(masterNameServiceProvider).goods(it.goodsId));
+                    name: ref.read(masterNameServiceProvider).goods(it.goodsId),
+                  );
           row.qty.text = it.qty?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
           row.isFinal = it.isFinal;
@@ -139,18 +143,20 @@ class _ProductionDailyReportEditPageState
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
     if (uniq.isEmpty) return;
     final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(uniq.map((id) async {
-      try {
-        final p = await repo.getById(id);
-        _empCache[id] = UtenEmployeePickerItem(
-          id: p.id,
-          name: p.fullName ?? '',
-          departmentName: p.departmentName,
-        );
-      } catch (_) {
-        // 静默
-      }
-    }));
+    await Future.wait(
+      uniq.map((id) async {
+        try {
+          final p = await repo.getById(id);
+          _empCache[id] = UtenEmployeePickerItem(
+            id: p.id,
+            name: p.fullName ?? '',
+            departmentName: p.departmentName,
+          );
+        } catch (_) {
+          // 静默
+        }
+      }),
+    );
   }
 
   Future<void> _pickGoods(DailyGridRow row) async {
@@ -185,10 +191,7 @@ class _ProductionDailyReportEditPageState
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
-        if (price != null) ...{
-          'price': price,
-          'total': qty * price,
-        },
+        if (price != null) ...{'price': price, 'total': qty * price},
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.planNo.text.trim().isNotEmpty) 'planNo': r.planNo.text.trim(),
@@ -255,8 +258,12 @@ class _ProductionDailyReportEditPageState
     );
   }
 
-  Widget _dropdown(String label, String? value, Map<String, String> entries,
-      ValueChanged<String?> onChanged) {
+  Widget _dropdown(
+    String label,
+    String? value,
+    Map<String, String> entries,
+    ValueChanged<String?> onChanged,
+  ) {
     return UtenDropdownField(
       label: label,
       value: value,
@@ -277,16 +284,17 @@ class _ProductionDailyReportEditPageState
     final workshopTree = ref.watch(productionWorkshopTreeProvider).valueOrNull;
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建生产日报' : '编辑生产日报',
-          showBackButton: true,
-          actions: [
-            UtenButton(
-              type: UtenButtonType.tonal,
-              icon: Icons.history_rounded,
-              onPressed: () => context.push('/production/daily-reports'),
-              child: const Text('查看历史'),
-            ),
-          ]),
+        title: widget.id == null ? '新建生产日报' : '编辑生产日报',
+        showBackButton: true,
+        actions: [
+          UtenButton(
+            type: UtenButtonType.tonal,
+            icon: Icons.history_rounded,
+            onPressed: () => context.push('/production/daily-reports'),
+            child: const Text('查看历史'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -304,74 +312,88 @@ class _ProductionDailyReportEditPageState
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              UtenFormGrid(children: [
-                                // 单据号：系统自动生成，只读显示。
-                                TextFormField(
-                                  readOnly: true,
-                                  controller: _billNo,
-                                  decoration: InputDecoration(
-                                    labelText: '单据号',
-                                    hintText: _billNo.text.isEmpty
-                                        ? '保存后自动生成'
-                                        : null,
-                                    filled: _billNo.text.isEmpty,
-                                    suffixIcon: _billNo.text.isEmpty
-                                        ? const Icon(Icons.autorenew_outlined,
-                                            size: 18)
-                                        : const Icon(Icons.lock_outline,
-                                            size: 16),
+                              UtenFormGrid(
+                                children: [
+                                  // 单据号：系统自动生成，只读显示。
+                                  TextFormField(
+                                    readOnly: true,
+                                    controller: _billNo,
+                                    decoration: InputDecoration(
+                                      labelText: '单据号',
+                                      hintText: _billNo.text.isEmpty
+                                          ? '保存后自动生成'
+                                          : null,
+                                      filled: _billNo.text.isEmpty,
+                                      suffixIcon: _billNo.text.isEmpty
+                                          ? const Icon(
+                                              Icons.autorenew_outlined,
+                                              size: 18,
+                                            )
+                                          : const Icon(
+                                              Icons.lock_outline,
+                                              size: 16,
+                                            ),
+                                    ),
                                   ),
-                                ),
-                                // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                ...utenMakerAuditCells(ref,
-                                    makerName: _makerName, createdAt: _createdAt),
-                                UtenDateField(
-                                  label: '单据日期',
-                                  required: true,
-                                  value: _billDate,
-                                  onChanged: (d) =>
-                                      setState(() => _billDate = d),
-                                ),
-                                _dropdown('仓库', _warehouseId,
-                                    names.warehouseEntries, (v) {
-                                  setState(() => _warehouseId = v);
-                                }),
-                                // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
-                                UtenDepartmentPicker(
-                                  mode: UtenDepartmentPickerMode.single,
-                                  label: '车间',
-                                  hint: '选择生产车间（部门）',
-                                  treeOverride: workshopTree,
-                                  initialSelection: _departmentId == null
-                                      ? const []
-                                      : [
-                                          DeptSelection(
-                                            id: _departmentId!,
-                                            name: _workshopName ?? '',
-                                            fullPath: '',
-                                            level: '',
-                                          ),
-                                        ],
-                                  onChanged: (sel) {
-                                    final s = sel.isEmpty ? null : sel.first;
-                                    setState(() {
-                                      _departmentId = s?.id;
-                                      _workshopName = s?.name; // 部门名冗余
-                                    });
-                                  },
-                                ),
-                                _employeePicker(
-                                  label: '生产工',
-                                  currentId: _workerId,
-                                  onChanged: (id) =>
-                                      setState(() => _workerId = id),
-                                ),
-                              ]),
+                                  // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                  ...utenMakerAuditCells(
+                                    ref,
+                                    makerName: _makerName,
+                                    createdAt: _createdAt,
+                                  ),
+                                  UtenDateField(
+                                    label: '单据日期',
+                                    required: true,
+                                    value: _billDate,
+                                    onChanged: (d) =>
+                                        setState(() => _billDate = d),
+                                  ),
+                                  _dropdown(
+                                    '仓库',
+                                    _warehouseId,
+                                    names.warehouseEntries,
+                                    (v) {
+                                      setState(() => _warehouseId = v);
+                                    },
+                                  ),
+                                  // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                  UtenDepartmentPicker(
+                                    mode: UtenDepartmentPickerMode.single,
+                                    label: '车间',
+                                    hint: '选择生产车间（部门）',
+                                    treeOverride: workshopTree,
+                                    initialSelection: _departmentId == null
+                                        ? const []
+                                        : [
+                                            DeptSelection(
+                                              id: _departmentId!,
+                                              name: _workshopName ?? '',
+                                              fullPath: '',
+                                              level: '',
+                                            ),
+                                          ],
+                                    onChanged: (sel) {
+                                      final s = sel.isEmpty ? null : sel.first;
+                                      setState(() {
+                                        _departmentId = s?.id;
+                                        _workshopName = s?.name; // 部门名冗余
+                                      });
+                                    },
+                                  ),
+                                  _employeePicker(
+                                    label: '生产工',
+                                    currentId: _workerId,
+                                    onChanged: (id) =>
+                                        setState(() => _workerId = id),
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: UtenSpacing.s12),
                               TextField(
                                 controller: _remark,
-                                decoration:
-                                    const InputDecoration(labelText: '备注'),
+                                decoration: const InputDecoration(
+                                  labelText: '备注',
+                                ),
                                 maxLines: 2,
                               ),
                             ],
@@ -379,9 +401,12 @@ class _ProductionDailyReportEditPageState
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
-                      Text('明细 (${_grid.length})',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '明细 (${_grid.length})',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       UtenEditableGrid<DailyGridRow>(
                         controller: _grid,
                         columns: dailyGridColumns(
@@ -401,7 +426,8 @@ class _ProductionDailyReportEditPageState
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             border: Border(
-                top: BorderSide(color: theme.colorScheme.outlineVariant)),
+              top: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
@@ -411,8 +437,9 @@ class _ProductionDailyReportEditPageState
                 valueListenable: _grid.totalListenable,
                 builder: (_, total, _) => Text(
                   '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s16),

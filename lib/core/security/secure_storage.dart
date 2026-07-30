@@ -46,12 +46,22 @@ class SecureStorage {
   Future<void> clearTokens() => clear();
 
   // ===== 访客令牌（独立于员工，存独立 key） =====
-  Future<String?> getVisitorAccessToken() => _storage.read(key: _keyVisitorAccess);
-  Future<String?> getVisitorRefreshToken() => _storage.read(key: _keyVisitorRefresh);
-  Future<void> saveVisitorTokens({String? accessToken, String? refreshToken}) async {
-    if (accessToken != null) await _storage.write(key: _keyVisitorAccess, value: accessToken);
-    if (refreshToken != null) await _storage.write(key: _keyVisitorRefresh, value: refreshToken);
+  Future<String?> getVisitorAccessToken() =>
+      _storage.read(key: _keyVisitorAccess);
+  Future<String?> getVisitorRefreshToken() =>
+      _storage.read(key: _keyVisitorRefresh);
+  Future<void> saveVisitorTokens({
+    String? accessToken,
+    String? refreshToken,
+  }) async {
+    if (accessToken != null) {
+      await _storage.write(key: _keyVisitorAccess, value: accessToken);
+    }
+    if (refreshToken != null) {
+      await _storage.write(key: _keyVisitorRefresh, value: refreshToken);
+    }
   }
+
   Future<void> clearVisitorTokens() async {
     await _storage.delete(key: _keyVisitorAccess);
     await _storage.delete(key: _keyVisitorRefresh);

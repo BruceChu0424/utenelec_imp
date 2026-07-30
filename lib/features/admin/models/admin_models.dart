@@ -99,7 +99,10 @@ class UserPermOverrides {
 /// 权限目录分组（GET /admin/permission-catalog 的数组项）。
 /// 目录是动态的：后端返回什么前端显示什么，不硬编码权限清单。
 class PermissionCatalogGroup {
-  const PermissionCatalogGroup({required this.category, required this.permissions});
+  const PermissionCatalogGroup({
+    required this.category,
+    required this.permissions,
+  });
 
   /// 分组名（如「财税部·客户资料」）
   final String category;
@@ -111,20 +114,17 @@ class PermissionCatalogGroup {
     final category = json['category'] as String? ?? '其他';
     return PermissionCatalogGroup(
       category: category,
-      permissions:
-          (json['permissions'] as List<dynamic>? ?? const [])
-              .map((e) {
-                final p = e as Map<String, dynamic>;
-                final code = p['code'] as String? ?? '';
-                // 目录项可能不带 id/category，用 code 兜底 id、组名兜底 category
-                return AdminPermission(
-                  id: p['id'] as String? ?? code,
-                  code: code,
-                  name: p['name'] as String? ?? '',
-                  category: p['category'] as String? ?? category,
-                );
-              })
-              .toList(),
+      permissions: (json['permissions'] as List<dynamic>? ?? const []).map((e) {
+        final p = e as Map<String, dynamic>;
+        final code = p['code'] as String? ?? '';
+        // 目录项可能不带 id/category，用 code 兜底 id、组名兜底 category
+        return AdminPermission(
+          id: p['id'] as String? ?? code,
+          code: code,
+          name: p['name'] as String? ?? '',
+          category: p['category'] as String? ?? category,
+        );
+      }).toList(),
     );
   }
 }
@@ -195,8 +195,8 @@ class DataScopeOwner {
   final int count;
 
   factory DataScopeOwner.fromJson(Map<String, dynamic> json) => DataScopeOwner(
-        employeeId: json['employeeId'] as String,
-        name: json['name'] as String,
-        count: (json['count'] as num).toInt(),
-      );
+    employeeId: json['employeeId'] as String,
+    name: json['name'] as String,
+    count: (json['count'] as num).toInt(),
+  );
 }

@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemDto;
@@ -14,6 +15,7 @@ import com.uten.imp.features.purchase.ret.dto.ReturnItemLine;
 import com.uten.imp.features.purchase.ret.dto.ReturnListItem;
 import com.uten.imp.features.purchase.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -53,6 +55,7 @@ public class PurchaseReturnService {
     private final PurchaseReturnRepository returnRepo;
     private final PurchaseReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
@@ -138,6 +141,19 @@ public class PurchaseReturnService {
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        sourceIntegrity.validatePurchaseReturn(
+                r.getSupplierId(),
+                items.stream()
+                        .map(it -> LinkedDocumentIntegrityService.LinkedLine.receiptSource(
+                                it.getReceiptItemId(),
+                                it.getOrderItemId(),
+                                it.getGoodsId(),
+                                it.getColorId(),
+                                it.getUnitId()))
+                        .toList());
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
@@ -169,8 +185,12 @@ public class PurchaseReturnService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
+        List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         OffsetDateTime now = OffsetDateTime.now();
-        for (PurchaseReturnItem it : itemRepo.findByReturnIdOrderByLineNoAsc(id)) {
+        for (PurchaseReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
             writeback(it, -1);
         }

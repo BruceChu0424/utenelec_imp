@@ -16,7 +16,7 @@ public final class NestedDtos {
     public static class EmergencyContactDto {
         private UUID id;
         private String name;
-        private String phone;   // 明文(hr/admin) 或脱敏
+        private String phone;   // employee:pii:view 决定明文，否则脱敏
         private String relationship;
     }
 

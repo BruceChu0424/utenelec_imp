@@ -29,7 +29,7 @@ public class AuthUser implements UserDetails {
     private final SubjectType subjectType;
     private final UUID employeeId;          // 仅 staff
     private final UUID visitorId;           // 仅 visitor
-    private final String loginAccount;      // staff=登录账号 / visitor=手机号
+    private final String loginAccount;      // staff=登录账号 / visitor=访客号（JWT 不携带手机号）
     private final String visitorNo;         // 仅 visitor
     private final Set<String> roles;
     private final Set<String> permissions;
@@ -64,8 +64,8 @@ public class AuthUser implements UserDetails {
     }
 
     /** 访客主体工厂。 */
-    public static AuthUser visitor(UUID visitorId, String phone, String visitorNo, Set<String> permissions) {
-        return new AuthUser(visitorId, SubjectType.VISITOR, null, visitorId, phone, visitorNo,
+    public static AuthUser visitor(UUID visitorId, String visitorAccount, String visitorNo, Set<String> permissions) {
+        return new AuthUser(visitorId, SubjectType.VISITOR, null, visitorId, visitorAccount, visitorNo,
                 Set.of(), permissions, false, true, false);
     }
 

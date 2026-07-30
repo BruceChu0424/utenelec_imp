@@ -79,12 +79,11 @@ CREATE UNIQUE INDEX uq_goods_bom_component
 powershell -ExecutionPolicy Bypass -File server/legacy_migration/export_legacy.ps1 GoodsBom
 
 # 2. 灌入新库（前提：V79 已由 server Flyway 建表 + --goods-data 已迁）
-bash server/legacy_migration/migrate.sh --goods-bom
+bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 ```
 
-- 已并入 `migrate.sh --all`（紧随 `--goods-data` 之后）。
-- **可重跑（非一次性）**：脚本开头 `TRUNCATE goods_bom_items` 全清重灌，老库 BOM 有更新时
-  重新执行 §三 两步（重导 CSV → 重跑 `--goods-bom`）即可；迁移代码与本文档随结构调整同步维护。
+- 已并入 `migrate.sh --bootstrap-all --confirm-destructive`（紧随 `--goods-data` 之后）。
+- **仅限首次导入/演练重跑**：脚本开头 `TRUNCATE goods_bom_items` 全清重灌；模块切流后不得用它做增量同步。
 - 孤儿跳过：父或组件货品在 `goods` 表查不到（`legacy_id` 映射失败）的行不灌入，末尾报跳过数。
 - **本机首跑结果（2026-07-28）**：迁入 **198,103 行 / 21,977 个父货品**，跳过孤儿 **20,717 行**，
   与老库 218,820 行完全对账（218,820 − 20,717 = 198,103 ✓）。

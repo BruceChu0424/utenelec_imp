@@ -26,4 +26,6 @@ public class OrderListItem {
     private boolean delayWarning;
     /** 价格脱敏（SOP §三8）：无 sales_order:price:view 时 true，totalLocal 已置 null，前端渲染 ***。 */
     private boolean priceMasked;
+    /** Current caller may mutate this document (functional permission + owner scope). */
+    private boolean writable;
 }

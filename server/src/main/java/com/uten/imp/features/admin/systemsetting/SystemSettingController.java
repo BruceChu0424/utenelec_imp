@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * 系统设置管理端（仅超级管理员 user:manage，与 AdminPermission/AdminUserController 一致）。
+ * 系统设置管理端（仅超级管理员 authorization:manage）。
  *
  * <p>读侧：GET 列出全部设置（按 category 分组，前端渲染表单）。
  * <p>写侧：PUT 单项更新（类型校验 + 审计，见 {@link SystemSettingsService#write}）。
@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/system-settings")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('user:manage')")
+@PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
 public class SystemSettingController {
 
     private final SystemSettingsService service;

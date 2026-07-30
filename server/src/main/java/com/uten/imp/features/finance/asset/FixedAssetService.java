@@ -2,6 +2,8 @@ package com.uten.imp.features.finance.asset;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportFacet;
 import com.uten.imp.features.finance.report.ReportTableResponse;
@@ -9,6 +11,8 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -36,19 +40,25 @@ public class FixedAssetService {
     // ======================== 固定资产 CRUD ========================
 
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> listAssets() {
-        return queryMaps("""
+    public PageResponse<Map<String, Object>> listAssets(int page, int size) {
+        return queryPageMaps("""
                 SELECT a.id, a.code, a.name, d.name AS dept, a.expense_style_id, ps.name AS style_name,
                        a.original_value, a.salvage_rate, a.useful_months, a.start_period, a.status, a.remark
                 FROM fixed_assets a
                 LEFT JOIN departments d ON d.id = a.department_id
                 LEFT JOIN payment_styles ps ON ps.id = a.expense_style_id
-                WHERE a.is_deleted = false ORDER BY a.code
-                """, "id", "code", "name", "dept", "expense_style_id", "style_name",
+                WHERE a.is_deleted = false
+                ORDER BY a.code, a.id
+                """,
+                "SELECT COUNT(*) FROM fixed_assets WHERE is_deleted = false",
+                page,
+                size,
+                "id", "code", "name", "dept", "expense_style_id", "style_name",
                 "original_value", "salvage_rate", "useful_months", "start_period", "status", "remark");
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public UUID createAsset(Map<String, Object> b) {
         validatePeriod(str(b, "startPeriod"));
         UUID id = UUID.randomUUID();
@@ -73,6 +83,7 @@ public class FixedAssetService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void updateAsset(UUID id, Map<String, Object> b) {
         if (str(b, "startPeriod") != null) validatePeriod(str(b, "startPeriod"));
         int n = em.createNativeQuery("""
@@ -98,6 +109,7 @@ public class FixedAssetService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void deleteAsset(UUID id) {
         em.createNativeQuery("UPDATE fixed_assets SET is_deleted=true, deleted_at=now() WHERE id=:id")
                 .setParameter("id", id).executeUpdate();
@@ -106,18 +118,24 @@ public class FixedAssetService {
     // ======================== 长期待摊 CRUD ========================
 
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> listDeferred() {
-        return queryMaps("""
+    public PageResponse<Map<String, Object>> listDeferred(int page, int size) {
+        return queryPageMaps("""
                 SELECT a.id, a.code, a.name, a.expense_style_id, ps.name AS style_name,
                        a.total_amount, a.useful_months, a.start_period, a.status, a.remark
                 FROM deferred_expenses a
                 LEFT JOIN payment_styles ps ON ps.id = a.expense_style_id
-                WHERE a.is_deleted = false ORDER BY a.code
-                """, "id", "code", "name", "expense_style_id", "style_name",
+                WHERE a.is_deleted = false
+                ORDER BY a.code, a.id
+                """,
+                "SELECT COUNT(*) FROM deferred_expenses WHERE is_deleted = false",
+                page,
+                size,
+                "id", "code", "name", "expense_style_id", "style_name",
                 "total_amount", "useful_months", "start_period", "status", "remark");
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public UUID createDeferred(Map<String, Object> b) {
         validatePeriod(str(b, "startPeriod"));
         UUID id = UUID.randomUUID();
@@ -140,6 +158,7 @@ public class FixedAssetService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void updateDeferred(UUID id, Map<String, Object> b) {
         int n = em.createNativeQuery("""
                 UPDATE deferred_expenses SET name=COALESCE(:name,name), expense_style_id=COALESCE(:style,expense_style_id),
@@ -161,6 +180,7 @@ public class FixedAssetService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void deleteDeferred(UUID id) {
         em.createNativeQuery("UPDATE deferred_expenses SET is_deleted=true, deleted_at=now() WHERE id=:id")
                 .setParameter("id", id).executeUpdate();
@@ -170,6 +190,7 @@ public class FixedAssetService {
 
     /** 计提折旧（幂等重跑期间）。返回计提资产数。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public int depreciate(String period) {
         validatePeriod(period);
         // 回滚该期间计提（日志 + 凭证级联分录）
@@ -238,6 +259,7 @@ public class FixedAssetService {
 
     /** 计提摊销（幂等重跑期间）。返回计提笔数。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public int amortize(String period) {
         validatePeriod(period);
         em.createNativeQuery("DELETE FROM da_amortization_log WHERE period = :p")
@@ -414,6 +436,38 @@ public class FixedAssetService {
             out.add(m);
         }
         return out;
+    }
+
+    private PageResponse<Map<String, Object>> queryPageMaps(
+            String dataSql,
+            String countSql,
+            int page,
+            int size,
+            String... colNames) {
+        Pageable pageable = Pageables.of(page, size);
+        long total = ((Number) em.createNativeQuery(countSql).getSingleResult()).longValue();
+        var query = em.createNativeQuery(dataSql + " LIMIT :__limit OFFSET :__offset")
+                .setParameter("__limit", pageable.getPageSize())
+                .setParameter("__offset", pageable.getOffset());
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.getResultList();
+        List<Map<String, Object>> items = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            for (int index = 0; index < row.length && index < colNames.length; index++) {
+                item.put(colNames[index], row[index]);
+            }
+            items.add(item);
+        }
+        int totalPages = total == 0
+                ? 0
+                : (int) ((total + pageable.getPageSize() - 1) / pageable.getPageSize());
+        return new PageResponse<>(
+                items,
+                pageable.getPageNumber() + 1,
+                pageable.getPageSize(),
+                total,
+                totalPages);
     }
 
     private UUID styleIdByName(String name) {

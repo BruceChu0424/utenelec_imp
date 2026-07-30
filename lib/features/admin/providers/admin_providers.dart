@@ -26,15 +26,16 @@ final permissionCatalogProvider =
     );
 
 /// 指定部门已配置的权限点 code 列表
-final adminDepartmentPermissionsProvider =
-    FutureProvider.autoDispose.family<List<String>, String>(
-      (ref, departmentId) =>
-          ref.watch(adminRepositoryProvider).departmentPermissions(departmentId),
+final adminDepartmentPermissionsProvider = FutureProvider.autoDispose
+    .family<List<String>, String>(
+      (ref, departmentId) => ref
+          .watch(adminRepositoryProvider)
+          .departmentPermissions(departmentId),
     );
 
 /// 指定员工的有效权限（全员基础 ∪ 部门配置 ± 个人覆盖，后端计算）
-final adminEffectivePermissionsProvider =
-    FutureProvider.autoDispose.family<EffectivePermissions, String>(
+final adminEffectivePermissionsProvider = FutureProvider.autoDispose
+    .family<EffectivePermissions, String>(
       (ref, userId) =>
           ref.watch(adminRepositoryProvider).effectivePermissions(userId),
     );

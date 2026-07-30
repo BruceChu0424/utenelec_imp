@@ -56,16 +56,28 @@ class PurchaseHubPage extends StatelessWidget {
   }
 
   /// 一个分组：标题 + 卡片网格。
-  Widget _section(BuildContext context, ThemeData theme, String title, List<_Entry> entries) {
+  Widget _section(
+    BuildContext context,
+    ThemeData theme,
+    String title,
+    List<_Entry> entries,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: UtenSpacing.s4, bottom: UtenSpacing.s8),
-            child: Text(title,
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            padding: const EdgeInsets.only(
+              left: UtenSpacing.s4,
+              bottom: UtenSpacing.s8,
+            ),
+            child: Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           UtenResponsiveGrid(
             itemCount: entries.length,
@@ -89,12 +101,12 @@ class _Entry {
   });
 
   _Entry.fromCfg(PurchaseDocConfig cfg)
-      : icon = cfg.icon,
-        label = cfg.label,
-        description = cfg.shortLabel,
-        location = cfg.skipListOnCreate
-            ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
-            : '/purchase/${cfg.type.pathSegment}';
+    : icon = cfg.icon,
+      label = cfg.label,
+      description = cfg.shortLabel,
+      location = cfg.skipListOnCreate
+          ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
+          : '/purchase/${cfg.type.pathSegment}';
 
   final IconData icon;
   final String label;
@@ -119,7 +131,9 @@ class _EntryTile extends StatelessWidget {
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(
-              vertical: UtenSpacing.s20, horizontal: UtenSpacing.s16),
+            vertical: UtenSpacing.s20,
+            horizontal: UtenSpacing.s16,
+          ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: UtenRadius.lgAll,
@@ -138,13 +152,19 @@ class _EntryTile extends StatelessWidget {
                 child: Icon(entry.icon, color: color, size: 22),
               ),
               const SizedBox(height: UtenSpacing.s12),
-              Text(entry.label,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                entry.label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(entry.description,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                entry.description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),

@@ -1,11 +1,11 @@
-// AdminSystemSettingsPage - 系统设置（超级管理员 user:manage）
+// AdminSystemSettingsPage - 系统设置（authorization:manage + 后端 superAdmin）
 //
 // 运行时可配的安全/业务策略阈值：登录限流 / 账号锁定 / 密码历史 / 导出限流 / 令牌TTL /
 // 短信验证 / 导出行数上限。密钥与部署类（jwt.secret/crypto/sms AK/CORS/swagger/DB）不在此
 // （走 application.yml / 环境变量）。
 //
 // 安全（用户铁律，全方面）：
-//   * 路由守卫 /admin/ 前缀要求 user:manage（permission_by_path.dart），普通用户连入口卡片都看不到；
+//   * 前端路由要求 authorization:manage，后端同时校验 superAdmin；
 //   * 改设置【二次密码确认】（后端 SystemSettingsService.write 校验当前账号密码，即使 access token
 //     被盗也无法改安全策略）；
 //   * 改设置全过审计（action=update_system_setting，审计页可查谁改了哪项 旧→新值）；
@@ -126,7 +126,9 @@ class _AdminSystemSettingsPageState
       await _load(); // 重载拿最新 updatedAt
     } on ApiException catch (e) {
       if (!mounted) return;
-      context.appError(e.message); // 如 BAD_CREDENTIALS 密码错 / VALIDATION_FAILED 类型错
+      context.appError(
+        e.message,
+      ); // 如 BAD_CREDENTIALS 密码错 / VALIDATION_FAILED 类型错
     } catch (_) {
       if (!mounted) return;
       context.appError('保存失败，请稍后重试');
@@ -139,38 +141,35 @@ class _AdminSystemSettingsPageState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: UtenAppBar(
-        title: '系统设置',
-        leading: const UtenBackButton(),
-      ),
+      appBar: const UtenAppBar(title: '系统设置', leading: UtenBackButton()),
       body: UtenContentContainer(
         child: _loading && _all == null
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
             : _error != null
-                ? _ErrorState(error: _error!, onRetry: _load)
-                : _all == null || _all!.isEmpty
-                    ? const Center(child: Text('暂无设置项'))
-                    : RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView(
-                          padding: const EdgeInsets.all(UtenSpacing.s16),
-                          children: [
-                            _warningBanner(theme),
-                            for (final g in _groups)
-                              if (_all!.any((e) => e.category == g.$1))
-                                _SettingGroupCard(
-                                  group: g,
-                                  items: _all!
-                                      .where((e) => e.category == g.$1)
-                                      .toList(),
-                                  controllers: _controllers,
-                                  isDirty: (k) => _dirty.contains(k),
-                                  onChanged: _markDirty,
-                                ),
-                            const SizedBox(height: 80),
-                          ],
+            ? _ErrorState(error: _error!, onRetry: _load)
+            : _all == null || _all!.isEmpty
+            ? const Center(child: Text('暂无设置项'))
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  children: [
+                    _warningBanner(theme),
+                    for (final g in _groups)
+                      if (_all!.any((e) => e.category == g.$1))
+                        _SettingGroupCard(
+                          group: g,
+                          items: _all!
+                              .where((e) => e.category == g.$1)
+                              .toList(),
+                          controllers: _controllers,
+                          isDirty: (k) => _dirty.contains(k),
+                          onChanged: _markDirty,
                         ),
-                      ),
+                    const SizedBox(height: 80),
+                  ],
+                ),
+              ),
       ),
       bottomNavigationBar: _saveBar(theme),
     );
@@ -181,28 +180,37 @@ class _AdminSystemSettingsPageState
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s16, vertical: UtenSpacing.s12),
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s12,
+        ),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
           border: Border(top: BorderSide(color: theme.dividerColor)),
         ),
-        child: Row(children: [
-          Text(
-            hasDirty ? '${_dirty.length} 项已修改' : '所有设置保持当前值',
-            style: theme.textTheme.bodyMedium?.copyWith(
-                color: hasDirty ? theme.colorScheme.primary : theme.colorScheme.outline),
-          ),
-          const Spacer(),
-          FilledButton.icon(
-            onPressed: (hasDirty && !_saving) ? _save : null,
-            icon: _saving
-                ? const SizedBox(
-                    width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.save_outlined),
-            label: Text(_saving ? '保存中…' : '保存改动'),
-          ),
-        ]),
+        child: Row(
+          children: [
+            Text(
+              hasDirty ? '${_dirty.length} 项已修改' : '所有设置保持当前值',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: hasDirty
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.outline,
+              ),
+            ),
+            const Spacer(),
+            FilledButton.icon(
+              onPressed: (hasDirty && !_saving) ? _save : null,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.save_outlined),
+              label: Text(_saving ? '保存中…' : '保存改动'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -218,8 +226,11 @@ class _AdminSystemSettingsPageState
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded,
-              color: theme.colorScheme.error, size: 20),
+          Icon(
+            Icons.warning_amber_rounded,
+            color: theme.colorScheme.error,
+            size: 20,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -260,17 +271,24 @@ class _SettingGroupCard extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12, vertical: UtenSpacing.s8),
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              Icon(group.$3, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Text(group.$2,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w600)),
-            ]),
+            Row(
+              children: [
+                Icon(group.$3, size: 20, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  group.$2,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
             const Divider(height: 20),
             for (final e in items)
               _SettingRow(
@@ -305,43 +323,50 @@ class _SettingRow extends StatelessWidget {
     final updated = entry.updatedAt == null
         ? null
         : (entry.updatedAt!.length > 19
-            ? entry.updatedAt!.substring(0, 19).replaceAll('T', ' ')
-            : entry.updatedAt!.replaceAll('T', ' '));
+              ? entry.updatedAt!.substring(0, 19).replaceAll('T', ' ')
+              : entry.updatedAt!.replaceAll('T', ' '));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-            Expanded(child: Text(entry.label, style: theme.textTheme.bodyLarge)),
-            SizedBox(
-              width: 150,
-              child: TextField(
-                controller: controller,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: false),
-                decoration: InputDecoration(
-                  isDense: true,
-                  suffixText: entry.unit,
-                  hintText: '0',
-                  border: const OutlineInputBorder(),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                  filled: dirty,
-                  fillColor:
-                      theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
-                ),
-                onChanged: (_) => onChanged(),
+          Row(
+            children: [
+              Expanded(
+                child: Text(entry.label, style: theme.textTheme.bodyLarge),
               ),
-            ),
-          ]),
+              SizedBox(
+                width: 150,
+                child: TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    suffixText: entry.unit,
+                    hintText: '0',
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 9,
+                    ),
+                    filled: dirty,
+                    fillColor: theme.colorScheme.primaryContainer.withValues(
+                      alpha: 0.35,
+                    ),
+                  ),
+                  onChanged: (_) => onChanged(),
+                ),
+              ),
+            ],
+          ),
           if (entry.description != null && entry.description!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 entry.description!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           if (updated != null)
@@ -349,8 +374,9 @@ class _SettingRow extends StatelessWidget {
               padding: const EdgeInsets.only(top: 1),
               child: Text(
                 '上次修改 $updated',
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.outline),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
               ),
             ),
         ],

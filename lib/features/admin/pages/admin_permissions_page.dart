@@ -1,10 +1,12 @@
-// AdminPermissionsPage - 权限管理（超级管理员）
+// AdminPermissionsPage - 账号支持与权限管理。
 //
-// 顶部说明条 + 分段切换「按员工 | 按部门」。
+// account:support 可执行账号锁定/启停/重置密码。
+// authorization:manage + superAdmin 才显示个人/部门授权与数据范围。
+// 顶部说明条 + 超管可见的分段切换「按员工 | 按部门」。
 // 按员工：主从布局（expanded 左列表右详情；compact 列表 → 详情带返回）。
 // 按部门：单选部门 + 从完整权限目录勾选权限点（见 widgets/admin_department_perm_view.dart）。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
-// 路由守卫：/admin/* → Perm.userManage（见 core/router/permission_by_path.dart）。
+// 路由守卫与工作台显隐共用 permission_by_path.dart。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,6 +20,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 import '../widgets/admin_department_perm_view.dart';
@@ -38,6 +41,11 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canManageAuthorization =
+        ref.watch(isSuperAdminProvider) &&
+        permissions.contains(Perm.authorizationManage);
+    final segment = canManageAuthorization ? _segment : 0;
 
     Widget body = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,7 +70,9 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
               const SizedBox(width: UtenSpacing.s12),
               Expanded(
                 child: Text(
-                  '权限管理 · 按员工分配角色与调整权限，或按部门配置权限点。此入口仅超级管理员可见。',
+                  canManageAuthorization
+                      ? '账号与权限管理 · 账号操作、个人权限、数据范围和部门权限均以后端实时授权为准。'
+                      : '账号支持 · 可锁定、启停账号或重置一次性临时密码；不展示任何授权配置。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.5,
@@ -73,24 +83,28 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
           ),
         ),
         // 分段切换
-        Padding(
-          padding: const EdgeInsets.only(
-            top: UtenSpacing.s4,
-            bottom: UtenSpacing.s8,
+        if (canManageAuthorization)
+          Padding(
+            padding: const EdgeInsets.only(
+              top: UtenSpacing.s4,
+              bottom: UtenSpacing.s8,
+            ),
+            child: UtenSegmentedFilter<int>(
+              segments: const [
+                UtenSegment(value: 0, label: '按员工'),
+                UtenSegment(value: 1, label: '按部门'),
+              ],
+              selected: segment,
+              onChanged: (v) => setState(() => _segment = v),
+            ),
           ),
-          child: UtenSegmentedFilter<int>(
-            segments: const [
-              UtenSegment(value: 0, label: '按员工'),
-              UtenSegment(value: 1, label: '按部门'),
-            ],
-            selected: _segment,
-            onChanged: (v) => setState(() => _segment = v),
-          ),
-        ),
         Expanded(
           child: IndexedStack(
-            index: _segment,
-            children: const [_EmployeePermTab(), AdminDepartmentPermView()],
+            index: segment,
+            children: [
+              _EmployeePermTab(canManageAuthorization: canManageAuthorization),
+              if (canManageAuthorization) const AdminDepartmentPermView(),
+            ],
           ),
         ),
       ],
@@ -102,7 +116,10 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
 
     // 统一顶栏：左上角全局返回键（UtenBackButton），AppBar 自带顶部安全区
     return Scaffold(
-      appBar: const UtenAppBar(title: '权限管理', showBackButton: true),
+      appBar: UtenAppBar(
+        title: canManageAuthorization ? '账号与权限管理' : '账号支持',
+        showBackButton: true,
+      ),
       body: body,
     );
   }
@@ -110,7 +127,9 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
 
 /// 按员工：账号列表（搜索/状态筛选/加载更多）+ 详情面板（主从布局）。
 class _EmployeePermTab extends ConsumerStatefulWidget {
-  const _EmployeePermTab();
+  const _EmployeePermTab({required this.canManageAuthorization});
+
+  final bool canManageAuthorization;
 
   @override
   ConsumerState<_EmployeePermTab> createState() => _EmployeePermTabState();
@@ -258,6 +277,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     return AdminUserDetailPanel(
       key: ValueKey(u.id),
       user: u,
+      canManageAuthorization: widget.canManageAuthorization,
       showBack: showBack,
       onBack: () => setState(() => _showDetail = false),
       onAccountChanged: _onAccountChanged,
@@ -292,9 +312,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
             padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
                 child: ChoiceChip(
                   label: const Text('全部'),
                   selected: _statusFilter == null,

@@ -76,8 +76,10 @@ class EditableGridColumn<T extends EditableGridRow> {
 
 /// 行列表 + 合计通知器的持有者。所有改行操作走这里（[rows] 私有），
 /// 自动 dispose 被删行；表级 [notifyListeners] 仅在增删行时触发（驱动行数重绘）。
-class UtenEditableGridController<T extends EditableGridRow> extends ChangeNotifier {
-  UtenEditableGridController({List<T>? initial}) : _rows = List.of(initial ?? const []);
+class UtenEditableGridController<T extends EditableGridRow>
+    extends ChangeNotifier {
+  UtenEditableGridController({List<T>? initial})
+    : _rows = List.of(initial ?? const []);
 
   final List<T> _rows;
 
@@ -164,7 +166,11 @@ class _GridTotalNotifier<T extends EditableGridRow> extends ChangeNotifier
     _unsubs.clear();
     _setValue(rows.fold(0.0, (s, r) => s + r.amountValue));
     for (final r in rows) {
-      _unsubs.add(r.listenAmount(() => _setValue(rows.fold(0.0, (s, x) => s + x.amountValue))));
+      _unsubs.add(
+        r.listenAmount(
+          () => _setValue(rows.fold(0.0, (s, x) => s + x.amountValue)),
+        ),
+      );
     }
   }
 
@@ -202,6 +208,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final Widget? footer;
 
   final bool showRowDelete;
+
   /// 是否显示底部「添加行/添加多行」栏。编辑页用 true（默认）；「从上游引入」选明细等
   /// 只读勾选场景传 false 隐藏。
   final bool showAddRow;
@@ -213,7 +220,8 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   State<UtenEditableGrid<T>> createState() => _UtenEditableGridState<T>();
 }
 
-class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditableGrid<T>> {
+class _UtenEditableGridState<T extends EditableGridRow>
+    extends State<UtenEditableGrid<T>> {
   // 表头/表体横滚同步（双 ScrollController + _syncing 防回环）。
   late final ScrollController _headerH;
   late final ScrollController _bodyH;
@@ -224,8 +232,10 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
 
   /// 列宽拖拽命中区半宽（贴列右边界，半溢出到相邻列）。
   static const double _gripHalf = 4;
+
   /// 列宽下限（防拖没）。
   static const double _minColWidth = 48;
+
   /// 删除列宽（行尾 × 按钮）。
   static const double _deleteColWidth = 48;
 
@@ -236,7 +246,9 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
     _bodyH = ScrollController();
     _headerH.addListener(() => _sync(_headerH, _bodyH));
     _bodyH.addListener(() => _sync(_bodyH, _headerH));
-    _widths = widget.columns.map((c) => c.width.clamp(_minColWidth, double.infinity)).toList();
+    _widths = widget.columns
+        .map((c) => c.width.clamp(_minColWidth, double.infinity))
+        .toList();
   }
 
   @override
@@ -244,11 +256,16 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
     super.didUpdateWidget(oldWidget);
     // 列集合变了（数量或 key 序列不同，如切换 docType）→ 按新 columns.width 重置列宽。
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
-      _widths = widget.columns.map((c) => c.width.clamp(_minColWidth, double.infinity)).toList();
+      _widths = widget.columns
+          .map((c) => c.width.clamp(_minColWidth, double.infinity))
+          .toList();
     }
   }
 
-  bool _sameColumnKeys(List<EditableGridColumn<T>> a, List<EditableGridColumn<T>> b) {
+  bool _sameColumnKeys(
+    List<EditableGridColumn<T>> a,
+    List<EditableGridColumn<T>> b,
+  ) {
     if (a.length != b.length) return false;
     for (var i = 0; i < a.length; i++) {
       if (a[i].key != b[i].key) return false;
@@ -271,7 +288,8 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
   }
 
   double get _totalWidth =>
-      _widths.fold(0.0, (s, w) => s + w) + (widget.showRowDelete ? _deleteColWidth : 0);
+      _widths.fold(0.0, (s, w) => s + w) +
+      (widget.showRowDelete ? _deleteColWidth : 0);
 
   @override
   void dispose() {
@@ -284,7 +302,10 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final total = _totalWidth;
-    final divider = BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5);
+    final divider = BorderSide(
+      color: theme.colorScheme.outlineVariant,
+      width: 0.5,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -306,8 +327,8 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHigh,
                           border: Border(
-                              right:
-                                  BorderSide(color: theme.colorScheme.outline, width: 1)),
+                            right: BorderSide(color: theme.colorScheme.outline),
+                          ),
                         ),
                         child: Stack(
                           children: [
@@ -320,8 +341,12 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
                                 alignment: Alignment.centerLeft,
                                 child: Text(
                                   widget.columns[i].label,
-                                  style: (theme.textTheme.labelMedium ?? const TextStyle())
-                                      .copyWith(fontWeight: FontWeight.w700),
+                                  style:
+                                      (theme.textTheme.labelMedium ??
+                                              const TextStyle())
+                                          .copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                 ),
                               ),
                             ),
@@ -333,7 +358,8 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
                               width: _gripHalf * 2,
                               child: GestureDetector(
                                 behavior: HitTestBehavior.opaque,
-                                onHorizontalDragUpdate: (d) => _resizeColumn(i, d.delta.dx),
+                                onHorizontalDragUpdate: (d) =>
+                                    _resizeColumn(i, d.delta.dx),
                                 child: const MouseRegion(
                                   cursor: SystemMouseCursors.resizeColumn,
                                   child: SizedBox.expand(),
@@ -351,8 +377,8 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHigh,
                           border: Border(
-                              right:
-                                  BorderSide(color: theme.colorScheme.outline, width: 1)),
+                            right: BorderSide(color: theme.colorScheme.outline),
+                          ),
                         ),
                       ),
                     ),
@@ -361,7 +387,11 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
             ),
           ),
         ),
-        Divider(height: 1, thickness: 1, color: theme.colorScheme.outlineVariant),
+        Divider(
+          height: 1,
+          thickness: 1,
+          color: theme.colorScheme.outlineVariant,
+        ),
         // 表体：content-tall（shrinkWrap），横向可滚，横滚条始终贴最后一行下。
         Scrollbar(
           controller: _bodyH,
@@ -446,7 +476,10 @@ class _UtenEditableGridState<T extends EditableGridRow> extends State<UtenEditab
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () {
                 final n = int.tryParse(ctrl.text.trim()) ?? 0;
@@ -503,7 +536,9 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                     vertical: UtenSpacing.s4,
                   ),
                   child: Align(
-                    alignment: columns[i].numeric ? Alignment.centerRight : Alignment.centerLeft,
+                    alignment: columns[i].numeric
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
                     child: DefaultTextStyle.merge(
                       style: TextStyle(
                         color: theme.colorScheme.onSurface,
@@ -544,7 +579,10 @@ class _EmptyRows extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s16),
       child: Center(
-        child: Text(message, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
+        child: Text(
+          message,
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
       ),
     );
   }

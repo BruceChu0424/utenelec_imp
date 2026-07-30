@@ -8,10 +8,18 @@ import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.sql.Array;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.Session;
 
 /**
  * 事务会话变量 + pgcrypto 加解密 + HMAC。
@@ -98,6 +106,67 @@ public class TxSessionVars {
                 .setParameter("c", body)
                 .setParameter("key", key)
                 .getSingleResult();
+    }
+
+    /**
+     * 批量解密同一事务内的一组密文。
+     *
+     * <p>工资生成会一次读取成百上千名员工的薪资快照。逐字段调用
+     * {@link #decrypt(String)} 会产生 N 次数据库往返；此方法按密钥版本分组，
+     * 每个版本只执行一条参数化 SQL，并且不把密钥或明文拼进 SQL/日志。
+     */
+    public Map<String, String> decryptAll(Collection<String> ciphers) {
+        Map<String, List<CipherPart>> byVersion = new LinkedHashMap<>();
+        if (ciphers == null) {
+            return Map.of();
+        }
+        for (String cipher : ciphers) {
+            if (cipher == null || cipher.isBlank()) {
+                continue;
+            }
+            int idx = cipher.indexOf(':');
+            String version = idx > 0 ? cipher.substring(0, idx) : crypto.getPgpKeyVersion();
+            String body = idx > 0 ? cipher.substring(idx + 1) : cipher;
+            byVersion.computeIfAbsent(version, ignored -> new ArrayList<>())
+                    .add(new CipherPart(cipher, body));
+        }
+
+        Map<String, String> decrypted = new HashMap<>();
+        Session session = em.unwrap(Session.class);
+        for (Map.Entry<String, List<CipherPart>> entry : byVersion.entrySet()) {
+            String key = keyring().get(entry.getKey());
+            if (key == null) {
+                throw new IllegalStateException("未知加密版本 [" + entry.getKey() + "]，请配置历史密钥");
+            }
+            List<CipherPart> parts = entry.getValue();
+            session.doWork(connection -> {
+                String[] raw = parts.stream().map(CipherPart::raw).toArray(String[]::new);
+                String[] bodies = parts.stream().map(CipherPart::body).toArray(String[]::new);
+                Array rawArray = connection.createArrayOf("text", raw);
+                Array bodyArray = connection.createArrayOf("text", bodies);
+                try (PreparedStatement statement = connection.prepareStatement("""
+                             SELECT input.raw,
+                                    pgp_sym_decrypt(decode(input.body, 'base64'), ?)
+                             FROM unnest(?::text[], ?::text[]) AS input(raw, body)
+                             """)) {
+                    statement.setString(1, key);
+                    statement.setArray(2, rawArray);
+                    statement.setArray(3, bodyArray);
+                    try (ResultSet rows = statement.executeQuery()) {
+                        while (rows.next()) {
+                            decrypted.put(rows.getString(1), rows.getString(2));
+                        }
+                    }
+                } finally {
+                    rawArray.free();
+                    bodyArray.free();
+                }
+            });
+        }
+        return Map.copyOf(decrypted);
+    }
+
+    private record CipherPart(String raw, String body) {
     }
 
     /** HMAC-SHA256(hex)，用于确定性查重（如身份证号）。 */

@@ -5,11 +5,18 @@ server:
 
 logging:
   level:
+    com.uten.imp: DEBUG
     org.springframework.security: INFO
 
 uten:
+  jwt:
+    issuer: ${UTEN_JWT_ISSUER:uten-imp-dev}
   security:
     require-https: false
+    swagger-enabled: ${UTEN_SWAGGER_ENABLED:true}
+  sms:
+    provider: ${UTEN_SMS_PROVIDER:log}
+    expose-code: ${UTEN_SMS_EXPOSE_CODE:true}
 
 app:
   legacy:

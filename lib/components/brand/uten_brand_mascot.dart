@@ -25,17 +25,17 @@ class UtenBrandMascot extends StatelessWidget {
 
   /// 正方形快捷构造：边长 [size]，避免同时算 width/height。
   const UtenBrandMascot.size(double size, {super.key})
-      : width = size,
-        height = size,
-        fit = BoxFit.contain,
-        semanticLabel = 'Uten 优腾 德国工程师';
+    : width = size,
+      height = size,
+      fit = BoxFit.contain,
+      semanticLabel = 'Uten 优腾 德国工程师';
 
   /// 启动屏 / 全屏铺底快捷构造：用 [SizedBox.expand] 占满父空间。
   const UtenBrandMascot.background({super.key})
-      : width = double.infinity,
-        height = double.infinity,
-        fit = BoxFit.contain,
-        semanticLabel = 'Uten 优腾 德国工程师';
+    : width = double.infinity,
+      height = double.infinity,
+      fit = BoxFit.contain,
+      semanticLabel = 'Uten 优腾 德国工程师';
 
   final double? width;
   final double? height;

@@ -121,9 +121,9 @@ class SubcontractReportRepository {
     final list = await api.getList(
       '/subcontract/reports/monthly',
       query: {
-        if (docType != null) 'docType': docType,
-        if (dateFrom != null) 'dateFrom': dateFrom,
-        if (dateTo != null) 'dateTo': dateTo,
+        'docType': ?docType,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
         'limit': limit,
       },
     );

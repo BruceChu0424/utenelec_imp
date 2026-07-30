@@ -14,7 +14,8 @@ class SessionEventBus {
   // sessionProvider 监听后用它更新权限快照，使权限随刷新滑动更新（不再只在登录时拉一次）。
   // 用 Map 而非 UserProfile 类型，避免 core 层反向依赖 features/auth/model。
   final _profileController = StreamController<Map<String, dynamic>>.broadcast();
-  Stream<Map<String, dynamic>> get onProfileRefreshed => _profileController.stream;
+  Stream<Map<String, dynamic>> get onProfileRefreshed =>
+      _profileController.stream;
 
   void expire() {
     if (!_controller.isClosed) _controller.add(null);

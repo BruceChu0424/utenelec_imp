@@ -23,10 +23,12 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/product_category_node.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
@@ -56,6 +58,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String? _warehouseId; // null = 全部（参与核算仓库聚合）
   String _keyword = '';
   // 列排序态：null=后端默认（库存数量 DESC）。
@@ -89,14 +92,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return; // 防连点
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(stockQueryRepositoryProvider).instantInventory(
+      final r = await ref
+          .read(stockQueryRepositoryProvider)
+          .instantInventory(
             page: page,
             categoryId: _categoryId,
             warehouseId: _warehouseId,
@@ -105,16 +110,18 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _page = r);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _error = e.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _error = '加载失败'); // TODO(l10n): 补 arb
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _loadRequests.isCurrent(generation)) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -133,13 +140,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   /// 导出查询参数（与 _load 一致，不含 page/size；report 固定 'instant-inventory' 走后端独立分支）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        if (_categoryId != null) 'categoryId': _categoryId,
-        if (_warehouseId != null) 'warehouseId': _warehouseId,
-        'includeDefective': ref.read(instantInventoryPrefsProvider),
-        if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
-        if (_sortKey != null) 'sort': _sortKey,
-        if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
-      };
+    if (_categoryId != null) 'categoryId': _categoryId,
+    if (_warehouseId != null) 'warehouseId': _warehouseId,
+    'includeDefective': ref.read(instantInventoryPrefsProvider),
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    if (_sortKey != null) 'sort': _sortKey,
+    if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+  };
 
   /// 数字格式化：最多 2 位小数，去掉无意义的尾随 0（1.50→1.5；0→0）。
   static String _num(double? v) {
@@ -152,8 +159,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final r = await ref.read(stockQueryRepositoryProvider).instantInventory(
-          page: 1,
+    final r = await ref
+        .read(stockQueryRepositoryProvider)
+        .instantInventory(
           size: 2000,
           categoryId: _categoryId,
           warehouseId: _warehouseId,
@@ -174,49 +182,86 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   List<MasterColumnDef<InstantInventoryRow>> get _columns =>
       <MasterColumnDef<InstantInventoryRow>>[
         MasterColumnDef(
-            key: 'category', label: '所属类型', width: 120, value: (r) => r.categoryName ?? '—'),
+          key: 'category',
+          label: '所属类型',
+          width: 120,
+          value: (r) => r.categoryName ?? '—',
+        ),
         MasterColumnDef(
-            key: 'model', label: '型号', width: 110, value: (r) => r.model ?? ''),
+          key: 'model',
+          label: '型号',
+          width: 110,
+          value: (r) => r.model ?? '',
+        ),
         MasterColumnDef(
-            key: 'cNumber', label: '客户型号', width: 120, value: (r) => r.cNumber ?? ''),
+          key: 'cNumber',
+          label: '客户型号',
+          width: 120,
+          value: (r) => r.cNumber ?? '',
+        ),
         MasterColumnDef(
-            key: 'name', label: '货品名称', width: 220, sortable: true, value: (r) => r.name ?? ''),
+          key: 'name',
+          label: '货品名称',
+          width: 220,
+          sortable: true,
+          value: (r) => r.name ?? '',
+        ),
         MasterColumnDef(
-            key: 'spec', label: '规格', width: 120, value: (r) => r.spec ?? ''),
+          key: 'spec',
+          label: '规格',
+          width: 120,
+          value: (r) => r.spec ?? '',
+        ),
         MasterColumnDef(
-            key: 'color', label: '颜色', width: 90, value: (r) => r.colorName ?? ''),
+          key: 'color',
+          label: '颜色',
+          width: 90,
+          value: (r) => r.colorName ?? '',
+        ),
         MasterColumnDef(
-            key: 'unit', label: '单位', width: 70, value: (r) => r.unitName ?? ''),
+          key: 'unit',
+          label: '单位',
+          width: 70,
+          value: (r) => r.unitName ?? '',
+        ),
         MasterColumnDef(
-            key: 'remark', label: '备注', width: 90, value: (r) => r.remark ?? ''),
+          key: 'remark',
+          label: '备注',
+          width: 90,
+          value: (r) => r.remark ?? '',
+        ),
         MasterColumnDef(
-            key: 'weight',
-            label: '库存重量',
-            width: 110,
-            type: 'number',
-            sortable: true,
-            value: (r) => _num(r.weight)),
+          key: 'weight',
+          label: '库存重量',
+          width: 110,
+          type: 'number',
+          sortable: true,
+          value: (r) => _num(r.weight),
+        ),
         MasterColumnDef(
-            key: 'qty',
-            label: '库存数量',
-            width: 110,
-            type: 'number',
-            sortable: true,
-            value: (r) => _num(r.qty)),
+          key: 'qty',
+          label: '库存数量',
+          width: 110,
+          type: 'number',
+          sortable: true,
+          value: (r) => _num(r.qty),
+        ),
         MasterColumnDef(
-            key: 'costAmount',
-            label: '成本金额',
-            width: 120,
-            type: 'number',
-            sortable: true,
-            value: (r) => r.costAmount?.toStringAsFixed(2) ?? '—'),
+          key: 'costAmount',
+          label: '成本金额',
+          width: 120,
+          type: 'number',
+          sortable: true,
+          value: (r) => r.costAmount?.toStringAsFixed(2) ?? '—',
+        ),
         MasterColumnDef(
-            key: 'moreQty',
-            label: '多排数量',
-            width: 100,
-            type: 'number',
-            sortable: true,
-            value: (r) => _num(r.moreQty)),
+          key: 'moreQty',
+          label: '多排数量',
+          width: 100,
+          type: 'number',
+          sortable: true,
+          value: (r) => _num(r.moreQty),
+        ),
       ];
 
   // ---- 左侧：分类树（含「全部」顶行） ------------------------------------------
@@ -228,9 +273,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Text(_treeError!,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.error)),
+          child: Text(
+            _treeError!,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
         ),
       );
     }
@@ -248,32 +296,38 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s16, vertical: UtenSpacing.s12),
+                horizontal: UtenSpacing.s16,
+                vertical: UtenSpacing.s12,
+              ),
               decoration: BoxDecoration(
                 color: allSelected
                     ? theme.colorScheme.primary.withValues(alpha: 0.08)
                     : null,
                 border: Border(
-                  bottom:
-                      BorderSide(color: theme.colorScheme.outlineVariant),
+                  bottom: BorderSide(color: theme.colorScheme.outlineVariant),
                 ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.all_inbox_rounded,
-                      size: 18,
+                  Icon(
+                    Icons.all_inbox_rounded,
+                    size: 18,
+                    color: allSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    '全部', // TODO(l10n): 补 arb
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: allSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                       color: allSelected
                           ? theme.colorScheme.primary
-                          : theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text('全部', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight:
-                            allSelected ? FontWeight.w600 : FontWeight.w400,
-                        color: allSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface,
-                      )),
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -304,7 +358,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         // 顶部筛选行：仓库下拉（老系统同款「仓库 全部」）+ 搜索 + 计数
         Padding(
           padding: const EdgeInsets.only(
-              left: UtenSpacing.s4, right: UtenSpacing.s4, bottom: UtenSpacing.s8),
+            left: UtenSpacing.s4,
+            right: UtenSpacing.s4,
+            bottom: UtenSpacing.s8,
+          ),
           child: Wrap(
             spacing: UtenSpacing.s12,
             runSpacing: UtenSpacing.s8,
@@ -315,13 +372,17 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 child: DropdownButtonFormField<String?>(
                   initialValue: _warehouseId,
                   isExpanded: true,
-                  decoration:
-                      const InputDecoration(isDense: true, labelText: '仓库'),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '仓库',
+                  ),
                   items: [
                     const DropdownMenuItem<String?>(child: Text('全部')),
                     for (final e in names.warehouseEntries.entries)
                       DropdownMenuItem<String?>(
-                          value: e.key, child: Text(e.value)),
+                        value: e.key,
+                        child: Text(e.value),
+                      ),
                   ],
                   onChanged: (v) {
                     setState(() => _warehouseId = v);
@@ -347,13 +408,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 onSelected: _warehouseId != null
                     ? null
                     : (v) => ref
-                        .read(instantInventoryPrefsProvider.notifier)
-                        .setIncludeDefective(v),
+                          .read(instantInventoryPrefsProvider.notifier)
+                          .setIncludeDefective(v),
               ),
               // 加密 Excel 导出 / 预览打印：已移入表格工具条（表头设置旁，深绿大按钮）。
-              Text('共 $total 项', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                '共 $total 项', // TODO(l10n): 补 arb
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),
@@ -369,6 +433,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 subtitle: '最多前 2000 行',
                 loader: _printLoader,
                 exportEndpoint: '/stock/reports/export',
+                exportPermission: Perm.stockReportExport,
                 exportReport: 'instant-inventory',
                 exportQuery: _exportQuery,
                 exportFilename: '即时库存',
@@ -377,6 +442,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
               ),
               UtenExportButton(
                 endpoint: '/stock/reports/export',
+                requiredPermission: Perm.stockReportExport,
                 report: 'instant-inventory',
                 queryParams: _exportQuery,
                 filename: '即时库存',
@@ -468,11 +534,15 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                       child: _buildTree(onSelect: _onSelectCategory),
                     ),
                     Container(
-                        width: 1, color: theme.colorScheme.outlineVariant),
+                      width: 1,
+                      color: theme.colorScheme.outlineVariant,
+                    ),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(
-                            left: UtenSpacing.s12, right: UtenSpacing.s8),
+                          left: UtenSpacing.s12,
+                          right: UtenSpacing.s8,
+                        ),
                         child: _buildTablePane(),
                       ),
                     ),

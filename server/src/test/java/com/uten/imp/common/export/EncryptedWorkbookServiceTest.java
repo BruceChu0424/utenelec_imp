@@ -12,7 +12,6 @@ import java.security.Security;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -63,8 +62,10 @@ class EncryptedWorkbookServiceTest {
     }
 
     @Test
-    void emptyPasswordReturnsPlainWorkbook() {
+    void invalidPasswordNeverReturnsPlainWorkbook() {
         byte[] workbook = sampleXlsx();
-        assertArrayEquals(workbook, enc.encrypt(workbook, ""));
+        assertThrows(IllegalArgumentException.class, () -> enc.encrypt(workbook, ""));
+        assertThrows(IllegalArgumentException.class, () -> enc.encrypt(workbook, "short"));
+        assertThrows(IllegalArgumentException.class, () -> enc.encrypt(workbook, "x".repeat(129)));
     }
 }

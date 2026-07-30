@@ -71,12 +71,8 @@ class LabTestReportPage extends ConsumerWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        t.qualified
-                            ? UtenColors.teal600
-                            : UtenColors.error,
-                        t.qualified
-                            ? UtenColors.teal500
-                            : const Color(0xFFB91C1C),
+                        t.qualified ? UtenColors.teal600 : UtenColors.error,
+                        t.qualified ? UtenColors.teal500 : UtenColors.errorText,
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
@@ -93,18 +89,30 @@ class LabTestReportPage extends ConsumerWidget {
                             : UtenStatusBadgeType.danger,
                       ),
                       const SizedBox(height: UtenSpacing.s12),
-                      Text(t.project,
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 13)),
+                      Text(
+                        t.project,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
                       const SizedBox(height: UtenSpacing.s4),
-                      Text(t.sampleName,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700)),
+                      Text(
+                        t.sampleName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const SizedBox(height: UtenSpacing.s8),
-                      Text('${t.sampleCode}  ·  ${_fmt(t.testDate)}',
-                          style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                      Text(
+                        '${t.sampleCode}  ·  ${_fmt(t.testDate)}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -113,7 +121,9 @@ class LabTestReportPage extends ConsumerWidget {
                 const SizedBox(height: UtenSpacing.s8),
                 UtenCard(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 4),
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
                   child: Column(
                     children: [
                       UtenInfoRow(label: '样品编号', value: t.sampleCode),
@@ -127,11 +137,21 @@ class LabTestReportPage extends ConsumerWidget {
                 const SizedBox(height: UtenSpacing.s8),
                 UtenCard(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 4),
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
                   child: Column(
                     children: [
-                      UtenInfoRow(label: '检测项目', value: t.project, isImportant: true),
-                      UtenInfoRow(label: '检测结果', value: t.result, isImportant: true),
+                      UtenInfoRow(
+                        label: '检测项目',
+                        value: t.project,
+                        isImportant: true,
+                      ),
+                      UtenInfoRow(
+                        label: '检测结果',
+                        value: t.result,
+                        isImportant: true,
+                      ),
                       UtenInfoRow(label: '标准值', value: t.standard),
                       UtenInfoRow(label: '检测设备', value: t.equipment),
                       UtenInfoRow(label: '检测员', value: t.testerName),
@@ -152,21 +172,22 @@ class LabTestReportPage extends ConsumerWidget {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline_rounded,
-                            color: isDark
-                                ? UtenColors.warning
-                                : UtenColors.warningText,
-                            size: 18),
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: isDark
+                              ? UtenColors.warning
+                              : UtenColors.warningText,
+                          size: 18,
+                        ),
                         const SizedBox(width: UtenSpacing.s8),
                         Expanded(
-                          child: Text(t.remark!,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                      color: isDark
-                                          ? null
-                                          : UtenColors.warningText)),
+                          child: Text(
+                            t.remark!,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: isDark ? null : UtenColors.warningText,
+                                ),
+                          ),
                         ),
                       ],
                     ),

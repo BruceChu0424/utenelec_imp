@@ -29,6 +29,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../config/finance_doc_config.dart';
@@ -55,7 +56,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
   final _bankFee = TextEditingController();
   final _otherFee = TextEditingController();
   final _invoiceNo = TextEditingController();
-  DateTime _billDate = DateTime.now();
+  DateTime _billDate = ChinaDateTime.today();
 
   String? _accountId;
   String? _partyId; // clientId / supplierId
@@ -94,8 +95,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     setState(() => _loading = true);
     await ref.read(financeNameServiceProvider).ensureLoaded();
     if (_cfg.isAllocate) {
-      await ref.read(financeNameServiceProvider).loadStyleCategory(
-          _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME');
+      await ref
+          .read(financeNameServiceProvider)
+          .loadStyleCategory(
+            _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME',
+          );
     }
     if (widget.id == null) {
       // 经办人默认当前登录人，界面上可改。
@@ -158,16 +162,20 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
     if (uniq.isEmpty) return;
     final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(uniq.map((id) async {
-      try {
-        final p = await repo.getById(id);
-        _empCache[id] = UtenEmployeePickerItem(
-          id: p.id,
-          name: p.fullName ?? '',
-          departmentName: p.departmentName,
-        );
-      } catch (_) {/* 静默 */}
-    }));
+    await Future.wait(
+      uniq.map((id) async {
+        try {
+          final p = await repo.getById(id);
+          _empCache[id] = UtenEmployeePickerItem(
+            id: p.id,
+            name: p.fullName ?? '',
+            departmentName: p.departmentName,
+          );
+        } catch (_) {
+          /* 静默 */
+        }
+      }),
+    );
   }
 
   /// 「从应收应付引入」：弹核销选择器，把所选 AppliedArAp 映射成行追加。
@@ -178,13 +186,15 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     }
     final direction = _cfg.isClient ? 'AR' : 'AP';
     final picked = await showArApPickerDialog(
-      context, ref,
+      context,
+      ref,
       direction: direction,
       partyId: _partyId,
     );
     if (picked == null || picked.isEmpty) return;
     _grid.addRows(
-        picked.map((a) => FinanceGridRow.fromApplied(_cfg.itemMode, a)));
+      picked.map((a) => FinanceGridRow.fromApplied(_cfg.itemMode, a)),
+    );
   }
 
   Future<void> _save() async {
@@ -202,10 +212,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       // allocate = qty*price；settle/transfer = amount.text 同步。无效输入 → 0 → 跳过。
       final amt = r.amountNotifier.value;
       if (amt <= 0) continue;
-      final item = <String, dynamic>{
-        'amountLocal': amt,
-        'amountOriginal': amt,
-      };
+      final item = <String, dynamic>{'amountLocal': amt, 'amountOriginal': amt};
       if (_cfg.isSettle) {
         if (r.appliedLedgerId != null) {
           item['appliedLedgerId'] = r.appliedLedgerId;
@@ -247,9 +254,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
       'billDate': _fmt(_billDate),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       // 账户字段名按单据类型：bankTransfer=outAccountId，其余=accountId。
-      _cfg.type == FinanceDocType.bankTransfer
-          ? 'outAccountId'
-          : 'accountId': _accountId,
+      _cfg.type == FinanceDocType.bankTransfer ? 'outAccountId' : 'accountId':
+          _accountId,
       if (_cfg.hasParty) _cfg.isClient ? 'clientId' : 'supplierId': _partyId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
       if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
@@ -290,24 +296,24 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     final names = ref.watch(financeNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
-          title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-          // 既可能从列表 push 进（回列表），也可能从 hub 卡片 go 直达新建
-          // （栈空，回钱流管理 hub）；故用 popOrBackTo 兼顾两种入口。
-          leading: UtenBackButton(
-            onPressed: () =>
-                popOrBackTo(context, defaultPath: RouteName.finance),
-          ),
-          actions: _cfg.skipListOnCreate
-              ? [
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.history_rounded,
-                    onPressed: () =>
-                        context.push('/finance/${_cfg.type.pathSegment}'),
-                    child: const Text('查看历史'),
-                  ),
-                ]
-              : null),
+        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        // 既可能从列表 push 进（回列表），也可能从 hub 卡片 go 直达新建
+        // （栈空，回钱流管理 hub）；故用 popOrBackTo 兼顾两种入口。
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: RouteName.finance),
+        ),
+        actions: _cfg.skipListOnCreate
+            ? [
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  icon: Icons.history_rounded,
+                  onPressed: () =>
+                      context.push('/finance/${_cfg.type.pathSegment}'),
+                  child: const Text('查看历史'),
+                ),
+              ]
+            : null,
+      ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -316,131 +322,168 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                   controller: _scrollCtl,
                   thumbVisibility: true,
                   child: ListView(
-                  controller: _scrollCtl,
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  children: [
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            UtenFormGrid(children: [
-                              // 单据号：系统自动生成，只读显示。
-                              TextFormField(
-                                readOnly: true,
-                                controller: _billNo,
-                                decoration: InputDecoration(
-                                  labelText: '单据号',
-                                  hintText: _billNo.text.isEmpty
-                                      ? '保存后自动生成'
-                                      : null,
-                                  filled: _billNo.text.isEmpty,
-                                  suffixIcon: _billNo.text.isEmpty
-                                      ? const Icon(Icons.autorenew_outlined,
-                                          size: 18)
-                                      : const Icon(Icons.lock_outline,
-                                          size: 16),
-                                ),
+                    controller: _scrollCtl,
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    children: [
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              UtenFormGrid(
+                                children: [
+                                  // 单据号：系统自动生成，只读显示。
+                                  TextFormField(
+                                    readOnly: true,
+                                    controller: _billNo,
+                                    decoration: InputDecoration(
+                                      labelText: '单据号',
+                                      hintText: _billNo.text.isEmpty
+                                          ? '保存后自动生成'
+                                          : null,
+                                      filled: _billNo.text.isEmpty,
+                                      suffixIcon: _billNo.text.isEmpty
+                                          ? const Icon(
+                                              Icons.autorenew_outlined,
+                                              size: 18,
+                                            )
+                                          : const Icon(
+                                              Icons.lock_outline,
+                                              size: 16,
+                                            ),
+                                    ),
+                                  ),
+                                  // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                  ...utenMakerAuditCells(
+                                    ref,
+                                    makerName: _makerName,
+                                    createdAt: _createdAt,
+                                  ),
+                                  UtenDateField(
+                                    label: '单据日期',
+                                    required: true,
+                                    value: _billDate,
+                                    onChanged: (d) =>
+                                        setState(() => _billDate = d),
+                                  ),
+                                  if (_cfg.hasParty)
+                                    _dropdown(
+                                      _cfg.partyLabel,
+                                      _partyId,
+                                      _cfg.isClient
+                                          ? names.clientEntries
+                                          : names.supplierEntries,
+                                      (v) => setState(() {
+                                        _partyId = v;
+                                        // 切换往来方后清空已引入的核销行（避免错配）。
+                                        _grid.clear();
+                                      }),
+                                      required: true,
+                                    ),
+                                  _dropdown(
+                                    _cfg.accountLabel,
+                                    _accountId,
+                                    names.accountEntries,
+                                    (v) => setState(() => _accountId = v),
+                                    required: true,
+                                  ),
+                                  if (_cfg.hasCurrency)
+                                    _dropdown(
+                                      '币种',
+                                      _currencyId,
+                                      names.currencyEntries,
+                                      (v) => setState(() => _currencyId = v),
+                                    ),
+                                  if (_cfg.hasCurrency)
+                                    TextField(
+                                      controller: _rate,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '汇率',
+                                      ),
+                                    ),
+                                  if (_cfg.hasBankFee)
+                                    TextField(
+                                      controller: _bankFee,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '银行手续费',
+                                      ),
+                                    ),
+                                  if (_cfg.hasOtherFee)
+                                    TextField(
+                                      controller: _otherFee,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration: const InputDecoration(
+                                        labelText: '其它手续费',
+                                      ),
+                                    ),
+                                  if (_cfg.hasInvoiceNo)
+                                    TextField(
+                                      controller: _invoiceNo,
+                                      decoration: const InputDecoration(
+                                        labelText: '发票号',
+                                      ),
+                                    ),
+                                  _employeePicker(
+                                    label: '经办人',
+                                    currentId: _operatorId,
+                                    onChanged: (id) =>
+                                        setState(() => _operatorId = id),
+                                  ),
+                                ],
                               ),
-                              // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                              ...utenMakerAuditCells(ref,
-                                  makerName: _makerName, createdAt: _createdAt),
-                              UtenDateField(
-                                label: '单据日期',
-                                required: true,
-                                value: _billDate,
-                                onChanged: (d) =>
-                                    setState(() => _billDate = d),
+                              const SizedBox(height: UtenSpacing.s12),
+                              TextField(
+                                controller: _remark,
+                                decoration: const InputDecoration(
+                                  labelText: '备注',
+                                ),
+                                maxLines: 2,
                               ),
-                              if (_cfg.hasParty)
-                                _dropdown(
-                                    _cfg.partyLabel,
-                                    _partyId,
-                                    _cfg.isClient
-                                        ? names.clientEntries
-                                        : names.supplierEntries,
-                                    (v) => setState(() {
-                                          _partyId = v;
-                                          // 切换往来方后清空已引入的核销行（避免错配）。
-                                          _grid.clear();
-                                        }),
-                                    required: true),
-                              _dropdown(_cfg.accountLabel, _accountId,
-                                  names.accountEntries,
-                                  (v) => setState(() => _accountId = v),
-                                  required: true),
-                              if (_cfg.hasCurrency)
-                                _dropdown('币种', _currencyId, names.currencyEntries,
-                                    (v) => setState(() => _currencyId = v)),
-                              if (_cfg.hasCurrency)
-                                TextField(
-                                  controller: _rate,
-                                  keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true),
-                                  decoration: const InputDecoration(labelText: '汇率'),
-                                ),
-                              if (_cfg.hasBankFee)
-                                TextField(
-                                  controller: _bankFee,
-                                  keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true),
-                                  decoration: const InputDecoration(
-                                      labelText: '银行手续费'),
-                                ),
-                              if (_cfg.hasOtherFee)
-                                TextField(
-                                  controller: _otherFee,
-                                  keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true),
-                                  decoration: const InputDecoration(
-                                      labelText: '其它手续费'),
-                                ),
-                              if (_cfg.hasInvoiceNo)
-                                TextField(
-                                  controller: _invoiceNo,
-                                  decoration:
-                                      const InputDecoration(labelText: '发票号'),
-                                ),
-                              _employeePicker(
-                                label: '经办人',
-                                currentId: _operatorId,
-                                onChanged: (id) =>
-                                    setState(() => _operatorId = id),
-                              ),
-                            ]),
-                            const SizedBox(height: UtenSpacing.s12),
-                            TextField(
-                              controller: _remark,
-                              decoration: const InputDecoration(labelText: '备注'),
-                              maxLines: 2,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    Row(
-                      children: [
-                        Text('明细 (${_grid.length})',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        if (_cfg.hasArApLink)
-                          UtenImportButton(
-                            label: '从应收应付引入',
-                            onPressed: _importFromArAp,
+                      const SizedBox(height: UtenSpacing.s12),
+                      Row(
+                        children: [
+                          Text(
+                            '明细 (${_grid.length})',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                      ],
-                    ),
-                    UtenEditableGrid<FinanceGridRow>(
-                      controller: _grid,
-                      columns: financeGridColumns(_cfg.itemMode,
-                          names: names, type: _cfg.type),
-                      createBlankRow: () => FinanceGridRow(mode: _cfg.itemMode),
-                    ),
-                  ],
-                ),
+                          const Spacer(),
+                          if (_cfg.hasArApLink)
+                            UtenImportButton(
+                              label: '从应收应付引入',
+                              onPressed: _importFromArAp,
+                            ),
+                        ],
+                      ),
+                      UtenEditableGrid<FinanceGridRow>(
+                        controller: _grid,
+                        columns: financeGridColumns(
+                          _cfg.itemMode,
+                          names: names,
+                          type: _cfg.type,
+                        ),
+                        createBlankRow: () =>
+                            FinanceGridRow(mode: _cfg.itemMode),
+                      ),
+                    ],
+                  ),
                 ),
               ),
       ),
@@ -448,7 +491,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
         child: Container(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+            border: Border(
+              top: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
           ),
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Row(
@@ -458,8 +503,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                 valueListenable: _grid.totalListenable,
                 builder: (_, total, _) => Text(
                   '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s16),
@@ -511,15 +557,20 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
     );
   }
 
-  Widget _dropdown(String label, String? value, Map<String, String> entries,
-      ValueChanged<String?> onChanged,
-      {bool required = false}) {
+  Widget _dropdown(
+    String label,
+    String? value,
+    Map<String, String> entries,
+    ValueChanged<String?> onChanged, {
+    bool required = false,
+  }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
       items: [
-        for (final e in entries.entries) UtenDropdownItem(value: e.key, label: e.value),
+        for (final e in entries.entries)
+          UtenDropdownItem(value: e.key, label: e.value),
         if (value != null && value.isNotEmpty && !entries.containsKey(value))
           UtenDropdownItem(value: value, label: value),
       ],

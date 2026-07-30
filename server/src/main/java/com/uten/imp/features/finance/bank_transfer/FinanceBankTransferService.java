@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferDetail;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineDto;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineInput;
@@ -28,25 +29,28 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 银行存取款单服务：保结构 CRUD（老库 M_Bank 0 行，未来启用）。
+ * 银行存取款单服务：CRUD + 跨账户/跨币种原子过账。
  *
- * <p><b>审核/红冲暂未实现账户联动</b>：跨币种换算核销（老库 TRI_BankItem）逻辑较复杂，
- * 当前 approve/reverse 仅翻转 status，不动账户余额、不写 finance_reconciliations。
- * 真正启用时需补：
+ * <p>审核/红冲实现老库 TRI_BankItem 的对称语义：
  * <ul>
  *   <li>每个 line（in_account）：{@code in_account.receipts_total += amount × out.exchange_rate / in.exchange_rate}（跨币种换算）；</li>
  *   <li>{@code out_account.payments_total += amount_local}；</li>
  *   <li>每账户写一行 {@code finance_reconciliations(source='BANK_TRANSFER')}。</li>
  * </ul>
  *
- * <p>详见 design doc 26 §4.7、§5.3 {@code approveBankTransfer}。
+ * <p>所有涉及账户先按 UUID 稳定顺序加行锁，账户余额、累计额和
+ * finance_reconciliations 在同一事务提交。详见 design doc 26 §4.7、§5.3。
  */
 @Service
 @RequiredArgsConstructor
@@ -139,12 +143,7 @@ public class FinanceBankTransferService {
         transferRepo.save(t);
     }
 
-    /**
-     * 审核（占位实现，不动账户）。
-     *
-     * <p><b>TODO 启用时</b>：实现跨币种换算核销（{@code in_account.receipts_total += amount × 跨币种汇率}，
-     * {@code out_account.payments_total += amount_local}），并写 finance_reconciliations(BANK_TRANSFER)。
-     */
+    /** 审核：转出账户扣减、逐转入账户换汇入账，并写对称账户流水。 */
     @Transactional
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
@@ -153,14 +152,18 @@ public class FinanceBankTransferService {
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
-        // TODO: 跨币种换算核销（design doc 26 §4.7、§5.3）
+        List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
+        TransferPosting posting = preparePosting(t, lines, true);
+        assertNoExistingPosting(t.getId());
+        applyPosting(t, posting, 1);
+        insertReconciliations(t, posting);
         t.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         t.setStatus(STATUS_APPROVED);
         transferRepo.save(t);
         return detail(id);
     }
 
-    /** 红冲（占位实现，不动账户）。 */
+    /** 红冲：严格使用审核时固化的换汇金额做反向账户/流水冲销。 */
     @Transactional
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
@@ -169,11 +172,284 @@ public class FinanceBankTransferService {
         if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        // TODO: 反向账户联动（与 approve 对称）
+        List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
+        TransferPosting posting = preparePosting(t, lines, false);
+        assertCompletePosting(t.getId(), posting.incomingByAccount().size() + 1L);
+        applyPosting(t, posting, -1);
+        deleteReconciliations(t.getId());
         t.setStatus(STATUS_REVERSED);
         transferRepo.save(t);
         return detail(id);
     }
+
+    private TransferPosting preparePosting(
+            FinanceBankTransfer transfer,
+            List<FinanceBankTransferLine> lines,
+            boolean approval) {
+        if (transfer.getOutAccountId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "银行存取款单必须指定转出账户");
+        }
+        if (lines == null || lines.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "银行存取款单至少需要一个转入账户");
+        }
+
+        LinkedHashSet<UUID> accountIds = new LinkedHashSet<>();
+        accountIds.add(transfer.getOutAccountId());
+        for (FinanceBankTransferLine line : lines) {
+            if (line.getInAccountId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "转入账户不能为空");
+            }
+            if (line.getInAccountId().equals(transfer.getOutAccountId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "转出账户与转入账户不能相同");
+            }
+            if (line.getAmountLocal() == null || line.getAmountLocal().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "每笔转账金额必须大于 0");
+            }
+            accountIds.add(line.getInAccountId());
+        }
+
+        Map<UUID, AccountSnapshot> accounts = lockAccounts(accountIds, approval);
+        AccountSnapshot out = accounts.get(transfer.getOutAccountId());
+        if (out == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "转出账户不存在或已禁用");
+        }
+        if (approval) {
+            if (transfer.getCurrencyId() == null) {
+                transfer.setCurrencyId(out.currencyId());
+            } else if (out.currencyId() != null
+                    && !transfer.getCurrencyId().equals(out.currencyId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "单据币种与转出账户币种不一致");
+            }
+        }
+
+        BigDecimal outRate = null;
+        if (approval) {
+            outRate = positiveRate(transfer.getExchangeRate());
+            if (outRate == null) {
+                outRate = positiveRate(out.exchangeRate());
+            }
+            if (outRate == null) {
+                throw new ApiException(ErrorCode.BUSINESS, "转出币种汇率必须大于 0");
+            }
+        }
+
+        BigDecimal outgoing = BigDecimal.ZERO;
+        BigDecimal incomingTotal = BigDecimal.ZERO;
+        Map<UUID, BigDecimal> incoming = new HashMap<>();
+        for (FinanceBankTransferLine line : lines) {
+            AccountSnapshot in = accounts.get(line.getInAccountId());
+            if (in == null) {
+                throw new ApiException(ErrorCode.BUSINESS, "转入账户不存在或已禁用");
+            }
+            BigDecimal sourceAmount = line.getAmountLocal();
+            BigDecimal converted;
+            if (approval) {
+                if (Objects.equals(out.currencyId(), in.currencyId())) {
+                    converted = sourceAmount;
+                } else {
+                    BigDecimal inRate = positiveRate(in.exchangeRate());
+                    if (inRate == null) {
+                        throw new ApiException(
+                                ErrorCode.BUSINESS,
+                                "转入账户币种汇率必须大于 0：" + line.getInAccountId());
+                    }
+                    converted = sourceAmount.multiply(outRate)
+                            .divide(inRate, 4, RoundingMode.HALF_UP);
+                }
+                if (converted.signum() <= 0) {
+                    throw new ApiException(ErrorCode.BUSINESS, "换汇后的转入金额必须大于 0");
+                }
+                // Persist the authoritative converted amount. Reversal uses
+                // this snapshot even if currency master rates later change.
+                line.setAmountOriginal(converted);
+                lineRepo.save(line);
+            } else {
+                converted = line.getAmountOriginal();
+                if (converted == null || converted.signum() <= 0) {
+                    throw new ApiException(ErrorCode.CONFLICT, "原审核换汇金额缺失，禁止红冲");
+                }
+            }
+            outgoing = outgoing.add(sourceAmount);
+            incomingTotal = incomingTotal.add(converted);
+            incoming.merge(line.getInAccountId(), converted, BigDecimal::add);
+        }
+        if (approval) {
+            transfer.setExchangeRate(outRate);
+            transfer.setAmountLocal(outgoing);
+            transfer.setAmountOriginal(incomingTotal);
+            transferRepo.save(transfer);
+        } else if (nz(transfer.getAmountLocal()).compareTo(outgoing) != 0
+                || nz(transfer.getAmountOriginal()).compareTo(incomingTotal) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "银行存取款表头与已审核明细金额不一致");
+        }
+        return new TransferPosting(outgoing, incoming);
+    }
+
+    private Map<UUID, AccountSnapshot> lockAccounts(
+            java.util.Collection<UUID> accountIds,
+            boolean requireActive) {
+        String active = requireActive
+                ? " AND COALESCE(a.is_deleted, false) = false AND a.status = '使用'"
+                : "";
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT a.id, a.currency_id, c.exchange_rate
+                        FROM accounts a
+                        LEFT JOIN currencies c
+                          ON c.id = a.currency_id AND COALESCE(c.is_deleted, false) = false
+                        WHERE a.id IN (:ids)
+                        """ + active + " ORDER BY a.id FOR UPDATE OF a")
+                .setParameter("ids", accountIds));
+        if (rows.size() != accountIds.size()) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    requireActive ? "转账账户不存在或已禁用" : "转账账户已被物理删除");
+        }
+        Map<UUID, AccountSnapshot> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put(
+                    (UUID) row[0],
+                    new AccountSnapshot(
+                            (UUID) row[0],
+                            (UUID) row[1],
+                            row[2] == null ? null : (BigDecimal) row[2]));
+        }
+        return result;
+    }
+
+    private void applyPosting(
+            FinanceBankTransfer transfer,
+            TransferPosting posting,
+            int sign) {
+        BigDecimal outgoingDelta = posting.outgoing().multiply(BigDecimal.valueOf(sign));
+        int outRows = em.createNativeQuery("""
+                        UPDATE accounts
+                        SET balance_current = COALESCE(balance_current, 0) - :amount,
+                            payments_total = COALESCE(payments_total, 0) + :amount,
+                            updated_at = now()
+                        WHERE id = :id
+                        """)
+                .setParameter("amount", outgoingDelta)
+                .setParameter("id", transfer.getOutAccountId())
+                .executeUpdate();
+        if (outRows != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "转出账户更新失败");
+        }
+        for (Map.Entry<UUID, BigDecimal> entry : posting.incomingByAccount()
+                .entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+            BigDecimal incomingDelta = entry.getValue().multiply(BigDecimal.valueOf(sign));
+            int inRows = em.createNativeQuery("""
+                            UPDATE accounts
+                            SET balance_current = COALESCE(balance_current, 0) + :amount,
+                                receipts_total = COALESCE(receipts_total, 0) + :amount,
+                                updated_at = now()
+                            WHERE id = :id
+                            """)
+                    .setParameter("amount", incomingDelta)
+                    .setParameter("id", entry.getKey())
+                    .executeUpdate();
+            if (inRows != 1) {
+                throw new ApiException(ErrorCode.CONFLICT, "转入账户更新失败：" + entry.getKey());
+            }
+        }
+    }
+
+    private void insertReconciliations(
+            FinanceBankTransfer transfer,
+            TransferPosting posting) {
+        insertReconciliation(
+                transfer,
+                transfer.getOutAccountId(),
+                BigDecimal.ZERO,
+                posting.outgoing(),
+                transfer.getRemark());
+        for (Map.Entry<UUID, BigDecimal> entry : posting.incomingByAccount()
+                .entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+            insertReconciliation(
+                    transfer,
+                    entry.getKey(),
+                    entry.getValue(),
+                    BigDecimal.ZERO,
+                    "银行存取款转入");
+        }
+    }
+
+    private void insertReconciliation(
+            FinanceBankTransfer transfer,
+            UUID accountId,
+            BigDecimal inAmount,
+            BigDecimal outAmount,
+            String sourceRemark) {
+        em.createNativeQuery("""
+                        INSERT INTO finance_reconciliations
+                          (bill_no, source_doc_type, source_doc_id, account_id, check_no,
+                           in_amount, out_amount, bill_date, settled_date, source_remark,
+                           legacy_bstyle, created_at, updated_at, is_deleted)
+                        VALUES
+                          (:billNo, 'BANK_TRANSFER', :sourceId, :accountId, :checkNo,
+                           :inAmount, :outAmount, :billDate, :settledDate, :sourceRemark,
+                           27, now(), now(), false)
+                        """)
+                .setParameter("billNo", transfer.getBillNo())
+                .setParameter("sourceId", transfer.getId())
+                .setParameter("accountId", accountId)
+                .setParameter("checkNo", transfer.getInvoiceNo())
+                .setParameter("inAmount", inAmount)
+                .setParameter("outAmount", outAmount)
+                .setParameter("billDate", OffsetDateTime.now())
+                .setParameter("settledDate", OffsetDateTime.now())
+                .setParameter("sourceRemark", sourceRemark)
+                .executeUpdate();
+    }
+
+    private void assertNoExistingPosting(UUID transferId) {
+        if (postingCount(transferId) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "银行存取款单已存在账户流水，禁止重复审核");
+        }
+    }
+
+    private void assertCompletePosting(UUID transferId, long expectedRows) {
+        long actual = postingCount(transferId);
+        if (actual != expectedRows) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "银行存取款流水不完整，禁止红冲（期望 " + expectedRows + "，实际 " + actual + "）");
+        }
+    }
+
+    private long postingCount(UUID transferId) {
+        return ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_reconciliations
+                        WHERE source_doc_type = 'BANK_TRANSFER'
+                          AND source_doc_id = :id
+                          AND COALESCE(is_deleted, false) = false
+                        """)
+                .setParameter("id", transferId)
+                .getSingleResult()).longValue();
+    }
+
+    private void deleteReconciliations(UUID transferId) {
+        em.createNativeQuery("""
+                        DELETE FROM finance_reconciliations
+                        WHERE source_doc_type = 'BANK_TRANSFER' AND source_doc_id = :id
+                        """)
+                .setParameter("id", transferId)
+                .executeUpdate();
+    }
+
+    private static BigDecimal positiveRate(BigDecimal value) {
+        return value != null && value.signum() > 0 ? value : null;
+    }
+
+    private static BigDecimal nz(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private record AccountSnapshot(UUID id, UUID currencyId, BigDecimal exchangeRate) {}
+
+    private record TransferPosting(
+            BigDecimal outgoing,
+            Map<UUID, BigDecimal> incomingByAccount) {}
 
     // ===================== CRUD 辅助 =====================
 

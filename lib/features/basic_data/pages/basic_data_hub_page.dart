@@ -4,15 +4,19 @@
 // 全员可见（登录即可，不设路由守卫）；卡片风格对齐工作台 _ModuleTile。
 // 新增资料类型（如颜色资料）时在 _resources 加一条即可。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 
-class BasicDataHubPage extends StatelessWidget {
+class BasicDataHubPage extends ConsumerWidget {
   const BasicDataHubPage({super.key});
 
   static const List<_BasicResource> _resources = [
@@ -89,7 +93,14 @@ class BasicDataHubPage extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final permissions = ref.watch(currentPermissionsProvider);
+    final resources = _resources
+        .where((resource) {
+          final required = requiredAnyPermFor(resource.location);
+          return required == null || required.any(permissions.contains);
+        })
+        .toList(growable: false);
     return Scaffold(
       appBar: const UtenAppBar(
         title: '基础资料', // TODO(l10n): 补 arb
@@ -100,11 +111,10 @@ class BasicDataHubPage extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: UtenResponsiveGrid(
-              itemCount: _resources.length,
+              itemCount: resources.length,
               spacing: UtenSpacing.s12,
               columns: const UtenResponsiveColumns(compact: 2, medium: 3),
-              itemBuilder: (context, i, _) =>
-                  _ResourceTile(item: _resources[i]),
+              itemBuilder: (context, i, _) => _ResourceTile(item: resources[i]),
             ),
           ),
         ),
@@ -189,6 +199,6 @@ class _BasicResource {
 
 /// 品牌色取值（与 UtenColors 对齐，hub 卡片直接用 Material 色，避免引入更多依赖）。
 class _C {
-  static const Color green = Color(0xFF0F3D2E); // 品牌深绿
-  static const Color teal = Color(0xFF14B8A6); // 品牌青绿
+  static const Color green = UtenColors.teal700;
+  static const Color teal = UtenColors.teal500;
 }

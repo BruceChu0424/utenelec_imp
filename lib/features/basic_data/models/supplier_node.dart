@@ -62,7 +62,8 @@ class SupplierListItem {
   final String? shipVia; // 运输方式
   final String? shipAddress; // 送货地址
 
-  factory SupplierListItem.fromJson(Map<String, dynamic> json) => SupplierListItem(
+  factory SupplierListItem.fromJson(Map<String, dynamic> json) =>
+      SupplierListItem(
         id: json['id'] as String,
         legacyId: (json['legacyId'] as num?)?.toInt(),
         name: json['name'] as String?,
@@ -152,35 +153,35 @@ class SupplierDetail {
   final String? remark; // 备注
 
   factory SupplierDetail.fromJson(Map<String, dynamic> json) => SupplierDetail(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        status: json['status'] as String?,
-        place: json['place'] as String?,
-        linkman: json['linkman'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        categoryId: json['categoryId'] as String?,
-        categoryName: json['categoryName'] as String?,
-        description: json['description'] as String?,
-        empId: (json['empId'] ?? json['empid']) as String?,
-        legalPerson: (json['legalPerson'] ?? json['legalperson']) as String?,
-        mobile: json['mobile'] as String?,
-        phone: json['phone'] as String?,
-        phone2: json['phone2'] as String?,
-        fax: json['fax'] as String?,
-        postcode: json['postcode'] as String?,
-        address: json['address'] as String?,
-        email: json['email'] as String?,
-        website: json['website'] as String?,
-        shipVia: (json['shipVia'] ?? json['shipvia']) as String?,
-        shipAddress: (json['shipAddress'] ?? json['shipaddress']) as String?,
-        bank: json['bank'] as String?,
-        bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
-        taxId: (json['taxId'] ?? json['taxid']) as String?,
-        initTotal: (json['initTotal'] as num?)?.toDouble(),
-        tday: (json['tday'] as num?)?.toInt(),
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    status: json['status'] as String?,
+    place: json['place'] as String?,
+    linkman: json['linkman'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
+    categoryName: json['categoryName'] as String?,
+    description: json['description'] as String?,
+    empId: (json['empId'] ?? json['empid']) as String?,
+    legalPerson: (json['legalPerson'] ?? json['legalperson']) as String?,
+    mobile: json['mobile'] as String?,
+    phone: json['phone'] as String?,
+    phone2: json['phone2'] as String?,
+    fax: json['fax'] as String?,
+    postcode: json['postcode'] as String?,
+    address: json['address'] as String?,
+    email: json['email'] as String?,
+    website: json['website'] as String?,
+    shipVia: (json['shipVia'] ?? json['shipvia']) as String?,
+    shipAddress: (json['shipAddress'] ?? json['shipaddress']) as String?,
+    bank: json['bank'] as String?,
+    bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
+    taxId: (json['taxId'] ?? json['taxid']) as String?,
+    initTotal: (json['initTotal'] as num?)?.toDouble(),
+    tday: (json['tday'] as num?)?.toInt(),
+    remark: json['remark'] as String?,
+  );
 }
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
@@ -223,9 +224,10 @@ class SupplierFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) =>
-                  MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];

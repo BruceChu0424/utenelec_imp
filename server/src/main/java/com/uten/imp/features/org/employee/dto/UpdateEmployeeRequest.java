@@ -1,5 +1,9 @@
 package com.uten.imp.features.org.employee.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -40,6 +44,10 @@ public record UpdateEmployeeRequest(
         String allowanceStandard,
         String socialInsuranceLocation,
         // 子集合（非 null 则整体替换；空数组 = 清空）
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
         List<OnboardingRequest.CredentialInput> certificates,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
         List<OnboardingRequest.EducationInput> educations
 ) {}

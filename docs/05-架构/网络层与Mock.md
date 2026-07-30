@@ -2,9 +2,11 @@
 
 > 本档定义 Uten IMP 的网络层架构：基于 Dio 的 `ApiClient` + `AuthInterceptor`（自动注入 Bearer + 401 单飞刷新）+ `SessionEventBus`（会话失效广播）+ 统一 `ApiException`。
 >
-> 所有业务模块（工资/报销/通知/建议/生产/采购/销售/委外/仓库/钱流/基础资料/访客）均通过此层访问真实 Spring Boot 后端，**已不再有 Mock 仓库**。
+> 真实后端模块通过此层访问 Spring Boot API。工资条与员工报销 Provider 已从活动 Mock 切换为
+> Dio Repository，员工域旧 `MockEmployeeRepository`、旧模型和旧 Provider 也已删除。客户端不再
+> 伪造这些数据；是否可生产使用仍取决于对应后端 API、Flyway、权限、审计和 E2E 验收。
 >
-> 文件名保留 `网络层与Mock.md` 仅为外链稳定；Mock 阶段已于 2026-07 全量下线。
+> 文件名保留 `网络层与Mock.md` 仅为外链稳定，并记录 Mock 淘汰规则；它不表示当前存在活动业务 Mock。
 
 ---
 
@@ -61,7 +63,8 @@ lib/features/<name>/repositories/
 └─ <name>_repository.dart      abstract 接口 + Dio 实现 + Provider（同文件就近维护）
 ```
 
-> 旧 Mock 实现（`mock_<name>_repository.dart`）已随对应模块接入真实后端而停用；如代码中仍有残留文件，按"待清理死代码"处理，**新代码一律走 Dio 实现**。
+> 已接后端模块不得保留无引用 Mock 或“双 Provider”后门。员工、工资与员工报销的旧 Mock 均已
+> 从当前工作树移除；Repository 切到 Dio 后，后端不可用必须明确报错，禁止静默回退到假数据。
 
 ---
 
@@ -122,10 +125,7 @@ final authRepositoryProvider = Provider<AuthRepository>(
 ```dart
 // lib/core/network/api_client.dart
 
-const _baseUrl = String.fromEnvironment(
-  'API_BASE_URL',
-  defaultValue: 'http://localhost:8080/api',
-);
+import 'api_base_url.dart';
 
 class ApiClient {
   ApiClient(this._dio);
@@ -146,18 +146,30 @@ class ApiClient {
 final apiClientProvider = Provider<ApiClient>((ref) {
   final storage = ref.watch(secureStorageProvider);
   final dio = Dio(BaseOptions(
-    baseUrl: _baseUrl,
+    baseUrl: apiBaseUrl,
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 20),
     headers: {'Content-Type': 'application/json'},
   ));
-  dio.interceptors.add(AuthInterceptor(storage: storage, baseUrl: _baseUrl));
+  dio.interceptors.add(AuthInterceptor(storage: storage, baseUrl: apiBaseUrl));
   return ApiClient(dio);
 });
 ```
 
 要点：
-- **基址**：`--dart-define=API_BASE_URL` 指定；Web 端运行须带 `--web-port=53764` 才能连后端 CORS（见 memory）。
+- **统一基址**：员工端 `ApiClient` 和访客端 `VisitorApiClient` 都只读取
+  `api_base_url.dart` 的 `apiBaseUrl`，不各自维护默认值。
+- **环境矩阵**：
+
+  | 场景 | 未传 `API_BASE_URL` | 显式值约束 |
+  |---|---|---|
+  | Debug/Profile | `http://localhost:8080/api` | 允许合法的绝对 HTTP(S) URL |
+  | Web Release | 同源 `/api` | 可用 `/api...` 相对路径，或合法的绝对 HTTPS URL |
+  | 移动/桌面 Release | 启动时抛 `StateError` | 必须为绝对 HTTPS URL，禁止 localhost/回环 |
+
+  所有绝对地址都拒绝 userinfo、query 和 fragment；末尾 `/` 会被去除。`API_BASE_URL`
+  是会编译进客户端的公开部署配置，不是密钥。
+- **本地 Web**：端口只需与后端开发 CORS 白名单一致；`53764` 是当前常用开发值，不是生产硬约束。
 - **空体容错**：后端 void 接口返回 200 + 空串，`_asMap` 把非 Map 一律视为空 Map，避免 `as Map` 抛 TypeError 把"成功"当"失败"。
 - **`downloadBytes`**：加密导出专用，`ResponseType.bytes` 接收；详见 [ADR-012](../99-决策记录-ADR/ADR-012-报表加密导出与列排序与行跳源头.md)。
 
@@ -255,9 +267,9 @@ employees.when(
 
 - ❌ Provider 不要直接依赖 `Dio`（依赖 Repository 接口或 `apiClientProvider`）
 - ❌ 不要在 Widget 里写网络请求（一律走 Repository）
-- ❌ 不要硬编码 API URL（在 `api_endpoints.dart` 集中管理）
+- ❌ 不要硬编码 API URL（基址只走 `api_base_url.dart`；相对端点在 `api_endpoints.dart` 集中管理）
 - ❌ 不要吞掉异常（错误必须传递或记录）
-- ❌ 不要新增 Mock 仓库（一律 Dio 实现）；旧的 `mock_*.dart` 是历史包袱，遇则清理
+- ❌ 不要把 Mock 页面描述成生产功能；新业务默认实现真实 Repository，确需原型时必须在 UI、文档与发布清单明确标注
 - ❌ 不要在 URL/query 传敏感数据（密码、token、PII 一律 body）
 - ❌ 不要在拦截器里直接 `ref.read` Riverpod（用 `SessionEventBus` 解耦）
 
@@ -274,4 +286,4 @@ employees.when(
 
 ---
 
-**最后更新**：2026-07-27（去 Mock 阶段；对齐真实 `ApiClient` + `AuthInterceptor` + `SessionEventBus`）
+**最后更新**：2026-07-30（员工、工资和员工报销活动 Mock 已移除；Dio/后端验收边界校准）

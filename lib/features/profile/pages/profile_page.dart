@@ -59,13 +59,7 @@ class ProfilePage extends ConsumerWidget {
       expanded: UtenSpacing.s32,
     );
 
-    final identityGroup = _buildIdentityGroup(
-      context,
-      ref,
-      theme,
-      l10n,
-      user,
-    );
+    final identityGroup = _buildIdentityGroup(context, ref, theme, l10n, user);
     final profileGroup = _buildProfileGroup(context, theme, l10n, user);
 
     return Scaffold(

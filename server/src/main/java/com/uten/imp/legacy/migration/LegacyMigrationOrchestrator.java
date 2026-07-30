@@ -1,10 +1,12 @@
 package com.uten.imp.legacy.migration;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -25,6 +27,7 @@ import java.util.function.Supplier;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LegacyMigrationOrchestrator {
 
     private final MaterialCategoryMigrator materialCategoryMigrator;
@@ -48,7 +51,10 @@ public class LegacyMigrationOrchestrator {
         run("client.category", clientCategoryMigrator::migrateClients, modules, err);
         run("supplier.category", supplierCategoryMigrator::migrateSuppliers, modules, err);
 
-        return new FullMigrationReport(modules, err.length() == 0, err.length() == 0 ? null : err.toString());
+        return new FullMigrationReport(
+                modules,
+                err.length() == 0,
+                err.length() == 0 ? null : "部分迁移模块执行失败；错误编号：" + err);
     }
 
     /** 跑一个模块：成功记报告，失败记 error 并继续下一个。 */
@@ -56,8 +62,22 @@ public class LegacyMigrationOrchestrator {
         try {
             modules.put(name, task.get());
         } catch (Exception e) {
-            modules.put(name, Map.of("error", e.getClass().getSimpleName() + ": " + e.getMessage()));
-            err.append(name).append(" → ").append(e.getMessage()).append("；");
+            String referenceId = UUID.randomUUID().toString();
+            log.error(
+                    "Legacy migration module failed: module={}, referenceId={}",
+                    name,
+                    referenceId,
+                    e);
+            modules.put(
+                    name,
+                    Map.of(
+                            "status", "failed",
+                            "errorCode", "LEGACY_MIGRATION_MODULE_FAILED",
+                            "referenceId", referenceId));
+            if (!err.isEmpty()) {
+                err.append(", ");
+            }
+            err.append(name).append('=').append(referenceId);
         }
     }
 }

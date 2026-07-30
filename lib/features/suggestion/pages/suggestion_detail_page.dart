@@ -4,14 +4,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/uten_notify.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
 
@@ -29,7 +33,8 @@ class SuggestionDetailPage extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(
           message: '加载失败：$e',
-          onAction: () => ref.invalidate(suggestionDetailProvider(suggestionId)),
+          onAction: () =>
+              ref.invalidate(suggestionDetailProvider(suggestionId)),
         ),
         data: (s) {
           if (s == null) return const UtenEmpty(message: '建议不存在');
@@ -135,6 +140,13 @@ class _Content extends ConsumerWidget {
             ),
           ),
 
+          if (ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.suggestionReply)) ...[
+            const SizedBox(height: UtenSpacing.s24),
+            _ReplyComposer(suggestion: suggestion),
+          ],
+
           // 回复
           if (suggestion.replies.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s24),
@@ -157,8 +169,15 @@ class _Content extends ConsumerWidget {
               borderRadius: UtenRadius.pillAll,
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-                onTap: () =>
-                    toggleSuggestionLike(ref, suggestion.id),
+                onTap: () async {
+                  try {
+                    await toggleSuggestionLike(ref, suggestion.id);
+                  } catch (error) {
+                    if (context.mounted) {
+                      UtenNotify.apiError(context, error, fallback: '点赞失败，请重试');
+                    }
+                  }
+                },
                 borderRadius: UtenRadius.pillAll,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -210,15 +229,132 @@ class _Content extends ConsumerWidget {
   }
 
   UtenStatusBadgeType _statusBadge(SuggestionStatus s) => switch (s) {
-        SuggestionStatus.submitted => UtenStatusBadgeType.info,
-        SuggestionStatus.reviewing => UtenStatusBadgeType.warning,
-        SuggestionStatus.resolved => UtenStatusBadgeType.success,
-        SuggestionStatus.rejected => UtenStatusBadgeType.danger,
-      };
+    SuggestionStatus.submitted => UtenStatusBadgeType.info,
+    SuggestionStatus.reviewing => UtenStatusBadgeType.warning,
+    SuggestionStatus.resolved => UtenStatusBadgeType.success,
+    SuggestionStatus.rejected => UtenStatusBadgeType.danger,
+  };
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+class _ReplyComposer extends ConsumerStatefulWidget {
+  const _ReplyComposer({required this.suggestion});
+
+  final Suggestion suggestion;
+
+  @override
+  ConsumerState<_ReplyComposer> createState() => _ReplyComposerState();
+}
+
+class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
+  final _contentController = TextEditingController();
+  SuggestionStatus? _newStatus;
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return UtenCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const UtenSectionHeader(
+            title: '官方回复',
+            icon: Icons.admin_panel_settings_outlined,
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          TextField(
+            key: const ValueKey('suggestion-reply-content'),
+            controller: _contentController,
+            minLines: 3,
+            maxLines: 8,
+            maxLength: 5000,
+            textInputAction: TextInputAction.newline,
+            decoration: const InputDecoration(
+              labelText: '回复内容 *',
+              hintText: '说明处理结论、后续安排或未采纳原因',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          if (_nextStatuses.isNotEmpty)
+            UtenDropdownField(
+              label: '同步更新状态',
+              value: _newStatus?.name,
+              searchable: false,
+              hintText: '保持当前状态（${widget.suggestion.status.label}）',
+              items: [
+                for (final status in _nextStatuses)
+                  UtenDropdownItem(value: status.name, label: status.label),
+              ],
+              onChanged: (value) => setState(() {
+                _newStatus = SuggestionStatus.values
+                    .where((status) => status.name == value)
+                    .firstOrNull;
+              }),
+            )
+          else
+            Text(
+              '当前为终态（${widget.suggestion.status.label}），可继续补充回复，但不能回退或切换处理状态。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          const SizedBox(height: UtenSpacing.s16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: UtenActionButton(
+              key: const ValueKey('suggestion-reply-submit'),
+              icon: Icons.send_rounded,
+              label: const Text('发布回复'),
+              loadingLabel: const Text('发布中…'),
+              onAction: _submit,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<SuggestionStatus> get _nextStatuses =>
+      switch (widget.suggestion.status) {
+        SuggestionStatus.submitted => const [SuggestionStatus.reviewing],
+        SuggestionStatus.reviewing => const [
+          SuggestionStatus.resolved,
+          SuggestionStatus.rejected,
+        ],
+        SuggestionStatus.resolved ||
+        SuggestionStatus.rejected => const <SuggestionStatus>[],
+      };
+
+  Future<void> _submit() async {
+    final content = _contentController.text.trim();
+    if (content.isEmpty) {
+      UtenNotify.warning(context, '请填写回复内容');
+      return;
+    }
+    try {
+      await replyToSuggestion(
+        ref,
+        id: widget.suggestion.id,
+        content: content,
+        newStatus: _newStatus,
+      );
+      if (!mounted) return;
+      _contentController.clear();
+      setState(() => _newStatus = null);
+      UtenNotify.success(context, '官方回复已发布');
+    } catch (error) {
+      if (mounted) UtenNotify.apiError(context, error, fallback: '发布回复失败');
+    }
+  }
 }
 
 class _ReplyCard extends StatelessWidget {

@@ -1,7 +1,6 @@
 package com.uten.imp.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uten.imp.common.web.ApiError;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.visitor.VisitorAccountRepository;
@@ -19,6 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -52,28 +52,30 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
+            AuthUser authUser;
             try {
                 Claims c = jwtService.parse(token);
                 String typ = c.get("typ", String.class);
                 UUID subjectId = UUID.fromString(c.getSubject());
 
-                AuthUser authUser = "visitor".equals(typ)
+                authUser = "visitor".equals(typ)
                         ? resolveVisitor(subjectId, c)
                         : resolveStaff(subjectId, c);
-
-                if (authUser != null) {
-                    UsernamePasswordAuthenticationToken auth =
-                            new UsernamePasswordAuthenticationToken(authUser, null, authUser.getAuthorities());
-                    SecurityContextHolder.getContext().setAuthentication(auth);
-                } else {
-                    // 账号状态拒绝（锁定/停用/拉黑/删除）：立即 401，前端触发登出
-                    SecurityContextHolder.clearContext();
-                    writeUnauthorized(response);
-                    return;
-                }
             } catch (Exception ex) {
                 SecurityContextHolder.clearContext();
+                chain.doFilter(request, response);
+                return;
             }
+            if (authUser == null) {
+                // Keep this branch outside the token-parsing catch. A response-serialization
+                // failure must never fall through to the protected endpoint.
+                SecurityContextHolder.clearContext();
+                writeUnauthorized(response);
+                return;
+            }
+            UsernamePasswordAuthenticationToken auth =
+                    new UsernamePasswordAuthenticationToken(authUser, null, authUser.getAuthorities());
+            SecurityContextHolder.getContext().setAuthentication(auth);
         }
         chain.doFilter(request, response);
     }
@@ -86,6 +88,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private AuthUser resolveStaff(UUID userId, Claims c) {
         UserAccountRepository.AccountState user = userRepo.findAccountStateById(userId).orElse(null);
         if (user == null || user.isDeleted() || !"active".equals(user.getStatus())) {
+            return null;
+        }
+        Long tokenAuthVersion = numericClaim(c, "av");
+        Long tokenAuthorizationEpoch = numericClaim(c, "ae");
+        if (tokenAuthVersion == null
+                || tokenAuthorizationEpoch == null
+                || tokenAuthVersion != user.getAuthVersion()
+                || tokenAuthorizationEpoch != user.getAuthorizationEpoch()) {
             return null;
         }
         UUID employeeId = c.get("emp", String.class) == null ? null
@@ -103,10 +113,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (va == null || !"active".equals(va.getStatus())) {
             return null;
         }
-        String phone = c.get("acc", String.class);
+        String visitorAccount = c.get("acc", String.class);
         String visitorNo = c.get("vno", String.class);
         Set<String> perms = new HashSet<>(asStringList(c.get("perms")));
-        return AuthUser.visitor(visitorId, phone, visitorNo, perms);
+        return AuthUser.visitor(visitorId, visitorAccount, visitorNo, perms);
     }
 
     /** 401 + 统一错误体（对齐 GlobalExceptionHandler 的 ApiError 形状）。 */
@@ -114,8 +124,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        ApiError body = ApiError.of(ErrorCode.UNAUTHORIZED, "账号已被停用或锁定，请重新登录");
+        // Build a JSON tree so this fail-closed path does not depend on optional Java-time
+        // ObjectMapper modules. This also keeps the canonical ApiError wire shape.
+        var body = objectMapper.createObjectNode()
+                .put("timestamp", OffsetDateTime.now().toString())
+                .put("status", ErrorCode.UNAUTHORIZED.getHttpStatus())
+                .put("code", ErrorCode.UNAUTHORIZED.name())
+                .put("message", "账号状态或权限已变更，请重新登录");
         response.getWriter().write(objectMapper.writeValueAsString(body));
+    }
+
+    private Long numericClaim(Claims claims, String name) {
+        Object value = claims.get(name);
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     @SuppressWarnings("unchecked")

@@ -12,6 +12,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -37,6 +38,7 @@ class _ProductionDailyReportListPageState
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   int? _statusFilter;
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -52,18 +54,21 @@ class _ProductionDailyReportListPageState
     });
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(ProductionPerm.dailyReportEdit);
+  bool get _canEdit => ref
+      .read(currentPermissionsProvider)
+      .contains(ProductionPerm.dailyReportEdit);
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(productionDailyReportRepositoryProvider).list(
+      final r = await ref
+          .read(productionDailyReportRepositoryProvider)
+          .list(
             page: page,
             filter: ProductionDailyReportFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -72,19 +77,19 @@ class _ProductionDailyReportListPageState
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载列表失败';
         _loading = false;
@@ -107,33 +112,41 @@ class _ProductionDailyReportListPageState
   }
 
   List<MasterColumnDef<ProductionDailyReportListItem>> _columns(
-          MasterNameService names) =>
-      <MasterColumnDef<ProductionDailyReportListItem>>[
-        MasterColumnDef(
-            key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
-        MasterColumnDef(
-            key: 'billDate',
-            label: '日期',
-            width: 120,
-            type: 'date',
-            sortable: true,
-            value: (it) => (it.billDate ?? '').substring(0, 10)),
-        MasterColumnDef(
-            key: 'warehouse',
-            label: '仓库',
-            width: 160,
-            value: (it) => names.warehouse(it.warehouseId)),
-        MasterColumnDef(
-            key: 'workshop',
-            label: '车间',
-            width: 140,
-            value: (it) => names.department(it.departmentId)),
-        MasterColumnDef(
-            key: 'status',
-            label: '状态',
-            width: 100,
-            value: (it) => productionStatusLabel(it.status)),
-      ];
+    MasterNameService names,
+  ) => <MasterColumnDef<ProductionDailyReportListItem>>[
+    MasterColumnDef(
+      key: 'billNo',
+      label: '单据号',
+      width: 140,
+      value: (it) => it.billNo,
+    ),
+    MasterColumnDef(
+      key: 'billDate',
+      label: '日期',
+      width: 120,
+      type: 'date',
+      sortable: true,
+      value: (it) => (it.billDate ?? '').substring(0, 10),
+    ),
+    MasterColumnDef(
+      key: 'warehouse',
+      label: '仓库',
+      width: 160,
+      value: (it) => names.warehouse(it.warehouseId),
+    ),
+    MasterColumnDef(
+      key: 'workshop',
+      label: '车间',
+      width: 140,
+      value: (it) => names.department(it.departmentId),
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (it) => productionStatusLabel(it.status),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +157,8 @@ class _ProductionDailyReportListPageState
       appBar: UtenAppBar(
         title: '生产日报表',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production)),
+          onPressed: () => backTo(context, defaultPath: RouteName.production),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -161,17 +175,24 @@ class _ProductionDailyReportListPageState
               children: [
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.edit_calendar_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.edit_calendar_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('日报 ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '日报 ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(width: UtenSpacing.s12),
                       Expanded(
                         child: UtenSearchBar(
@@ -198,7 +219,9 @@ class _ProductionDailyReportListPageState
                 ),
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8, left: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                  ),
                   child: Wrap(
                     spacing: 6,
                     children: [

@@ -25,7 +25,9 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 
   final bool isCheck;
 
-  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(null);
+  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
+    null,
+  );
   GoodsOption? get goods => goodsNotifier.value;
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
@@ -39,7 +41,10 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController checkQty = TextEditingController();
 
   void _recalc() => recalcAmount(
-      () => (double.tryParse(checkQty.text) ?? 0) - (double.tryParse(bookQty.text) ?? 0));
+    () =>
+        (double.tryParse(checkQty.text) ?? 0) -
+        (double.tryParse(bookQty.text) ?? 0),
+  );
 
   @override
   void dispose() {

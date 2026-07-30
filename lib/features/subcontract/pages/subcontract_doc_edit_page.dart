@@ -30,8 +30,8 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/providers/master_name_provider.dart'
-    show GoodsOption;
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -79,7 +79,7 @@ class _SubcontractDocEditPageState
   final _taxRate = TextEditingController();
   final _bStyle = TextEditingController();
   final _totalWeight = TextEditingController();
-  DateTime _billDate = DateTime.now();
+  DateTime _billDate = ChinaDateTime.today();
 
   // 结帐方式（进仓/退货；B_PStyle 字典码）
   int? _settlementStyle;
@@ -253,7 +253,7 @@ class _SubcontractDocEditPageState
   }
 
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
-  /// 表头已选委外商 → 面板默认按该委外商筛选；表头未选 → 引入后以上游单据委外商回填。
+  /// 表头已选委外商 → 面板锁定该委外商；表头未选 → 引入后以上游单据委外商回填。
   Future<void> _importFromUpstream() async {
     final result = await showSubcontractLinkPicker(
       context,
@@ -261,7 +261,12 @@ class _SubcontractDocEditPageState
       _cfg,
       initialSupplierId: _supplierId,
     );
+    if (!mounted) return;
     if (result == null || result.items.isEmpty) return;
+    if (_supplierId != null && result.supplierId != _supplierId) {
+      context.appError('上游单据委外商与表头委外商不一致，已阻止引入');
+      return;
+    }
     final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
@@ -379,8 +384,9 @@ class _SubcontractDocEditPageState
       return {'materialIssueItemId': upstreamItemId};
     }
     if (_cfg.linkToOrderItem) return {'orderItemId': upstreamItemId};
-    if (_cfg.linkToApplicationItem)
+    if (_cfg.linkToApplicationItem) {
       return {'applicationItemId': upstreamItemId};
+    }
     return const {};
   }
 

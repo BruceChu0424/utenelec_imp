@@ -149,10 +149,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   // —— 列宽自动适配 / 手动拖拽 常量 ——
   /// 拖拽命中区半宽：以列右边界为中心、半溢出到相邻列，便于精准抓住边界。
   static const double _gripHalf = 4;
+
   /// 列宽下限（自动适配与拖拽收窄共同下限，防止列被拖没）。
   static const double _minColWidth = 48;
+
   /// 列宽自动适配上限：超长文本（如备注）默认按此截断+省略号，用户可再拖宽。
   static const double _maxColWidth = 480;
+
   /// 自动适配取样行数：量前 N 行最宽值即可（全量量算大表偏重，最宽值通常在前段出现）。
   static const int _autoFitSampleSize = 100;
   static const double _cellPadX = UtenSpacing.s12; // 单元格左右内边距（表头/表体一致）
@@ -273,11 +276,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     if (!_widthsDirty) return;
     _widthsDirty = false;
     final theme = Theme.of(context);
-    final headerStyle =
-        (theme.textTheme.labelMedium ?? const TextStyle()).copyWith(fontWeight: FontWeight.w700);
+    final headerStyle = (theme.textTheme.labelMedium ?? const TextStyle())
+        .copyWith(fontWeight: FontWeight.w700);
     final bodyStyle = theme.textTheme.bodySmall ?? const TextStyle();
-    final next =
-        List<double>.filled(widget.columns.length, _minColWidth, growable: true);
+    final next = List<double>.filled(
+      widget.columns.length,
+      _minColWidth,
+      growable: true,
+    );
     final sampleCount = widget.items.length < _autoFitSampleSize
         ? widget.items.length
         : _autoFitSampleSize;
@@ -292,12 +298,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         final tw = _measureText(def.value(widget.items[r]) ?? '', bodyStyle);
         if (tw > w) w = tw;
       }
-      next[i] = (w +
-              _cellPadX * 2 +
-              _headerIconAllowance +
-              (def.sortable ? _sortIconAllowance : 0) +
-              _autoFitBuffer)
-          .clamp(_minColWidth, _maxColWidth);
+      next[i] =
+          (w +
+                  _cellPadX * 2 +
+                  _headerIconAllowance +
+                  (def.sortable ? _sortIconAllowance : 0) +
+                  _autoFitBuffer)
+              .clamp(_minColWidth, _maxColWidth);
     }
     _widths = next;
   }
@@ -321,6 +328,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     _headerH.dispose();
     _bodyH.dispose();
     _bodyV.dispose();
+    _pageCtrl.dispose();
     super.dispose();
   }
 
@@ -334,9 +342,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
 
   /// 当前可见列在原列集合中的下标（隐藏列跳过，列宽仍按原下标存 [_widths]）。
   List<int> get _visibleIndices => [
-        for (var i = 0; i < widget.columns.length; i++)
-          if (!_hiddenKeys.contains(widget.columns[i].key)) i,
-      ];
+    for (var i = 0; i < widget.columns.length; i++)
+      if (!_hiddenKeys.contains(widget.columns[i].key)) i,
+  ];
 
   /// 可见列数（至少 1：[_toggleColumn] 拦住最后一列的隐藏）。
   int get _visibleCount => widget.columns.length - _hiddenKeys.length;
@@ -454,10 +462,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           child: SingleChildScrollView(
             controller: _headerH,
             scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: total,
-              child: _buildHeaderRow(theme),
-            ),
+            child: SizedBox(width: total, child: _buildHeaderRow(theme)),
           ),
         ),
         Divider(
@@ -498,7 +503,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                         shrinkWrap: true,
                         physics: const ClampingScrollPhysics(),
                         padding: EdgeInsets.zero,
-                        itemCount: widget.items.length + (widget.loadingMore ? 1 : 0),
+                        itemCount:
+                            widget.items.length + (widget.loadingMore ? 1 : 0),
                         itemBuilder: (ctx, i) {
                           if (i == widget.items.length) {
                             return const Padding(
@@ -507,7 +513,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                                 child: SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                               ),
                             );
@@ -618,34 +626,37 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           ),
         ),
         child: ColoredBox(
-        color: rowBg,
-        child: Row(
-          children: [
-            for (final i in _visibleIndices)
-              Container(
-                width: _widths[i],
-                // 列间竖线：与表头竖线同位置同色，逐格勾勒单元格右边界。
-                decoration: BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+          color: rowBg,
+          child: Row(
+            children: [
+              for (final i in _visibleIndices)
+                Container(
+                  width: _widths[i],
+                  // 列间竖线：与表头竖线同位置同色，逐格勾勒单元格右边界。
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(
+                        color: theme.colorScheme.outline,
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12,
+                      vertical: UtenSpacing.s8,
+                    ),
+                    child: Text(
+                      widget.columns[i].value(item) ?? '',
+                      style: theme.textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s12,
-                    vertical: UtenSpacing.s8,
-                  ),
-                  child: Text(
-                    widget.columns[i].value(item) ?? '',
-                    style: theme.textTheme.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -680,8 +691,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                     style: theme.textTheme.bodySmall,
                     decoration: InputDecoration(
                       isDense: true,
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 8,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -703,8 +716,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 const SizedBox(width: UtenSpacing.s8),
                 Text(
                   '/ ${widget.totalPages}', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -871,15 +885,16 @@ class _FilterCellState extends State<_FilterCell> {
                 Icon(
                   widget.sortActive
                       ? (widget.sortAscending
-                          ? Icons.arrow_upward_rounded
-                          : Icons.arrow_downward_rounded)
+                            ? Icons.arrow_upward_rounded
+                            : Icons.arrow_downward_rounded)
                       : Icons.sort_rounded,
                   size: 16,
                   color: widget.sortActive
                       ? theme.colorScheme.primary
                       : theme.colorScheme.onSurfaceVariant,
                 ),
-              if (widget.sortable && hasFacets) const SizedBox(width: UtenSpacing.s4),
+              if (widget.sortable && hasFacets)
+                const SizedBox(width: UtenSpacing.s4),
               // 筛选下拉箭头（仅有 facets 的列才显示）。
               if (hasFacets)
                 Icon(
@@ -934,18 +949,18 @@ class _FilterCellState extends State<_FilterCell> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 360, maxWidth: 300),
+                constraints: const BoxConstraints(
+                  maxHeight: 360,
+                  maxWidth: 300,
+                ),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
-                    final q =
-                        _searchCtl?.text.trim().toLowerCase() ?? '';
+                    final q = _searchCtl?.text.trim().toLowerCase() ?? '';
                     final buckets = q.isEmpty
                         ? widget.buckets
                         : widget.buckets
-                            .where(
-                              (b) => b.display.toLowerCase().contains(q),
-                            )
-                            .toList();
+                              .where((b) => b.display.toLowerCase().contains(q))
+                              .toList();
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -987,8 +1002,7 @@ class _FilterCellState extends State<_FilterCell> {
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(6),
                                 ),
-                                contentPadding:
-                                    const EdgeInsets.symmetric(
+                                contentPadding: const EdgeInsets.symmetric(
                                   horizontal: UtenSpacing.s8,
                                   vertical: UtenSpacing.s8,
                                 ),
@@ -1015,7 +1029,8 @@ class _FilterCellState extends State<_FilterCell> {
                                   ctx,
                                   label: _sortDescLabel,
                                   isSelected:
-                                      widget.sortActive && !widget.sortAscending,
+                                      widget.sortActive &&
+                                      !widget.sortAscending,
                                   onTap: () =>
                                       _sortSelect(widget.sortKey, false),
                                   theme: theme,
@@ -1070,9 +1085,10 @@ class _FilterCellState extends State<_FilterCell> {
                                       '无匹配项',
                                       style: theme.textTheme.bodySmall
                                           ?.copyWith(
-                                        color: theme
-                                            .colorScheme.onSurfaceVariant,
-                                      ),
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
                                     ),
                                   ),
                               ],
@@ -1112,8 +1128,11 @@ class _FilterCellState extends State<_FilterCell> {
             SizedBox(
               width: 18,
               child: isSelected
-                  ? Icon(Icons.check_rounded,
-                      size: 18, color: theme.colorScheme.primary)
+                  ? Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    )
                   : null,
             ),
             const SizedBox(width: UtenSpacing.s8),
@@ -1234,7 +1253,10 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: const BoxConstraints(maxHeight: 360, maxWidth: 240),
+                constraints: const BoxConstraints(
+                  maxHeight: 360,
+                  maxWidth: 240,
+                ),
                 child: ListView(
                   shrinkWrap: true,
                   padding: EdgeInsets.zero,
@@ -1253,7 +1275,8 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
                         label: c.label,
                         checked: !widget.hiddenKeys.contains(c.key),
                         // 最后一列不允许再隐藏，避免表格没列。
-                        enabled: widget.hiddenKeys.contains(c.key) ||
+                        enabled:
+                            widget.hiddenKeys.contains(c.key) ||
                             visibleCount > 1,
                         onTap: () => _toggle(c.key),
                         theme: theme,
@@ -1276,8 +1299,9 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
     required ThemeData theme,
     bool bold = false,
   }) {
-    final disabledColor =
-        theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+    final disabledColor = theme.colorScheme.onSurfaceVariant.withValues(
+      alpha: 0.4,
+    );
     return InkWell(
       onTap: enabled ? onTap : null,
       child: Container(
@@ -1295,8 +1319,8 @@ class _ColumnChooserButtonState extends State<_ColumnChooserButton> {
               color: !enabled
                   ? disabledColor
                   : checked
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: UtenSpacing.s8),
             Expanded(

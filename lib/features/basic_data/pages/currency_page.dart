@@ -14,6 +14,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -39,6 +40,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
 
   Map<String, String?> _filters = {};
   String _keyword = '';
@@ -62,7 +64,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       ref.read(currentPermissionsProvider).contains(Perm.currencyEdit);
 
   Future<void> _loadCurrencies(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -78,19 +80,19 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = result;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载币种列表失败';
         _loading = false;
@@ -103,10 +105,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       final f = await ref.read(currencyRepositoryProvider).facets();
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      debugPrint('currency facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('currency facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 
@@ -336,8 +336,9 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await ref.read(currencyRepositoryProvider).list(
-          page: 1,
+    final result = await ref
+        .read(currencyRepositoryProvider)
+        .list(
           size: 2000,
           keyword: _keyword.trim().isEmpty ? null : _keyword,
           filters: _filters,
@@ -347,7 +348,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
     return UtenPrintTable(
       headers: [for (final c in _columns) c.label],
       rows: [
-        for (final a in result.items) [for (final c in _columns) c.value(a) ?? ''],
+        for (final a in result.items)
+          [for (final c in _columns) c.value(a) ?? ''],
       ],
     );
   }
@@ -426,6 +428,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                         subtitle: '最多前 2000 行',
                         loader: _printLoader,
                         exportEndpoint: '/master/currencies/export',
+                        exportPermission: Perm.currencyExport,
                         exportReport: '',
                         exportQuery: _exportQuery,
                         exportFilename: '币种资料',
@@ -434,6 +437,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                       ),
                       UtenExportButton(
                         endpoint: '/master/currencies/export',
+                        requiredPermission: Perm.currencyExport,
                         report: '',
                         queryParams: _exportQuery,
                         filename: '币种资料',

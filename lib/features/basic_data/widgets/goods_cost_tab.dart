@@ -170,9 +170,12 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.canEdit ? '各项成本可直接编辑，保存后生效' : '各项成本（只读）', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  widget.canEdit
+                      ? '各项成本可直接编辑，保存后生效'
+                      : '各项成本（只读）', // TODO(l10n): 补 arb
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 if (twoColumn)
@@ -201,8 +204,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab> {
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
                     _error!,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.error),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
                   ),
                 ],
               ],

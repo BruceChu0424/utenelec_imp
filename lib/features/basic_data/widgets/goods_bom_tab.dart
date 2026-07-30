@@ -81,8 +81,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab> {
       _error = null;
     });
     try {
-      final items =
-          await ref.read(goodsBomRepositoryProvider).list(widget.goodsId);
+      final items = await ref
+          .read(goodsBomRepositoryProvider)
+          .list(widget.goodsId);
       if (!mounted) return;
       setState(() {
         _roots = items.map(_BomNode.new).toList();
@@ -243,9 +244,17 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab> {
     ),
     MasterColumnDef(key: 'seq', label: '序号', width: 72, value: (r) => r.seq),
     MasterColumnDef(
-        key: 'code', label: '编号', width: 110, value: (r) => r.node.item.componentCode),
+      key: 'code',
+      label: '编号',
+      width: 110,
+      value: (r) => r.node.item.componentCode,
+    ),
     MasterColumnDef(
-        key: 'model', label: '型号', width: 120, value: (r) => r.node.item.componentModel),
+      key: 'model',
+      label: '型号',
+      width: 120,
+      value: (r) => r.node.item.componentModel,
+    ),
     MasterColumnDef(
       key: 'name',
       label: '货品名称',
@@ -259,19 +268,50 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab> {
       },
     ),
     MasterColumnDef(
-        key: 'spec', label: '规格', width: 170, value: (r) => r.node.item.componentSpec),
+      key: 'spec',
+      label: '规格',
+      width: 170,
+      value: (r) => r.node.item.componentSpec,
+    ),
     MasterColumnDef(
-        key: 'unit', label: '单位', width: 56, value: (r) => r.node.item.componentUnitName),
+      key: 'unit',
+      label: '单位',
+      width: 56,
+      value: (r) => r.node.item.componentUnitName,
+    ),
     MasterColumnDef(
-        key: 'color', label: '颜色', width: 80, value: (r) => r.node.item.componentColorName),
+      key: 'color',
+      label: '颜色',
+      width: 80,
+      value: (r) => r.node.item.componentColorName,
+    ),
     MasterColumnDef(
-        key: 'qty', label: '数量', width: 72, type: 'number', value: (r) => _num(r.node.item.qty)),
+      key: 'qty',
+      label: '数量',
+      width: 72,
+      type: 'number',
+      value: (r) => _num(r.node.item.qty),
+    ),
     MasterColumnDef(
-        key: 'price', label: '单价', width: 90, type: 'money', value: (r) => _money(r.node.item.price)),
+      key: 'price',
+      label: '单价',
+      width: 90,
+      type: 'money',
+      value: (r) => _money(r.node.item.price),
+    ),
     MasterColumnDef(
-        key: 'total', label: '金额', width: 90, type: 'money', value: (r) => _money(r.node.item.total)),
+      key: 'total',
+      label: '金额',
+      width: 90,
+      type: 'money',
+      value: (r) => _money(r.node.item.total),
+    ),
     MasterColumnDef(
-        key: 'summary', label: '备注', width: 120, value: (r) => r.node.item.summary),
+      key: 'summary',
+      label: '备注',
+      width: 120,
+      value: (r) => r.node.item.summary,
+    ),
   ];
 
   @override
@@ -282,7 +322,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab> {
         // 工具条：说明 + 编辑/删除（作用于选中行）+ 添加组件
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16, UtenSpacing.s12, UtenSpacing.s16, UtenSpacing.s8),
+            UtenSpacing.s16,
+            UtenSpacing.s12,
+            UtenSpacing.s16,
+            UtenSpacing.s8,
+          ),
           child: Row(
             children: [
               Expanded(
@@ -290,10 +334,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab> {
                   _loading
                       ? '加载中…'
                       : (roots.isEmpty
-                          ? '该货品暂无组装信息'
-                          : '共 ${roots.length} 个组件（▶ = 含子类，点行展开）'), // TODO(l10n): 补 arb
+                            ? '该货品暂无组装信息'
+                            : '共 ${roots.length} 个组件（▶ = 含子类，点行展开）'), // TODO(l10n): 补 arb
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               if (widget.canEdit) ...[
@@ -430,12 +475,14 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       return;
     }
     final body = <String, dynamic>{
-      'componentGoodsId':
-          _isEdit ? widget.editing!.componentGoodsId : _selected!.id,
+      'componentGoodsId': _isEdit
+          ? widget.editing!.componentGoodsId
+          : _selected!.id,
       'qty': qty ?? 1,
       'price': price,
-      'summary':
-          _summaryCtl.text.trim().isEmpty ? null : _summaryCtl.text.trim(),
+      'summary': _summaryCtl.text.trim().isEmpty
+          ? null
+          : _summaryCtl.text.trim(),
     };
     setState(() {
       _saving = true;
@@ -479,15 +526,20 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(UtenSpacing.s16,
-                    UtenSpacing.s12, UtenSpacing.s8, UtenSpacing.s12),
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s16,
+                  UtenSpacing.s12,
+                  UtenSpacing.s8,
+                  UtenSpacing.s12,
+                ),
                 child: Row(
                   children: [
                     Expanded(
                       child: Text(
                         _isEdit ? '编辑组件' : '添加组件', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -515,8 +567,9 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                           ),
                           child: Text(
                             '${e!.componentCode ?? ''}  ${e.componentName ?? ''}',
-                            style: theme.textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ] else ...[
@@ -533,7 +586,8 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                                       width: 16,
                                       height: 16,
                                       child: CircularProgressIndicator(
-                                          strokeWidth: 2),
+                                        strokeWidth: 2,
+                                      ),
                                     ),
                                   )
                                 : const Icon(Icons.search_rounded),
@@ -545,8 +599,9 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(UtenSpacing.s12),
-                            margin:
-                                const EdgeInsets.only(bottom: UtenSpacing.s8),
+                            margin: const EdgeInsets.only(
+                              bottom: UtenSpacing.s8,
+                            ),
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primaryContainer,
                               borderRadius: UtenRadius.mdAll,
@@ -556,17 +611,18 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                                 Expanded(
                                   child: Text(
                                     '已选：${_selected!.code ?? ''}  ${_selected!.name ?? ''}',
-                                    style: theme.textTheme.bodyMedium
-                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                                 InkWell(
-                                  onTap: () =>
-                                      setState(() => _selected = null),
-                                  child: Icon(Icons.close_rounded,
-                                      size: 18,
-                                      color:
-                                          theme.colorScheme.onSurfaceVariant),
+                                  onTap: () => setState(() => _selected = null),
+                                  child: Icon(
+                                    Icons.close_rounded,
+                                    size: 18,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),
@@ -576,7 +632,8 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                             constraints: const BoxConstraints(maxHeight: 220),
                             decoration: BoxDecoration(
                               border: Border.all(
-                                  color: theme.colorScheme.outlineVariant),
+                                color: theme.colorScheme.outlineVariant,
+                              ),
                               borderRadius: UtenRadius.mdAll,
                             ),
                             child: ListView.builder(
@@ -593,14 +650,12 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                                   ),
                                   subtitle: Text(
                                     [g.model, g.spec]
-                                        .where(
-                                            (s) => s != null && s.isNotEmpty)
+                                        .where((s) => s != null && s.isNotEmpty)
                                         .join(' · '),
                                     style: theme.textTheme.bodySmall,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  onTap: () =>
-                                      setState(() => _selected = g),
+                                  onTap: () => setState(() => _selected = g),
                                 );
                               },
                             ),
@@ -615,7 +670,8 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                               controller: _qtyCtl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                      decimal: true),
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: '数量', // TODO(l10n): 补 arb
                                 border: OutlineInputBorder(),
@@ -629,7 +685,8 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                               controller: _priceCtl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                      decimal: true),
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: '单价', // TODO(l10n): 补 arb
                                 border: OutlineInputBorder(),
@@ -652,8 +709,9 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                         const SizedBox(height: UtenSpacing.s8),
                         Text(
                           _error!,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: theme.colorScheme.error),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
                         ),
                       ],
                     ],

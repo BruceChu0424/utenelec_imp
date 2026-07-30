@@ -63,7 +63,8 @@ class UtenSideNavRail extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: theme.navigationRailTheme.backgroundColor ??
+        color:
+            theme.navigationRailTheme.backgroundColor ??
             theme.colorScheme.surface,
         border: Border(
           right: BorderSide(

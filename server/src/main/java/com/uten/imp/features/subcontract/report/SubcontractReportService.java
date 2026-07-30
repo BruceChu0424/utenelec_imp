@@ -763,6 +763,7 @@ public class SubcontractReportService {
 
     @Transactional(readOnly = true)
     public List<SubcontractMonthlyRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, supplier_id,
                        SUM(qty_sum) AS qty, SUM(amt_local) AS amt, SUM(line_cnt) AS lines
@@ -777,7 +778,7 @@ public class SubcontractReportService {
         q.setParameter("docType", docType);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
-        q.setParameter("limit", limit);
+        q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new SubcontractMonthlyRow(

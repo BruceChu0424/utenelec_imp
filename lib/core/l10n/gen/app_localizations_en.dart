@@ -84,9 +84,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginPasswordRequired => 'Please enter your password';
 
   @override
-  String get loginRememberMe => 'Remember this device';
-
-  @override
   String get loginForgotPassword => 'Forgot password?';
 
   @override
@@ -387,6 +384,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get visitorApplyValidateName => 'Please enter your name';
+
+  @override
+  String get visitorApplyValidateIdCard =>
+      'Please enter a valid 18-digit resident ID number';
 
   @override
   String get visitorApplyValidatePurpose => 'Please fill in the purpose';
@@ -846,14 +847,38 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOnboardSuccess =>
-      'Onboarded. Account = code, initial password = last 6 digits of ID (must change on first login)';
+      'Onboarding completed and the one-time password was delivered';
 
   @override
   String get employeeOnboardSubmitFailed => 'Submit failed, please try again';
 
   @override
   String get employeeOnboardNote =>
-      'Submitting creates a login account: code as username, last 6 digits of ID as initial password; you must change it on first login.';
+      'Submitting creates a login account (employee code as username) and a high-entropy one-time password. It must be changed at first sign-in.';
+
+  @override
+  String get employeeOnboardCredentialTitle => 'Account created';
+
+  @override
+  String get employeeOnboardCredentialWarning =>
+      'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
+
+  @override
+  String get employeeOnboardAccountLabel => 'Login account';
+
+  @override
+  String get employeeOnboardTemporaryPasswordLabel =>
+      'One-time temporary password';
+
+  @override
+  String get employeeOnboardCopyTemporaryPassword => 'Copy password';
+
+  @override
+  String get employeeOnboardTemporaryPasswordCopied =>
+      'Temporary password copied';
+
+  @override
+  String get employeeOnboardCredentialSaved => 'I saved it securely';
 
   @override
   String get employeeOnboardHintCode => 'e.g. E1001';
@@ -1266,7 +1291,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get payrollSubmitButton => 'Submit for review';
 
   @override
-  String get payrollSubmitted => 'Submitted for finance review (mock)';
+  String get payrollSubmitted => 'Submitted for finance review';
 
   @override
   String payrollLoadFailed(Object error) {
@@ -1328,7 +1353,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishSaveDraft => 'Save draft';
 
   @override
-  String get noticePublishDraftSaved => 'Draft saved (mock)';
+  String get noticePublishDraftSaved => 'Draft saved';
 
   @override
   String get noticePublishPublishButton => 'Publish';
@@ -1381,7 +1406,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get noticePublishPublished => 'Notice published (mock)';
+  String get noticePublishPublished => 'Notice published';
 
   @override
   String get noticeTypeAnnouncement => 'Announcement';

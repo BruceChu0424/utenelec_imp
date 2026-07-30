@@ -73,6 +73,12 @@ abstract final class UtenColors {
   static const Color errorBg = Color(0xFFFEE2E2);
   static const Color info = Color(0xFF3B82F6);
 
+  /// 深色表面上的高对比语义前景色。
+  static const Color successOnDark = Color(0xFF34D399);
+  static const Color warningOnDark = Color(0xFFFBBF24);
+  static const Color errorOnDark = Color(0xFFF87171);
+  static const Color infoOnDark = Color(0xFF60A5FA);
+
   /// 语义色柔和底色（徽章、提示条、浅色高亮块）
   static const Color successBg = Color(0xFFECFDF5);
   static const Color warningBg = Color(0xFFFFFBEB);

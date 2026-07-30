@@ -108,7 +108,9 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
     final priority = type == NoticeType.urgent
         ? NoticePriority.urgent
         : (_topPriority ? NoticePriority.important : NoticePriority.normal);
-    await ref.read(noticeRepositoryProvider).publish(
+    await ref
+        .read(noticeRepositoryProvider)
+        .publish(
           title: _title.text.trim(),
           content: _content.text.trim(),
           type: type,
@@ -126,12 +128,12 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   }
 
   static NoticeType _typeToEnum(String code) => switch (code) {
-        '制度' => NoticeType.policy,
-        '福利' => NoticeType.benefit,
-        '系统' => NoticeType.system,
-        '紧急' => NoticeType.urgent,
-        _ => NoticeType.announcement,
-      };
+    '制度' => NoticeType.policy,
+    '福利' => NoticeType.benefit,
+    '系统' => NoticeType.system,
+    '紧急' => NoticeType.urgent,
+    _ => NoticeType.announcement,
+  };
 
   @override
   Widget build(BuildContext context) {

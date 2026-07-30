@@ -496,11 +496,8 @@ class _DetailPaneState extends State<_DetailPane> {
           .facets(widget.nodeId);
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      // facet 拉取失败：列表仍可用，仅下拉为空；不强提示打扰用户。
-      debugPrint('mould facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('mould facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 

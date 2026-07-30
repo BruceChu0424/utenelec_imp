@@ -21,4 +21,6 @@ public class OtherShipmentListItem {
     private Short status;
     private boolean closed;
     private Integer legacyId;
+    /** Current caller may mutate this document (functional permission + owner scope). */
+    private boolean writable;
 }

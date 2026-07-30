@@ -515,11 +515,8 @@ class _DetailPaneState extends State<_DetailPane> {
           .facets(widget.nodeId);
       if (!mounted) return;
       setState(() => _facets = f);
-    } on ApiException catch (e) {
-      // facet 拉取失败：列表仍可用，仅下拉为空；不强提示打扰用户。
-      debugPrint('supplier facets load failed: ${e.message}');
     } catch (_) {
-      debugPrint('supplier facets load failed');
+      // Facets are optional; the primary list remains usable.
     }
   }
 
@@ -560,9 +557,10 @@ class _DetailPaneState extends State<_DetailPane> {
 
   /// 打印预览数据：按当前分类/筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
-    final result = await widget.ref.read(supplierRepositoryProvider).list(
+    final result = await widget.ref
+        .read(supplierRepositoryProvider)
+        .list(
           widget.nodeId,
-          page: 1,
           size: 2000,
           keyword: _keyword.trim().isEmpty ? null : _keyword,
           filters: _filters,
@@ -944,6 +942,7 @@ class _DetailPaneState extends State<_DetailPane> {
                   subtitle: '最多前 2000 行',
                   loader: _printLoader,
                   exportEndpoint: '/master/suppliers/export',
+                  exportPermission: Perm.supplierExport,
                   exportReport: '',
                   exportQuery: _exportQuery,
                   exportFilename: '供应商资料',
@@ -952,6 +951,7 @@ class _DetailPaneState extends State<_DetailPane> {
                 ),
                 UtenExportButton(
                   endpoint: '/master/suppliers/export',
+                  requiredPermission: Perm.supplierExport,
                   report: '',
                   queryParams: _exportQuery,
                   filename: '供应商资料',

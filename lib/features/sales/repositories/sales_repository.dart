@@ -187,8 +187,8 @@ class SalesRepository {
       '/sales/shipments/batch',
       body: {
         'billDate': billDate,
-        if (warehouseId != null) 'warehouseId': warehouseId,
-        if (remark != null) 'remark': remark,
+        'warehouseId': ?warehouseId,
+        'remark': ?remark,
         'lines': lines,
       },
     );

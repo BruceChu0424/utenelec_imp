@@ -46,6 +46,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
   }
 
   Future<void> _submit() async {
+    final l10n = AppLocalizations.of(context);
     if (!_formKey.currentState!.validate()) return;
     if (_new.text != _confirm.text) {
       setState(() => _error = '两次输入的新密码不一致');
@@ -69,8 +70,8 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+    } catch (_) {
+      if (mounted) setState(() => _error = l10n.commonError);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

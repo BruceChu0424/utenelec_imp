@@ -11,13 +11,14 @@ final hvacRepositoryProvider = Provider<MockHvacRepository>((ref) {
 
 final hvacBuildingProvider = StateProvider<String>((ref) => '全部');
 
-final hvacListProvider =
-    FutureProvider.autoDispose<List<HvacDevice>>((ref) async {
+final hvacListProvider = FutureProvider.autoDispose<List<HvacDevice>>((
+  ref,
+) async {
   final building = ref.watch(hvacBuildingProvider);
   return ref.watch(hvacRepositoryProvider).list(building: building);
 });
 
-final hvacDetailProvider =
-    FutureProvider.autoDispose.family<HvacDevice?, String>((ref, id) async {
-  return ref.watch(hvacRepositoryProvider).getById(id);
-});
+final hvacDetailProvider = FutureProvider.autoDispose
+    .family<HvacDevice?, String>((ref, id) async {
+      return ref.watch(hvacRepositoryProvider).getById(id);
+    });

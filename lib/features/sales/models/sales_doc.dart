@@ -165,6 +165,7 @@ class ShippableLine {
     this.shippedQty,
     this.reservedQty,
     this.price,
+    this.writable = false,
   });
 
   final String orderItemId;
@@ -180,6 +181,7 @@ class ShippableLine {
   final double? shippedQty;
   final double? reservedQty;
   final double? price;
+  final bool writable;
 
   factory ShippableLine.fromJson(Map<String, dynamic> json) => ShippableLine(
     orderItemId: json['orderItemId'] as String,
@@ -195,6 +197,7 @@ class ShippableLine {
     shippedQty: (json['shippedQty'] as num?)?.toDouble(),
     reservedQty: (json['reservedQty'] as num?)?.toDouble(),
     price: (json['price'] as num?)?.toDouble(),
+    writable: (json['writable'] as bool?) ?? false,
   );
 }
 
@@ -217,6 +220,8 @@ class SalesDocListItem {
     this.delayWarning = false,
     this.rejected = false,
     this.priceMasked = false,
+    this.writable = false,
+    this.canReject = false,
   });
 
   final String id;
@@ -236,6 +241,8 @@ class SalesDocListItem {
   final bool delayWarning; // 延期预警：已审未结案且距交货 ≤3 天（后端派生）
   final bool rejected; // 仓库驳回（V96，出货单）：备货异常，草稿终态
   final bool priceMasked; // 价格脱敏（SOP §三8）：无 sales_order:price:view 时合计渲染 ***
+  final bool writable; // 服务端权威：功能权限 + 负责人范围均允许普通写操作
+  final bool canReject; // 服务端权威：仅出货草稿且具备特殊驳回权限
 
   factory SalesDocListItem.fromJson(Map<String, dynamic> json) =>
       SalesDocListItem(
@@ -256,6 +263,8 @@ class SalesDocListItem {
         delayWarning: (json['delayWarning'] as bool?) ?? false,
         rejected: (json['rejected'] as bool?) ?? false,
         priceMasked: (json['priceMasked'] as bool?) ?? false,
+        writable: (json['writable'] as bool?) ?? false,
+        canReject: (json['canReject'] as bool?) ?? false,
       );
 }
 
@@ -445,6 +454,8 @@ class SalesDocDetail {
     this.financeAudit,
     this.financeAuditedAt,
     this.priceMasked = false,
+    this.writable = false,
+    this.canReject = false,
   });
 
   final String id;
@@ -500,6 +511,10 @@ class SalesDocDetail {
   /// 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族字段渲染 ***
   final bool priceMasked;
 
+  /// 服务端能力字段；前端权限常量只能控制入口，不能替代对象负责人范围。
+  final bool writable;
+  final bool canReject;
+
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
     id: json['id'] as String,
     legacyId: (json['legacyId'] as num?)?.toInt(),
@@ -547,6 +562,8 @@ class SalesDocDetail {
     financeAudit: (json['financeAudit'] as num?)?.toInt(),
     financeAuditedAt: json['financeAuditedAt'] as String?,
     priceMasked: (json['priceMasked'] as bool?) ?? false,
+    writable: (json['writable'] as bool?) ?? false,
+    canReject: (json['canReject'] as bool?) ?? false,
   );
 }
 
@@ -628,13 +645,13 @@ class OrderPlanLink {
   final double? inboundQty;
 
   factory OrderPlanLink.fromJson(Map<String, dynamic> j) => OrderPlanLink(
-        planId: j['planId'] as String,
-        planNo: j['planNo'] as String?,
-        planStatus: (j['planStatus'] as num?)?.toInt(),
-        planClosed: j['planClosed'] == true,
-        billDate: j['billDate'] as String?,
-        allocatedQty: (j['allocatedQty'] as num?)?.toDouble(),
-        producedQty: (j['producedQty'] as num?)?.toDouble(),
-        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
-      );
+    planId: j['planId'] as String,
+    planNo: j['planNo'] as String?,
+    planStatus: (j['planStatus'] as num?)?.toInt(),
+    planClosed: j['planClosed'] == true,
+    billDate: j['billDate'] as String?,
+    allocatedQty: (j['allocatedQty'] as num?)?.toDouble(),
+    producedQty: (j['producedQty'] as num?)?.toDouble(),
+    inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+  );
 }

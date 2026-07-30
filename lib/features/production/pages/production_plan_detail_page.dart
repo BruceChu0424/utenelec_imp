@@ -47,6 +47,7 @@ class _ProductionPlanDetailPageState
   List<MrpSubplanRef>? _subplans;
   bool _mrpLoading = false;
   bool _mrpBusy = false;
+
   /// D3：采购申请开单策略（net 净需求扣库存+在途 / gross 毛需求）。
   String _mrpStrategy = 'net';
 
@@ -66,13 +67,18 @@ class _ProductionPlanDetailPageState
     });
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      final d = await ref.read(productionPlanRepositoryProvider).detail(widget.id);
-      final goodsIds =
-          d.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final d = await ref
+          .read(productionPlanRepositoryProvider)
+          .detail(widget.id);
+      final goodsIds = d.items
+          .map((e) => e.goodsId)
+          .whereType<String>()
+          .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
-      await ref
-          .read(masterNameServiceProvider)
-          .loadEmployeeNames([d.sellerId, d.workerId]);
+      await ref.read(masterNameServiceProvider).loadEmployeeNames([
+        d.sellerId,
+        d.workerId,
+      ]);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -95,12 +101,16 @@ class _ProductionPlanDetailPageState
   }
 
   Future<void> _approve() => _doAction(
-      '审核后将驱动下游（BOM 锁定/排产/采购回写归未来模块），确认审核？',
-      (repo) => repo.approve(widget.id),
-      '已审核');
+    '审核后将驱动下游（BOM 锁定/排产/采购回写归未来模块），确认审核？',
+    (repo) => repo.approve(widget.id),
+    '已审核',
+  );
 
-  Future<void> _reverse() => _doAction('红冲将反向冲销，单据保留不可删，确认？',
-      (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _reverse() => _doAction(
+    '红冲将反向冲销，单据保留不可删，确认？',
+    (repo) => repo.reverse(widget.id),
+    '已红冲',
+  );
 
   Future<void> _doAction(
     String confirm,
@@ -115,11 +125,13 @@ class _ProductionPlanDetailPageState
         content: Text(confirm),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -184,19 +196,28 @@ class _ProductionPlanDetailPageState
   Future<void> _generateMrp() async {
     if (_mrpBusy) return;
     final grossMode = _mrpStrategy == 'gross';
-    final buyCount = (_mrpRows ?? []).where(
-        (r) => !r.selfMade && ((grossMode ? r.gross : r.net) ?? 0) > 0).length;
+    final buyCount = (_mrpRows ?? [])
+        .where((r) => !r.selfMade && ((grossMode ? r.gross : r.net) ?? 0) > 0)
+        .length;
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('生成采购申请'),
-        content: Text(grossMode
-            ? '将按毛需求（不扣库存/在途）外购物料生成一张采购申请草稿（$buyCount 行），确认生成？'
-            : '将按净需求外购物料生成一张采购申请草稿（$buyCount 行），'
-                '采购员在采购申请中审核后走正常采购流程。确认生成？'),
+        content: Text(
+          grossMode
+              ? '将按毛需求（不扣库存/在途）外购物料生成一张采购申请草稿（$buyCount 行），确认生成？'
+              : '将按净需求外购物料生成一张采购申请草稿（$buyCount 行），'
+                    '采购员在采购申请中审核后走正常采购流程。确认生成？',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('生成')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('生成'),
+          ),
         ],
       ),
     );
@@ -225,10 +246,13 @@ class _ProductionPlanDetailPageState
         .where((r) => r.selfMade && (r.net ?? 0) > 0)
         .toList();
     if (rows.isEmpty) return;
-    final items = await showSubplanSplitSheet(context, ref,
-        selfMadeRows: rows,
-        defaultDepartmentId: _detail?.departmentId,
-        defaultWorkshopName: _detail?.workshopName);
+    final items = await showSubplanSplitSheet(
+      context,
+      ref,
+      selfMadeRows: rows,
+      defaultDepartmentId: _detail?.departmentId,
+      defaultWorkshopName: _detail?.workshopName,
+    );
     if (items == null || items.isEmpty || !mounted) return;
     setState(() => _mrpBusy = true);
     try {
@@ -251,8 +275,10 @@ class _ProductionPlanDetailPageState
                   ListTile(
                     dense: true,
                     leading: const Icon(Icons.account_tree_outlined, size: 18),
-                    title: Text('${s.billNo ?? '—'}'
-                        '${s.workshopName != null ? '（${s.workshopName}）' : ''}'),
+                    title: Text(
+                      '${s.billNo ?? '—'}'
+                      '${s.workshopName != null ? '（${s.workshopName}）' : ''}',
+                    ),
                     subtitle: Text('${s.lineCount} 行 · 草稿'),
                     trailing: const Icon(Icons.chevron_right_rounded, size: 18),
                     onTap: () {
@@ -265,8 +291,9 @@ class _ProductionPlanDetailPageState
           ),
           actions: [
             FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('完成')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('完成'),
+            ),
           ],
         ),
       );
@@ -284,26 +311,35 @@ class _ProductionPlanDetailPageState
   /// 自制件一键生成子计划（多层 BOM 逐级展开）：净需求开下层生产计划草稿。
   Future<void> _generateSubplan() async {
     if (_mrpBusy) return;
-    final makeCount =
-        (_mrpRows ?? []).where((r) => r.selfMade && (r.net ?? 0) > 0).length;
+    final makeCount = (_mrpRows ?? [])
+        .where((r) => r.selfMade && (r.net ?? 0) > 0)
+        .length;
     final c = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('生成自制件子计划'),
         content: Text(
-            '将对 $makeCount 行自制件（本身有 BOM 的组件）按净需求生成一张下层生产计划草稿，'
-            '交货日取本计划最早开工日。确认后可在子计划上继续向下展开。'),
+          '将对 $makeCount 行自制件（本身有 BOM 的组件）按净需求生成一张下层生产计划草稿，'
+          '交货日取本计划最早开工日。确认后可在子计划上继续向下展开。',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('生成')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('生成'),
+          ),
         ],
       ),
     );
     if (c != true) return;
     setState(() => _mrpBusy = true);
     try {
-      final r =
-          await ref.read(productionPlanRepositoryProvider).mrpGenerateSubplan(widget.id);
+      final r = await ref
+          .read(productionPlanRepositoryProvider)
+          .mrpGenerateSubplan(widget.id);
       if (!mounted) return;
       setState(() => _mrpBusy = false);
       // 成功后面向下一步：可直接打开子计划继续展开/审核
@@ -311,11 +347,19 @@ class _ProductionPlanDetailPageState
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('子计划已生成'),
-          content: Text('已生成子计划 ${r.requestBillNo}（${r.lineCount} 行，草稿）。'
-              '打开子计划可继续展开下层零件或审核排产。'),
+          content: Text(
+            '已生成子计划 ${r.requestBillNo}（${r.lineCount} 行，草稿）。'
+            '打开子计划可继续展开下层零件或审核排产。',
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('留在此页')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('打开子计划')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('留在此页'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('打开子计划'),
+            ),
           ],
         ),
       );
@@ -333,18 +377,23 @@ class _ProductionPlanDetailPageState
     }
   }
 
-  Future<void> _generateDraw() => _generateStockDoc(        kind: '领料单',
-        desc: '按 BOM 毛需求生成领料单草稿（含自制件），选择发料仓库：',
-        whLabel: '发料仓库',
-        run: (wh) => ref.read(productionPlanRepositoryProvider).mrpGenerateDraw(widget.id, wh),
-      );
+  Future<void> _generateDraw() => _generateStockDoc(
+    kind: '领料单',
+    desc: '按 BOM 毛需求生成领料单草稿（含自制件），选择发料仓库：',
+    whLabel: '发料仓库',
+    run: (wh) => ref
+        .read(productionPlanRepositoryProvider)
+        .mrpGenerateDraw(widget.id, wh),
+  );
 
   Future<void> _generateFinishedIn() => _generateStockDoc(
-        kind: '成品入库单',
-        desc: '按计划明细（排产量−已入库量）生成成品入库单草稿，选择入库仓库：',
-        whLabel: '入库仓库',
-        run: (wh) => ref.read(productionPlanRepositoryProvider).mrpGenerateFinishedIn(widget.id, wh),
-      );
+    kind: '成品入库单',
+    desc: '按计划明细（排产量−已入库量）生成成品入库单草稿，选择入库仓库：',
+    whLabel: '入库仓库',
+    run: (wh) => ref
+        .read(productionPlanRepositoryProvider)
+        .mrpGenerateFinishedIn(widget.id, wh),
+  );
 
   Future<void> _generateStockDoc({
     required String kind,
@@ -373,15 +422,27 @@ class _ProductionPlanDetailPageState
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: whId,
-                decoration: InputDecoration(labelText: whLabel, border: const OutlineInputBorder()),
-                items: [for (final e in whs) DropdownMenuItem(value: e.key, child: Text(e.value))],
+                decoration: InputDecoration(
+                  labelText: whLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                items: [
+                  for (final e in whs)
+                    DropdownMenuItem(value: e.key, child: Text(e.value)),
+                ],
                 onChanged: (v) => setD(() => whId = v),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('生成')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('生成'),
+            ),
           ],
         ),
       ),
@@ -411,9 +472,12 @@ class _ProductionPlanDetailPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('子任务 · 子计划（${subs.length} 张）',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600)),
+            Text(
+              '子任务 · 子计划（${subs.length} 张）',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: UtenSpacing.s4),
             for (final sp in subs) _subplanProgressRow(theme, sp),
           ],
@@ -429,20 +493,22 @@ class _ProductionPlanDetailPageState
     final statusText = reversed
         ? '红冲'
         : sp.status == 0
-            ? '草稿'
-            : done
-                ? '已完成 ✓'
-                : '进行中';
+        ? '草稿'
+        : done
+        ? '已完成 ✓'
+        : '进行中';
     final statusColor = reversed
         ? theme.colorScheme.onSurfaceVariant
         : sp.status == 0
-            ? Colors.orange
-            : done
-                ? Colors.green
-                : Colors.orange;
+        ? Colors.orange
+        : done
+        ? Colors.green
+        : Colors.orange;
     String fmt(double? v) => v == null
         ? '—'
-        : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+        : (v == v.roundToDouble()
+              ? v.toStringAsFixed(0)
+              : v.toStringAsFixed(2));
     return InkWell(
       borderRadius: UtenRadius.mdAll,
       onTap: () => context.push(RoutePath.productionPlanDetail(sp.planId)),
@@ -462,21 +528,27 @@ class _ProductionPlanDetailPageState
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: theme.colorScheme.primary,
-                      decoration:
-                          reversed ? TextDecoration.lineThrough : null,
+                      decoration: reversed ? TextDecoration.lineThrough : null,
                     ),
                   ),
                   if (sp.deliveryDate != null)
-                    Text('交货 ${sp.deliveryDate!.substring(0, 10)}',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: theme.colorScheme.onSurfaceVariant)),
+                    Text(
+                      '交货 ${sp.deliveryDate!.substring(0, 10)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                 ],
               ),
             ),
-            Text('${fmt(sp.inboundQty)} / ${fmt(sp.totalQty)}',
-                style: TextStyle(
-                    fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+            Text(
+              '${fmt(sp.inboundQty)} / ${fmt(sp.totalQty)}',
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(width: UtenSpacing.s8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -484,11 +556,14 @@ class _ProductionPlanDetailPageState
                 color: statusColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(statusText,
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: statusColor)),
+              child: Text(
+                statusText,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor,
+                ),
+              ),
             ),
           ],
         ),
@@ -509,12 +584,19 @@ class _ProductionPlanDetailPageState
               child: Row(
                 children: [
                   Expanded(
-                    child: Text('物料需求（MRP）',
-                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      '物料需求（MRP）',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                   if (_mrpLoading)
                     const SizedBox(
-                        width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   else ...[
                     // D3（李主管）：策略选择——净需求（扣库存+在途）/ 毛需求（不扣）
                     ChoiceChip(
@@ -541,7 +623,11 @@ class _ProductionPlanDetailPageState
             if (_canEdit)
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s4, 0, UtenSpacing.s4, UtenSpacing.s4),
+                  UtenSpacing.s4,
+                  0,
+                  UtenSpacing.s4,
+                  UtenSpacing.s4,
+                ),
                 child: Wrap(
                   spacing: UtenSpacing.s8,
                   runSpacing: UtenSpacing.s4,
@@ -556,7 +642,10 @@ class _ProductionPlanDetailPageState
                       if (rows.any((r) => r.selfMade && (r.net ?? 0) > 0)) ...[
                         FilledButton.tonalIcon(
                           onPressed: _mrpBusy ? null : _generateSubplan,
-                          icon: const Icon(Icons.account_tree_outlined, size: 16),
+                          icon: const Icon(
+                            Icons.account_tree_outlined,
+                            size: 16,
+                          ),
                           label: const Text('一键子计划'),
                         ),
                         FilledButton.tonalIcon(
@@ -593,7 +682,8 @@ class _ProductionPlanDetailPageState
     );
   }
 
-  Widget _mrpRow(ThemeData theme, MasterNameService names, MrpRow r) {    final net = r.net ?? 0;
+  Widget _mrpRow(ThemeData theme, MasterNameService names, MrpRow r) {
+    final net = r.net ?? 0;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       child: Row(
@@ -603,10 +693,20 @@ class _ProductionPlanDetailPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(r.goodsName ?? names.goods(r.goodsId), style: const TextStyle(fontSize: 13)),
                 Text(
-                  [r.goodsCode, r.spec, names.color(r.colorId)].where((s) => s != null && s != '—').join(' · '),
-                  style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                  r.goodsName ?? names.goods(r.goodsId),
+                  style: const TextStyle(fontSize: 13),
+                ),
+                Text(
+                  [
+                    r.goodsCode,
+                    r.spec,
+                    names.color(r.colorId),
+                  ].where((s) => s != null && s != '—').join(' · '),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -624,7 +724,9 @@ class _ProductionPlanDetailPageState
                 fontWeight: FontWeight.w600,
                 color: r.selfMade
                     ? theme.colorScheme.onSurfaceVariant
-                    : (net > 0 ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant),
+                    : (net > 0
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant),
               ),
             ),
           ),
@@ -636,9 +738,14 @@ class _ProductionPlanDetailPageState
   Widget _mrpNum(String text, ThemeData theme) {
     return SizedBox(
       width: 76,
-      child: Text(text,
-          textAlign: TextAlign.right,
-          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+      child: Text(
+        text,
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontSize: 12,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 
@@ -651,8 +758,9 @@ class _ProductionPlanDetailPageState
         content: const Text('确定删除该草稿计划单吗？已审单据请走红冲。'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -685,7 +793,8 @@ class _ProductionPlanDetailPageState
       appBar: UtenAppBar(
         title: '生产计划单详情',
         leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: RouteName.production),
+          onPressed: () =>
+              popOrBackTo(context, defaultPath: RouteName.production),
         ),
         actions: [
           UtenButton(
@@ -701,27 +810,25 @@ class _ProductionPlanDetailPageState
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
-                  ? Center(child: Text(_error!))
-                  : _detail == null
-                      ? const SizedBox.shrink()
-                      : ListView(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          children: [
-                            _headerCard(theme, names),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _itemsCard(theme, names),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _mrpCard(theme, names),
-                            if (_subplans != null && _subplans!.isNotEmpty)
-                              const SizedBox(height: UtenSpacing.s12),
-                            _subplansCard(theme),
-                          ],
-                        ),
+              ? Center(child: Text(_error!))
+              : _detail == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  children: [
+                    _headerCard(theme, names),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _itemsCard(theme, names),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _mrpCard(theme, names),
+                    if (_subplans != null && _subplans!.isNotEmpty)
+                      const SizedBox(height: UtenSpacing.s12),
+                    _subplansCard(theme),
+                  ],
+                ),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy
-          ? null
-          : _actions(theme),
+      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -736,27 +843,33 @@ class _ProductionPlanDetailPageState
       if (d.deliveryDate != null) _KV('交货日', d.deliveryDate),
       if (d.departmentId != null || (d.workshopName ?? '').isNotEmpty)
         _KV(
-            '车间',
-            d.departmentId != null
-                ? names.department(d.departmentId)
-                : d.workshopName),
+          '车间',
+          d.departmentId != null
+              ? names.department(d.departmentId)
+              : d.workshopName,
+        ),
       if (d.workerId != null || (d.workerName ?? '').isNotEmpty)
         _KV(
-            '生产工',
-            d.workerId != null ? names.employee(d.workerId) : d.workerName),
+          '生产工',
+          d.workerId != null ? names.employee(d.workerId) : d.workerName,
+        ),
       if (d.sellerId != null || (d.sellerName ?? '').isNotEmpty)
         _KV(
-            '跟单员',
-            d.sellerId != null ? names.employee(d.sellerId) : d.sellerName),
+          '跟单员',
+          d.sellerId != null ? names.employee(d.sellerId) : d.sellerName,
+        ),
       if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),
       if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark),
-      _KV('状态', null,
-          badge: ProductionStatusBadge(
-            status: d.status,
-            closed: d.closed,
-            stopped: d.stopped,
-            canceled: d.canceled,
-          )),
+      _KV(
+        '状态',
+        null,
+        badge: ProductionStatusBadge(
+          status: d.status,
+          closed: d.closed,
+          stopped: d.stopped,
+          canceled: d.canceled,
+        ),
+      ),
     ];
     return Card(
       child: Padding(
@@ -777,9 +890,12 @@ class _ProductionPlanDetailPageState
         children: [
           SizedBox(
             width: 96,
-            child: Text(r.label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            child: Text(
+              r.label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           Expanded(child: r.badge ?? Text(r.value ?? '—')),
         ],
@@ -794,9 +910,12 @@ class _ProductionPlanDetailPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('明细 (${items.length})',
-            style: theme.textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          '明细 (${items.length})',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<ProductionPlanItem>(
           embedded: true,
@@ -863,49 +982,63 @@ class _ProductionPlanDetailPageState
     final children = <Widget>[];
     if (s == kProductionStatusDraft && _canEdit) {
       children
-        ..add(UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline,
-          onPressed: _delete,
-          child: const Text('删除'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          type: UtenButtonType.secondary,
-          icon: Icons.edit_outlined,
-          onPressed: () =>
-              context.push('/production/plans/${widget.id}/edit'),
-          child: const Text('编辑'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () =>
+                context.push('/production/plans/${widget.id}/edit'),
+            child: const Text('编辑'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approve,
-          child: const Text('审核'),
-        ));
+        ..add(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approve,
+            child: const Text('审核'),
+          ),
+        );
     } else if (s == kProductionStatusApproved && _canEdit) {
-      children.add(UtenButton(
-        type: UtenButtonType.danger,
-        icon: Icons.undo_outlined,
-        onPressed: _reverse,
-        child: const Text('红冲'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.danger,
+          icon: Icons.undo_outlined,
+          onPressed: _reverse,
+          child: const Text('红冲'),
+        ),
+      );
     } else {
-      children.add(UtenButton(
-        type: UtenButtonType.secondary,
-        onPressed: () => context.go('/production/plans'),
-        child: const Text('返回列表'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => context.go('/production/plans'),
+          child: const Text('返回列表'),
+        ),
+      );
     }
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child:
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: children,
+        ),
       ),
     );
   }

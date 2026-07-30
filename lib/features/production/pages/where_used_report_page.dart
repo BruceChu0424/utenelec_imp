@@ -24,6 +24,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -44,7 +45,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   // 必选：被反查的材料。
   GoodsListItem? _material;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   int _page = 1;
   final int _size = 50;
 
@@ -85,7 +86,10 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         'size': _size,
         ...sortQueryParams(_sortKey, _sortAsc),
       };
-      final json = await api.get('/production/reports/where-used', query: query);
+      final json = await api.get(
+        '/production/reports/where-used',
+        query: query,
+      );
       if (!mounted) return;
       setState(() {
         _data = parseReportResponse(json, _page);
@@ -115,7 +119,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       appBar: UtenAppBar(
         title: '物料反查产成品',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production)),
+          onPressed: () => backTo(context, defaultPath: RouteName.production),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -133,47 +138,69 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
                 // 只读告示
                 Container(
                   margin: const EdgeInsets.only(
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                      bottom: UtenSpacing.s8),
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                    bottom: UtenSpacing.s8,
+                  ),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12, vertical: UtenSpacing.s8),
+                    horizontal: UtenSpacing.s12,
+                    vertical: UtenSpacing.s8,
+                  ),
                   decoration: BoxDecoration(
-                    color:
-                        theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
+                    color: theme.colorScheme.tertiaryContainer.withValues(
+                      alpha: 0.4,
+                    ),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: theme.colorScheme.outlineVariant),
                   ),
-                  child: Row(children: [
-                    Icon(Icons.history_rounded,
-                        size: 18, color: theme.colorScheme.onTertiaryContainer),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text('只读历史数据 · 仅含曾经排产过的自制产成品（未含委外与未投产新品）',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.history_rounded,
+                        size: 18,
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Text(
+                          '只读历史数据 · 仅含曾经排产过的自制产成品（未含委外与未投产新品）',
                           style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onTertiaryContainer)),
-                    ),
-                  ]),
+                            color: theme.colorScheme.onTertiaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 // 标题行
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.find_in_page_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.find_in_page_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('物料反查产成品',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '物料反查产成品',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
                       if (_data != null)
-                        Text('共 ${_data!.total} 个产成品',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          '共 ${_data!.total} 个产成品',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -215,29 +242,38 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s8, vertical: UtenSpacing.s4),
+                horizontal: UtenSpacing.s8,
+                vertical: UtenSpacing.s4,
+              ),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.5),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_material!.name ?? '（无名称）',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                      softWrap: true,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    _material!.name ?? '（无名称）',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    softWrap: true,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   if ((_material!.code ?? '').isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text('编号: ${_material!.code}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              fontSize: 11)),
+                      child: Text(
+                        '编号: ${_material!.code}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
                     ),
                 ],
               ),
@@ -307,14 +343,16 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       return const Center(child: Text('点击「查询」加载'));
     }
     final columns = data.columns
-        .map((c) => MasterColumnDef<Map<String, dynamic>>(
-              key: c.key,
-              label: c.label,
-              width: (c.width ?? 120).toDouble(),
-              type: c.type,
-              sortable: isSortableReportType(c.type),
-              value: (row) => formatReportCell(c, row),
-            ))
+        .map(
+          (c) => MasterColumnDef<Map<String, dynamic>>(
+            key: c.key,
+            label: c.label,
+            width: (c.width ?? 120).toDouble(),
+            type: c.type,
+            sortable: isSortableReportType(c.type),
+            value: (row) => formatReportCell(c, row),
+          ),
+        )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,

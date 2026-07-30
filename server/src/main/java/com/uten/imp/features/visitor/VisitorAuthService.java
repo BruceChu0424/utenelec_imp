@@ -2,6 +2,7 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.util.HashUtil;
+import com.uten.imp.common.util.ChinaMobileNumber;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SmsProperties;
@@ -21,20 +22,22 @@ import java.util.Set;
 import static com.uten.imp.common.util.Strings.maskPhone;
 
 /**
- * 访客鉴权：发送验证码 / 登录（含员工检测）/ 刷新 / 登出。
- * 访客 JWT 的 perms 固定为 {visitor:apply, visitor:view}（不查 role_permissions）。
+ * Visitor authentication: SMS code, login, refresh rotation and logout.
  */
 @Service
 @RequiredArgsConstructor
 public class VisitorAuthService {
 
     private static final SecureRandom RNG = new SecureRandom();
-    private static final Set<String> VISITOR_PERMS = Set.of("visitor:apply", "visitor:view");
+    private static final Set<String> VISITOR_PERMS =
+            Set.of("visitor:apply", "visitor:view");
 
     private final VisitorAccountRepository accountRepo;
     private final VisitorSmsService smsService;
     private final VisitorRefreshTokenService refreshService;
     private final VisitorRefreshTokenRepository refreshRepo;
+    private final VisitorRefreshTransaction refreshTransaction;
+    private final VisitorRefreshCompromiseService compromiseService;
     private final EmployeeSensitiveRepository employeeSensitiveRepo;
     private final JwtService jwtService;
     private final TxSessionVars tx;
@@ -42,88 +45,94 @@ public class VisitorAuthService {
     private final AuditService audit;
     private final LoginRateLimiter rateLimiter;
 
-    @Transactional
     public VisitorAuthDto.SendCodeResponse sendCode(String phoneRaw, String ip) {
-        rateLimiter.check(ip);
-        String phone = normalize(phoneRaw);
-        validatePhone(phone);
+        String phone = normalizePhone(phoneRaw);
+        rateLimiter.check(LoginRateLimiter.Scope.VISITOR_SEND_CODE, ip, phone);
         String code = smsService.send(phone, "login");
-        String devCode = "log".equalsIgnoreCase(smsProps.getProvider()) ? code : null;
-        return new VisitorAuthDto.SendCodeResponse("login", smsService.codeTtlSeconds(), devCode);
+        String devCode = smsProps.isExposeCode()
+                && "log".equalsIgnoreCase(smsProps.getProvider())
+                ? code
+                : null;
+        return new VisitorAuthDto.SendCodeResponse(
+                "login", smsService.codeTtlSeconds(), devCode);
     }
 
     @Transactional
-    public VisitorAuthDto.VisitorTokenResponse login(String phoneRaw, String code, String deviceInfo, String ip) {
-        rateLimiter.check(ip);
-        String phone = normalize(phoneRaw);
-        validatePhone(phone);
+    public VisitorAuthDto.VisitorTokenResponse login(String phoneRaw,
+                                                     String code,
+                                                     String deviceInfo,
+                                                     String ip) {
+        String phone = normalizePhone(phoneRaw);
+        rateLimiter.check(LoginRateLimiter.Scope.VISITOR_LOGIN, ip, phone);
         smsService.verifyAndConsume(phone, code);
 
         String phoneHash = tx.hmac(phone);
-
-        // 员工检测：手机号命中员工 → 拦截，提示走员工通道
         if (employeeSensitiveRepo.findByPhoneHash(phoneHash).isPresent()) {
             audit.logExplicit(null, maskPhone(phone), "visitor_login_blocked_employee",
                     "visitor_account", phoneHash, "is_employee");
             throw new ApiException(ErrorCode.IS_EMPLOYEE);
         }
 
-        // 已拉黑访客禁止登录
-        accountRepo.findByPhoneHash(phoneHash).ifPresent(a -> {
-            if ("blocked".equals(a.getStatus())) {
+        accountRepo.findByPhoneHash(phoneHash).ifPresent(account -> {
+            if ("blocked".equals(account.getStatus())) {
                 throw new ApiException(ErrorCode.VISITOR_BLOCKED);
             }
         });
 
-        VisitorAccount acc;
+        VisitorAccount account;
         try {
-            acc = accountRepo.findByPhoneHash(phoneHash).orElseGet(() -> createAccount(phone, phoneHash));
-        } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            // M5：并发同手机号注册竞态 → 唯一约束冲突，重读已创建的账号
-            acc = accountRepo.findByPhoneHash(phoneHash)
+            account = accountRepo.findByPhoneHash(phoneHash)
+                    .orElseGet(() -> createAccount(phone, phoneHash));
+        } catch (org.springframework.dao.DataIntegrityViolationException exception) {
+            // Concurrent first login: rely on the unique phone hash and reload the winner.
+            account = accountRepo.findByPhoneHash(phoneHash)
                     .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL));
         }
-        // 审计 actor = 访客本人（写 visitor_accounts，V12 触发器读取 app.actor_id）
-        tx.bindActor(acc.getId());
-        acc.setLastLoginAt(OffsetDateTime.now());
-        accountRepo.save(acc);
 
-        String access = jwtService.issueVisitorAccess(acc.getId(), phone, acc.getVisitorNo(), VISITOR_PERMS);
-        String refresh = refreshService.issue(acc.getId(), deviceInfo);
+        tx.bindActor(account.getId());
+        account.setLastLoginAt(OffsetDateTime.now());
+        accountRepo.save(account);
 
-        audit.logExplicit(acc.getId(), maskPhone(phone), "visitor_login",
-                "visitor_account", acc.getId().toString(), "success");
+        String access = jwtService.issueVisitorAccess(
+                account.getId(), account.getVisitorNo(), account.getAvatarSeed(), VISITOR_PERMS);
+        String refresh = refreshService.issue(account.getId(), deviceInfo);
+        audit.logExplicit(account.getId(), maskPhone(phone), "visitor_login",
+                "visitor_account", account.getId().toString(), "success");
+
         return new VisitorAuthDto.VisitorTokenResponse(
-                access, refresh, acc.getId(), acc.getVisitorNo(), acc.getName(), acc.getAvatarSeed());
+                access,
+                refresh,
+                account.getId(),
+                account.getVisitorNo(),
+                account.getName(),
+                account.getAvatarSeed());
     }
 
-    @Transactional
-    public VisitorAuthDto.VisitorTokenResponse refresh(String rawRefresh, String deviceInfo) {
-        String hash = HashUtil.sha256(rawRefresh);
-        VisitorRefreshToken token = refreshRepo.findAndLockByTokenHash(hash)
-                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-
-        if (token.getRevokedAt() != null) {
-            // 已撤销令牌再次出现 = 泄露 → 撤销该访客全部令牌
-            refreshService.revokeAllByVisitor(token.getVisitorAccountId());
-            audit.logExplicit(token.getVisitorAccountId(), null, "visitor_refresh_reuse",
-                    "visitor_refresh_token", token.getId().toString(), "reuse_detected");
+    /**
+     * Reuse revocation commits before this method reports UNAUTHORIZED.
+     */
+    public VisitorAuthDto.VisitorTokenResponse refresh(String rawRefresh,
+                                                       String deviceInfo) {
+        VisitorRefreshTransaction.Outcome outcome =
+                refreshTransaction.rotate(rawRefresh, deviceInfo);
+        if (outcome.reuseDetected()) {
+            compromiseService.revoke(outcome.subjectId(), outcome.tokenId());
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
-        if (!token.isValid()) {
-            throw new ApiException(ErrorCode.UNAUTHORIZED);
-        }
-        VisitorAccount acc = accountRepo.findById(token.getVisitorAccountId())
-                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-        if ("blocked".equals(acc.getStatus())) {
-            throw new ApiException(ErrorCode.VISITOR_BLOCKED);
-        }
 
-        String access = jwtService.issueVisitorAccess(acc.getId(), decryptPhone(acc), acc.getVisitorNo(), VISITOR_PERMS);
-        String newRaw = refreshService.issue(acc.getId(), deviceInfo);
-        refreshService.revoke(token, null);
+        VisitorAccount account = outcome.account();
+        String access = jwtService.issueVisitorAccess(
+                account.getId(),
+                account.getVisitorNo(),
+                account.getAvatarSeed(),
+                VISITOR_PERMS);
         return new VisitorAuthDto.VisitorTokenResponse(
-                access, newRaw, acc.getId(), acc.getVisitorNo(), acc.getName(), acc.getAvatarSeed());
+                access,
+                outcome.newRefreshToken(),
+                account.getId(),
+                account.getVisitorNo(),
+                account.getName(),
+                account.getAvatarSeed());
     }
 
     @Transactional
@@ -131,55 +140,41 @@ public class VisitorAuthService {
         if (rawRefresh == null || rawRefresh.isBlank()) {
             return;
         }
-        String hash = HashUtil.sha256(rawRefresh);
-        refreshRepo.findAndLockByTokenHash(hash).ifPresent(t -> refreshService.revoke(t, null));
+        refreshRepo.findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
+                .ifPresent(token -> refreshService.revoke(token, null));
     }
 
     private VisitorAccount createAccount(String phone, String phoneHash) {
-        VisitorAccount a = new VisitorAccount();
-        a.setPhoneEnc(tx.encrypt(phone));
-        a.setPhoneHash(phoneHash);
-        String tail = phone.length() >= 4 ? phone.substring(phone.length() - 4) : "0000";
-        String vno = genVisitorNo(tail);
-        a.setVisitorNo(vno);
-        a.setName(vno);
-        a.setAvatarSeed(tail);
-        a.setStatus("active");
-        // 主键在 Java 端生成（BaseEntity），可在 INSERT 前绑定审计 actor，
-        // 使首行 visitor_accounts 审计也带 app.actor_id（V12 触发器）
-        tx.bindActor(a.getId());
-        return accountRepo.save(a);
+        VisitorAccount account = new VisitorAccount();
+        account.setPhoneEnc(tx.encrypt(phone));
+        account.setPhoneHash(phoneHash);
+        String tail = phone.length() >= 4
+                ? phone.substring(phone.length() - 4)
+                : "0000";
+        String visitorNo = generateVisitorNo(tail);
+        account.setVisitorNo(visitorNo);
+        account.setName(visitorNo);
+        account.setAvatarSeed(tail);
+        account.setStatus("active");
+        tx.bindActor(account.getId());
+        return accountRepo.save(account);
     }
 
-    private String decryptPhone(VisitorAccount acc) {
-        try {
-            return tx.decrypt(acc.getPhoneEnc());
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private String genVisitorNo(String tail) {
-        for (int i = 0; i < 10; i++) {
-            String no = "V" + tail + String.format("%02d", RNG.nextInt(100));
-            if (!accountRepo.existsByVisitorNo(no)) {
-                return no;
+    private String generateVisitorNo(String tail) {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            String visitorNo = "V" + tail
+                    + String.format("%02d", RNG.nextInt(100));
+            if (!accountRepo.existsByVisitorNo(visitorNo)) {
+                return visitorNo;
             }
         }
         return "V" + tail + (System.nanoTime() % 100);
     }
 
-    private static String normalize(String phone) {
-        String p = phone == null ? "" : phone.replaceAll("[^\\d]", "");
-        if (p.startsWith("86")) {
-            p = p.substring(2);
-        }
-        return p;
-    }
-
-    private static void validatePhone(String phone) {
-        if (!phone.matches("^1[3-9]\\d{9}$")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED);
-        }
+    private static String normalizePhone(String phone) {
+        return ChinaMobileNumber.normalize(phone)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "中国大陆手机号格式不正确"));
     }
 }

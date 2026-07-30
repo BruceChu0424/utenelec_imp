@@ -8,29 +8,39 @@
 
 ---
 
-## 🚀 一键迁移（平台上线后直接用）
+## 🚨 执行边界：尚未形成“平台上线后直接用”的全量增量迁移
 
-**前提**：老库可达（dev = 本机 LocalDB 已还原 `YTDQ_2023`；prod = 生产 SQL Server），并配好 `app.legacy.*`。
+当前有两条不同能力，不能混称“一键迁移”：
+
+| 入口 | 覆盖范围 | 写入方式 | 可用于切流后追平 |
+|---|---|---|---|
+| Java `/api/admin/legacy-migration/all` | 仅货品/模具/客户/供应商四棵 `SystemItem` 分类树 | 按 `legacy_id` upsert | 只对这四棵分类树成立 |
+| `server/legacy_migration/migrate.sh` | 主档及采购/库存/销售/委外/生产/钱流等模块 | `TRUNCATE`/重建目标模块 | **不可以**；只用于首次导入或迁移演练 |
+
+Java `/all` 的单模块失败会继续后续模块，但对客户端只返回稳定
+`LEGACY_MIGRATION_MODULE_FAILED` 和随机 UUID `referenceId`；异常类型、数据库地址与底层 message
+不得回显，完整异常留在受控服务端日志并用 referenceId 关联。
+
+Shell 脚本会拒绝无目标、未知目标和多目标调用，并要求破坏性确认；当前版本还要求目标库已应用
+V134 迁移追溯结构，并在导入前验证 JSON manifest、checksum manifest 和实际 CSV 的绑定关系。
+单模块示例：
 
 ```bash
-# 1. 启动 server 时打开迁移开关
-UTEN_LEGACY_ENABLED=true mvn -f server/pom.xml spring-boot:run
-
-# 2. 超管 token 触发一键迁移（幂等，可反复重跑）
-curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
-  -H "Authorization: Bearer <超管token>"
-# → { "modules": { "materialCategory.goods": {...}, "mould.category": {...}, "client.category": {...}, "supplier.category": {...} }, "success":true }
-#   注：Java 端点只迁「分类树」（4 棵 SystemItem 树）；「主档」（B_Goods/B_Mould/B_Client/B_Provider）
-#   不走 Java，用下面 shell 的 --xxx-data 步骤灌入（批量 \copy CSV）。
+bash server/legacy_migration/migrate.sh --stock-docs --confirm-destructive
+bash server/legacy_migration/migrate.sh --subcontract --confirm-destructive
 ```
 
-**代码直接调用**：`LegacyMigrationOrchestrator.migrateAll()`
-（`server/src/main/java/com/uten/imp/legacy/migration/LegacyMigrationOrchestrator.java`）
+完整引导只允许在可清空的新库/演练库执行：
 
-**增量同步**：老库新增数据后，**再调一次同一端点**即可——按 `legacy_id` 幂等 upsert，已存在的更新、新增的插入。
+```bash
+bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
+```
 
-单模块排错（分类）：`POST /api/admin/legacy-migration/{material-category|client-category|supplier-category|mould-category}`。
-主档排错（shell）：`bash server/legacy_migration/migrate.sh --{goods|mould|client|supplier}-data`（颜色/单位：`--color-data` / `--unit-data`，扁平无分类）。
+> **禁止**把 Java `/all` 当全平台迁移，禁止把破坏性 Shell 脚本用于已切流模块，禁止用多目标命令。
+> 上线前仍需实现全量 + 增量 + dry-run + checkpoint + reject/quarantine + 对账 + 回滚的可重复迁移体系。
+> 销售是顺序依赖的典型：`--sales` 只导入单据并保留 `seller_legacy_id`，HR 员工
+> `legacy_id` 可用后还必须执行单独的 `--sales-owner` 回填。推荐只用 `--bootstrap-all` 的内置顺序；
+> 不得把“销售表有数据”误判为 owner 归属已经完成。
 
 > **⚠️ 数据坑（已修，迁其他含地址/备注的表时复用）**：老库 varchar 字段（地址、收货地址、备注）
 > 可能含管道符 `|`。`export_legacy.ps1` 的 `Export-Query` 已做 RFC4180 引号转义（字段含
@@ -41,11 +51,15 @@ curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
 
 ## 📦 模块清单
 
+> 表中每个 `migrate.sh` 目标均是脚本真实支持的单目标 flag；实际执行必须再传 `--confirm-destructive`
+> （或数据库名绑定的 `UTEN_CONFIRM_DESTRUCTIVE_MIGRATION`）。各目标必须分开调用，只有显式
+> `--bootstrap-all` 会按内置依赖顺序执行全量引导。
+
 | 模块 | 状态 | 老库来源 | 新库表 | 迁移代码 | 文档 |
 |---|---|---|---|---|---|
 | **货品分类** | ✅ 已实现 | `SystemItem` (ItemclassID=1) | `material_categories` | `migrate.sh --goods` | [02-老库溯源](02-货品分类-老库溯源.md) · [03-新库与迁移](03-货品分类-新库与迁移.md) |
 | **货品主档** | ✅ 已实现 | `B_Goods`（35750 条，全 78 字段，image 留空） | `goods` | `migrate.sh --goods-data` | （字段映射见 V32__goods.sql） |
-| **货品组装（BOM）+ 成本预算** | ✅ 已实现 | `B_BomItem`（218,820 行；孤儿 20,717 跳过）/ 成本列随主档 | `goods_bom_items`（V79，198,103 行） | `migrate.sh --goods-bom` | [31-组装BOM与成本预算](31-货品组装BOM与成本预算.md) |
+| **货品组装（BOM）+ 成本预算** | ⛔ 待业务处置拒绝行 | `B_BomItem`（218,820 行；20,717 孤儿被跳过）/ 成本列随主档 | `goods_bom_items`（阶段导入 198,103 行） | `migrate.sh --goods-bom --confirm-destructive` | [31-组装BOM与成本预算](31-货品组装BOM与成本预算.md)；计数守恒不等于零数据丢失 |
 | **即时库存** | ✅ 已实现 | `View_IOStockGoods` 口径：`StockGoods.FactQTY/FactWeight` + `B_Goods.Paper/CTotal` + `View_ProductMore`（F_PlanItem） | `stock_balances`（**V80 增 weight**；余额含重量 1,288 行） | `migrate.sh --stock-docs`（重跑即补重量） | [32-即时库存](32-即时库存.md) |
 | **模具分类** | ✅ 已实现 | `SystemItem` (ItemclassID=18，65 扁平根) | `mould_categories` | `migrate.sh --mould` | [04-老库溯源](04-模具资料-老库溯源.md) · [05-新库与迁移](05-模具资料-新库与迁移.md) |
 | **模具主档** | ✅ 已实现 | `B_Mould`（1605 条，12 字段） | `moulds` | `migrate.sh --mould-data` | （字段映射见 V34__mould.sql） |
@@ -60,17 +74,17 @@ curl -X POST http://localhost:8080/api/admin/legacy-migration/all \
 | **币种 / 仓库** | ✅ 已实现 | `B_Currency`(3) / `B_Storage`(6) | `currencies` / `warehouses` | `migrate.sh --currency-data` / `--warehouse-data` | [15-采购 §三](15-采购模块-新库与迁移.md)（归基础资料） |
 | **采购管理** | ✅ 已实现 | `P_Application`/`P_Order`/`P_In`/`P_Withdraw`（主+明，十几万行） | `purchase_requests/orders/receipts/returns(+_items)` + V65 报表列 | `migrate.sh --purchase` | [14-老库溯源](14-采购模块-老库溯源.md) · [15-新库与迁移](15-采购模块-新库与迁移.md)（**9 报表 + V65 迁移补全**） |
 | **库存（流水+余额）+ 仓库报表** | ✅ 已实现 | `StockGoods`(45万) + 9 类 `O_*` 单据 | `stock_movements` / `stock_balances` / `stock_documents(+_items)` | `migrate.sh --stock-docs`（含人员 *_legacy_id + B_Worker stub + 末尾刷 MV） | [16-老库溯源](16-仓库管理-老库溯源.md) · [17-新库与迁移](17-仓库管理-新库与迁移.md) · **14 张仓库报表**（V67：7 单据 × 明细/汇总，`/api/stock/reports/{docType}/{detail|summary}`） |
-| **销售管理** | ✅ 已实现 | `S_Order`(10653)/`S_Out`(12124)/`S_OtherOut`(1558)/`S_Withdraw`(221)（在用）+`S_Quote`(0) | `sales_orders/shipments/other_shipments/returns(+_items)` | `migrate.sh --sales` | [18-总路线图](18-业务四模块-总路线图.md) · [19-老库溯源](19-销售管理-老库溯源.md) · [20-新库与迁移](20-销售管理-新库与迁移.md) |
-| **委外管理** | ✅ 已实现 | `E_` 前缀（**确认是委外**）：`E_In`(10732)/`E_SOut`(10627)/`E_WithDraw`/`E_SWithDraw`/`E_SWaste` | `subcontract_*`（8 单据） | `migrate.sh --subcontract` | [18] · [21-老库溯源](21-委外管理-老库溯源.md) · [22-新库与迁移](22-委外管理-新库与迁移.md) |
+| **销售管理** | 🟡 单据导入已实现，owner/对象授权待最终验收 | `S_Order`(10653)/`S_Out`(12124)/`S_OtherOut`(1558)/`S_Withdraw`(221)（在用）+`S_Quote`(0) | `sales_orders/shipments/other_shipments/returns(+_items)` | `--sales` 导单；员工迁入后 `--sales-owner` 回填（完整流程用 `--bootstrap-all`） | [18-总路线图](18-业务四模块-总路线图.md) · [20-新库与迁移](20-销售管理-新库与迁移.md) · [39-owner 迁移/授权](39-销售单据归属授权.md)；未映射 owner 只能公共只读，须进入对账/reject 清单 |
+| **委外管理** | ⛔ 历史发料待重迁验收 | `E_` 前缀：`E_In`/`E_SOut`/`E_WithDraw`/`E_SWithDraw`/`E_SWaste` | `subcontract_*`（8 单据） | `migrate.sh --subcontract --confirm-destructive` | 现有历史库 49,889 发料明细数量口径失真；须用修正导出重迁并复核 [22](22-委外管理-新库与迁移.md) / [42](42-财务对账单自动生成.md) |
 | **生产管理** | ✅ 已实现 | `F_Plan`(7235)+Item(73388) / **`F_PlanCostItem`(1359892)** / `F_DateReport`(0) | `production_plans(+items/+costs 按年分区)` / `production_daily_reports` | `migrate.sh --production` | [18] · [23-老库溯源](23-生产管理-老库溯源.md) · [24-新库与迁移](24-生产管理-新库与迁移.md) |
-| **钱流管理** | ✅ 已实现 | `M_Get`/`M_In`(42489)/`M_Paid`/`M_Out`(44525)/`M_DPaid`/`M_OGet`/`M_Acc`(27)/`M_Style`(124)/`M_AllCheck` | `finance_receipts/payments/expenses/...(+_lines)` + 统一 `ar_ap_ledger`(87014) + `accounts`/`payment_styles` 主档 + **V70 人员列** | `migrate.sh --finance`（含 B_Worker→employees stub + 刷 `finance_ar_ap_mv`） | [18] · [25-老库溯源](25-钱流管理-老库溯源.md) · [26-新库与迁移](26-钱流管理-新库与迁移.md)（**§十一 22 报表全套重建**） |
-| 工资 / 报销 / 检测 | ⏳ 待做 | `W_*` / `B_*` / `C_*` | 待 | 待 | — |
+| **钱流管理** | 🟡 功能主体已导入，财务验收未关闭 | `M_Get`/`M_In`/`M_Paid`/`M_Out`/`M_DPaid`/`M_OGet`/`M_Acc`/`M_Style`/`M_AllCheck` | `finance_receipts/payments/expenses/...(+_lines)` + `ar_ap_ledger` + 主档 | `migrate.sh --finance --confirm-destructive` | 总账开账、账户期初、材料领用结转和 AR/AP 对账必须由财务签字；见 [26](26-钱流管理-新库与迁移.md) / [44](44-总账子系统.md) |
+| 工资 / 员工报销 / 检测 | ⏳ 待做 | 待最终探源 | 待 | 待 | V133 已建工资/员工报销新域，但老库源表、映射、导出、导入、reject 和对账尚未实现；一般费用单不是员工报销 |
 
 > 模块对应的完整老库结构见 [01-YTDQ老库总览](01-YTDQ老库总览.md)。
 
 ---
 
-## ⚙️ 老库连接配置
+## ⚙️ 老库连接配置与一致性要求
 
 ```yaml
 app:
@@ -82,7 +96,68 @@ app:
 ```
 
 - **dev**：指向本机 LocalDB（集成认证，账号密码留空）。
-- **prod**：换生产 SQL Server 实例的账号密码（profile 隔离，见 `application-prod.yml`）。
+- **上线演练/最终切换**：只连接停写后恢复出的离线备份、只读副本或数据库级一致性快照。
+- **禁止**让长时间 CSV 导出直接扫仍在持续写入的生产 SQL Server，否则跨表时间点不一致。
+- `export_legacy.ps1` 可用 `LEGACY_DB_CONNECTION_STRING` 指向离线恢复库；连接串不得写入文档、manifest 或 Git。
+
+---
+
+## 🧾 导出 Manifest 与离线快照
+
+推荐顺序：
+
+```powershell
+# 1. 停止老系统写入，取得并恢复离线备份/一致性快照
+# 2. 从恢复库导出全部 CSV
+powershell -ExecutionPolicy Bypass `
+  -File server/legacy_migration/export_legacy.ps1 All
+
+# 3. 核验 export_manifest.json + export_manifest.sha256；迁移入口也会自动校验
+# 4. 在可清空目标库执行破坏性引导
+bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
+```
+
+`export_manifest.json`（formatVersion 2）当前记录：
+
+- 导出目标、UTC 时间、源 server/database；
+- 每个文件的行数、字节数和 SHA-256；
+- `consistency = offline-backup-required`；
+- 导出脚本 SHA、仓库 commit，以及 `export_manifest.sha256` 自身的 SHA；
+- 不记录连接凭据。
+
+`migrate.sh` 会自动：
+
+- 拒绝 JSON/sha256 清单缺失、两份清单不属于同一导出、目标 CSV 未登记或内容被篡改；
+- 将 run 的两个 manifest 指纹、迁移脚本指纹、代码 commit 和映射版本写入
+  `legacy_migration_runs`；
+- 将本次实际消费的文件名、SHA-256、字节数写入 `legacy_migration_run_files`。
+
+Manifest 是“这批文件是什么”的指纹，不是数据库事务快照证明。最终迁移包还必须保存：
+备份/快照 ID、停写时间、目标 Flyway 版本、执行人、run_id 和对账报告。
+
+---
+
+## 🔁 当前能力边界与未来增量验收
+
+| 能力 | 当前状态 | 上线要求 |
+|---|---|---|
+| 四棵分类树 Java upsert | 已有 | 补源水位、删除语义、冲突与回滚测试 |
+| Shell 首次引导 | 已有破坏性脚本；输入指纹与实际消费文件可追溯 | 仅在可清空库执行；必须用同一离线快照、manifest 和 run_id |
+| 全模块增量追平 | **未实现** | 按稳定业务键/watermark/CDC 实现，不得 TRUNCATE |
+| dry-run / reject / quarantine | V134 已有结构化 reject 表，但各模块尚未统一写入 | 所有丢弃/修复/存根均可追踪、可复核、可重放 |
+| checkpoint / resume / rollback | V134 已有未来 checkpoint 表；当前 bootstrap 不推进，增量 loader 未实现 | 中断可继续，切换失败可回退且不丢新写 |
+| 自动对账 | V134 已有结构化对账表；现有模块仍以分散 SQL/人工输出为主 | 统一产出计数、金额、数量、hash、孤儿和状态分布报告，并把结果写入 run |
+
+未来可重复迁移只有同时满足以下门禁才算完成：
+
+- [ ] 映射规则版本化，脚本、Flyway、源快照和目标版本可关联；
+- [ ] 全量、增量、dry-run、断点续跑、幂等重跑和回滚均有命令与测试；
+- [ ] 每模块显式源水位/时间窗/业务键，定义新增、更新、删除和冲突策略；
+- [ ] 先进入 staging，拒绝行进入 quarantine，不允许只打印“跳过 N 行”后丢弃；
+- [ ] 自动校验 `源数 = 目标数 + 批准拒绝数`，并核对关键金额/数量/状态/hash；
+- [ ] 迁移运行有互斥锁、目标库保护、维护窗口、run_id、日志和失败告警；
+- [ ] 使用生产同构数据至少完成两次全流程演练，记录耗时、停机窗口和恢复时间；
+- [ ] 最终切流执行停写 → 增量追平 → 对账 → 业务/财务签字 → 切换；失败按预案回滚。
 
 ---
 
@@ -110,15 +185,15 @@ server/src/main/java/com/uten/imp/legacy/       ← 迁移代码（Java，Maven 
 │  └─ MouldCategoryMigrator.java                （模具分类，ItemclassID=18）
 └─ web/LegacyMigrationController.java           （REST 端点：/all、/material-category、/client-category、/supplier-category、/mould-category）
 
-server/legacy_migration/                        ← shell 离线迁移（不依赖 server）
-├─ migrate.sh                                   （一键：--goods/--mould/--client/--supplier 各带 -data，--all 全量）
+server/legacy_migration/                        ← shell 离线破坏性引导（不依赖 server）
+├─ migrate.sh                                   （一次一个目标；--bootstrap-all 才执行全量依赖链；强制破坏性确认）
 ├─ migrate_goods.sql / migrate_goods_data.sql   （货品分类 / 主档）
 ├─ migrate_mould.sql / migrate_mould_data.sql   （模具分类 / 主档）
 ├─ migrate_client.sql / migrate_client_data.sql （客户分类[递归CTE] / 主档）
 ├─ migrate_supplier.sql / migrate_supplier_data.sql （供应商分类[扁平根] / 主档）
 ├─ migrate_color.sql / migrate_unit.sql        （颜色 / 基本单位 主档[扁平，无分类]）
-├─ export_legacy.ps1                            （老库→UTF-8 CSV；含 RFC4180 管道符转义，见下）
-└─ data/                                        ← 离线 CSV（goods/mould/client/supplier 分类+主档 + color/unit，未进 git）
+├─ export_legacy.ps1                            （老库→UTF-8 CSV；输出 JSON manifest + sha256 清单）
+└─ data/                                        ← 离线 CSV + export_manifest.json + export_manifest.sha256（敏感迁移包，不进 git，受控保管）
 
 server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classpath CSV（分类树快照）
 ├─ goods_categories.csv
@@ -142,14 +217,19 @@ server/src/main/resources/legacy-migration/     ← dev Java 路径读的 classp
 
 ## ✅ 校验
 
-每个模块迁移后对账（详见各模块文档「校验」段）：总数一致、主键（`legacy_id`）覆盖、抽样字段比对、树路径/深度正确。
+每个模块迁移后必须对账（详见各模块文档「校验」段）：总数恒等、主键（`legacy_id`）覆盖、
+关键金额/数量/状态汇总、外键/孤儿、抽样字段与业务单据。被跳过的数据必须进入 reject/quarantine
+并由业务批准处置；“脚本成功”或“源数−跳过数=目标数”不等于迁移验收通过。
+
+V134 提供 `legacy_migration_reconciliation_items`、`legacy_migration_rejects` 和
+`legacy_migration_checkpoints` 的结构，但当前各模块迁移 SQL 尚未统一把分散校验和跳过行写入这些表。
+只有 `legacy_migration_runs.reconciliation_status = PASSED` 且对应结构化明细完整，才可作为机器验收证据；
+`status = SUCCESS` 只表示脚本无错误退出。
 
 ---
 
-**最后更新**：2026-07-29 · **已实现模块**：货品/模具/客户/供应商（分类+主档）+ **货品组装 BOM + 成本预算**（V79 `goods_bom_items` 19.8 万行 + 详情三页签 + A4 配件清单打印/Excel，[31](31-货品组装BOM与成本预算.md)）+ 颜色/单位/币种/仓库 + 采购（4 单据 + **9 报表** + V65 迁移补全）+ 库存（流水+余额+仓库 9 单据）+ **销售/委外/生产/钱流（4 业务模块，全链路打通：DDL V50-V63 + 数据 100% 迁移 + Java 后端 + Flutter 前端 + e2e 验证 + UI 屏幕利用率优化）**；**生产物料反查产成品报表**（V78 `production_where_used:view`，BOM where-used，[物料反查产成品页](../03-页面/物料反查产成品页.md)）；**生产「BOM 成本展开」已下线**（并入货品「组装信息」页签，历史表保留） —— 见 [18-总路线图](18-业务四模块-总路线图.md) · [27-DDL契约](27-DDL一致性契约.md) · [28-Java契约](28-Java后端契约.md) · [29-后续TODO路线图](29-后续优化与待办路线图.md) · [30-UI优化方案](30-UI屏幕利用率优化方案.md)
-
-> **2026-07-29 财务需求全量落地（C1~C6+D，详见 [41-需求落地总路线图](41-需求落地总路线图.md)）**：
-> C1 应收/应付汇总表（V121 铺底额，附件 3/6 口径）· C2 **5 张对账单自动生成**（附件 1/2/4/5，[42](42-财务对账单自动生成.md)）·
-> C4 **成本核算 8 报表**（附件 15/7/7-1/8/8-1~3，[43](43-成本核算.md)）· C3 **总账子系统**（V122 凭证分录，科目=payment_styles 树，
-> 全量 151 期间 91500 凭证借贷净额=0，科目余额表+附 9~16 共 8 报表，[44](44-总账子系统.md)）· C5 **固定资产折旧+长期待摊**（V123，[45](45-固定资产折旧与长期待摊.md)）·
-> C6 报销自动分录+发货财务审核（V124，[46](46-报销分录与发货财务审核.md)）· D 零散 3 条（默认仓库/建议完工日/物料分析多策略，[47](47-零散需求-D项.md)）。
+**最后更新**：2026-07-30。迁移脚本和多数业务映射已经形成，但当前发布结论仍为
+**NO-GO**：BOM 20,717 条拒绝行、委外发料 49,889 条历史数量、客户归属计数、
+总账开账/材料结转，以及全模块增量追平/回滚尚未关闭。财务 API/UI 已实现不等于财务数据已签字验收；
+一般费用单也不等于员工报销。统一以
+[生产就绪审计报告](../99-项目治理/2026-07-30-生产就绪审计报告.md)和最终对账报告为发布依据。

@@ -107,7 +107,9 @@ class UtenCard extends ConsumerWidget {
       color: bgColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(borderRadius),
-        side: borderColor != null ? BorderSide(color: borderColor) : BorderSide.none,
+        side: borderColor != null
+            ? BorderSide(color: borderColor)
+            : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: content,

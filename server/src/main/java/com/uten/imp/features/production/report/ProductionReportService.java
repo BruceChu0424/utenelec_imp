@@ -461,6 +461,7 @@ public class ProductionReportService {
     /** 月度汇总：按 docType(PLAN/DAILY) + 日期范围（ym）过滤，按 货品 上卷（保留入口，未挂前端）。 */
     @Transactional(readOnly = true)
     public List<MonthlySummaryRow> monthly(String docType, LocalDate dateFrom, LocalDate dateTo, int limit) {
+        int safeLimit = Math.min(Math.max(1, limit), 2000);
         var q = em.createNativeQuery("""
                 SELECT doc_type, ym, goods_id, client_id,
                        SUM(plan_qty_sum)      AS plan_qty,
@@ -479,7 +480,7 @@ public class ProductionReportService {
         q.setParameter("docType", docType);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
-        q.setParameter("limit", limit);
+        q.setParameter("limit", safeLimit);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new MonthlySummaryRow(
@@ -501,6 +502,9 @@ public class ProductionReportService {
     @Transactional(readOnly = true)
     public List<DailyDetailRow> dailyDetail(LocalDate dateFrom, LocalDate dateTo, UUID goodsId,
                                             Short status, String billNo, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 500);
+        long offset = (long) (safePage - 1) * safeSize;
         var q = em.createNativeQuery("""
                 SELECT i.id, i.bill_no, i.bill_date, i.report_id, i.line_no,
                        i.goods_id, i.color_id, i.unit_id, i.unit_rate,
@@ -526,8 +530,8 @@ public class ProductionReportService {
         q.setParameter("goodsId", goodsId);
         q.setParameter("status", status);
         q.setParameter("billNo", billNo);
-        q.setParameter("limit", size);
-        q.setParameter("offset", Math.max(0, (page - 1) * size));
+        q.setParameter("limit", safeSize);
+        q.setParameter("offset", offset);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         return rows.stream().map(r -> new DailyDetailRow(

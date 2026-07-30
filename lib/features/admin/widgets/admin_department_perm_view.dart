@@ -164,10 +164,7 @@ class _AdminDepartmentPermViewState
           onChanged: _onDeptChanged,
         ),
         const SizedBox(height: 16),
-        if (dept == null)
-          _emptyGuide(theme)
-        else
-          _catalogCard(theme, dept),
+        if (dept == null) _emptyGuide(theme) else _catalogCard(theme, dept),
       ],
     );
   }
@@ -220,7 +217,9 @@ class _AdminDepartmentPermViewState
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _isDirty ? '已勾选 ${checked.length} 项 · 有未保存修改' : '已勾选 ${checked.length} 项',
+                      _isDirty
+                          ? '已勾选 ${checked.length} 项 · 有未保存修改'
+                          : '已勾选 ${checked.length} 项',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: _isDirty
                             ? UtenColors.warning

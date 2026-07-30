@@ -17,8 +17,10 @@ import '../models/finance_doc.dart';
 abstract final class FinanceEndpoints {
   static String docBase(String seg) => '/finance/$seg';
   static String docOne(String seg, String id) => '/finance/$seg/$id';
-  static String docApprove(String seg, String id) => '/finance/$seg/$id/approve';
-  static String docReverse(String seg, String id) => '/finance/$seg/$id/reverse';
+  static String docApprove(String seg, String id) =>
+      '/finance/$seg/$id/approve';
+  static String docReverse(String seg, String id) =>
+      '/finance/$seg/$id/reverse';
 
   static const arAp = '/finance/ar-ap';
   static String arApOne(String id) => '/finance/ar-ap/$id';
@@ -110,8 +112,7 @@ class FinanceRepository {
   }
 
   Future<FinanceDocDetail> update(String id, Map<String, dynamic> body) async {
-    final json =
-        await api.put(FinanceEndpoints.docOne(_seg, id), body: body);
+    final json = await api.put(FinanceEndpoints.docOne(_seg, id), body: body);
     return FinanceDocDetail.fromJson(json);
   }
 
@@ -138,8 +139,8 @@ class FinanceRepository {
 
 final financeRepositoryProvider =
     Provider.family<FinanceRepository, FinanceDocType>(
-  (ref, type) => FinanceRepository(ref.watch(apiClientProvider), type),
-);
+      (ref, type) => FinanceRepository(ref.watch(apiClientProvider), type),
+    );
 
 // ===== 应收应付台账（只读）=====
 
@@ -256,8 +257,7 @@ class ReconciliationRepository {
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
-    final json =
-        await api.get(FinanceEndpoints.reconciliations, query: query);
+    final json = await api.get(FinanceEndpoints.reconciliations, query: query);
     return PagedResult.fromJson(json, ReconciliationItem.fromJson);
   }
 }
@@ -280,14 +280,16 @@ class FinanceReportRepository {
     String? dateTo,
     int limit = 500,
   }) async {
-    final list = await api.getList('${FinanceEndpoints.reports}/ar-ap/summary',
-        query: {
-            if (direction != null) 'direction': direction,
-            if (partyId != null) 'partyId': partyId,
-            if (dateFrom != null) 'dateFrom': dateFrom,
-            if (dateTo != null) 'dateTo': dateTo,
-            'limit': limit,
-          });
+    final list = await api.getList(
+      '${FinanceEndpoints.reports}/ar-ap/summary',
+      query: {
+        'direction': ?direction,
+        'partyId': ?partyId,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+        'limit': limit,
+      },
+    );
     return list.map(ArApSummaryRow.fromJson).toList();
   }
 
@@ -303,18 +305,20 @@ class FinanceReportRepository {
     String? dateTo,
     int limit = 500,
   }) async {
-    final list = await api.getList('${FinanceEndpoints.reports}/$kind/detail',
-        query: {
-            if (clientId != null) 'clientId': clientId,
-            if (supplierId != null) 'supplierId': supplierId,
-            if (partyId != null) 'partyId': partyId,
-            if (accountId != null) 'accountId': accountId,
-            if (departmentId != null) 'departmentId': departmentId,
-            if (status != null) 'status': status,
-            if (dateFrom != null) 'dateFrom': dateFrom,
-            if (dateTo != null) 'dateTo': dateTo,
-            'limit': limit,
-          });
+    final list = await api.getList(
+      '${FinanceEndpoints.reports}/$kind/detail',
+      query: {
+        'clientId': ?clientId,
+        'supplierId': ?supplierId,
+        'partyId': ?partyId,
+        'accountId': ?accountId,
+        'departmentId': ?departmentId,
+        'status': ?status,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+        'limit': limit,
+      },
+    );
     return list.map(FinanceDocReportRow.fromJson).toList();
   }
 
@@ -328,16 +332,18 @@ class FinanceReportRepository {
     String? dateTo,
     int limit = 500,
   }) async {
-    final list = await api.getList('${FinanceEndpoints.reports}/$kind/summary',
-        query: {
-            if (clientId != null) 'clientId': clientId,
-            if (supplierId != null) 'supplierId': supplierId,
-            if (departmentId != null) 'departmentId': departmentId,
-            if (styleId != null) '${kind}StyleId': styleId,
-            if (dateFrom != null) 'dateFrom': dateFrom,
-            if (dateTo != null) 'dateTo': dateTo,
-            'limit': limit,
-          });
+    final list = await api.getList(
+      '${FinanceEndpoints.reports}/$kind/summary',
+      query: {
+        'clientId': ?clientId,
+        'supplierId': ?supplierId,
+        'departmentId': ?departmentId,
+        '${kind}StyleId': ?styleId,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+        'limit': limit,
+      },
+    );
     return list.map(FinanceDocReportRow.fromJson).toList();
   }
 
@@ -349,13 +355,14 @@ class FinanceReportRepository {
     int limit = 1000,
   }) async {
     final list = await api.getList(
-        '${FinanceEndpoints.reports}/accounts/statement',
-        query: {
-          'accountId': accountId,
-          if (dateFrom != null) 'dateFrom': dateFrom,
-          if (dateTo != null) 'dateTo': dateTo,
-          'limit': limit,
-        });
+      '${FinanceEndpoints.reports}/accounts/statement',
+      query: {
+        'accountId': accountId,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+        'limit': limit,
+      },
+    );
     return list.map(AccountStatementRow.fromJson).toList();
   }
 }

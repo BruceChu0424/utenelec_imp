@@ -33,7 +33,7 @@ import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.maskPhone;
 
-/** 员工档案查询：列表（Specification 摘要）与详情组装（按角色脱敏）。 */
+/** 员工档案查询：列表（Specification 摘要）与详情组装（按权限点脱敏）。 */
 @Service
 @RequiredArgsConstructor
 public class EmployeeQueryService {
@@ -159,7 +159,7 @@ public class EmployeeQueryService {
                         x.getMajor(), x.getStartDate(), x.getEndDate()))
                 .toList());
 
-        // 隐私保护（M5/PIPL）：非 hr/admin 不可见民族/政治面貌/婚姻/户籍/现居/出生日期
+        // 隐私保护（M5/PIPL）：无 employee:pii:view 时不返回人口属性、地址与出生日期。
         if (!policy.canSeeIdCardAndBank(perms)) {
             d.setEthnicity(null);
             d.setPoliticalStatus(null);

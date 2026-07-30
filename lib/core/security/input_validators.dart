@@ -14,13 +14,29 @@ abstract final class InputValidators {
 
   static String? idNumber(String? v, {String type = '身份证'}) {
     if (v == null || v.trim().isEmpty) return '证件号码不能为空';
-    if (type == '身份证' && !IdCardUtils.isValid(v)) return '身份证号格式不正确';
+    if (type == '身份证' && !IdCardUtils.isValid(v.trim())) {
+      return '身份证号格式不正确';
+    }
     return null;
   }
 
   static String? phone(String? v) {
     if (v == null || v.trim().isEmpty) return '手机号不能为空';
-    if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(v.trim())) return '手机号格式不正确';
+    if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(v.trim())) {
+      return '手机号格式不正确';
+    }
+    return null;
+  }
+
+  /// 中国大陆手机号或带区号座机，可带 1～6 位分机号。
+  static String? telephone(String? v) {
+    if (v == null || v.trim().isEmpty) return null;
+    final normalized = v.trim().replaceAll(' ', '');
+    if (!RegExp(
+      r'^(?:1[3-9]\d{9}|0\d{2,3}-?\d{7,8}(?:-\d{1,6})?)$',
+    ).hasMatch(normalized)) {
+      return '请输入正确的手机号或座机号';
+    }
     return null;
   }
 

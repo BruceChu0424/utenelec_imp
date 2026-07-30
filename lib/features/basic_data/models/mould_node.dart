@@ -33,15 +33,15 @@ class MouldListItem {
   final int? legacyId;
 
   factory MouldListItem.fromJson(Map<String, dynamic> json) => MouldListItem(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        place: json['place'] as String?,
-        mstatus: json['mstatus'] as String?,
-        status: json['status'] as String?,
-        remark: json['remark'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    place: json['place'] as String?,
+    mstatus: json['mstatus'] as String?,
+    status: json['status'] as String?,
+    remark: json['remark'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+  );
 }
 
 /// 模具详情（列表字段 + 关键业务字段，够看即看）。
@@ -82,21 +82,21 @@ class MouldDetail {
   final String? remark; // 备注
 
   factory MouldDetail.fromJson(Map<String, dynamic> json) => MouldDetail(
-        id: json['id'] as String,
-        code: json['code'] as String?,
-        name: json['name'] as String?,
-        status: json['status'] as String?,
-        place: json['place'] as String?,
-        keeper: json['keeper'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        categoryId: json['categoryId'] as String?,
-        categoryName: json['categoryName'] as String?,
-        mnumber: json['mnumber'] as String?,
-        qty: json['qty'] as String?,
-        tqty: (json['tqty'] as num?)?.toDouble(),
-        mstatus: json['mstatus'] as String?,
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String,
+    code: json['code'] as String?,
+    name: json['name'] as String?,
+    status: json['status'] as String?,
+    place: json['place'] as String?,
+    keeper: json['keeper'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
+    categoryName: json['categoryName'] as String?,
+    mnumber: json['mnumber'] as String?,
+    qty: json['qty'] as String?,
+    tqty: (json['tqty'] as num?)?.toDouble(),
+    mstatus: json['mstatus'] as String?,
+    remark: json['remark'] as String?,
+  );
 }
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
@@ -109,14 +109,7 @@ class MouldFacets {
   final Map<String, List<MasterFacetBucket>> fields;
   final Map<String, int> nullCounts;
 
-  static const _keys = [
-    'code',
-    'name',
-    'place',
-    'mstatus',
-    'remark',
-    'status',
-  ];
+  static const _keys = ['code', 'name', 'place', 'mstatus', 'remark', 'status'];
 
   factory MouldFacets.fromJson(Map<String, dynamic> json) {
     final fields = <String, List<MasterFacetBucket>>{};
@@ -124,9 +117,10 @@ class MouldFacets {
       final list = json[k];
       fields[k] = list is List
           ? list
-              .map((e) =>
-                  MasterFacetBucket.fromJson(e as Map<String, dynamic>))
-              .toList()
+                .map(
+                  (e) => MasterFacetBucket.fromJson(e as Map<String, dynamic>),
+                )
+                .toList()
           : const [];
     }
     final ncRaw = json['nullCounts'];

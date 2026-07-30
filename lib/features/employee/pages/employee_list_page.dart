@@ -15,6 +15,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
@@ -118,6 +119,10 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canCreate =
+        permissions.contains(Perm.employeeCreate) &&
+        permissions.contains(Perm.employeePiiEdit);
 
     Widget body = Column(
       children: [
@@ -146,9 +151,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
             children: _statusKeys.map((key) {
               final selected = _statuses.contains(key);
               return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
                 child: FilterChip(
                   label: Text(_statusLabel(l10n, key)),
                   selected: selected,
@@ -169,14 +172,16 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
 
     return Scaffold(
       appBar: UtenAppBar(title: l10n.employeeTitle, showBackButton: true),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.person_add_rounded),
-        label: Text(l10n.employeeFabOnboard),
-        onPressed: () async {
-          await context.push('/employee/onboarding');
-          _reload();
-        },
-      ),
+      floatingActionButton: canCreate
+          ? FloatingActionButton.extended(
+              icon: const Icon(Icons.person_add_rounded),
+              label: Text(l10n.employeeFabOnboard),
+              onPressed: () async {
+                await context.push('/employee/onboarding');
+                _reload();
+              },
+            )
+          : null,
       body: body,
     );
   }

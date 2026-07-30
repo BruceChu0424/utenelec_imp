@@ -35,6 +35,23 @@ enum ExpenseCategory {
   final int colorHex;
 
   Color get color => Color(colorHex);
+
+  String get apiValue => name.toUpperCase();
+
+  static ExpenseCategory fromApi(Object? value) {
+    final normalized = value?.toString().trim().toUpperCase();
+    return switch (normalized) {
+      'TRANSPORT' => ExpenseCategory.transport,
+      'TRAVEL' => ExpenseCategory.travel,
+      'MEAL' => ExpenseCategory.meal,
+      'OFFICE' => ExpenseCategory.office,
+      'COMMUNICATION' => ExpenseCategory.communication,
+      'ENTERTAINMENT' => ExpenseCategory.entertainment,
+      'TRAINING' => ExpenseCategory.training,
+      'OTHER' => ExpenseCategory.other,
+      _ => throw FormatException('未知报销类别：$value'),
+    };
+  }
 }
 
 /// 报销项
@@ -60,4 +77,23 @@ class ExpenseItem {
 
   /// 说明
   final String? description;
+
+  factory ExpenseItem.fromJson(Map<String, dynamic> json) => ExpenseItem(
+    id: json['id']?.toString() ?? '',
+    category: ExpenseCategory.fromApi(json['category']),
+    amount: (json['amount'] as num).toDouble(),
+    date: DateTime.parse(json['date'] as String),
+    description: json['description'] as String?,
+  );
+
+  Map<String, dynamic> toCreateJson() => {
+    'category': category.apiValue,
+    'amount': amount,
+    'date': _dateOnly(date),
+    'description': description,
+  };
 }
+
+String _dateOnly(DateTime value) =>
+    '${value.year}-${value.month.toString().padLeft(2, '0')}-'
+    '${value.day.toString().padLeft(2, '0')}';

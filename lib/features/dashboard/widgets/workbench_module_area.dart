@@ -4,14 +4,14 @@
 // - 决策支持（经营 Dashboard/多维分析/异常告警）模块已下线，「系统管理」仅留权限管理；
 // - 旧「访客核验」组先并入行政与人力资源部，后应要求独立为「安保部」分区（访客核验）；
 // - 「生产管理」拆分为 生产部 / PMC运营部 / 品质管理部；
-// - 「财务管理」扩为「财税部」，新增 采购/客户/供应商/账户（占位页，权限已种子化）；
+// - 「财务管理」扩为「财税部」，采购/客户/供应商/账户均接入真实业务页；
 // - 工程研发部 / 综合营销部 / 新媒体事业部 / 轨道事业部 暂无卡片（空分组）。
 // 组名全部硬编码中文，不引用 l10n。
 //
 // 显隐规则（单一数据源）：
 //   每个模块的可见性 = 用户是否拥有「目标路由所需权限点」，
 //   权限点查 core/router/permission_by_path.dart 的 requiredAnyPermFor() ——
-//   与路由守卫同一份映射，支持"多级权限任一满足"（如客户资料 self/department/all）。
+//   与路由守卫同一份映射；客户资料的数据范围由后端 owner/授权策略裁剪。
 //   映射为 null 的（如工资条/报销/意见箱/基础资料）= 登录即可见。
 //   普通用户：整组无可见卡片则整组不渲染；
 //   超级管理员：显示全部分组（含空分组），空分组内显示「功能规划接入中」占位，
@@ -51,14 +51,19 @@ class WorkbenchModuleArea extends ConsumerWidget {
 
     bool visible(String location) {
       final required = requiredAnyPermFor(location);
-      if (required == null) return true;
-      return isSuper || required.any(perms.contains);
+      final requiredAll = requiredAllPermsFor(location);
+      if (isSuper) return true;
+      if (required != null && !required.any(perms.contains)) return false;
+      return requiredAll.every(perms.contains);
     }
 
     // 每组过滤出可见卡片
     final itemsOf = {
       for (final g in _allGroups)
-        g.key: [for (final it in g.items) if (visible(it.location)) it],
+        g.key: [
+          for (final it in g.items)
+            if (visible(it.location)) it,
+        ],
     };
 
     // 分组可见性：超管全量（含空分组，便于预排布局）；普通用户只显示有可见卡片的分组
@@ -139,7 +144,8 @@ class WorkbenchModuleArea extends ConsumerWidget {
   /// 套一层 GestureDetector 吸收点击，避免点手柄误触折叠。
   Widget _dragHandle(BuildContext context, int index) {
     final platform = Theme.of(context).platform;
-    final touch = platform == TargetPlatform.android ||
+    final touch =
+        platform == TargetPlatform.android ||
         platform == TargetPlatform.iOS ||
         platform == TargetPlatform.fuchsia;
     final handle = MouseRegion(
@@ -552,8 +558,9 @@ class _ModuleTile extends StatelessWidget {
                       comingSoon ? '${item.label}（功能规划接入中）' : item.label,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w500,
-                        color:
-                            comingSoon ? theme.colorScheme.onSurfaceVariant : null,
+                        color: comingSoon
+                            ? theme.colorScheme.onSurfaceVariant
+                            : null,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

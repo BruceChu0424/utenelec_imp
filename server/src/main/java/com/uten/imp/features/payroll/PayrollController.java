@@ -1,0 +1,124 @@
+package com.uten.imp.features.payroll;
+
+import com.uten.imp.common.web.DownloadContentDisposition;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.payroll.dto.PayrollBatchCreateRequest;
+import com.uten.imp.features.payroll.dto.PayrollBatchDto;
+import com.uten.imp.features.payroll.dto.PayrollPdf;
+import com.uten.imp.features.payroll.dto.PayrollRejectRequest;
+import com.uten.imp.features.payroll.dto.PayrollSlipDto;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/payroll")
+@RequiredArgsConstructor
+public class PayrollController {
+
+    private final PayrollService service;
+
+    @GetMapping("/slips")
+    @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:view:all')")
+    public PageResponse<PayrollSlipDto> listSlips(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.listSlips(status, year, month, departmentId, page, size);
+    }
+
+    @GetMapping("/slips/{id}")
+    @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:view:all')")
+    public PayrollSlipDto slip(@PathVariable UUID id) {
+        return service.getSlip(id);
+    }
+
+    @PostMapping("/slips/{id}/view")
+    @PreAuthorize("hasAuthority('payroll:view:self')")
+    public PayrollSlipDto markViewed(@PathVariable UUID id) {
+        return service.markViewed(id);
+    }
+
+    @PostMapping("/slips/{id}/download")
+    @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:export')")
+    public ResponseEntity<byte[]> download(@PathVariable UUID id) {
+        PayrollPdf pdf = service.downloadSlip(id);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(
+                        "Content-Disposition",
+                        DownloadContentDisposition.attachment(pdf.filename()))
+                .body(pdf.bytes());
+    }
+
+    @GetMapping("/batches")
+    @PreAuthorize("""
+            hasAnyAuthority(
+                'payroll:generate','payroll:review','payroll:publish','payroll:view:all'
+            )
+            """)
+    public PageResponse<PayrollBatchDto> listBatches(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.listBatches(year, month, status, departmentId, page, size);
+    }
+
+    @GetMapping("/batches/{id}")
+    @PreAuthorize("""
+            hasAnyAuthority(
+                'payroll:generate','payroll:review','payroll:publish','payroll:view:all'
+            )
+            """)
+    public PayrollBatchDto batch(@PathVariable UUID id) {
+        return service.getBatch(id);
+    }
+
+    @PostMapping("/batches")
+    @PreAuthorize("hasAuthority('payroll:generate')")
+    public PayrollBatchDto createBatch(@Valid @RequestBody PayrollBatchCreateRequest request) {
+        return service.createBatch(request);
+    }
+
+    @PostMapping("/batches/{id}/submit")
+    @PreAuthorize("hasAuthority('payroll:generate')")
+    public PayrollBatchDto submit(@PathVariable UUID id) {
+        return service.submitBatch(id);
+    }
+
+    @PostMapping("/batches/{id}/approve")
+    @PreAuthorize("hasAuthority('payroll:review')")
+    public PayrollBatchDto approve(@PathVariable UUID id) {
+        return service.approveBatch(id);
+    }
+
+    @PostMapping("/batches/{id}/reject")
+    @PreAuthorize("hasAuthority('payroll:review')")
+    public PayrollBatchDto reject(@PathVariable UUID id,
+                                  @Valid @RequestBody PayrollRejectRequest request) {
+        return service.rejectBatch(id, request.reason());
+    }
+
+    @PostMapping("/batches/{id}/publish")
+    @PreAuthorize("hasAuthority('payroll:publish')")
+    public PayrollBatchDto publish(@PathVariable UUID id) {
+        return service.publishBatch(id);
+    }
+}

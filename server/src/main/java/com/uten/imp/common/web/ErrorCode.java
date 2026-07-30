@@ -22,6 +22,8 @@ public enum ErrorCode {
     SMS_CODE_INVALID(400, "验证码错误"),
     SMS_CODE_EXPIRED(400, "验证码已过期，请重新获取"),
     SMS_RATE_LIMITED(429, "验证码发送过于频繁，请稍后再试"),
+    MALFORMED_REQUEST(400, "请求体格式错误"),
+    PAYLOAD_TOO_LARGE(413, "请求体过大"),
     VISITOR_NOT_FOUND(404, "访客申请不存在"),
     VISITOR_BLOCKED(403, "访客账号已被限制"),
     INTERNAL(500, "服务器内部错误");

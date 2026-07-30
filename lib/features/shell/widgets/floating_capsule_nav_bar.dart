@@ -89,7 +89,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
 
     // 半透明玻璃底色
     final glassColor = isDark
-        ? const Color(0xFF1C2523).withValues(alpha: 0.78)
+        ? UtenColors.darkSurfaceLow.withValues(alpha: 0.78)
         : Colors.white.withValues(alpha: 0.85);
     final shadowColor = isDark
         ? Colors.black.withValues(alpha: 0.5)

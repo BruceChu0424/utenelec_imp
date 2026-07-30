@@ -3,14 +3,18 @@
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/models/paged_result.dart';
 import '../models/suggestion.dart';
 
 abstract interface class SuggestionRepository {
-  /// 建议广场（全员，时间倒序），category 可空
-  Future<List<Suggestion>> list({SuggestionCategory? category});
-
-  /// 我提交的
-  Future<List<Suggestion>> mine();
+  /// 建议广场 / 我的建议（真实服务端分页），category 可空。
+  Future<PagedResult<Suggestion>> list({
+    bool mine = false,
+    SuggestionCategory? category,
+    int page = 1,
+    int size = 20,
+  });
 
   Future<Suggestion?> getById(String id);
 
@@ -24,6 +28,13 @@ abstract interface class SuggestionRepository {
 
   /// 点赞切换（有则取消、无则点赞）
   Future<Suggestion> toggleLike(String id);
+
+  /// 官方回复；[newStatus] 为空时仅追加回复，不改变处理状态。
+  Future<Suggestion> reply({
+    required String id,
+    required String content,
+    SuggestionStatus? newStatus,
+  });
 }
 
 class DioSuggestionRepository implements SuggestionRepository {
@@ -32,18 +43,22 @@ class DioSuggestionRepository implements SuggestionRepository {
   final ApiClient _api;
 
   @override
-  Future<List<Suggestion>> list({SuggestionCategory? category}) async {
+  Future<PagedResult<Suggestion>> list({
+    bool mine = false,
+    SuggestionCategory? category,
+    int page = 1,
+    int size = 20,
+  }) async {
     final json = await _api.get(
       ApiEndpoints.suggestions,
-      query: category != null ? {'category': category.name} : null,
+      query: {
+        if (mine) 'scope': 'mine',
+        if (category != null) 'category': category.name,
+        'page': page,
+        'size': size,
+      },
     );
-    return _items(json);
-  }
-
-  @override
-  Future<List<Suggestion>> mine() async {
-    final json = await _api.get(ApiEndpoints.suggestions, query: {'scope': 'mine'});
-    return _items(json);
+    return PagedResult.fromJson(json, _fromJson);
   }
 
   @override
@@ -60,12 +75,15 @@ class DioSuggestionRepository implements SuggestionRepository {
     required String content,
     bool isAnonymous = false,
   }) async {
-    final json = await _api.post(ApiEndpoints.suggestions, body: {
-      'category': category.name,
-      'title': title,
-      'content': content,
-      'isAnonymous': isAnonymous,
-    });
+    final json = await _api.post(
+      ApiEndpoints.suggestions,
+      body: {
+        'category': category.name,
+        'title': title,
+        'content': content,
+        'isAnonymous': isAnonymous,
+      },
+    );
     return _fromJson(json);
   }
 
@@ -75,13 +93,37 @@ class DioSuggestionRepository implements SuggestionRepository {
     return _fromJson(json);
   }
 
-  List<Suggestion> _items(Map<String, dynamic> json) {
-    final items = (json['items'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>();
-    return [for (final m in items) _fromJson(m)];
+  @override
+  Future<Suggestion> reply({
+    required String id,
+    required String content,
+    SuggestionStatus? newStatus,
+  }) async {
+    final json = await _api.post(
+      ApiEndpoints.suggestionReplies(id),
+      body: {
+        'content': content.trim(),
+        if (newStatus != null) 'newStatus': newStatus.name,
+      },
+    );
+    return _fromJson(json);
   }
 
   Suggestion _fromJson(Map<String, dynamic> json) {
+    final replies = [
+      for (final r
+          in (json['replies'] as List<dynamic>? ?? const [])
+              .cast<Map<String, dynamic>>())
+        SuggestionReply(
+          id: r['id'] as String,
+          replier: r['replier'] as String? ?? '',
+          replierRole: r['replierRole'] as String? ?? '',
+          content: r['content'] as String? ?? '',
+          repliedAt:
+              ChinaDateTime.tryParse(r['repliedAt'] as String?) ??
+              ChinaDateTime.now(),
+        ),
+    ];
     return Suggestion(
       id: json['id'] as String,
       submitterId: json['submitterId'] as String? ?? '',
@@ -91,41 +133,29 @@ class DioSuggestionRepository implements SuggestionRepository {
       content: json['content'] as String? ?? '',
       status: _statusFrom(json['status'] as String?),
       submittedAt:
-          DateTime.tryParse(json['submittedAt'] as String? ?? '')?.toLocal() ??
-              DateTime.now(),
+          ChinaDateTime.tryParse(json['submittedAt'] as String?) ??
+          ChinaDateTime.now(),
       isAnonymous: json['isAnonymous'] as bool? ?? false,
       likes: (json['likes'] as num?)?.toInt() ?? 0,
       likedByMe: json['likedByMe'] as bool? ?? false,
-      replies: [
-        for (final r
-            in (json['replies'] as List<dynamic>? ?? const [])
-                .cast<Map<String, dynamic>>())
-          SuggestionReply(
-            id: r['id'] as String,
-            replier: r['replier'] as String? ?? '',
-            replierRole: r['replierRole'] as String? ?? '',
-            content: r['content'] as String? ?? '',
-            repliedAt:
-                DateTime.tryParse(r['repliedAt'] as String? ?? '')?.toLocal() ??
-                    DateTime.now(),
-          ),
-      ],
+      replyCount: (json['replyCount'] as num?)?.toInt() ?? replies.length,
+      replies: replies,
     );
   }
 
   static SuggestionCategory _categoryFrom(String? name) => switch (name) {
-        'process' => SuggestionCategory.process,
-        'welfare' => SuggestionCategory.welfare,
-        'environment' => SuggestionCategory.environment,
-        'equipment' => SuggestionCategory.equipment,
-        'other' => SuggestionCategory.other,
-        _ => SuggestionCategory.product,
-      };
+    'process' => SuggestionCategory.process,
+    'welfare' => SuggestionCategory.welfare,
+    'environment' => SuggestionCategory.environment,
+    'equipment' => SuggestionCategory.equipment,
+    'other' => SuggestionCategory.other,
+    _ => SuggestionCategory.product,
+  };
 
   static SuggestionStatus _statusFrom(String? name) => switch (name) {
-        'reviewing' => SuggestionStatus.reviewing,
-        'resolved' => SuggestionStatus.resolved,
-        'rejected' => SuggestionStatus.rejected,
-        _ => SuggestionStatus.submitted,
-      };
+    'reviewing' => SuggestionStatus.reviewing,
+    'resolved' => SuggestionStatus.resolved,
+    'rejected' => SuggestionStatus.rejected,
+    _ => SuggestionStatus.submitted,
+  };
 }

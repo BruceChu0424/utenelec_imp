@@ -15,6 +15,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -42,6 +43,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   int? _statusFilter; // null=全部
   // 订货工作台（V90 业务链）：统计卡 + 激活卡钻取（null=不钻取）
@@ -151,7 +153,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -178,20 +180,20 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           stats = await repo.stats(); // 统计卡失败不阻塞列表
         } catch (_) {}
       }
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _stats = stats ?? _stats;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载列表失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -283,8 +285,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
       MasterColumnDef(
         key: 'status',
         label: '状态',
-        width: 100,
-        value: (it) => it.rejected ? '已驳回' : salesStatusLabel(it.status),
+        width: 130,
+        value: (it) {
+          final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
+          return it.writable ? status : '$status · 只读';
+        },
       ),
       if (_isOrder)
         MasterColumnDef(

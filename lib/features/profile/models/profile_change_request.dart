@@ -4,6 +4,8 @@
 
 import 'package:uten_imp/shared/models/paged_result.dart';
 
+import '../../../core/utils/china_datetime.dart';
+
 /// 字段策略（驱动表单是否可改 + 是否需 HR 审核）。
 enum FieldPolicyKind { directEdit, requiresReview, hrOnly }
 
@@ -102,12 +104,12 @@ class ProfileChangeItem {
       status: _parseStatus(json['status'] as String?),
       submittedBy: json['submittedBy'] as String,
       submittedByName: json['submittedByName'] as String?,
-      submittedAt: DateTime.parse(json['submittedAt'] as String),
+      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
       reviewedBy: json['reviewedBy'] as String?,
       reviewedByName: json['reviewedByName'] as String?,
       reviewedAt: json['reviewedAt'] == null
           ? null
-          : DateTime.parse(json['reviewedAt'] as String),
+          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
       reviewComment: json['reviewComment'] as String?,
       employeeVersion: json['employeeVersion'] as int?,
     );
@@ -156,11 +158,11 @@ class ProfileChangeBatch {
       status: _parseStatus(json['status'] as String?),
       itemCount: (json['itemCount'] as int?) ?? list.length,
       items: list,
-      submittedAt: DateTime.parse(json['submittedAt'] as String),
+      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
       submittedByName: json['submittedByName'] as String?,
       reviewedAt: json['reviewedAt'] == null
           ? null
-          : DateTime.parse(json['reviewedAt'] as String),
+          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
       reviewedByName: json['reviewedByName'] as String?,
       reviewComment: json['reviewComment'] as String?,
     );
@@ -194,10 +196,10 @@ class MyProfileChangeListItem {
       batchId: json['batchId'] as String,
       status: _parseStatus(json['status'] as String?),
       itemCount: (json['itemCount'] as int?) ?? 0,
-      submittedAt: DateTime.parse(json['submittedAt'] as String),
+      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
       reviewedAt: json['reviewedAt'] == null
           ? null
-          : DateTime.parse(json['reviewedAt'] as String),
+          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
       reviewComment: json['reviewComment'] as String?,
       fieldCodes: (json['fieldCodes'] as List<dynamic>? ?? const [])
           .cast<String>(),
@@ -246,10 +248,10 @@ class HrProfileChangeListItem {
       itemCount: (json['itemCount'] as int?) ?? 0,
       fieldCodes: (json['fieldCodes'] as List<dynamic>? ?? const [])
           .cast<String>(),
-      submittedAt: DateTime.parse(json['submittedAt'] as String),
+      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
       reviewedAt: json['reviewedAt'] == null
           ? null
-          : DateTime.parse(json['reviewedAt'] as String),
+          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
       reviewedByName: json['reviewedByName'] as String?,
     );
   }

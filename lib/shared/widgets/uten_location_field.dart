@@ -148,18 +148,19 @@ Future<LocationPickResult<T>?> showUtenPickerSheet<T>({
     BuildContext sheetCtx,
     void Function(T node) onSelect,
     void Function() onSelectRoot,
-  ) childBuilder,
+  )
+  childBuilder,
   String? rootHint,
   String searchHint = '搜索',
   bool showRootOption = true,
 }) {
   Widget buildSheet(BuildContext sheetCtx) {
-    void select(T n) => Navigator.of(sheetCtx).pop<LocationPickResult<T>>(
-          (node: n, isRoot: false),
-        );
-    void selectRoot() => Navigator.of(sheetCtx).pop<LocationPickResult<T>>(
-          (node: null, isRoot: true),
-        );
+    void select(T n) => Navigator.of(
+      sheetCtx,
+    ).pop<LocationPickResult<T>>((node: n, isRoot: false));
+    void selectRoot() => Navigator.of(
+      sheetCtx,
+    ).pop<LocationPickResult<T>>((node: null, isRoot: true));
     final theme = Theme.of(sheetCtx);
     return Column(
       children: [
@@ -211,9 +212,7 @@ Future<LocationPickResult<T>?> showUtenPickerSheet<T>({
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-        ),
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
         child: SizedBox(
           height: MediaQuery.sizeOf(ctx).height * 0.85,
           child: Material(
@@ -238,7 +237,11 @@ Future<LocationPickResult<T>?> showUtenPickerSheet<T>({
       alignment: Alignment.centerRight,
       child: Material(
         color: Theme.of(ctx).colorScheme.surface,
-        child: SizedBox(width: 420, height: double.infinity, child: buildSheet(ctx)),
+        child: SizedBox(
+          width: 420,
+          height: double.infinity,
+          child: buildSheet(ctx),
+        ),
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(

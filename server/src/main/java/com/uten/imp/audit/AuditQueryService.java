@@ -1,5 +1,6 @@
 package com.uten.imp.audit;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
 import jakarta.persistence.criteria.Predicate;
@@ -8,14 +9,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 审计日志查询（管理端读侧）。
@@ -23,7 +25,8 @@ import java.util.List;
  * <ul>
  *   <li>action：前缀模糊（如 "export" 匹配 export_purchase_report / export_sales_report ...）。</li>
  *   <li>actorAccount：子串模糊（不区分大小写）。</li>
- *   <li>dateFrom / dateTo：闭区间，按 created_at 过滤；LocalDate → 当日 00:00 / 次日 00:00 (UTC)。</li>
+ *   <li>dateFrom / dateTo：闭区间，按 created_at 过滤；业务日期边界使用 Asia/Shanghai，
+ *       数据库存储仍为 TIMESTAMPTZ。</li>
  * </ul>
  * 默认按 created_at DESC（最新在前），单页最多 100 条（由 Pageables 收敛）。
  */
@@ -34,6 +37,7 @@ public class AuditQueryService {
     private final AuditLogRepository repo;
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public PageResponse<AuditLogRow> query(String actionPrefix,
                                            String actorAccount,
                                            LocalDate dateFrom,
@@ -47,15 +51,15 @@ public class AuditQueryService {
             }
             if (actorAccount != null && !actorAccount.isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("actorAccount")),
-                        "%" + actorAccount.trim().toLowerCase() + "%"));
+                        "%" + actorAccount.trim().toLowerCase(Locale.ROOT) + "%"));
             }
             if (dateFrom != null) {
                 ps.add(cb.greaterThanOrEqualTo(root.get("createdAt"),
-                        dateFrom.atStartOfDay().atOffset(ZoneOffset.UTC)));
+                        BusinessTime.startOfDay(dateFrom)));
             }
             if (dateTo != null) {
                 // 闭区间：dateTo 当日 23:59:59.999
-                OffsetDateTime toExclusive = dateTo.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+                OffsetDateTime toExclusive = BusinessTime.startOfDay(dateTo.plusDays(1));
                 ps.add(cb.lessThan(root.get("createdAt"), toExclusive));
             }
             return cb.and(ps.toArray(new Predicate[0]));

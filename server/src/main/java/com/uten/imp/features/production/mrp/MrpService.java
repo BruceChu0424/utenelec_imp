@@ -2,6 +2,8 @@ package com.uten.imp.features.production.mrp;
 
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.plan.ProductionPlan;
@@ -161,8 +163,7 @@ public class MrpService {
     @Transactional(readOnly = true)
     public List<SubplanRef> subplans(UUID planId) {
         requirePlan(planId);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rs = em.createNativeQuery("""
+        List<Object[]> rs = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT p.id, p.bill_no, p.status, p.is_closed, p.bill_date, p.delivery_date,
                        (SELECT COALESCE(SUM(i.qty), 0) FROM production_plan_items i
                         WHERE i.plan_id = p.id AND i.is_deleted = false) AS total_qty,
@@ -172,7 +173,7 @@ public class MrpService {
                 JOIN production_plans p ON p.id = l.subplan_id
                 WHERE l.plan_id = :planId AND l.is_deleted = false AND p.is_deleted = false
                 ORDER BY p.bill_date DESC NULLS LAST, p.bill_no
-                """).setParameter("planId", planId).getResultList();
+                """).setParameter("planId", planId));
         List<SubplanRef> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             BigDecimal total = r[6] == null ? BigDecimal.ZERO : (BigDecimal) r[6];
@@ -247,7 +248,7 @@ public class MrpService {
                     : "无净需求外购物料（库存/在途已覆盖，或全部为自制件）");
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessTime.today();
         PurchaseRequest r = new PurchaseRequest();
         r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
         r.setBillDate(today);
@@ -339,7 +340,7 @@ public class MrpService {
             throw new ApiException(ErrorCode.BUSINESS, "明细货品均未维护 BOM，无物料可领");
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessTime.today();
         StockDocument d = new StockDocument();
         d.setDocType("DRAW");
         d.setBillNo(docNumberService.nextNumber(DocNumberPrefix.STOCK_DRAW));
@@ -430,7 +431,7 @@ public class MrpService {
             throw new ApiException(ErrorCode.BUSINESS, "计划明细均已全部入库（或无明细），无可入库数量");
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessTime.today();
         StockDocument d = new StockDocument();
         d.setDocType("FINISHED_IN");
         d.setBillNo(docNumberService.nextNumber(DocNumberPrefix.STOCK_FINISHED_IN));
@@ -517,7 +518,7 @@ public class MrpService {
         LocalDate subDelivery = begin != null
                 ? ((java.sql.Date) begin).toLocalDate() : plan.getDeliveryDate();
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessTime.today();
         ProductionPlan sub = new ProductionPlan();
         // 子计划编号 = 父计划号-N（编号体系内一眼看出归属，如 SJ26070078-1）
         sub.setBillNo(plan.getBillNo() + "-" + nextSubSuffix(plan.getBillNo()));
@@ -623,7 +624,7 @@ public class MrpService {
             }
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = BusinessTime.today();
         Object begin = em.createNativeQuery("""
                 SELECT MIN(plan_begin_date) FROM production_plan_items
                 WHERE plan_id = :planId AND is_deleted = false
@@ -708,7 +709,6 @@ public class MrpService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在"));
     }
 
-    @SuppressWarnings("unchecked")
     private List<MrpRow> explode(UUID planId) {
         return runExplode(MRP_SQL, "planId", planId);
     }
@@ -720,7 +720,7 @@ public class MrpService {
 
     private List<MrpRow> runExplode(String sql, String param, UUID id) {
         var q = em.createNativeQuery(sql).setParameter(param, id);
-        List<Object[]> rs = q.getResultList();
+        List<Object[]> rs = NativeQueryResults.objectArrayRows(q);
         List<MrpRow> out = new ArrayList<>(rs.size());
         for (Object[] x : rs) {
             out.add(new MrpRow(

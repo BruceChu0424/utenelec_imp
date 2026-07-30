@@ -5,6 +5,12 @@ import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 /** 访客申请装配：被访人信息 / 列表项（VisitorApplicationService 与各审批 Service 共用）。 */
 @Component
 public class VisitorApplicationMapper {
@@ -28,6 +34,39 @@ public class VisitorApplicationMapper {
 
     public VisitorListItem toListItem(VisitorApplication a) {
         String[] host = hostInfo(a);
+        return toListItem(a, host);
+    }
+
+    /**
+     * 批量装配一页列表。员工和部门只执行一次查询，避免每条访客申请各触发查询。
+     */
+    public List<VisitorListItem> toListItems(List<VisitorApplication> applications) {
+        Set<UUID> hostIds = applications.stream()
+                .map(VisitorApplication::getHostEmployeeId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, String[]> hosts = hostIds.isEmpty()
+                ? Map.of()
+                : employeeRepo.findAllWithDepartmentByIdIn(hostIds).stream()
+                        .collect(Collectors.toMap(
+                                employee -> employee.getId(),
+                                employee -> new String[]{
+                                        employee.getFullName(),
+                                        employee.getDepartment() == null
+                                                ? null
+                                                : employee.getDepartment().getName()
+                                },
+                                (first, ignored) -> first));
+        return applications.stream()
+                .map(application -> toListItem(
+                        application,
+                        hosts.getOrDefault(
+                                application.getHostEmployeeId(),
+                                new String[]{null, null})))
+                .toList();
+    }
+
+    private VisitorListItem toListItem(VisitorApplication a, String[] host) {
         return new VisitorListItem(
                 a.getId(), a.getVisitorName(), a.getCompany(), a.getVisitPurpose(),
                 host[0], host[1],

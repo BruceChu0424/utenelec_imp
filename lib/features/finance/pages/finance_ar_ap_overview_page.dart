@@ -27,6 +27,8 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/product_category_node.dart';
 import '../../basic_data/repositories/client_category_repository.dart';
 import '../../basic_data/repositories/supplier_category_repository.dart';
@@ -45,10 +47,12 @@ class FinanceArApOverviewPage extends ConsumerStatefulWidget {
   const FinanceArApOverviewPage({super.key});
 
   @override
-  ConsumerState<FinanceArApOverviewPage> createState() => _FinanceArApOverviewPageState();
+  ConsumerState<FinanceArApOverviewPage> createState() =>
+      _FinanceArApOverviewPageState();
 }
 
-class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPage> {
+class _FinanceArApOverviewPageState
+    extends ConsumerState<FinanceArApOverviewPage> {
   List<ProductCategoryNode> _clientTree = const [];
   List<ProductCategoryNode> _supplierTree = const [];
   bool _treeLoading = false;
@@ -58,7 +62,7 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
   String? _categoryId;
 
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _displayMode = 'ALL'; // ALL / ANY / AR_ONLY / AP_ONLY
   String _keyword = '';
   int _page = 1;
@@ -91,7 +95,8 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
       _categoryType = p.docType;
       _categoryId = p.extra['categoryId']?.toString();
       final dm = p.extra['displayMode']?.toString();
-      if (dm != null && const ['ALL', 'ANY', 'AR_ONLY', 'AP_ONLY'].contains(dm)) {
+      if (dm != null &&
+          const ['ALL', 'ANY', 'AR_ONLY', 'AP_ONLY'].contains(dm)) {
         _displayMode = dm;
       }
       if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
@@ -103,21 +108,23 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
 
   /// 当前筛选口径快照（不含关键字/分页）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
-        docType: _categoryType,
-        from: _fmt(_from),
-        to: _fmt(_to),
-        sortKey: _sortKey,
-        sortAsc: _sortAsc,
-        extra: {
-          if (_categoryId != null) 'categoryId': _categoryId,
-          'displayMode': _displayMode,
-        },
-      );
+    docType: _categoryType,
+    from: _fmt(_from),
+    to: _fmt(_to),
+    sortKey: _sortKey,
+    sortAsc: _sortAsc,
+    extra: {
+      if (_categoryId != null) 'categoryId': _categoryId,
+      'displayMode': _displayMode,
+    },
+  );
 
   /// 任何筛选变更后调用：标记已动手 + 防抖持久化到服务端。
   void _persistPrefs() {
     _dirty = true;
-    ref.read(financeArApOverviewReportPrefsProvider.notifier).update(_snapshot());
+    ref
+        .read(financeArApOverviewReportPrefsProvider.notifier)
+        .update(_snapshot());
   }
 
   Future<void> _loadTree() async {
@@ -139,9 +146,21 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
 
   /// 合成森林：客户类别根（挂客户分类树）+ 供应商类别根（挂供应商分类树）。
   List<ProductCategoryNode> get _forest => [
-        ProductCategoryNode(id: _clientRootId, code: 'CLIENT', name: '客户类别', level: 0, children: _clientTree),
-        ProductCategoryNode(id: _supplierRootId, code: 'SUPPLIER', name: '供应商类别', level: 0, children: _supplierTree),
-      ];
+    ProductCategoryNode(
+      id: _clientRootId,
+      code: 'CLIENT',
+      name: '客户类别',
+      level: 0,
+      children: _clientTree,
+    ),
+    ProductCategoryNode(
+      id: _supplierRootId,
+      code: 'SUPPLIER',
+      name: '供应商类别',
+      level: 0,
+      children: _supplierTree,
+    ),
+  ];
 
   ProductCategoryNode? _findIn(List<ProductCategoryNode> tree, String id) {
     for (final n in tree) {
@@ -177,7 +196,8 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
     _load();
   }
 
-  Future<void> _load() async {    setState(() => _loading = true);
+  Future<void> _load() async {
+    setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
       final query = <String, dynamic>{
@@ -191,7 +211,10 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
         'size': _size,
         ...sortQueryParams(_sortKey, _sortAsc),
       };
-      final json = await api.get('/finance/reports/ar-ap/overview', query: query);
+      final json = await api.get(
+        '/finance/reports/ar-ap/overview',
+        query: query,
+      );
       if (!mounted) return;
       setState(() {
         _data = parseReportResponse(json, _page);
@@ -223,20 +246,22 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
 
   /// 导出查询参数（过滤+排序，与 _load 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-        'dateFrom': _fmt(_from),
-        'dateTo': _fmt(_to),
-        'displayMode': _displayMode,
-        if (_keyword.isNotEmpty) 'keyword': _keyword,
-        if (_categoryType != null) 'categoryType': _categoryType,
-        if (_categoryId != null) 'categoryId': _categoryId,
-        ...sortQueryParams(_sortKey, _sortAsc),
-      };
+    'dateFrom': _fmt(_from),
+    'dateTo': _fmt(_to),
+    'displayMode': _displayMode,
+    if (_keyword.isNotEmpty) 'keyword': _keyword,
+    if (_categoryType != null) 'categoryType': _categoryType,
+    if (_categoryId != null) 'categoryId': _categoryId,
+    ...sortQueryParams(_sortKey, _sortAsc),
+  };
 
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get('/finance/reports/ar-ap/overview',
-        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final json = await api.get(
+      '/finance/reports/ar-ap/overview',
+      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+    );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
       headers: [for (final c in data.columns) c.label],
@@ -262,22 +287,27 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
     final selectedLabel = _categoryType == null
         ? '全部'
         : _categoryId == null
-            ? (_categoryType == 'CLIENT' ? '客户类别（全部）' : '供应商类别（全部）')
-            : (_categoryType == 'CLIENT' ? '客户：${_findIn(_clientTree, _categoryId!)?.name ?? ''}'
-                : '供应商：${_findIn(_supplierTree, _categoryId!)?.name ?? ''}');
+        ? (_categoryType == 'CLIENT' ? '客户类别（全部）' : '供应商类别（全部）')
+        : (_categoryType == 'CLIENT'
+              ? '客户：${_findIn(_clientTree, _categoryId!)?.name ?? ''}'
+              : '供应商：${_findIn(_supplierTree, _categoryId!)?.name ?? ''}');
 
     Widget treeWidget = UtenCategoryTreeView<ProductCategoryNode>(
       nodes: _forest,
       nodeEnabledPredicate: (_) => true,
       selectedIds: {
-        if (_categoryId != null) _categoryId!,
+        ?_categoryId,
         if (_categoryId == null && _categoryType == 'CLIENT') _clientRootId,
         if (_categoryId == null && _categoryType == 'SUPPLIER') _supplierRootId,
       },
       expandOnRowTap: true,
       onNodeTap: _onTreeTap,
     );
-    if (_treeLoading) treeWidget = const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+    if (_treeLoading) {
+      treeWidget = const Center(
+        child: CircularProgressIndicator(strokeWidth: 2.5),
+      );
+    }
 
     Widget body;
     if (bp == UtenBreakpoint.compact) {
@@ -295,10 +325,15 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
     return Scaffold(
       appBar: UtenAppBar(
         title: '应收应付',
-        leading: UtenBackButton(onPressed: () => backTo(context, defaultPath: RouteName.finance)),
+        leading: UtenBackButton(
+          onPressed: () => backTo(context, defaultPath: RouteName.finance),
+        ),
         actions: [
           IconButton(
-              icon: const Icon(Icons.refresh_rounded), tooltip: '刷新', onPressed: _load),
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: '刷新',
+            onPressed: _load,
+          ),
           if (bp == UtenBreakpoint.compact)
             Builder(
               builder: (sctx) => IconButton(
@@ -323,25 +358,46 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+              padding: const EdgeInsets.only(
+                bottom: UtenSpacing.s8,
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+              ),
               child: Row(
                 children: [
-                  Icon(Icons.account_balance_wallet_outlined, size: 18, color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.account_balance_wallet_outlined,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(width: UtenSpacing.s8),
                   Expanded(
-                    child: Text('应收应付 · $selectedLabel',
-                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    child: Text(
+                      '应收应付 · $selectedLabel',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   if (_data != null)
-                    Text('共 ${_data!.total}',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    Text(
+                      '共 ${_data!.total}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                 ],
               ),
             ),
             // 顶部筛选条：日期 + 显示方式 + 搜索
             Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s8, left: UtenSpacing.s4, right: UtenSpacing.s4),
+              padding: const EdgeInsets.only(
+                bottom: UtenSpacing.s8,
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+              ),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 4,
@@ -349,7 +405,12 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
                 children: [
                   TextButton.icon(
                     onPressed: () async {
-                      final p = await showDatePicker(context: context, initialDate: _from, firstDate: DateTime(2000), lastDate: DateTime(2100));
+                      final p = await showDatePicker(
+                        context: context,
+                        initialDate: _from,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
                       if (p != null) {
                         setState(() => _from = p);
                         _persistPrefs();
@@ -360,7 +421,12 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
                   ),
                   TextButton.icon(
                     onPressed: () async {
-                      final p = await showDatePicker(context: context, initialDate: _to, firstDate: DateTime(2000), lastDate: DateTime(2100));
+                      final p = await showDatePicker(
+                        context: context,
+                        initialDate: _to,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
                       if (p != null) {
                         setState(() => _to = p);
                         _persistPrefs();
@@ -384,7 +450,14 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
                       _persistPrefs();
                     },
                   ),
-                  SizedBox(width: 200, child: UtenSearchBar(hint: '搜索往来单位', initialValue: _keyword, onChanged: (v) => _keyword = v)),
+                  SizedBox(
+                    width: 200,
+                    child: UtenSearchBar(
+                      hint: '搜索往来单位',
+                      initialValue: _keyword,
+                      onChanged: (v) => _keyword = v,
+                    ),
+                  ),
                   FilledButton.tonalIcon(
                     onPressed: () {
                       _page = 1;
@@ -412,14 +485,16 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
       return const Center(child: Text('点击「查询」加载'));
     }
     final columns = data.columns
-        .map((c) => MasterColumnDef<Map<String, dynamic>>(
-              key: c.key,
-              label: c.label,
-              width: (c.width ?? 120).toDouble(),
-              type: c.type,
-              sortable: isSortableReportType(c.type),
-              value: (row) => formatReportCell(c, row),
-            ))
+        .map(
+          (c) => MasterColumnDef<Map<String, dynamic>>(
+            key: c.key,
+            label: c.label,
+            width: (c.width ?? 120).toDouble(),
+            type: c.type,
+            sortable: isSortableReportType(c.type),
+            value: (row) => formatReportCell(c, row),
+          ),
+        )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
       columns: columns,
@@ -430,6 +505,7 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/finance/reports/export',
+          exportPermission: Perm.financeReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '应收应付',
@@ -438,6 +514,7 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
         ),
         UtenExportButton(
           endpoint: '/finance/reports/export',
+          requiredPermission: Perm.financeReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '应收应付',
@@ -448,7 +525,7 @@ class _FinanceArApOverviewPageState extends ConsumerState<FinanceArApOverviewPag
       facets: const {},
       nullCounts: const {},
       filters: const {},
-      onFilterChanged: (_, __) {},
+      onFilterChanged: (_, _) {},
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,

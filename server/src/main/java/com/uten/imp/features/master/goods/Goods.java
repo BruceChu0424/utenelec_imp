@@ -24,7 +24,7 @@ import java.math.BigDecimal;
  * 关联字段（Unit/Color/Mould/Client/Vend/...）保留 *_legacy_id INT（老库主键，暂不建 FK，
  * 待对应主档表迁移后再加约束）。图片列建 bytea 但本次迁移不灌二进制（多数货品无图），结构留位。
  *
- * 类型映射：DOUBLE PRECISION→Double，NUMERIC(18,4)→BigDecimal，INT→Integer，
+ * 类型映射：金额/数量 NUMERIC→BigDecimal，INT→Integer，
  *           TEXT→String，BOOLEAN→Boolean，BYTEA→byte[]。
  */
 @Getter
@@ -78,7 +78,8 @@ public class Goods extends SoftDeletableEntity {
     private java.util.UUID ownerEmployeeId;
 
     // ===== 价格 / 数量 =====
-    private Double price;               // Price (DOUBLE PRECISION)
+    @Column(precision = 18, scale = 4)
+    private BigDecimal price;           // Price
     @Column(name = "a_price")
     private BigDecimal aPrice;          // APrice
     private BigDecimal price2;          // Price2

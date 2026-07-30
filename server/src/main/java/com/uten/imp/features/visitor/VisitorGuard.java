@@ -2,6 +2,7 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.stereotype.Component;
 
@@ -18,10 +19,14 @@ class VisitorGuard {
     }
 
     UUID requireStaff() {
+        return requireStaffUser().getId();
+    }
+
+    AuthUser requireStaffUser() {
         var user = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         if (user.isVisitor()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "仅员工可访问");
         }
-        return user.getId();
+        return user;
     }
 }

@@ -308,8 +308,10 @@ class ProductionPlanDetail {
   final String? workerId;
   final String? makerId;
   final String? approverId;
+
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
+
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final int? makerLegacyId;
@@ -348,9 +350,11 @@ class ProductionPlanDetail {
         stopped: (json['stopped'] as bool?) ?? false,
         canceled: (json['canceled'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
-        items: (json['items'] as List?)
-                ?.map((e) =>
-                    ProductionPlanItem.fromJson(e as Map<String, dynamic>))
+        items:
+            (json['items'] as List?)
+                ?.map(
+                  (e) => ProductionPlanItem.fromJson(e as Map<String, dynamic>),
+                )
                 .toList() ??
             const [],
       );

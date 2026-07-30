@@ -31,8 +31,13 @@ class DioPaymentStyleRepository implements PaymentStyleRepository {
 
   @override
   Future<List<PaymentStyleNode>> tree({String? category}) async {
-    final query = category == null ? null : <String, dynamic>{'category': category};
-    final list = await api.getList(PaymentStyleEndpoints.base + '/tree', query: query);
+    final query = category == null
+        ? null
+        : <String, dynamic>{'category': category};
+    final list = await api.getList(
+      '${PaymentStyleEndpoints.base}/tree',
+      query: query,
+    );
     return list.map(PaymentStyleNode.fromJson).toList();
   }
 
@@ -50,7 +55,10 @@ class DioPaymentStyleRepository implements PaymentStyleRepository {
 
   @override
   Future<PaymentStyleDetail> create(PaymentStyleSaveInput input) async {
-    final json = await api.post(PaymentStyleEndpoints.base, body: input.toJson());
+    final json = await api.post(
+      PaymentStyleEndpoints.base,
+      body: input.toJson(),
+    );
     return PaymentStyleDetail.fromJson(json);
   }
 
@@ -59,7 +67,10 @@ class DioPaymentStyleRepository implements PaymentStyleRepository {
     String id,
     PaymentStyleUpdateInput input,
   ) async {
-    final json = await api.put(PaymentStyleEndpoints.one(id), body: input.toJson());
+    final json = await api.put(
+      PaymentStyleEndpoints.one(id),
+      body: input.toJson(),
+    );
     return PaymentStyleDetail.fromJson(json);
   }
 

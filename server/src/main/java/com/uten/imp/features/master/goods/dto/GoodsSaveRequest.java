@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -32,7 +33,8 @@ public class GoodsSaveRequest {
     private String shortName;    // Short_Name 简称
     private String model;        // Number 型号
     private String spec;         // Standard 规格
-    private BigDecimal price;    // Price（entity 存 Double，service 转）
+    @Digits(integer = 14, fraction = 4)
+    private BigDecimal price;    // Price（NUMERIC(18,4)）
     private String material;     // Material 材质
     private BigDecimal thickness;
     @JsonProperty("mWeight")

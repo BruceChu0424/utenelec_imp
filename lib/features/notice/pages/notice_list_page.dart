@@ -20,6 +20,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
@@ -74,9 +75,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: UtenColors.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: UtenColors.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -105,8 +104,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
           ),
           child: UtenSegmentedFilter<NoticeFilter>(
             selected: filter,
-            onChanged: (v) =>
-                ref.read(noticeFilterProvider.notifier).state = v,
+            onChanged: (v) => ref.read(noticeFilterProvider.notifier).state = v,
             segments: const [
               UtenSegment(value: NoticeFilter.all, label: '全部'),
               UtenSegment(value: NoticeFilter.unread, label: '未读'),
@@ -258,8 +256,8 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                     Text(
                       '已选 ${_selected.length} 条',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const Spacer(),
                     // 未选中时视觉禁用（UtenActionButton 无 disabled 参数，
@@ -354,13 +352,13 @@ class _NoticeCard extends StatelessWidget {
                             if (priority.showBadge)
                               Padding(
                                 padding: const EdgeInsets.only(
-                                    right: UtenSpacing.s4),
+                                  right: UtenSpacing.s4,
+                                ),
                                 child: _PriorityChip(priority: priority),
                               ),
                             if (notice.topPriority)
                               const Padding(
-                                padding:
-                                    EdgeInsets.only(right: UtenSpacing.s4),
+                                padding: EdgeInsets.only(right: UtenSpacing.s4),
                                 child: Icon(
                                   Icons.push_pin_rounded,
                                   size: 14,
@@ -462,8 +460,11 @@ class _NoticeCard extends StatelessWidget {
                   ),
                 ),
                 child: checked
-                    ? const Icon(Icons.check_rounded,
-                        size: 14, color: Colors.white)
+                    ? const Icon(
+                        Icons.check_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      )
                     : null,
               ),
             ),
@@ -473,7 +474,7 @@ class _NoticeCard extends StatelessWidget {
   }
 
   String _fmt(DateTime d) {
-    final now = DateTime.now();
+    final now = ChinaDateTime.now();
     final diff = now.difference(d);
     if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
     if (diff.inHours < 24) return '${diff.inHours} 小时前';
@@ -530,9 +531,7 @@ class _WorkTag extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         borderRadius: UtenRadius.smAll,
-        border: Border.all(
-          color: UtenColors.teal600.withValues(alpha: 0.45),
-        ),
+        border: Border.all(color: UtenColors.teal600.withValues(alpha: 0.45)),
       ),
       child: const Row(
         mainAxisSize: MainAxisSize.min,

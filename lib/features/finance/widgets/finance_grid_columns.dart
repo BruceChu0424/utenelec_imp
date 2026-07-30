@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -40,6 +41,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
 
   // ---- transfer（转入 bankTransfer）----
   String? inAccountId;
+
   /// 转入行日期（yyyy-MM-dd）；ValueNotifier 让日期单元格点击后自动刷新。
   final ValueNotifier<String?> occurDateNotifier = ValueNotifier<String?>(null);
   String? get occurDate => occurDateNotifier.value;
@@ -48,6 +50,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   // ---- 公共 ----
   final TextEditingController qty = TextEditingController();
   final TextEditingController price = TextEditingController();
+
   /// settle/transfer：本次/转入金额录入；allocate：构造时透传初始计算结果（一般留空）。
   final TextEditingController amount = TextEditingController();
 
@@ -126,7 +129,9 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
 
 // ===== allocate：项目 + 部门 + 数量 + 单价 + 金额(自动) =====
 List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
-    FinanceNameService names, FinanceDocType type) {
+  FinanceNameService names,
+  FinanceDocType type,
+) {
   final cat = type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
   return [
     EditableGridColumn<FinanceGridRow>(
@@ -200,7 +205,8 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
 
 // ===== transfer：转入账户 + 日期 + 金额（录入）=====
 List<EditableGridColumn<FinanceGridRow>> _transferColumns(
-    FinanceNameService names) {
+  FinanceNameService names,
+) {
   return [
     EditableGridColumn<FinanceGridRow>(
       key: 'inAccount',
@@ -229,8 +235,9 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
           onTap: () async {
             final picked = await showDatePicker(
               context: context,
-              initialDate:
-                  v == null ? DateTime.now() : (DateTime.tryParse(v) ?? DateTime.now()),
+              initialDate: v == null
+                  ? ChinaDateTime.today()
+                  : (DateTime.tryParse(v) ?? ChinaDateTime.today()),
               firstDate: DateTime(2010),
               lastDate: DateTime(2100),
             );

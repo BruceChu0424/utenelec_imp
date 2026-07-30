@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -25,14 +26,19 @@ public class EmployeeNameResolver {
     /** 按 employees.id 直查；查不到再按 users.id 兼容解析。皆无返回 null。 */
     public String nameOf(UUID id) {
         if (id == null) return null;
-        Object direct = em.createNativeQuery("SELECT full_name FROM employees WHERE id = :id")
-                .setParameter("id", id)
-                .getResultStream().findFirst().orElse(null);
+        Object direct = findFirst(
+                "SELECT full_name FROM employees WHERE id = :id", id);
         if (direct != null) return direct.toString();
-        Object viaUser = em.createNativeQuery(
-                        "SELECT e.full_name FROM users u JOIN employees e ON e.id = u.employee_id WHERE u.id = :id")
-                .setParameter("id", id)
-                .getResultStream().findFirst().orElse(null);
+        Object viaUser = findFirst(
+                "SELECT e.full_name FROM users u JOIN employees e ON e.id = u.employee_id WHERE u.id = :id", id);
         return viaUser != null ? viaUser.toString() : null;
+    }
+
+    private Object findFirst(String sql, UUID id) {
+        List<?> rows = em.createNativeQuery(sql)
+                .setParameter("id", id)
+                .setMaxResults(1)
+                .getResultList();
+        return rows.isEmpty() ? null : rows.getFirst();
     }
 }

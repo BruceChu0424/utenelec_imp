@@ -3,6 +3,7 @@
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../models/notice.dart';
 
 abstract interface class NoticeRepository {
@@ -85,14 +86,17 @@ class DioNoticeRepository implements NoticeRepository {
     NoticePriority priority = NoticePriority.normal,
     List<String> attachments = const [],
   }) async {
-    final json = await _api.post(ApiEndpoints.notices, body: {
-      'title': title,
-      'content': content,
-      'type': type.name,
-      'topPriority': topPriority,
-      'priority': priority.name,
-      'attachments': attachments,
-    });
+    final json = await _api.post(
+      ApiEndpoints.notices,
+      body: {
+        'title': title,
+        'content': content,
+        'type': type.name,
+        'topPriority': topPriority,
+        'priority': priority.name,
+        'attachments': attachments,
+      },
+    );
     return _fromJson(json);
   }
 
@@ -114,33 +118,33 @@ class DioNoticeRepository implements NoticeRepository {
       type: _typeFrom(json['type'] as String?),
       publisher: json['publisher'] as String? ?? '',
       publishedAt:
-          DateTime.tryParse(json['publishedAt'] as String? ?? '')?.toLocal() ??
-              DateTime.now(),
+          ChinaDateTime.tryParse(json['publishedAt'] as String?) ??
+          ChinaDateTime.now(),
       isRead: json['isRead'] as bool? ?? false,
       readAt: json['readAt'] != null
-          ? DateTime.tryParse(json['readAt'] as String)?.toLocal()
+          ? ChinaDateTime.tryParse(json['readAt'] as String?)
           : null,
       topPriority: json['topPriority'] as bool? ?? false,
       priority: _priorityFrom(json['priority'] as String?),
-      attachments:
-          (json['attachments'] as List<dynamic>? ?? const []).cast<String>(),
+      attachments: (json['attachments'] as List<dynamic>? ?? const [])
+          .cast<String>(),
     );
   }
 
   static NoticeType _typeFrom(String? name) => switch (name) {
-        'policy' => NoticeType.policy,
-        'benefit' => NoticeType.benefit,
-        'system' => NoticeType.system,
-        'urgent' => NoticeType.urgent,
-        'task' => NoticeType.task,
-        'approval' => NoticeType.approval,
-        'workflow' => NoticeType.workflow,
-        _ => NoticeType.announcement,
-      };
+    'policy' => NoticeType.policy,
+    'benefit' => NoticeType.benefit,
+    'system' => NoticeType.system,
+    'urgent' => NoticeType.urgent,
+    'task' => NoticeType.task,
+    'approval' => NoticeType.approval,
+    'workflow' => NoticeType.workflow,
+    _ => NoticeType.announcement,
+  };
 
   static NoticePriority _priorityFrom(String? name) => switch (name) {
-        'important' => NoticePriority.important,
-        'urgent' => NoticePriority.urgent,
-        _ => NoticePriority.normal,
-      };
+    'important' => NoticePriority.important,
+    'urgent' => NoticePriority.urgent,
+    _ => NoticePriority.normal,
+  };
 }

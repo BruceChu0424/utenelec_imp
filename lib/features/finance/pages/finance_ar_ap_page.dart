@@ -12,6 +12,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -33,6 +34,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   String? _direction; // null=全部 / AR / AP
   bool? _settled; // null=全部 / false=未清 / true=已清
@@ -50,14 +52,16 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   }
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
       _pageNum = page;
     });
     try {
-      final r = await ref.read(arApLedgerRepositoryProvider).list(
+      final r = await ref
+          .read(arApLedgerRepositoryProvider)
+          .list(
             page: page,
             filter: ArApFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -67,19 +71,19 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载台账失败';
         _loading = false;
@@ -96,47 +100,62 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
 
     return <MasterColumnDef<ArApLedgerItem>>[
       MasterColumnDef(
-          key: 'billNo', label: '单据号', width: 150, value: (it) => it.billNo),
+        key: 'billNo',
+        label: '单据号',
+        width: 150,
+        value: (it) => it.billNo,
+      ),
       MasterColumnDef(
-          key: 'direction',
-          label: '方向',
-          width: 80,
-          value: (it) => it.direction == 'AR' ? '应收' : (it.direction == 'AP' ? '应付' : '—')),
+        key: 'direction',
+        label: '方向',
+        width: 80,
+        value: (it) =>
+            it.direction == 'AR' ? '应收' : (it.direction == 'AP' ? '应付' : '—'),
+      ),
       MasterColumnDef(
-          key: 'party', label: '往来方', width: 200, value: partyLabel),
+        key: 'party',
+        label: '往来方',
+        width: 200,
+        value: partyLabel,
+      ),
       MasterColumnDef(
-          key: 'billDate',
-          label: '立帐日',
-          width: 120,
-          type: 'date',
-          sortable: true,
-          value: (it) => (it.billDate ?? '').substring(0, 10)),
+        key: 'billDate',
+        label: '立帐日',
+        width: 120,
+        type: 'date',
+        sortable: true,
+        value: (it) => (it.billDate ?? '').substring(0, 10),
+      ),
       MasterColumnDef(
-          key: 'amountOriginalLocal',
-          label: '立帐额',
-          width: 130,
-          type: 'money',
-          sortable: true,
-          value: (it) => it.amountOriginalLocal?.toStringAsFixed(2)),
+        key: 'amountOriginalLocal',
+        label: '立帐额',
+        width: 130,
+        type: 'money',
+        sortable: true,
+        value: (it) => it.amountOriginalLocal?.toStringAsFixed(2),
+      ),
       MasterColumnDef(
-          key: 'amountSettled',
-          label: '已核销',
-          width: 130,
-          type: 'money',
-          sortable: true,
-          value: (it) => it.amountSettled?.toStringAsFixed(2)),
+        key: 'amountSettled',
+        label: '已核销',
+        width: 130,
+        type: 'money',
+        sortable: true,
+        value: (it) => it.amountSettled?.toStringAsFixed(2),
+      ),
       MasterColumnDef(
-          key: 'amountBalance',
-          label: '余额',
-          width: 130,
-          type: 'money',
-          sortable: true,
-          value: (it) => it.amountBalance?.toStringAsFixed(2)),
+        key: 'amountBalance',
+        label: '余额',
+        width: 130,
+        type: 'money',
+        sortable: true,
+        value: (it) => it.amountBalance?.toStringAsFixed(2),
+      ),
       MasterColumnDef(
-          key: 'settled',
-          label: '已结',
-          width: 80,
-          value: (it) => it.settled ? '是' : '否'),
+        key: 'settled',
+        label: '已结',
+        width: 80,
+        value: (it) => it.settled ? '是' : '否',
+      ),
     ];
   }
 
@@ -158,7 +177,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       appBar: UtenAppBar(
         title: '应收应付台账',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.finance)),
+          onPressed: () => backTo(context, defaultPath: RouteName.finance),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -176,17 +196,24 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                 // 页面头：Icon + 标题 + 计数（搜索挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.account_balance_wallet_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.account_balance_wallet_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('台账 ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '台账 ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -195,7 +222,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

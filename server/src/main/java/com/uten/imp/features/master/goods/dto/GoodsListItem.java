@@ -14,7 +14,7 @@ import java.util.UUID;
  * 供基础资料筛选栏与卡片展示。cNumber 显式 {@code @JsonProperty("cNumber")} 防 Jackson 连续大写
  * decapitalize 坑（参考 mWeight→mweight），前端 fromJson 同名读取。
  *
- * <p>price 统一用 BigDecimal 便于前端精度展示（实体 price 为 Double，service 端转换）。
+ * <p>price 使用 BigDecimal，与数据库 NUMERIC(18,4) 一致。
  */
 @Getter
 @AllArgsConstructor

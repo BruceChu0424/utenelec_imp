@@ -74,9 +74,9 @@ extension PerformancePreferenceValue on PerformancePreference {
 
   /// 转换为强制档位（auto 时返回 null）
   PerformanceTier? get forcedTier => switch (this) {
-        PerformancePreference.auto => null,
-        PerformancePreference.lite => PerformanceTier.lite,
-        PerformancePreference.standard => PerformanceTier.standard,
-        PerformancePreference.rich => PerformanceTier.rich,
-      };
+    PerformancePreference.auto => null,
+    PerformancePreference.lite => PerformanceTier.lite,
+    PerformancePreference.standard => PerformanceTier.standard,
+    PerformancePreference.rich => PerformanceTier.rich,
+  };
 }

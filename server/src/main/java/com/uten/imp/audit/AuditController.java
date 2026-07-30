@@ -13,7 +13,7 @@ import java.time.LocalDate;
 
 /**
  * 审计日志查看（管理端读侧）。
- * <p>仅超级管理员（持有 user:manage，与 {@code AdminPermissionController} /
+ * <p>仅超级管理员（持有 authorization:manage，与 {@code AdminPermissionController} /
  * {@code AdminUserController} 一致）可访问——审计含全员操作记录，非管理员不可见。
  * <p>写侧：导出报表 / 登录 / 改密等事件由 {@link AuditService#logExplicit} 落库；
  * 数据变更由 audit_log 触发器写入。
@@ -34,7 +34,7 @@ public class AuditController {
      * @param dateTo      截止日期（含，ISO yyyy-MM-dd）
      */
     @GetMapping
-    @PreAuthorize("hasAuthority('user:manage')")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public PageResponse<AuditLogRow> list(
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String actorAccount,

@@ -27,7 +27,11 @@ import '../repositories/finance_repository.dart';
 import '../widgets/finance_status_badge.dart';
 
 class FinanceDocDetailPage extends ConsumerStatefulWidget {
-  const FinanceDocDetailPage({super.key, required this.docType, required this.id});
+  const FinanceDocDetailPage({
+    super.key,
+    required this.docType,
+    required this.id,
+  });
   final FinanceDocType docType;
   final String id;
 
@@ -63,9 +67,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       if (_cfg.isAllocate) {
         await ref
             .read(financeNameServiceProvider)
-            .loadStyleCategory(_cfg.type == FinanceDocType.expense
-                ? 'EXPENSE'
-                : 'INCOME');
+            .loadStyleCategory(
+              _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME',
+            );
       }
       final d = await ref
           .read(financeRepositoryProvider(widget.docType))
@@ -90,13 +94,17 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     }
   }
 
-  Future<void> _approve() async => _doAction('审核后将核销 AR/AP 并变动账户余额、写流水，确认审核？',
-      (repo) => repo.approve(widget.id), '已审核');
-  Future<void> _reverse() async => _doAction('红冲将反向冲销，确认？',
-      (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _approve() async => _doAction(
+    '审核后将核销 AR/AP 并变动账户余额、写流水，确认审核？',
+    (repo) => repo.approve(widget.id),
+    '已审核',
+  );
+  Future<void> _reverse() async =>
+      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+
   /// C6 财务确认（仅费用单）：已过账 → 财务确认入账。
-  Future<void> _glConfirm() async => _doAction('确认该费用单的总账分录入账？',
-      (repo) => repo.glConfirm(widget.id), '已财务确认');
+  Future<void> _glConfirm() async =>
+      _doAction('确认该费用单的总账分录入账？', (repo) => repo.glConfirm(widget.id), '已财务确认');
 
   Future<void> _doAction(
     String confirm,
@@ -110,8 +118,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         title: const Text('确认'),
         content: Text(confirm),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -139,7 +153,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         title: const Text('删除单据'),
         content: const Text('确定删除该草稿单据吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -151,7 +168,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     if (c != true) return;
     setState(() => _busy = true);
     try {
-      await ref.read(financeRepositoryProvider(widget.docType)).delete(widget.id);
+      await ref
+          .read(financeRepositoryProvider(widget.docType))
+          .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
       context.go('/finance/${_cfg.type.pathSegment}');
@@ -190,22 +209,20 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
-                  ? Center(child: Text(_error!))
-                  : _detail == null
-                      ? const SizedBox.shrink()
-                      : ListView(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          children: [
-                            _headerCard(theme, names),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _itemsCard(theme, names),
-                          ],
-                        ),
+              ? Center(child: Text(_error!))
+              : _detail == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  children: [
+                    _headerCard(theme, names),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _itemsCard(theme, names),
+                  ],
+                ),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy
-          ? null
-          : _actions(theme),
+      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -214,8 +231,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     final partyName = _cfg.isClient
         ? names.client(d.clientId)
         : _cfg.isSupplier
-            ? names.supplier(d.supplierId)
-            : null;
+        ? names.supplier(d.supplierId)
+        : null;
     final accountName = names.account(d.accountId ?? d.outAccountId);
     final rows = <_KV>[
       _KV('单据号', d.billNo),
@@ -233,8 +250,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       if (_cfg.hasInvoiceNo) _KV('发票号', d.invoiceNo),
       _KV('合计(本币)', d.amountLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
-      _KV('状态', null,
-          badge: FinanceStatusBadge(status: d.status, closed: d.closed)),
+      _KV(
+        '状态',
+        null,
+        badge: FinanceStatusBadge(status: d.status, closed: d.closed),
+      ),
       // C6：费用单总账过账状态（0 未过账/1 待确认/2 已确认）
       if (_cfg.type == FinanceDocType.expense && d.glStatus != null)
         _KV('总账', switch (d.glStatus) {
@@ -246,9 +266,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
-          children: [for (final r in rows) _kvRow(theme, r)],
-        ),
+        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
       ),
     );
   }
@@ -259,9 +277,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       children: [
         SizedBox(
           width: 84,
-          child: Text(r.label,
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          child: Text(
+            r.label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         const SizedBox(width: UtenSpacing.s8),
         Expanded(child: r.badge ?? Text(r.value ?? '—')),
@@ -276,13 +297,15 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     if (items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-        child: Text('无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        child: Text(
+          '无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       );
     }
-    final styleCat =
-        _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
+    final styleCat = _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
     final columns = <MasterColumnDef<FinanceDocItem>>[
       if (_cfg.isSettle) ...[
         MasterColumnDef(
@@ -317,8 +340,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           key: 'dept',
           label: '部门',
           width: 140,
-          value: (it) =>
-              names.client(it.departmentId).replaceAll('—', it.departmentId ?? '—'),
+          value: (it) => names
+              .client(it.departmentId)
+              .replaceAll('—', it.departmentId ?? '—'),
         ),
         MasterColumnDef(
           key: 'qty',
@@ -369,9 +393,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('明细 (${items.length})',
-            style: theme.textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          '明细 (${items.length})',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<FinanceDocItem>(
           embedded: true,
@@ -393,58 +420,76 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     final children = <Widget>[];
     if (s == kFinanceStatusDraft && _canEdit) {
       children
-        ..add(UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline,
-          onPressed: _delete,
-          child: const Text('删除'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          type: UtenButtonType.secondary,
-          icon: Icons.edit_outlined,
-          onPressed: () => context.push(
-              '/finance/${_cfg.type.pathSegment}/${widget.id}/edit'),
-          child: const Text('编辑'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () => context.push(
+              '/finance/${_cfg.type.pathSegment}/${widget.id}/edit',
+            ),
+            child: const Text('编辑'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approve,
-          child: const Text('审核'),
-        ));
+        ..add(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approve,
+            child: const Text('审核'),
+          ),
+        );
     } else if (s == kFinanceStatusApproved && _canEdit) {
       // C6：费用单已过账待确认 → 财务确认按钮（在红冲前）
       if (_cfg.type == FinanceDocType.expense && _detail!.glStatus == 1) {
         children
-          ..add(UtenButton(
-            icon: Icons.fact_check_outlined,
-            onPressed: _glConfirm,
-            child: const Text('财务确认'),
-          ))
+          ..add(
+            UtenButton(
+              icon: Icons.fact_check_outlined,
+              onPressed: _glConfirm,
+              child: const Text('财务确认'),
+            ),
+          )
           ..add(const SizedBox(width: UtenSpacing.s8));
       }
-      children.add(UtenButton(
-        type: UtenButtonType.danger,
-        icon: Icons.undo_outlined,
-        onPressed: _reverse,
-        child: const Text('红冲'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.danger,
+          icon: Icons.undo_outlined,
+          onPressed: _reverse,
+          child: const Text('红冲'),
+        ),
+      );
     } else {
-      children.add(UtenButton(
-        type: UtenButtonType.secondary,
-        onPressed: () => context.go('/finance/${_cfg.type.pathSegment}'),
-        child: const Text('返回列表'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => context.go('/finance/${_cfg.type.pathSegment}'),
+          child: const Text('返回列表'),
+        ),
+      );
     }
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: children,
+        ),
       ),
     );
   }

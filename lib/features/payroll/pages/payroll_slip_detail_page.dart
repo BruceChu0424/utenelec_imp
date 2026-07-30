@@ -17,21 +17,43 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/io/file_saver.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../models/payroll_download.dart';
 import '../models/payroll_item.dart';
 import '../models/payroll_slip.dart';
 import '../providers/payroll_providers.dart';
 
-class PayrollSlipDetailPage extends ConsumerWidget {
+class PayrollSlipDetailPage extends ConsumerStatefulWidget {
   const PayrollSlipDetailPage({super.key, required this.slipId});
 
   final String slipId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final detail = ref.watch(payrollDetailProvider(slipId));
+  ConsumerState<PayrollSlipDetailPage> createState() =>
+      _PayrollSlipDetailPageState();
+}
+
+class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _markViewed());
+  }
+
+  Future<void> _markViewed() async {
+    try {
+      await markPayrollViewed(ref, widget.slipId);
+    } catch (error) {
+      if (mounted) context.appError('查看状态记录失败：$error');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = ref.watch(payrollDetailProvider(widget.slipId));
 
     return Scaffold(
       appBar: const UtenAppBar(title: '工资条详情', showBackButton: true),
@@ -40,14 +62,9 @@ class PayrollSlipDetailPage extends ConsumerWidget {
         error: (e, _) => UtenEmpty.error(
           message: '加载失败：$e',
           actionLabel: '重试',
-          onAction: () => ref.invalidate(payrollDetailProvider(slipId)),
+          onAction: () => ref.invalidate(payrollDetailProvider(widget.slipId)),
         ),
-        data: (slip) {
-          if (slip == null) {
-            return const UtenEmpty(message: '工资条不存在');
-          }
-          return _DetailContent(slip: slip);
-        },
+        data: (slip) => _DetailContent(slip: slip),
       ),
     );
   }
@@ -92,121 +109,152 @@ class _DetailContent extends ConsumerWidget {
             // narrow 容器：compact 提供 gutter，medium+ 把内容钳到 1120 居中
             child: UtenContentContainer.narrow(
               child: ListView(
-                padding: const EdgeInsets.symmetric(
-                  vertical: UtenSpacing.s16,
-                ),
-              children: [
-                // 头部 - 大金额展示
-                _buildHero(theme),
-                const SizedBox(height: UtenSpacing.s16),
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                children: [
+                  // 头部 - 大金额展示
+                  _buildHero(theme),
+                  const SizedBox(height: UtenSpacing.s16),
 
-                // 状态信息
-                UtenCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    children: [
-                      UtenInfoRow(label: '所属期间', value: slip.periodLabelZh),
-                      UtenInfoRow(label: '员工工号', value: slip.employeeCode),
-                      UtenInfoRow(
-                        label: '发布日期',
-                        value: _formatDate(slip.publishedAt),
-                      ),
-                      UtenInfoRow(
-                        label: '查看时间',
-                        value: slip.viewedAt != null
-                            ? _formatDateTime(slip.viewedAt)
-                            : '—',
-                        showDivider: false,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-
-                // 应发明细
-                const UtenSectionHeader(
-                  title: '应发明细',
-                  icon: Icons.add_circle_outline_rounded,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                UtenCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < earnings.length; i++)
-                        UtenInfoRow(
-                          label: earnings[i].name,
-                          value: '+ ¥ ${earnings[i].amount.toStringAsFixed(2)}',
-                          showDivider: i != earnings.length - 1,
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-
-                // 扣除明细
-                const UtenSectionHeader(
-                  title: '扣除明细',
-                  icon: Icons.remove_circle_outline_rounded,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                UtenCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < deductions.length; i++)
-                        UtenInfoRow(
-                          label: deductions[i].name,
-                          value:
-                              '- ¥ ${deductions[i].amount.toStringAsFixed(2)}',
-                          showDivider: i != deductions.length - 1,
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-
-                // 合计
-                const UtenSectionHeader(title: '合计', icon: Icons.calculate_outlined),
-                const SizedBox(height: UtenSpacing.s8),
-                UtenCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    children: [
-                      UtenInfoRow(
-                        label: '应发合计',
-                        value: '¥ ${slip.grossIncome.toStringAsFixed(2)}',
-                      ),
-                      UtenInfoRow(
-                        label: '扣除合计',
-                        value: '¥ ${slip.totalDeduction.toStringAsFixed(2)}',
-                      ),
-                      UtenInfoRow(
-                        label: '实发金额',
-                        value: '¥ ${slip.netIncome.toStringAsFixed(2)}',
-                        isImportant: true,
-                        showDivider: false,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-
-                // 备注
-                if (slip.remark != null) ...[
+                  // 状态信息
                   UtenCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        UtenInfoRow(label: '所属期间', value: slip.periodLabelZh),
+                        UtenInfoRow(label: '员工工号', value: slip.employeeCode),
+                        UtenInfoRow(
+                          label: '发布日期',
+                          value: _formatDate(slip.publishedAt),
+                        ),
+                        UtenInfoRow(
+                          label: '查看时间',
+                          value: slip.viewedAt != null
+                              ? _formatDateTime(slip.viewedAt)
+                              : '—',
+                          showDivider: false,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s16),
+
+                  // 应发明细
+                  const UtenSectionHeader(
+                    title: '应发明细',
+                    icon: Icons.add_circle_outline_rounded,
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  UtenCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < earnings.length; i++)
+                          UtenInfoRow(
+                            label: earnings[i].name,
+                            value:
+                                '+ ¥ ${earnings[i].amount.toStringAsFixed(2)}',
+                            showDivider: i != earnings.length - 1,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s16),
+
+                  // 扣除明细
+                  const UtenSectionHeader(
+                    title: '扣除明细',
+                    icon: Icons.remove_circle_outline_rounded,
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  UtenCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < deductions.length; i++)
+                          UtenInfoRow(
+                            label: deductions[i].name,
+                            value:
+                                '- ¥ ${deductions[i].amount.toStringAsFixed(2)}',
+                            showDivider: i != deductions.length - 1,
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s16),
+
+                  // 合计
+                  const UtenSectionHeader(
+                    title: '合计',
+                    icon: Icons.calculate_outlined,
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  UtenCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        UtenInfoRow(
+                          label: '应发合计',
+                          value: '¥ ${slip.grossIncome.toStringAsFixed(2)}',
+                        ),
+                        UtenInfoRow(
+                          label: '扣除合计',
+                          value: '¥ ${slip.totalDeduction.toStringAsFixed(2)}',
+                        ),
+                        UtenInfoRow(
+                          label: '实发金额',
+                          value: '¥ ${slip.netIncome.toStringAsFixed(2)}',
+                          isImportant: true,
+                          showDivider: false,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s16),
+
+                  // 备注
+                  if (slip.remark != null) ...[
+                    UtenCard(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 18,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              slip.remark!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s16),
+                  ],
+
+                  // 声明
+                  Container(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerLow,
+                      borderRadius: UtenRadius.lgAll,
+                    ),
                     child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
-                          Icons.info_outline_rounded,
-                          size: 18,
+                          Icons.lock_outline_rounded,
+                          size: 14,
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            slip.remark!,
+                            '工资信息属于个人隐私，请妥善保管，请勿截图外传。',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -217,35 +265,6 @@ class _DetailContent extends ConsumerWidget {
                   ),
                   const SizedBox(height: UtenSpacing.s16),
                 ],
-
-                // 声明
-                Container(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerLow,
-                    borderRadius: UtenRadius.lgAll,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.lock_outline_rounded,
-                        size: 14,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '工资信息属于个人隐私，请妥善保管，请勿截图外传。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-              ],
               ),
             ),
           ),
@@ -256,13 +275,28 @@ class _DetailContent extends ConsumerWidget {
           child: UtenActionButton(
             isExpanded: true,
             icon: Icons.download_outlined,
-            type: UtenActionButtonType.primary,
             label: const Text('下载工资条'),
             loadingLabel: const Text('生成中…'),
             onAction: () async {
-              await markPayrollDownloaded(ref, slip.id);
-              if (context.mounted) {
-                context.appSuccess('已生成工资条 PDF（Mock）');
+              try {
+                final bytes = await downloadPayrollSlip(ref, slip.id);
+                if (!hasPdfSignature(bytes)) {
+                  throw const FormatException('服务器返回的文件不是有效 PDF');
+                }
+                final savedPath = await saveBytes(
+                  bytes,
+                  payrollPdfFilename(
+                    period: slip.periodLabel,
+                    employeeCode: slip.employeeCode,
+                  ),
+                );
+                if (context.mounted) {
+                  context.appSuccess('工资条已保存：$savedPath');
+                }
+              } catch (error) {
+                if (context.mounted) {
+                  context.appError('下载失败：$error');
+                }
               }
             },
           ),

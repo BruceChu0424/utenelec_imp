@@ -44,7 +44,10 @@ class DioDepartmentRepository implements DepartmentRepository {
 
   @override
   Future<DepartmentInfo> update(String id, DepartmentUpdateInput input) async {
-    final json = await api.put(ApiEndpoints.department(id), body: input.toJson());
+    final json = await api.put(
+      ApiEndpoints.department(id),
+      body: input.toJson(),
+    );
     return DepartmentInfo.fromJson(json);
   }
 

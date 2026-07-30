@@ -1,21 +1,25 @@
 package com.uten.imp.features.visitor.sms;
 
+import com.uten.imp.common.util.ChinaMobileNumber;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /**
- * 开发期短信网关：打印日志（不真实发送）。
- * 验证码会出现在后端日志中，便于本地联调。
+ * 开发期短信网关（不真实发送）。
+ * 明文验证码仅可由显式启用的开发响应字段返回，不写入可长期留存的日志。
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(prefix = "uten.sms", name = "provider", havingValue = "log", matchIfMissing = true)
+@Profile("dev")
+@ConditionalOnProperty(prefix = "uten.sms", name = "provider", havingValue = "log")
 public class LogSmsGateway implements SmsGateway {
 
     @Override
-    public boolean sendCode(String phone, String code) {
-        log.info("[SMS-LOG] 访客验证码 -> 手机号={} 验证码={}（开发期未真实发送）", phone, code);
-        return true;
+    public SmsSendResult sendCode(String phone, String code) {
+        log.info("[SMS-LOG] 已模拟发送访客验证码到 phoneSuffix={}（验证码不写日志）",
+                ChinaMobileNumber.maskedSuffix(phone));
+        return SmsSendResult.ACCEPTED;
     }
 }

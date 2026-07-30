@@ -7,6 +7,7 @@ import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +21,7 @@ import java.util.UUID;
  * <p>读侧（{@link #readInt}/{@link #readLong}）被各安全组件（限流/锁定/密码/令牌/短信/导出上限）调用：
  * <b>不缓存</b>（每次 findById）——设置表仅 11 行 PK 查询亚毫秒，且管理员改设置后**立即生效**。
  *
- * <p>写侧（{@link #write}）多重防护：① 仅超管可达（Controller @PreAuthorize user:manage）+
+ * <p>写侧（{@link #write}）多重防护：① 仅超管可达（authorization:manage + DB superAdmin）+
  * ② <b>二次密码确认</b>（高危配置，即使 access token 被盗也需账号密码才能改）+ ③ 类型/非负校验 +
  * ④ 落库 + ⑤ 审计（记 谁/改了哪项/旧→新值）。
  */
@@ -41,16 +42,21 @@ public class SystemSettingsService {
         return repo.findById(key).map(s -> parseLong(s.getValue(), def)).orElse(def);
     }
 
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public List<SystemSettingDto> list() {
         return repo.findAll(Sort.by("category", "sortOrder")).stream()
                 .map(SystemSettingDto::of).toList();
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public SystemSettingDto write(String key, String value, String password, UUID actorId, String actorAccount) {
         // ① 二次密码确认：系统设置是安全/业务策略的高危配置，即使 access token 泄露，改设置还需账号密码。
         UserAccount user = userRepo.findById(actorId)
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "用户不存在"));
+        if (!user.isSuperAdmin()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "仅超级管理员可修改系统设置");
+        }
         if (password == null || !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);
         }

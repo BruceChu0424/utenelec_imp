@@ -186,12 +186,14 @@ public class FinanceOtherIncomeService {
                     receipts_total  = COALESCE(receipts_total, 0) + :amt,
                     updated_at = now()
                 WHERE id = :id
+                  AND COALESCE(is_deleted, false) = false
+                  AND status = '使用'
                 """)
                 .setParameter("amt", delta)
                 .setParameter("id", accountId)
                 .executeUpdate();
         if (rows == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "账户不存在：" + accountId);
+            throw new ApiException(ErrorCode.BUSINESS, "账户不存在或已禁用：" + accountId);
         }
     }
 

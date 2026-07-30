@@ -1,0 +1,92 @@
+# Include this file from nginx's `http` context after replacing the host names,
+# TLS certificate paths, and trusted network ranges for the real environment.
+
+# The gateway buckets are deliberately coarse IP-level flood protection.
+# Mainland office networks and mobile carriers commonly place many legitimate
+# users behind one NAT/CGNAT address, so per-account/per-phone limits belong in
+# the application and these values must be load-tested against the real site.
+limit_req_zone $binary_remote_addr zone=uten_auth_ip:10m rate=300r/m;
+limit_req_zone $binary_remote_addr zone=uten_api_ip:20m rate=3000r/m;
+
+upstream uten_imp_backend {
+    server uten-imp-server:8080;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name imp.example.com;
+    return 308 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name imp.example.com;
+    server_tokens off;
+    limit_req_status 429;
+
+    ssl_certificate /etc/nginx/tls/fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/privkey.pem;
+
+    root /srv/uten-imp/web;
+    index index.html;
+    client_max_body_size 2m;
+
+    # Compress the large Flutter JavaScript/Wasm payloads for mainland mobile
+    # and cross-carrier links. Brotli may be enabled at the CDN/load balancer
+    # only after its module and cache-variation behaviour are verified.
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types
+        application/javascript
+        application/json
+        application/manifest+json
+        application/wasm
+        image/svg+xml
+        text/css
+        text/plain;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob:; manifest-src 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self' blob:" always;
+    add_header Permissions-Policy "camera=(self), geolocation=(), microphone=(), payment=(), usb=()" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    location ~ ^/api/(?:auth/login|visitor/auth/(?:send-code|login))$ {
+        limit_req zone=uten_auth_ip burst=50 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    location /api/ {
+        limit_req zone=uten_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    # Flutter's version-pinned fallback fonts are immutable and fetched only
+    # when a missing glyph needs them. Never route a missing font to index.html.
+    location ^~ /fallback_fonts/ {
+        try_files $uri =404;
+        expires 1y;
+        access_log off;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        expires -1;
+    }
+}

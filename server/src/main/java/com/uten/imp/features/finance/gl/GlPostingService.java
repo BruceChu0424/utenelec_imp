@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -32,6 +33,7 @@ public class GlPostingService {
 
     /** 重生成指定期间（YYYY-MM）的 AUTO 凭证。返回凭证数。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_post:execute')")
     public int generate(String period) {
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period = :p")
                 .setParameter("p", period).executeUpdate();
@@ -51,6 +53,7 @@ public class GlPostingService {
 
     /** 重放全部历史期间（ar_ap_ledger 出现过的所有月份）。返回期间数。 */
     @Transactional
+    @PreAuthorize("hasAuthority('finance_post:execute')")
     public int generateAll() {
         @SuppressWarnings("unchecked")
         List<String> periods = em.createNativeQuery("""

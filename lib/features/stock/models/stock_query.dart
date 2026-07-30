@@ -21,14 +21,14 @@ class BalanceRow {
   final String? lastMovementDate;
 
   factory BalanceRow.fromJson(Map<String, dynamic> json) => BalanceRow(
-        id: json['id'] as String,
-        warehouseId: json['warehouseId'] as String?,
-        goodsId: json['goodsId'] as String?,
-        colorId: json['colorId'] as String?,
-        qty: (json['qty'] as num?)?.toDouble(),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        lastMovementDate: json['lastMovementDate'] as String?,
-      );
+    id: json['id'] as String,
+    warehouseId: json['warehouseId'] as String?,
+    goodsId: json['goodsId'] as String?,
+    colorId: json['colorId'] as String?,
+    qty: (json['qty'] as num?)?.toDouble(),
+    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    lastMovementDate: json['lastMovementDate'] as String?,
+  );
 }
 
 class MovementRow {
@@ -59,28 +59,38 @@ class MovementRow {
   final String? remark;
 
   factory MovementRow.fromJson(Map<String, dynamic> json) => MovementRow(
-        id: json['id'] as String,
-        transactionDate: json['transactionDate'] as String?,
-        movementType: (json['movementType'] as num?)?.toInt(),
-        sourceDocType: json['sourceDocType'] as String?,
-        goodsId: json['goodsId'] as String?,
-        colorId: json['colorId'] as String?,
-        warehouseId: json['warehouseId'] as String?,
-        direction: (json['direction'] as num?)?.toInt(),
-        qty: (json['qty'] as num?)?.toDouble(),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        remark: json['remark'] as String?,
-      );
+    id: json['id'] as String,
+    transactionDate: json['transactionDate'] as String?,
+    movementType: (json['movementType'] as num?)?.toInt(),
+    sourceDocType: json['sourceDocType'] as String?,
+    goodsId: json['goodsId'] as String?,
+    colorId: json['colorId'] as String?,
+    warehouseId: json['warehouseId'] as String?,
+    direction: (json['direction'] as num?)?.toInt(),
+    qty: (json['qty'] as num?)?.toDouble(),
+    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    remark: json['remark'] as String?,
+  );
 }
 
 /// movement_type 中文（1采购入 2采购退 3销售出 4销售退 5领料 6退料 7调拨入 8调拨出
 /// 9盘盈 10盘亏 11其它入 12其它出 13产成品进仓 14产成品出仓）。
 String movementTypeLabel(int? t) {
   const m = {
-    1: '采购入库', 2: '采购退货', 3: '销售出库', 4: '销售退货',
-    5: '生产领料', 6: '生产退料', 7: '调拨入', 8: '调拨出',
-    9: '盘盈入', 10: '盘亏出', 11: '其它入', 12: '其它出',
-    13: '产成品进仓', 14: '产成品出仓',
+    1: '采购入库',
+    2: '采购退货',
+    3: '销售出库',
+    4: '销售退货',
+    5: '生产领料',
+    6: '生产退料',
+    7: '调拨入',
+    8: '调拨出',
+    9: '盘盈入',
+    10: '盘亏出',
+    11: '其它入',
+    12: '其它出',
+    13: '产成品进仓',
+    14: '产成品出仓',
   };
   return t == null ? '—' : (m[t] ?? '类型$t');
 }
@@ -108,17 +118,17 @@ class InstantInventoryRow {
   final String? goodsId;
   final String? colorId;
   final String? categoryName; // 所属类型
-  final String? model;        // 型号
-  final String? cNumber;      // 客户型号
-  final String? name;         // 货品名称
-  final String? spec;         // 规格
-  final String? colorName;    // 颜色
-  final String? unitName;     // 单位
-  final String? remark;       // 备注（老库 B_Goods.Paper，如 外购）
-  final double? weight;       // 库存重量
-  final double? qty;          // 库存数量
-  final double? costAmount;   // 成本金额
-  final double? moreQty;      // 多排数量
+  final String? model; // 型号
+  final String? cNumber; // 客户型号
+  final String? name; // 货品名称
+  final String? spec; // 规格
+  final String? colorName; // 颜色
+  final String? unitName; // 单位
+  final String? remark; // 备注（老库 B_Goods.Paper，如 外购）
+  final double? weight; // 库存重量
+  final double? qty; // 库存数量
+  final double? costAmount; // 成本金额
+  final double? moreQty; // 多排数量
 
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
       InstantInventoryRow(

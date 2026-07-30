@@ -26,37 +26,37 @@ class GoodsBomItem {
 
   final String id;
   final String componentGoodsId;
-  final String? componentCode;      // 组件编号（唯一关联键）
+  final String? componentCode; // 组件编号（唯一关联键）
   final String? componentName;
   final String? componentModel;
   final String? componentSpec;
-  final String? componentMaterial;  // 材质
+  final String? componentMaterial; // 材质
   final String? componentUnitName;
   final String? componentColorName; // 行级颜色优先，空回落组件主颜色（后端已解析）
   final int? colorLegacyId;
   final double? qty;
   final double? price;
   final double? total;
-  final String? summary;            // 备注（外购/外加工...）
+  final String? summary; // 备注（外购/外加工...）
   final int? legacyId;
   final bool hasChildren;
 
   factory GoodsBomItem.fromJson(Map<String, dynamic> json) => GoodsBomItem(
-        id: json['id'] as String,
-        componentGoodsId: json['componentGoodsId'] as String,
-        componentCode: json['componentCode'] as String?,
-        componentName: json['componentName'] as String?,
-        componentModel: json['componentModel'] as String?,
-        componentSpec: json['componentSpec'] as String?,
-        componentMaterial: json['componentMaterial'] as String?,
-        componentUnitName: json['componentUnitName'] as String?,
-        componentColorName: json['componentColorName'] as String?,
-        colorLegacyId: (json['colorLegacyId'] as num?)?.toInt(),
-        qty: (json['qty'] as num?)?.toDouble(),
-        price: (json['price'] as num?)?.toDouble(),
-        total: (json['total'] as num?)?.toDouble(),
-        summary: json['summary'] as String?,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        hasChildren: json['hasChildren'] as bool? ?? false,
-      );
+    id: json['id'] as String,
+    componentGoodsId: json['componentGoodsId'] as String,
+    componentCode: json['componentCode'] as String?,
+    componentName: json['componentName'] as String?,
+    componentModel: json['componentModel'] as String?,
+    componentSpec: json['componentSpec'] as String?,
+    componentMaterial: json['componentMaterial'] as String?,
+    componentUnitName: json['componentUnitName'] as String?,
+    componentColorName: json['componentColorName'] as String?,
+    colorLegacyId: (json['colorLegacyId'] as num?)?.toInt(),
+    qty: (json['qty'] as num?)?.toDouble(),
+    price: (json['price'] as num?)?.toDouble(),
+    total: (json['total'] as num?)?.toDouble(),
+    summary: json['summary'] as String?,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    hasChildren: json['hasChildren'] as bool? ?? false,
+  );
 }

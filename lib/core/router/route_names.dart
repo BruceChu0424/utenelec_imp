@@ -74,14 +74,14 @@ abstract final class RouteName {
   static const String securityScan = '/security/scan';
   static const String securityCheck = '/security/check/:id';
 
-  // 系统管理（超级管理员）
+  // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
   // 审计日志（导出下载记录 / 登录 / 改密等全员审计；超管只读）
   static const String adminAuditLogs = '/admin/audit-logs';
-  // 系统设置（安全/业务策略阈值；超管 user:manage，改设置二次密码确认）
+  // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
 
-  // 财税部新模块（页面未接入前由占位页承接，权限点已种子化）
+  // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';
   static const String financeSuppliers = '/finance/suppliers';
   static const String financeAccounts = '/finance/accounts';
@@ -167,15 +167,19 @@ abstract final class RoutePath {
 
   /// 采购单据：新建 / 详情 / 编辑。[doc] = requests|orders|receipts|returns。
   static String purchaseDocNew(String doc) => '/purchase/$doc/new';
-  static String purchaseDocDetail(String doc, String id) => '/purchase/$doc/$id';
-  static String purchaseDocEdit(String doc, String id) => '/purchase/$doc/$id/edit';
+  static String purchaseDocDetail(String doc, String id) =>
+      '/purchase/$doc/$id';
+  static String purchaseDocEdit(String doc, String id) =>
+      '/purchase/$doc/$id/edit';
   static String purchaseReportTable(String kind) => '/purchase/report/$kind';
 
   /// 仓库单据：列表 / 新建 / 详情 / 编辑。[code] = TRANSFER|OTHER_IN|...|CHECK。
   static String stockDocList(String code) => '/warehouse/$code';
   static String stockDocNew(String code) => '/warehouse/$code/new';
-  static String stockDocDetail(String code, String id) => '/warehouse/$code/$id';
-  static String stockDocEdit(String code, String id) => '/warehouse/$code/$id/edit';
+  static String stockDocDetail(String code, String id) =>
+      '/warehouse/$code/$id';
+  static String stockDocEdit(String code, String id) =>
+      '/warehouse/$code/$id/edit';
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

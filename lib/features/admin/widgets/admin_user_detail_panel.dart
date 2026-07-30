@@ -14,6 +14,7 @@
 // 权限只分两层——部门配置（集体）+ 个人调整（例外），此面板不再有角色分配。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -32,6 +33,7 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
     super.key,
     required this.user,
     required this.onAccountChanged,
+    required this.canManageAuthorization,
     this.showBack = false,
     this.onBack,
   });
@@ -40,6 +42,9 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
 
   /// 账号操作（锁定/启停/重置密码）成功后回调，用于刷新列表。
   final VoidCallback onAccountChanged;
+
+  /// true 时才请求和呈现超级管理员授权端点，避免账号支持人员触发 403 或看到敏感授权数据。
+  final bool canManageAuthorization;
 
   final bool showBack;
   final VoidCallback? onBack;
@@ -72,16 +77,19 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadScopes());
+    if (widget.canManageAuthorization) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadScopes());
+    }
   }
 
   @override
   void didUpdateWidget(covariant AdminUserDetailPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.user.id != widget.user.id) {
+    if (oldWidget.user.id != widget.user.id ||
+        (!oldWidget.canManageAuthorization && widget.canManageAuthorization)) {
       _localGrants = null;
       _localRevokes = null;
-      _loadScopes();
+      if (widget.canManageAuthorization) _loadScopes();
     }
   }
 
@@ -95,7 +103,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       final grants = <String, Set<String>>{};
       final cands = <String, List<DataScopeOwner>>{};
       for (final (scope, _) in _scopeDefs) {
-        grants[scope] = (await repo.getUserDataScopes(widget.user.id, scope)).toSet();
+        grants[scope] = (await repo.getUserDataScopes(
+          widget.user.id,
+          scope,
+        )).toSet();
         cands[scope] = await repo.dataScopeOwners(scope);
       }
       if (!mounted) return;
@@ -128,8 +139,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 : ListView(
                     shrinkWrap: true,
                     children: [
-                      Text('勾选后，该用户可看到所选业务员的归属数据（公共数据不受影响）：',
-                          style: Theme.of(ctx).textTheme.bodySmall),
+                      Text(
+                        '勾选后，该用户可看到所选业务员的归属数据（公共数据不受影响）：',
+                        style: Theme.of(ctx).textTheme.bodySmall,
+                      ),
                       const SizedBox(height: 8),
                       for (final c in candidates)
                         CheckboxListTile(
@@ -138,15 +151,23 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                           title: Text(c.name),
                           subtitle: Text('归属 ${c.count} 条'),
                           onChanged: (v) => setD(() {
-                            v == true ? selected.add(c.employeeId) : selected.remove(c.employeeId);
+                            v == true
+                                ? selected.add(c.employeeId)
+                                : selected.remove(c.employeeId);
                           }),
                         ),
                     ],
                   ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
           ],
         ),
       ),
@@ -154,8 +175,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     if (ok != true) return;
     setState(() => _scopesSaving = true);
     try {
-      await ref.read(adminRepositoryProvider).updateUserDataScopes(
-          widget.user.id, scope, selected.toList());
+      await ref
+          .read(adminRepositoryProvider)
+          .updateUserDataScopes(widget.user.id, scope, selected.toList());
       if (!mounted) return;
       setState(() => _scopeGrants[scope] = selected);
       UtenToast.success(context, '$label已保存，即时生效');
@@ -169,24 +191,39 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   Widget _dataScopeSection() {
     final theme = Theme.of(context);
-    final isSuper = widget.user.status == 'active' &&
-        ref.read(adminEffectivePermissionsProvider(widget.user.id)).valueOrNull?.superAdmin == true;
+    final isSuper =
+        widget.user.status == 'active' &&
+        ref
+                .read(adminEffectivePermissionsProvider(widget.user.id))
+                .valueOrNull
+                ?.superAdmin ==
+            true;
     return UtenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('数据范围',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            '数据范围',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             '归属隔离的数据（外贸货品 / 客户资料）默认只有归属人本人可见；'
             '在这里给该用户加看指定业务员的数据。「查看全部」权限点（*:view:all）优先级更高。',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           if (isSuper) ...[
             const SizedBox(height: 6),
-            Text('该账号是超级管理员，默认可见全部数据，无需配置。',
-                style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.warning)),
+            Text(
+              '该账号是超级管理员，默认可见全部数据，无需配置。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: UtenColors.warning,
+              ),
+            ),
           ],
           const SizedBox(height: 8),
           if (_scopesLoading)
@@ -195,7 +232,12 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             )
           else if (_scopesError != null)
-            Text(_scopesError!, style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.error))
+            Text(
+              _scopesError!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: UtenColors.error,
+              ),
+            )
           else
             for (final (scope, label) in _scopeDefs)
               Padding(
@@ -206,14 +248,20 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                          Text(
+                            label,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Text(
                             (_scopeGrants[scope] ?? {}).isEmpty
                                 ? '仅本人（默认）'
                                 : '加看：${(_scopeGrants[scope]!).map((id) => (_scopeCandidates[scope] ?? []).where((c) => c.employeeId == id).map((c) => c.name).firstOrNull ?? '未知').join('、')}',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
@@ -222,7 +270,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       type: UtenButtonType.ghost,
                       size: UtenButtonSize.small,
                       isLoading: _scopesSaving,
-                      onPressed: isSuper ? null : () => _editScope(scope, label),
+                      onPressed: isSuper
+                          ? null
+                          : () => _editScope(scope, label),
                       child: const Text('编辑'),
                     ),
                   ],
@@ -262,6 +312,91 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     } finally {
       if (mounted) setState(() => _acting = false);
     }
+  }
+
+  Future<void> _resetPassword() async {
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '重置密码确认',
+      content: Text(
+        '确定要重置「${widget.user.employeeName ?? widget.user.loginAccount}」的登录密码吗？'
+        '系统将生成仅显示一次的临时密码。',
+      ),
+      confirmLabel: '重置密码',
+      danger: true,
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _acting = true);
+    try {
+      final temporaryPassword = await ref
+          .read(adminRepositoryProvider)
+          .resetPassword(widget.user.id);
+      if (!mounted) return;
+      widget.onAccountChanged();
+      await _showTemporaryPassword(temporaryPassword);
+    } catch (_) {
+      if (mounted) UtenToast.error(context, '重置密码失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  Future<void> _showTemporaryPassword(String temporaryPassword) {
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.key_rounded),
+            SizedBox(width: 8),
+            Text('一次性临时密码'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('请立即安全地交给该员工。关闭此窗口后，系统不会再次显示或保存这段明文。'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  dialogContext,
+                ).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SelectableText(
+                temporaryPassword,
+                textAlign: TextAlign.center,
+                style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: temporaryPassword));
+              if (dialogContext.mounted) {
+                UtenToast.success(dialogContext, '临时密码已复制');
+              }
+            },
+            icon: const Icon(Icons.copy_rounded),
+            label: const Text('复制'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('我已妥善保存'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ===== 覆盖保存 =====
@@ -329,11 +464,6 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveAsync = ref.watch(
-      adminEffectivePermissionsProvider(widget.user.id),
-    );
-    final catalogAsync = ref.watch(permissionCatalogProvider);
-
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
       children: [
@@ -347,7 +477,21 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             ),
           ),
         _accountSection(),
-        const SizedBox(height: 12),
+        if (widget.canManageAuthorization) ...[
+          const SizedBox(height: 12),
+          _authorizationSections(),
+        ],
+      ],
+    );
+  }
+
+  Widget _authorizationSections() {
+    final effectiveAsync = ref.watch(
+      adminEffectivePermissionsProvider(widget.user.id),
+    );
+    final catalogAsync = ref.watch(permissionCatalogProvider);
+    return Column(
+      children: [
         _dataScopeSection(),
         const SizedBox(height: 12),
         _permSection(effectiveAsync, catalogAsync),
@@ -455,11 +599,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 size: UtenButtonSize.small,
                 icon: Icons.key_rounded,
                 isLoading: _acting,
-                onPressed: () => _runAccountAction(
-                  label: '重置密码',
-                  danger: true,
-                  call: (r) => r.resetPassword(u.id),
-                ),
+                onPressed: _acting ? null : _resetPassword,
                 child: const Text('重置密码'),
               ),
             ],
@@ -599,9 +739,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             // 组内已授权/总数，与两态主标签口径一致
             countLabel:
                 '${group.permissions.where((p) => _isEffective(data, p.code)).length}/${group.permissions.length}',
-            children: [
-              for (final p in group.permissions) _permRow(data, p),
-            ],
+            children: [for (final p in group.permissions) _permRow(data, p)],
           ),
       ],
     );
@@ -626,7 +764,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final viaBaseline = data.baselinePermissions.contains(p.code);
     final revoked = !data.superAdmin && revokes.contains(p.code);
     // 最终有效状态：超管恒 true；否则 部门/基础所得且未被收回，或被个人加授
-    final effective = data.superAdmin ||
+    final effective =
+        data.superAdmin ||
         ((viaDept || viaBaseline) && !revoked) ||
         grants.contains(p.code);
 

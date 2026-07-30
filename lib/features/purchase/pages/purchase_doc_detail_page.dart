@@ -26,7 +26,11 @@ import '../../../core/router/nav_helpers.dart';
 import '../widgets/purchase_status_badge.dart';
 
 class PurchaseDocDetailPage extends ConsumerStatefulWidget {
-  const PurchaseDocDetailPage({super.key, required this.docType, required this.id});
+  const PurchaseDocDetailPage({
+    super.key,
+    required this.docType,
+    required this.id,
+  });
   final PurchaseDocType docType;
   final String id;
 
@@ -48,7 +52,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _canEdit => ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool get _canEdit =>
+      ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
 
   Future<void> _load() async {
     setState(() {
@@ -60,7 +65,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       final d = await ref
           .read(purchaseRepositoryProvider(widget.docType))
           .detail(widget.id);
-      final goodsIds = d.items.map((e) => e.goodsId).whereType<String>().toSet();
+      final goodsIds = d.items
+          .map((e) => e.goodsId)
+          .whereType<String>()
+          .toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
       setState(() {
@@ -82,13 +90,19 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     }
   }
 
-  Future<void> _approve() async => _doAction('审核后将驱动下游（库存/回写），确认审核？',
-      (repo) => repo.approve(widget.id), '已审核');
-  Future<void> _reverse() async => _doAction('红冲将反向冲销，确认？',
-      (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _approve() async => _doAction(
+    '审核后将驱动下游（库存/回写），确认审核？',
+    (repo) => repo.approve(widget.id),
+    '已审核',
+  );
+  Future<void> _reverse() async =>
+      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
   Future<void> _doAction(
-      String confirm, Future<void> Function(PurchaseRepository) fn, String ok) async {
+    String confirm,
+    Future<void> Function(PurchaseRepository) fn,
+    String ok,
+  ) async {
     if (_busy) return;
     final c = await showDialog<bool>(
       context: context,
@@ -96,8 +110,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         title: const Text('确认'),
         content: Text(confirm),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -125,7 +145,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         title: const Text('删除单据'),
         content: const Text('确定删除该草稿单据吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
@@ -137,11 +160,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     if (c != true) return;
     setState(() => _busy = true);
     try {
-      await ref.read(purchaseRepositoryProvider(widget.docType)).delete(widget.id);
+      await ref
+          .read(purchaseRepositoryProvider(widget.docType))
+          .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
-      context.go(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, widget.id)
-          .replaceFirst('/${widget.id}', ''));
+      context.go(
+        RoutePath.purchaseDocDetail(
+          _cfg.type.pathSegment,
+          widget.id,
+        ).replaceFirst('/${widget.id}', ''),
+      );
       // 回列表
       context.go('/purchase/${_cfg.type.pathSegment}');
     } on ApiException catch (e) {
@@ -161,7 +190,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
         leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: RouteName.purchase),
+          onPressed: () =>
+              popOrBackTo(context, defaultPath: RouteName.purchase),
         ),
         actions: [
           UtenButton(
@@ -177,22 +207,20 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
               : _error != null
-                  ? Center(child: Text(_error!))
-                  : _detail == null
-                      ? const SizedBox.shrink()
-                      : ListView(
-                          padding: const EdgeInsets.all(UtenSpacing.s12),
-                          children: [
-                            _headerCard(theme, names),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _itemsCard(theme, names),
-                          ],
-                        ),
+              ? Center(child: Text(_error!))
+              : _detail == null
+              ? const SizedBox.shrink()
+              : ListView(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  children: [
+                    _headerCard(theme, names),
+                    const SizedBox(height: UtenSpacing.s12),
+                    _itemsCard(theme, names),
+                  ],
+                ),
         ),
       ),
-      bottomNavigationBar: _detail == null || _busy
-          ? null
-          : _actions(theme),
+      bottomNavigationBar: _detail == null || _busy ? null : _actions(theme),
     );
   }
 
@@ -215,16 +243,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
-      _KV('状态', null, badge: PurchaseStatusBadge(status: d.status, closed: d.closed)),
+      _KV(
+        '状态',
+        null,
+        badge: PurchaseStatusBadge(status: d.status, closed: d.closed),
+      ),
     ];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
-          children: [
-            for (final r in rows) _kvRow(theme, r),
-          ],
-        ),
+        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
       ),
     );
   }
@@ -235,9 +263,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       children: [
         SizedBox(
           width: 84,
-          child: Text(r.label,
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          child: Text(
+            r.label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         const SizedBox(width: UtenSpacing.s8),
         Expanded(child: r.badge ?? Text(r.value ?? '—')),
@@ -252,9 +283,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('明细 (${items.length})',
-            style: theme.textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w600)),
+        Text(
+          '明细 (${items.length})',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<PurchaseDocItem>(
           embedded: true,
@@ -322,48 +356,64 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final children = <Widget>[];
     if (s == kPurchaseStatusDraft && _canEdit) {
       children
-        ..add(UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.delete_outline,
-          onPressed: _delete,
-          child: const Text('删除'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: _delete,
+            child: const Text('删除'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          type: UtenButtonType.secondary,
-          icon: Icons.edit_outlined,
-          onPressed: () => context.push(
-              RoutePath.purchaseDocEdit(_cfg.type.pathSegment, widget.id)),
-          child: const Text('编辑'),
-        ))
+        ..add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_outlined,
+            onPressed: () => context.push(
+              RoutePath.purchaseDocEdit(_cfg.type.pathSegment, widget.id),
+            ),
+            child: const Text('编辑'),
+          ),
+        )
         ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approve,
-          child: const Text('审核'),
-        ));
+        ..add(
+          UtenButton(
+            icon: Icons.check_circle_outline,
+            onPressed: _approve,
+            child: const Text('审核'),
+          ),
+        );
     } else if (s == kPurchaseStatusApproved && _canEdit) {
-      children.add(UtenButton(
-        type: UtenButtonType.danger,
-        icon: Icons.undo_outlined,
-        onPressed: _reverse,
-        child: const Text('红冲'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.danger,
+          icon: Icons.undo_outlined,
+          onPressed: _reverse,
+          child: const Text('红冲'),
+        ),
+      );
     } else {
-      children.add(UtenButton(
-        type: UtenButtonType.secondary,
-        onPressed: () => context.go('/purchase/${_cfg.type.pathSegment}'),
-        child: const Text('返回列表'),
-      ));
+      children.add(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => context.go('/purchase/${_cfg.type.pathSegment}'),
+          child: const Text('返回列表'),
+        ),
+      );
     }
     return SafeArea(
       child: Container(
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
-          border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+          border: Border(
+            top: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: children,
+        ),
       ),
     );
   }

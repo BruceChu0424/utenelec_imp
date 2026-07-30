@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
@@ -37,12 +38,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -51,6 +46,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /**
@@ -175,8 +171,16 @@ public class ProductionDailyReportService {
         // 1) 逐行报工回写（fqty + links.produced + 行状态）；收集来源计划行
         Map<UUID, List<ProductionDailyReportItem>> byPlan = new LinkedHashMap<>();
         List<UUID> finalPlanItemIds = new ArrayList<>();
+        Map<UUID, UUID> resolvedPlanItems = new HashMap<>();
+        for (ProductionDailyReportItem item : items) {
+            UUID planItemId = resolvePlanItem(item);
+            if (planItemId != null) {
+                resolvedPlanItems.put(item.getId(), planItemId);
+            }
+        }
+        lockPlanItems(resolvedPlanItems.values());
         for (ProductionDailyReportItem it : items) {
-            UUID planItemId = resolvePlanItem(it);
+            UUID planItemId = resolvedPlanItems.get(it.getId());
             if (planItemId == null) continue; // 手工行（无计划关联）不进链
             Object[] pi = planItemRow(planItemId);
             BigDecimal qty = it.getQty() == null ? BigDecimal.ZERO : it.getQty();
@@ -226,6 +230,10 @@ public class ProductionDailyReportService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
+        lockPlanItems(items.stream()
+                .map(ProductionDailyReportItem::getPlanItemId)
+                .filter(java.util.Objects::nonNull)
+                .toList());
 
         // 1) 回退 fqty / links.produced / 行状态
         List<UUID> affectedPlans = new ArrayList<>();
@@ -313,6 +321,23 @@ public class ProductionDailyReportService {
                 """).setParameter("id", planItemId).getSingleResult();
     }
 
+    private void lockPlanItems(java.util.Collection<UUID> requestedIds) {
+        TreeSet<UUID> ids = new TreeSet<>(requestedIds);
+        if (ids.isEmpty()) return;
+        List<?> locked = em.createNativeQuery("""
+                        SELECT id
+                        FROM production_plan_items
+                        WHERE id IN (:ids) AND COALESCE(is_deleted, false) = false
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("ids", ids)
+                .getResultList();
+        if (locked.size() != ids.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "报工关联的生产计划行不存在或已删除");
+        }
+    }
+
     /**
      * 报工量分摊到 links.produced_qty（sign=+1；红冲 sign=-1 逆序回退）。
      * 指定订单行直击；未指定按创建序 FIFO 分摊剩余（allocated − produced）。
@@ -373,7 +398,7 @@ public class ProductionDailyReportService {
         StockDocument d = new StockDocument();
         d.setDocType("FINISHED_IN");
         d.setBillNo(docNumberService.nextNumber(DocNumberPrefix.STOCK_FINISHED_IN));
-        d.setBillDate(LocalDate.now());
+        d.setBillDate(BusinessTime.today());
         d.setWarehouseId(r.getWarehouseId());
         d.setPlanNo(planNo);
         d.setSourceDocNo(r.getBillNo()); // 红冲按此回查
@@ -452,7 +477,7 @@ public class ProductionDailyReportService {
         // 补产计划（草稿；同货合并一行——完结行单货品，即一行）
         ProductionPlan rp = new ProductionPlan();
         rp.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_PLAN));
-        rp.setBillDate(LocalDate.now());
+        rp.setBillDate(BusinessTime.today());
         rp.setDeliveryDate(pi[8] == null ? null : ((java.sql.Date) pi[8]).toLocalDate());
         rp.setRemark("补产：原计划 " + planNo + "（报工 " + r.getBillNo() + " 缺额自动生成）");
         rp.setSourceDocNo(r.getBillNo()); // 红冲按此回查

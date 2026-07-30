@@ -4,6 +4,7 @@ import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -56,8 +57,8 @@ import java.util.stream.Collectors;
  *
  * <p>facets 用原生 SQL 聚合（字段→列名硬编码白名单，防注入；列名非用户输入）。
  *
- * <p>price 在 entity 是 Double（DOUBLE PRECISION 列），DTO 用 BigDecimal 便于前端精度展示，
- * apply/toDetail 做双向转换。
+ * <p>价格从 API、业务计算到 PostgreSQL 均使用 BigDecimal / NUMERIC(18,4)，
+ * 不经过二进制浮点转换。
  *
  * <p>颜色/单位名称解析：goods 只存 color_legacy_id/unit_legacy_id（老库主键），列表与详情在
  * Service 层按 legacy_id 批量/单条查 colors/units 取 name（表小，内存关联，不动货品查询）。
@@ -294,7 +295,7 @@ public class GoodsService {
                             + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
                     .setParameter("ids", ids);
             if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
-            List<Object[]> rows = fq.getResultList();
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 String v = String.valueOf(row[0]);
@@ -444,7 +445,7 @@ public class GoodsService {
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         g.setSpec(req.getSpec());
-        g.setPrice(req.getPrice() == null ? null : req.getPrice().doubleValue());
+        g.setPrice(req.getPrice());
         g.setMaterial(req.getMaterial());
         g.setThickness(req.getThickness());
         g.setMWeight(req.getMWeight());
@@ -480,7 +481,7 @@ public class GoodsService {
         String categoryName = g.getCategory() == null ? null : g.getCategory().getName();
         return new GoodsDetail(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
-                toPrice(g.getPrice()), g.getStatus(), g.getLegacyId(),
+                g.getPrice(), g.getStatus(), g.getLegacyId(),
                 g.getShortName(), categoryId, categoryName, g.getPack(),
                 g.getMaterial(), g.getThickness(), g.getUnitLegacyId(),
                 g.getMWeight(), g.getPieces(), colorName, unitName, g.getColorLegacyId(),
@@ -494,16 +495,12 @@ public class GoodsService {
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames) {
         return new GoodsListItem(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
-                toPrice(g.getPrice()), g.getStatus(), g.getLegacyId(),
+                g.getPrice(), g.getStatus(), g.getLegacyId(),
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
                 g.getColorLegacyId(), g.getUnitLegacyId(),
                 g.getColorLegacyId() == null ? null : colorNames.get(g.getColorLegacyId()),
                 g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()),
                 g.getSourceType());
-    }
-
-    private static BigDecimal toPrice(Double p) {
-        return p == null ? null : BigDecimal.valueOf(p);
     }
 
     private MaterialCategory requireCategory(UUID id) {

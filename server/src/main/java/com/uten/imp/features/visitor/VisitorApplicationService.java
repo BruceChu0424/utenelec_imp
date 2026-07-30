@@ -1,7 +1,12 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
+import com.uten.imp.features.org.employee.Employee;
+import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApprovalStepDto;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApplyRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
@@ -10,6 +15,8 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -17,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
@@ -30,9 +39,13 @@ import static com.uten.imp.common.util.Strings.last4;
 @RequiredArgsConstructor
 public class VisitorApplicationService {
 
+    private static final Set<String> ELIGIBLE_HOST_STATUSES =
+            Set.of("active", "probation", "onLeave");
+
     private final VisitorApplicationRepository appRepo;
     private final VisitorApprovalStepRepository stepRepo;
     private final VisitorAccountRepository accountRepo;
+    private final EmployeeRepository employeeRepo;
     private final VisitorApplicationMapper mapper;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
@@ -40,26 +53,66 @@ public class VisitorApplicationService {
     @Transactional
     public VisitorDetail submit(VisitorApplyRequest req) {
         UUID visitorId = currentVisitorId();
-        if (isBlank(req.visitorName()) || isBlank(req.visitPurpose()) || req.plannedVisitAt() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "姓名、来访事由、计划到访时间为必填");
+        if (req == null || isBlank(req.visitorName()) || isBlank(req.visitPurpose())
+                || req.hostEmployeeId() == null || req.plannedVisitAt() == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "姓名、来访事由、接待人、计划到访时间为必填");
+        }
+        if (req.plannedLeaveAt() != null
+                && !req.plannedLeaveAt().isAfter(req.plannedVisitAt())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "计划离开时间必须晚于计划到访时间");
+        }
+        String plateNo = trimToNull(req.plateNo());
+        if (req.hasVehicle() && plateNo == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "驾车来访时必须填写车牌号");
         }
         VisitorAccount acc = accountRepo.findById(visitorId)
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        Employee host = employeeRepo.findById(req.hostEmployeeId())
+                .filter(employee -> !employee.isDeleted())
+                .filter(employee -> ELIGIBLE_HOST_STATUSES.contains(employee.getStatus()))
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "接待人不存在或当前不可接待"));
+        UUID actualDepartmentId = host.getDepartment() == null
+                ? null
+                : host.getDepartment().getId();
+        if (req.hostDepartmentId() != null
+                && !Objects.equals(req.hostDepartmentId(), actualDepartmentId)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "接待人与接待部门不匹配，请重新选择");
+        }
 
         tx.bind();   // 审计 actor = 当前访客
 
+        String idCardNo = trimToNull(req.idCardNo());
+        if (idCardNo != null && idCardNo.length() == 18) {
+            idCardNo = IdCardUtil.normalize(idCardNo);
+            if (!IdCardUtil.isValid(idCardNo)) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "身份证号码校验未通过");
+            }
+        }
         VisitorApplication app = new VisitorApplication();
         app.setVisitorAccountId(visitorId);
-        app.setVisitorName(req.visitorName());
-        app.setPhoneEnc(isBlank(req.phone()) ? acc.getPhoneEnc() : tx.encrypt(req.phone()));
-        app.setIdCardEnc(isBlank(req.idCardNo()) ? null : tx.encrypt(req.idCardNo()));
-        app.setIdCardLast4(last4(req.idCardNo()));
-        app.setCompany(isBlank(req.company()) ? "优腾电器" : req.company());
-        app.setVisitPurpose(req.visitPurpose());
+        app.setVisitorName(req.visitorName().trim());
+        // Phone identity is established by SMS login; never let the request replace it.
+        app.setPhoneEnc(acc.getPhoneEnc());
+        app.setIdCardEnc(idCardNo == null ? null : tx.encrypt(idCardNo));
+        app.setIdCardLast4(last4(idCardNo));
+        app.setCompany(isBlank(req.company()) ? "优腾电器" : req.company().trim());
+        app.setVisitPurpose(req.visitPurpose().trim());
         app.setHasVehicle(req.hasVehicle());
-        app.setPlateNoEnc(req.hasVehicle() && req.plateNo() != null ? tx.encrypt(req.plateNo()) : null);
-        app.setHostEmployeeId(req.hostEmployeeId());
-        app.setHostDepartmentId(req.hostDepartmentId());
+        app.setPlateNoEnc(req.hasVehicle() ? tx.encrypt(plateNo) : null);
+        app.setHostEmployeeId(host.getId());
+        app.setHostDepartmentId(actualDepartmentId);
         app.setPlannedVisitAt(req.plannedVisitAt());
         app.setPlannedLeaveAt(req.plannedLeaveAt());
         app.setStatus("pending");
@@ -71,7 +124,7 @@ public class VisitorApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<VisitorListItem> listMine(String status) {
+    public PageResponse<VisitorListItem> listMine(String status, int page, int size) {
         UUID visitorId = currentVisitorId();
         Specification<VisitorApplication> spec = (root, q, cb) -> {
             Predicate p = cb.and(cb.equal(root.get("visitorAccountId"), visitorId),
@@ -81,9 +134,9 @@ public class VisitorApplicationService {
             }
             return p;
         };
-        return appRepo.findAll(spec, Sort.by(Sort.Direction.DESC, "appliedAt")).stream()
-                .map(mapper::toListItem)
-                .toList();
+        Pageable pageable = visitorPageable(page, size);
+        Page<VisitorApplication> result = appRepo.findAll(spec, pageable);
+        return toPageResponse(result, pageable);
     }
 
     @Transactional(readOnly = true)
@@ -122,12 +175,9 @@ public class VisitorApplicationService {
                 .toList();
         String qrToken = "approved".equals(a.getStatus()) ? a.getQrToken() : null;
         String passcode = "approved".equals(a.getStatus()) ? a.getPasscode() : null;
-        String phone = null;
-        try {
-            if (a.getPhoneEnc() != null) {
-                phone = tx.decrypt(a.getPhoneEnc());
-            }
-        } catch (Exception ignored) { }
+        // Corrupt/missing key material must not silently turn persisted identity data into
+        // a plausible-looking null response. Surface the operational failure for alerting.
+        String phone = a.getPhoneEnc() == null ? null : tx.decrypt(a.getPhoneEnc());
         String[] host = mapper.hostInfo(a);
         return new VisitorDetail(
                 a.getId(), a.getVisitorName(), phone, a.getIdCardLast4(),
@@ -152,5 +202,28 @@ public class VisitorApplicationService {
     VisitorAccount accountOf(VisitorApplication a) {
         return a.getVisitorAccountId() == null ? null
                 : accountRepo.findById(a.getVisitorAccountId()).orElse(null);
+    }
+
+    PageResponse<VisitorListItem> toPageResponse(
+            Page<VisitorApplication> result,
+            Pageable pageable) {
+        return new PageResponse<>(
+                mapper.toListItems(result.getContent()),
+                pageable.getPageNumber() + 1,
+                pageable.getPageSize(),
+                result.getTotalElements(),
+                result.getTotalPages());
+    }
+
+    static Pageable visitorPageable(int page, int size) {
+        return Pageables.of(page, size, Sort.by(
+                new Sort.Order(Sort.Direction.DESC, "createdAt"),
+                new Sort.Order(Sort.Direction.DESC, "id")));
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

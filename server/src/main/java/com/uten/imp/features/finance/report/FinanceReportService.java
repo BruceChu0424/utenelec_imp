@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.report;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportSort;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
@@ -303,7 +304,7 @@ public class FinanceReportService {
                                           Map<String, String> facets, int page, int size, String sort, String order) {
         String dir = normalizeDirection(direction);
         LocalDate from = dateFrom != null ? dateFrom : LocalDate.of(2010, 1, 1);
-        LocalDate to = dateTo != null ? dateTo : LocalDate.now();
+        LocalDate to = dateTo != null ? dateTo : BusinessTime.today();
         return "AR".equals(dir)
                 ? receivableSummary(keyword, from, to, page, size)
                 : payableSummary(keyword, from, to, facets, page, size, sort, order);
@@ -1280,12 +1281,12 @@ public class FinanceReportService {
     private static int yearOf(Map<String, String> p, LocalDate dateTo) {
         String y = p == null ? null : p.get("year");
         if (y != null && !y.isBlank()) return Integer.parseInt(y);
-        return (dateTo != null ? dateTo : LocalDate.now()).getYear();
+        return (dateTo != null ? dateTo : BusinessTime.today()).getYear();
     }
     private static int monthOf(Map<String, String> p, LocalDate dateTo) {
         String m = p == null ? null : p.get("month");
         if (m != null && !m.isBlank()) return Integer.parseInt(m);
-        return (dateTo != null ? dateTo : LocalDate.now()).getMonthValue();
+        return (dateTo != null ? dateTo : BusinessTime.today()).getMonthValue();
     }
     private static int parseIntOrZero(String s) {
         if (s == null || s.isBlank()) return 0;

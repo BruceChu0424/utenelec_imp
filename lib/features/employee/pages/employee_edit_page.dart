@@ -17,9 +17,36 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
+
+const _employeePiiFields = {'idNumber', 'phone', 'bankAccount', 'bankBranch'};
+const _employeeCompensationFields = {
+  'baseSalary',
+  'perfSalary',
+  'socialInsuranceBase',
+  'socialInsuranceLocation',
+  'housingFundBase',
+  'allowanceStandard',
+};
+
+/// 前端的敏感字段写入保险丝；服务端仍必须执行相同的字段级授权。
+Map<String, dynamic> filterEmployeeEditPayloadForPermissions(
+  Map<String, dynamic> payload,
+  Set<String> permissions,
+) {
+  final filtered = Map<String, dynamic>.of(payload);
+  if (!permissions.contains(Perm.employeePiiEdit)) {
+    filtered.removeWhere((key, _) => _employeePiiFields.contains(key));
+  }
+  if (!permissions.contains(Perm.employeeCompensationEdit)) {
+    filtered.removeWhere((key, _) => _employeeCompensationFields.contains(key));
+  }
+  return filtered;
+}
 
 class EmployeeEditPage extends ConsumerStatefulWidget {
   const EmployeeEditPage({super.key, required this.employeeId});
@@ -177,7 +204,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   }
 
   Future<void> _pickBirthDate() async {
-    final now = DateTime.now();
+    final now = ChinaDateTime.today();
     final d = await showDatePicker(
       context: context,
       initialDate: _birthDate.text.isEmpty
@@ -208,7 +235,6 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     text('ethnicity', _ethnicity, p.ethnicity);
     text('politicalStatus', _politicalStatus, p.politicalStatus);
     text('maritalStatus', _maritalStatus, p.maritalStatus);
-    text('phone', _phone, p.phone);
     text('officePhone', _officePhone, p.officePhone);
     text('email', _email, p.email);
     text('hujiAddress', _huji, p.hujiAddress);
@@ -218,13 +244,19 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     code('status', _status, p.status);
     text('workLocation', _workLocation, p.workLocation);
     text('seatNo', _seatNo, p.seatNo);
-    text('baseSalary', _baseSalary, p.baseSalary);
-    text('perfSalary', _perfSalary, p.perfSalary);
-    text('socialInsuranceBase', _socialBase, p.socialInsuranceBase);
-    text('housingFundBase', _housingBase, p.housingFundBase);
-    text('bankBranch', _bankBranch, p.bankBranch);
-    text('bankAccount', _bankAccount, p.bankAccount);
-    return body;
+    final permissions = ref.read(currentPermissionsProvider);
+    if (permissions.contains(Perm.employeePiiEdit)) {
+      text('phone', _phone, p.phone);
+      text('bankBranch', _bankBranch, p.bankBranch);
+      text('bankAccount', _bankAccount, p.bankAccount);
+    }
+    if (permissions.contains(Perm.employeeCompensationEdit)) {
+      text('baseSalary', _baseSalary, p.baseSalary);
+      text('perfSalary', _perfSalary, p.perfSalary);
+      text('socialInsuranceBase', _socialBase, p.socialInsuranceBase);
+      text('housingFundBase', _housingBase, p.housingFundBase);
+    }
+    return filterEmployeeEditPayloadForPermissions(body, permissions);
   }
 
   Future<void> _save() async {
@@ -276,6 +308,11 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canEditPii = permissions.contains(Perm.employeePiiEdit);
+    final canEditCompensation = permissions.contains(
+      Perm.employeeCompensationEdit,
+    );
     return Scaffold(
       appBar: UtenAppBar(title: l10n.employeeEditTitle, showBackButton: true),
       body: _loading
@@ -335,18 +372,19 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       _text(_maritalStatus, l10n.employeeFieldMaritalStatus),
                     ]),
                     _section(l10n.employeeEditContact, [
-                      _text(
-                        _phone,
-                        l10n.employeeFieldPhone,
-                        validator: (v) {
-                          final s = v?.trim() ?? '';
-                          if (s.isEmpty) return null;
-                          if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(s)) {
-                            return l10n.employeeOnboardPhoneInvalid;
-                          }
-                          return null;
-                        },
-                      ),
+                      if (canEditPii)
+                        _text(
+                          _phone,
+                          l10n.employeeFieldPhone,
+                          validator: (v) {
+                            final s = v?.trim() ?? '';
+                            if (s.isEmpty) return null;
+                            if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(s)) {
+                              return l10n.employeeOnboardPhoneInvalid;
+                            }
+                            return null;
+                          },
+                        ),
                       _text(_officePhone, l10n.employeeFieldOfficePhone),
                       _text(_email, l10n.employeeFieldEmail),
                       _text(_huji, l10n.employeeFieldHujiAddress),
@@ -387,7 +425,8 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                         items: _statusCodes
                             .where(
                               (c) =>
-                                  c != 'resigned' || _profile?.status == 'resigned',
+                                  c != 'resigned' ||
+                                  _profile?.status == 'resigned',
                             )
                             .map(
                               (c) => DropdownMenuItem(
@@ -403,14 +442,19 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       _text(_workLocation, l10n.employeeFieldWorkLocation),
                       _text(_seatNo, l10n.employeeFieldSeatNo),
                     ]),
-                    _section(l10n.employeeEditSalary, [
-                      _text(_baseSalary, l10n.employeeFieldBaseSalary),
-                      _text(_perfSalary, l10n.employeeFieldPerfSalary),
-                      _text(_socialBase, l10n.employeeFieldSocialBase),
-                      _text(_housingBase, l10n.employeeFieldHousingBase),
-                      _text(_bankBranch, l10n.employeeFieldBankBranch),
-                      _text(_bankAccount, l10n.employeeFieldBankAccount),
-                    ]),
+                    if (canEditPii || canEditCompensation)
+                      _section(l10n.employeeEditSalary, [
+                        if (canEditCompensation) ...[
+                          _text(_baseSalary, l10n.employeeFieldBaseSalary),
+                          _text(_perfSalary, l10n.employeeFieldPerfSalary),
+                          _text(_socialBase, l10n.employeeFieldSocialBase),
+                          _text(_housingBase, l10n.employeeFieldHousingBase),
+                        ],
+                        if (canEditPii) ...[
+                          _text(_bankBranch, l10n.employeeFieldBankBranch),
+                          _text(_bankAccount, l10n.employeeFieldBankAccount),
+                        ],
+                      ]),
                   ],
                 ),
               ),

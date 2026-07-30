@@ -18,7 +18,9 @@ class ProductionGridRow extends EditableGridRow {
     qty.addListener(_recalc);
   }
 
-  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(null);
+  final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
+    null,
+  );
   GoodsOption? get goods => goodsNotifier.value;
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
@@ -196,8 +198,9 @@ Widget _readOnlyMasterCell(
       final hasName = name != null && name.isNotEmpty;
       return Text(
         hasName ? name : '—',
-        style:
-            TextStyle(color: hasName ? null : theme.colorScheme.onSurfaceVariant),
+        style: TextStyle(
+          color: hasName ? null : theme.colorScheme.onSurfaceVariant,
+        ),
       );
     },
   );

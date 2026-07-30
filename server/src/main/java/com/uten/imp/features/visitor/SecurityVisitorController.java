@@ -2,6 +2,7 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.features.visitor.dto.VisitorScanDto.VisitorVerifyRequest;
 import com.uten.imp.features.visitor.dto.VisitorScanDto.VisitorVerifyResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,7 +27,7 @@ public class SecurityVisitorController {
 
     @PostMapping("/verify")
     @PreAuthorize("hasAuthority('visitor:check-in')")
-    public VisitorVerifyResponse verify(@RequestBody VisitorVerifyRequest req) {
+    public VisitorVerifyResponse verify(@Valid @RequestBody VisitorVerifyRequest req) {
         return gateService.verify(req.qrToken(), req.passcode());
     }
 

@@ -1,5 +1,7 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -181,6 +183,7 @@ public class StockDocService {
         if (d.getStatus() == null || d.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        lockInventory(items);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         if (!"DRAW".equals(d.getDocType())) {
             applyStockEffect(d, items, +1);
@@ -204,6 +207,7 @@ public class StockDocService {
         if (d.getStatus() == null || d.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        lockInventory(items);
         if ("DRAW".equals(d.getDocType())) {
             boolean anyIssued = items.stream().anyMatch(it ->
                     it.getIssuedQty() != null && it.getIssuedQty().signum() > 0);
@@ -232,6 +236,7 @@ public class StockDocService {
         tx.bind();
         StockDocument d = requireDrawForIssue(id);
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        lockInventory(items);
         OffsetDateTime ts = OffsetDateTime.now();
         for (StockDocIssueRequest.Line l : req.getLines()) {
             StockDocumentItem it = findItem(items, l.getItemId());
@@ -258,6 +263,7 @@ public class StockDocService {
         tx.bind();
         StockDocument d = requireDrawForIssue(id);
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        lockInventory(items);
         OffsetDateTime ts = OffsetDateTime.now();
         for (StockDocIssueRequest.Line l : req.getLines()) {
             StockDocumentItem it = findItem(items, l.getItemId());
@@ -290,6 +296,13 @@ public class StockDocService {
     private StockDocumentItem findItem(List<StockDocumentItem> items, UUID itemId) {
         return items.stream().filter(it -> it.getId().equals(itemId)).findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "明细行不存在于本单: " + itemId));
+    }
+
+    private void lockInventory(List<StockDocumentItem> items) {
+        stockService.lockInventory(items.stream()
+                .filter(it -> it.getGoodsId() != null)
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
     }
 
     /**
@@ -336,10 +349,11 @@ public class StockDocService {
      * <b>红冲（-1）</b>——先释放本单补的预留（已发货则拒绝，库存不动），再对称回退各累计量。
      */
     private void applyFinishedInChain(StockDocument d, List<StockDocumentItem> items, int sign) {
-        Object planId = em.createNativeQuery("""
+        List<UUID> planIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT l.plan_id FROM plan_draw_links l
                 WHERE l.draw_id = :did AND l.is_deleted = false LIMIT 1
-                """).setParameter("did", d.getId()).getResultList().stream().findFirst().orElse(null);
+                """).setParameter("did", d.getId()), UUID.class);
+        UUID planId = planIds.isEmpty() ? null : planIds.getFirst();
         if (sign < 0) {
             reservationService.releaseBySourceDoc("PRODUCTION_INBOUND", d.getId()); // 已消耗(已发货)抛错
         }
@@ -348,7 +362,7 @@ public class StockDocService {
             BigDecimal baseQty = baseQty(it);
             if (baseQty.signum() <= 0) continue;
             if (planId == null) continue; // 手工入库：无计划关联不进链
-            allocateFinishedIn(d, it, (UUID) planId, baseQty, sign);
+            allocateFinishedIn(d, it, planId, baseQty, sign);
         }
     }
 
@@ -361,8 +375,7 @@ public class StockDocService {
         String remainExpr = sign > 0
                 ? "COALESCE(i.qty,0) - COALESCE(i.iqty,0)"
                 : "COALESCE(i.iqty,0)";
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery(
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
                 "SELECT i.id, i.sales_order_item_id, " + remainExpr + " AS remain"
                         + " FROM production_plan_items i"
                         + " WHERE i.plan_id = :pid AND i.is_deleted = false"
@@ -371,8 +384,7 @@ public class StockDocService {
                         + " AND i.sales_order_item_id IS NOT NULL AND " + cond)
                 .setParameter("pid", planId)
                 .setParameter("gid", it.getGoodsId())
-                .setParameter("cid", it.getColorId())
-                .getResultList();
+                .setParameter("cid", it.getColorId()));
         BigDecimal remaining = baseQty;
         for (Object[] r : rows) {
             if (remaining.signum() <= 0) break;
@@ -447,7 +459,7 @@ public class StockDocService {
      */
     private void applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign) {
         OffsetDateTime ts = d.getBillDate() == null ? OffsetDateTime.now()
-                : d.getBillDate().atStartOfDay(ZoneId.systemDefault()).toOffsetDateTime();
+                : d.getBillDate().atStartOfDay(BusinessTime.ZONE).toOffsetDateTime();
         for (StockDocumentItem it : items) {
             if (it.getGoodsId() == null) continue;
             BigDecimal baseQty = baseQty(it);

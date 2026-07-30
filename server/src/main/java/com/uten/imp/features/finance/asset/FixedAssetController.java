@@ -1,6 +1,12 @@
 package com.uten.imp.features.finance.asset;
 
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.finance.asset.FixedAssetRequests.CreateAssetRequest;
+import com.uten.imp.features.finance.asset.FixedAssetRequests.CreateDeferredRequest;
+import com.uten.imp.features.finance.asset.FixedAssetRequests.UpdateAssetRequest;
+import com.uten.imp.features.finance.asset.FixedAssetRequests.UpdateDeferredRequest;
 import com.uten.imp.features.finance.report.ReportTableResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -13,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -38,25 +43,29 @@ public class FixedAssetController {
 
     @GetMapping("/fixed-assets")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<Map<String, Object>> listAssets() {
-        return service.listAssets();
+    public PageResponse<Map<String, Object>> listAssets(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.listAssets(page, size);
     }
 
     @PostMapping("/fixed-assets")
-    @PreAuthorize("hasAuthority('finance_report:view')")
-    public Map<String, Object> createAsset(@RequestBody Map<String, Object> body) {
-        return Map.of("id", service.createAsset(body));
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    public Map<String, Object> createAsset(@Valid @RequestBody CreateAssetRequest body) {
+        return Map.of("id", service.createAsset(body.toMap()));
     }
 
     @PutMapping("/fixed-assets/{id}")
-    @PreAuthorize("hasAuthority('finance_report:view')")
-    public Map<String, Object> updateAsset(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
-        service.updateAsset(id, body);
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    public Map<String, Object> updateAsset(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateAssetRequest body) {
+        service.updateAsset(id, body.toMap());
         return Map.of("ok", true);
     }
 
     @DeleteMapping("/fixed-assets/{id}")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public Map<String, Object> deleteAsset(@PathVariable UUID id) {
         service.deleteAsset(id);
         return Map.of("ok", true);
@@ -66,25 +75,29 @@ public class FixedAssetController {
 
     @GetMapping("/deferred-expenses")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public List<Map<String, Object>> listDeferred() {
-        return service.listDeferred();
+    public PageResponse<Map<String, Object>> listDeferred(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.listDeferred(page, size);
     }
 
     @PostMapping("/deferred-expenses")
-    @PreAuthorize("hasAuthority('finance_report:view')")
-    public Map<String, Object> createDeferred(@RequestBody Map<String, Object> body) {
-        return Map.of("id", service.createDeferred(body));
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    public Map<String, Object> createDeferred(@Valid @RequestBody CreateDeferredRequest body) {
+        return Map.of("id", service.createDeferred(body.toMap()));
     }
 
     @PutMapping("/deferred-expenses/{id}")
-    @PreAuthorize("hasAuthority('finance_report:view')")
-    public Map<String, Object> updateDeferred(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
-        service.updateDeferred(id, body);
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    public Map<String, Object> updateDeferred(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateDeferredRequest body) {
+        service.updateDeferred(id, body.toMap());
         return Map.of("ok", true);
     }
 
     @DeleteMapping("/deferred-expenses/{id}")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public Map<String, Object> deleteDeferred(@PathVariable UUID id) {
         service.deleteDeferred(id);
         return Map.of("ok", true);
@@ -94,7 +107,7 @@ public class FixedAssetController {
 
     /** 计提折旧（幂等重跑期间：先回滚该期间 FA_DEP 凭证+日志再重建）。 */
     @PostMapping("/fa/depreciate")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public Map<String, Object> depreciate(@RequestParam String period) {
         int n = service.depreciate(period);
         return Map.of("period", period, "assets", n);
@@ -102,7 +115,7 @@ public class FixedAssetController {
 
     /** 计提摊销（幂等重跑期间）。 */
     @PostMapping("/fa/amortize")
-    @PreAuthorize("hasAuthority('finance_report:view')")
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
     public Map<String, Object> amortize(@RequestParam String period) {
         int n = service.amortize(period);
         return Map.of("period", period, "items", n);

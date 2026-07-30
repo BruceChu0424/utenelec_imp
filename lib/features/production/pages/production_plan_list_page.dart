@@ -17,6 +17,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -27,14 +28,14 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
 
-/// 生产模块权限点字面量（与 V55 seed 一致；待用户在 permissions.dart 加 Perm.* 常量后替换）。
+/// 保留模块别名以兼容既有调用，实际值统一来自全局 [Perm]。
 class ProductionPerm {
   const ProductionPerm._();
-  static const planView = 'production_plan:view';
-  static const planEdit = 'production_plan:edit';
-  static const dailyReportView = 'production_daily_report:view';
-  static const dailyReportEdit = 'production_daily_report:edit';
-  static const reportView = 'production_report:view';
+  static const planView = Perm.productionPlanView;
+  static const planEdit = Perm.productionPlanEdit;
+  static const dailyReportView = Perm.productionDailyReportView;
+  static const dailyReportEdit = Perm.productionDailyReportEdit;
+  static const reportView = Perm.productionReportView;
 }
 
 class ProductionPlanListPage extends ConsumerStatefulWidget {
@@ -45,11 +46,13 @@ class ProductionPlanListPage extends ConsumerStatefulWidget {
       _ProductionPlanListPageState();
 }
 
-class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage> {
+class _ProductionPlanListPageState
+    extends ConsumerState<ProductionPlanListPage> {
   PagedResult<ProductionPlanListItem>? _page;
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
+  final _loadRequests = LatestRequestGuard();
   String _keyword = '';
   int? _statusFilter; // null=全部
   // 列排序态：_sortKey=当前排序列 key（null=不排序，走后端默认 billDate DESC）；_sortAsc=升序。
@@ -66,7 +69,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       ref.read(currentPermissionsProvider).contains(ProductionPerm.planEdit);
 
   Future<void> _load(int page) async {
-    if (_loading) return;
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -74,7 +77,9 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     });
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      final r = await ref.read(productionPlanRepositoryProvider).list(
+      final r = await ref
+          .read(productionPlanRepositoryProvider)
+          .list(
             page: page,
             filter: ProductionPlanFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword,
@@ -84,21 +89,24 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
       // 跟单员名按需解析（部门名已在 ensureLoaded 加载）。
-      await ref.read(masterNameServiceProvider).loadEmployeeNames(
-          r.items.map((e) => e.sellerId).whereType<String>());
-      if (!mounted) return;
+      await ref
+          .read(masterNameServiceProvider)
+          .loadEmployeeNames(
+            r.items.map((e) => e.sellerId).whereType<String>(),
+          );
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载列表失败';
         _loading = false;
@@ -121,40 +129,49 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   }
 
   List<MasterColumnDef<ProductionPlanListItem>> _columns(
-          MasterNameService names) =>
-      <MasterColumnDef<ProductionPlanListItem>>[
-        MasterColumnDef(
-            key: 'billNo', label: '单据号', width: 140, value: (it) => it.billNo),
-        MasterColumnDef(
-            key: 'billDate',
-            label: '单据日期',
-            width: 120,
-            type: 'date',
-            sortable: true,
-            value: (it) => productionDateOnly(it.billDate)),
-        MasterColumnDef(
-            key: 'deliveryDate',
-            label: '交货日',
-            width: 120,
-            type: 'date',
-            sortable: true,
-            value: (it) => productionDateOnly(it.deliveryDate)),
-        MasterColumnDef(
-            key: 'workshop',
-            label: '车间',
-            width: 160,
-            value: (it) => names.department(it.departmentId)),
-        MasterColumnDef(
-            key: 'seller',
-            label: '跟单员',
-            width: 140,
-            value: (it) => names.employee(it.sellerId)),
-        MasterColumnDef(
-            key: 'status',
-            label: '状态',
-            width: 100,
-            value: (it) => productionStatusLabel(it.status)),
-      ];
+    MasterNameService names,
+  ) => <MasterColumnDef<ProductionPlanListItem>>[
+    MasterColumnDef(
+      key: 'billNo',
+      label: '单据号',
+      width: 140,
+      value: (it) => it.billNo,
+    ),
+    MasterColumnDef(
+      key: 'billDate',
+      label: '单据日期',
+      width: 120,
+      type: 'date',
+      sortable: true,
+      value: (it) => productionDateOnly(it.billDate),
+    ),
+    MasterColumnDef(
+      key: 'deliveryDate',
+      label: '交货日',
+      width: 120,
+      type: 'date',
+      sortable: true,
+      value: (it) => productionDateOnly(it.deliveryDate),
+    ),
+    MasterColumnDef(
+      key: 'workshop',
+      label: '车间',
+      width: 160,
+      value: (it) => names.department(it.departmentId),
+    ),
+    MasterColumnDef(
+      key: 'seller',
+      label: '跟单员',
+      width: 140,
+      value: (it) => names.employee(it.sellerId),
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (it) => productionStatusLabel(it.status),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +182,8 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       appBar: UtenAppBar(
         title: '生产计划单',
         leading: UtenBackButton(
-            onPressed: () => backTo(context, defaultPath: RouteName.production)),
+          onPressed: () => backTo(context, defaultPath: RouteName.production),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
@@ -183,23 +201,31 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                 // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                 Padding(
                   padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4),
+                    bottom: UtenSpacing.s8,
+                    left: UtenSpacing.s4,
+                    right: UtenSpacing.s4,
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.assignment_outlined,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.assignment_outlined,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text('计划单 ($total)',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '计划单 ($total)',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       const Spacer(),
                       if (_canEdit)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
-                          onPressed: () => context.push('/production/plans/new'),
+                          onPressed: () =>
+                              context.push('/production/plans/new'),
                           child: const Text('新建'),
                         ),
                     ],
@@ -210,7 +236,8 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
                   child: UtenListTwoPane(
                     filterPane: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s4),
+                        horizontal: UtenSpacing.s4,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

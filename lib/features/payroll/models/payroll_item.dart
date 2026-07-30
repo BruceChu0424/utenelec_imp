@@ -12,15 +12,26 @@ enum PayrollItemType {
 
 extension PayrollItemTypeValue on PayrollItemType {
   String get label => switch (this) {
-        PayrollItemType.earning => '应发',
-        PayrollItemType.deduction => '扣除',
-      };
+    PayrollItemType.earning => '应发',
+    PayrollItemType.deduction => '扣除',
+  };
 
   /// 金额符号（应发为正，扣除为负）
   int get sign => switch (this) {
-        PayrollItemType.earning => 1,
-        PayrollItemType.deduction => -1,
-      };
+    PayrollItemType.earning => 1,
+    PayrollItemType.deduction => -1,
+  };
+
+  String get apiValue => name.toUpperCase();
+
+  static PayrollItemType fromApi(Object? value) {
+    final normalized = value?.toString().trim().toUpperCase();
+    return switch (normalized) {
+      'EARNING' => PayrollItemType.earning,
+      'DEDUCTION' => PayrollItemType.deduction,
+      _ => throw FormatException('未知工资项类型：$value'),
+    };
+  }
 }
 
 /// 工资项
@@ -43,4 +54,11 @@ class PayrollItem {
 
   /// 说明（可选，如 "10 小时加班"）
   final String? description;
+
+  factory PayrollItem.fromJson(Map<String, dynamic> json) => PayrollItem(
+    name: json['name'] as String,
+    amount: (json['amount'] as num).toDouble(),
+    type: PayrollItemTypeValue.fromApi(json['type']),
+    description: json['description'] as String?,
+  );
 }

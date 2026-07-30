@@ -1,6 +1,7 @@
 // 工资条模型
 // 文档：docs/04-数据模型/实体字典.md#PayrollSlip
 
+import '../../../core/utils/china_datetime.dart';
 import 'payroll_item.dart';
 
 /// 工资条状态
@@ -20,18 +21,36 @@ enum PayrollSlipStatus {
 
 extension PayrollSlipStatusValue on PayrollSlipStatus {
   String get label => switch (this) {
-        PayrollSlipStatus.pending => '待发布',
-        PayrollSlipStatus.published => '已发布',
-        PayrollSlipStatus.viewed => '已查看',
-        PayrollSlipStatus.downloaded => '已下载',
-      };
+    PayrollSlipStatus.pending => '待发布',
+    PayrollSlipStatus.published => '已发布',
+    PayrollSlipStatus.viewed => '已查看',
+    PayrollSlipStatus.downloaded => '已下载',
+  };
 
   String get labelEn => switch (this) {
-        PayrollSlipStatus.pending => 'Pending',
-        PayrollSlipStatus.published => 'Published',
-        PayrollSlipStatus.viewed => 'Viewed',
-        PayrollSlipStatus.downloaded => 'Downloaded',
-      };
+    PayrollSlipStatus.pending => 'Pending',
+    PayrollSlipStatus.published => 'Published',
+    PayrollSlipStatus.viewed => 'Viewed',
+    PayrollSlipStatus.downloaded => 'Downloaded',
+  };
+
+  /// 工资条的服务端状态只表示发布可见性；查看/下载由时间字段派生。
+  static PayrollSlipStatus fromApi(
+    Object? value, {
+    DateTime? viewedAt,
+    DateTime? downloadedAt,
+  }) {
+    if (downloadedAt != null) return PayrollSlipStatus.downloaded;
+    if (viewedAt != null) return PayrollSlipStatus.viewed;
+    return switch (value?.toString().trim().toUpperCase()) {
+      'PENDING' || 'DRAFT' => PayrollSlipStatus.pending,
+      'PUBLISHED' => PayrollSlipStatus.published,
+      // 兼容旧接口，但新后端不应再把行为状态写进 status。
+      'VIEWED' => PayrollSlipStatus.viewed,
+      'DOWNLOADED' => PayrollSlipStatus.downloaded,
+      final unknown => throw FormatException('未知工资条状态：$unknown'),
+    };
+  }
 }
 
 /// 工资条
@@ -101,6 +120,36 @@ class PayrollSlip {
   /// 月份中文（如 2026年7月）
   String get periodLabelZh => '$year年$month月';
 
+  factory PayrollSlip.fromJson(Map<String, dynamic> json) {
+    final publishedAt = _dateTime(json['publishedAt']);
+    final viewedAt = _dateTime(json['viewedAt']);
+    final downloadedAt = _dateTime(json['downloadedAt']);
+    final rawItems = json['items'] as List<dynamic>? ?? const [];
+    return PayrollSlip(
+      id: json['id'] as String,
+      employeeId: json['employeeId'] as String,
+      employeeName: json['employeeName'] as String,
+      employeeCode: json['employeeCode'] as String,
+      year: (json['year'] as num).toInt(),
+      month: (json['month'] as num).toInt(),
+      items: rawItems
+          .map((item) => PayrollItem.fromJson(item as Map<String, dynamic>))
+          .toList(growable: false),
+      grossIncome: (json['grossIncome'] as num).toDouble(),
+      totalDeduction: (json['totalDeduction'] as num).toDouble(),
+      netIncome: (json['netIncome'] as num).toDouble(),
+      status: PayrollSlipStatusValue.fromApi(
+        json['status'],
+        viewedAt: viewedAt,
+        downloadedAt: downloadedAt,
+      ),
+      publishedAt: publishedAt,
+      viewedAt: viewedAt,
+      downloadedAt: downloadedAt,
+      remark: json['remark'] as String?,
+    );
+  }
+
   PayrollSlip copyWith({
     PayrollSlipStatus? status,
     DateTime? viewedAt,
@@ -124,4 +173,9 @@ class PayrollSlip {
       remark: remark,
     );
   }
+}
+
+DateTime? _dateTime(Object? value) {
+  if (value == null) return null;
+  return ChinaDateTime.tryParse(value as String);
 }

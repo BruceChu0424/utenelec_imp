@@ -38,11 +38,14 @@ class HvacOverviewPage extends ConsumerWidget {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(
-              hPad, UtenSpacing.s12, hPad, UtenSpacing.s8),
+            hPad,
+            UtenSpacing.s12,
+            hPad,
+            UtenSpacing.s8,
+          ),
           child: UtenSegmentedFilter<String>(
             selected: building,
-            onChanged: (v) =>
-                ref.read(hvacBuildingProvider.notifier).state = v,
+            onChanged: (v) => ref.read(hvacBuildingProvider.notifier).state = v,
             segments: [
               for (final b in buildings) UtenSegment(value: b, label: b),
             ],
@@ -58,11 +61,15 @@ class HvacOverviewPage extends ConsumerWidget {
             data: (list) {
               if (list.isEmpty) {
                 return const UtenEmpty(
-                    icon: Icons.hvac_outlined, message: '暂无空调设备');
+                  icon: Icons.hvac_outlined,
+                  message: '暂无空调设备',
+                );
               }
               return SingleChildScrollView(
                 padding: EdgeInsets.symmetric(
-                    horizontal: hPad, vertical: UtenSpacing.s16),
+                  horizontal: hPad,
+                  vertical: UtenSpacing.s16,
+                ),
                 // 物理空调设备，按厂房分区，全公司几十量级且受设备数硬约束，无需分页。
                 // 接真后端且设备数膨胀（>~30）时再评估服务端分页。
                 child: UtenResponsiveGrid(
@@ -99,8 +106,8 @@ class _DeviceCard extends StatelessWidget {
     final color = !online
         ? UtenColors.error
         : device.power
-            ? UtenColors.teal600
-            : UtenColors.slate400;
+        ? UtenColors.teal600
+        : UtenColors.slate400;
     return UtenCard(
       onTap: device.online ? onTap : null,
       child: Column(
@@ -123,17 +130,24 @@ class _DeviceCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(device.name,
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(fontWeight: FontWeight.w700)),
-                    Text('${device.building} · ${device.floor}',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+                    Text(
+                      device.name,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      '${device.building} · ${device.floor}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
               Container(
-                width: 8, height: 8,
+                width: 8,
+                height: 8,
                 decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
             ],
@@ -154,9 +168,12 @@ class _DeviceCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Text(
-                  device.power ? '目标 ${device.targetTemp.toStringAsFixed(0)}° · ${device.mode.label}' : '已关闭',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  device.power
+                      ? '目标 ${device.targetTemp.toStringAsFixed(0)}° · ${device.mode.label}'
+                      : '已关闭',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],

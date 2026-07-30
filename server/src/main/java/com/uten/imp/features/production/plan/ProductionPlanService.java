@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.plan;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -35,6 +36,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /**
@@ -182,6 +184,7 @@ public class ProductionPlanService {
                 .filter(i -> zeroIfNull(i.getQty()).signum() > 0)
                 .toList();
         if (items.isEmpty()) return false;
+        lockSourceOrderItems(items);
         short chain = materialShortage(planId) ? CHAIN_WAIT_MATERIAL : CHAIN_PLANNED;
         for (ProductionPlanItem it : items) {
             List<PlanOrderItemLink> prebuilt = linkRepo.findActiveByPlanItemIds(List.of(it.getId()));
@@ -202,6 +205,43 @@ public class ProductionPlanService {
             }
         }
         return chain == CHAIN_WAIT_MATERIAL;
+    }
+
+    /**
+     * Different production plans can allocate the same sales-order line.
+     * Lock every source row once in UUID order before recalculating remaining
+     * demand, otherwise two plan-header locks do not prevent over-allocation.
+     */
+    private void lockSourceOrderItems(List<ProductionPlanItem> items) {
+        TreeSet<UUID> ids = new TreeSet<>();
+        for (ProductionPlanItem item : items) {
+            List<PlanOrderItemLink> links = linkRepo.findActiveByPlanItemIds(List.of(item.getId()));
+            if (links.isEmpty()) {
+                if (item.getSalesOrderItemId() != null) {
+                    ids.add(item.getSalesOrderItemId());
+                }
+            } else {
+                links.stream().map(PlanOrderItemLink::getOrderItemId).forEach(ids::add);
+            }
+        }
+        lockSourceOrderItemIds(ids);
+    }
+
+    private void lockSourceOrderItemIds(java.util.Collection<UUID> requestedIds) {
+        TreeSet<UUID> ids = new TreeSet<>(requestedIds);
+        if (ids.isEmpty()) return;
+        List<?> locked = em.createNativeQuery("""
+                        SELECT id
+                        FROM sales_order_items
+                        WHERE id IN (:ids) AND COALESCE(is_deleted, false) = false
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("ids", ids)
+                .getResultList();
+        if (locked.size() != ids.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单行不存在或已删除");
+        }
     }
 
     /** 防超排校验 + planned_qty 回写 + 行状态推进（一笔分摊）。 */
@@ -238,7 +278,9 @@ public class ProductionPlanService {
         List<UUID> itemIds = itemRepo.findByPlanIdOrderByLineNoAsc(planId).stream()
                 .map(ProductionPlanItem::getId).toList();
         if (itemIds.isEmpty()) return;
-        for (PlanOrderItemLink l : linkRepo.findActiveByPlanItemIds(itemIds)) {
+        List<PlanOrderItemLink> links = linkRepo.findActiveByPlanItemIds(itemIds);
+        lockSourceOrderItemIds(links.stream().map(PlanOrderItemLink::getOrderItemId).toList());
+        for (PlanOrderItemLink l : links) {
             if (l.getInboundQty().signum() > 0 || l.getProducedQty().signum() > 0) {
                 throw new ApiException(ErrorCode.BUSINESS, "已有报工/完工入库，不能红冲计划");
             }
@@ -404,17 +446,20 @@ public class ProductionPlanService {
                     FROM plan_draw_links l
                     JOIN stock_documents d ON d.id = l.draw_id AND d.is_deleted = false
                          AND d.status = 1 AND d.doc_type = 'FINISHED_IN'
-                         AND d.bill_date = CURRENT_DATE
+                         AND d.bill_date = CAST(:today AS date)
                     JOIN stock_document_items i ON i.doc_id = d.id AND i.is_deleted = false
                     WHERE l.is_deleted = false AND l.plan_id IN (:ids)
                     GROUP BY l.plan_id
-                    """).setParameter("ids", planIds).getResultList();
+                    """)
+                    .setParameter("ids", planIds)
+                    .setParameter("today", BusinessTime.today())
+                    .getResultList();
             for (Object[] t : tq) {
                 todayByPlan.put((UUID) t[0], bd(t[1]));
             }
         }
-        java.time.LocalDate warn = java.time.LocalDate.now().plusDays(3);
-        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate today = BusinessTime.today();
+        java.time.LocalDate warn = today.plusDays(3);
         List<com.uten.imp.features.production.plan.dto.PlanProgressRow> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             BigDecimal totalQty = bd(r[7]);

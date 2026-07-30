@@ -52,13 +52,15 @@ class UtenInfoRow extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: valueWidget ??
+                child:
+                    valueWidget ??
                     Text(
                       value ?? '—',
                       textAlign: TextAlign.right,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight:
-                            isImportant ? FontWeight.w700 : FontWeight.w400,
+                        fontWeight: isImportant
+                            ? FontWeight.w700
+                            : FontWeight.w400,
                         color: isImportant
                             ? theme.colorScheme.onSurface
                             : theme.colorScheme.onSurfaceVariant,

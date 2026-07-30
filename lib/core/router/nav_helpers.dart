@@ -21,7 +21,8 @@ import 'package:go_router/go_router.dart';
 void goFrom(BuildContext context, String path) {
   final from = GoRouterState.of(context).matchedLocation;
   final uri = Uri.parse(path);
-  final params = Map<String, String>.from(uri.queryParameters)..['returnTo'] = from;
+  final params = Map<String, String>.from(uri.queryParameters)
+    ..['returnTo'] = from;
   context.go(uri.replace(queryParameters: params).toString());
 }
 

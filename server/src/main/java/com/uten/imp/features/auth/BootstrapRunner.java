@@ -14,6 +14,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 /**
  * 首次启动创建引导超管账号（admin）。
@@ -26,7 +27,8 @@ import org.springframework.stereotype.Component;
  *       直接返回 permissions 表全量</li>
  * </ul>
  * 密码取自 BOOTSTRAP_ADMIN_PASSWORD，Argon2id 哈希入库，must_change_password=true。
- * 已存在则跳过。SQL 迁移已种入 admin 员工档案（code=ADMIN）。
+ * 已存在则严格跳过；运行时不会把被人工撤销的超管权限重新授回。
+ * SQL 迁移已种入 admin 员工档案（code=ADMIN）。
  */
 @Slf4j
 @Order(1)
@@ -45,18 +47,16 @@ public class BootstrapRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         if (userRepo.existsByLoginAccount(props.getAdminLogin())) {
             log.info("引导超管账号 [{}] 已存在，跳过", props.getAdminLogin());
-            // 升级路径：把已存在 admin 的 is_super_admin 置 true（幂等）
-            userRepo.findByLoginAccount(props.getAdminLogin()).ifPresent(u -> {
-                if (!u.isSuperAdmin()) {
-                    u.setSuperAdmin(true);
-                    userRepo.save(u);
-                    log.warn("已为现有账号 [{}] 标记 is_super_admin=true（幂等升级）", props.getAdminLogin());
-                }
-            });
             return;
         }
         Employee adminEmp = employeeRepo.findByCode("ADMIN")
                 .orElseThrow(() -> new IllegalStateException("未找到 admin 员工种子记录（V08 迁移）"));
+        if (!StringUtils.hasText(props.getAdminPassword())
+                || props.getAdminPassword().length() < 12) {
+            throw new IllegalStateException(
+                    "空库首次启动必须提供至少 12 位 BOOTSTRAP_ADMIN_PASSWORD；"
+                            + "账号创建并完成首登改密后可移除此变量");
+        }
 
         UserAccount user = new UserAccount();
         user.setEmployeeId(adminEmp.getId());

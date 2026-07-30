@@ -77,26 +77,29 @@ class _AccountFieldState extends ConsumerState<AccountField> {
   void _showDropdown() {
     _hideDropdown();
     if (_history.isEmpty) return;
-    final entry = OverlayEntry(builder: (_) => _Dropdown(
-          layerLink: _layerLink,
-          accounts: _history,
-          onPick: (a) {
-            widget.controller.text = a;
-            widget.controller.selection = TextSelection.fromPosition(
-                TextPosition(offset: a.length));
-            _hideDropdown();
-          },
-          onDelete: (a) async {
-            await ref.read(accountHistoryProvider).remove(a);
-            await _loadHistory();
-          },
-          onClear: () async {
-            await ref.read(accountHistoryProvider).clear();
-            await _loadHistory();
-            _hideDropdown();
-          },
-          onClose: _hideDropdown,
-        ));
+    final entry = OverlayEntry(
+      builder: (_) => _Dropdown(
+        layerLink: _layerLink,
+        accounts: _history,
+        onPick: (a) {
+          widget.controller.text = a;
+          widget.controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: a.length),
+          );
+          _hideDropdown();
+        },
+        onDelete: (a) async {
+          await ref.read(accountHistoryProvider).remove(a);
+          await _loadHistory();
+        },
+        onClear: () async {
+          await ref.read(accountHistoryProvider).clear();
+          await _loadHistory();
+          _hideDropdown();
+        },
+        onClose: _hideDropdown,
+      ),
+    );
     Overlay.of(context).insert(entry);
     _overlay = entry;
     setState(() => _open = true);
@@ -162,76 +165,86 @@ class _Dropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Stack(children: [
-      // 点外部关闭
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onClose,
-        child: const SizedBox.expand(),
-      ),
-      Positioned(
-        // 用 LayerLink + Follower 手动定位到输入框下方（避免计算坐标）
-        child: CompositedTransformFollower(
-          link: layerLink,
-          targetAnchor: Alignment.bottomLeft,
-          followerAnchor: Alignment.topLeft,
-          offset: const Offset(0, 4),
-          child: TapRegion(
-            onTapOutside: (_) => onClose(),
-            child: Material(
-              elevation: 6,
-              borderRadius: BorderRadius.circular(8),
-              color: theme.colorScheme.surface,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 320, maxHeight: 280),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Flexible(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: accounts.length,
-                        itemBuilder: (_, i) {
-                          final a = accounts[i];
-                          return InkWell(
-                            onTap: () => onPick(a),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              child: Row(children: [
-                                const Icon(Icons.person_outline, size: 18),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(a,
-                                      style: theme.textTheme.bodyMedium),
+    return Stack(
+      children: [
+        // 点外部关闭
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onClose,
+          child: const SizedBox.expand(),
+        ),
+        Positioned(
+          // 用 LayerLink + Follower 手动定位到输入框下方（避免计算坐标）
+          child: CompositedTransformFollower(
+            link: layerLink,
+            targetAnchor: Alignment.bottomLeft,
+            offset: const Offset(0, 4),
+            child: TapRegion(
+              onTapOutside: (_) => onClose(),
+              child: Material(
+                elevation: 6,
+                borderRadius: BorderRadius.circular(8),
+                color: theme.colorScheme.surface,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 320,
+                    maxHeight: 280,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Flexible(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: accounts.length,
+                          itemBuilder: (_, i) {
+                            final a = accounts[i];
+                            return InkWell(
+                              onTap: () => onPick(a),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
                                 ),
-                                IconButton(
-                                  tooltip: '删除',
-                                  iconSize: 18,
-                                  visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.close, size: 16),
-                                  onPressed: () => onDelete(a),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.person_outline, size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        a,
+                                        style: theme.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: '删除',
+                                      iconSize: 18,
+                                      visualDensity: VisualDensity.compact,
+                                      icon: const Icon(Icons.close, size: 16),
+                                      onPressed: () => onDelete(a),
+                                    ),
+                                  ],
                                 ),
-                              ]),
-                            ),
-                          );
-                        },
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    const Divider(height: 1),
-                    TextButton.icon(
-                      onPressed: onClear,
-                      icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                      label: const Text('清除全部'),
-                    ),
-                  ],
+                      const Divider(height: 1),
+                      TextButton.icon(
+                        onPressed: onClear,
+                        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                        label: const Text('清除全部'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 }

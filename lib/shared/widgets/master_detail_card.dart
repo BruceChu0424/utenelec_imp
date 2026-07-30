@@ -83,8 +83,9 @@ class MasterDetailCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final visibleStats =
-        stats.where((s) => s.value != null && s.value!.isNotEmpty).toList();
+    final visibleStats = stats
+        .where((s) => s.value != null && s.value!.isNotEmpty)
+        .toList();
     return UtenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,8 +105,9 @@ class MasterDetailCard extends StatelessWidget {
             const SizedBox(height: UtenSpacing.s12),
             Text(
               '路径：$path', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ],
@@ -122,14 +124,16 @@ class MasterDetailCard extends StatelessWidget {
       children: [
         Text(
           title,
-          style:
-              theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: UtenSpacing.s4),
         Text(
           subtitle,
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -221,7 +225,9 @@ class MasterDetailCard extends StatelessWidget {
     final children = <Widget>[];
     for (var i = 0; i < btns.length; i++) {
       children.add(btns[i]);
-      if (i < btns.length - 1) children.add(const SizedBox(width: UtenSpacing.s8));
+      if (i < btns.length - 1) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+      }
     }
     return Row(mainAxisSize: MainAxisSize.min, children: children);
   }
@@ -246,10 +252,7 @@ class MasterDetailCard extends StatelessWidget {
         color: theme.colorScheme.surfaceContainerHigh,
         borderRadius: UtenRadius.mdAll,
       ),
-      child: Text(
-        '$label：$value',
-        style: theme.textTheme.bodySmall,
-      ),
+      child: Text('$label：$value', style: theme.textTheme.bodySmall),
     );
   }
 }

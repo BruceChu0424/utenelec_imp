@@ -48,7 +48,9 @@ Future<void> showGoodsDetailDialog({
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (_) => SizedBox(
         height: MediaQuery.of(context).size.height * 0.92,
@@ -162,8 +164,9 @@ class _GoodsDetailBodyState extends State<_GoodsDetailBody> {
           Expanded(
             child: Text(
               title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -316,14 +319,16 @@ class _BasicInfoTab extends StatelessWidget {
         children: [
           Text(
             r.label,
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
             hasValue ? r.value! : '—',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w500),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

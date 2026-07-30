@@ -17,8 +17,10 @@ enum PurchaseDocType {
   final String pathSegment;
 
   static PurchaseDocType byPath(String seg) =>
-      PurchaseDocType.values.firstWhere((e) => e.pathSegment == seg,
-          orElse: () => PurchaseDocType.request);
+      PurchaseDocType.values.firstWhere(
+        (e) => e.pathSegment == seg,
+        orElse: () => PurchaseDocType.request,
+      );
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲。
@@ -135,7 +137,8 @@ class PurchaseDocItem {
   final String? sourceDocNo;
   final String? remark;
 
-  factory PurchaseDocItem.fromJson(Map<String, dynamic> json) => PurchaseDocItem(
+  factory PurchaseDocItem.fromJson(Map<String, dynamic> json) =>
+      PurchaseDocItem(
         id: json['id'] as String?,
         lineNo: (json['lineNo'] as num?)?.toInt(),
         goodsId: json['goodsId'] as String?,
@@ -204,8 +207,10 @@ class PurchaseDocDetail {
   final String? receiverId;
   final String? makerId;
   final String? approverId;
+
   /// 制单员姓名（服务端解析；只读展示，不可修改）
   final String? makerName;
+
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final String? needDate;
@@ -245,8 +250,11 @@ class PurchaseDocDetail {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
-        items: (json['items'] as List?)
-                ?.map((e) => PurchaseDocItem.fromJson(e as Map<String, dynamic>))
+        items:
+            (json['items'] as List?)
+                ?.map(
+                  (e) => PurchaseDocItem.fromJson(e as Map<String, dynamic>),
+                )
                 .toList() ??
             const [],
       );

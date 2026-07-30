@@ -1,4 +1,4 @@
-// 系统设置仓库（超管 user:manage）。
+// 系统设置仓库（authorization:manage + 后端 superAdmin）。
 //
 // list：拉全部设置（按 category 分组渲染表单）。
 // update：改单项，body 带 value + 当前账号密码（二次确认，后端校验）。
@@ -27,7 +27,11 @@ class DioSystemSettingRepository implements SystemSettingRepository {
   }
 
   @override
-  Future<SystemSettingEntry> update(String key, String value, String password) async {
+  Future<SystemSettingEntry> update(
+    String key,
+    String value,
+    String password,
+  ) async {
     final json = await api.put(
       '${ApiEndpoints.adminSystemSettings}/$key',
       body: <String, dynamic>{'value': value, 'password': password},

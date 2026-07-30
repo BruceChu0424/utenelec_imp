@@ -2,19 +2,21 @@ package com.uten.imp.features.visitor;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorApproveRequest;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorDetail;
 import com.uten.imp.features.visitor.dto.VisitorApplyDto.VisitorListItem;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
@@ -26,13 +28,15 @@ public class VisitorHrApprovalService {
 
     private final VisitorApplicationRepository appRepo;
     private final VisitorApplicationService appService;
-    private final VisitorApplicationMapper mapper;
     private final VisitorGateService gateService;
     private final VisitorGuard guard;
     private final TxSessionVars tx;
 
     @Transactional(readOnly = true)
-    public List<VisitorListItem> listForApproval(String status) {
+    public PageResponse<VisitorListItem> listForApproval(
+            String status,
+            int page,
+            int size) {
         guard.requireStaff();
         Specification<VisitorApplication> spec = (root, q, cb) -> {
             Predicate p = cb.equal(root.get("deleted"), false);
@@ -43,9 +47,9 @@ public class VisitorHrApprovalService {
             }
             return p;
         };
-        return appRepo.findAll(spec, Sort.by(Sort.Direction.DESC, "appliedAt")).stream()
-                .map(mapper::toListItem)
-                .toList();
+        Pageable pageable = VisitorApplicationService.visitorPageable(page, size);
+        Page<VisitorApplication> result = appRepo.findAll(spec, pageable);
+        return appService.toPageResponse(result, pageable);
     }
 
     /** HR 待办数（工作台/导航徽章）：与待审列表默认 tab 同一状态集（pending + hostReviewing）。 */
@@ -60,8 +64,15 @@ public class VisitorHrApprovalService {
 
     @Transactional(readOnly = true)
     public VisitorDetail getDetailForStaff(UUID id) {
-        guard.requireStaff();
+        AuthUser user = guard.requireStaffUser();
         VisitorApplication app = appService.load(id);
+        boolean canApprove = user.isSuperAdmin()
+                || user.getPermissions().contains("visitor:approve");
+        if (!canApprove && (user.getEmployeeId() == null
+                || !user.getEmployeeId().equals(app.getHostEmployeeId()))) {
+            // Hide another host's application instead of confirming that the UUID exists.
+            throw new ApiException(ErrorCode.VISITOR_NOT_FOUND);
+        }
         return appService.toDetail(app, appService.accountOf(app));
     }
 

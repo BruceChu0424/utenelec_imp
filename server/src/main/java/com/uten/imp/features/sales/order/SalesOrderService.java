@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -7,6 +8,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.order.dto.OrderCostItemDto;
 import com.uten.imp.features.sales.order.dto.OrderDetail;
 import com.uten.imp.features.sales.order.dto.OrderItemDto;
@@ -16,6 +18,7 @@ import com.uten.imp.features.sales.order.dto.OrderQueryFilter;
 import com.uten.imp.features.sales.order.dto.OrderSaveRequest;
 import com.uten.imp.features.production.plan.PlanOrderItemLink;
 import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockReservation;
 import com.uten.imp.features.stock.StockReservationService;
 import com.uten.imp.security.TxSessionVars;
@@ -28,6 +31,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,7 +80,7 @@ public class SalesOrderService {
     private final com.uten.imp.features.sales.quote.SalesQuoteRepository quoteRepo;
     private final com.uten.imp.features.sales.quote.SalesQuoteItemRepository quoteItemRepo;
     private final SalesPriceMasker priceMasker;
-    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+    private final SalesDocumentAccessPolicy accessPolicy;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final TxSessionVars tx;
@@ -85,24 +89,17 @@ public class SalesOrderService {
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
         // 可发货置顶（工作台小项）：sort=shippable 走专用排序——有预留（可发）的单排前，
         // 次按交货日升序（临近在前）、再按开单日期倒序；此时忽略列排序。
         boolean shippableFirst = "shippable".equals(sort);
+        var readScope = accessPolicy.scope();
         Specification<SalesOrder> spec = (Root<SalesOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                           CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            // 归属可见性（销售按人授权）：公共或可见归属人；超管/sales:view:all 全见
-            var ownerScope = ownerVisibility.evaluate("sales", "sales:view:all");
-            if (!ownerScope.seeAll()) {
-                if (ownerScope.visibleOwners().isEmpty()) {
-                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
-                } else {
-                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
-                            root.get("ownerEmployeeId").in(ownerScope.visibleOwners())));
-                }
-            }
+            ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
                 // 关键字同时匹配 单据号 / 客户名称（生产计划选单、日常检索都按客户找单）
@@ -145,7 +142,10 @@ public class SalesOrderService {
                 shippableFirst ? Sort.unsorted()
                         : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        boolean canEdit = accessPolicy.hasAuthority("sales_order:edit");
+        return new PageResponse<>(p.map(o -> toList(o,
+                        canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
+                page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     /**
@@ -154,27 +154,25 @@ public class SalesOrderService {
      * 归属隔离与 list/stats 同口径。
      */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
     public List<com.uten.imp.features.sales.order.dto.OrderShippableLine> shippableLines() {
-        var scope = ownerVisibility.evaluate("sales", "sales:view:all");
-        String ownerCond = "";
-        if (!scope.seeAll()) {
-            ownerCond = scope.visibleOwners().isEmpty()
-                    ? " AND o.owner_employee_id IS NULL"
-                    : " AND (o.owner_employee_id IS NULL OR o.owner_employee_id IN (:owners))";
-        }
+        var writeScope = accessPolicy.scope();
+        var ownerScope = accessPolicy.nativeReadScope(
+                "o.owner_employee_id", "salesOwners", writeScope);
+        boolean canCreateShipment = accessPolicy.hasAuthority("sales_shipment:edit");
         String sql = """
                 SELECT i.id, i.order_id, o.bill_no, o.client_id, i.deliver_date, i.goods_id, i.color_id,
-                       i.unit_id, i.unit_rate, i.qty, i.shipped_qty, i.reserved_qty, i.price
+                       i.unit_id, i.unit_rate, i.qty, i.shipped_qty, i.reserved_qty, i.price,
+                       o.owner_employee_id
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE o.status = 1 AND o.is_closed = false AND o.is_stopped = false
                   AND COALESCE(o.is_deleted,false) = false AND COALESCE(i.is_deleted,false) = false
                   AND COALESCE(i.reserved_qty,0) > 0
-                """ + ownerCond + " ORDER BY o.client_id, i.deliver_date NULLS LAST, o.bill_no, i.line_no NULLS LAST";
+                """ + " AND " + ownerScope.predicate()
+                + " ORDER BY o.client_id, i.deliver_date NULLS LAST, o.bill_no, i.line_no NULLS LAST";
         var q = em.createNativeQuery(sql);
-        if (!scope.seeAll() && !scope.visibleOwners().isEmpty()) {
-            q.setParameter("owners", scope.visibleOwners());
-        }
+        ownerScope.bind(q);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         List<com.uten.imp.features.sales.order.dto.OrderShippableLine> out = new ArrayList<>(rows.size());
@@ -184,7 +182,8 @@ public class SalesOrderService {
                     r[4] == null ? null : ((java.sql.Date) r[4]).toLocalDate(),
                     (UUID) r[5], (UUID) r[6], (UUID) r[7],
                     (BigDecimal) r[8], (BigDecimal) r[9], (BigDecimal) r[10],
-                    (BigDecimal) r[11], (BigDecimal) r[12]));
+                    (BigDecimal) r[11], (BigDecimal) r[12],
+                    canCreateShipment && accessPolicy.canWrite((UUID) r[13], writeScope)));
         }
         return out;
     }
@@ -194,14 +193,9 @@ public class SalesOrderService {
      * 一单可同时落入多卡（卡片即筛选器）；口径与 list 同数据范围（sales:view:all 豁免）。
      */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
     public com.uten.imp.features.sales.order.dto.OrderStats stats() {
-        var scope = ownerVisibility.evaluate("sales", "sales:view:all");
-        String ownerCond = "";
-        if (!scope.seeAll()) {
-            ownerCond = scope.visibleOwners().isEmpty()
-                    ? " AND o.owner_employee_id IS NULL"
-                    : " AND (o.owner_employee_id IS NULL OR o.owner_employee_id IN (:owners))";
-        }
+        var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
         String sql = """
                 SELECT
                   COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM sales_order_items i
@@ -212,14 +206,13 @@ public class SalesOrderService {
                       WHERE i.order_id = o.id AND i.is_deleted = false
                         AND COALESCE(i.reserved_qty,0) > 0)),
                   COUNT(*) FILTER (WHERE o.is_closed
-                        AND o.bill_date >= date_trunc('month', CURRENT_DATE))
+                        AND o.bill_date >= CAST(:monthStart AS date))
                 FROM sales_orders o
                 WHERE o.is_deleted = false AND o.status = 1
-                """ + ownerCond;
+                """ + " AND " + ownerScope.predicate();
         var q = em.createNativeQuery(sql);
-        if (!scope.seeAll() && !scope.visibleOwners().isEmpty()) {
-            q.setParameter("owners", scope.visibleOwners());
-        }
+        ownerScope.bind(q);
+        q.setParameter("monthStart", BusinessTime.today().withDayOfMonth(1));
         Object[] r = (Object[]) q.getSingleResult();
         return new com.uten.imp.features.sales.order.dto.OrderStats(
                 ((Number) r[0]).longValue(), ((Number) r[1]).longValue(),
@@ -227,14 +220,17 @@ public class SalesOrderService {
     }
 
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
     public OrderDetail detail(UUID id) {
-        SalesOrder o = requireOrder(id);
+        SalesOrder o = requireReadableOrder(id);
         List<SalesOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         List<OrderItemDto> itemDtos = items.stream().map(this::toItemDto).toList();
         List<OrderCostItemDto> costDtos = items.isEmpty() ? List.of()
                 : costItemRepo.findByOrderItemIdIn(items.stream().map(SalesOrderItem::getId).toList())
                         .stream().map(this::toCostDto).toList();
-        OrderDetail d = toDetail(o, itemDtos, costDtos);
+        OrderDetail d = toDetail(o, itemDtos, costDtos,
+                accessPolicy.hasAuthority("sales_order:edit")
+                        && accessPolicy.canWrite(o.getOwnerEmployeeId()));
         fillQuoteTrace(o, d); // 报价转入回联：sourceQuoteId + 行级 quotePrice（价格留痕比对）
         return d;
     }
@@ -242,12 +238,12 @@ public class SalesOrderService {
     /**
      * 排产进度（销售端看链路另一端）：每行 订货/可发/已排/已产/已发 + chain_status
      * + 关联生产计划溯源（plan_order_item_links → production_plans；含合并排产预建的草稿计划）。
-     * 只读接口，归属校验与 detail 同口径（非本人单抛 FORBIDDEN）。
+     * 只读接口，归属校验与 detail 同口径（不可见单据按不存在处理）。
      */
     @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
     public List<com.uten.imp.features.sales.order.dto.PlanProgressLine> planProgress(UUID id) {
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        requireReadableOrder(id);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT i.id, i.line_no, g.code, g.name, g.spec, col.name, u.name,
@@ -301,7 +297,17 @@ public class SalesOrderService {
     private void fillQuoteTrace(SalesOrder o, OrderDetail d) {
         if (o.getSourceDocNo() == null || o.getSourceDocNo().isBlank()) return;
         quoteRepo.findByBillNo(o.getSourceDocNo()).filter(q -> !q.isDeleted()).ifPresent(q -> {
+            // The order permission alone must not become a side door into an
+            // inaccessible quote or its historical prices.
+            if (!accessPolicy.hasAuthority("sales_quote:view")
+                    || !accessPolicy.canRead(q.getMakerId())) {
+                d.setSourceDocNo(null);
+                return;
+            }
             d.setSourceQuoteId(q.getId());
+            if (!priceMasker.canView()) {
+                return;
+            }
             Map<Integer, BigDecimal> priceByLine = new HashMap<>();
             for (var qi : quoteItemRepo.findByQuoteIdOrderByLineNoAsc(q.getId())) {
                 priceByLine.put(qi.getLineNo(), qi.getPrice());
@@ -314,39 +320,70 @@ public class SalesOrderService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail create(OrderSaveRequest req) {
+        return createInternal(req, null);
+    }
+
+    /**
+     * Quote conversion entry point. The supplied owner is checked against the
+     * source bill and is never trusted as a free-form owner assignment.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit') and hasAuthority('sales_quote:view')")
+    public OrderDetail createFromQuote(OrderSaveRequest req, UUID expectedQuoteOwner) {
+        return createInternal(req, expectedQuoteOwner);
+    }
+
+    private OrderDetail createInternal(OrderSaveRequest req, UUID expectedQuoteOwner) {
         tx.bind();
         SalesOrder o = new SalesOrder();
         applyHeader(req, o);
-        // 归属（V91）：默认记到当前登录用户的员工，未绑员工账号回落 sellerId，皆空=公共单
-        if (o.getOwnerEmployeeId() == null) {
-            UUID emp = currentUser.get().map(u -> u.getEmployeeId()).orElse(null);
-            o.setOwnerEmployeeId(emp != null ? emp : req.getSellerId());
-        }
+        UUID sourceOwner = resolveSourceQuoteOwner(req.getSourceDocNo(), expectedQuoteOwner);
+        o.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(sourceOwner));
         o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         o.setStatus(STATUS_DRAFT);
         orderRepo.save(o);
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
-        return toDetail(o, items, List.of());
+        return toDetail(o, items, List.of(), true);
     }
 
-    /** 归属守卫（V91，变更类操作前置）：非本人的单只能看不能动；公共单（owner 空）人人可动；view:all/超管豁免。 */
-    private void assertOwnable(SalesOrder o) {
-        var scope = ownerVisibility.evaluate("sales", "sales:view:all");
-        if (scope.seeAll() || o.getOwnerEmployeeId() == null) return;
-        if (!scope.visibleOwners().contains(o.getOwnerEmployeeId())) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "只能操作本人的销售订单");
+    private UUID resolveSourceQuoteOwner(String sourceDocNo, UUID expectedQuoteOwner) {
+        if (sourceDocNo == null || sourceDocNo.isBlank()) {
+            if (expectedQuoteOwner != null) {
+                throw new ApiException(ErrorCode.CONFLICT, "来源报价与订货单不一致");
+            }
+            return null;
         }
+        var source = quoteRepo.findByBillNo(sourceDocNo).filter(q -> !q.isDeleted()).orElse(null);
+        if (source == null) {
+            if (expectedQuoteOwner != null) {
+                throw new ApiException(ErrorCode.CONFLICT, "来源报价不存在或已删除");
+            }
+            return null; // legacy/free-text source number
+        }
+        if (!accessPolicy.hasAuthority("sales_quote:view")) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售报价单");
+        }
+        accessPolicy.requireWritable(source.getMakerId(), "无权引用该销售报价单");
+        if (expectedQuoteOwner != null && !java.util.Objects.equals(expectedQuoteOwner, source.getMakerId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价归属已变化，请刷新后重试");
+        }
+        return source.getMakerId();
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        SalesOrder o = requireWritableOrder(id);
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        }
+        UUID sourceOwner = resolveSourceQuoteOwner(req.getSourceDocNo(), null);
+        if (sourceOwner != null && !sourceOwner.equals(o.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价与订货单归属不一致");
         }
         applyHeader(req, o);
         costItemRepo.deleteByOrderId(id);
@@ -354,14 +391,14 @@ public class SalesOrderService {
         itemRepo.flush();
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
-        return toDetail(o, items, List.of());
+        return toDetail(o, items, List.of(), true);
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public void delete(UUID id) {
         tx.bind();
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        SalesOrder o = requireWritableOrder(id);
         if (o.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -372,10 +409,10 @@ public class SalesOrderService {
 
     /** 审核：status 0→1。业务链：逐行库存检查 + 软预留（同事务，行锁防并发超卖）。 */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail approve(UUID id) {
         tx.bind();
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        SalesOrder o = requireWritableOrder(id);
         em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -393,10 +430,10 @@ public class SalesOrderService {
     }
 
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail reverse(UUID id) {
         tx.bind();
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        SalesOrder o = requireWritableOrder(id);
         em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -432,6 +469,9 @@ public class SalesOrderService {
      * 同一货品多行共享一个递减的可用量池，防止同单两行重复占用。
      */
     private void reserveOnApprove(SalesOrder o, List<SalesOrderItem> items) {
+        reservationService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
         Map<String, BigDecimal> pool = new HashMap<>();
         for (SalesOrderItem it : items) {
             BigDecimal rate = it.getUnitRate() != null && it.getUnitRate().signum() > 0
@@ -459,10 +499,10 @@ public class SalesOrderService {
      * 新数量 ≥ 已发净量（shipped−returned）；涉及已排产/已产行需生产部权限点确认。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail changeQty(UUID id, com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest req) {
         tx.bind();
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        SalesOrder o = requireWritableOrder(id);
         em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可改量（草稿请直接编辑）");
@@ -576,10 +616,10 @@ public class SalesOrderService {
      * 已发货订单拒绝（用改量取消未发部分）；涉及已排产/已产需生产部权限点。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail cancel(UUID id) {
         tx.bind();
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        SalesOrder o = requireWritableOrder(id);
         em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可取消（草稿直接删除）");
@@ -654,10 +694,10 @@ public class SalesOrderService {
      * 恢复中止=重跑库存检查+软预留（排产联动已断，缺口回到调度待排产）。草稿单仅置位。
      */
     @Transactional
+    @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail toggleStopped(UUID id, boolean stopped) {
         tx.bind();
-        SalesOrder o = requireOrder(id);
-        assertOwnable(o);
+        SalesOrder o = requireWritableOrder(id);
         if (o.getStatus() != null && o.getStatus() == STATUS_APPROVED) {
             if (stopped && !o.isStopped()) {
                 return cancel(id);
@@ -747,16 +787,16 @@ public class SalesOrderService {
         orderRepo.save(o);
     }
 
-    private OrderListItem toList(SalesOrder o) {
+    private OrderListItem toList(SalesOrder o, boolean writable) {
         // 延期预警：已审未结案 + 距交货日 ≤3 天（含逾期）；草稿/红冲/结案不预警
         boolean delayWarning = o.getDeliverDate() != null
                 && o.getStatus() != null && o.getStatus() == STATUS_APPROVED
                 && !o.isClosed() && !o.isStopped()
-                && !o.getDeliverDate().isAfter(java.time.LocalDate.now().plusDays(3));
+                && !o.getDeliverDate().isAfter(BusinessTime.today().plusDays(3));
         boolean mask = !priceMasker.canView(); // 价格脱敏（SOP §三8）：无权限置 null + priceMasked 标记
         return new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getClientId(),
                 o.getCurrencyId(), mask ? null : o.getTotalLocal(), o.getStatus(), o.isClosed(), o.isStopped(),
-                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask);
+                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable);
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
@@ -777,7 +817,8 @@ public class SalesOrderService {
                 c.getBillDate(), c.getSourceDocNo(), c.getRemark());
     }
 
-    private OrderDetail toDetail(SalesOrder o, List<OrderItemDto> items, List<OrderCostItemDto> costItems) {
+    private OrderDetail toDetail(SalesOrder o, List<OrderItemDto> items,
+                                 List<OrderCostItemDto> costItems, boolean writable) {
         boolean mask = !priceMasker.canView(); // 价格脱敏（SOP §三8）：主表金额族+明细价格族置 null
         if (mask) {
             items.forEach(this::maskItemPrices);
@@ -790,7 +831,7 @@ public class SalesOrderService {
                 mask ? null : o.getTotalOriginal(), mask ? null : o.getTotalLocal(),
                 o.getStatus(), o.isClosed(), o.isStopped(),
                 o.getSourceDocNo(), null, mask, items, costItems,
-                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt());
+                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt(), writable);
     }
 
     /** 价格族字段置 null（数量族/链路量保留——生产/仓库要看出欠与进度，不看钱）。 */
@@ -807,5 +848,17 @@ public class SalesOrderService {
     private SalesOrder requireOrder(UUID id) {
         return orderRepo.findById(id).filter(o -> !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在"));
+    }
+
+    private SalesOrder requireReadableOrder(UUID id) {
+        SalesOrder order = requireOrder(id);
+        accessPolicy.requireReadable(order.getOwnerEmployeeId(), "销售订货单不存在");
+        return order;
+    }
+
+    private SalesOrder requireWritableOrder(UUID id) {
+        SalesOrder order = requireOrder(id);
+        accessPolicy.requireWritable(order.getOwnerEmployeeId(), "只能操作本人负责的销售订货单");
+        return order;
     }
 }

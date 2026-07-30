@@ -266,8 +266,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                         child: _slidingTabs(tabIndex: tabIndex),
                       ),
                     ),
-                    if (tabIndex == null)
-                      Positioned.fill(child: widget.child),
+                    if (tabIndex == null) Positioned.fill(child: widget.child),
                   ],
                 ),
               ),

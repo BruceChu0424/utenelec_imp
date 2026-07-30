@@ -28,6 +28,9 @@ public class JwtService {
         if (props.getSecret() == null || props.getSecret().isBlank()) {
             throw new IllegalStateException("缺少 UTEN_JWT_SECRET（在 server/.env 或环境变量配置）");
         }
+        if (props.getIssuer() == null || props.getIssuer().isBlank()) {
+            throw new IllegalStateException("缺少 UTEN_JWT_ISSUER");
+        }
         byte[] secret = props.getSecret().getBytes(StandardCharsets.UTF_8);
         if (secret.length < 32) {
             // fail-fast：HS256 至少 32 字节，绝不静默补齐弱密钥
@@ -37,7 +40,9 @@ public class JwtService {
     }
 
     public String issueAccess(UUID userId, UUID employeeId, String loginAccount,
-                              Set<String> roles, Set<String> permissions, boolean mustChangePassword) {
+                              Set<String> roles, Set<String> permissions,
+                              boolean mustChangePassword, long authVersion,
+                              long authorizationEpoch) {
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
         return Jwts.builder()
@@ -48,6 +53,8 @@ public class JwtService {
                 .claim("roles", roles)
                 .claim("perms", permissions)
                 .claim("mcp", mustChangePassword)
+                .claim("av", authVersion)
+                .claim("ae", authorizationEpoch)
                 .claim("typ", "staff")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
@@ -56,7 +63,7 @@ public class JwtService {
     }
 
     /** 访客访问 JWT（typ=visitor，subject=visitorId）。 */
-    public String issueVisitorAccess(UUID visitorId, String phone, String visitorNo,
+    public String issueVisitorAccess(UUID visitorId, String visitorNo, String avatarSeed,
                                      Set<String> permissions) {
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
@@ -64,8 +71,11 @@ public class JwtService {
                 .issuer(props.getIssuer())
                 .subject(visitorId.toString())
                 .claim("typ", "visitor")
-                .claim("acc", phone)
+                // JWT payload is only signed, not encrypted. Keep raw phone PII out of it;
+                // the stable visitor number is sufficient for principal/audit display.
+                .claim("acc", visitorNo)
                 .claim("vno", visitorNo)
+                .claim("avs", avatarSeed)
                 .claim("perms", permissions)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
@@ -76,6 +86,7 @@ public class JwtService {
     public Claims parse(String token) {
         return Jwts.parser()
                 .verifyWith(key)
+                .requireIssuer(props.getIssuer())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

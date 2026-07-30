@@ -51,7 +51,8 @@ class DioColorRepository implements ColorRepository {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
     };
     // 哨兵值 → nullFields；其余按 字段=值 发送。
     final nullFields = <String>[];

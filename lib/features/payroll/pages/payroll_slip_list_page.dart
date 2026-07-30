@@ -14,6 +14,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -33,54 +34,71 @@ class PayrollSlipListPage extends ConsumerWidget {
 
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
     Widget body = Column(
-        children: [
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
-              child: list.when(
-                loading: () => const UtenSkeletonList(itemCount: 8),
-                error: (e, _) => UtenEmpty.error(
-                  message: '加载失败：$e',
-                  actionLabel: '重试',
-                  onAction: () => ref.invalidate(payrollListProvider),
-                ),
-                data: (slips) {
-                  if (slips.isEmpty) {
-                    return ListView(
-                      children: const [
-                        SizedBox(height: 80),
-                        UtenEmpty(
-                          icon: Icons.account_balance_wallet_outlined,
-                          message: '此状态下暂无工资条',
-                        ),
-                      ],
-                    );
-                  }
-                  // 卡片网格
-                  // 工资条为个人按月数据（mock 固定 12 条/最近 12 个月），天然有界且量小，
-                  // 无需分页；若产品改为暴露多年历史（>~50）再考虑客户端切片或服务端分页。
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s16,
-                    ),
-                    child: UtenResponsiveGrid(
-                      itemCount: slips.length,
-                      itemBuilder: (context, i, _) => _SlipCard(
-                        slip: slips[i],
-                        onTap: () {
-                          markPayrollViewed(ref, slips[i].id);
-                          context.push(RoutePath.payrollSlipDetail(slips[i].id));
-                        },
-                      ),
-                    ),
-                  );
-                },
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
+            child: list.when(
+              loading: () => const UtenSkeletonList(itemCount: 8),
+              error: (e, _) => UtenEmpty.error(
+                message: '加载失败：$e',
+                actionLabel: '重试',
+                onAction: () => ref.invalidate(payrollListProvider),
               ),
+              data: (page) {
+                final slips = page.items;
+                if (slips.isEmpty) {
+                  return ListView(
+                    children: const [
+                      SizedBox(height: 80),
+                      UtenEmpty(
+                        icon: Icons.account_balance_wallet_outlined,
+                        message: '此状态下暂无工资条',
+                      ),
+                    ],
+                  );
+                }
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s16,
+                  ),
+                  child: Column(
+                    children: [
+                      UtenResponsiveGrid(
+                        itemCount: slips.length,
+                        itemBuilder: (context, i, _) => _SlipCard(
+                          slip: slips[i],
+                          onTap: () => context.push(
+                            RoutePath.payrollSlipDetail(slips[i].id),
+                          ),
+                        ),
+                      ),
+                      if (page.totalPages > 1)
+                        UtenGridPager(
+                          currentPage: page.page,
+                          totalPages: page.totalPages,
+                          totalItems: page.total,
+                          onPrev: !list.isLoading && page.page > 1
+                              ? () => ref
+                                    .read(payrollListProvider.notifier)
+                                    .previousPage()
+                              : null,
+                          onNext: !list.isLoading && page.page < page.totalPages
+                              ? () => ref
+                                    .read(payrollListProvider.notifier)
+                                    .nextPage()
+                              : null,
+                        ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
     }
@@ -91,11 +109,10 @@ class PayrollSlipListPage extends ConsumerWidget {
         showBackButton: true,
         centerWidget: UtenSegmentedFilter<PayrollFilter>(
           selected: filter,
-          onChanged: (v) =>
-              ref.read(payrollFilterProvider.notifier).state = v,
+          onChanged: (v) => ref.read(payrollFilterProvider.notifier).state = v,
           segments: const [
             UtenSegment(value: PayrollFilter.all, label: '全部'),
-            UtenSegment(value: PayrollFilter.published, label: '已发布'),
+            UtenSegment(value: PayrollFilter.published, label: '未查看'),
             UtenSegment(value: PayrollFilter.viewed, label: '已查看'),
             UtenSegment(value: PayrollFilter.downloaded, label: '已下载'),
           ],
@@ -197,10 +214,16 @@ class _SlipCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _miniStat('应发', '¥${_formatAmount(slip.grossIncome)}',
-                  UtenColors.success),
-              _miniStat('扣除', '¥${_formatAmount(slip.totalDeduction)}',
-                  UtenColors.error),
+              _miniStat(
+                '应发',
+                '¥${_formatAmount(slip.grossIncome)}',
+                UtenColors.success,
+              ),
+              _miniStat(
+                '扣除',
+                '¥${_formatAmount(slip.totalDeduction)}',
+                UtenColors.error,
+              ),
             ],
           ),
         ],
@@ -245,9 +268,9 @@ class _SlipCard extends StatelessWidget {
   }
 
   UtenStatusBadgeType _badgeType(PayrollSlipStatus s) => switch (s) {
-        PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
-        PayrollSlipStatus.published => UtenStatusBadgeType.warning,
-        PayrollSlipStatus.viewed => UtenStatusBadgeType.accent,
-        PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
-      };
+    PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
+    PayrollSlipStatus.published => UtenStatusBadgeType.warning,
+    PayrollSlipStatus.viewed => UtenStatusBadgeType.accent,
+    PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
+  };
 }

@@ -1,12 +1,13 @@
 {
-    "name": "uten_imp",
-    "short_name": "uten_imp",
+    "name": "优腾综合管理平台",
+    "short_name": "优腾 IMP",
+    "lang": "zh-CN",
+    "dir": "ltr",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",
     "theme_color": "#039855",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "description": "优腾销售、采购、仓储、生产、财务与人事一体化管理平台。",
     "prefer_related_applications": false,
     "icons": [
         {

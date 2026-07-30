@@ -1,5 +1,8 @@
 package com.uten.imp.features.production.schedule;
 
+import com.uten.imp.common.validation.RequestLimits;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import jakarta.validation.Valid;
@@ -13,6 +16,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -74,11 +81,59 @@ public class ProductionScheduleController {
     /** D2 建议完工日期：body {items:[{goodsId,qty}], startDate?} → suggestedDate + 逐货品依据。 */
     @PostMapping("/suggest-finish")
     @PreAuthorize("hasAuthority('production_plan:view')")
-    @SuppressWarnings("unchecked")
     public Map<String, Object> suggestFinish(@RequestBody Map<String, Object> body) {
-        List<Map<String, Object>> items = (List<Map<String, Object>>) body.getOrDefault("items", List.of());
-        java.time.LocalDate start = body.get("startDate") == null
-                ? null : java.time.LocalDate.parse(body.get("startDate").toString());
+        List<Map<String, Object>> items = validatedSuggestionItems(body.get("items"));
+        LocalDate start = validatedStartDate(body.get("startDate"));
         return service.suggestFinish(items, start);
+    }
+
+    private static List<Map<String, Object>> validatedSuggestionItems(Object value) {
+        if (!(value instanceof List<?> rawItems)
+                || rawItems.isEmpty()
+                || rawItems.size() > RequestLimits.DOCUMENT_LINES) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "items 必须是包含 1-" + RequestLimits.DOCUMENT_LINES + " 行的数组");
+        }
+        List<Map<String, Object>> items = new ArrayList<>(rawItems.size());
+        for (int i = 0; i < rawItems.size(); i++) {
+            Object rawItem = rawItems.get(i);
+            if (!(rawItem instanceof Map<?, ?> item)) {
+                throw invalidSuggestionItem(i);
+            }
+            Object rawGoodsId = item.get("goodsId");
+            Object rawQty = item.get("qty");
+            try {
+                UUID goodsId = UUID.fromString(String.valueOf(rawGoodsId));
+                BigDecimal qty = new BigDecimal(String.valueOf(rawQty));
+                if (qty.signum() <= 0) {
+                    throw invalidSuggestionItem(i);
+                }
+                items.add(Map.of("goodsId", goodsId.toString(), "qty", qty));
+            } catch (IllegalArgumentException ex) {
+                throw invalidSuggestionItem(i);
+            }
+        }
+        return items;
+    }
+
+    private static LocalDate validatedStartDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof String text)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "startDate 必须是 ISO 日期");
+        }
+        try {
+            return LocalDate.parse(text);
+        } catch (DateTimeParseException ex) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "startDate 必须是 ISO 日期");
+        }
+    }
+
+    private static ApiException invalidSuggestionItem(int index) {
+        return new ApiException(
+                ErrorCode.VALIDATION_FAILED,
+                "items[" + index + "] 必须包含合法 goodsId 和大于 0 的 qty");
     }
 }

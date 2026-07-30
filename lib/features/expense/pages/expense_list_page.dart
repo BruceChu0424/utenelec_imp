@@ -8,13 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_list_create_action.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -31,68 +32,77 @@ class ExpenseListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(expenseListProvider);
     final filter = ref.watch(expenseFilterProvider);
+    final createAction = UtenListCreateAction(
+      emptyIcon: Icons.receipt_long_outlined,
+      emptyMessage: '暂无报销单',
+      emptyDescription: '新建第一笔报销，提交后可在这里跟踪处理进度',
+      emptyActionLabel: '新建报销',
+      fabLabel: '新建报销',
+      actionIcon: Icons.add_rounded,
+      onPressed: () => context.go(RouteName.expenseNew),
+    );
 
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
     Widget body = Column(
-        children: [
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => ref.read(expenseListProvider.notifier).refresh(),
-              child: list.when(
-                loading: () => const UtenSkeletonList(itemCount: 6),
-                error: (e, _) => UtenEmpty.error(
-                  message: '加载失败：$e',
-                  actionLabel: '重试',
-                  onAction: () => ref.invalidate(expenseListProvider),
-                ),
-                data: (claims) {
-                  if (claims.isEmpty) {
-                    return ListView(
-                      children: [
-                        const SizedBox(height: 80),
-                        const UtenEmpty(
-                          icon: Icons.receipt_long_outlined,
-                          message: '暂无报销单',
-                          description: '点右下角按钮新建一笔',
-                        ),
-                        const SizedBox(height: 24),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 40),
-                          child: UtenButton(
-                            isExpanded: true,
-                            icon: Icons.add_rounded,
-                            onPressed: () =>
-                                context.go(RouteName.expenseNew),
-                            child: const Text('新建报销'),
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => ref.read(expenseListProvider.notifier).refresh(),
+            child: list.when(
+              loading: () => const UtenSkeletonList(itemCount: 6),
+              error: (e, _) => UtenEmpty.error(
+                message: '加载失败：$e',
+                actionLabel: '重试',
+                onAction: () => ref.invalidate(expenseListProvider),
+              ),
+              data: (page) {
+                final claims = page.items;
+                if (claims.isEmpty) {
+                  return createAction.emptyState(topSpacing: 80);
+                }
+                return SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  // 底部多留白：内容滚到底可越过悬浮 FAB
+                  padding: const EdgeInsets.only(
+                    top: UtenSpacing.s16,
+                    bottom: 96,
+                  ),
+                  child: Column(
+                    children: [
+                      UtenResponsiveGrid(
+                        itemCount: claims.length,
+                        itemBuilder: (context, i, _) => _ClaimCard(
+                          claim: claims[i],
+                          onTap: () => context.push(
+                            RoutePath.expenseDetail(claims[i].id),
                           ),
                         ),
-                      ],
-                    );
-                  }
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    // 底部多留白：内容滚到底可越过悬浮 FAB
-                    padding: const EdgeInsets.only(
-                      top: UtenSpacing.s16,
-                      bottom: 96,
-                    ),
-                    // 个人报销历史（mock 4 条，生产为单员工几十量级），天然有界且量小，
-                    // 无需分页；若产品要求跨年归档查询（>~50）再考虑客户端切片。
-                    child: UtenResponsiveGrid(
-                      itemCount: claims.length,
-                      itemBuilder: (context, i, _) => _ClaimCard(
-                        claim: claims[i],
-                        onTap: () => context
-                            .push(RoutePath.expenseDetail(claims[i].id)),
                       ),
-                    ),
-                  );
-                },
-              ),
+                      if (page.totalPages > 1)
+                        UtenGridPager(
+                          currentPage: page.page,
+                          totalPages: page.totalPages,
+                          totalItems: page.total,
+                          onPrev: !list.isLoading && page.page > 1
+                              ? () => ref
+                                    .read(expenseListProvider.notifier)
+                                    .previousPage()
+                              : null,
+                          onNext: !list.isLoading && page.page < page.totalPages
+                              ? () => ref
+                                    .read(expenseListProvider.notifier)
+                                    .nextPage()
+                              : null,
+                        ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
-        ],
-      );
+        ),
+      ],
+    );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
     }
@@ -103,8 +113,7 @@ class ExpenseListPage extends ConsumerWidget {
         showBackButton: true,
         centerWidget: UtenSegmentedFilter<ExpenseFilter>(
           selected: filter,
-          onChanged: (v) =>
-              ref.read(expenseFilterProvider.notifier).state = v,
+          onChanged: (v) => ref.read(expenseFilterProvider.notifier).state = v,
           segments: const [
             UtenSegment(value: ExpenseFilter.all, label: '全部'),
             UtenSegment(value: ExpenseFilter.draft, label: '草稿'),
@@ -113,12 +122,9 @@ class ExpenseListPage extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go(RouteName.expenseNew),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('新建报销'),
+      floatingActionButton: createAction.floatingActionButton(
+        context,
+        hasItems: list.valueOrNull?.items.isNotEmpty ?? false,
       ),
       body: body,
     );
@@ -213,31 +219,31 @@ class _ClaimCard extends StatelessWidget {
   }
 
   IconData _statusIcon(ExpenseClaimStatus s) => switch (s) {
-        ExpenseClaimStatus.draft => Icons.edit_note_rounded,
-        ExpenseClaimStatus.submitted => Icons.send_rounded,
-        ExpenseClaimStatus.reviewing => Icons.pending_actions_rounded,
-        ExpenseClaimStatus.approved => Icons.check_circle_outline_rounded,
-        ExpenseClaimStatus.rejected => Icons.cancel_outlined,
-        ExpenseClaimStatus.paid => Icons.account_balance_wallet_rounded,
-      };
+    ExpenseClaimStatus.draft => Icons.edit_note_rounded,
+    ExpenseClaimStatus.submitted => Icons.send_rounded,
+    ExpenseClaimStatus.reviewing => Icons.pending_actions_rounded,
+    ExpenseClaimStatus.approved => Icons.check_circle_outline_rounded,
+    ExpenseClaimStatus.rejected => Icons.cancel_outlined,
+    ExpenseClaimStatus.paid => Icons.account_balance_wallet_rounded,
+  };
 
   Color _statusColor(ExpenseClaimStatus s) => switch (s) {
-        ExpenseClaimStatus.draft => UtenColors.slate500,
-        ExpenseClaimStatus.submitted => UtenColors.info,
-        ExpenseClaimStatus.reviewing => UtenColors.warning,
-        ExpenseClaimStatus.approved => UtenColors.teal600,
-        ExpenseClaimStatus.rejected => UtenColors.error,
-        ExpenseClaimStatus.paid => UtenColors.success,
-      };
+    ExpenseClaimStatus.draft => UtenColors.slate500,
+    ExpenseClaimStatus.submitted => UtenColors.info,
+    ExpenseClaimStatus.reviewing => UtenColors.warning,
+    ExpenseClaimStatus.approved => UtenColors.teal600,
+    ExpenseClaimStatus.rejected => UtenColors.error,
+    ExpenseClaimStatus.paid => UtenColors.success,
+  };
 
   UtenStatusBadgeType _badgeType(ExpenseClaimStatus s) => switch (s) {
-        ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
-        ExpenseClaimStatus.submitted => UtenStatusBadgeType.info,
-        ExpenseClaimStatus.reviewing => UtenStatusBadgeType.warning,
-        ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
-        ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
-        ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
-      };
+    ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+    ExpenseClaimStatus.submitted => UtenStatusBadgeType.info,
+    ExpenseClaimStatus.reviewing => UtenStatusBadgeType.warning,
+    ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+    ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+    ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+  };
 
   String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

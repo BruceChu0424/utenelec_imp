@@ -2,6 +2,7 @@ package com.uten.imp.features.notice;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.dto.NoticeDto;
@@ -10,12 +11,12 @@ import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -38,6 +39,8 @@ public class NoticeService {
             "announcement", "policy", "benefit", "system", "urgent", "task", "approval", "workflow");
     /** 合法重要度。 */
     private static final Set<String> PRIORITIES = Set.of("normal", "important", "urgent");
+    private static final int MAX_LIST_ITEMS = 500;
+    private static final int MAX_BATCH_DELETE_ITEMS = RequestLimits.BATCH_IDS;
 
     private final NoticeRepository noticeRepo;
     private final NoticeUserStateRepository stateRepo;
@@ -49,36 +52,23 @@ public class NoticeService {
     @Transactional(readOnly = true)
     public List<NoticeDto> list(boolean onlyUnread) {
         UUID userId = requireStaffId();
-        Map<UUID, NoticeUserState> states = stateMap(userId);
-
-        List<NoticeDto> out = new ArrayList<>();
-        for (Notice n : noticeRepo.findAll()) {
-            if (!visibleTo(n, userId)) continue;            // 定向通知仅本人可见
-            NoticeUserState st = states.get(n.getId());
-            if (st != null && st.getDeletedAt() != null) continue; // 该用户已删除
-            boolean read = st != null && st.getReadAt() != null;
-            if (onlyUnread && read) continue;
-            out.add(toDto(n, st));
-        }
-        out.sort(Comparator
-                .comparing(NoticeDto::topPriority).reversed()
-                .thenComparing(NoticeDto::publishedAt, Comparator.reverseOrder()));
-        return out;
+        List<Notice> notices = noticeRepo.findVisible(
+                userId,
+                onlyUnread,
+                PageRequest.of(0, MAX_LIST_ITEMS));
+        Map<UUID, NoticeUserState> states = stateMap(
+                userId,
+                notices.stream().map(Notice::getId).toList());
+        return notices.stream()
+                .map(notice -> toDto(notice, states.get(notice.getId())))
+                .toList();
     }
 
     /** 未读数（Dashboard 角标）：未读且未删除。 */
     @Transactional(readOnly = true)
     public long unreadCount() {
         UUID userId = requireStaffId();
-        Map<UUID, NoticeUserState> states = stateMap(userId);
-        long count = 0;
-        for (Notice n : noticeRepo.findAll()) {
-            if (!visibleTo(n, userId)) continue;
-            NoticeUserState st = states.get(n.getId());
-            if (st != null && st.getDeletedAt() != null) continue;
-            if (st == null || st.getReadAt() == null) count++;
-        }
-        return count;
+        return noticeRepo.countVisibleUnread(userId);
     }
 
     /** 详情（不存在 / 定向他人 / 已被当前用户删除 → 404 语义）。 */
@@ -150,17 +140,7 @@ public class NoticeService {
     @Transactional
     public void markAllRead() {
         UUID userId = requireStaffId();
-        Map<UUID, NoticeUserState> states = stateMap(userId);
-        Instant now = Instant.now();
-        for (Notice n : noticeRepo.findAll()) {
-            if (!visibleTo(n, userId)) continue;
-            NoticeUserState st = states.get(n.getId());
-            if (st != null && st.getDeletedAt() != null) continue;
-            if (st != null && st.getReadAt() != null) continue;
-            if (st == null) st = newState(n.getId(), userId);
-            st.setReadAt(now);
-            stateRepo.save(st);
-        }
+        stateRepo.markAllVisibleRead(userId);
     }
 
     /** 批量删除（从当前用户列表移除；他人不受影响）。返回实际删除条数。 */
@@ -170,18 +150,30 @@ public class NoticeService {
         if (ids == null || ids.isEmpty()) return 0;
         // 去重 + 校验存在性（不存在的静默跳过，与「从列表移除」语义一致）
         Set<UUID> unique = new HashSet<>(ids);
+        if (unique.size() > MAX_BATCH_DELETE_ITEMS) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "一次最多处理 " + MAX_BATCH_DELETE_ITEMS + " 条通知");
+        }
+        Map<UUID, Notice> notices = noticeRepo.findAllById(unique).stream()
+                .filter(notice -> visibleTo(notice, userId))
+                .collect(java.util.stream.Collectors.toMap(Notice::getId, notice -> notice));
+        Map<UUID, NoticeUserState> states = stateMap(
+                userId,
+                notices.keySet().stream().toList());
         Instant now = Instant.now();
         int deleted = 0;
-        for (UUID id : unique) {
-            if (!noticeRepo.existsById(id)) continue;
-            NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId))
+        List<NoticeUserState> changed = new ArrayList<>();
+        for (UUID id : notices.keySet()) {
+            NoticeUserState st = java.util.Optional.ofNullable(states.get(id))
                     .orElseGet(() -> newState(id, userId));
             if (st.getDeletedAt() == null) {
                 st.setDeletedAt(now);
-                stateRepo.save(st);
+                changed.add(st);
                 deleted++;
             }
         }
+        stateRepo.saveAll(changed);
         return deleted;
     }
 
@@ -217,9 +209,12 @@ public class NoticeService {
         return noticeRepo.save(n);
     }
 
-    private Map<UUID, NoticeUserState> stateMap(UUID userId) {
+    private Map<UUID, NoticeUserState> stateMap(UUID userId, List<UUID> noticeIds) {
         Map<UUID, NoticeUserState> map = new HashMap<>();
-        for (NoticeUserState st : stateRepo.findByIdUserId(userId)) {
+        if (noticeIds.isEmpty()) {
+            return map;
+        }
+        for (NoticeUserState st : stateRepo.findByIdUserIdAndIdNoticeIdIn(userId, noticeIds)) {
             map.put(st.getId().getNoticeId(), st);
         }
         return map;

@@ -19,6 +19,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -41,6 +42,9 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   String? _selectedId;
   bool _loading = true;
   String? _error;
+
+  bool _hasPermission(String permission) =>
+      ref.read(currentPermissionsProvider).contains(permission);
 
   @override
   void initState() {
@@ -106,6 +110,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   ];
 
   void _showCreateDialog({DepartmentNode? parent}) {
+    if (!_hasPermission(Perm.departmentEdit)) return;
     showDialog<void>(
       context: context,
       builder: (ctx) => DepartmentEditDialog(
@@ -119,8 +124,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   Future<bool> _doCreate(DepartmentEditResult r) async {
     final l10n = AppLocalizations.of(context);
+    if (!_hasPermission(Perm.departmentEdit)) {
+      _toastError('无权新建部门'); // TODO(l10n): 补 arb
+      return false;
+    }
     try {
-      await ref.read(departmentRepositoryProvider).create(
+      await ref
+          .read(departmentRepositoryProvider)
+          .create(
             DepartmentSaveInput(
               code: r.code!,
               name: r.name,
@@ -145,6 +156,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   Future<void> _delete(DepartmentNode node) async {
     final l10n = AppLocalizations.of(context);
+    if (!_hasPermission(Perm.departmentEdit)) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -180,6 +192,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   }
 
   void _showEditDialog(DepartmentInfo detail) {
+    if (!_hasPermission(Perm.departmentEdit)) return;
     showDialog<void>(
       context: context,
       builder: (ctx) => DepartmentEditDialog(
@@ -191,8 +204,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   }
 
   Future<bool> _doUpdate(String id, DepartmentEditResult r) async {
+    if (!_hasPermission(Perm.departmentEdit)) {
+      _toastError('无权编辑部门'); // TODO(l10n): 补 arb
+      return false;
+    }
     try {
-      await ref.read(departmentRepositoryProvider).update(
+      await ref
+          .read(departmentRepositoryProvider)
+          .update(
             id,
             DepartmentUpdateInput(name: r.name, parentId: r.parentId),
           );
@@ -216,6 +235,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   Widget _buildTree(
     AppLocalizations l10n, {
     required void Function(String id) onSelect,
+    required bool canEdit,
   }) {
     return UtenDepartmentTreeView(
       nodes: _tree ?? const <DepartmentNode>[],
@@ -235,13 +255,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
                 style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ),
-          InkWell(
-            onTap: () => _delete(node),
-            child: const Padding(
-              padding: EdgeInsets.all(2),
-              child: Icon(Icons.delete_outline, size: 16, color: Colors.grey),
+          if (canEdit)
+            InkWell(
+              onTap: () => _delete(node),
+              child: const Padding(
+                padding: EdgeInsets.all(2),
+                child: Icon(Icons.delete_outline, size: 16, color: Colors.grey),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -253,12 +274,19 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   }
 
   /// 详情面板构造（compact 与 medium+ 共用，避免两处重复传参）。
-  Widget _buildDetailPane(DepartmentNode selected) {
+  Widget _buildDetailPane(
+    DepartmentNode selected, {
+    required bool canEdit,
+    required bool canViewEmployees,
+    required bool canCreateEmployee,
+  }) {
     return _DetailPane(
       ref: ref,
       nodeId: selected.id,
       node: selected,
-      canEdit: true,
+      canEdit: canEdit,
+      canViewEmployees: canViewEmployees,
+      canCreateEmployee: canCreateEmployee,
       onAddChild: () => _showCreateDialog(parent: selected),
       onEdit: (detail) => _showEditDialog(detail),
       onDelete: () => _delete(selected),
@@ -270,6 +298,12 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final bp = context.breakpoint;
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canEdit = permissions.contains(Perm.departmentEdit);
+    final canViewEmployees = permissions.contains(Perm.employeeView);
+    final canCreateEmployee =
+        permissions.contains(Perm.employeeCreate) &&
+        permissions.contains(Perm.employeePiiEdit);
     final tree = _tree ?? const <DepartmentNode>[];
     final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
 
@@ -288,8 +322,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         icon: Icons.account_tree_outlined,
         message: l10n.departmentEmpty,
         description: l10n.departmentEmptyHint,
-        actionLabel: '新建部门', // TODO(l10n): 补 arb
-        onAction: () => _showCreateDialog(),
+        actionLabel: canEdit ? '新建部门' : null, // TODO(l10n): 补 arb
+        onAction: canEdit ? () => _showCreateDialog() : null,
       );
     } else if (bp == UtenBreakpoint.compact) {
       body = selected == null
@@ -299,7 +333,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               description: l10n.departmentEmptyHint,
             )
           // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
-          : UtenContentContainer(child: _buildDetailPane(selected));
+          : UtenContentContainer(
+              child: _buildDetailPane(
+                selected,
+                canEdit: canEdit,
+                canViewEmployees: canViewEmployees,
+                canCreateEmployee: canCreateEmployee,
+              ),
+            );
     } else {
       body = Row(
         children: [
@@ -307,6 +348,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             width: 300,
             child: _buildTree(
               l10n,
+              canEdit: canEdit,
               onSelect: (id) => setState(() => _selectedId = id),
             ),
           ),
@@ -314,7 +356,12 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
           Expanded(
             child: selected == null
                 ? Center(child: Text(l10n.departmentEmptySelect))
-                : _buildDetailPane(selected),
+                : _buildDetailPane(
+                    selected,
+                    canEdit: canEdit,
+                    canViewEmployees: canViewEmployees,
+                    canCreateEmployee: canCreateEmployee,
+                  ),
           ),
         ],
       );
@@ -345,6 +392,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               child: SafeArea(
                 child: _buildTree(
                   l10n,
+                  canEdit: canEdit,
                   onSelect: (id) {
                     setState(() => _selectedId = id);
                     Navigator.of(context).pop();
@@ -365,6 +413,8 @@ class _DetailPane extends StatefulWidget {
     required this.nodeId,
     required this.node,
     required this.canEdit,
+    required this.canViewEmployees,
+    required this.canCreateEmployee,
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
@@ -376,6 +426,8 @@ class _DetailPane extends StatefulWidget {
   /// 当前选中节点（岗位管理 sheet 需要 id/name）。
   final DepartmentNode node;
   final bool canEdit;
+  final bool canViewEmployees;
+  final bool canCreateEmployee;
   final VoidCallback onAddChild;
   final void Function(DepartmentInfo detail) onEdit;
   final VoidCallback onDelete;
@@ -400,7 +452,13 @@ class _DetailPaneState extends State<_DetailPane> {
   @override
   void didUpdateWidget(_DetailPane old) {
     super.didUpdateWidget(old);
-    if (old.nodeId != widget.nodeId) _load();
+    if (old.nodeId != widget.nodeId) {
+      _load();
+    } else if (!old.canViewEmployees && widget.canViewEmployees) {
+      _loadEmployees();
+    } else if (old.canViewEmployees && !widget.canViewEmployees) {
+      setState(() => _employees = const []);
+    }
   }
 
   Future<void> _load() async {
@@ -417,7 +475,7 @@ class _DetailPaneState extends State<_DetailPane> {
         _info = info;
         _loading = false;
       });
-      await _loadEmployees();
+      if (widget.canViewEmployees) await _loadEmployees();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -477,7 +535,12 @@ class _DetailPaneState extends State<_DetailPane> {
     // compact：容器 gutter 已提供水平留白；medium+：详情面板在树右侧，需自带水平内边距
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     return Padding(
-      padding: EdgeInsets.fromLTRB(hPad, UtenSpacing.s16, hPad, UtenSpacing.s16),
+      padding: EdgeInsets.fromLTRB(
+        hPad,
+        UtenSpacing.s16,
+        hPad,
+        UtenSpacing.s16,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -520,64 +583,78 @@ class _DetailPaneState extends State<_DetailPane> {
                   : const [],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Row(
-              children: [
-                Icon(Icons.people_outline_rounded,
-                    size: 18, color: theme.colorScheme.primary),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  l10n.departmentEmployeesHeader(_employees.length),
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: UtenSearchBar(
-                    hint: '搜索员工（姓名/工号）', // TODO(l10n): 补 arb
-                    initialValue: _keyword,
-                    onChanged: _onSearchChanged,
+          if (widget.canViewEmployees) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.people_outline_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary,
                   ),
-                ),
-                if (canAddStaff) ...[
                   const SizedBox(width: UtenSpacing.s8),
-                  UtenButton(
-                    type: UtenButtonType.tonal,
-                    icon: Icons.add_rounded,
-                    onPressed: () => context.push(
-                      '/employee/onboarding?departmentId=${info.id}',
+                  Text(
+                    l10n.departmentEmployeesHeader(_employees.length),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
-                    child: const Text('添加员工'), // TODO(l10n): 补 arb
                   ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: UtenSearchBar(
+                      hint: '搜索员工（姓名/工号）', // TODO(l10n): 补 arb
+                      initialValue: _keyword,
+                      onChanged: _onSearchChanged,
+                    ),
+                  ),
+                  if (canAddStaff && widget.canCreateEmployee) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    UtenButton(
+                      type: UtenButtonType.tonal,
+                      icon: Icons.add_rounded,
+                      onPressed: () => context.push(
+                        '/employee/onboarding?departmentId=${info.id}',
+                      ),
+                      child: const Text('添加员工'), // TODO(l10n): 补 arb
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          Expanded(
-            child: _employees.isEmpty
-                ? Center(
-                    child: UtenEmpty(
-                      icon: Icons.people_outline_rounded,
-                      message: l10n.departmentEmployeesEmpty,
+            Expanded(
+              child: _employees.isEmpty
+                  ? Center(
+                      child: UtenEmpty(
+                        icon: Icons.people_outline_rounded,
+                        message: l10n.departmentEmployeesEmpty,
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                      children: [
+                        for (final e in _employees)
+                          UtenPersonCard(
+                            margin: const EdgeInsets.only(
+                              bottom: UtenSpacing.s8,
+                            ),
+                            title: e.fullName,
+                            subtitle:
+                                '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
+                            avatarText: e.fullName,
+                            trailing: EmployeeStatusBadge(status: e.status),
+                            onTap: () => context.push('/employee/${e.id}'),
+                          ),
+                      ],
                     ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                    children: [
-                      for (final e in _employees)
-                        UtenPersonCard(
-                          margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                          title: e.fullName,
-                          subtitle:
-                              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
-                          avatarText: e.fullName,
-                          trailing: EmployeeStatusBadge(status: e.status),
-                          onTap: () => context.push('/employee/${e.id}'),
-                        ),
-                    ],
-                  ),
-          ),
+            ),
+          ] else
+            const Expanded(
+              child: UtenEmpty(
+                icon: Icons.lock_outline_rounded,
+                message: '无员工档案查看权限', // TODO(l10n): 补 arb
+              ),
+            ),
         ],
       ),
     );

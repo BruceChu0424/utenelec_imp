@@ -27,9 +27,13 @@ public class AuditService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logExplicit(UUID actorId, String actorAccount, String action,
                             String targetType, String targetId, String result) {
-        AuditLog a = base(action, targetType, targetId, result);
+        AuditLog a = base(
+                truncate(action, 120),
+                truncate(targetType, 200),
+                truncate(targetId, 1000),
+                truncate(result, 500));
         a.setActorId(actorId);
-        a.setActorAccount(actorAccount);
+        a.setActorAccount(truncate(actorAccount, 200));
         fillRequest(a);
         repo.save(a);
     }
@@ -46,8 +50,8 @@ public class AuditService {
     private void fillRequest(AuditLog a) {
         HttpServletRequest req = currentRequest();
         if (req != null) {
-            a.setIp(clientIp(req));
-            a.setUserAgent(req.getHeader("User-Agent"));
+            a.setIp(truncate(req.getRemoteAddr(), 64));
+            a.setUserAgent(truncate(req.getHeader("User-Agent"), 1000));
         }
     }
 
@@ -56,11 +60,10 @@ public class AuditService {
         return attrs instanceof ServletRequestAttributes sra ? sra.getRequest() : null;
     }
 
-    private String clientIp(HttpServletRequest req) {
-        String xff = req.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
         }
-        return req.getRemoteAddr();
+        return value.substring(0, maxLength);
     }
 }

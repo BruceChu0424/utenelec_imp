@@ -47,7 +47,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   }
 
   bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains('payment_style:edit');
+      ref.read(currentPermissionsProvider).contains(Perm.paymentStyleEdit);
 
   Future<void> _load() async {
     if (!mounted) return;

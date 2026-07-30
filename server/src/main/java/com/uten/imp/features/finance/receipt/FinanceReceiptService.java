@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.receipt;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -34,8 +35,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -44,7 +48,7 @@ import java.util.UUID;
  * <p>审核（status 0→1）调用 {@link #settleReceipt}：取代老库 TRI_M_get_B_M_in + TRI_GatheringCheck 触发器。
  * <ul>
  *   <li>明细非空（指定核销 AR）：每行 {@code applied_ledger_id} 回写 ar_ap_ledger.amount_settled += line.amount_local
- *       + amount_balance 重算 + balance ≤ 0 自动 is_settled=true。</li>
+ *       + amount_balance 重算 + balance = 0 自动 is_settled=true。</li>
  *   <li>明细为空（直接收款 / 客户预付）：调 {@link ArApLedgerService#postArAp} 建 DIRECT_RECEIPT 立帐行
  *       （amount_original_local=0），再置 settled=amount_local、balance=-amount_local（负值 = 客户预付）。</li>
  *   <li>账户 {@code accounts.balance_current += amount_local, receipts_total += amount_local}。</li>
@@ -120,6 +124,7 @@ public class FinanceReceiptService {
         r.setMakerId(currentUser.requireEmployeeId());   // 制单=当前登录用户（报表按 maker_id 解析制单员）
         receiptRepo.save(r);
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
+        applyLineTotals(r, items);
         return toDetail(r, items);
     }
 
@@ -135,6 +140,7 @@ public class FinanceReceiptService {
         lineRepo.deleteByReceiptId(id);
         lineRepo.flush();
         List<FinanceReceiptLineDto> items = saveLines(r, req.getItems());
+        applyLineTotals(r, items);
         return toDetail(r, items);
     }
 
@@ -190,18 +196,32 @@ public class FinanceReceiptService {
     /** 审核核销：lines 非空 → 累加 AR 核销；lines 空 → postArAp 建 DIRECT_RECEIPT 行。 */
     private void settleReceipt(FinanceReceipt r) {
         List<FinanceReceiptLine> lines = lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId());
+        Map<UUID, ArApLedger> lockedLedgers = lines.isEmpty()
+                ? Map.of()
+                : lockAppliedLedgers(lines);
+        if (!lines.isEmpty()) {
+            applyLineTotals(r, lines.stream().map(this::toLineDto).toList());
+        }
         BigDecimal amountLocal = nz(r.getAmountLocal());
+        if (amountLocal.signum() == 0) {
+            throw new ApiException(ErrorCode.BUSINESS, "收款金额必须非零");
+        }
         if (!lines.isEmpty()) {
             for (FinanceReceiptLine ln : lines) {
-                if (ln.getAppliedLedgerId() == null) continue;
-                ArApLedger led = ledgerRepo.findById(ln.getAppliedLedgerId())
-                        .filter(x -> !x.isDeleted())
-                        .orElseThrow(() -> new ApiException(ErrorCode.BUSINESS, "核销的应收记录不存在：" + ln.getAppliedLedgerId()));
+                ArApLedger led = lockedLedgers.get(ln.getAppliedLedgerId());
                 if (!"AR".equals(led.getDirection())) {
                     throw new ApiException(ErrorCode.BUSINESS, "收款只能核销 AR 行，传入方向=" + led.getDirection());
                 }
+                if (r.getClientId() == null || !Objects.equals(r.getClientId(), led.getClientId())
+                        || (ln.getClientId() != null
+                        && !Objects.equals(r.getClientId(), ln.getClientId()))) {
+                    throw new ApiException(ErrorCode.CONFLICT, "收款客户与应收台账客户不一致");
+                }
                 BigDecimal origLocal = nz(led.getAmountOriginalLocal());
                 BigDecimal lineAmt = nz(ln.getAmountLocal());
+                if (lineAmt.signum() == 0) {
+                    throw new ApiException(ErrorCode.BUSINESS, "核销金额必须非零");
+                }
                 BigDecimal newSettled = nz(led.getAmountSettled()).add(lineAmt);
                 // ②b 防止用正数 line 核销红字负 AR（方向不一致会让 balance 数学错 + refreshSettlement 误判结清）
                 if (origLocal.signum() != 0 && lineAmt.signum() != 0 && origLocal.signum() != lineAmt.signum()) {
@@ -210,7 +230,7 @@ public class FinanceReceiptService {
                 // ②a 超核校验：累计 settled 不得超过 original。DIRECT_RECEIPT（预付款）原值=0 走 else 分支不进此循环，
                 // 这里仍防御性地排除，避免把 receipt_line 错挂到 DIRECT_RECEIPT 立帐行上。
                 if (!SRC_DIRECT_RECEIPT.equals(led.getSourceDocType())
-                        && origLocal.signum() > 0 && newSettled.compareTo(origLocal) > 0) {
+                        && exceedsOriginal(origLocal, newSettled)) {
                     throw new ApiException(ErrorCode.BUSINESS, "核销金额超过应收余额");
                 }
                 led.setAmountSettled(newSettled);
@@ -224,15 +244,16 @@ public class FinanceReceiptService {
                     "AR", SRC_DIRECT_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                     r.getClientId(), null, r.getCurrencyId(), r.getExchangeRate(),
                     BigDecimal.ZERO, (short) 20, "直接收款"));
-            List<ArApLedger> created = ledgerRepo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(
+            List<ArApLedger> created = ledgerRepo.findBySourceForUpdate(
                     r.getId(), SRC_DIRECT_RECEIPT);
-            if (!created.isEmpty()) {
-                ArApLedger led = created.get(created.size() - 1);
-                led.setAmountSettled(amountLocal);
-                led.setAmountBalance(nz(led.getAmountOriginalLocal()).subtract(amountLocal));
-                refreshSettlement(led);
-                ledgerRepo.save(led);
+            if (created.size() != 1) {
+                throw new ApiException(ErrorCode.CONFLICT, "直接收款立账结果不唯一");
             }
+            ArApLedger led = created.getFirst();
+            led.setAmountSettled(amountLocal);
+            led.setAmountBalance(nz(led.getAmountOriginalLocal()).subtract(amountLocal));
+            refreshSettlement(led);
+            ledgerRepo.save(led);
         }
         // 账户累加 + 写流水
         if (amountLocal.signum() != 0) {
@@ -246,11 +267,13 @@ public class FinanceReceiptService {
         List<FinanceReceiptLine> lines = lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId());
         BigDecimal amountLocal = nz(r.getAmountLocal());
         if (!lines.isEmpty()) {
+            Map<UUID, ArApLedger> lockedLedgers = lockAppliedLedgers(lines);
             for (FinanceReceiptLine ln : lines) {
-                if (ln.getAppliedLedgerId() == null) continue;
-                ArApLedger led = ledgerRepo.findById(ln.getAppliedLedgerId())
-                        .filter(x -> !x.isDeleted()).orElse(null);
-                if (led == null) continue;
+                ArApLedger led = lockedLedgers.get(ln.getAppliedLedgerId());
+                if (!"AR".equals(led.getDirection())
+                        || !Objects.equals(r.getClientId(), led.getClientId())) {
+                    throw new ApiException(ErrorCode.CONFLICT, "收款反核销来源已不一致");
+                }
                 led.setAmountSettled(nz(led.getAmountSettled()).subtract(nz(ln.getAmountLocal())));
                 led.setAmountBalance(nz(led.getAmountOriginalLocal()).subtract(led.getAmountSettled()));
                 refreshSettlement(led);
@@ -258,8 +281,10 @@ public class FinanceReceiptService {
             }
         } else {
             // 直接收款红冲：删本单建的直接收款立帐行（不经 reverseArAp，因其 amount_settled<>0 会被拦）
-            List<ArApLedger> rows = ledgerRepo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(
-                    r.getId(), SRC_DIRECT_RECEIPT);
+            List<ArApLedger> rows = ledgerRepo.findBySourceForUpdate(r.getId(), SRC_DIRECT_RECEIPT);
+            if (rows.size() != 1) {
+                throw new ApiException(ErrorCode.CONFLICT, "直接收款反立账来源缺失或重复");
+            }
             for (ArApLedger led : rows) {
                 ledgerRepo.delete(led);
             }
@@ -271,14 +296,65 @@ public class FinanceReceiptService {
     }
 
     /**
-     * 自动结清维护（取代老库 TRI_GatheringCheck）：balance ≤ 0 → is_settled=true, settled_date=billDate；
-     * balance > 0 → is_settled=false, settled_date=null。DIRECT_RECEIPT 负 balance 也视为结清（客户已预付）。
+     * 自动结清维护（对齐 V129 数据库约束）：仅 balance = 0 时
+     * {@code is_settled=true}。DIRECT_RECEIPT 的负余额表示仍可使用的客户预收款，
+     * 必须保持未结清，不能混同为普通应收已核销。
      */
     private void refreshSettlement(ArApLedger led) {
         BigDecimal bal = nz(led.getAmountBalance());
-        boolean settled = bal.signum() <= 0;
+        boolean settled = bal.signum() == 0;
         led.setSettled(settled);
-        led.setSettledDate(settled ? (led.getBillDate() != null ? led.getBillDate() : LocalDate.now()) : null);
+        led.setSettledDate(
+                settled ? (led.getBillDate() != null ? led.getBillDate() : BusinessTime.today()) : null);
+    }
+
+    private Map<UUID, ArApLedger> lockAppliedLedgers(List<FinanceReceiptLine> lines) {
+        List<UUID> ids = lines.stream()
+                .map(FinanceReceiptLine::getAppliedLedgerId)
+                .toList();
+        if (ids.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "收款核销明细必须关联应收台账");
+        }
+        if (new HashSet<>(ids).size() != ids.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一应收台账不能在一张收款单中重复核销");
+        }
+        List<ArApLedger> locked = ledgerRepo.findAllByIdInForUpdate(
+                ids.stream().sorted().toList());
+        if (locked.size() != ids.size()) {
+            throw new ApiException(ErrorCode.BUSINESS, "核销的应收记录不存在或已删除");
+        }
+        Map<UUID, ArApLedger> byId = new HashMap<>();
+        for (ArApLedger ledger : locked) {
+            byId.put(ledger.getId(), ledger);
+        }
+        return byId;
+    }
+
+    private void applyLineTotals(FinanceReceipt receipt, List<FinanceReceiptLineDto> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return;
+        }
+        BigDecimal local = lines.stream()
+                .map(line -> nz(line.getAmountLocal()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal original = lines.stream()
+                .map(line -> line.getAmountOriginal() == null
+                        ? nz(line.getAmountLocal())
+                        : line.getAmountOriginal())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        receipt.setAmountLocal(local);
+        receipt.setAmountOriginal(original);
+        receiptRepo.save(receipt);
+    }
+
+    private static boolean exceedsOriginal(BigDecimal original, BigDecimal settled) {
+        if (original.signum() > 0) {
+            return settled.compareTo(original) > 0;
+        }
+        if (original.signum() < 0) {
+            return settled.compareTo(original) < 0;
+        }
+        return settled.signum() != 0;
     }
 
     /**
@@ -293,12 +369,14 @@ public class FinanceReceiptService {
                     receipts_total  = COALESCE(receipts_total, 0) + :amt,
                     updated_at = now()
                 WHERE id = :id
+                  AND COALESCE(is_deleted, false) = false
+                  AND status = '使用'
                 """)
                 .setParameter("amt", delta)
                 .setParameter("id", accountId)
                 .executeUpdate();
         if (rows == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "账户不存在：" + accountId);
+            throw new ApiException(ErrorCode.BUSINESS, "账户不存在或已禁用：" + accountId);
         }
     }
 

@@ -13,11 +13,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/forms/link_quantity_validator.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/subcontract_doc_config.dart';
@@ -68,8 +70,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   WidgetRef ref,
   SubcontractDocConfig cfg, {
   String? initialSupplierId,
-}
-) {
+}) {
   final sheet = _UpstreamImportSheet(
     cfg: cfg,
     upstream: upstreamTypeOf(cfg),
@@ -122,12 +123,14 @@ class _UpstreamItemRow extends EditableGridRow {
   _UpstreamItemRow(this.item);
   final SubcontractDocItem item;
   final ValueNotifier<bool> selectedNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<String?> qtyError = ValueNotifier<String?>(null);
   final TextEditingController qty = TextEditingController();
   bool get selected => selectedNotifier.value;
 
   @override
   void dispose() {
     selectedNotifier.dispose();
+    qtyError.dispose();
     qty.dispose();
     super.dispose();
   }
@@ -142,7 +145,7 @@ class _UpstreamImportSheet extends ConsumerStatefulWidget {
   final SubcontractDocConfig cfg;
   final SubcontractDocType upstream;
 
-  /// 编辑页表头已选委外商：面板委外商筛选默认锁定该委外商（可改）。
+  /// 编辑页表头已选委外商：面板委外商筛选锁定为该委外商，不允许切换。
   final String? initialSupplierId;
 
   @override
@@ -162,6 +165,8 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   String? _supplierId;
   String? _sortKey;
   bool _sortAsc = true;
+  final _docsRequests = LatestLinkRequestGuard();
+  final _detailRequests = LatestLinkRequestGuard();
 
   // Step2 · 明细
   SubcontractDocDetail? _upDetail;
@@ -169,11 +174,14 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   bool _loadingItems = false;
   String _gridEmptyMessage = '该单据无明细';
 
+  bool get _supplierLocked =>
+      widget.initialSupplierId != null && widget.initialSupplierId!.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
     _grid = UtenEditableGridController<_UpstreamItemRow>();
-    // 表头已选委外商 → 面板委外商筛选默认锁定该委外商（用户可改）。
+    // 表头已选委外商 → 面板委外商筛选锁定为该委外商。
     _supplierId = widget.initialSupplierId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
@@ -191,8 +199,11 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   // ---- Step1：上游单据 ---------------------------------------------------
 
   Future<void> _loadDocs(int page) async {
+    final requestVersion = _docsRequests.begin();
+    _detailRequests.invalidate();
     setState(() {
       _loadingDocs = true;
+      _loadingItems = false;
       _docsError = null;
     });
     try {
@@ -209,19 +220,19 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       setState(() {
         _docPage = r;
         _loadingDocs = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       setState(() {
         _docsError = e.message;
         _loadingDocs = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       setState(() {
         _docsError = '加载上游单据失败'; // TODO(l10n): 补 arb
         _loadingDocs = false;
@@ -245,6 +256,12 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   // ---- Step2：选中单据的明细 --------------------------------------------
 
   Future<void> _pickDoc(SubcontractDocListItem d) async {
+    if (_loadingDocs) return;
+    if (!_matchesSelectedSupplier(d.supplierId)) {
+      context.appError('上游单据委外商与当前筛选委外商不一致，请刷新后重试');
+      return;
+    }
+    final requestVersion = _detailRequests.begin();
     setState(() {
       _loadingItems = true;
       _upDetail = null;
@@ -253,12 +270,18 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       final detail = await ref
           .read(subcontractRepositoryProvider(_upstream))
           .detail(d.id);
+      if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
+      if (!_matchesSelectedSupplier(detail.supplierId)) {
+        setState(() => _loadingItems = false);
+        context.appError('上游单据委外商与表头委外商不一致，已阻止引入');
+        return;
+      }
       final goodsIds = detail.items
           .map((e) => e.goodsId)
           .whereType<String>()
           .toSet();
       await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
       // 只显示有剩余可引量的明细：已收完/已发完料/已退完/已损耗完的行不显示。
       final visible = detail.items.where((it) => _remainQty(it) > 0).toList();
       final rows = visible.map((it) {
@@ -277,7 +300,7 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
         _loadingItems = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
       setState(() => _loadingItems = false);
       // 静默降级（与 v1 一致）
     }
@@ -307,9 +330,15 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
     }
   }
 
+  bool _matchesSelectedSupplier(String? supplierId) {
+    final expected = _supplierId;
+    return expected == null || expected.isEmpty || supplierId == expected;
+  }
+
   void _setSelectedAll(bool v) {
     for (final r in _grid.rows) {
       r.selectedNotifier.value = v;
+      if (!v) r.qtyError.value = null;
     }
     setState(() {});
   }
@@ -317,12 +346,14 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   void _invertSelection() {
     for (final r in _grid.rows) {
       r.selectedNotifier.value = !r.selectedNotifier.value;
+      if (!r.selected) r.qtyError.value = null;
     }
     setState(() {});
   }
 
   void _toggleRow(_UpstreamItemRow row, bool v) {
     row.selectedNotifier.value = v;
+    if (!v) row.qtyError.value = null;
     setState(() {});
   }
 
@@ -330,12 +361,21 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
 
   void _submit() {
     final out = <LinkedItem>[];
+    var hasQuantityError = false;
     for (final row in _grid.rows) {
       if (!row.selected) continue;
       final it = row.item;
       if (it.goodsId == null) continue;
-      final q = double.tryParse(row.qty.text) ?? 0;
-      if (q <= 0) continue;
+      final error = validateLinkQuantity(
+        row.qty.text,
+        remaining: _remainQty(it),
+      );
+      row.qtyError.value = error;
+      if (error != null) {
+        hasQuantityError = true;
+        continue;
+      }
+      final q = double.parse(row.qty.text.trim());
       out.add(
         LinkedItem(
           goodsId: it.goodsId!,
@@ -346,6 +386,10 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           unitId: it.unitId,
         ),
       );
+    }
+    if (hasQuantityError) {
+      context.appError('请修正标红的本次数量后再引入');
+      return;
     }
     Navigator.of(context).pop(
       SubcontractLinkPickResult(items: out, supplierId: _upDetail?.supplierId),
@@ -467,17 +511,21 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
               SizedBox(
                 width: 240,
                 child: UtenDropdownField(
-                  label: '委外商',
+                  label: _supplierLocked ? '委外商（已锁定）' : '委外商',
                   value: _supplierId ?? '',
+                  enabled: !_supplierLocked,
+                  allowClear: !_supplierLocked,
                   items: [
-                    const UtenDropdownItem(
-                      value: '',
-                      label: '全部委外商',
-                    ), // TODO(l10n): 补 arb
+                    if (!_supplierLocked)
+                      const UtenDropdownItem(
+                        value: '',
+                        label: '全部委外商',
+                      ), // TODO(l10n): 补 arb
                     for (final e in names.supplierEntries.entries)
                       UtenDropdownItem(value: e.key, label: e.value),
                   ],
                   onChanged: (v) {
+                    if (_supplierLocked) return;
                     setState(
                       () => _supplierId = (v == null || v.isEmpty) ? null : v,
                     );
@@ -589,9 +637,8 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
               columns: _itemColumns(names),
               showAddRow: false,
               showRowDelete: false,
-              createBlankRow: () => _UpstreamItemRow(
-                const SubcontractDocItem(id: null),
-              ), // 不会被调用
+              createBlankRow: () =>
+                  _UpstreamItemRow(const SubcontractDocItem(id: null)), // 不会被调用
               emptyMessage: _gridEmptyMessage, // TODO(l10n): 补 arb
             ),
           ),
@@ -681,15 +728,38 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           Text((row.item.qty ?? 0).toStringAsFixed(1)),
     ),
     EditableGridColumn<_UpstreamItemRow>(
+      key: 'remainingQty',
+      label: '剩余',
+      width: 90,
+      numeric: true,
+      cellBuilder: (context, row) =>
+          Text(formatLinkQuantity(_remainQty(row.item))),
+    ),
+    EditableGridColumn<_UpstreamItemRow>(
       key: 'thisQty',
       label: '本次数量',
-      width: 120,
+      width: 170,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.qty,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+        valueListenable: row.qtyError,
+        builder: (context, error, _) => TextField(
+          controller: row.qty,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: '0',
+            errorText: error,
+          ),
+          onChanged: (value) {
+            if (row.qtyError.value != null) {
+              row.qtyError.value = validateLinkQuantity(
+                value,
+                remaining: _remainQty(row.item),
+              );
+            }
+          },
+        ),
       ),
     ),
   ];

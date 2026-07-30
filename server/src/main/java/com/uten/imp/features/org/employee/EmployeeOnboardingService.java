@@ -1,5 +1,6 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -8,6 +9,7 @@ import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.employee.dto.EmployeeDetail;
+import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
@@ -18,8 +20,10 @@ import com.uten.imp.features.rbac.UserRoleId;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.AdminGrantGuard;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +40,7 @@ public class EmployeeOnboardingService {
 
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
+    private final EmployeePiiWriter piiWriter;
     private final EmployeeCompensationRepository compensationRepo;
     private final EmergencyContactRepository emergencyRepo;
     private final EmployeeCredentialRepository credentialRepo;
@@ -48,13 +53,17 @@ public class EmployeeOnboardingService {
     private final RoleRepository roleRepo;
     private final UserRoleRepository userRoleRepo;
     private final PasswordEncoder passwordEncoder;
+    private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final EmployeeQueryService queryService;
+    private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
 
     // ===== 入职（原子建号） =====
+    @PreAuthorize("hasAuthority('employee:create')")
     @Transactional
-    public EmployeeDetail onboard(OnboardingRequest req) {
+    public EmployeeOnboardingResult onboard(OnboardingRequest req) {
+        sensitiveWritePolicy.assertOnboardingAllowed(req);
         tx.bind();
         OnboardingRequest.Profile p = req.profile();
         OnboardingRequest.Employment em = req.employment();
@@ -75,12 +84,14 @@ public class EmployeeOnboardingService {
         // 身份证校验 + 派生
         LocalDate birthDate = p.birthDate();
         String gender = p.gender();
+        String normalizedIdNumber = p.idNumber().trim();
         if ("身份证".equals(p.idType())) {
-            if (!IdCardUtil.isValid(p.idNumber())) {
+            normalizedIdNumber = IdCardUtil.normalize(p.idNumber());
+            if (!IdCardUtil.isValid(normalizedIdNumber)) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号校验未通过");
             }
-            birthDate = IdCardUtil.birthDate(p.idNumber());
-            gender = IdCardUtil.gender(p.idNumber());
+            birthDate = IdCardUtil.birthDate(normalizedIdNumber);
+            gender = IdCardUtil.gender(normalizedIdNumber);
         }
 
         Department dept = deptRepo.findById(em.departmentId())
@@ -115,23 +126,15 @@ public class EmployeeOnboardingService {
         e.setEmail(p.email());
         e.setPaperArchiveNo(em.paperArchiveNo());
         if ("active".equals(em.status())) {
-            e.setConfirmedAt(LocalDate.now());
+            e.setConfirmedAt(BusinessTime.today());
         }
         empRepo.save(e);
 
         // 2. 敏感 PII（加密）
         EmployeeSensitive s = new EmployeeSensitive();
         s.setEmployeeId(e.getId());
-        s.setIdCardEnc(tx.encrypt(p.idNumber()));
-        s.setIdCardLast4(IdCardUtil.last4(p.idNumber()));
-        // 身份证号查重（HMAC，M3）
-        String idHash = tx.hmac(p.idNumber());
-        if (idHash != null && sensitiveRepo.existsByIdCardHash(idHash)) {
-            throw new ApiException(ErrorCode.CONFLICT, "该身份证号已存在");
-        }
-        s.setIdCardHash(idHash);
-        s.setPhoneEnc(tx.encrypt(p.phone()));
-        s.setPhoneHash(tx.hmac(p.phone()));
+        piiWriter.applyIdentity(s, e.getId(), p.idType(), normalizedIdNumber);
+        piiWriter.applyPhone(s, p.phone());
         OnboardingRequest.Compensation comp = req.compensation();
         if (comp != null) {
             if (!isBlank(comp.bankAccount())) s.setBankAccountEnc(tx.encrypt(comp.bankAccount()));
@@ -140,7 +143,7 @@ public class EmployeeOnboardingService {
         sensitiveRepo.save(s);
 
         // 3. 薪资（如提供）
-        if (comp != null && hasAnySalary(comp)) {
+        if (EmployeeSensitiveWritePolicy.hasCompensationWrite(comp)) {
             EmployeeCompensation c = new EmployeeCompensation();
             c.setEmployeeId(e.getId());
             if (!isBlank(comp.baseSalary())) c.setBaseSalaryEnc(tx.encrypt(comp.baseSalary()));
@@ -215,11 +218,12 @@ public class EmployeeOnboardingService {
             }
         }
 
-        // 7. 账号（密码 = 身份证后六位，Argon2id；首登强制改）
+        // 7. 账号（高熵一次性密码仅在本次响应交付；Argon2id 入库；首登强制改）
+        String temporaryPassword = temporaryPasswordGenerator.generate();
         UserAccount user = new UserAccount();
         user.setEmployeeId(e.getId());
         user.setLoginAccount(loginAccount);
-        user.setPasswordHash(passwordEncoder.encode(IdCardUtil.last6(p.idNumber())));
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setMustChangePassword(true);
         user.setStatus("active");
         user.setFailedAttempts(0);
@@ -235,11 +239,7 @@ public class EmployeeOnboardingService {
             userRoleRepo.save(ur);
         }
 
-        return queryService.detail(e.getId());
+        return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword);
     }
 
-    private static boolean hasAnySalary(OnboardingRequest.Compensation c) {
-        return !isBlank(c.baseSalary()) || !isBlank(c.perfSalary()) || !isBlank(c.socialInsuranceBase())
-                || !isBlank(c.housingFundBase()) || !isBlank(c.allowanceStandard());
-    }
 }

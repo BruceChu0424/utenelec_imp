@@ -127,9 +127,10 @@ reverse/approveToDraft(id)（红冲 1→-1）:
   doc = repo.findById(id)
   em.lock(doc, PESSIMISTIC_WRITE)               // 并发互斥：同上
   assert doc.status == 1
+  assert 没有仍有效的下游累计量                   // 先红冲下游，禁止破坏来源链
   arApService.reverseArAp(docId, srcType)     // 先校验无核销，否则抛错
   反向 stockService.recordMovement(...)        // direction/type 取反
-  反向回写累计量
+  按稳定 UUID 顺序锁上游来源明细，再反向回写累计量
   doc.status = -1; doc.arPosted = false
 ```
 - `TxSessionVars tx` 审计绑定（照采购：`tx.bind()`）。
@@ -138,6 +139,10 @@ reverse/approveToDraft(id)（红冲 1→-1）:
   再查状态——状态机迁移附带库存/立帐/回写副作用，行锁让并发者拿到「状态已变」明确拒绝，
   避免副作用重跑（与 SAP 单据锁/用友审核锁同思路）。已覆盖 25 个 Service / 40 个入口，
   详见 [37-业务联动-MRP与并发加固](37-业务联动-MRP与并发加固.md) §三。
+- **反向来源链（2026-07-30）**：父单仍有有效下游累计时禁止红冲。采购覆盖申请→订货、
+  订货→收货/退货、收货→退货；委外覆盖申请→订货、订货→进仓/退货/发料/退料、
+  进仓→退货、发料→退料/损耗。采购/委外订货红冲还须先按稳定 UUID 顺序锁申请来源行，再回减
+  `ordered_qty`，避免与另一笔订货审核并发产生丢失更新或负累计。
 
 ---
 

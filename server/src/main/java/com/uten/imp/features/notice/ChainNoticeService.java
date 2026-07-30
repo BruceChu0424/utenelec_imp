@@ -1,5 +1,6 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
@@ -14,7 +15,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -257,7 +257,7 @@ public class ChainNoticeService {
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             String title = "交货预警：" + o.billNo();
-            Instant startOfToday = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant();
+            Instant startOfToday = BusinessTime.startOfDayInstant(BusinessTime.today());
             String when = daysLeft < 0 ? "已超期 " + (-daysLeft) + " 天"
                     : daysLeft == 0 ? "今日交货" : "距交货 " + daysLeft + " 天";
             String content = "订单 " + o.billNo() + " " + when + "，尚未结案，请跟进生产/发货进度。";

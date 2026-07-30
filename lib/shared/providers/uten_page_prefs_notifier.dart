@@ -93,9 +93,9 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
 
   Future<void> _syncFromServer() async {
     try {
-      final json = await ref.read(apiClientProvider).get(
-            ApiEndpoints.userPreferences,
-          );
+      final json = await ref
+          .read(apiClientProvider)
+          .get(ApiEndpoints.userPreferences);
       final prefs = json['preferences'];
       if (prefs is! Map || !prefs.containsKey(prefKey)) return;
       final decoded = decode(prefs[prefKey]);
@@ -123,16 +123,17 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   void _writeCache() {
     final encoded = encode(state);
     if (encoded == null) return;
-    ref.read(sharedPreferencesProvider).setString(cacheKey, jsonEncode(encoded));
+    ref
+        .read(sharedPreferencesProvider)
+        .setString(cacheKey, jsonEncode(encoded));
   }
 
   Future<void> _pushToServer() async {
     if (ref.read(sessionProvider).user == null) return; // 未登录不推
     try {
-      await ref.read(apiClientProvider).put(
-            ApiEndpoints.userPreference(prefKey),
-            body: encode(state),
-          );
+      await ref
+          .read(apiClientProvider)
+          .put(ApiEndpoints.userPreference(prefKey), body: encode(state));
     } catch (_) {
       // 离线兜底：失败静默，本地 state + 缓存已生效（见文件头注释）
     }

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_toast.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/department_node.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
@@ -49,6 +50,8 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
   String? _error;
 
   PositionRepository get _repo => ref.read(positionRepositoryProvider);
+  bool get _canEdit =>
+      ref.read(currentPermissionsProvider).contains(Perm.departmentEdit);
 
   @override
   void initState() {
@@ -75,6 +78,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
   }
 
   Future<void> _showEditDialog({Position? position}) async {
+    if (!_canEdit) return;
     final isCreate = position == null;
     final codeCtl = TextEditingController(text: position?.code ?? '');
     final nameCtl = TextEditingController(text: position?.name ?? '');
@@ -189,6 +193,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
   }
 
   Future<void> _delete(Position p) async {
+    if (!_canEdit) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -225,6 +230,9 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final canEdit = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.departmentEdit);
     final positions = _positions;
     return Column(
       children: [
@@ -241,11 +249,12 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.add_rounded),
-                tooltip: '添加岗位',
-                onPressed: () => _showEditDialog(),
-              ),
+              if (canEdit)
+                IconButton(
+                  icon: const Icon(Icons.add_rounded),
+                  tooltip: '添加岗位',
+                  onPressed: () => _showEditDialog(),
+                ),
               IconButton(
                 icon: const Icon(Icons.close_rounded),
                 onPressed: () => Navigator.of(context).pop(),
@@ -270,7 +279,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
               : positions!.isEmpty
               ? Center(
                   child: Text(
-                    '暂无岗位，点右上角「+」添加',
+                    canEdit ? '暂无岗位，点右上角「+」添加' : '暂无岗位',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -303,21 +312,29 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
                           if (p.code.isNotEmpty) p.code,
                         ].join(' · '),
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 18),
-                            tooltip: '编辑',
-                            onPressed: () => _showEditDialog(position: p),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 18),
-                            tooltip: '删除',
-                            onPressed: () => _delete(p),
-                          ),
-                        ],
-                      ),
+                      trailing: canEdit
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                  tooltip: '编辑',
+                                  onPressed: () => _showEditDialog(position: p),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 18,
+                                  ),
+                                  tooltip: '删除',
+                                  onPressed: () => _delete(p),
+                                ),
+                              ],
+                            )
+                          : null,
                     );
                   },
                 ),

@@ -46,5 +46,6 @@ class FontScaleNotifier extends Notifier<FontScale> {
   }
 }
 
-final fontScaleProvider =
-    NotifierProvider<FontScaleNotifier, FontScale>(FontScaleNotifier.new);
+final fontScaleProvider = NotifierProvider<FontScaleNotifier, FontScale>(
+  FontScaleNotifier.new,
+);

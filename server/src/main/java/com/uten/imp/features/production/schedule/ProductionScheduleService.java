@@ -2,6 +2,8 @@ package com.uten.imp.features.production.schedule;
 
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.plan.ProductionPlan;
@@ -103,7 +105,7 @@ public class ProductionScheduleService {
                 .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
                 .getResultList();
 
-        LocalDate warn = LocalDate.now().plusDays(3);
+        LocalDate warn = BusinessTime.today().plusDays(3);
         List<PendingPlanRow> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             LocalDate deliver = r[17] == null ? null : ((java.sql.Date) r[17]).toLocalDate();
@@ -186,7 +188,7 @@ public class ProductionScheduleService {
                 .min(LocalDate::compareTo).orElse(null);
         ProductionPlan p = new ProductionPlan();
         p.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PRODUCTION_PLAN));
-        p.setBillDate(LocalDate.now());
+        p.setBillDate(BusinessTime.today());
         p.setDeliveryDate(req.getDeliveryDate() != null ? req.getDeliveryDate() : earliest);
         p.setDepartmentId(req.getDepartmentId());
         p.setWorkshopName(req.getWorkshopName());
@@ -272,8 +274,12 @@ public class ProductionScheduleService {
     public Map<String, Long> pendingCount() {
         Object[] r = (Object[]) em.createNativeQuery("""
                 SELECT COUNT(*),
-                       COUNT(*) FILTER (WHERE COALESCE(i.deliver_date, o.deliver_date) <= CURRENT_DATE + 3),
-                       COUNT(*) FILTER (WHERE COALESCE(i.deliver_date, o.deliver_date) < CURRENT_DATE)
+                       COUNT(*) FILTER (
+                           WHERE COALESCE(i.deliver_date, o.deliver_date)
+                                 <= CAST(:today AS date) + 3),
+                       COUNT(*) FILTER (
+                           WHERE COALESCE(i.deliver_date, o.deliver_date)
+                                 < CAST(:today AS date))
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE o.is_deleted = false AND o.status = 1
@@ -281,7 +287,9 @@ public class ProductionScheduleService {
                   AND i.is_deleted = false
                   AND COALESCE(i.chain_status,0) > 0 AND i.chain_status < 8
                   AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
-                """).getSingleResult();
+                """)
+                .setParameter("today", BusinessTime.today())
+                .getSingleResult();
         return Map.of("count", ((Number) r[0]).longValue(),
                 "urgent", ((Number) r[1]).longValue(),
                 "overdue", ((Number) r[2]).longValue());
@@ -368,22 +376,46 @@ public class ProductionScheduleService {
      *  items=[{goodsId, qty}]；返回 suggestedDate + 每货品依据（无历史的行 days=null 不参与取最大）。 */
     @Transactional(readOnly = true)
     public Map<String, Object> suggestFinish(List<Map<String, Object>> items, LocalDate startDate) {
-        LocalDate start = startDate != null ? startDate : LocalDate.now();
+        if (items == null
+                || items.isEmpty()
+                || items.size() > RequestLimits.DOCUMENT_LINES) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "items 必须包含 1-" + RequestLimits.DOCUMENT_LINES + " 行");
+        }
+        LocalDate today = BusinessTime.today();
+        LocalDate start = startDate != null ? startDate : today;
         List<Map<String, Object>> lines = new ArrayList<>();
         int maxDays = 0;
         int maxDepth = 1;
         boolean anyHistory = false;
         for (Map<String, Object> it : items) {
-            UUID goodsId = UUID.fromString(it.get("goodsId").toString());
-            BigDecimal qty = new BigDecimal(it.get("qty").toString());
+            UUID goodsId;
+            BigDecimal qty;
+            try {
+                goodsId = UUID.fromString(String.valueOf(it == null ? null : it.get("goodsId")));
+                qty = new BigDecimal(String.valueOf(it == null ? null : it.get("qty")));
+            } catch (IllegalArgumentException ex) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "items 行必须包含合法 goodsId 和大于 0 的 qty");
+            }
+            if (qty.signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "items 行必须包含合法 goodsId 和大于 0 的 qty");
+            }
             // 历史日均完工 = 近 180 天报工量 / 报工天数（ DISTINCT bill_date ）
             Object avg = em.createNativeQuery("""
                     SELECT SUM(i.qty) / NULLIF(COUNT(DISTINCT i.bill_date),0)
                     FROM production_daily_report_items i
                     JOIN production_daily_reports d ON d.id = i.report_id
                     WHERE i.goods_id = :g AND d.status = 1 AND i.is_deleted = false
-                      AND i.bill_date >= CURRENT_DATE - 180
-                    """).setParameter("g", goodsId).getSingleResult();
+                      AND i.bill_date >= CAST(:historyStart AS date)
+                    """)
+                    .setParameter("g", goodsId)
+                    .setParameter("historyStart", today.minusDays(180))
+                    .getSingleResult();
             BigDecimal dailyAvg = avg == null ? null : (BigDecimal) avg;
             Integer days = null;
             if (dailyAvg != null && dailyAvg.signum() > 0) {

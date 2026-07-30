@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import '../models/finance_doc.dart';
 
 class FinanceStatusBadge extends StatelessWidget {
-  const FinanceStatusBadge({super.key, required this.status, this.closed = false});
+  const FinanceStatusBadge({
+    super.key,
+    required this.status,
+    this.closed = false,
+  });
   final int? status;
   final bool closed;
 

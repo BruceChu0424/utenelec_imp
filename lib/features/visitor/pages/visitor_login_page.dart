@@ -15,9 +15,11 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/input/china_input_formatters.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/security/input_validators.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../providers/visitor_session_provider.dart';
@@ -47,7 +49,7 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
     super.dispose();
   }
 
-  bool _validPhone(String p) => RegExp(r'^1\d{10}$').hasMatch(p);
+  bool _validPhone(String p) => InputValidators.phone(p) == null;
 
   Future<void> _sendCode() async {
     final phone = _phoneController.text.trim();
@@ -61,7 +63,9 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
       _errorMessage = null;
     });
     try {
-      final dev = await ref.read(visitorSessionProvider.notifier).sendCode(phone);
+      final dev = await ref
+          .read(visitorSessionProvider.notifier)
+          .sendCode(phone);
       if (!mounted) return;
       setState(() {
         _devCode = dev;
@@ -107,8 +111,11 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
       context.go(RouteName.visitorHome);
     } on ApiException catch (e) {
       if (mounted) {
-        setState(() => _errorMessage =
-            e.code == 'IS_EMPLOYEE' ? l10n.visitorIsEmployee : e.message);
+        setState(
+          () => _errorMessage = e.code == 'IS_EMPLOYEE'
+              ? l10n.visitorIsEmployee
+              : e.message,
+        );
       }
     } catch (_) {
       if (mounted) setState(() => _errorMessage = l10n.commonError);
@@ -129,34 +136,37 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
           ? theme.scaffoldBackgroundColor
           : (isDark ? UtenColors.darkBackground : UtenColors.teal50),
       body: SafeArea(
-        child: LayoutBuilder(builder: (context, c) {
-          return SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: c.maxHeight),
-              child: Center(
-                child: isCompact
-                    // 全屏洁净布局：表单直通背景
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: UtenSpacing.s24),
-                        child: _buildLoginForm(theme, isDark),
-                      )
-                    // 居中登录卡（maxWidth 440）
-                    : Padding(
-                        padding: const EdgeInsets.all(UtenSpacing.s24),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 440),
-                          child: UtenCard(
-                            padding: const EdgeInsets.all(UtenSpacing.s32),
-                            borderRadius: UtenRadius.xl,
-                            child: _buildLoginForm(theme, isDark),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: c.maxHeight),
+                child: Center(
+                  child: isCompact
+                      // 全屏洁净布局：表单直通背景
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s24,
+                          ),
+                          child: _buildLoginForm(theme, isDark),
+                        )
+                      // 居中登录卡（maxWidth 440）
+                      : Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s24),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 440),
+                            child: UtenCard(
+                              padding: const EdgeInsets.all(UtenSpacing.s32),
+                              borderRadius: UtenRadius.xl,
+                              child: _buildLoginForm(theme, isDark),
+                            ),
                           ),
                         ),
-                      ),
+                ),
               ),
-            ),
-          );
-        }),
+            );
+          },
+        ),
       ),
     );
   }
@@ -168,19 +178,27 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => context.go(RouteName.entry),
-          ),
-          Text(l10n.visitorLoginTitle,
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-        ]),
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => context.go(RouteName.entry),
+            ),
+            Text(
+              l10n.visitorLoginTitle,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: UtenSpacing.s8),
-        Text(l10n.visitorLoginSubtitle,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        Text(
+          l10n.visitorLoginSubtitle,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(height: UtenSpacing.s24),
         UtenInput(
           controller: _phoneController,
@@ -189,6 +207,8 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
           keyboardType: TextInputType.phone,
           prefixIcon: Icons.phone_iphone_rounded,
           textInputAction: TextInputAction.next,
+          autofillHints: const [AutofillHints.telephoneNumber],
+          inputFormatters: ChinaInputFormatters.phone,
         ),
         const SizedBox(height: UtenSpacing.s16),
         Row(
@@ -202,6 +222,8 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
                 keyboardType: TextInputType.number,
                 prefixIcon: Icons.password_outlined,
                 textInputAction: TextInputAction.go,
+                autofillHints: const [AutofillHints.oneTimeCode],
+                inputFormatters: ChinaInputFormatters.smsCode,
                 onFieldSubmitted: (_) => _login(),
               ),
             ),
@@ -209,13 +231,14 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
             SizedBox(
               height: 48,
               child: UtenButton(
-                onPressed:
-                    (_countdown > 0 || _sendingCode) ? null : _sendCode,
+                onPressed: (_countdown > 0 || _sendingCode) ? null : _sendCode,
                 isLoading: _sendingCode,
                 type: UtenButtonType.secondary,
-                child: Text(_countdown > 0
-                    ? l10n.visitorCodeCountdown(_countdown)
-                    : l10n.visitorGetCode),
+                child: Text(
+                  _countdown > 0
+                      ? l10n.visitorCodeCountdown(_countdown)
+                      : l10n.visitorGetCode,
+                ),
               ),
             ),
           ],
@@ -230,9 +253,12 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
                   : UtenColors.tealSurface,
               borderRadius: UtenRadius.mdAll,
             ),
-            child: Text(l10n.visitorCodeSentDev(_devCode!),
-                style: theme.textTheme.bodySmall?.copyWith(
-                    color: isDark ? UtenColors.teal300 : UtenColors.teal700)),
+            child: Text(
+              l10n.visitorCodeSentDev(_devCode!),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isDark ? UtenColors.teal300 : UtenColors.teal700,
+              ),
+            ),
           ),
         ],
         if (_errorMessage != null) ...[
@@ -243,15 +269,24 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
               color: UtenColors.error.withValues(alpha: 0.12),
               borderRadius: UtenRadius.mdAll,
             ),
-            child: Row(children: [
-              const Icon(Icons.error_outline,
-                  color: UtenColors.error, size: 18),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                  child: Text(_errorMessage!,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: UtenColors.error))),
-            ]),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: UtenColors.error,
+                  size: 18,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    _errorMessage!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: UtenColors.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
         const SizedBox(height: UtenSpacing.s20),
@@ -261,7 +296,8 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
           isExpanded: true,
           size: UtenButtonSize.large,
           child: Text(
-              _isLoading ? l10n.visitorLoggingIn : l10n.visitorLoginButton),
+            _isLoading ? l10n.visitorLoggingIn : l10n.visitorLoginButton,
+          ),
         ),
       ],
     );

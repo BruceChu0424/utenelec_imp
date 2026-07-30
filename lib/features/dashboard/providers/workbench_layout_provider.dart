@@ -83,9 +83,9 @@ class WorkbenchLayoutNotifier
 
   @override
   Object? encode(WorkbenchLayoutState state) => {
-        'order': state.order,
-        'collapsed': state.collapsed.toList(),
-      };
+    'order': state.order,
+    'collapsed': state.collapsed.toList(),
+  };
 
   /// 与默认分组定义合并：丢弃已删除的 key，补上新增的 key。
   WorkbenchLayoutState _merge(List<String>? order, List<String>? collapsed) {
@@ -99,8 +99,9 @@ class WorkbenchLayoutNotifier
       for (final k in defaultOrder)
         if (!incoming.contains(k)) k,
     ];
-    final mergedCollapsed =
-        (collapsed ?? const <String>[]).where(known.contains).toSet();
+    final mergedCollapsed = (collapsed ?? const <String>[])
+        .where(known.contains)
+        .toSet();
     return WorkbenchLayoutState(order: mergedOrder, collapsed: mergedCollapsed);
   }
 
@@ -134,8 +135,7 @@ class WorkbenchLayoutNotifier
     final visibleSet = visibleKeys.toSet();
     var vi = 0;
     final fullOrder = <String>[
-      for (final k in state.order)
-        visibleSet.contains(k) ? visible[vi++] : k,
+      for (final k in state.order) visibleSet.contains(k) ? visible[vi++] : k,
     ];
     state = state.copyWith(order: fullOrder);
     persist();
@@ -144,5 +144,5 @@ class WorkbenchLayoutNotifier
 
 final workbenchLayoutProvider =
     NotifierProvider<WorkbenchLayoutNotifier, WorkbenchLayoutState>(
-  WorkbenchLayoutNotifier.new,
-);
+      WorkbenchLayoutNotifier.new,
+    );

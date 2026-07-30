@@ -84,9 +84,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get loginPasswordRequired => '请输入密码';
 
   @override
-  String get loginRememberMe => '记住此设备';
-
-  @override
   String get loginForgotPassword => '忘记密码？';
 
   @override
@@ -386,6 +383,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get visitorApplyValidateName => '请输入姓名';
+
+  @override
+  String get visitorApplyValidateIdCard => '请输入正确的 18 位居民身份证号';
 
   @override
   String get visitorApplyValidatePurpose => '请填写来访事由';
@@ -842,14 +842,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardSubmit => '提交入职';
 
   @override
-  String get employeeOnboardSuccess => '入职成功：账号=工号，初始密码=身份证后六位（首登需改）';
+  String get employeeOnboardSuccess => '入职成功，一次性临时密码已交付';
 
   @override
   String get employeeOnboardSubmitFailed => '提交失败，请重试';
 
   @override
   String get employeeOnboardNote =>
-      '提交后将自动创建登录账号：账号=工号，初始密码=身份证后六位，首次登录必须修改密码。';
+      '提交后将自动创建登录账号（账号=工号）并生成高熵一次性临时密码；首次登录必须修改密码。';
+
+  @override
+  String get employeeOnboardCredentialTitle => '账号已创建';
+
+  @override
+  String get employeeOnboardCredentialWarning =>
+      '临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。';
+
+  @override
+  String get employeeOnboardAccountLabel => '登录账号';
+
+  @override
+  String get employeeOnboardTemporaryPasswordLabel => '一次性临时密码';
+
+  @override
+  String get employeeOnboardCopyTemporaryPassword => '复制密码';
+
+  @override
+  String get employeeOnboardTemporaryPasswordCopied => '临时密码已复制';
+
+  @override
+  String get employeeOnboardCredentialSaved => '我已妥善保存';
 
   @override
   String get employeeOnboardHintCode => '如 E1001';
@@ -1255,7 +1277,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get payrollSubmitButton => '提交审核';
 
   @override
-  String get payrollSubmitted => '已提交审核，等待财务审核（Mock）';
+  String get payrollSubmitted => '已提交审核，等待财务审核';
 
   @override
   String payrollLoadFailed(Object error) {
@@ -1317,7 +1339,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishSaveDraft => '存草稿';
 
   @override
-  String get noticePublishDraftSaved => '已保存草稿（Mock）';
+  String get noticePublishDraftSaved => '已保存草稿';
 
   @override
   String get noticePublishPublishButton => '发布';
@@ -1369,7 +1391,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get noticePublishPublished => '通知已发布（Mock）';
+  String get noticePublishPublished => '通知已发布';
 
   @override
   String get noticeTypeAnnouncement => '公告';

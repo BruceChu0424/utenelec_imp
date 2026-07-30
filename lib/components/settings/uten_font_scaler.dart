@@ -20,22 +20,10 @@ class UtenFontScaler extends ConsumerWidget {
       children: [
         SegmentedButton<FontScale>(
           segments: const [
-            ButtonSegment(
-              value: FontScale.small,
-              label: Text('小'),
-            ),
-            ButtonSegment(
-              value: FontScale.medium,
-              label: Text('中'),
-            ),
-            ButtonSegment(
-              value: FontScale.large,
-              label: Text('大'),
-            ),
-            ButtonSegment(
-              value: FontScale.xLarge,
-              label: Text('超大'),
-            ),
+            ButtonSegment(value: FontScale.small, label: Text('小')),
+            ButtonSegment(value: FontScale.medium, label: Text('中')),
+            ButtonSegment(value: FontScale.large, label: Text('大')),
+            ButtonSegment(value: FontScale.xLarge, label: Text('超大')),
           ],
           selected: {current},
           onSelectionChanged: (selection) => notifier.set(selection.first),

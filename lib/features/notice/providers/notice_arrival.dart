@@ -27,8 +27,10 @@ void dispatchNoticeArrival(
   Notice notice, {
   VoidCallback? onOpenDetail,
 }) {
-  final router = ProviderScope.containerOf(context, listen: false)
-      .read(appRouterProvider);
+  final router = ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(appRouterProvider);
   final openDetail =
       onOpenDetail ?? () => router.push(RoutePath.noticeDetail(notice.id));
 
@@ -57,7 +59,9 @@ void dispatchNoticeArrival(
     case NoticePriority.normal:
       UtenNotify.banner(
         context,
-        title: notice.type.isWork ? '${notice.type.label} · ${notice.publisher}' : notice.publisher,
+        title: notice.type.isWork
+            ? '${notice.type.label} · ${notice.publisher}'
+            : notice.publisher,
         message: notice.title,
         icon: notice.type.icon,
         duration: const Duration(seconds: 4),

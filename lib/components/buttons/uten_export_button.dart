@@ -14,6 +14,7 @@ import '../../core/io/file_saver.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/app_notification.dart';
+import '../../shared/auth/permissions.dart';
 import 'uten_button.dart';
 
 /// 加密 Excel 导出按钮（紧凑 IconButton，放页面 AppBar.actions）。
@@ -29,6 +30,7 @@ class UtenExportButton extends ConsumerStatefulWidget {
     required this.report,
     required this.queryParams,
     this.filename,
+    this.requiredPermission,
     this.label = '下载表格',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
@@ -38,6 +40,9 @@ class UtenExportButton extends ConsumerStatefulWidget {
   final String report;
   final Map<String, dynamic> queryParams;
   final String? filename;
+
+  /// 导出所需权限；未持有时不渲染按钮。后端仍是最终授权边界。
+  final String? requiredPermission;
 
   /// 按钮文字（公司年长用户多，文字比纯图标易懂；默认"下载表格"，调用方可覆盖如"下载货品表"）。
   final String label;
@@ -60,7 +65,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       context: context,
       builder: (_) => const _ExportPasswordDialog(),
     );
-    // null=取消；空串=用户选「不设密码」明文导出；非空=加密导出。
+    // null=取消；非空=加密导出。安全策略禁止从报表端点导出明文工作簿。
     if (pwd == null || !mounted) return;
     await _doExport(pwd);
   }
@@ -68,7 +73,9 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   Future<void> _doExport(String password) async {
     setState(() => _loading = true);
     try {
-      final Uint8List bytes = await ref.read(apiClientProvider).downloadBytes(
+      final Uint8List bytes = await ref
+          .read(apiClientProvider)
+          .downloadBytes(
             widget.endpoint,
             body: {'password': password},
             query: {'report': widget.report, ...widget.queryParams},
@@ -76,8 +83,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       final name = '${widget.filename ?? 'export_${widget.report}'}.xlsx';
       final saved = await saveBytes(bytes, name);
       if (!mounted) return;
-      final encNote = password.isEmpty ? '（未加密）' : '';
-      context.appSuccess(kIsWeb ? '已开始下载 $name$encNote' : '已保存：$saved$encNote');
+      context.appSuccess(kIsWeb ? '已开始下载 $name' : '已保存：$saved');
     } on ApiException catch (e) {
       if (!mounted) return;
       context.appError(e.message);
@@ -91,6 +97,11 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
 
   @override
   Widget build(BuildContext context) {
+    final requiredPermission = widget.requiredPermission;
+    if (requiredPermission != null &&
+        !ref.watch(currentPermissionsProvider).contains(requiredPermission)) {
+      return const SizedBox.shrink();
+    }
     // 文字按钮（年长用户多，文字"下载表格"比纯图标易懂）；loading 时 UtenButton 自带转圈并禁用。
     return UtenButton(
       type: widget.type,
@@ -103,9 +114,8 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   }
 }
 
-/// 导出对话框：两种导出方式二选一——
-/// ① 设密码（≥6 位 + 确认）加密导出；② 「不设密码」直接明文导出（返回空串）。
-/// 确认返回密码（或空串），取消返回 null。
+/// 导出对话框：必须设置 6-128 位打开密码并二次确认。
+/// 确认返回密码，取消返回 null。
 class _ExportPasswordDialog extends StatefulWidget {
   const _ExportPasswordDialog();
 
@@ -127,8 +137,8 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
 
   void _submit() {
     final p = _pwd.text;
-    if (p.length < 6) {
-      setState(() => _error = '密码至少 6 位（不想加密可点下方「不设密码」）'); // TODO(l10n): 补 arb
+    if (p.length < 6 || p.length > 128) {
+      setState(() => _error = '密码长度必须为 6-128 位'); // TODO(l10n): 补 arb
       return;
     }
     if (p != _confirm.text) {
@@ -148,7 +158,7 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '可设打开密码（Excel/WPS 打开时需输入），也可不设密码直接导出明文表格。',
+            '为保护导出数据，必须设置打开密码；Excel/WPS 打开文件时需要输入。',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
@@ -156,8 +166,9 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
             controller: _pwd,
             obscureText: true,
             autofocus: true,
+            maxLength: 128,
             decoration: const InputDecoration(
-              labelText: '密码（可留空不设）', // TODO(l10n): 补 arb
+              labelText: '密码（6-128 位）', // TODO(l10n): 补 arb
               border: OutlineInputBorder(),
               isDense: true,
             ),
@@ -167,6 +178,7 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
           TextField(
             controller: _confirm,
             obscureText: true,
+            maxLength: 128,
             decoration: const InputDecoration(
               labelText: '确认密码', // TODO(l10n): 补 arb
               border: OutlineInputBorder(),
@@ -176,7 +188,10 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
-            Text(_error!, style: TextStyle(color: theme.colorScheme.error, fontSize: 12)),
+            Text(
+              _error!,
+              style: TextStyle(color: theme.colorScheme.error, fontSize: 12),
+            ),
           ],
         ],
       ),
@@ -184,12 +199,6 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'), // TODO(l10n): 补 arb
-        ),
-        // 不设密码：返回空串 → 后端 EncryptedWorkbookService 放行明文 xlsx。
-        TextButton.icon(
-          onPressed: () => Navigator.of(context).pop(''),
-          icon: const Icon(Icons.lock_open_rounded, size: 18),
-          label: const Text('不设密码'), // TODO(l10n): 补 arb
         ),
         FilledButton.icon(
           onPressed: _submit,

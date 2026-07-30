@@ -1,5 +1,6 @@
 // 检测 Mock 仓库（Phase 4）
 
+import '../../../core/utils/china_datetime.dart';
 import '../models/lab_test.dart';
 
 class MockLabRepository {
@@ -26,10 +27,12 @@ class MockLabRepository {
       if (search != null && search.trim().isNotEmpty) {
         final q = search.trim().toLowerCase();
         result = result
-            .where((t) =>
-                t.sampleCode.toLowerCase().contains(q) ||
-                t.sampleName.toLowerCase().contains(q) ||
-                t.project.toLowerCase().contains(q))
+            .where(
+              (t) =>
+                  t.sampleCode.toLowerCase().contains(q) ||
+                  t.sampleName.toLowerCase().contains(q) ||
+                  t.project.toLowerCase().contains(q),
+            )
             .toList();
       }
       result.sort((a, b) => b.testDate.compareTo(a.testDate));
@@ -49,7 +52,7 @@ class MockLabRepository {
   }
 
   List<LabTest> _seed() {
-    final now = DateTime.now();
+    final now = ChinaDateTime.now();
     DateTime d(int days) => now.subtract(Duration(days: days));
     return [
       LabTest(

@@ -3,8 +3,6 @@ package com.uten.imp.features.auth;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.config.props.SecurityProperties;
-import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.dto.LoginRequest;
 import com.uten.imp.features.auth.dto.TokenResponse;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -30,45 +28,44 @@ public class LoginService {
     private final UserAccountRepository userRepo;
     private final PasswordEncoder passwordEncoder;
     private final LoginRateLimiter rateLimiter;
-    private final SecurityProperties securityProps;
-    private final SystemSettingsService sysSettings;
     private final AuditService audit;
     private final TokenIssuer tokenIssuer;
     private final TxSessionVars tx;
+    private final LoginFailureRecorder failureRecorder;
 
-    private String dummyHash;   // 用于账号不存在时抹平时序（防枚举）
+    /** 启动时预计算，避免首次未知账号请求多做一次 Argon2 编码而形成可观测时序差。 */
+    private final String dummyHash;
 
     public LoginService(UserAccountRepository userRepo, PasswordEncoder passwordEncoder,
-                        LoginRateLimiter rateLimiter, SecurityProperties securityProps,
-                        SystemSettingsService sysSettings,
-                        AuditService audit, TokenIssuer tokenIssuer, TxSessionVars tx) {
+                        LoginRateLimiter rateLimiter,
+                        AuditService audit, TokenIssuer tokenIssuer, TxSessionVars tx,
+                        LoginFailureRecorder failureRecorder) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiter = rateLimiter;
-        this.securityProps = securityProps;
-        this.sysSettings = sysSettings;
         this.audit = audit;
         this.tokenIssuer = tokenIssuer;
         this.tx = tx;
+        this.failureRecorder = failureRecorder;
+        this.dummyHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
     @Transactional
     public TokenResponse login(LoginRequest req, String ip) {
-        rateLimiter.check(ip == null ? "unknown" : ip);
+        rateLimiter.check(
+                LoginRateLimiter.Scope.STAFF_LOGIN,
+                ip,
+                req.loginAccount());
 
         // 密码长度上限：超长直接拒（防 Argon2 CPU DoS），消息与错密码一致（防枚举）
         if (req.password() == null || req.password().length() > PASSWORD_MAX_LENGTH) {
-            ensureDummy();
-            if (dummyHash != null) {
-                passwordEncoder.matches(req.password(), dummyHash);
-            }
+            passwordEncoder.matches(req.password() == null ? "" : req.password(), dummyHash);
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);
         }
 
         var userOpt = userRepo.findByLoginAccount(req.loginAccount());
         // 账号不存在：跑一次 dummy 校验抹平时序，再抛同样的 BAD_CREDENTIALS（防枚举）
         if (userOpt.isEmpty()) {
-            ensureDummy();
             passwordEncoder.matches(req.password(), dummyHash);
             audit.logExplicit(null, req.loginAccount(), "login_failed", "users", null, "account_not_found");
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);
@@ -78,7 +75,7 @@ public class LoginService {
 
         // 先校验密码（M2：密码正确前不暴露账号状态，防枚举）
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
-            onBadCredentials(user, ip);
+            failureRecorder.record(user.getId(), user.getLoginAccount());
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);  // 与账号不存在同消息
         }
         // 密码正确后，才告知停用/锁定（仍锁定期内）
@@ -107,22 +104,5 @@ public class LoginService {
         audit.logExplicit(user.getId(), user.getLoginAccount(), "login", "users", user.getId().toString(), "success");
 
         return tokenIssuer.issueTokens(user);
-    }
-
-    private void onBadCredentials(UserAccount user, String ip) {
-        int attempts = user.getFailedAttempts() + 1;
-        user.setFailedAttempts(attempts);
-        if (attempts >= sysSettings.readInt("lockout_threshold", 5)) {
-            user.setStatus("locked");
-            user.setLockedUntil(OffsetDateTime.now().plusMinutes(sysSettings.readInt("lockout_minutes", 15)));
-        }
-        userRepo.save(user);
-        audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed", "users", user.getId().toString(), "bad_password");
-    }
-
-    private void ensureDummy() {
-        if (dummyHash == null) {
-            dummyHash = passwordEncoder.encode("dummy-password-for-timing");
-        }
     }
 }

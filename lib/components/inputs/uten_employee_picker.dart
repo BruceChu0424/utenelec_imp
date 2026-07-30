@@ -29,8 +29,8 @@ class UtenEmployeePickerItem {
 }
 
 /// 候选加载器：keyword 为 null/空表示不过滤。
-typedef UtenEmployeePickerLoader
-    = Future<List<UtenEmployeePickerItem>> Function(String? keyword);
+typedef UtenEmployeePickerLoader =
+    Future<List<UtenEmployeePickerItem>> Function(String? keyword);
 
 class UtenEmployeePicker extends StatefulWidget {
   const UtenEmployeePicker({
@@ -145,8 +145,8 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
     final String? display = sel == null
         ? null
         : (sel.departmentName == null
-            ? sel.name
-            : '${sel.name}(${sel.departmentName})');
+              ? sel.name
+              : '${sel.name}(${sel.departmentName})');
 
     return FormField<UtenEmployeePickerItem?>(
       key: _fieldKey,
@@ -301,39 +301,43 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
         ),
         Expanded(
           child: _loading
-              ? const UtenSkeletonList(itemCount: 5)
+              ? const UtenSkeletonList()
               : _error != null
-                  ? UtenEmpty.error(
-                      message: '$_error',
-                      actionLabel: '重试',
-                      onAction: _load,
-                    )
-                  : _items.isEmpty
-                      ? const UtenEmpty(
-                          icon: Icons.person_off_outlined,
-                          message: '未找到匹配的人员',
-                        )
-                      : ListView.separated(
-                          itemCount: _items.length,
-                          separatorBuilder: (_, _) =>
-                              const Divider(height: 1, indent: 16, endIndent: 16),
-                          itemBuilder: (context, i) {
-                            final e = _items[i];
-                            final isSelected = e.id == widget.selectedId;
-                            return ListTile(
-                              leading: isSelected
-                                  ? Icon(Icons.check_rounded,
-                                      color: theme.colorScheme.primary)
-                                  : Icon(Icons.person_outline_rounded,
-                                      color: theme.colorScheme.onSurfaceVariant),
-                              title: Text(e.name),
-                              subtitle: e.departmentName == null
-                                  ? null
-                                  : Text(e.departmentName!),
-                              onTap: () => Navigator.of(context).pop(e),
-                            );
-                          },
-                        ),
+              ? UtenEmpty.error(
+                  message: '$_error',
+                  actionLabel: '重试',
+                  onAction: _load,
+                )
+              : _items.isEmpty
+              ? const UtenEmpty(
+                  icon: Icons.person_off_outlined,
+                  message: '未找到匹配的人员',
+                )
+              : ListView.separated(
+                  itemCount: _items.length,
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                  itemBuilder: (context, i) {
+                    final e = _items[i];
+                    final isSelected = e.id == widget.selectedId;
+                    return ListTile(
+                      leading: isSelected
+                          ? Icon(
+                              Icons.check_rounded,
+                              color: theme.colorScheme.primary,
+                            )
+                          : Icon(
+                              Icons.person_outline_rounded,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                      title: Text(e.name),
+                      subtitle: e.departmentName == null
+                          ? null
+                          : Text(e.departmentName!),
+                      onTap: () => Navigator.of(context).pop(e),
+                    );
+                  },
+                ),
         ),
       ],
     );

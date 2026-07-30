@@ -7,8 +7,10 @@
 // 会归一到次月（03-03），符合"前一个月"语义。DatePicker 的可选下限 firstDate 仍保留
 // 2010（历史数据要能手选回去），仅默认值收紧。
 
+import '../../../core/utils/china_datetime.dart';
+
 /// 报表默认起始日：今天往前一个日历月（同日）。
 DateTime defaultReportFrom() {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month - 1, now.day);
+  final now = ChinaDateTime.today();
+  return DateTime.utc(now.year, now.month - 1, now.day);
 }

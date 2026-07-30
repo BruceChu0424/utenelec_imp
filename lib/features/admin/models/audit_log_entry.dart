@@ -34,16 +34,16 @@ class AuditLogEntry {
   final String? createdAt;
 
   factory AuditLogEntry.fromJson(Map<String, dynamic> json) => AuditLogEntry(
-        id: _parseInt(json['id']) ?? 0,
-        actorId: json['actorId'] as String?,
-        actorAccount: json['actorAccount'] as String?,
-        action: json['action'] as String? ?? '',
-        targetType: json['targetType'] as String?,
-        targetId: json['targetId'] as String?,
-        ip: json['ip'] as String?,
-        result: json['result'] as String?,
-        createdAt: json['createdAt'] as String?,
-      );
+    id: _parseInt(json['id']) ?? 0,
+    actorId: json['actorId'] as String?,
+    actorAccount: json['actorAccount'] as String?,
+    action: json['action'] as String? ?? '',
+    targetType: json['targetType'] as String?,
+    targetId: json['targetId'] as String?,
+    ip: json['ip'] as String?,
+    result: json['result'] as String?,
+    createdAt: json['createdAt'] as String?,
+  );
 
   static int? _parseInt(dynamic v) {
     if (v is int) return v;

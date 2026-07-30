@@ -66,10 +66,12 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
   void _show(AppNotification n) {
     final now = DateTime.now().millisecondsSinceEpoch;
     // 同 message + 同 kind 在 600ms 内合并去重，避免重复触发时的叠加。
-    final hasRecent = state.any((x) =>
-        x.kind == n.kind &&
-        x.message == n.message &&
-        now - _tsOf(x.id) < _dedupeMs);
+    final hasRecent = state.any(
+      (x) =>
+          x.kind == n.kind &&
+          x.message == n.message &&
+          now - _tsOf(x.id) < _dedupeMs,
+    );
     if (hasRecent) return;
 
     final fresh = AppNotification(
@@ -98,59 +100,53 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     if (state.isNotEmpty) state = const <AppNotification>[];
   }
 
-  void showSuccess(
-    String message, {
-    String? title,
-    Duration? duration,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.success,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-      ));
+  void showSuccess(String message, {String? title, Duration? duration}) =>
+      _show(
+        AppNotification(
+          id: '',
+          kind: AppNotificationKind.success,
+          title: title,
+          message: message,
+          durationMs: duration?.inMilliseconds ?? 3200,
+        ),
+      );
 
   void showError(
     String message, {
     String? title,
     Duration? duration,
     List<ApiFieldError>? fieldErrors,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.error,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 5000,
-        fieldErrors: fieldErrors,
-      ));
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.error,
+      title: title,
+      message: message,
+      durationMs: duration?.inMilliseconds ?? 5000,
+      fieldErrors: fieldErrors,
+    ),
+  );
 
-  void showWarning(
-    String message, {
-    String? title,
-    Duration? duration,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.warning,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-      ));
+  void showWarning(String message, {String? title, Duration? duration}) =>
+      _show(
+        AppNotification(
+          id: '',
+          kind: AppNotificationKind.warning,
+          title: title,
+          message: message,
+          durationMs: duration?.inMilliseconds ?? 3200,
+        ),
+      );
 
-  void showInfo(
-    String message, {
-    String? title,
-    Duration? duration,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: AppNotificationKind.info,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-      ));
+  void showInfo(String message, {String? title, Duration? duration}) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.info,
+      title: title,
+      message: message,
+      durationMs: duration?.inMilliseconds ?? 3200,
+    ),
+  );
 
   /// 通用入口（统一门面 UtenNotify.banner 走这里）。
   ///
@@ -163,39 +159,42 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     Duration? duration,
     IconData? icon,
     VoidCallback? onTap,
-  }) =>
-      _show(AppNotification(
-        id: '',
-        kind: kind,
-        title: title,
-        message: message,
-        durationMs: duration?.inMilliseconds ?? 3200,
-        icon: icon,
-        onTap: onTap,
-      ));
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: kind,
+      title: title,
+      message: message,
+      durationMs: duration?.inMilliseconds ?? 3200,
+      icon: icon,
+      onTap: onTap,
+    ),
+  );
 }
 
 /// 全局 Provider。
 final appNotificationProvider =
     NotifierProvider<AppNotificationService, List<AppNotification>>(
-  AppNotificationService.new,
-);
+      AppNotificationService.new,
+    );
 
 /// BuildContext 便捷调用扩展。
 extension AppNotificationContextX on BuildContext {
-  AppNotificationService get _notifier =>
-      ProviderScope.containerOf(this, listen: false)
-          .read(appNotificationProvider.notifier);
+  AppNotificationService get _notifier => ProviderScope.containerOf(
+    this,
+    listen: false,
+  ).read(appNotificationProvider.notifier);
 
   /// 显示顶部成功通知。
   void appSuccess(String message, {String? title}) =>
       _notifier.showSuccess(message, title: title);
 
   /// 显示顶部错误通知。
-  void appError(String message,
-          {String? title, List<ApiFieldError>? fieldErrors}) =>
-      _notifier.showError(message,
-          title: title, fieldErrors: fieldErrors);
+  void appError(
+    String message, {
+    String? title,
+    List<ApiFieldError>? fieldErrors,
+  }) => _notifier.showError(message, title: title, fieldErrors: fieldErrors);
 
   /// 显示顶部警告通知。
   void appWarning(String message, {String? title}) =>
@@ -239,7 +238,8 @@ class AppNotificationHost extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            for (final n in list) _AppNotificationBanner(key: ValueKey(n.id), notification: n),
+            for (final n in list)
+              _AppNotificationBanner(key: ValueKey(n.id), notification: n),
           ],
         ),
       ),
@@ -258,8 +258,7 @@ class _AppNotificationBanner extends ConsumerStatefulWidget {
       _AppNotificationBannerState();
 }
 
-class _AppNotificationBannerState
-    extends ConsumerState<_AppNotificationBanner>
+class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
@@ -270,8 +269,7 @@ class _AppNotificationBannerState
       vsync: this,
       duration: const Duration(milliseconds: 220),
     );
-    Future.delayed(Duration(milliseconds: widget.notification.durationMs),
-        () {
+    Future.delayed(Duration(milliseconds: widget.notification.durationMs), () {
       if (!mounted) return;
       ref
           .read(appNotificationProvider.notifier)
@@ -288,9 +286,7 @@ class _AppNotificationBannerState
   Future<void> _dismiss() async {
     await _ctrl.reverse();
     if (!mounted) return;
-    ref
-        .read(appNotificationProvider.notifier)
-        .dismiss(widget.notification.id);
+    ref.read(appNotificationProvider.notifier).dismiss(widget.notification.id);
   }
 
   @override
@@ -300,25 +296,25 @@ class _AppNotificationBannerState
     final scheme = theme.colorScheme;
     final (bg, fg, icon) = switch (n.kind) {
       AppNotificationKind.success => (
-          scheme.primary,
-          scheme.onPrimary,
-          Icons.check_circle_outline_rounded,
-        ),
+        scheme.primary,
+        scheme.onPrimary,
+        Icons.check_circle_outline_rounded,
+      ),
       AppNotificationKind.error => (
-          scheme.error,
-          scheme.onError,
-          Icons.error_outline_rounded,
-        ),
+        scheme.error,
+        scheme.onError,
+        Icons.error_outline_rounded,
+      ),
       AppNotificationKind.warning => (
-          scheme.tertiary,
-          scheme.onTertiary,
-          Icons.warning_amber_rounded,
-        ),
+        scheme.tertiary,
+        scheme.onTertiary,
+        Icons.warning_amber_rounded,
+      ),
       AppNotificationKind.info => (
-          scheme.surfaceContainerHighest,
-          scheme.onSurface,
-          Icons.info_outline_rounded,
-        ),
+        scheme.surfaceContainerHighest,
+        scheme.onSurface,
+        Icons.info_outline_rounded,
+      ),
     };
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -332,9 +328,7 @@ class _AppNotificationBannerState
           child: Dismissible(
             key: ValueKey('dismiss-${n.id}'),
             onDismissed: (_) {
-              ref
-                  .read(appNotificationProvider.notifier)
-                  .dismiss(n.id);
+              ref.read(appNotificationProvider.notifier).dismiss(n.id);
             },
             child: Material(
               color: bg,
@@ -375,8 +369,9 @@ class _AppNotificationBannerState
                               ),
                             Text(
                               n.message,
-                              style: theme.textTheme.bodyMedium
-                                  ?.copyWith(color: fg),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: fg,
+                              ),
                             ),
                             if (n.fieldErrors != null &&
                                 n.fieldErrors!.isNotEmpty)

@@ -1,8 +1,10 @@
 package com.uten.imp.features.production.schedule.dto;
 
+import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -23,6 +25,7 @@ public class MergePlanRequest {
 
     @Valid
     @NotEmpty
+    @Size(max = RequestLimits.DOCUMENT_LINES)
     private List<Line> items;
 
     /** 计划开工/完工日期（落到每个计划行）。 */

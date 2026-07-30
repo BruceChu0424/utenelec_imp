@@ -30,7 +30,9 @@ import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -56,7 +58,7 @@ class _SubcontractReportTablePageState
   // 明细/汇总卡内的单据类型（默认进仓）；出入状况表不使用。
   SubcontractReportDocType _docType = SubcontractReportDocType.receipt;
   DateTime _from = defaultReportFrom();
-  DateTime _to = DateTime.now();
+  DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   int _page = 1;
   final int _size = 50;
@@ -234,8 +236,10 @@ class _SubcontractReportTablePageState
   /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(_endpoint,
-        query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000});
+    final json = await api.get(
+      _endpoint,
+      query: <String, dynamic>{..._exportQuery, 'page': 1, 'size': 2000},
+    );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
       headers: [for (final c in data.columns) c.label],
@@ -455,6 +459,7 @@ class _SubcontractReportTablePageState
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}（最多前 2000 行）',
           loader: _printLoader,
           exportEndpoint: '/subcontract/reports/export',
+          exportPermission: Perm.subcontractReportExport,
           exportReport: _exportReport,
           exportQuery: _exportQuery,
           exportFilename: '委外$_title',
@@ -463,6 +468,7 @@ class _SubcontractReportTablePageState
         ),
         UtenExportButton(
           endpoint: '/subcontract/reports/export',
+          requiredPermission: Perm.subcontractReportExport,
           report: _exportReport,
           queryParams: _exportQuery,
           filename: '委外$_title',

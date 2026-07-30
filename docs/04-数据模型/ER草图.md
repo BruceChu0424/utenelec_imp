@@ -122,10 +122,12 @@ erDiagram
     InventoryMovement }o--|| Warehouse : "仓库"
 ```
 
-### 2.9 审批流（跨模块，通用）
+### 2.9 审批流（未来目标，不是当前 ER）
 
-> 报销与工资条复用统一审批模型。原 `ExpenseApproval` 收敛为通用 `ApprovalRecord`（带 `entityType` 区分 expense/payroll），
-> 新增 `ApprovalNode`（可配置流程节点定义）。详见 [实体字典](实体字典.md) + [全局机制 §三](../05-架构/全局机制.md#三审批流建模可配置多级)。
+> 当前 V133 没有 `ApprovalNode` 或 `ApprovalRecord` 表：报销与工资分别把固定流程的状态、
+> 操作人和时间戳保存在 `expense_claims`、`payroll_batches`。下图仅是业务决定采用可配置多级
+> 审批后才考虑的目标模型，不能用于当前数据库建表或迁移对账。详见 [实体字典](实体字典.md) 与
+> [全局机制 §三](../05-架构/全局机制.md#三审批流建模可配置多级)。
 
 ```mermaid
 erDiagram

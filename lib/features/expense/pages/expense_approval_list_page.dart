@@ -15,10 +15,12 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_paged_grid.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
 
@@ -27,66 +29,93 @@ class ExpenseApprovalListPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(approvalFilterProvider);
+    final queue = ref.watch(approvalQueueProvider);
     final listAsync = ref.watch(expenseApprovalListProvider);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canApprove = permissions.contains(Perm.expenseApprove);
+    final canPay = permissions.contains(Perm.expensePay);
 
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
     Widget body = Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(
-              top: UtenSpacing.s12,
-              bottom: UtenSpacing.s8,
-            ),
-            child: UtenSegmentedFilter<ApprovalFilter>(
-              selected: filter,
-              onChanged: (v) =>
-                  ref.read(approvalFilterProvider.notifier).state = v,
-              segments: const [
-                UtenSegment(value: ApprovalFilter.mine, label: '待我审'),
-                UtenSegment(value: ApprovalFilter.all, label: '全部'),
-                UtenSegment(value: ApprovalFilter.done, label: '已审'),
-              ],
-            ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s12,
+            bottom: UtenSpacing.s8,
           ),
-          Expanded(
-            child: listAsync.when(
-              loading: () => const UtenSkeletonList(itemCount: 4),
-              error: (e, _) => UtenEmpty.error(
-                message: '加载失败：$e',
-                actionLabel: '重试',
-                onAction: () => ref.invalidate(expenseApprovalListProvider),
-              ),
-              data: (all) {
-                final list = all.where((c) => filter.matches(c.status)).toList();
-                if (list.isEmpty) {
-                  return ListView(
-                    children: const [
-                      SizedBox(height: 80),
-                      UtenEmpty(
-                        icon: Icons.task_alt_rounded,
-                        message: '暂无待审批报销',
-                      ),
-                    ],
-                  );
-                }
-                return UtenPagedGrid(
-                  // 审批队列是公司维度聚合（"全部" tab 无上限），客户端按页切片。
-                  items: list,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s16,
-                  ),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  itemBuilder: (context, i, _) => _ApprovalCard(
-                    claim: list[i],
-                    onTap: () => context.go('/expense/approval/${list[i].id}'),
-                  ),
+          child: UtenSegmentedFilter<ApprovalQueue>(
+            selected: queue,
+            onChanged: (v) =>
+                ref.read(approvalQueueProvider.notifier).state = v,
+            segments: [
+              if (canApprove)
+                const UtenSegment(value: ApprovalQueue.pending, label: '待审批'),
+              if (canPay)
+                const UtenSegment(value: ApprovalQueue.payable, label: '待打款'),
+            ],
+          ),
+        ),
+        Expanded(
+          child: listAsync.when(
+            loading: () => const UtenSkeletonList(itemCount: 4),
+            error: (e, _) => UtenEmpty.error(
+              message: '加载失败：$e',
+              actionLabel: '重试',
+              onAction: () => ref.invalidate(expenseApprovalListProvider),
+            ),
+            data: (page) {
+              final list = page.items;
+              if (list.isEmpty) {
+                return ListView(
+                  children: [
+                    const SizedBox(height: 80),
+                    UtenEmpty(
+                      icon: Icons.task_alt_rounded,
+                      message: queue == ApprovalQueue.pending
+                          ? '暂无待审批报销'
+                          : '暂无待打款报销',
+                    ),
+                  ],
                 );
-              },
-            ),
+              }
+              return SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                    UtenResponsiveGrid(
+                      itemCount: list.length,
+                      itemBuilder: (context, i, _) => _ApprovalCard(
+                        claim: list[i],
+                        onTap: () =>
+                            context.go('/expense/approval/${list[i].id}'),
+                      ),
+                    ),
+                    if (page.totalPages > 1)
+                      UtenGridPager(
+                        currentPage: page.page,
+                        totalPages: page.totalPages,
+                        totalItems: page.total,
+                        onPrev: !listAsync.isLoading && page.page > 1
+                            ? () => ref
+                                  .read(expenseApprovalListProvider.notifier)
+                                  .previousPage()
+                            : null,
+                        onNext:
+                            !listAsync.isLoading && page.page < page.totalPages
+                            ? () => ref
+                                  .read(expenseApprovalListProvider.notifier)
+                                  .nextPage()
+                            : null,
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
-        ],
-      );
+        ),
+      ],
+    );
     if (context.breakpoint.isCompact) {
       body = UtenContentContainer(child: body);
     }
@@ -124,13 +153,18 @@ class _ApprovalCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(claim.applicantName,
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(fontWeight: FontWeight.w600)),
-                    Text(claim.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall),
+                    Text(
+                      claim.applicantName,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      claim.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
                   ],
                 ),
               ),
@@ -147,14 +181,20 @@ class _ApprovalCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${claim.items.length} 项 · ${_fmt(claim.submittedAt ?? claim.createdAt)}',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-              Text('¥ ${claim.totalAmount.toStringAsFixed(0)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.primary,
-                      fontFeatures: const [FontFeature.tabularFigures()])),
+              Text(
+                '${claim.items.length} 项 · ${_fmt(claim.submittedAt ?? claim.createdAt)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                '¥ ${claim.totalAmount.toStringAsFixed(0)}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.primary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
             ],
           ),
         ],
@@ -164,13 +204,13 @@ class _ApprovalCard extends StatelessWidget {
 }
 
 UtenStatusBadgeType _badge(ExpenseClaimStatus s) => switch (s) {
-      ExpenseClaimStatus.submitted => UtenStatusBadgeType.info,
-      ExpenseClaimStatus.reviewing => UtenStatusBadgeType.warning,
-      ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
-      ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
-      ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
-      ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
-    };
+  ExpenseClaimStatus.submitted => UtenStatusBadgeType.info,
+  ExpenseClaimStatus.reviewing => UtenStatusBadgeType.warning,
+  ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+  ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+  ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+  ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+};
 
 String _fmt(DateTime d) =>
     '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

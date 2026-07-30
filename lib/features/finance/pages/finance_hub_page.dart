@@ -63,13 +63,13 @@ class FinanceHubPage extends StatelessWidget {
                   description: '账户间转入',
                   location: RoutePath.financeDocNew('bank-transfers'),
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.receipt_long_outlined,
                   label: '支票管理',
                   description: '支票账户视图',
                   location: '/finance/checks',
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.apartment_rounded,
                   label: '资产与待摊',
                   description: '固定资产折旧 / 长期待摊摊销 计提',
@@ -78,49 +78,49 @@ class FinanceHubPage extends StatelessWidget {
               ]),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '钱流报表', [
-                _Entry(
+                const _Entry(
                   icon: Icons.account_balance_wallet_outlined,
                   label: '应收应付',
                   description: '树形分组：客户/供应商类别 AR/AP 余额',
                   location: RouteName.financeReportOverview,
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.list_alt_outlined,
                   label: '明细报表',
                   description: '应收/应付/收款/付款/费用/收入/费用冲销',
                   location: RouteName.financeReportDetail,
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.bar_chart_outlined,
                   label: '汇总报表',
                   description: '应收/应付/收款/付款/费用/收入 汇总',
                   location: RouteName.financeReportSummary,
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.receipt_long_outlined,
                   label: '往来对帐单',
                   description: '客户/供应商 流水·明细·年度对帐',
                   location: RouteName.financeReportStatement,
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.account_balance_outlined,
                   label: '账户流水',
                   description: '帐户进出流水 + 银行存取款',
                   location: RouteName.financeReportAccountFlow,
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.handshake_outlined,
                   label: '对账单',
                   description: '委外加工/采购外放/供应商/其他应收/客户 月结对账',
                   location: RouteName.financeReportRecon,
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.calculate_outlined,
                   label: '成本核算',
                   description: '产品成本/销售成本/铜柱加工费/塑料耗用',
                   location: RouteName.financeReportCost,
                 ),
-                _Entry(
+                const _Entry(
                   icon: Icons.menu_book_outlined,
                   label: '总账报表',
                   description: '科目余额表/资产负债/利润/费用明细/经营损益',
@@ -135,16 +135,28 @@ class FinanceHubPage extends StatelessWidget {
   }
 
   /// 一个分组：标题 + 卡片网格。
-  Widget _section(BuildContext context, ThemeData theme, String title, List<_Entry> entries) {
+  Widget _section(
+    BuildContext context,
+    ThemeData theme,
+    String title,
+    List<_Entry> entries,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: UtenSpacing.s4, bottom: UtenSpacing.s8),
-            child: Text(title,
-                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            padding: const EdgeInsets.only(
+              left: UtenSpacing.s4,
+              bottom: UtenSpacing.s8,
+            ),
+            child: Text(
+              title,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           UtenResponsiveGrid(
             itemCount: entries.length,
@@ -190,7 +202,9 @@ class _EntryTile extends StatelessWidget {
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(
-              vertical: UtenSpacing.s20, horizontal: UtenSpacing.s16),
+            vertical: UtenSpacing.s20,
+            horizontal: UtenSpacing.s16,
+          ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: UtenRadius.lgAll,
@@ -209,13 +223,19 @@ class _EntryTile extends StatelessWidget {
                 child: Icon(entry.icon, color: color, size: 22),
               ),
               const SizedBox(height: UtenSpacing.s12),
-              Text(entry.label,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                entry.label,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const SizedBox(height: 2),
-              Text(entry.description,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+              Text(
+                entry.description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
         ),

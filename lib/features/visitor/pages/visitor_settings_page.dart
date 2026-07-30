@@ -22,10 +22,12 @@ import '../../../components/settings/uten_font_scaler.dart';
 import '../../../components/settings/uten_locale_switcher.dart';
 import '../../../components/settings/uten_performance_switcher.dart';
 import '../../../components/settings/uten_theme_switcher.dart';
+import '../../../core/constants/app_info.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/uten_notify.dart';
 import '../../settings/widgets/settings_section.dart';
 import '../providers/visitor_session_provider.dart';
 
@@ -90,7 +92,7 @@ class VisitorSettingsPage extends ConsumerWidget {
                   ListTile(
                     leading: const Icon(Icons.info_outline, size: 20),
                     title: Text(l10n.settingsVersion),
-                    trailing: const Text('0.1.0 (Phase 0)'),
+                    trailing: const Text(AppInfo.version),
                     contentPadding: EdgeInsets.zero,
                   ),
                 ],
@@ -104,8 +106,11 @@ class VisitorSettingsPage extends ConsumerWidget {
                 child: Material(
                   color: Colors.transparent,
                   child: ListTile(
-                    leading: const Icon(Icons.logout,
-                        color: UtenColors.error, size: 20),
+                    leading: const Icon(
+                      Icons.logout,
+                      color: UtenColors.error,
+                      size: 20,
+                    ),
                     title: Text(
                       l10n.visitorLogout,
                       style: const TextStyle(color: UtenColors.error),
@@ -120,7 +125,7 @@ class VisitorSettingsPage extends ConsumerWidget {
 
               Center(
                 child: Text(
-                  'Uten IMP · 访客端',
+                  '${AppInfo.displayName} · 访客端',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -135,23 +140,13 @@ class VisitorSettingsPage extends ConsumerWidget {
 
   Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
     final l10n = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.visitorLogout),
-        content: Text(l10n.settingsLogoutConfirm),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: UtenColors.error),
-            child: Text(l10n.commonConfirm),
-          ),
-        ],
-      ),
+    final confirmed = await UtenNotify.alert(
+      context,
+      title: l10n.visitorLogout,
+      message: l10n.settingsLogoutConfirm,
+      confirmLabel: l10n.commonConfirm,
+      cancelLabel: l10n.commonCancel,
+      icon: Icons.logout_rounded,
     );
 
     if (confirmed == true) {

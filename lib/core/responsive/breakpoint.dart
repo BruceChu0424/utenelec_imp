@@ -61,10 +61,10 @@ extension UtenBreakpointValue on UtenBreakpoint {
 
   /// 网格列数（按断点推荐）
   int get gridColumns => switch (this) {
-        UtenBreakpoint.compact => 1,
-        UtenBreakpoint.medium => 2,
-        UtenBreakpoint.expanded => 4,
-      };
+    UtenBreakpoint.compact => 1,
+    UtenBreakpoint.medium => 2,
+    UtenBreakpoint.expanded => 4,
+  };
 }
 
 /// 根据宽度解析断点

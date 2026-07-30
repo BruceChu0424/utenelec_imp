@@ -38,10 +38,11 @@ class ProductionHubPage extends StatelessWidget {
             padding: const EdgeInsets.only(top: UtenSpacing.s12),
             children: [
               _section(context, theme, '生产管理', const [
+                // 调度+进度已合并为一个三 Tab 页面（待排产/进行中/已完成）
                 _Entry(
                   icon: Icons.dashboard_customize_outlined,
-                  label: '生产调度',
-                  description: '待排产 · 合并排产 · 缺料提醒',
+                  label: '生产调度与进度',
+                  description: '待排产 · 在产进度 · 已完成',
                   location: '/production/schedule',
                   badge: ProductionPendingBadge(),
                 ),

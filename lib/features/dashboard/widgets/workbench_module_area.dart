@@ -34,6 +34,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../hr_profile/widgets/hr_pending_badge.dart';
 import '../../production/widgets/production_pending_badge.dart';
+import '../../purchase/widgets/pmc_shortage_badge.dart';
 import '../../visitor_approval/widgets/visitor_pending_badge.dart';
 import '../providers/workbench_layout_provider.dart';
 
@@ -372,10 +373,12 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.warehouse,
       ),
       // 采购管理 → hub（hub 内分「采购管理」4 单据卡片 + 「采购报表」卡片）
+      // 徽标 = 缺料待备料行数（生产计划已审但 BOM 净需求不足），提醒 PMC 主动备料。
       _ModuleItem(
         icon: Icons.shopping_cart_outlined,
         label: '采购管理',
         location: RouteName.purchase,
+        badge: PmcShortageBadge(),
       ),
     ],
   ),

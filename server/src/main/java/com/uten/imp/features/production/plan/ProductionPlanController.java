@@ -62,6 +62,14 @@ public class ProductionPlanController {
         return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo), page, size, sort, order);
     }
 
+    /** 生产进度看板：closed=false 进行中（默认）/ closed=true 已完成；父计划带子计划嵌套进度。 */
+    @GetMapping("/progress")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public java.util.List<com.uten.imp.features.production.plan.dto.PlanProgressRow> progress(
+            @RequestParam(defaultValue = "false") boolean closed) {
+        return service.progress(closed);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public PlanDetail detail(@PathVariable UUID id) {

@@ -281,6 +281,79 @@ public class ProductionPlanService {
         return detail(id);
     }
 
+    // ====================== 生产进度看板聚合 ======================
+
+    /**
+     * 计划聚合进度（看板三 Tab：进行中 closed=false / 已完成 closed=true）。
+     * 顶层只列父计划（排除作为子计划的单），每个计划带 subplans 嵌套进度；
+     * Σ排产 / Σ已入库 / 百分比 / 开完工窗口 / 车间，交货升序 ≤3 天标急。
+     */
+    @Transactional(readOnly = true)
+    public List<com.uten.imp.features.production.plan.dto.PlanProgressRow> progress(boolean closed) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rs = em.createNativeQuery("""
+                SELECT p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
+                       COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.iqty),0),
+                       MIN(i.plan_begin_date), MAX(i.plan_end_date)
+                FROM production_plans p
+                LEFT JOIN production_plan_items i ON i.plan_id = p.id AND i.is_deleted = false
+                WHERE p.is_deleted = false AND p.status = 1 AND p.is_closed = :closed
+                  AND p.is_stopped = false AND p.is_canceled = false
+                  AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)
+                GROUP BY p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id
+                ORDER BY p.delivery_date ASC NULLS LAST, p.bill_no
+                LIMIT 200
+                """).setParameter("closed", closed).getResultList();
+        // 子计划嵌套进度（按父计划批量取，避免 N+1）
+        List<UUID> planIds = rs.stream().map(r -> (UUID) r[0]).toList();
+        Map<UUID, List<com.uten.imp.features.production.plan.dto.PlanProgressRow.SubProgress>> subsByPlan =
+                new java.util.HashMap<>();
+        if (!planIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> subs = em.createNativeQuery("""
+                    SELECT l.plan_id, sp.id, sp.bill_no, sp.workshop_name, sp.status, sp.is_closed,
+                           COALESCE(SUM(i.qty),0), COALESCE(SUM(i.iqty),0)
+                    FROM subplan_links l
+                    JOIN production_plans sp ON sp.id = l.subplan_id AND sp.is_deleted = false
+                    LEFT JOIN production_plan_items i ON i.plan_id = sp.id AND i.is_deleted = false
+                    WHERE l.is_deleted = false AND l.plan_id IN (:ids)
+                    GROUP BY l.plan_id, sp.id, sp.bill_no, sp.workshop_name, sp.status, sp.is_closed
+                    ORDER BY sp.bill_no
+                    """).setParameter("ids", planIds).getResultList();
+            for (Object[] s : subs) {
+                BigDecimal t = bd(s[6]);
+                BigDecimal in = bd(s[7]);
+                double pct = t.signum() > 0
+                        ? Math.min(in.divide(t, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
+                subsByPlan.computeIfAbsent((UUID) s[0], k -> new ArrayList<>())
+                        .add(new com.uten.imp.features.production.plan.dto.PlanProgressRow.SubProgress(
+                                (UUID) s[1], (String) s[2], (String) s[3],
+                                s[4] == null ? null : ((Number) s[4]).shortValue(),
+                                Boolean.TRUE.equals(s[5]), t, in, pct));
+            }
+        }
+        java.time.LocalDate warn = java.time.LocalDate.now().plusDays(3);
+        List<com.uten.imp.features.production.plan.dto.PlanProgressRow> out = new ArrayList<>(rs.size());
+        for (Object[] r : rs) {
+            BigDecimal total = bd(r[7]);
+            BigDecimal inbound = bd(r[8]);
+            double pct = total.signum() > 0
+                    ? inbound.divide(total, 4, java.math.RoundingMode.HALF_UP).doubleValue() : 0;
+            java.time.LocalDate deliver = r[3] == null ? null : ((java.sql.Date) r[3]).toLocalDate();
+            out.add(new com.uten.imp.features.production.plan.dto.PlanProgressRow(
+                    (UUID) r[0], (String) r[1],
+                    r[2] == null ? null : ((java.sql.Date) r[2]).toLocalDate(),
+                    deliver, (String) r[4], (UUID) r[5],
+                    ((Number) r[6]).intValue(), total, inbound,
+                    r[9] == null ? null : ((java.sql.Date) r[9]).toLocalDate(),
+                    r[10] == null ? null : ((java.sql.Date) r[10]).toLocalDate(),
+                    Math.min(pct, 1.0), closed,
+                    deliver != null && !deliver.isAfter(warn),
+                    subsByPlan.getOrDefault((UUID) r[0], List.of())));
+        }
+        return out;
+    }
+
     // ====================== is_closed 派生（CheckFulfill4 → Service） ======================
 
     /**

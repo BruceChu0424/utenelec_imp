@@ -42,6 +42,13 @@ public class ProductionScheduleController {
         return service.pendingCount();
     }
 
+    /** 缺料待备料计数（PMC 采购管理徽标）：{"count": n}；生产/采购两侧都可查。 */
+    @GetMapping("/shortage-count")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','purchase_request:view')")
+    public Map<String, Long> shortageCount() {
+        return service.shortageCount();
+    }
+
     /** 已审订单明细 + 每行货品一层 BOM 零件（新建计划单「从订单带明细」弹窗数据源）。 */
     @GetMapping("/order-lines")
     @PreAuthorize("hasAuthority('production_plan:view')")

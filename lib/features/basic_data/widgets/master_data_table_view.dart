@@ -194,7 +194,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       _pageCtrl.text = '${widget.currentPage}';
     }
     // 全屏中：数据/列变化 bump tick，驱动全屏路由内的表格重建。
-    _fsTick.value++;
+    // didUpdateWidget 处于 build 阶段，直接写 ValueNotifier 会让全屏路由里的
+    // ValueListenableBuilder 在 build 中 setState（断言崩溃）；推迟到本帧结束后，
+    // 且仅全屏时才需要通知（非全屏没有监听者）。
+    if (_fullscreen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fsTick.value++;
+      });
+    }
   }
 
   /// 全屏切换：进入时弹全屏路由（正常树让位）；全屏里再点「退出全屏」pop 该路由。
@@ -216,7 +223,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       pageBuilder: (ctx, _, _) => _FullscreenDisposer(
         // 路由完全移除后再让正常树接管同一批 ScrollController（见上方注释）。
         onDisposed: () {
-          if (mounted) setState(() => _fullscreen = false);
+          if (!mounted) return;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _fullscreen = false);
+          });
         },
         child: ValueListenableBuilder<int>(
           valueListenable: _fsTick,

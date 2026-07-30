@@ -280,7 +280,9 @@ public class ProductionReportService {
                 LEFT JOIN employees em_mk ON em_mk.legacy_id = p.maker_legacy_id OR em_mk.id = p.maker_id
                 LEFT JOIN employees em_ap ON em_ap.legacy_id = p.approver_legacy_id OR em_ap.id = p.approver_id
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(p.is_deleted,false)=false");
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(p.is_deleted,false)=false"
+                // 汇总只显示父计划：拆分生成的子计划（subplan_links）不出现在汇总，明细报表仍全量
+                + " AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)");
         if (billNo != null && !billNo.isBlank()) w.add("p.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (status != null) w.add("p.status = :status", "status", status);
         if (dateFrom != null) w.add("p.bill_date >= :dateFrom", "dateFrom", dateFrom);

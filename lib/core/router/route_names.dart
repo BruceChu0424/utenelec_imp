@@ -121,6 +121,7 @@ abstract final class RouteName {
   // 生产管理（生产部）：hub + 调度 + 计划单 + 日报 + 4 报表入口。
   static const String production = '/production';
   static const String productionSchedule = '/production/schedule';
+  static const String productionProgress = '/production/progress';
   static const String productionPlanList = '/production/plans';
   static const String productionDailyReportList = '/production/daily-reports';
   static const String productionWhereUsed = '/production/where-used';

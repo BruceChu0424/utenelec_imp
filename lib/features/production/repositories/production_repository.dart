@@ -117,6 +117,13 @@ class ProductionPlanRepository {
     return ProductionPlanDetail.fromJson(json);
   }
 
+  /// 生产进度看板：closed=false 进行中（默认）/ closed=true 已完成；父计划带子计划嵌套进度。
+  Future<List<PlanProgressRow>> planProgress({bool closed = false}) async {
+    final list = await api.getList('/production/plans/progress',
+        query: {'closed': closed}); // ENDPOINT
+    return list.map(PlanProgressRow.fromJson).toList();
+  }
+
   // ───────────────────────── MRP-lite（物料需求 → 采购申请） ─────────────────────────
 
   /// 物料需求预览：BOM 展开毛需求 − 库存 − 在途 = 净需求（自制件标记）。
@@ -154,6 +161,30 @@ class ProductionPlanRepository {
     return MrpGenerateResult.fromJson(json);
   }
 
+  /// 自制件按净需求生成下层生产计划（草稿）；多层 BOM 可在子计划上继续生成。
+  Future<MrpGenerateResult> mrpGenerateSubplan(String id) async {
+    final json =
+        await api.post('/production/plans/$id/mrp/generate-subplan'); // ENDPOINT
+    return MrpGenerateResult.fromJson(json);
+  }
+
+  /// 已生成的自制件子计划溯源（父计划 MRP 面板展示，可跳子计划详情）。
+  Future<List<MrpSubplanRef>> mrpSubplans(String id) async {
+    final list =
+        await api.getList('/production/plans/$id/mrp/subplans'); // ENDPOINT
+    return list.map(MrpSubplanRef.fromJson).toList();
+  }
+
+  /// 按车间拆分生成子计划：自选自制件行+数量+车间，按车间分组各生成一张草稿。
+  /// body items: [{goodsId, colorId?, unitId?, qty, departmentId?, workshopName?}]
+  Future<List<SubplanCreated>> mrpGenerateSubplans(
+      String id, List<Map<String, dynamic>> items) async {
+    final list = await api.postList(
+        '/production/plans/$id/mrp/generate-subplans', // ENDPOINT
+        body: {'items': items});
+    return list.map(SubplanCreated.fromJson).toList();
+  }
+
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
 
   /// 待排产订单行（交货升序，urgent=距交货 ≤3 天）。
@@ -169,6 +200,12 @@ class ProductionPlanRepository {
       'count': (json['count'] as num?)?.toInt() ?? 0,
       'urgent': (json['urgent'] as num?)?.toInt() ?? 0,
     };
+  }
+
+  /// 缺料待备料计数（PMC 采购管理徽标）：{'count': n}。
+  Future<Map<String, int>> scheduleShortageCount() async {
+    final json = await api.get('/production/schedule/shortage-count'); // ENDPOINT
+    return {'count': (json['count'] as num?)?.toInt() ?? 0};
   }
 
   /// 已审订单明细 + 每行货品一层 BOM 零件（新建计划单「从订单带明细」用）。
@@ -353,6 +390,96 @@ class ScheduleBomComponent {
       );
 }
 
+/// 生产进度看板行（对应后端 PlanProgressRow）。
+class PlanProgressRow {
+  const PlanProgressRow({
+    required this.planId,
+    this.billNo,
+    this.billDate,
+    this.deliveryDate,
+    this.workshopName,
+    this.departmentId,
+    this.lineCount = 0,
+    this.totalQty,
+    this.inboundQty,
+    this.planBeginDate,
+    this.planEndDate,
+    this.percent = 0,
+    this.closed = false,
+    this.urgent = false,
+    this.subplans = const [],
+  });
+  final String planId;
+  final String? billNo;
+  final String? billDate;
+  final String? deliveryDate;
+  final String? workshopName;
+  final String? departmentId;
+  final int lineCount;
+  final double? totalQty;
+  final double? inboundQty;
+  final String? planBeginDate;
+  final String? planEndDate;
+  final double percent;
+  final bool closed;
+  final bool urgent;
+  final List<SubPlanProgress> subplans;
+
+  factory PlanProgressRow.fromJson(Map<String, dynamic> j) => PlanProgressRow(
+        planId: j['planId'] as String,
+        billNo: j['billNo'] as String?,
+        billDate: j['billDate'] as String?,
+        deliveryDate: j['deliveryDate'] as String?,
+        workshopName: j['workshopName'] as String?,
+        departmentId: j['departmentId'] as String?,
+        lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
+        totalQty: (j['totalQty'] as num?)?.toDouble(),
+        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+        planBeginDate: j['planBeginDate'] as String?,
+        planEndDate: j['planEndDate'] as String?,
+        percent: (j['percent'] as num?)?.toDouble() ?? 0,
+        closed: j['closed'] == true,
+        urgent: j['urgent'] == true,
+        subplans: [
+          for (final s in (j['subplans'] as List? ?? const []))
+            SubPlanProgress.fromJson(s as Map<String, dynamic>),
+        ],
+      );
+}
+
+/// 子计划嵌套进度（对应后端 PlanProgressRow.SubProgress）。
+class SubPlanProgress {
+  const SubPlanProgress({
+    required this.planId,
+    this.billNo,
+    this.workshopName,
+    this.status,
+    this.closed = false,
+    this.totalQty,
+    this.inboundQty,
+    this.percent = 0,
+  });
+  final String planId;
+  final String? billNo;
+  final String? workshopName;
+  final int? status;
+  final bool closed;
+  final double? totalQty;
+  final double? inboundQty;
+  final double percent;
+
+  factory SubPlanProgress.fromJson(Map<String, dynamic> j) => SubPlanProgress(
+        planId: j['planId'] as String,
+        billNo: j['billNo'] as String?,
+        workshopName: j['workshopName'] as String?,
+        status: (j['status'] as num?)?.toInt(),
+        closed: j['closed'] == true,
+        totalQty: (j['totalQty'] as num?)?.toDouble(),
+        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+        percent: (j['percent'] as num?)?.toDouble() ?? 0,
+      );
+}
+
 /// MRP 预览行。
 class MrpRow {  const MrpRow({
     required this.goodsId, this.goodsCode, this.goodsName, this.spec,
@@ -397,6 +524,63 @@ class MrpGenerateResult {
         requestId: j['requestId'] as String,
         requestBillNo: j['requestBillNo'] as String,
         lineCount: (j['lineCount'] as num).toInt(),
+      );
+}
+
+/// 拆分生成的一张子计划结果（对应后端 GenerateSubplansRequest.Created）。
+class SubplanCreated {
+  const SubplanCreated({
+    required this.planId,
+    this.billNo,
+    this.lineCount = 0,
+    this.workshopName,
+  });
+  final String planId;
+  final String? billNo;
+  final int lineCount;
+  final String? workshopName;
+
+  factory SubplanCreated.fromJson(Map<String, dynamic> j) => SubplanCreated(
+        planId: j['planId'] as String,
+        billNo: j['billNo'] as String?,
+        lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
+        workshopName: j['workshopName'] as String?,
+      );
+}
+
+/// 自制件子计划溯源行（父计划 MRP 面板/详情页进度区展示用，含完工进度）。
+class MrpSubplanRef {
+  const MrpSubplanRef({
+    required this.planId,
+    this.billNo,
+    this.status,
+    this.closed = false,
+    this.billDate,
+    this.deliveryDate,
+    this.totalQty,
+    this.inboundQty,
+    this.percent = 0,
+  });
+  final String planId;
+  final String? billNo;
+  final int? status; // 0草稿 1已审 -1红冲
+  final bool closed;
+  final String? billDate;
+  final String? deliveryDate;
+  final double? totalQty;
+  final double? inboundQty;
+  final double percent;
+
+  factory MrpSubplanRef.fromJson(Map<String, dynamic> j) => MrpSubplanRef(
+        planId: j['planId'] as String,
+        billNo: j['billNo'] as String?,
+        status: (j['status'] as num?)?.toInt(),
+        closed: j['closed'] == true,
+        billDate: j['billDate'] as String?,
+        deliveryDate: j['deliveryDate'] as String?,
+        totalQty: (j['totalQty'] as num?)?.toDouble(),
+        inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+        percent: (j['percent'] as num?)?.toDouble() ?? 0,
       );
 }
 

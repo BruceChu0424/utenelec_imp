@@ -29,6 +29,13 @@ public class MrpController {
         return mrpService.preview(id);
     }
 
+    /** 已生成的自制件子计划溯源（父计划 MRP 面板展示，可跳子计划详情）。 */
+    @GetMapping("/{id}/mrp/subplans")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public List<MrpService.SubplanRef> subplans(@PathVariable UUID id) {
+        return mrpService.subplans(id);
+    }
+
     /** 按净需求生成采购申请（草稿）；已生成过且单据有效时 409 业务错误。
      *  D3：strategy=gross 按毛需求开单（不扣库存/在途）。 */
     @PostMapping("/{id}/mrp/generate")
@@ -52,6 +59,23 @@ public class MrpController {
     public MrpGenerateResult generateFinishedIn(@PathVariable UUID id,
                                                 @org.springframework.web.bind.annotation.RequestBody GenerateDrawBody body) {
         return mrpService.generateFinishedIn(id, body == null ? null : body.warehouseId());
+    }
+
+    /** 自制件按净需求生成下层生产计划（草稿）；多层 BOM 可在子计划上继续生成。 */
+    @PostMapping("/{id}/mrp/generate-subplan")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public MrpGenerateResult generateSubplan(@PathVariable UUID id) {
+        return mrpService.generateSubplan(id);
+    }
+
+    /** 按车间拆分生成子计划：用户自选自制件行+数量+车间，按车间分组各生成一张草稿。 */
+    @PostMapping("/{id}/mrp/generate-subplans")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public List<GenerateSubplansRequest.Created> generateSubplans(
+            @PathVariable UUID id,
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
+            GenerateSubplansRequest req) {
+        return mrpService.generateSubplans(id, req);
     }
 
     /** 生成领料单请求体。 */

@@ -62,6 +62,23 @@ class ApiClient {
     }
   }
 
+  /// POST 且响应为 JSON 数组（如批量生成结果列表）。
+  Future<List<Map<String, dynamic>>> postList(String path, {Object? body}) async {
+    try {
+      final r = await _dio.post<dynamic>(path, data: body);
+      final data = r.data;
+      if (data is List) {
+        return data.cast<Map<String, dynamic>>();
+      }
+      if (data is Map && data['data'] is List) {
+        return (data['data'] as List).cast<Map<String, dynamic>>();
+      }
+      return const [];
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     try {
       final r = await _dio.put<dynamic>(path, data: body);

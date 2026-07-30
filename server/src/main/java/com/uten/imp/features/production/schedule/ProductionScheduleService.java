@@ -220,6 +220,20 @@ public class ProductionScheduleService {
 
     // ======================== 工作台徽标：待排产计数 ========================
 
+    /** 缺料待备料计数（PMC 采购管理徽标）：链路行状态=3 待物料（计划已审但 BOM 净需求不足）的行数。 */
+    @Transactional(readOnly = true)
+    public Map<String, Long> shortageCount() {
+        Object[] r = (Object[]) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE o.is_deleted = false AND o.status = 1
+                  AND o.is_closed = false AND o.is_stopped = false
+                  AND i.is_deleted = false AND i.chain_status = 3
+                """).getSingleResult();
+        return Map.of("count", ((Number) r[0]).longValue());
+    }
+
     /** 待排产计数（生产部工作台徽标）：待排产行数 + 其中紧急（交货 ≤3 天/已逾期）行数。口径同 PENDING_SQL。 */
     @Transactional(readOnly = true)
     public Map<String, Long> pendingCount() {

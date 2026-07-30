@@ -208,6 +208,13 @@ dart format .
 
 > Flutter SDK 安装见 https://docs.flutter.dev/get-started/install
 > 当前已验证：Flutter 3.44.2 stable、Windows 桌面、Web 构建均通过。
+>
+> **本机 Flutter SDK 路径：`D:\Software\Flutter\flutter`**（Flutter 3.44.2 / Dart 3.12.2，
+> 满足 pubspec 的 `^3.12.2` 要求；不在系统 PATH，Git Bash 里跑检查用：
+> `"/d/Software/Flutter/flutter/bin/flutter" analyze`）。
+> 注意机器上另有两个旧 SDK 不要用：`D:\Software\Flutter`（Dart 3.12.1，版本不够）、
+> `D:\Software\flutter_flutter`（OpenHarmony 分支 Dart 3.9.2）。
+> 若 PATH 无 PowerShell，需先 `export PATH="$PATH:/c/Windows/System32/WindowsPowerShell/v1.0:/c/Windows/System32"`。
 
 ### Phase 0 地基 Demo 体验路径
 

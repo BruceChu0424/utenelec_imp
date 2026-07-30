@@ -87,7 +87,7 @@ import '../../features/production/pages/production_plan_detail_page.dart';
 import '../../features/production/pages/production_plan_edit_page.dart';
 import '../../features/production/pages/production_plan_list_page.dart';
 import '../../features/production/pages/production_report_page.dart';
-import '../../features/production/pages/production_schedule_page.dart';
+import '../../features/production/pages/production_board_page.dart';
 import '../../features/production/pages/where_used_report_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
@@ -233,12 +233,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       ShellRoute(
-        // SelectionArea 包整个外壳：登录后所有页面（四主 Tab + 业务子页）文字均可拖选 + 复制。
-        // ⚠️ 必须在 Navigator 内：ShellRoute.builder 的 widget 挂在 root Navigator 上、有 Overlay
-        //    祖先。绝不能放进 MaterialApp.router 的 builder——它在 Navigator 外层，
-        //    SelectableRegion 找不到 Overlay 祖先会直接崩溃。
-        builder: (context, state, child) =>
-            SelectionArea(child: MainShellPage(child: child)),
+        // ⚠️ SelectionArea 已下线：Flutter 框架 bug（web 端 SelectableRegion 在
+        // 动态内容重建时 _flushInactiveSelections 抛 ConcurrentModificationError），
+        // 全局包裹会让轮询/表格刷新在拖选文字时崩掉整个调度帧，表现为"点了没反应"。
+        // 后续如需复制功能，改为在静态内容页局部包 SelectionArea，勿全局包裹。
+        builder: (context, state, child) => MainShellPage(child: child),
         routes: [
           GoRoute(
             path: RouteName.home,
@@ -748,7 +747,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.productionSchedule,
             name: 'production-schedule',
-            builder: (_, _) => const ProductionSchedulePage(),
+            builder: (_, _) => const ProductionBoardPage(),
+          ),
+          GoRoute(
+            path: RouteName.productionProgress,
+            name: 'production-progress',
+            builder: (_, _) => const ProductionBoardPage(initialTab: 1),
           ),
           GoRoute(
             path: '/production/plans/new',

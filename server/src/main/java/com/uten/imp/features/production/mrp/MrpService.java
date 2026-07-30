@@ -5,6 +5,8 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.plan.ProductionPlan;
+import com.uten.imp.features.production.plan.ProductionPlanItem;
+import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.features.purchase.request.PurchaseRequest;
 import com.uten.imp.features.purchase.request.PurchaseRequestItem;
@@ -23,7 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -134,6 +139,7 @@ public class MrpService {
 
     private final EntityManager em;
     private final ProductionPlanRepository planRepo;
+    private final ProductionPlanItemRepository itemRepo;
     private final PurchaseRequestRepository requestRepo;
     private final PurchaseRequestItemRepository requestItemRepo;
     private final StockDocumentRepository stockDocRepo;
@@ -141,11 +147,53 @@ public class MrpService {
     private final DocNumberService docNumberService;
     private final SecurityContextCurrentUser currentUser;
 
-    /** MRP 预览：全部物料行（含自制半成品标记）。 */
+    /** 物料需求预览：全部物料行（含自制半成品标记）。 */
     @Transactional(readOnly = true)
     public List<MrpRow> preview(UUID planId) {
         requirePlan(planId);
         return explode(planId);
+    }
+
+    /**
+     * 已生成的自制件子计划溯源（父计划 MRP 面板/详情页进度区展示用）：
+     * 未删联动 + 未删子计划，红冲的也列出（状态 -1 前端标灰）。含完工进度（Σiqty/Σqty）。
+     */
+    @Transactional(readOnly = true)
+    public List<SubplanRef> subplans(UUID planId) {
+        requirePlan(planId);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rs = em.createNativeQuery("""
+                SELECT p.id, p.bill_no, p.status, p.is_closed, p.bill_date, p.delivery_date,
+                       (SELECT COALESCE(SUM(i.qty), 0) FROM production_plan_items i
+                        WHERE i.plan_id = p.id AND i.is_deleted = false) AS total_qty,
+                       (SELECT COALESCE(SUM(i.iqty), 0) FROM production_plan_items i
+                        WHERE i.plan_id = p.id AND i.is_deleted = false) AS inbound_qty
+                FROM subplan_links l
+                JOIN production_plans p ON p.id = l.subplan_id
+                WHERE l.plan_id = :planId AND l.is_deleted = false AND p.is_deleted = false
+                ORDER BY p.bill_date DESC NULLS LAST, p.bill_no
+                """).setParameter("planId", planId).getResultList();
+        List<SubplanRef> out = new ArrayList<>(rs.size());
+        for (Object[] r : rs) {
+            BigDecimal total = r[6] == null ? BigDecimal.ZERO : (BigDecimal) r[6];
+            BigDecimal inbound = r[7] == null ? BigDecimal.ZERO : (BigDecimal) r[7];
+            double pct = total.signum() > 0
+                    ? Math.min(inbound.divide(total, 4, java.math.RoundingMode.HALF_UP).doubleValue(), 1.0) : 0;
+            out.add(new SubplanRef(
+                    (UUID) r[0], (String) r[1],
+                    r[2] == null ? null : ((Number) r[2]).shortValue(),
+                    Boolean.TRUE.equals(r[3]),
+                    r[4] == null ? null : ((java.sql.Date) r[4]).toLocalDate(),
+                    r[5] == null ? null : ((java.sql.Date) r[5]).toLocalDate(),
+                    total, inbound, pct));
+        }
+        return out;
+    }
+
+    /** 子计划溯源行（含完工进度）。 */
+    public record SubplanRef(UUID planId, String billNo, Short status, boolean closed,
+                             LocalDate billDate, LocalDate deliveryDate, BigDecimal totalQty,
+                             BigDecimal inboundQty, double percent) {
     }
 
     /** D3 订单物料分析（李主管）：从已审销售订单直接 BOM 展开（不必先建生产计划）。 */
@@ -424,8 +472,237 @@ public class MrpService {
         return new MrpGenerateResult(d.getId(), d.getBillNo(), line, List.of());
     }
 
-    // ======================== 内部 ========================
+    // ======================== 计划 → 自制件子计划（多层 BOM 逐级展开） ========================
 
+    /**
+     * 生成自制件子计划：BOM 展开后「自制件」（本身还有 BOM 的组件）按<b>净需求</b>开一张
+     * 下层生产计划（草稿），交货日取父计划最早开工日（无则父计划交货日）。
+     * 多层 BOM：子计划的 MRP 面板可继续向下生成，逐级展开。
+     * subplan_links 防重复（规则同采购申请/领料单：子计划删/红冲后可再生成，旧联动软删留痕）。
+     *
+     * <p>口径说明：展开是全层级一次性展开，下层零件的毛需求按上层全部自制折算，
+     * 不扣中间层自制件库存（与采购申请同口径，偏保守多备）。
+     */
+    @Transactional
+    public MrpGenerateResult generateSubplan(UUID planId) {
+        ProductionPlan plan = requirePlan(planId);
+        if (plan.getStatus() != null && plan.getStatus() == -1) {
+            throw new ApiException(ErrorCode.BUSINESS, "已红冲的计划不可生成子计划");
+        }
+        var dup = em.createNativeQuery("""
+                SELECT p.bill_no FROM subplan_links l
+                JOIN production_plans p ON p.id = l.subplan_id
+                WHERE l.plan_id = :planId AND l.is_deleted = false
+                  AND p.is_deleted = false AND p.status <> -1
+                LIMIT 1
+                """).setParameter("planId", planId).getResultList();
+        if (!dup.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "本计划已生成过子计划（" + dup.get(0) + "），如需重生成请先删除或红冲该子计划");
+        }
+
+        List<MrpRow> make = explode(planId).stream()
+                .filter(r -> r.selfMade() && r.net() != null && r.net().signum() > 0)
+                .toList();
+        if (make.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "无净需求自制件（库存/在途已覆盖，或明细货品没有多层 BOM）");
+        }
+
+        // 子计划交货日：父计划最早开工日（零件要先于成品投产），无开工日则取父计划交货日
+        Object begin = em.createNativeQuery("""
+                SELECT MIN(plan_begin_date) FROM production_plan_items
+                WHERE plan_id = :planId AND is_deleted = false
+                """).setParameter("planId", planId).getSingleResult();
+        LocalDate subDelivery = begin != null
+                ? ((java.sql.Date) begin).toLocalDate() : plan.getDeliveryDate();
+
+        LocalDate today = LocalDate.now();
+        ProductionPlan sub = new ProductionPlan();
+        // 子计划编号 = 父计划号-N（编号体系内一眼看出归属，如 SJ26070078-1）
+        sub.setBillNo(plan.getBillNo() + "-" + nextSubSuffix(plan.getBillNo()));
+        sub.setBillDate(today);
+        sub.setDeliveryDate(subDelivery);
+        sub.setDepartmentId(plan.getDepartmentId());
+        sub.setWorkshopName(plan.getWorkshopName());
+        sub.setRemark("父计划 " + plan.getBillNo() + " 自制件按净需求自动生成");
+        sub.setSourceDocNo(plan.getBillNo());
+        sub.setMakerId(currentUser.requireEmployeeId());
+        sub.setStatus((short) 0);
+        planRepo.save(sub);
+
+        int line = 0;
+        for (MrpRow row : make) {
+            line++;
+            ProductionPlanItem it = new ProductionPlanItem();
+            it.setPlanId(sub.getId());
+            it.setBillNo(sub.getBillNo());
+            it.setBillDate(sub.getBillDate());
+            it.setLineNo(line);
+            it.setProductNo(sub.getBillNo() + "-" + line);
+            it.setGoodsId(row.goodsId());
+            it.setColorId(row.colorId());
+            it.setUnitId(row.unitId());
+            it.setUnitRate(BigDecimal.ONE); // MRP 展开行已是基本单位口径
+            it.setQty(row.net());
+            it.setOqty(row.gross());
+            it.setSourceDocNo(plan.getBillNo());
+            it.setRemark("毛需求 " + row.gross().stripTrailingZeros().toPlainString()
+                    + " − 库存 " + row.onhand().stripTrailingZeros().toPlainString()
+                    + " − 在途 " + row.openPo().stripTrailingZeros().toPlainString());
+            itemRepo.save(it);
+        }
+
+        // 联动留痕：旧联动行软删（历史可追溯），插新行
+        em.createNativeQuery("""
+                UPDATE subplan_links SET is_deleted = true, deleted_at = now()
+                WHERE plan_id = :planId AND is_deleted = false
+                """).setParameter("planId", planId).executeUpdate();
+        em.createNativeQuery("""
+                INSERT INTO subplan_links (plan_id, subplan_id, created_by)
+                VALUES (:planId, :subplanId, :by)
+                """).setParameter("planId", planId).setParameter("subplanId", sub.getId())
+                .setParameter("by", currentUser.requireId()).executeUpdate();
+
+        return new MrpGenerateResult(sub.getId(), sub.getBillNo(), line, List.of());
+    }
+
+    /**
+     * 按车间拆分生成子计划（可定制化）：用户自选自制件行 + 各自数量 + 归属车间，
+     * 按车间分组各生成一张草稿计划。允许多轮生成（如先开注塑车间、后开装配车间），
+     * 防超产硬校验：每 货品+颜色 累计子计划量 ≤ MRP 净需求。
+     */
+    @Transactional
+    public List<GenerateSubplansRequest.Created> generateSubplans(UUID planId, GenerateSubplansRequest req) {
+        ProductionPlan plan = requirePlan(planId);
+        if (plan.getStatus() != null && plan.getStatus() == -1) {
+            throw new ApiException(ErrorCode.BUSINESS, "已红冲的计划不可生成子计划");
+        }
+        // 净需求 + 毛需求/库存/在途 按 货品|颜色 建索引（仅自制件允许拆）
+        record Key(UUID g, UUID c) {}
+        Map<Key, MrpRow> netByKey = new LinkedHashMap<>();
+        for (MrpRow r : explode(planId)) {
+            if (r.selfMade()) netByKey.put(new Key(r.goodsId(), r.colorId()), r);
+        }
+        // 已有子计划累计量（未删联动 + 未删未红冲子计划）
+        Map<Key, BigDecimal> usedByKey = new HashMap<>();
+        for (Object o : em.createNativeQuery("""
+                SELECT i.goods_id, i.color_id, COALESCE(SUM(i.qty),0)
+                FROM subplan_links l
+                JOIN production_plans sp ON sp.id = l.subplan_id AND sp.is_deleted = false AND sp.status <> -1
+                JOIN production_plan_items i ON i.plan_id = sp.id AND i.is_deleted = false
+                WHERE l.plan_id = :planId AND l.is_deleted = false
+                GROUP BY i.goods_id, i.color_id
+                """).setParameter("planId", planId).getResultList()) {
+            Object[] r = (Object[]) o;
+            usedByKey.put(new Key((UUID) r[0], (UUID) r[1]), (BigDecimal) r[2]);
+        }
+        // 逐行校验 + 归组
+        Map<String, List<GenerateSubplansRequest.Line>> byWorkshop = new LinkedHashMap<>();
+        Map<String, String> workshopNames = new LinkedHashMap<>();
+        Map<Key, BigDecimal> requested = new HashMap<>();
+        for (GenerateSubplansRequest.Line line : req.getItems()) {
+            Key k = new Key(line.getGoodsId(), line.getColorId());
+            MrpRow row = netByKey.get(k);
+            if (row == null) {
+                throw new ApiException(ErrorCode.BUSINESS, "所选货品不是本计划的自制件需求行: " + line.getGoodsId());
+            }
+            BigDecimal cap = (row.net() == null ? BigDecimal.ZERO : row.net())
+                    .subtract(usedByKey.getOrDefault(k, BigDecimal.ZERO))
+                    .subtract(requested.getOrDefault(k, BigDecimal.ZERO));
+            if (line.getQty().compareTo(cap) > 0) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "货品 " + row.goodsCode() + " 排产量超过可拆量（净需求扣减已有子计划后剩 "
+                                + cap.stripTrailingZeros().toPlainString() + "）");
+            }
+            requested.merge(k, line.getQty(), BigDecimal::add);
+            String wk = line.getDepartmentId() == null ? "" : line.getDepartmentId().toString();
+            byWorkshop.computeIfAbsent(wk, x -> new ArrayList<>()).add(line);
+            if (line.getWorkshopName() != null && !line.getWorkshopName().isBlank()) {
+                workshopNames.putIfAbsent(wk, line.getWorkshopName());
+            }
+        }
+
+        LocalDate today = LocalDate.now();
+        Object begin = em.createNativeQuery("""
+                SELECT MIN(plan_begin_date) FROM production_plan_items
+                WHERE plan_id = :planId AND is_deleted = false
+                """).setParameter("planId", planId).getSingleResult();
+        LocalDate subDelivery = begin != null
+                ? ((java.sql.Date) begin).toLocalDate() : plan.getDeliveryDate();
+
+        List<GenerateSubplansRequest.Created> created = new ArrayList<>();
+        int suffix = nextSubSuffix(plan.getBillNo());
+        for (var e : byWorkshop.entrySet()) {
+            String wk = e.getKey();
+            String wsName = workshopNames.get(wk);
+            UUID deptId = wk.isEmpty() ? null : UUID.fromString(wk);
+            if (wsName == null && deptId != null) {
+                wsName = str(em.createNativeQuery("SELECT name FROM departments WHERE id = :d")
+                        .setParameter("d", deptId).getSingleResult());
+            }
+            ProductionPlan sub = new ProductionPlan();
+            // 子计划编号 = 父计划号-N（按创建顺序递增）
+            sub.setBillNo(plan.getBillNo() + "-" + suffix++);
+            sub.setBillDate(today);
+            sub.setDeliveryDate(subDelivery);
+            sub.setDepartmentId(deptId);
+            sub.setWorkshopName(wsName);
+            sub.setRemark("父计划 " + plan.getBillNo() + " 自制件拆分生成");
+            sub.setSourceDocNo(plan.getBillNo());
+            sub.setMakerId(currentUser.requireEmployeeId());
+            sub.setStatus((short) 0);
+            planRepo.save(sub);
+
+            int line = 0;
+            for (GenerateSubplansRequest.Line l : e.getValue()) {
+                line++;
+                MrpRow row = netByKey.get(new Key(l.getGoodsId(), l.getColorId()));
+                ProductionPlanItem it = new ProductionPlanItem();
+                it.setPlanId(sub.getId());
+                it.setBillNo(sub.getBillNo());
+                it.setBillDate(sub.getBillDate());
+                it.setLineNo(line);
+                it.setProductNo(sub.getBillNo() + "-" + line);
+                it.setGoodsId(l.getGoodsId());
+                it.setColorId(l.getColorId());
+                it.setUnitId(l.getUnitId());
+                it.setUnitRate(BigDecimal.ONE); // MRP 展开行已是基本单位口径
+                it.setQty(l.getQty());
+                it.setOqty(row.gross());
+                it.setSourceDocNo(plan.getBillNo());
+                it.setRemark("毛需求 " + row.gross().stripTrailingZeros().toPlainString()
+                        + " − 库存 " + row.onhand().stripTrailingZeros().toPlainString()
+                        + " − 在途 " + row.openPo().stripTrailingZeros().toPlainString());
+                itemRepo.save(it);
+            }
+            em.createNativeQuery("""
+                    INSERT INTO subplan_links (plan_id, subplan_id, created_by)
+                    VALUES (:planId, :subplanId, :by)
+                    """).setParameter("planId", planId).setParameter("subplanId", sub.getId())
+                    .setParameter("by", currentUser.requireId()).executeUpdate();
+            created.add(new GenerateSubplansRequest.Created(
+                    sub.getId(), sub.getBillNo(), line, wsName));
+        }
+        return created;
+    }
+
+    private static String str(Object v) {
+        return v == null ? null : v.toString();
+    }
+
+    /** 子计划编号后缀：父计划已有子计划（含已删，防号冲突）的最大 -N + 1。 */
+    private int nextSubSuffix(String parentBillNo) {
+        Object v = em.createNativeQuery("""
+                SELECT COALESCE(MAX(CAST(split_part(bill_no, '-', 2) AS int)), 0)
+                FROM production_plans
+                WHERE bill_no LIKE :p || '-%'
+                  AND split_part(bill_no, '-', 2) ~ '^[0-9]+$'
+                """).setParameter("p", parentBillNo).getSingleResult();
+        return ((Number) v).intValue() + 1;
+    }
+
+    // ======================== 内部 ========================
     private ProductionPlan requirePlan(UUID planId) {
         return planRepo.findById(planId).filter(p -> !p.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在"));

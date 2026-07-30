@@ -6,6 +6,8 @@
 //
 // 进度 = 完工入库量 ÷ 排产量（成品入库审核后即时反映）。
 // 路由：/production/schedule → Tab0；/production/progress → Tab1（旧两页合并，Hub 两卡片进不同 Tab）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,6 +21,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/paged_result.dart';
+import '../providers/production_board_sort_provider.dart';
 import '../providers/production_pending_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/progress_ring.dart';
@@ -77,20 +81,28 @@ class _PendingPanel extends ConsumerStatefulWidget {
 }
 
 class _PendingPanelState extends ConsumerState<_PendingPanel> {
-  List<SchedulePendingRow>? _rows;
+  PagedResult<SchedulePendingRow>? _page;
   bool _loading = false;
   String? _error;
   bool _submitting = false;
 
-  /// 勾选状态：orderItemId → 本次排产量（勾选时默认=缺口，可改）。
+  int _pageNo = 1;
+  int _pageSize = 20;
+
+  /// 勾选状态：orderItemId → 本次排产量（跨页保留，勾选时默认=缺口，可改）。
   final Map<String, double> _selected = {};
 
   DateTime? _beginDate;
   DateTime? _endDate;
+  DateTime? _deliverFrom; // 交货日期范围筛选（从）
+  DateTime? _deliverTo; // 交货日期范围筛选（至）
   final _workshopCtrl = TextEditingController();
   final _workerCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
   String _keyword = '';
+  Timer? _debounce;
+
+  List<SchedulePendingRow> get _rows => _page?.items ?? const [];
 
   @override
   void initState() {
@@ -100,6 +112,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _workshopCtrl.dispose();
     _workerCtrl.dispose();
     _searchCtrl.dispose();
@@ -109,19 +122,35 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
 
+  String _fmtDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 筛选/每页条数变化：回到第一页重新加载。
+  void _reload() {
+    _pageNo = 1;
+    _load();
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final rows =
-          await ref.read(productionPlanRepositoryProvider).schedulePending();
+      final page = await ref
+          .read(productionPlanRepositoryProvider)
+          .schedulePending(
+            page: _pageNo,
+            size: _pageSize,
+            keyword: _keyword,
+            dateFrom: _deliverFrom == null ? null : _fmtDate(_deliverFrom!),
+            dateTo: _deliverTo == null ? null : _fmtDate(_deliverTo!),
+          );
       if (!mounted) return;
+      // 服务端已把越界页码回退到最后一页；与本地页码对齐
+      if (page.page != _pageNo) _pageNo = page.page;
       setState(() {
-        _rows = rows;
-        final ids = rows.map((r) => r.orderItemId).toSet();
-        _selected.removeWhere((k, _) => !ids.contains(k));
+        _page = page;
         _loading = false;
       });
     } catch (e) {
@@ -133,27 +162,17 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     }
   }
 
-  List<SchedulePendingRow> get _filtered {
-    final kw = _keyword.trim().toLowerCase();
-    if (kw.isEmpty) return _rows ?? const [];
-    return [
-      for (final r in _rows ?? const <SchedulePendingRow>[])
-        if ((r.orderBillNo ?? '').toLowerCase().contains(kw) ||
-            (r.clientName ?? '').toLowerCase().contains(kw) ||
-            (r.goodsName ?? '').toLowerCase().contains(kw) ||
-            (r.goodsCode ?? '').toLowerCase().contains(kw))
-          r,
-    ];
-  }
-
+  /// 合并后计划行数：本页已选按 货品+颜色 合并计数；其它页已选各行保守按 1 行估算。
   int get _mergedLineCount {
     final keys = <String>{};
-    for (final r in _rows ?? const <SchedulePendingRow>[]) {
+    var known = 0;
+    for (final r in _rows) {
       if (_selected.containsKey(r.orderItemId)) {
         keys.add('${r.goodsId}|${r.colorName ?? ''}');
+        known++;
       }
     }
-    return keys.length;
+    return keys.length + (_selected.length - known);
   }
 
   Future<void> _pickDate(bool begin) async {
@@ -167,25 +186,41 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     if (d != null) setState(() => begin ? _beginDate = d : _endDate = d);
   }
 
-  String _fmtDate(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  /// 交货日期范围筛选（从/至；互相纠偏）。
+  Future<void> _pickDeliverDate(bool begin) async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: begin ? (_deliverFrom ?? now) : (_deliverTo ?? now),
+      firstDate: DateTime(2000),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (d == null) return;
+    if (begin) {
+      _deliverFrom = d;
+      if (_deliverTo != null && _deliverTo!.isBefore(d)) _deliverTo = null;
+    } else {
+      _deliverTo = d;
+      if (_deliverFrom != null && _deliverFrom!.isAfter(d)) _deliverFrom = null;
+    }
+    _reload();
+  }
 
-  /// 建议计划单：一键采纳全部待排产行（按缺口量合并排产，生成草稿计划）。
+  /// 建议计划单：一键采纳本页全部待排产行（按缺口量合并排产，生成草稿计划）。
   Future<void> _suggestAllAndSubmit() async {
     final rows = _rows;
-    if (rows == null || rows.isEmpty || _submitting) return;
+    if (rows.isEmpty || _submitting) return;
     setState(() {
-      _selected
-        ..clear()
-        ..addEntries(rows.map((r) => MapEntry(r.orderItemId, r.needQty ?? 0)));
+      for (final r in rows) {
+        _selected[r.orderItemId] = r.needQty ?? 0;
+      }
     });
     await _submit();
   }
 
   Future<void> _suggestFinish() async {
-    if (_rows == null) return;
     final byGoods = <String, double>{};
-    for (final r in _rows!) {
+    for (final r in _rows) {
       final v = _selected[r.orderItemId];
       if (v != null && r.goodsId != null) {
         byGoods[r.goodsId!] = (byGoods[r.goodsId!] ?? 0) + v;
@@ -215,7 +250,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   Future<void> _submit() async {
     if (_selected.isEmpty || _submitting) return;
-    for (final r in _rows!) {
+    // 本页勾选的行先做前端校验；其它页勾选量=勾选时的缺口，由服务端硬校验兜底
+    for (final r in _rows) {
       final v = _selected[r.orderItemId];
       if (v != null && (v <= 0 || v > (r.needQty ?? 0) + 1e-6)) {
         context.appWarning(
@@ -245,6 +281,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     if (!mounted) return;
     setState(() => _submitting = false);
     if (planId != null) {
+      _selected.clear();
       ref.read(productionPendingCountProvider.notifier).refresh();
       context.push(RoutePath.productionPlanDetail(planId));
     }
@@ -266,12 +303,16 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     return UtenContentContainer.wide(
       child: Column(
         children: [
-          // 工具行：搜索 + 建议计划 + 刷新
+          // 工具行：搜索 + 交货日期范围 + 建议计划 + 刷新
           Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: Row(
+            child: Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
+                SizedBox(
+                  width: 240,
                   child: TextField(
                     controller: _searchCtrl,
                     decoration: InputDecoration(
@@ -283,20 +324,56 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    onChanged: (v) => setState(() => _keyword = v),
+                    onChanged: (v) {
+                      // 服务端筛选：400ms 防抖，避免逐字打请求
+                      _debounce?.cancel();
+                      _debounce =
+                          Timer(const Duration(milliseconds: 400), () {
+                        _keyword = v;
+                        _reload();
+                      });
+                    },
                   ),
                 ),
-                if (_canEdit) ...[
-                  const SizedBox(width: UtenSpacing.s8),
+                OutlinedButton.icon(
+                  onPressed: () => _pickDeliverDate(true),
+                  icon: const Icon(Icons.date_range_rounded, size: 16),
+                  label: Text(
+                      _deliverFrom == null ? '交货从' : _fmtDate(_deliverFrom!)),
+                  style: _deliverFrom != null
+                      ? OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.primary)
+                      : null,
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _pickDeliverDate(false),
+                  icon: const Icon(Icons.event_rounded, size: 16),
+                  label:
+                      Text(_deliverTo == null ? '交货至' : _fmtDate(_deliverTo!)),
+                  style: _deliverTo != null
+                      ? OutlinedButton.styleFrom(
+                          foregroundColor: theme.colorScheme.primary)
+                      : null,
+                ),
+                if (_deliverFrom != null || _deliverTo != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 18),
+                    tooltip: '清除时间筛选',
+                    onPressed: () {
+                      _deliverFrom = null;
+                      _deliverTo = null;
+                      _reload();
+                    },
+                  ),
+                if (_canEdit)
                   TextButton.icon(
                     icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                    label: Text('建议计划（全部 ${_rows?.length ?? 0} 行）'),
+                    label: Text('建议计划（本页 ${_rows.length} 行）'),
                     onPressed:
-                        (_rows?.isEmpty ?? true) || _submitting
+                        _rows.isEmpty || _submitting
                             ? null
                             : _suggestAllAndSubmit,
                   ),
-                ],
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded),
                   tooltip: '刷新',
@@ -306,17 +383,79 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             ),
           ),
           Expanded(child: _list(theme)),
+          _pager(theme),
           if (_canEdit) _footer(theme),
         ],
       ),
     );
   }
 
+  /// 分页条：总数 + 每页条数 + 翻页（勾选跨页保留）。
+  Widget _pager(ThemeData theme) {
+    final p = _page;
+    final total = p?.total ?? 0;
+    final pages = p?.totalPages ?? 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+      child: Row(
+        children: [
+          Text('共 $total 行',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          if (_selected.isNotEmpty) ...[
+            const SizedBox(width: UtenSpacing.s8),
+            Text('已选 ${_selected.length} 行',
+                style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600)),
+          ],
+          const Spacer(),
+          DropdownButton<int>(
+            value: _pageSize,
+            underline: const SizedBox.shrink(),
+            items: const [
+              DropdownMenuItem(value: 20, child: Text('20 条/页')),
+              DropdownMenuItem(value: 50, child: Text('50 条/页')),
+              DropdownMenuItem(value: 100, child: Text('100 条/页')),
+            ],
+            onChanged: (v) {
+              if (v == null || v == _pageSize) return;
+              _pageSize = v;
+              _reload();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: '上一页',
+            onPressed: _pageNo > 1 && !_loading
+                ? () {
+                    _pageNo--;
+                    _load();
+                  }
+                : null,
+          ),
+          Text(pages == 0 ? '0 / 0' : '$_pageNo / $pages',
+              style: theme.textTheme.bodySmall),
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: '下一页',
+            onPressed: _pageNo < pages && !_loading
+                ? () {
+                    _pageNo++;
+                    _load();
+                  }
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _list(ThemeData theme) {
-    if (_loading && _rows == null) {
+    if (_loading && _page == null) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
-    if (_error != null && _rows == null) {
+    if (_error != null && _page == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -332,17 +471,30 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         ),
       );
     }
-    final rows = _filtered;
+    final rows = _rows;
     if (rows.isEmpty) {
       return Center(
-        child: Text(_keyword.isEmpty ? '暂无待排产的订单行' : '没有匹配「$_keyword」的行'),
+        child: Text(_keyword.isEmpty &&
+                _deliverFrom == null &&
+                _deliverTo == null
+            ? '暂无待排产的订单行'
+            : '没有匹配的待排产行'),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-      itemCount: rows.length,
-      separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s4),
-      itemBuilder: (_, i) => _pendingRow(theme, rows[i]),
+    return Stack(
+      children: [
+        ListView.separated(
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+          itemCount: rows.length,
+          separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s4),
+          itemBuilder: (_, i) => _pendingRow(theme, rows[i]),
+        ),
+        if (_loading)
+          const Align(
+            alignment: Alignment.topCenter,
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+      ],
     );
   }
 
@@ -546,7 +698,12 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 }
 
+
 // ═════════════════════ Tab2/3 进行中 / 已完成（进度卡片） ═════════════════════
+
+/// 进行中/已完成列表排序方式（置顶的计划始终排最前）。
+/// billDate=开单远→近（先开单的在前，默认）；billDateDesc=开单近→远（最新开的在前）。
+enum _PlanSort { billDate, billDateDesc, deliveryDate, progress }
 
 class _PlanPanel extends ConsumerStatefulWidget {
   const _PlanPanel({required this.closed});
@@ -558,13 +715,21 @@ class _PlanPanel extends ConsumerStatefulWidget {
 }
 
 class _PlanPanelState extends ConsumerState<_PlanPanel> {
-  List<PlanProgressRow>? _rows;
+  PagedResult<PlanProgressRow>? _page;
+  Map<String, dynamic>? _summary;
+  List<String> _workshops = const [];
   bool _loading = false;
   String? _error;
+
+  int _pageNo = 1;
+  int _pageSize = 20;
 
   final _searchCtrl = TextEditingController();
   String _keyword = '';
   String? _workshop; // null=全部车间
+  DateTime? _from; // 开单日期范围（从）
+  DateTime? _to; // 开单日期范围（至）
+  Timer? _debounce;
   final Set<String> _expanded = {};
 
   /// 显示设置（Excel 列显隐思路）：卡片上哪些信息块可见。
@@ -572,6 +737,21 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   bool _showWindow = true;
   bool _showDates = true;
   bool _showQty = true;
+
+  bool get _canEdit =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
+
+  List<PlanProgressRow> get _rows => _page?.items ?? const [];
+
+  /// 排序方式（按账号持久化偏好：默认开单远→近；置顶始终最前）。仅 build 路径可用（watch）。
+  _PlanSort get _sort =>
+      _PlanSort.values.asNameMap()[ref.watch(productionBoardSortProvider)] ??
+      _PlanSort.billDate;
+
+  void _setSort(_PlanSort v) {
+    ref.read(productionBoardSortProvider.notifier).update(v.name);
+    _reload();
+  }
 
   @override
   void initState() {
@@ -581,8 +761,18 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  String _fmtDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 筛选/排序/每页条数变化：回到第一页重新加载。
+  void _reload() {
+    _pageNo = 1;
+    _load();
   }
 
   Future<void> _load() async {
@@ -590,13 +780,43 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       _loading = true;
       _error = null;
     });
+    final repo = ref.read(productionPlanRepositoryProvider);
+    final sort = ref.read(productionBoardSortProvider);
+    final kw = _keyword;
+    final ws = _workshop ?? '';
+    final from = _from == null ? null : _fmtDate(_from!);
+    final to = _to == null ? null : _fmtDate(_to!);
     try {
-      final list = await ref
-          .read(productionPlanRepositoryProvider)
-          .planProgress(closed: widget.closed);
+      final results = await Future.wait([
+        repo.planProgress(
+          closed: widget.closed,
+          sort: sort,
+          page: _pageNo,
+          size: _pageSize,
+          keyword: kw,
+          workshop: ws,
+          dateFrom: from,
+          dateTo: to,
+        ),
+        repo.planProgressSummary(
+          closed: widget.closed,
+          keyword: kw,
+          workshop: ws,
+          dateFrom: from,
+          dateTo: to,
+        ),
+        repo.planProgressWorkshops(closed: widget.closed),
+      ]);
       if (!mounted) return;
+      final page = results[0] as PagedResult<PlanProgressRow>;
+      // 服务端已把越界页码回退到最后一页；与本地页码不一致时对齐（如过滤后总数变少）
+      if (page.page != _pageNo) {
+        _pageNo = page.page;
+      }
       setState(() {
-        _rows = list;
+        _page = page;
+        _summary = results[1] as Map<String, dynamic>;
+        _workshops = results[2] as List<String>;
         _loading = false;
       });
     } catch (e) {
@@ -608,98 +828,242 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     }
   }
 
-  List<String> get _workshops => {
-        for (final r in _rows ?? const <PlanProgressRow>[])
-          if (r.workshopName != null && r.workshopName!.isNotEmpty)
-            r.workshopName!,
-      }.toList()
-        ..sort();
+  /// 置顶 / 重要标注：成功后重新加载（置顶影响服务端排序与分页位置）。
+  Future<void> _toggleFlag(PlanProgressRow r,
+      {bool? pinned, bool? important}) async {
+    final ok = await context.guardRun(
+      () => ref
+          .read(productionPlanRepositoryProvider)
+          .updatePlanFlags(r.planId, pinned: pinned, important: important),
+      success: pinned != null
+          ? (pinned ? '已置顶' : '已取消置顶')
+          : (important! ? '已标注重要' : '已取消重要标注'),
+      errorFallback: '标记失败，请稍后重试',
+    );
+    if (ok && mounted) _load();
+  }
 
-  List<PlanProgressRow> get _filtered {
-    final kw = _keyword.trim().toLowerCase();
-    return [
-      for (final r in _rows ?? const <PlanProgressRow>[])
-        if ((_workshop == null || r.workshopName == _workshop) &&
-            (kw.isEmpty ||
-                (r.billNo ?? '').toLowerCase().contains(kw) ||
-                (r.workshopName ?? '').toLowerCase().contains(kw)))
-          r,
-    ];
+  Future<void> _pickDate(bool begin) async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: begin ? (_from ?? now) : (_to ?? now),
+      firstDate: DateTime(2000),
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (d == null) return;
+    if (begin) {
+      _from = d;
+      if (_to != null && _to!.isBefore(d)) _to = null;
+    } else {
+      _to = d;
+      if (_from != null && _from!.isAfter(d)) _from = null;
+    }
+    _reload();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return UtenContentContainer.wide(
-      child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // 大屏幕：左右布局（左筛选面板 / 右卡片列表）；窄屏：顶部筛选 + 下列表
+          final wide = constraints.maxWidth >= 1080;
+          if (wide) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 264,
+                  child: SingleChildScrollView(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                    child: _controls(theme, vertical: true),
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(child: _listPane(theme)),
+              ],
+            );
+          }
+          return Column(
+            children: [
+              _controls(theme, vertical: false),
+              Expanded(child: _listPane(theme)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 筛选面板：搜索 / 车间 / 排序 / 开单日期范围 / 显示设置 / 刷新。
+  /// vertical=true 宽屏左栏竖排；false 窄屏顶部 Wrap 横排。
+  Widget _controls(ThemeData theme, {required bool vertical}) {
+    if (vertical) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _filterHeader(theme),
-          Expanded(child: _list(theme)),
+          Text('筛选与排序',
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: UtenSpacing.s8),
+          _searchField(),
+          const SizedBox(height: UtenSpacing.s8),
+          _workshopDropdown(),
+          const SizedBox(height: UtenSpacing.s8),
+          _sortDropdown(),
+          const SizedBox(height: UtenSpacing.s8),
+          Align(alignment: Alignment.centerLeft, child: _dateRange()),
+          const SizedBox(height: UtenSpacing.s4),
+          Row(
+            children: [
+              _settingsMenu(),
+              const Spacer(),
+              _refreshBtn(),
+            ],
+          ),
+        ],
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+      child: Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(width: 240, child: _searchField()),
+          SizedBox(width: 160, child: _workshopDropdown()),
+          SizedBox(width: 132, child: _sortDropdown()),
+          _dateRange(),
+          _settingsMenu(),
+          _refreshBtn(),
         ],
       ),
     );
   }
 
-  /// Excel 式筛选表头：搜索 + 车间筛选 + 显示设置（选显示什么）。
-  Widget _filterHeader(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                hintText: '搜索计划单号 / 车间',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onChanged: (v) => setState(() => _keyword = v),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          SizedBox(
-            width: 180,
-            child: DropdownButtonFormField<String>(
-              initialValue: _workshop ?? '',
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: '车间',
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('全部车间')),
-                for (final w in _workshops)
-                  DropdownMenuItem(value: w, child: Text(w)),
-              ],
-              onChanged: (v) => setState(
-                  () => _workshop = (v == null || v.isEmpty) ? null : v),
-            ),
-          ),
-          PopupMenuButton<void>(
-            icon: const Icon(Icons.view_column_outlined),
-            tooltip: '显示设置',
-            itemBuilder: (_) => [
-              _checkItem('车间标签', _showWorkshop,
-                  (v) => setState(() => _showWorkshop = v)),
-              _checkItem('工期窗口', _showWindow,
-                  (v) => setState(() => _showWindow = v)),
-              _checkItem('单据/交货日期', _showDates,
-                  (v) => setState(() => _showDates = v)),
-              _checkItem('数量明细', _showQty,
-                  (v) => setState(() => _showQty = v)),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: '刷新',
-            onPressed: _load,
-          ),
-        ],
+  Widget _searchField() {
+    return TextField(
+      controller: _searchCtrl,
+      decoration: InputDecoration(
+        isDense: true,
+        prefixIcon: const Icon(Icons.search_rounded, size: 20),
+        hintText: '搜索计划单号 / 车间',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
       ),
+      onChanged: (v) {
+        // 服务端筛选：400ms 防抖，避免逐字打请求
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 400), () {
+          _keyword = v;
+          _reload();
+        });
+      },
+    );
+  }
+
+  Widget _workshopDropdown() {
+    // 防御：已选车间已不在最新选项里（计划结案后车间消失）时回退「全部」，避免断言
+    final value =
+        (_workshop != null && _workshops.contains(_workshop)) ? _workshop! : '';
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      decoration: const InputDecoration(
+        isDense: true,
+        labelText: '车间',
+        border: OutlineInputBorder(),
+      ),
+      items: [
+        const DropdownMenuItem(value: '', child: Text('全部车间')),
+        for (final w in _workshops) DropdownMenuItem(value: w, child: Text(w)),
+      ],
+      onChanged: (v) {
+        _workshop = (v == null || v.isEmpty) ? null : v;
+        _reload();
+      },
+    );
+  }
+
+  Widget _sortDropdown() {
+    return DropdownButtonFormField<_PlanSort>(
+      initialValue: _sort,
+      decoration: const InputDecoration(
+        isDense: true,
+        labelText: '排序',
+        border: OutlineInputBorder(),
+      ),
+      items: const [
+        DropdownMenuItem(value: _PlanSort.billDate, child: Text('开单远→近')),
+        DropdownMenuItem(value: _PlanSort.billDateDesc, child: Text('开单近→远')),
+        DropdownMenuItem(value: _PlanSort.deliveryDate, child: Text('交货日期')),
+        DropdownMenuItem(value: _PlanSort.progress, child: Text('完工进度')),
+      ],
+      onChanged: (v) => _setSort(v ?? _PlanSort.billDate),
+    );
+  }
+
+  /// 时间范围筛选（开单日期 从/至 + 清除）。
+  Widget _dateRange() {
+    return Wrap(
+      spacing: 4,
+      children: [
+        OutlinedButton.icon(
+          onPressed: () => _pickDate(true),
+          icon: const Icon(Icons.date_range_rounded, size: 16),
+          label: Text(_from == null ? '开单从' : _fmtDate(_from!)),
+          style: _from != null
+              ? OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary)
+              : null,
+        ),
+        OutlinedButton.icon(
+          onPressed: () => _pickDate(false),
+          icon: const Icon(Icons.event_rounded, size: 16),
+          label: Text(_to == null ? '开单至' : _fmtDate(_to!)),
+          style: _to != null
+              ? OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary)
+              : null,
+        ),
+        if (_from != null || _to != null)
+          IconButton(
+            icon: const Icon(Icons.clear_rounded, size: 18),
+            tooltip: '清除时间筛选',
+            onPressed: () {
+              _from = null;
+              _to = null;
+              _reload();
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _settingsMenu() {
+    return PopupMenuButton<void>(
+      icon: const Icon(Icons.view_column_outlined),
+      tooltip: '显示设置',
+      itemBuilder: (_) => [
+        _checkItem(
+            '车间标签', _showWorkshop, (v) => setState(() => _showWorkshop = v)),
+        _checkItem(
+            '工期窗口', _showWindow, (v) => setState(() => _showWindow = v)),
+        _checkItem(
+            '单据/交货日期', _showDates, (v) => setState(() => _showDates = v)),
+        _checkItem('数量明细', _showQty, (v) => setState(() => _showQty = v)),
+      ],
+    );
+  }
+
+  Widget _refreshBtn() {
+    return IconButton(
+      icon: const Icon(Icons.refresh_rounded),
+      tooltip: '刷新',
+      onPressed: _load,
     );
   }
 
@@ -722,11 +1086,105 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     );
   }
 
+  /// 右栏：总览条 + 卡片列表 + 底部分页条。
+  Widget _listPane(ThemeData theme) {
+    return Column(
+      children: [
+        _summaryCard(theme),
+        Expanded(child: _list(theme)),
+        _pager(theme),
+      ],
+    );
+  }
+
+  /// 总览条（跨全部页的汇总，来自 /progress/summary）。
+  Widget _summaryCard(ThemeData theme) {
+    final count = (_summary?['count'] as num?)?.toInt() ?? _page?.total ?? 0;
+    final sumQty = (_summary?['sumQty'] as num?)?.toDouble() ?? 0;
+    final sumIn = (_summary?['sumInbound'] as num?)?.toDouble() ?? 0;
+    final overall = sumQty > 0 ? (sumIn / sumQty).clamp(0.0, 1.0) : 0.0;
+    return Card(
+      margin: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Row(
+          children: [
+            ProgressRing(value: overall, size: 44),
+            const SizedBox(width: UtenSpacing.s12),
+            Expanded(
+              child: Text(
+                '${widget.closed ? '已完成' : '在产'} $count 张计划 · '
+                '排产 ${_fmt(sumQty)} · 已完工 ${_fmt(sumIn)}',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 底部分页条：总数 + 每页条数 + 翻页。
+  Widget _pager(ThemeData theme) {
+    final p = _page;
+    final total = p?.total ?? 0;
+    final pages = p?.totalPages ?? 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+      child: Row(
+        children: [
+          Text('共 $total 张',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          const Spacer(),
+          DropdownButton<int>(
+            value: _pageSize,
+            underline: const SizedBox.shrink(),
+            items: const [
+              DropdownMenuItem(value: 20, child: Text('20 条/页')),
+              DropdownMenuItem(value: 50, child: Text('50 条/页')),
+              DropdownMenuItem(value: 100, child: Text('100 条/页')),
+            ],
+            onChanged: (v) {
+              if (v == null || v == _pageSize) return;
+              _pageSize = v;
+              _reload();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: '上一页',
+            onPressed: _pageNo > 1 && !_loading
+                ? () {
+                    _pageNo--;
+                    _load();
+                  }
+                : null,
+          ),
+          Text(
+            pages == 0 ? '0 / 0' : '$_pageNo / $pages',
+            style: theme.textTheme.bodySmall,
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: '下一页',
+            onPressed: _pageNo < pages && !_loading
+                ? () {
+                    _pageNo++;
+                    _load();
+                  }
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _list(ThemeData theme) {
-    if (_loading && _rows == null) {
+    if (_loading && _page == null) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
-    if (_error != null && _rows == null) {
+    if (_error != null && _page == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -741,43 +1199,29 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         ),
       );
     }
-    final rows = _filtered;
+    final rows = _rows;
     if (rows.isEmpty) {
       return Center(
         child: Text(widget.closed
             ? '暂无已完成计划'
-            : (_keyword.isEmpty && _workshop == null
+            : (_keyword.isEmpty && _workshop == null && _from == null && _to == null
                 ? '暂无在产计划（已审未结案的计划会出现在这里）'
                 : '没有匹配的计划')),
       );
     }
-    // 总览条
-    final totalQty = rows.fold<double>(0, (s, r) => s + (r.totalQty ?? 0));
-    final totalIn = rows.fold<double>(0, (s, r) => s + (r.inboundQty ?? 0));
-    final overall = totalQty > 0 ? totalIn / totalQty : 0.0;
-    return ListView(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+    return Stack(
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            child: Row(
-              children: [
-                ProgressRing(value: overall, size: 44),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: Text(
-                    '${widget.closed ? '已完成' : '在产'} ${rows.length} 张计划 · '
-                    '排产 ${_fmt(totalQty)} · 已完工 ${_fmt(totalIn)}',
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ),
-              ],
-            ),
-          ),
+        ListView(
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+          children: [
+            for (final r in rows) _planCard(theme, r),
+          ],
         ),
-        const SizedBox(height: UtenSpacing.s4),
-        for (final r in rows) _planCard(theme, r),
+        if (_loading)
+          const Align(
+            alignment: Alignment.topCenter,
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
       ],
     );
   }
@@ -785,6 +1229,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   Widget _planCard(ThemeData theme, PlanProgressRow r) {
     final pct = r.percent.clamp(0.0, 1.0);
     final done = widget.closed || pct >= 1.0;
+    final overdue = r.overdue && !done; // 已过交货日：整卡红色标注
+    final urgent = r.urgent && !done && !overdue; // 交货 ≤3 天未逾期：浅色提醒
     final expanded = _expanded.contains(r.planId);
     final deliver = r.deliveryDate == null
         ? '交货未定'
@@ -794,9 +1240,18 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
         : '${r.planBeginDate?.substring(0, 10) ?? '？'} ~ ${r.planEndDate?.substring(0, 10) ?? '？'}';
     return Card(
       margin: const EdgeInsets.only(top: UtenSpacing.s8),
-      color: r.urgent && !done
-          ? theme.colorScheme.error.withValues(alpha: 0.04)
+      color: overdue
+          ? theme.colorScheme.error.withValues(alpha: 0.10)
+          : urgent
+              ? theme.colorScheme.error.withValues(alpha: 0.04)
+              : null,
+      shape: overdue
+          ? RoundedRectangleBorder(
+              side: BorderSide(color: theme.colorScheme.error, width: 1.2),
+              borderRadius: UtenRadius.lgAll,
+            )
           : null,
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: UtenRadius.lgAll,
         onTap: () => context.push(RoutePath.productionPlanDetail(r.planId)),
@@ -815,6 +1270,20 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                       children: [
                         Row(
                           children: [
+                            if (r.pinned)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: Icon(Icons.push_pin_rounded,
+                                    size: 14,
+                                    color:
+                                        theme.colorScheme.onSurfaceVariant),
+                              ),
+                            if (r.important)
+                              const Padding(
+                                padding: EdgeInsets.only(right: 4),
+                                child: Icon(Icons.star_rounded,
+                                    size: 16, color: Colors.amber),
+                              ),
                             Flexible(
                               child: Text(
                                 r.billNo ?? '—',
@@ -825,7 +1294,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                               ),
                             ),
                             const SizedBox(width: UtenSpacing.s8),
-                            _statusChip(theme, r, done),
+                            _statusChip(theme, r, done, overdue: overdue),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -846,6 +1315,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                                 color: r.urgent && !done
                                     ? theme.colorScheme.error
                                     : null,
+                                bold: overdue,
                               ),
                             if (_showDates && r.billDate != null)
                               _meta(theme, Icons.edit_calendar_outlined,
@@ -855,6 +1325,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                                   '工期 $window'),
                             _meta(theme, Icons.list_alt_outlined,
                                 '${r.lineCount} 行'),
+                            if ((r.todayQty ?? 0) > 0)
+                              _meta(theme, Icons.today_rounded,
+                                  '今日完工 +${_fmt(r.todayQty)}',
+                                  color: Colors.green.shade700, bold: true),
                           ],
                         ),
                       ],
@@ -869,6 +1343,40 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                         Text('排产 ${_fmt(r.totalQty)}',
                             style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant)),
+                      ],
+                    ),
+                  if (_canEdit)
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert_rounded, size: 18),
+                      tooltip: '标记',
+                      onSelected: (v) {
+                        if (v == 'pin') {
+                          _toggleFlag(r, pinned: !r.pinned);
+                        } else if (v == 'important') {
+                          _toggleFlag(r, important: !r.important);
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'pin',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.push_pin_outlined,
+                                size: 18),
+                            title: Text(r.pinned ? '取消置顶' : '置顶'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'important',
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.star_outline_rounded,
+                                size: 18),
+                            title: Text(r.important ? '取消重要标注' : '标注重要'),
+                          ),
+                        ),
                       ],
                     ),
                 ],
@@ -961,12 +1469,15 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     );
   }
 
-  Widget _statusChip(ThemeData theme, PlanProgressRow r, bool done) {
+  Widget _statusChip(ThemeData theme, PlanProgressRow r, bool done,
+      {bool overdue = false}) {
     final (label, color) = done
         ? ('已完成 ✓', Colors.green)
-        : r.urgent
-            ? ('紧急', theme.colorScheme.error)
-            : ('进行中', Colors.orange);
+        : overdue
+            ? ('已逾期', theme.colorScheme.error)
+            : r.urgent
+                ? ('紧急', theme.colorScheme.error)
+                : ('进行中', Colors.orange);
     return _chip(label, color);
   }
 
@@ -996,14 +1507,19 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     );
   }
 
-  Widget _meta(ThemeData theme, IconData icon, String text, {Color? color}) {
+  Widget _meta(ThemeData theme, IconData icon, String text,
+      {Color? color, bool bold = false}) {
     final c = color ?? theme.colorScheme.onSurfaceVariant;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 13, color: c),
         const SizedBox(width: 3),
-        Text(text, style: TextStyle(fontSize: 11, color: c)),
+        Text(text,
+            style: TextStyle(
+                fontSize: 11,
+                color: c,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.normal)),
       ],
     );
   }

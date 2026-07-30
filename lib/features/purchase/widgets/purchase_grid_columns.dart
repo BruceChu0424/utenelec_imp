@@ -6,7 +6,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import 'doc_link_picker.dart';
 
 /// 采购明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；

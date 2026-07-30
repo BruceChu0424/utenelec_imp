@@ -11,12 +11,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -467,7 +469,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
-        showBackButton: true,
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+        ),
         actions: [
           UtenButton(
             type: UtenButtonType.tonal,
@@ -704,6 +708,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 value: (it) => it.producedQty?.toStringAsFixed(2),
               ),
             ],
+            MasterColumnDef(
+              key: 'remark',
+              label: '备注',
+              width: 160,
+              value: (it) =>
+                  (it.remark?.isNotEmpty ?? false) ? it.remark : null,
+            ),
           ],
           items: items,
           facets: const {},

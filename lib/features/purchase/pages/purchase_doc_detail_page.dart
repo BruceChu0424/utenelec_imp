@@ -19,8 +19,10 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
-import '../providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../widgets/purchase_status_badge.dart';
 
 class PurchaseDocDetailPage extends ConsumerStatefulWidget {
@@ -158,7 +160,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
-        showBackButton: true,
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: RouteName.purchase),
+        ),
         actions: [
           UtenButton(
             type: UtenButtonType.tonal,

@@ -1,7 +1,7 @@
 // 生产部待排产数量 Provider（工作台「生产管理」卡片红色数字徽章用）。
 //
 // 口径 = 调度工作台待排产行数（已审订单行 qty − 预留 − 已排产 > 0），
-// 后端 GET /production/schedule/pending-count 返回 {count, urgent}。
+// 后端 GET /production/schedule/pending-count 返回 {count, urgent, overdue}。
 // 默认 60s 轮询一次；无 production_plan:view 权限时返回 0（不渲染徽章）。
 // 范式同 lib/shared/auth/pending_review_provider.dart（HR 待办徽章）。
 
@@ -14,11 +14,12 @@ import '../repositories/production_repository.dart';
 
 const Duration _kPendingPollInterval = Duration(seconds: 60);
 
-/// 生产待排产计数（count=待排产行数，urgent=其中 ≤3 天/已逾期行数）。
+/// 生产待排产计数（count=待排产行数，urgent=其中 ≤3 天/含逾期行数，overdue=已逾期行数）。
 class ProductionPendingCount {
-  const ProductionPendingCount(this.count, this.urgent);
+  const ProductionPendingCount(this.count, this.urgent, [this.overdue = 0]);
   final int count;
   final int urgent;
+  final int overdue;
 }
 
 /// 有 production_plan:view 权限时 60s 轮询待排产数；其它角色返回 0。
@@ -63,7 +64,8 @@ class ProductionPendingCountNotifier
     try {
       final r =
           await ref.read(productionPlanRepositoryProvider).schedulePendingCount();
-      state = ProductionPendingCount(r['count'] ?? 0, r['urgent'] ?? 0);
+      state = ProductionPendingCount(
+          r['count'] ?? 0, r['urgent'] ?? 0, r['overdue'] ?? 0);
     } catch (_) {
       // 网络/服务异常时保留旧值，避免徽章闪烁
     }

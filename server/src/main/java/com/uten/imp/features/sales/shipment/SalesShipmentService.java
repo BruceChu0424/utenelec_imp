@@ -104,7 +104,15 @@ public class SalesShipmentService {
                 }
             }
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                String kw = "%" + f.keyword().toLowerCase() + "%";
+                // 关键字同时匹配 单据号 / 客户名称（日常检索按客户找单）
+                jakarta.persistence.criteria.Subquery<java.util.UUID> cs = q.subquery(java.util.UUID.class);
+                Root<com.uten.imp.features.master.client.Client> cr =
+                        cs.from(com.uten.imp.features.master.client.Client.class);
+                cs.select(cr.get("id")).where(cb.isFalse(cr.get("deleted")),
+                        cb.like(cb.lower(cr.get("name")), kw));
+                ps.add(cb.or(cb.like(cb.lower(root.get("billNo")), kw),
+                        root.get("clientId").in(cs)));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));

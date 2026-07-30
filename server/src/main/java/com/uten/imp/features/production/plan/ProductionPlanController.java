@@ -62,12 +62,43 @@ public class ProductionPlanController {
         return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo), page, size, sort, order);
     }
 
-    /** 生产进度看板：closed=false 进行中（默认）/ closed=true 已完成；父计划带子计划嵌套进度。 */
+    /**
+     * 生产进度看板（服务端分页）：closed=false 进行中（默认）/ true 已完成；父计划带子计划嵌套进度。
+     * sort=billDate（开单远→近，默认）| billDateDesc | deliveryDate | progress；
+     * keyword 模糊单号/车间；workshop 精确；dateFrom/dateTo 开单日期范围。
+     */
     @GetMapping("/progress")
     @PreAuthorize("hasAuthority('production_plan:view')")
-    public java.util.List<com.uten.imp.features.production.plan.dto.PlanProgressRow> progress(
+    public PageResponse<com.uten.imp.features.production.plan.dto.PlanProgressRow> progress(
+            @RequestParam(defaultValue = "false") boolean closed,
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String workshop,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
+        return service.progress(closed, sort, page, size, keyword, workshop, dateFrom, dateTo);
+    }
+
+    /** 进度看板汇总（同过滤、跨全部页）：count / sumQty / sumInbound。 */
+    @GetMapping("/progress/summary")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public java.util.Map<String, Object> progressSummary(
+            @RequestParam(defaultValue = "false") boolean closed,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String workshop,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
+        return service.progressSummary(closed, keyword, workshop, dateFrom, dateTo);
+    }
+
+    /** 进度看板车间筛选选项（去重车间名）。 */
+    @GetMapping("/progress/workshops")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public java.util.List<java.util.Map<String, String>> progressWorkshops(
             @RequestParam(defaultValue = "false") boolean closed) {
-        return service.progress(closed);
+        return service.progressWorkshops(closed);
     }
 
     @GetMapping("/{id}")
@@ -104,5 +135,13 @@ public class ProductionPlanController {
     @PreAuthorize("hasAuthority('production_plan:edit')")
     public PlanDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    /** 看板标记（V127）：置顶 / 重要，null 字段不变。 */
+    @PostMapping("/{id}/flags")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public void flags(@PathVariable UUID id,
+                      @RequestBody com.uten.imp.features.production.plan.dto.PlanFlagsRequest req) {
+        service.updateFlags(id, req);
     }
 }

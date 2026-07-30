@@ -30,7 +30,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../features/purchase/providers/master_name_provider.dart'
+import '../../../shared/providers/master_name_provider.dart'
     show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -40,7 +40,9 @@ import '../providers/subcontract_providers.dart';
 import '../repositories/subcontract_repository.dart';
 import '../widgets/subcontract_grid_columns.dart';
 import '../widgets/subcontract_link_picker.dart';
-import '../../../features/purchase/providers/master_name_provider.dart' as mn;
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../shared/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
   const SubcontractDocEditPage({super.key, required this.docType, this.id});
@@ -359,7 +361,9 @@ class _SubcontractDocEditPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-        showBackButton: true,
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
+        ),
         actions: _cfg.skipListOnCreate
             ? [
                 UtenButton(

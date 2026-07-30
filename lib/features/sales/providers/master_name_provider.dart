@@ -4,7 +4,7 @@
 // 本服务懒加载并缓存小表全量 dict（仓库/币种/颜色/单位），客户无 /dict 端点→
 // 走 /master/clients?size=9999 一次性拉全量建 dict；货品(3.5万)按 id 批量 lookup。
 //
-// 与 purchase/providers/master_name_provider.dart 的差异：clients 替 suppliers；
+// 与 shared/providers/master_name_provider.dart 的差异：clients 替 suppliers；
 // 其他端点（warehousesDict/currenciesDict/colorsDict/unitsDict/goodsLookup）复用。
 // 货品选择改用统一组件 showUtenGoodsPicker（basic_data/widgets/uten_goods_picker.dart，
 // 左分类树+右货品表），不再复用旧搜索款 picker。

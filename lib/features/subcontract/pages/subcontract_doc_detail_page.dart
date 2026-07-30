@@ -21,7 +21,9 @@ import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
 import '../widgets/subcontract_status_badge.dart';
-import '../../../features/purchase/providers/master_name_provider.dart' as mn;
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../shared/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocDetailPage extends ConsumerStatefulWidget {
   const SubcontractDocDetailPage({
@@ -180,7 +182,9 @@ class _SubcontractDocDetailPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '${_cfg.label}详情',
-        showBackButton: true,
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
+        ),
         actions: [
           UtenButton(
             type: UtenButtonType.tonal,

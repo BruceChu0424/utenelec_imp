@@ -72,7 +72,7 @@ public class GoodsService {
     /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
             "series", "model", "material", "code", "name", "spec",
-            "cNumber", "requireRemark", "colorLegacyId", "unitLegacyId");
+            "cNumber", "requireRemark", "colorLegacyId", "unitLegacyId", "sourceType");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量/日期列；命中才排序，否则默认 id ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price");
@@ -92,6 +92,7 @@ public class GoodsService {
         FACET_COLUMNS.put("requireRemark", "require_remark");
         FACET_COLUMNS.put("colorLegacyId", "color_legacy_id");
         FACET_COLUMNS.put("unitLegacyId", "unit_legacy_id");
+        FACET_COLUMNS.put("sourceType", "source_type");
     }
 
     private final GoodsRepository repo;
@@ -153,6 +154,7 @@ public class GoodsService {
             addEq(ps, cb, root, "spec", f.spec());
             addEq(ps, cb, root, "cNumber", f.cNumber());
             addEq(ps, cb, root, "requireRemark", f.requireRemark());
+            addEq(ps, cb, root, "sourceType", f.sourceType());
             if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
             if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
             if (f.nullFields() != null) {
@@ -227,6 +229,7 @@ public class GoodsService {
                 new ExportColumn("requireRemark", "备注", ExportColumn.TEXT),
                 new ExportColumn("colorName", "主颜色", ExportColumn.TEXT),
                 new ExportColumn("unitName", "单位", ExportColumn.TEXT),
+                new ExportColumn("sourceType", "来源", ExportColumn.TEXT),
                 new ExportColumn("price", "价格", ExportColumn.MONEY),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -248,6 +251,7 @@ public class GoodsService {
                 row.put("requireRemark", g.getRequireRemark());
                 row.put("colorName", g.getColorName());
                 row.put("unitName", g.getUnitName());
+                row.put("sourceType", g.getSourceType());
                 row.put("price", g.getPrice());
                 row.put("status", g.getStatus());
                 rows.add(row);
@@ -311,6 +315,7 @@ public class GoodsService {
                 buckets.get("code"), buckets.get("series"), buckets.get("model"),
                 buckets.get("name"), buckets.get("spec"), buckets.get("material"),
                 buckets.get("requireRemark"), buckets.get("colorLegacyId"), buckets.get("unitLegacyId"),
+                buckets.get("sourceType"),
                 nullCounts);
     }
 
@@ -448,6 +453,7 @@ public class GoodsService {
         g.setStatus(req.getStatus());
         g.setColorLegacyId(req.getColorLegacyId());
         g.setUnitLegacyId(req.getUnitLegacyId());
+        g.setSourceType(req.getSourceType());
         // 成本预算（「成本预算」页签字段；前端表单全量回传，null 即清空）
         g.setSourceE(req.getSourceE());
         g.setMachiningE(req.getMachiningE());
@@ -482,7 +488,7 @@ public class GoodsService {
                 g.getPlatingE(), g.getCasingE(), g.getPolishE(), g.getTotal(),
                 g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
                 g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
-                g.getCTotal(), g.getGTotal());
+                g.getCTotal(), g.getGTotal(), g.getSourceType());
     }
 
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames) {
@@ -492,7 +498,8 @@ public class GoodsService {
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
                 g.getColorLegacyId(), g.getUnitLegacyId(),
                 g.getColorLegacyId() == null ? null : colorNames.get(g.getColorLegacyId()),
-                g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()));
+                g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()),
+                g.getSourceType());
     }
 
     private static BigDecimal toPrice(Double p) {

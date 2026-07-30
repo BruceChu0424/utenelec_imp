@@ -116,6 +116,7 @@ class SalesDocConfig {
     icon: Icons.request_quote_outlined,
     listPerm: SalesPerm.quoteView,
     editPerm: SalesPerm.quoteEdit,
+    clientRequired: true,
     hasValidUntil: true,
     skipListOnCreate: true,
   );

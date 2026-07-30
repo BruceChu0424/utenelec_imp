@@ -85,3 +85,14 @@ logging:
   level:
     com.uten.imp: DEBUG
     org.hibernate.SQL: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never

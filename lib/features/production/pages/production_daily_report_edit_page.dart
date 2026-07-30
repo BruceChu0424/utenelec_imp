@@ -28,7 +28,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';

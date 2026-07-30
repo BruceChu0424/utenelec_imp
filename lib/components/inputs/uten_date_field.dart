@@ -28,6 +28,7 @@ class UtenDateField extends StatefulWidget {
     this.firstDate,
     this.lastDate,
     this.enabled = true,
+    this.errorText,
   });
 
   final String label;
@@ -37,6 +38,9 @@ class UtenDateField extends StatefulWidget {
   final DateTime? firstDate;
   final DateTime? lastDate;
   final bool enabled;
+
+  /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
+  final String? errorText;
 
   @override
   State<UtenDateField> createState() => _UtenDateFieldState();
@@ -70,6 +74,7 @@ class _UtenDateFieldState extends State<UtenDateField> {
         child: InputDecorator(
           decoration: InputDecoration(
             labelText: widget.required ? '${widget.label} *' : widget.label,
+            errorText: widget.errorText,
             suffixIcon: const Icon(Icons.event_outlined, size: 18),
           ),
           child: Text(

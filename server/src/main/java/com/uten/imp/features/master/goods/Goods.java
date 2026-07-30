@@ -170,6 +170,9 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "bom_status")
     private Boolean bomStatus;          // BomStatus (bit)
     private String status;              // Status
+    /** 来源（自制/采购/委外）。V128 新增；源自新 ERP 产品列表「产品角色」。 */
+    @Column(name = "source_type")
+    private String sourceType;
     @Column(name = "app_status")
     private Integer appStatus;          // AppStatus
     @Column(name = "app_status2")

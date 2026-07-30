@@ -21,7 +21,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/widgets/doc_kpi_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 

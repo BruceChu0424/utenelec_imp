@@ -463,7 +463,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
                           SizedBox(
                             width: double.infinity,
                             child: UtenSearchBar(
-                              hint: '搜索单据号',
+                              hint: '搜索单据号 / 客户',
                               initialValue: _keyword,
                               onChanged: (v) {
                                 setState(() => _keyword = v);

@@ -70,6 +70,9 @@ server/backups/
 # 需要时用 server/legacy_migration/export_legacy.ps1 重新生成）
 server/legacy_migration/data/
 server/src/main/resources/legacy-migration/
+# 新 ERP 产品列表导出（真实业务数据/PII：货品主档 80 列 + 导入比对报告，
+# 由 server/legacy_migration/import_product_lists.py 消费，绝不入库）
+/product lists/
 
 # 调试/调查草稿区（一次性脚本与临时文件，完成后清理，不进仓库）
 # 覆盖根 _scratch/ 与 server/legacy_migration/_scratch/

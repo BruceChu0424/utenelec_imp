@@ -78,17 +78,7 @@ import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/placeholder/pages/feature_placeholder_page.dart';
-import '../../features/production/config/production_report_config.dart';
-import '../../features/production/pages/production_daily_report_detail_page.dart';
-import '../../features/production/pages/production_daily_report_edit_page.dart';
-import '../../features/production/pages/production_daily_report_list_page.dart';
-import '../../features/production/pages/production_hub_page.dart';
-import '../../features/production/pages/production_plan_detail_page.dart';
-import '../../features/production/pages/production_plan_edit_page.dart';
-import '../../features/production/pages/production_plan_list_page.dart';
-import '../../features/production/pages/production_report_page.dart';
-import '../../features/production/pages/production_board_page.dart';
-import '../../features/production/pages/where_used_report_page.dart';
+import '../../features/production/production_routes.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
@@ -561,7 +551,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.warehouseReport,
             name: 'warehouse-report',
-            redirect: (_, _) => RouteName.warehouseReportDetail,
+            // 同上：仅精确匹配父路径时才跳明细，summary 子路由不拦。
+            redirect: (_, s) => s.uri.path == RouteName.warehouseReport
+                ? RouteName.warehouseReportDetail
+                : null,
             routes: [
               GoRoute(
                 path: 'detail',
@@ -644,7 +637,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.salesReport,
             name: 'sales-report',
-            redirect: (_, _) => RouteName.salesReportDetail,
+            // 仅精确匹配 /sales/report 时跳明细；子路由（detail/summary）不拦——
+            // go_router 父路由 redirect 对子路由同样生效，无条件跳会把 summary 也拐到 detail。
+            redirect: (_, s) => s.uri.path == RouteName.salesReport
+                ? RouteName.salesReportDetail
+                : null,
             routes: [
               GoRoute(
                 path: 'detail',
@@ -738,86 +735,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
-          // —— 生产管理（生产部；静态段在 :id 参数路由前）——
-          GoRoute(
-            path: RouteName.production,
-            name: 'production-hub',
-            builder: (_, _) => const ProductionHubPage(),
-          ),
-          GoRoute(
-            path: RouteName.productionSchedule,
-            name: 'production-schedule',
-            builder: (_, _) => const ProductionBoardPage(),
-          ),
-          GoRoute(
-            path: RouteName.productionProgress,
-            name: 'production-progress',
-            builder: (_, _) => const ProductionBoardPage(initialTab: 1),
-          ),
-          GoRoute(
-            path: '/production/plans/new',
-            name: 'production-plan-new',
-            builder: (_, _) => const ProductionPlanEditPage(),
-          ),
-          GoRoute(
-            path: '/production/plans/:id/edit',
-            name: 'production-plan-edit',
-            builder: (_, s) =>
-                ProductionPlanEditPage(id: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/production/plans/:id',
-            name: 'production-plan-detail',
-            builder: (_, s) =>
-                ProductionPlanDetailPage(id: s.pathParameters['id']!),
-          ),
-          GoRoute(
-            path: RouteName.productionPlanList,
-            name: 'production-plan-list',
-            builder: (_, _) => const ProductionPlanListPage(),
-          ),
-          GoRoute(
-            path: '/production/daily-reports/new',
-            name: 'production-daily-report-new',
-            builder: (_, _) => const ProductionDailyReportEditPage(),
-          ),
-          GoRoute(
-            path: '/production/daily-reports/:id/edit',
-            name: 'production-daily-report-edit',
-            builder: (_, s) =>
-                ProductionDailyReportEditPage(id: s.pathParameters['id']),
-          ),
-          GoRoute(
-            path: '/production/daily-reports/:id',
-            name: 'production-daily-report-detail',
-            builder: (_, s) =>
-                ProductionDailyReportDetailPage(id: s.pathParameters['id']!),
-          ),
-          GoRoute(
-            path: RouteName.productionDailyReportList,
-            name: 'production-daily-report-list',
-            builder: (_, _) => const ProductionDailyReportListPage(),
-          ),
-          // 生产报表入口（静态段，无 :id 冲突）：计划明细/汇总 2 卡
-          // （日报本期 0 行未挂入口，后端 endpoint/页面代码保留待未来启用）
-          GoRoute(
-            path: RoutePath.productionReport('plan-detail'),
-            name: 'production-report-plan-detail',
-            builder: (_, _) => const ProductionReportPage(
-                kind: ProductionReportKind.detail),
-          ),
-          GoRoute(
-            path: RoutePath.productionReport('plan-summary'),
-            name: 'production-report-plan-summary',
-            builder: (_, _) => const ProductionReportPage(
-                kind: ProductionReportKind.summary),
-          ),
-          // 物料反查产成品（BOM where-used）：输入材料查用在哪些产成品
-          GoRoute(
-            path: RouteName.productionWhereUsed,
-            name: 'production-where-used',
-            builder: (_, _) => const WhereUsedReportPage(),
-          ),
+          // —— 生产管理（模块公开路由清单；静态段在 :id 参数路由前）——
+          ...productionRoutes,
 
           // —— 钱流管理（财税部；静态段 /finance/{report|ar-ap|reconciliations|checks|
           //    customers|suppliers|accounts} 必须在 :seg 参数路由前声明）——

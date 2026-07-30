@@ -29,10 +29,12 @@ import '../../../core/ui/app_notification.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
-import '../providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../repositories/purchase_repository.dart';
 import '../widgets/doc_link_picker.dart';
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../widgets/purchase_grid_columns.dart';
 
 class PurchaseDocEditPage extends ConsumerStatefulWidget {
@@ -284,7 +286,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     return Scaffold(
       appBar: UtenAppBar(
           title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-          showBackButton: true,
+          leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: RouteName.purchase),
+        ),
           actions: _cfg.skipListOnCreate
               ? [
                   UtenButton(

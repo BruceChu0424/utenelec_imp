@@ -19,16 +19,17 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
 启动后：
 - API 基址 `http://localhost:8080/api`
 - Swagger UI `http://localhost:8080/swagger-ui.html`
+- 健康检查 `http://localhost:8080/actuator/health`（仅暴露 health，启用存活/就绪探针）
 - 引导超管账号 `admin` / 密码 = `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`（首登强制改）
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`）。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前至 V126）。
 - 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统 → `V13` 访客权限拆分 → `V14` 车牌加密 → `V15` 访客通行码 → `V16` 超管 → `V17` 种子 admin 文档 → `V18` 个人信息修改申请 → `V19` 修改审批权限点 → `V20` 修改申请审计列 → `V21` 权限管理体系（部门默认角色 `department_roles` + 个人权限覆盖 `user_permission_overrides`，见 [ADR-007](../docs/99-决策记录-ADR/ADR-007-导航重构与三层权限模型.md)）→ `V22` 审计覆盖扩展（部门角色/权限覆盖/紧急联系人补触发器）→ `V23` 修复 V18 坏审计触发器（个人信息修改链路的部署级阻断 bug，见 [ADR-009](../docs/99-决策记录-ADR/ADR-009-后端安全加固与功能补全.md)）→ `V24` 岗位模板种子（ADR-010）→ `V25` 决策支持独立权限点 `analytics:view` → `V26` 工资条生成权限移交财务 → `V27` 部门直配权限点 `department_permissions` + 用户偏好 `user_preferences`（[ADR-011](../docs/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）→ `V28` 权限目录分组名中文化 → `V29` **角色体系下线**（存量角色权限沉淀为部门配置，PermissionResolver 不再读 user_roles/department_roles）→ `V30` 敏感字段脱敏按权限点化（新增 `employee:pii:view`）→ …（`V31`–`V63` 各业务模块迁移，详见 migration 目录）→ `V64` 下线决策支持模块，删除 `analytics:view` 权限点（前端 `/analytics/*` 路由与工作台卡片同步移除）→ …（`V65`–`V120` 销售/采购/委外/仓库/生产/钱流/通知/建议/归属隔离/业务链 V90–V100，详见 [docs/数据迁移/41 需求落地总路线图](../docs/数据迁移/41-需求落地总路线图.md)）→ `V121` 客户铺底额 → `V122` **总账子系统**（`gl_vouchers`/`gl_entries` + `account_style_id()` 函数，科目复用 payment_styles 树，docs 44）→ `V123` 固定资产折旧+长期待摊（`fixed_assets`/`deferred_expenses`/计提日志 + 科目种子 /152/ 累计折旧·折旧费·摊销费，docs 45）→ `V124` 出货财务审核（`sales_shipments.finance_audit`）+ 费用单总账状态（`finance_expenses.gl_status`，docs 46）。
 - 机密 PII（身份证/手机/银行卡/薪资/车牌）用 pgcrypto 字段级加密；主密钥走环境变量 `UTEN_PGP_MASTER_KEY`，每事务 `SET LOCAL app.pgp_key`。
 - 审计：敏感表挂 `AFTER` 触发器写 `audit_log`，actor 从会话变量 `app.actor_id` 取（由后端每事务绑定）。
 - 并发：员工档案写路径全量手动递增 `version`，修改申请审批时版本不符 → 409 防丢更新（ADR-009 §1）。
 
-## 包结构（2026-07-23 重构后，见 [ADR-008](../docs/99-决策记录-ADR/ADR-008-后端代码结构重构.md)）
+## 包结构（模块化单体，见 [ADR-008](../docs/99-决策记录-ADR/ADR-008-后端代码结构重构.md) 与 [ADR-017](../docs/99-决策记录-ADR/ADR-017-模块化单体与异步旁路.md)）
 
 ```
 com.uten.imp
@@ -82,6 +83,7 @@ com.uten.imp
 
 约定：
 - **Controller 不直接注入 Repository**，一律走 Service；跨域共享的小逻辑用包私有 Support 组件（如 AdminUserSupport / ProfileChangeAccess / VisitorGuard），不复制。
+- 跨 feature 调用只通过公开 Facade/Port；模块边界由 `ArchitectureBoundaryTest` 的依赖图基线持续约束。
 - 实体/RBAC 模型包不放 API；`admin` 包只放超管/HR 管理端接口。
 - 死代码零容忍：无调用的方法/字段/构造器即删（2026-07-23 大清理基线）。
 

@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/subcontract_doc.dart';
 
 // 复用采购的主档名称解析（supplier/warehouse/currency/color/unit/goods）。
-export '../../purchase/providers/master_name_provider.dart'
+export '../../../shared/providers/master_name_provider.dart'
     show masterNameServiceProvider, GoodsOption;
 
 /// 委外单据状态文案（0草稿/1已审/-1红冲）。

@@ -48,6 +48,9 @@ MasterDataTableView<T>(
   sortAscending: bool,                  // 排序方向
   onSortChange: (colKey?, ascending) {},// 排序回调（colKey=null 取消排序）
   onRowTap: (item) {},                  // 行点击（报表→跳源头单据；主档→详情弹窗）
+  rowColor: (item) => Color?,           // 行底色（如货品按状态：使用=浅蓝/禁用=浅红）；
+                                        // null=透明。单击选中自动加深加亮（提高不透明度），
+                                        // 无底色行维持 primary 0.10 高亮
   isLoading / error / onRetry / emptyMessage,
   currentPage / totalPages / onPageChange,
 )

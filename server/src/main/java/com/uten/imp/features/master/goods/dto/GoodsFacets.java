@@ -24,5 +24,6 @@ public class GoodsFacets {
     private final List<FacetBucket> requireRemark;
     private final List<FacetBucket> colorLegacyId;
     private final List<FacetBucket> unitLegacyId;
+    private final List<FacetBucket> sourceType;
     private final Map<String, Long> nullCounts;
 }

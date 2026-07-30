@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -26,6 +27,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -87,6 +89,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+
+  /// 必填校验未通过的表头字段 key（client/warehouse/currency/deliverDate/items），
+  /// 对应输入框描红；字段改值即时清除。
+  final Set<String> _errors = {};
 
   @override
   void initState() {
@@ -201,6 +207,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           if (it.discount != null) {
             row.discount.text = it.discount.toString();
           }
+          row.remark.text = it.remark ?? '';
           rows.add(row);
         }
         _grid.replaceAll(rows);
@@ -273,16 +280,81 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _grid.addRows(rows);
   }
 
+  /// 必填校验：返回第一条错误文案；并把未填的表头字段记入 [_errors]（红框）、
+  /// 不合格明细行打红标。通过则返回 null（并清除旧标记）。
+  String? _validate() {
+    final errs = <String>{};
+    String? first;
+    void fail(String key, String msg) {
+      errs.add(key);
+      first ??= msg;
+    }
+
+    if (_cfg.clientRequired && _clientId == null) fail('client', '请选择客户');
+    if (_cfg.hasWarehouse && _warehouseId == null) fail('warehouse', '请选择仓库');
+    if (_cfg.hasCurrency && _currencyId == null) fail('currency', '请选择币种');
+    if (_cfg.hasDeliverDate && _deliverDate == null) {
+      fail('deliverDate', '请选择交货日期');
+    }
+    final allRows = _grid.rows;
+    final rows = allRows.where((r) => r.goods != null).toList();
+    // 填了内容但没选货品的行：不能静默丢弃，拦下提示（货品格描红）。
+    var noGoodsRow = 0;
+    for (var i = 0; i < allRows.length; i++) {
+      final r = allRows[i];
+      if (r.goods != null) continue;
+      final touched =
+          r.qty.text.trim().isNotEmpty ||
+          r.price.text.trim().isNotEmpty ||
+          r.remark.text.trim().isNotEmpty;
+      if (touched) {
+        r.invalidNotifier.value = true;
+        noGoodsRow = noGoodsRow == 0 ? i + 1 : noGoodsRow;
+      }
+    }
+    if (noGoodsRow > 0) {
+      fail('items', '第 $noGoodsRow 行明细：请选择货品');
+    } else if (rows.isEmpty) {
+      fail('items', '请至少添加一条明细（选择货品）');
+    } else {
+      final priceRequired = widget.docType != SalesDocType.otherShipment;
+      var badRow = 0;
+      for (var i = 0; i < rows.length; i++) {
+        final r = rows[i];
+        final qtyOk = (double.tryParse(r.qty.text.trim()) ?? 0) > 0;
+        final priceOk =
+            !priceRequired ||
+            (r.price.text.trim().isNotEmpty &&
+                double.tryParse(r.price.text.trim()) != null);
+        if (!qtyOk || !priceOk) {
+          r.invalidNotifier.value = true;
+          badRow = badRow == 0 ? i + 1 : badRow;
+        }
+      }
+      if (badRow > 0) {
+        fail('items', '第 $badRow 行明细：数量须大于 0${priceRequired ? '，单价必填' : ''}');
+      }
+    }
+    setState(() {
+      _errors
+        ..clear()
+        ..addAll(errs);
+    });
+    return first;
+  }
+
+  /// 字段修改后即时清除对应红框。
+  void _clearError(String key) {
+    if (_errors.contains(key)) setState(() => _errors.remove(key));
+  }
+
   Future<void> _save() async {
+    final err = _validate();
+    if (err != null) {
+      context.appError(err);
+      return;
+    }
     final rows = _grid.rows;
-    if (rows.isEmpty || rows.every((r) => r.goods == null)) {
-      context.appError('请至少添加一条明细');
-      return;
-    }
-    if (_cfg.clientRequired && _clientId == null) {
-      context.appError('请选择客户');
-      return;
-    }
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
@@ -304,6 +376,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         if (r.outItemId != null) 'outItemId': r.outItemId,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
+        // 行备注：5 类单据通用（空文本不传，后端按 null 处理）。
+        if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       };
       switch (widget.docType) {
         case SalesDocType.order:
@@ -402,7 +476,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
-        showBackButton: true,
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+        ),
         actions: _cfg.skipListOnCreate
             ? [
                 UtenButton(
@@ -472,22 +548,42 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     '客户',
                                     _clientId,
                                     names.clientEntries,
-                                    (v) => setState(() => _clientId = v),
+                                    (v) {
+                                      setState(() => _clientId = v);
+                                      _clearError('client');
+                                    },
                                     required: _cfg.clientRequired,
+                                    errorText: _errors.contains('client')
+                                        ? '请选择客户'
+                                        : null,
                                   ),
                                   if (_cfg.hasWarehouse)
                                     _dropdown(
                                       '仓库',
                                       _warehouseId,
                                       names.warehouseEntries,
-                                      (v) => setState(() => _warehouseId = v),
+                                      (v) {
+                                        setState(() => _warehouseId = v);
+                                        _clearError('warehouse');
+                                      },
+                                      required: true,
+                                      errorText: _errors.contains('warehouse')
+                                          ? '请选择仓库'
+                                          : null,
                                     ),
                                   if (_cfg.hasCurrency) ...[
                                     _dropdown(
                                       '币种',
                                       _currencyId,
                                       names.currencyEntries,
-                                      (v) => setState(() => _currencyId = v),
+                                      (v) {
+                                        setState(() => _currencyId = v);
+                                        _clearError('currency');
+                                      },
+                                      required: true,
+                                      errorText: _errors.contains('currency')
+                                          ? '请选择币种'
+                                          : null,
                                     ),
                                     TextField(
                                       controller: _rate,
@@ -536,9 +632,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                   if (_cfg.hasDeliverDate)
                                     UtenDateField(
                                       label: '交货日期',
+                                      required: true,
                                       value: _deliverDate,
-                                      onChanged: (d) =>
-                                          setState(() => _deliverDate = d),
+                                      errorText: _errors.contains('deliverDate')
+                                          ? '请选择交货日期'
+                                          : null,
+                                      onChanged: (d) {
+                                        setState(() => _deliverDate = d);
+                                        _clearError('deliverDate');
+                                      },
                                     ),
                                   if (_cfg.hasContractInfo) ...[
                                     TextField(
@@ -674,7 +776,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
               const SizedBox(width: UtenSpacing.s16),
               UtenButton(
                 type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
+                onPressed: () =>
+                    popOrBackTo(context, defaultPath: SalesRoutePath.hub),
                 child: const Text('取消'),
               ),
               const SizedBox(width: UtenSpacing.s12),
@@ -727,11 +830,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     Map<String, String> entries,
     ValueChanged<String?> onChanged, {
     bool required = false,
+    String? errorText,
   }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
+      errorText: errorText,
+      searchable: true, // 客户/仓库/币种等主档下拉一律支持搜索
       items: [
         for (final e in entries.entries)
           UtenDropdownItem(value: e.key, label: e.value),

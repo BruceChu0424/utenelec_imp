@@ -225,6 +225,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
       expandOnRowTap: true,
+      // 「未分类（历史孤儿）」默认收起：里面堆着历史孤儿货品，展开会铺满导航栏。
+      initiallyCollapsedNames: const {'未分类'},
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
@@ -642,6 +644,14 @@ class _DetailPaneState extends State<_DetailPane> {
       required: true,
       group: '基础',
     ),
+    const MasterFieldDef(
+      key: 'sourceType',
+      label: '来源',
+      type: MasterFieldType.select,
+      options: kGoodsSourceTypeOptions,
+      hint: '自制 / 采购 / 委外',
+      group: '基础',
+    ),
     const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
     const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
     const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
@@ -735,6 +745,7 @@ class _DetailPaneState extends State<_DetailPane> {
         'pack': d.pack ?? '',
         'pieces': d.pieces?.toString() ?? '',
         'status': d.status ?? '',
+        'sourceType': d.sourceType ?? '',
         'colorLegacyId': d.colorLegacyId?.toString() ?? '',
         'unitLegacyId': d.unitLegacyId?.toString() ?? '',
       },
@@ -895,6 +906,7 @@ class _DetailPaneState extends State<_DetailPane> {
     MasterDetailRow('单位', d.unitName), // TODO(l10n): 补 arb
     MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
     MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
+    MasterDetailRow('来源', d.sourceType), // TODO(l10n): 补 arb
     MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
   ];
 
@@ -1029,6 +1041,12 @@ class _DetailPaneState extends State<_DetailPane> {
               nullCounts: _facets?.nullCounts ?? const {},
               filters: _filters,
               onFilterChanged: _onFilterChanged,
+              // 行底色按使用状态：使用=浅蓝、禁用=浅红、其他=默认白；单击选中自动加深加亮。
+              rowColor: (g) => switch (g.status) {
+                '使用' => Colors.lightBlue.withValues(alpha: 0.13),
+                '禁用' => Colors.red.withValues(alpha: 0.10),
+                _ => null,
+              },
               onRowTap: (g) => _showGoodsDetail(g.id),
               sortColumn: _sortKey,
               sortAscending: _sortAsc,
@@ -1106,6 +1124,12 @@ class _DetailPaneState extends State<_DetailPane> {
       label: '材质',
       width: 120,
       value: (g) => g.material,
+    ),
+    MasterColumnDef(
+      key: 'sourceType',
+      label: '来源',
+      width: 70,
+      value: (g) => g.sourceType,
     ),
     MasterColumnDef(
       key: 'price',

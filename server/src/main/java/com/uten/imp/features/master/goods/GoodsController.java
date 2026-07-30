@@ -75,13 +75,14 @@ public class GoodsController {
             @RequestParam(required = false) String requireRemark,
             @RequestParam(required = false) Integer colorLegacyId,
             @RequestParam(required = false) Integer unitLegacyId,
+            @RequestParam(required = false) String sourceType,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(new GoodsQueryFilter(categoryId, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
-                colorLegacyId, unitLegacyId), page, size, sort, order);
+                colorLegacyId, unitLegacyId, sourceType), page, size, sort, order);
     }
 
     @GetMapping("/facets")
@@ -121,6 +122,7 @@ public class GoodsController {
             @RequestParam(required = false) String requireRemark,
             @RequestParam(required = false) Integer colorLegacyId,
             @RequestParam(required = false) Integer unitLegacyId,
+            @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestBody ExportPasswordRequest body) {
@@ -129,7 +131,7 @@ public class GoodsController {
         }
         ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
-                colorLegacyId, unitLegacyId), sort, order);
+                colorLegacyId, unitLegacyId, sourceType), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
         byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

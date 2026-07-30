@@ -64,4 +64,6 @@ public class GoodsSaveRequest {
     private BigDecimal cTotal;       // CTotal 成本价（防 Jackson 连续大写 quirk）
     @JsonProperty("gTotal")
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
+
+    private String sourceType;   // 来源（自制/采购/委外；V128）
 }

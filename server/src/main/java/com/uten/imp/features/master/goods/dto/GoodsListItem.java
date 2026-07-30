@@ -36,4 +36,5 @@ public class GoodsListItem {
     private Integer unitLegacyId;
     private String colorName;     // 主颜色名（goods.color_legacy_id → colors.name 解析，无则 null）
     private String unitName;      // 单位名（goods.unit_legacy_id → units.name 解析，无则 null）
+    private String sourceType;    // 来源（自制/采购/委外；V128）
 }

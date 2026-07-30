@@ -25,6 +25,7 @@ class GoodsListItem {
     this.unitLegacyId,
     this.colorName,
     this.unitName,
+    this.sourceType,
   });
 
   final String id;
@@ -43,6 +44,7 @@ class GoodsListItem {
   final int? unitLegacyId;
   final String? colorName;
   final String? unitName;
+  final String? sourceType; // 来源（自制/采购/委外；V128）
 
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
         id: json['id'] as String,
@@ -62,6 +64,7 @@ class GoodsListItem {
         unitLegacyId: (json['unitLegacyId'] as num?)?.toInt(),
         colorName: json['colorName'] as String?,
         unitName: json['unitName'] as String?,
+        sourceType: json['sourceType'] as String?,
       );
 }
 
@@ -106,6 +109,7 @@ class GoodsDetail {
     this.makeE,
     this.cTotal,
     this.gTotal,
+    this.sourceType,
   });
 
   final String id;
@@ -149,6 +153,8 @@ class GoodsDetail {
   final double? cTotal;       // 成本价
   final double? gTotal;       // 出厂价
 
+  final String? sourceType;   // 来源（自制/采购/委外；V128）
+
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
         id: json['id'] as String,
         code: json['code'] as String?,
@@ -191,13 +197,14 @@ class GoodsDetail {
         // 后端 @JsonProperty 已锁定 cTotal/gTotal；兼容小写兜底（同 mWeight quirk）。
         cTotal: ((json['cTotal'] ?? json['ctotal']) as num?)?.toDouble(),
         gTotal: ((json['gTotal'] ?? json['gtotal']) as num?)?.toDouble(),
+        sourceType: json['sourceType'] as String?,
       );
 }
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
 ///
 /// fields 以字段 key（与 query 参数名一致：code/series/model/name/spec/material/
-/// requireRemark/colorLegacyId/unitLegacyId）索引，便于 [MasterDataTableView] 通用查找。
+/// requireRemark/colorLegacyId/unitLegacyId/sourceType）索引，便于 [MasterDataTableView] 通用查找。
 class GoodsFacets {
   const GoodsFacets({required this.fields, required this.nullCounts});
 
@@ -214,6 +221,7 @@ class GoodsFacets {
     'requireRemark',
     'colorLegacyId',
     'unitLegacyId',
+    'sourceType',
   ];
 
   factory GoodsFacets.fromJson(Map<String, dynamic> json) {

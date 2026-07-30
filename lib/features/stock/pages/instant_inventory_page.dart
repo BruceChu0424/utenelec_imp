@@ -32,7 +32,7 @@ import '../../basic_data/models/product_category_node.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_category_tree_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_query.dart';
 import '../providers/instant_inventory_prefs_provider.dart';
 import '../repositories/stock_query_repository.dart';

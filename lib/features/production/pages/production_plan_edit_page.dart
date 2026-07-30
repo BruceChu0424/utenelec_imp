@@ -28,11 +28,13 @@ import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../sales/widgets/sales_order_picker.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/plan_order_import_sheet.dart';
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../widgets/production_grid_columns.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
@@ -368,7 +370,9 @@ class _ProductionPlanEditPageState
     return Scaffold(
       appBar: UtenAppBar(
           title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',
-          showBackButton: true,
+          leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: '/production'),
+        ),
           actions: [
             UtenButton(
               type: UtenButtonType.tonal,

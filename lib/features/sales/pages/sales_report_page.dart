@@ -177,21 +177,67 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     _load();
   }
 
-  /// 行点击跳源头单据详情页：明细/汇总每行都带隐藏的 __srcId（= 单据头 id），
-  /// push 详情页 → pop 回报表（保活筛选/分页状态）。
+  /// 行点击：
+  ///  - 明细表：每行带隐藏 __srcId（= 单据头 id），push 源头单据详情页 → pop 回报表（保活筛选/分页）。
+  ///  - 汇总表：每行带隐藏 __clientId（= 客户 id，可空），弹该客户本期明细对话框（表格内可再点行跳单据）。
   /// docType.code（ORDER/SHIPMENT/RETURN/OTHER_SHIPMENT）→ 销售单据路由 seg：
   ///   ORDER→orders、SHIPMENT→shipments、RETURN→returns、OTHER_SHIPMENT→other-shipments（kebab）。
   ///   不能简单 `${code}s`：OTHER_SHIPMENT 期望 other-shipments（短横）非 OTHER_SHIPMENTs。
   void _onRowTap(Map<String, dynamic> row) {
+    if (!_kind.isDetail) {
+      _showClientDetail(row);
+      return;
+    }
     final srcId = row['__srcId']?.toString();
     if (srcId == null || srcId.isEmpty) return;
-    final seg = switch (_docType) {
-      SalesReportDocType.order => 'orders',
-      SalesReportDocType.shipment => 'shipments',
-      SalesReportDocType.returnDoc => 'returns',
-      SalesReportDocType.otherShipment => 'other-shipments',
-    };
-    context.push(RoutePath.salesDocDetail(seg, srcId));
+    context.push(RoutePath.salesDocDetail(_docSeg, srcId));
+  }
+
+  String get _docSeg => switch (_docType) {
+    SalesReportDocType.order => 'orders',
+    SalesReportDocType.shipment => 'shipments',
+    SalesReportDocType.returnDoc => 'returns',
+    SalesReportDocType.otherShipment => 'other-shipments',
+  };
+
+  /// 汇总表钻取：弹「客户 · 日期范围内全部明细」对话框（明细数据复用 detail 端点 + clientId 过滤）。
+  void _showClientDetail(Map<String, dynamic> row) {
+    final clientId = row['__clientId']?.toString();
+    final clientName = row['clientName']?.toString() ?? '(未指定客户)';
+    showDialog<void>(
+      context: context,
+      builder: (_) => SalesClientDetailDialog(
+        docType: _docType,
+        docSeg: _docSeg,
+        clientId: (clientId == null || clientId.isEmpty) ? null : clientId,
+        clientName: clientName,
+        dateFrom: _fmt(_from),
+        dateTo: _fmt(_to),
+      ),
+    );
+  }
+
+  /// 「已选筛选」chip 文案：key 映射列中文名（不暴露 clientName 等内部键），
+  /// 值映射 facet 桶展示名（客户 UUID → 客户名，不暴露内部 id）。
+  String _filterChipText(String key, String value) {
+    final data = _data;
+    String label = key;
+    if (data != null) {
+      for (final c in data.columns) {
+        if (c.key == key) {
+          label = c.label;
+          break;
+        }
+      }
+    }
+    if (value == kMasterFilterNullValue) return '$label: (空)';
+    final buckets = data?.facets[key];
+    if (buckets != null) {
+      for (final b in buckets) {
+        if (b.value == value) return '$label: ${b.display}';
+      }
+    }
+    return '$label: $value';
   }
 
   void _changeDocType(SalesReportDocType t) {
@@ -283,7 +329,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
                       const SizedBox(width: UtenSpacing.s8),
                       if (_data != null)
                         Text(
-                          '共 ${_data!.total} ${_kind.isDetail ? '条明细' : '张单'}',
+                          '共 ${_data!.total} ${_kind.isDetail ? '条明细' : '个客户'}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -368,7 +414,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('搜索'),
           UtenSearchBar(
-            hint: '搜索单号 / 货品',
+            hint: _kind.isDetail ? '搜索单号 / 货品 / 客户' : '搜索客户 / 单号',
             initialValue: _keyword,
             onChanged: (v) => _keyword = v,
           ),
@@ -394,7 +440,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
                 for (final e in _filters.entries)
                   Chip(
                     label: Text(
-                      '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
+                      _filterChipText(e.key, e.value),
                       style: const TextStyle(fontSize: 11),
                     ),
                     onDeleted: () => _onFilterChanged(e.key, null),
@@ -481,6 +527,230 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
           color: theme.colorScheme.onSurfaceVariant,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+/// 汇总表钻取对话框：某客户在日期范围内的全部明细（表格）。
+///
+/// 数据复用 detail 端点（clientId 过滤；空客户走 f.clientName=__null__ 档），
+/// 列集与该单据类型明细报表一致；点行可继续跳源头单据详情页。
+class SalesClientDetailDialog extends ConsumerStatefulWidget {
+  const SalesClientDetailDialog({
+    required this.docType,
+    required this.docSeg,
+    required this.clientId,
+    required this.clientName,
+    required this.dateFrom,
+    required this.dateTo,
+    super.key,
+  });
+
+  final SalesReportDocType docType;
+
+  /// 单据路由 seg（orders/shipments/returns/other-shipments），行点击跳详情用。
+  final String docSeg;
+
+  /// 客户 id；null = 未指定客户（按 facet 空值档过滤）。
+  final String? clientId;
+  final String clientName;
+  final String dateFrom; // yyyy-MM-dd
+  final String dateTo;
+
+  @override
+  ConsumerState<SalesClientDetailDialog> createState() =>
+      _SalesClientDetailDialogState();
+}
+
+class _SalesClientDetailDialogState
+    extends ConsumerState<SalesClientDetailDialog> {
+  ReportData? _data;
+  bool _loading = false;
+  int _page = 1;
+  final int _size = 50;
+  String? _sortKey;
+  bool _sortAsc = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final api = ref.read(apiClientProvider);
+    try {
+      final json = await api.get(
+        '/sales/reports/${widget.docType.code}/detail',
+        query: <String, dynamic>{
+          'dateFrom': widget.dateFrom,
+          'dateTo': widget.dateTo,
+          if (widget.clientId != null)
+            'clientId': widget.clientId
+          else
+            'f.clientName': kMasterFilterNullValue, // 空客户档
+          'page': _page,
+          'size': _size,
+          ...sortQueryParams(_sortKey, _sortAsc),
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _data = parseReportResponse(json, _page);
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      context.appError('加载客户明细失败');
+      setState(() => _loading = false);
+    }
+  }
+
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+      _page = 1;
+    });
+    _load();
+  }
+
+  void _onRowTap(Map<String, dynamic> row) {
+    final srcId = row['__srcId']?.toString();
+    if (srcId == null || srcId.isEmpty) return;
+    context.push(RoutePath.salesDocDetail(widget.docSeg, srcId));
+  }
+
+  /// 预览打印数据：按当前客户+日期范围+排序拉全量（上限 2000 行），列/格式化与对话框表格一致。
+  Future<UtenPrintTable> _printLoader() async {
+    final api = ref.read(apiClientProvider);
+    final headers = <String>[];
+    final rows = <List<String>>[];
+    var page = 1;
+    while (true) {
+      final json = await api.get(
+        '/sales/reports/${widget.docType.code}/detail',
+        query: <String, dynamic>{
+          'dateFrom': widget.dateFrom,
+          'dateTo': widget.dateTo,
+          if (widget.clientId != null)
+            'clientId': widget.clientId
+          else
+            'f.clientName': kMasterFilterNullValue,
+          'page': page,
+          'size': 500,
+          ...sortQueryParams(_sortKey, _sortAsc),
+        },
+      );
+      final data = parseReportResponse(json, page);
+      if (headers.isEmpty) {
+        headers.addAll([for (final c in data.columns) c.label]);
+      }
+      for (final r in data.rows) {
+        rows.add([for (final c in data.columns) formatReportCell(c, r) ?? '']);
+      }
+      if (rows.length >= data.total || data.rows.length < 500) break;
+      if (rows.length >= 2000) break;
+      page++;
+    }
+    return UtenPrintTable(headers: headers, rows: rows);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
+    final data = _data;
+    final columns = (data?.columns ?? const [])
+        .map(
+          (c) => MasterColumnDef<Map<String, dynamic>>(
+            key: c.key,
+            label: c.label,
+            width: (c.width ?? 120).toDouble(),
+            type: c.type,
+            sortable: isSortableReportType(c.type),
+            value: (row) => formatReportCell(c, row),
+          ),
+        )
+        .toList();
+    return Dialog(
+      insetPadding: const EdgeInsets.all(UtenSpacing.s16),
+      child: SizedBox(
+        width: size.width > 1240 ? 1200 : size.width * 0.95,
+        height: size.height * 0.85,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.person_outline_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      '${widget.clientName} · ${widget.docType.label}明细'
+                      '（${widget.dateFrom} ~ ${widget.dateTo}'
+                      '${data != null ? '，共 ${data.total} 条' : ''}）',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  UtenPrintPreviewButton(
+                    title: '${widget.clientName} · ${widget.docType.label}明细',
+                    subtitle:
+                        '${widget.dateFrom} ~ ${widget.dateTo}（最多前 2000 行）',
+                    loader: _printLoader,
+                    type: UtenButtonType.primary,
+                    size: UtenButtonSize.large,
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    tooltip: '关闭',
+                  ),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Expanded(
+                child: data == null && _loading
+                    ? const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      )
+                    : data == null
+                    ? const Center(child: Text('暂无数据'))
+                    : MasterDataTableView<Map<String, dynamic>>(
+                        columns: columns,
+                        items: data.rows,
+                        facets: const {},
+                        nullCounts: const {},
+                        filters: const {},
+                        onFilterChanged: (_, _) {},
+                        sortColumn: _sortKey,
+                        sortAscending: _sortAsc,
+                        onSortChange: _onSortChange,
+                        onRowTap: _onRowTap,
+                        isLoading: _loading,
+                        emptyMessage: '该客户在此日期范围内暂无明细',
+                        currentPage: data.page,
+                        totalPages: data.totalPages,
+                        onPageChange: (p) {
+                          _page = p;
+                          _load();
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

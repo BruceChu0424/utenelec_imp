@@ -10,7 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../purchase/providers/master_name_provider.dart' show GoodsOption;
+import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../config/subcontract_doc_config.dart';
 import 'subcontract_link_picker.dart' show LinkedItem;
 

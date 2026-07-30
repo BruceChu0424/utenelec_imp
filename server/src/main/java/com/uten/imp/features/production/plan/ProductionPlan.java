@@ -116,6 +116,14 @@ public class ProductionPlan extends SoftDeletableEntity {
     @Column(name = "is_canceled", nullable = false)
     private boolean canceled = false;
 
+    /** 看板置顶（V127）：进行中/已完成列表始终排最前。 */
+    @Column(name = "is_pinned", nullable = false)
+    private boolean pinned = false;
+
+    /** 看板重要标注（V127）：卡片星标高亮。 */
+    @Column(name = "is_important", nullable = false)
+    private boolean important = false;
+
     /** 软关联占位（销售订单号等）。 */
     @Column(name = "source_doc_no")
     private String sourceDocNo;

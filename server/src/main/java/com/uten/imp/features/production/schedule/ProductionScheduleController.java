@@ -4,6 +4,7 @@ import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,10 +30,16 @@ public class ProductionScheduleController {
 
     private final ProductionScheduleService service;
 
+    /** 待排产订单行（服务端分页；交货升序；keyword 模糊单号/客户/货品；dateFrom/dateTo 交货日期范围）。 */
     @GetMapping("/pending")
     @PreAuthorize("hasAuthority('production_plan:view')")
-    public List<PendingPlanRow> pending() {
-        return service.pending();
+    public com.uten.imp.common.web.PageResponse<PendingPlanRow> pending(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo) {
+        return service.pending(page, size, keyword, dateFrom, dateTo);
     }
 
     /** 待排产计数（生产部工作台徽标）：{"count": n, "urgent": m}。 */

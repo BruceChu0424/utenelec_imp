@@ -35,7 +35,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';

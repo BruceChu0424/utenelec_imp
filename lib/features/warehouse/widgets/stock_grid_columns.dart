@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 
 /// 仓库明细行。
 /// - 非盘点（isCheck=false）：只填 [qty]（数量）。

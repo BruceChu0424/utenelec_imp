@@ -31,7 +31,13 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
     this.searchHint = '搜索分类名称', // TODO(l10n): 补 arb
     this.emptySearchText,
     this.expandOnRowTap = false,
+    this.initiallyCollapsedNames = const {},
   });
+
+  /// 名称包含任一关键词的节点，默认不展开（即使深度在 [initiallyExpandDepth] 内）。
+  /// 用于「未分类（历史孤儿）」这类大杂烩节点：默认收起，避免一进来就铺开几百行。
+  /// 用户仍可手动点开；搜索命中路径的自动展开不受此限制。
+  final Set<String> initiallyCollapsedNames;
 
   /// 点击节点文字行时是否同时展开/收起子类（有子节点才生效）。
   ///
@@ -117,9 +123,13 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
 
   Set<String> _defaultExpanded() {
     final out = <String>{};
+    bool collapsed(T n) =>
+        widget.initiallyCollapsedNames.any((k) => n.name.contains(k));
     void walk(List<T> nodes, int depth) {
       for (final n in nodes) {
-        if (n.hasChildren && depth < widget.initiallyExpandDepth) out.add(n.id);
+        if (n.hasChildren && depth < widget.initiallyExpandDepth && !collapsed(n)) {
+          out.add(n.id);
+        }
         walk(n.children, depth + 1);
       }
     }

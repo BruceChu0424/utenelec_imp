@@ -283,27 +283,89 @@ public class ProductionPlanService {
 
     // ====================== 生产进度看板聚合 ======================
 
+    /** 看板排序白名单：前端 sort → ORDER BY 片段（置顶恒最前，统一前置 p.is_pinned DESC）。 */
+    private static final Map<String, String> PROGRESS_SORT = Map.of(
+            "billDate", "p.bill_date ASC NULLS LAST, p.bill_no",
+            "billDateDesc", "p.bill_date DESC NULLS LAST, p.bill_no",
+            "deliveryDate", "p.delivery_date ASC NULLS LAST, p.bill_no",
+            "progress", "CASE WHEN COALESCE(SUM(i.qty),0) > 0 "
+                    + "THEN COALESCE(SUM(i.iqty),0) / SUM(i.qty) ELSE 0 END DESC, "
+                    + "p.bill_date ASC NULLS LAST, p.bill_no");
+
     /**
-     * 计划聚合进度（看板三 Tab：进行中 closed=false / 已完成 closed=true）。
-     * 顶层只列父计划（排除作为子计划的单），每个计划带 subplans 嵌套进度；
-     * Σ排产 / Σ已入库 / 百分比 / 开完工窗口 / 车间，交货升序 ≤3 天标急。
+     * 进度看板共用过滤片段（FROM…HAVING）：归属按 <b>派生口径</b>（所有明细 qty-iqty ≤ 0，
+     * HAVING bool_and，与 recomputeClosed 同口径）实时判定——已全部完工入库的计划立即归入
+     * 「已完成」，不再滞留「进行中」。可选条件按参数非空拼入，值全部走绑定参数。
      */
-    @Transactional(readOnly = true)
-    public List<com.uten.imp.features.production.plan.dto.PlanProgressRow> progress(boolean closed) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rs = em.createNativeQuery("""
-                SELECT p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
-                       COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.iqty),0),
-                       MIN(i.plan_begin_date), MAX(i.plan_end_date)
+    private static String progressFilters(String kw, String ws,
+                                          java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
+        return """
                 FROM production_plans p
                 LEFT JOIN production_plan_items i ON i.plan_id = p.id AND i.is_deleted = false
-                WHERE p.is_deleted = false AND p.status = 1 AND p.is_closed = :closed
+                WHERE p.is_deleted = false AND p.status = 1
                   AND p.is_stopped = false AND p.is_canceled = false
                   AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)
-                GROUP BY p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id
-                ORDER BY p.delivery_date ASC NULLS LAST, p.bill_no
-                LIMIT 200
-                """).setParameter("closed", closed).getResultList();
+                """
+                + (kw.isEmpty() ? ""
+                        : "  AND (LOWER(p.bill_no) LIKE :kw OR LOWER(COALESCE(p.workshop_name,'')) LIKE :kw)\n")
+                + (ws.isEmpty() ? "" : "  AND p.workshop_name = :ws\n")
+                + (dateFrom == null ? "" : "  AND p.bill_date >= :dateFrom\n")
+                + (dateTo == null ? "" : "  AND p.bill_date <= :dateTo\n")
+                + """
+                GROUP BY p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
+                         p.is_pinned, p.is_important
+                HAVING COALESCE(bool_and(COALESCE(i.qty,0) - COALESCE(i.iqty,0) <= 0), true) = :closed
+                """;
+    }
+
+    /** 绑定 progressFilters 出现过的参数（未出现的条件不绑，避免未用参数报错）。 */
+    private static void bindProgressFilters(jakarta.persistence.Query q, boolean closed, String kw,
+                                            String ws, java.time.LocalDate dateFrom,
+                                            java.time.LocalDate dateTo) {
+        q.setParameter("closed", closed);
+        if (!kw.isEmpty()) q.setParameter("kw", "%" + kw + "%");
+        if (!ws.isEmpty()) q.setParameter("ws", ws);
+        if (dateFrom != null) q.setParameter("dateFrom", dateFrom);
+        if (dateTo != null) q.setParameter("dateTo", dateTo);
+    }
+
+    /**
+     * 计划聚合进度（看板：进行中 closed=false / 已完成 closed=true，<b>服务端分页</b>）。
+     * 顶层只列父计划（排除作为子计划的单），每个计划带 subplans 嵌套进度与今日完工量；
+     * 排序：置顶恒最前 + 白名单 sort（默认 billDate 开单远→近）；keyword 模糊单号/车间、
+     * workshop 精确、dateFrom/dateTo 开单日期范围。页码越界自动回退到最后一页。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<com.uten.imp.features.production.plan.dto.PlanProgressRow> progress(
+            boolean closed, String sort, int page, int size,
+            String keyword, String workshop, java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
+        int p = Math.max(1, page);
+        int sz = Math.min(Math.max(1, size), 100);
+        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String ws = workshop == null ? "" : workshop.trim();
+        String filters = progressFilters(kw, ws, dateFrom, dateTo);
+
+        // 总数（跨全部页）
+        var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (SELECT p.id " + filters + ") t");
+        bindProgressFilters(countQ, closed, kw, ws, dateFrom, dateTo);
+        long total = ((Number) countQ.getSingleResult()).longValue();
+        int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
+        if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退（过滤后总数变少）
+
+        // 当前页数据
+        String orderBy = PROGRESS_SORT.getOrDefault(sort, PROGRESS_SORT.get("billDate"));
+        var dataQ = em.createNativeQuery("""
+                SELECT p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
+                       COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.iqty),0),
+                       MIN(i.plan_begin_date), MAX(i.plan_end_date),
+                       p.is_pinned, p.is_important
+                """ + filters + " ORDER BY p.is_pinned DESC, " + orderBy + " LIMIT :lim OFFSET :off");
+        bindProgressFilters(dataQ, closed, kw, ws, dateFrom, dateTo);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rs = (List<Object[]>) dataQ
+                .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
+                .getResultList();
+
         // 子计划嵌套进度（按父计划批量取，避免 N+1）
         List<UUID> planIds = rs.stream().map(r -> (UUID) r[0]).toList();
         Map<UUID, List<com.uten.imp.features.production.plan.dto.PlanProgressRow.SubProgress>> subsByPlan =
@@ -332,26 +394,93 @@ public class ProductionPlanService {
                                 Boolean.TRUE.equals(s[5]), t, in, pct));
             }
         }
+        // 今日完工入库量（按父计划批量取）：当日已审 FINISHED_IN 经 plan_draw_links 溯源，
+        // Σ(数量 × 换算率) 基本单位，与 iqty 口径一致（卡片「今日 +N」标注）。
+        Map<UUID, BigDecimal> todayByPlan = new java.util.HashMap<>();
+        if (!planIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> tq = em.createNativeQuery("""
+                    SELECT l.plan_id, COALESCE(SUM(i.qty * COALESCE(i.unit_rate,1)),0)
+                    FROM plan_draw_links l
+                    JOIN stock_documents d ON d.id = l.draw_id AND d.is_deleted = false
+                         AND d.status = 1 AND d.doc_type = 'FINISHED_IN'
+                         AND d.bill_date = CURRENT_DATE
+                    JOIN stock_document_items i ON i.doc_id = d.id AND i.is_deleted = false
+                    WHERE l.is_deleted = false AND l.plan_id IN (:ids)
+                    GROUP BY l.plan_id
+                    """).setParameter("ids", planIds).getResultList();
+            for (Object[] t : tq) {
+                todayByPlan.put((UUID) t[0], bd(t[1]));
+            }
+        }
         java.time.LocalDate warn = java.time.LocalDate.now().plusDays(3);
+        java.time.LocalDate today = java.time.LocalDate.now();
         List<com.uten.imp.features.production.plan.dto.PlanProgressRow> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
-            BigDecimal total = bd(r[7]);
+            BigDecimal totalQty = bd(r[7]);
             BigDecimal inbound = bd(r[8]);
-            double pct = total.signum() > 0
-                    ? inbound.divide(total, 4, java.math.RoundingMode.HALF_UP).doubleValue() : 0;
+            double pct = totalQty.signum() > 0
+                    ? inbound.divide(totalQty, 4, java.math.RoundingMode.HALF_UP).doubleValue() : 0;
             java.time.LocalDate deliver = r[3] == null ? null : ((java.sql.Date) r[3]).toLocalDate();
             out.add(new com.uten.imp.features.production.plan.dto.PlanProgressRow(
                     (UUID) r[0], (String) r[1],
                     r[2] == null ? null : ((java.sql.Date) r[2]).toLocalDate(),
                     deliver, (String) r[4], (UUID) r[5],
-                    ((Number) r[6]).intValue(), total, inbound,
+                    ((Number) r[6]).intValue(), totalQty, inbound,
                     r[9] == null ? null : ((java.sql.Date) r[9]).toLocalDate(),
                     r[10] == null ? null : ((java.sql.Date) r[10]).toLocalDate(),
                     Math.min(pct, 1.0), closed,
                     deliver != null && !deliver.isAfter(warn),
+                    deliver != null && deliver.isBefore(today),
+                    Boolean.TRUE.equals(r[11]),
+                    Boolean.TRUE.equals(r[12]),
+                    todayByPlan.getOrDefault((UUID) r[0], BigDecimal.ZERO),
                     subsByPlan.getOrDefault((UUID) r[0], List.of())));
         }
+        return new PageResponse<>(out, p, sz, total, totalPages);
+    }
+
+    /** 进度看板汇总（同过滤条件、跨全部页）：计划数 / Σ排产 / Σ已入库（顶部总览条）。 */
+    @Transactional(readOnly = true)
+    public Map<String, Object> progressSummary(boolean closed, String keyword, String workshop,
+                                               java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
+        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String ws = workshop == null ? "" : workshop.trim();
+        String filters = progressFilters(kw, ws, dateFrom, dateTo);
+        var q = em.createNativeQuery("""
+                SELECT COUNT(*), COALESCE(SUM(s.sq),0), COALESCE(SUM(s.si),0)
+                FROM (SELECT COALESCE(SUM(i.qty),0) AS sq, COALESCE(SUM(i.iqty),0) AS si
+                """ + filters + ") s");
+        bindProgressFilters(q, closed, kw, ws, dateFrom, dateTo);
+        Object[] r = (Object[]) q.getSingleResult();
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("count", ((Number) r[0]).longValue());
+        out.put("sumQty", bd(r[1]));
+        out.put("sumInbound", bd(r[2]));
         return out;
+    }
+
+    /** 进度看板车间筛选选项（同进行中/已完成口径的去重车间名，不受当前筛选影响）。 */
+    @Transactional(readOnly = true)
+    public List<Map<String, String>> progressWorkshops(boolean closed) {
+        String filters = progressFilters("", "", null, null);
+        var q = em.createNativeQuery(
+                "SELECT DISTINCT s.ws FROM (SELECT p.workshop_name AS ws " + filters
+                        + ") s WHERE s.ws IS NOT NULL AND s.ws <> '' ORDER BY s.ws");
+        bindProgressFilters(q, closed, "", "", null, null);
+        @SuppressWarnings("unchecked")
+        List<String> names = (List<String>) q.getResultList();
+        return names.stream().map(n -> Map.of("name", n)).toList();
+    }
+
+    /** 看板标记（V127）：置顶 / 重要，null 字段保持不变。 */
+    @Transactional
+    public void updateFlags(UUID id, com.uten.imp.features.production.plan.dto.PlanFlagsRequest req) {
+        tx.bind();
+        ProductionPlan p = requirePlan(id);
+        if (req.pinned() != null) p.setPinned(req.pinned());
+        if (req.important() != null) p.setImportant(req.important());
+        planRepo.save(p);
     }
 
     // ====================== is_closed 派生（CheckFulfill4 → Service） ======================

@@ -21,6 +21,10 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   SalesGridRow() {
     qty.addListener(_recalc);
     price.addListener(_recalc);
+    // 校验红标（保存时标记，用户改动任一必填内容即自动消除）。
+    goodsNotifier.addListener(_clearInvalid);
+    qty.addListener(_clearInvalid);
+    price.addListener(_clearInvalid);
   }
 
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
@@ -57,6 +61,17 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   final dieCastPrice = TextEditingController();
   final discount = TextEditingController();
 
+  /// 行备注（5 类单据通用，网格末列；空文本不随 body 提交）。
+  final remark = TextEditingController();
+
+  /// 行级校验红标：保存拦截时置 true（货品/数量/单价缺失的格变红），
+  /// 用户改货品/数量/单价即自动清除。
+  final invalidNotifier = ValueNotifier<bool>(false);
+
+  void _clearInvalid() {
+    if (invalidNotifier.value) invalidNotifier.value = false;
+  }
+
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory SalesGridRow.fromLinked(SalesLinkedItem li, GoodsOption goods) {
     final r = SalesGridRow()
@@ -87,6 +102,8 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     materialPrice.dispose();
     dieCastPrice.dispose();
     discount.dispose();
+    remark.dispose();
+    invalidNotifier.dispose();
     super.dispose();
   }
 }
@@ -100,32 +117,37 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
 }) {
+  final priceRequired = docType != SalesDocType.otherShipment;
   return [
     EditableGridColumn<SalesGridRow>(
       key: 'goods',
       label: '货品',
       width: 220,
-      cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
-        child: InputDecorator(
-          decoration: const InputDecoration(isDense: true),
-          child: Row(
-            children: [
-              Expanded(
-                child: ValueListenableBuilder<GoodsOption?>(
-                  valueListenable: row.goodsNotifier,
-                  builder: (context, g, _) => Text(
-                    g?.name ?? '点击选择',
-                    style: TextStyle(
-                      color: g == null
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.onSurface,
+      cellBuilder: (context, row) => _invalidFrame(
+        row,
+        showWhen: () => row.goods == null,
+        child: InkWell(
+          onTap: () => onPickGoods(row),
+          child: InputDecorator(
+            decoration: const InputDecoration(isDense: true),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<GoodsOption?>(
+                    valueListenable: row.goodsNotifier,
+                    builder: (context, g, _) => Text(
+                      g?.name ?? '点击选择',
+                      style: TextStyle(
+                        color: g == null
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Icon(Icons.search_rounded, size: 16),
-            ],
+                const Icon(Icons.search_rounded, size: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -149,11 +171,15 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       label: '数量',
       width: 96,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.qty,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      cellBuilder: (context, row) => _invalidFrame(
+        row,
+        showWhen: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+        child: TextField(
+          controller: row.qty,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
     EditableGridColumn<SalesGridRow>(
@@ -161,11 +187,18 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       label: '单价',
       width: 96,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.price,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      cellBuilder: (context, row) => _invalidFrame(
+        row,
+        showWhen: () =>
+            priceRequired &&
+            (row.price.text.trim().isEmpty ||
+                double.tryParse(row.price.text.trim()) == null),
+        child: TextField(
+          controller: row.price,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
     EditableGridColumn<SalesGridRow>(
@@ -199,7 +232,40 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         docType == SalesDocType.otherShipment ||
         docType == SalesDocType.returnDoc)
       _extraNumericColumn('折扣', 'discount', (r) => r.discount),
+    // 行备注：5 类单据通用，固定放网格末列。
+    EditableGridColumn<SalesGridRow>(
+      key: 'remark',
+      label: '备注',
+      width: 160,
+      cellBuilder: (context, row) => TextField(
+        controller: row.remark,
+        decoration: const InputDecoration(isDense: true, hintText: '备注'),
+      ),
+    ),
   ];
+}
+
+/// 行级校验红框：保存拦截时该行的缺失必填格外描红边（[showWhen] 判断本格是否缺失）。
+/// 仅在行 invalidNotifier 翻转时重绘外框，不重绘内部输入控件。
+Widget _invalidFrame(
+  SalesGridRow row, {
+  required bool Function() showWhen,
+  required Widget child,
+}) {
+  return ValueListenableBuilder<bool>(
+    valueListenable: row.invalidNotifier,
+    builder: (context, invalid, child) {
+      if (!invalid || !showWhen()) return child!;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).colorScheme.error, width: 1.5),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: child,
+      );
+    },
+    child: child,
+  );
 }
 
 /// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。

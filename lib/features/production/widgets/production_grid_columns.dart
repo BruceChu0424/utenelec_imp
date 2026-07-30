@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 
 /// 生产计划明细行。货品用 ValueNotifier（点选后单元格自动刷新，无需 setState）；
 /// 排产量控制器变更 → 写回 qtyNotifier（表尾合计订阅它）。

@@ -43,29 +43,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ProductionScheduleService {
 
-    private static final String PENDING_SQL = """
-            SELECT i.id, o.id, o.bill_no, o.client_id, c.name,
-                   i.goods_id, g.code, g.name, g.spec,
-                   i.color_id, col.name, i.unit_id, u.name,
-                   i.qty, COALESCE(i.reserved_qty,0), COALESCE(i.planned_qty,0),
-                   i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
-                   COALESCE(i.deliver_date, o.deliver_date) AS deliver,
-                   i.chain_status
-            FROM sales_order_items i
-            JOIN sales_orders o ON o.id = i.order_id
-            LEFT JOIN clients c ON c.id = o.client_id
-            JOIN goods g ON g.id = i.goods_id
-            LEFT JOIN colors col ON col.id = i.color_id
-            LEFT JOIN units u ON u.id = i.unit_id
-            WHERE o.is_deleted = false AND o.status = 1
-              AND o.is_closed = false AND o.is_stopped = false
-              AND i.is_deleted = false
-              AND COALESCE(i.chain_status,0) > 0 AND i.chain_status < 8
-              AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
-            ORDER BY deliver ASC NULLS LAST, o.bill_date
-            LIMIT 300
-            """;
-
     private final EntityManager em;
     private final ProductionPlanRepository planRepo;
     private final ProductionPlanItemRepository itemRepo;
@@ -74,11 +51,58 @@ public class ProductionScheduleService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
 
-    /** 待排产订单行（交货升序；urgent=距交货 ≤3 天或已逾期）。 */
+    /** 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天或已逾期）。
+     *  keyword 模糊 订单号/客户/货品名/货品编码；dateFrom/dateTo 交货日期范围（行级优先、缺省取单头）。
+     *  页码越界自动回退到最后一页。 */
     @Transactional(readOnly = true)
-    public List<PendingPlanRow> pending() {
+    public com.uten.imp.common.web.PageResponse<PendingPlanRow> pending(
+            int page, int size, String keyword, LocalDate dateFrom, LocalDate dateTo) {
+        int p = Math.max(1, page);
+        int sz = Math.min(Math.max(1, size), 100);
+        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String filters = """
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                LEFT JOIN clients c ON c.id = o.client_id
+                JOIN goods g ON g.id = i.goods_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units u ON u.id = i.unit_id
+                WHERE o.is_deleted = false AND o.status = 1
+                  AND o.is_closed = false AND o.is_stopped = false
+                  AND i.is_deleted = false
+                  AND COALESCE(i.chain_status,0) > 0 AND i.chain_status < 8
+                  AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
+                """
+                + (kw.isEmpty() ? ""
+                        : "  AND (LOWER(o.bill_no) LIKE :kw OR LOWER(COALESCE(c.name,'')) LIKE :kw"
+                          + " OR LOWER(g.name) LIKE :kw OR LOWER(g.code) LIKE :kw)\n")
+                + (dateFrom == null ? ""
+                        : "  AND COALESCE(i.deliver_date, o.deliver_date) >= :dateFrom\n")
+                + (dateTo == null ? ""
+                        : "  AND COALESCE(i.deliver_date, o.deliver_date) <= :dateTo\n");
+
+        var countQ = em.createNativeQuery("SELECT COUNT(*) " + filters);
+        bindPendingFilters(countQ, kw, dateFrom, dateTo);
+        long total = ((Number) countQ.getSingleResult()).longValue();
+        int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
+        if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退
+
+        var dataQ = em.createNativeQuery("""
+                SELECT i.id, o.id, o.bill_no, o.client_id, c.name,
+                       i.goods_id, g.code, g.name, g.spec,
+                       i.color_id, col.name, i.unit_id, u.name,
+                       i.qty, COALESCE(i.reserved_qty,0), COALESCE(i.planned_qty,0),
+                       i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
+                       COALESCE(i.deliver_date, o.deliver_date) AS deliver,
+                       i.chain_status
+                """ + filters
+                + " ORDER BY deliver ASC NULLS LAST, o.bill_date LIMIT :lim OFFSET :off");
+        bindPendingFilters(dataQ, kw, dateFrom, dateTo);
         @SuppressWarnings("unchecked")
-        List<Object[]> rs = em.createNativeQuery(PENDING_SQL).getResultList();
+        List<Object[]> rs = (List<Object[]>) dataQ
+                .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
+                .getResultList();
+
         LocalDate warn = LocalDate.now().plusDays(3);
         List<PendingPlanRow> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
@@ -91,7 +115,15 @@ public class ProductionScheduleService {
                     deliver, r[18] == null ? null : ((Number) r[18]).shortValue(),
                     deliver != null && !deliver.isAfter(warn)));
         }
-        return out;
+        return new com.uten.imp.common.web.PageResponse<>(out, p, sz, total, totalPages);
+    }
+
+    /** 绑定 pending 过滤参数（未出现的条件不绑）。 */
+    private static void bindPendingFilters(jakarta.persistence.Query q, String kw,
+                                           LocalDate dateFrom, LocalDate dateTo) {
+        if (!kw.isEmpty()) q.setParameter("kw", "%" + kw + "%");
+        if (dateFrom != null) q.setParameter("dateFrom", dateFrom);
+        if (dateTo != null) q.setParameter("dateTo", dateTo);
     }
 
     /**
@@ -223,7 +255,8 @@ public class ProductionScheduleService {
     /** 缺料待备料计数（PMC 采购管理徽标）：链路行状态=3 待物料（计划已审但 BOM 净需求不足）的行数。 */
     @Transactional(readOnly = true)
     public Map<String, Long> shortageCount() {
-        Object[] r = (Object[]) em.createNativeQuery("""
+        // 单列原生查询返回标量（Long），不能当 Object[] 强转（多列才返回 Object[]）。
+        Number n = (Number) em.createNativeQuery("""
                 SELECT COUNT(*)
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
@@ -231,15 +264,16 @@ public class ProductionScheduleService {
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false AND i.chain_status = 3
                 """).getSingleResult();
-        return Map.of("count", ((Number) r[0]).longValue());
+        return Map.of("count", n.longValue());
     }
 
-    /** 待排产计数（生产部工作台徽标）：待排产行数 + 其中紧急（交货 ≤3 天/已逾期）行数。口径同 PENDING_SQL。 */
+    /** 待排产计数（生产部工作台徽标）：待排产行数 + 其中紧急（交货 ≤3 天/含逾期）+ 已逾期（交货 < 今天）行数。口径同 PENDING_SQL。 */
     @Transactional(readOnly = true)
     public Map<String, Long> pendingCount() {
         Object[] r = (Object[]) em.createNativeQuery("""
                 SELECT COUNT(*),
-                       COUNT(*) FILTER (WHERE COALESCE(i.deliver_date, o.deliver_date) <= CURRENT_DATE + 3)
+                       COUNT(*) FILTER (WHERE COALESCE(i.deliver_date, o.deliver_date) <= CURRENT_DATE + 3),
+                       COUNT(*) FILTER (WHERE COALESCE(i.deliver_date, o.deliver_date) < CURRENT_DATE)
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE o.is_deleted = false AND o.status = 1
@@ -249,7 +283,8 @@ public class ProductionScheduleService {
                   AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
                 """).getSingleResult();
         return Map.of("count", ((Number) r[0]).longValue(),
-                "urgent", ((Number) r[1]).longValue());
+                "urgent", ((Number) r[1]).longValue(),
+                "overdue", ((Number) r[2]).longValue());
     }
 
     // ======================== 新建计划单：从订单带明细（含 BOM 零件） ========================

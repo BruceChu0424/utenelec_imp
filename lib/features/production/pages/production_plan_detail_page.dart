@@ -18,12 +18,14 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_status_badge.dart';
 import '../widgets/progress_ring.dart';
 import '../widgets/subplan_split_sheet.dart';
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../core/router/nav_helpers.dart';
 import 'production_plan_list_page.dart' show ProductionPerm;
 
 class ProductionPlanDetailPage extends ConsumerStatefulWidget {
@@ -76,6 +78,7 @@ class _ProductionPlanDetailPageState
         _detail = d;
         _loading = false;
       });
+      _loadSubplans();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -133,6 +136,19 @@ class _ProductionPlanDetailPageState
       if (mounted) context.appError('操作失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// 子任务（子计划）随详情打开直接加载展示；MRP 物料需求仍按需手动展开。
+  Future<void> _loadSubplans() async {
+    try {
+      final subs = await ref
+          .read(productionPlanRepositoryProvider)
+          .mrpSubplans(widget.id);
+      if (!mounted) return;
+      setState(() => _subplans = subs);
+    } catch (_) {
+      // 子任务区加载失败不打扰主详情（保持空白即可）
     }
   }
 
@@ -395,7 +411,7 @@ class _ProductionPlanDetailPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('子计划进度（${subs.length} 张）',
+            Text('子任务 · 子计划（${subs.length} 张）',
                 style: theme.textTheme.titleSmall
                     ?.copyWith(fontWeight: FontWeight.w600)),
             const SizedBox(height: UtenSpacing.s4),
@@ -668,7 +684,9 @@ class _ProductionPlanDetailPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '生产计划单详情',
-        showBackButton: true,
+        leading: UtenBackButton(
+          onPressed: () => popOrBackTo(context, defaultPath: RouteName.production),
+        ),
         actions: [
           UtenButton(
             type: UtenButtonType.tonal,
@@ -694,6 +712,8 @@ class _ProductionPlanDetailPageState
                             _itemsCard(theme, names),
                             const SizedBox(height: UtenSpacing.s12),
                             _mrpCard(theme, names),
+                            if (_subplans != null && _subplans!.isNotEmpty)
+                              const SizedBox(height: UtenSpacing.s12),
                             _subplansCard(theme),
                           ],
                         ),

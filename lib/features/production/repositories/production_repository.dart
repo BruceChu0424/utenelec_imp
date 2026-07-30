@@ -117,11 +117,65 @@ class ProductionPlanRepository {
     return ProductionPlanDetail.fromJson(json);
   }
 
-  /// 生产进度看板：closed=false 进行中（默认）/ closed=true 已完成；父计划带子计划嵌套进度。
-  Future<List<PlanProgressRow>> planProgress({bool closed = false}) async {
-    final list = await api.getList('/production/plans/progress',
+  /// 生产进度看板（服务端分页）：closed=false 进行中（默认）/ true 已完成。
+  /// sort=billDate|billDateDesc|deliveryDate|progress；dateFrom/dateTo 开单日期范围。
+  Future<PagedResult<PlanProgressRow>> planProgress({
+    bool closed = false,
+    String sort = 'billDate',
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+    String workshop = '',
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await api.get('/production/plans/progress', query: {
+      'closed': closed,
+      'sort': sort,
+      'page': page,
+      'size': size,
+      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (workshop.isNotEmpty) 'workshop': workshop,
+      'dateFrom': ?dateFrom,
+      'dateTo': ?dateTo,
+    }); // ENDPOINT
+    return PagedResult.fromJson(json, PlanProgressRow.fromJson);
+  }
+
+  /// 进度看板汇总（同过滤、跨全部页）：{count, sumQty, sumInbound}。
+  Future<Map<String, dynamic>> planProgressSummary({
+    bool closed = false,
+    String keyword = '',
+    String workshop = '',
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    return api.get('/production/plans/progress/summary', query: {
+      'closed': closed,
+      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      if (workshop.isNotEmpty) 'workshop': workshop,
+      'dateFrom': ?dateFrom,
+      'dateTo': ?dateTo,
+    }); // ENDPOINT
+  }
+
+  /// 进度看板车间筛选选项（去重车间名，不受当前筛选影响）。
+  Future<List<String>> planProgressWorkshops({bool closed = false}) async {
+    final list = await api.getList('/production/plans/progress/workshops',
         query: {'closed': closed}); // ENDPOINT
-    return list.map(PlanProgressRow.fromJson).toList();
+    return [
+      for (final e in list)
+        if (e['name'] is String) e['name'] as String,
+    ];
+  }
+
+  /// 看板标记（V127）：置顶 / 重要；传 null 的字段保持不变。
+  Future<void> updatePlanFlags(String id,
+      {bool? pinned, bool? important}) async {
+    await api.post('/production/plans/$id/flags', body: {
+      'pinned': ?pinned,
+      'important': ?important,
+    }); // ENDPOINT
   }
 
   // ───────────────────────── MRP-lite（物料需求 → 采购申请） ─────────────────────────
@@ -187,18 +241,31 @@ class ProductionPlanRepository {
 
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
 
-  /// 待排产订单行（交货升序，urgent=距交货 ≤3 天）。
-  Future<List<SchedulePendingRow>> schedulePending() async {
-    final list = await api.getList('/production/schedule/pending'); // ENDPOINT
-    return list.map(SchedulePendingRow.fromJson).toList();
+  /// 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天；dateFrom/dateTo 交货日期范围）。
+  Future<PagedResult<SchedulePendingRow>> schedulePending({
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await api.get('/production/schedule/pending', query: {
+      'page': page,
+      'size': size,
+      if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      'dateFrom': ?dateFrom,
+      'dateTo': ?dateTo,
+    }); // ENDPOINT
+    return PagedResult.fromJson(json, SchedulePendingRow.fromJson);
   }
 
-  /// 待排产计数（生产部工作台徽标）：{'count': n, 'urgent': m}。
+  /// 待排产计数（生产部工作台徽标）：{'count': n, 'urgent': m, 'overdue': k}。
   Future<Map<String, int>> schedulePendingCount() async {
     final json = await api.get('/production/schedule/pending-count'); // ENDPOINT
     return {
       'count': (json['count'] as num?)?.toInt() ?? 0,
       'urgent': (json['urgent'] as num?)?.toInt() ?? 0,
+      'overdue': (json['overdue'] as num?)?.toInt() ?? 0,
     };
   }
 
@@ -407,6 +474,10 @@ class PlanProgressRow {
     this.percent = 0,
     this.closed = false,
     this.urgent = false,
+    this.overdue = false,
+    this.pinned = false,
+    this.important = false,
+    this.todayQty,
     this.subplans = const [],
   });
   final String planId;
@@ -423,6 +494,10 @@ class PlanProgressRow {
   final double percent;
   final bool closed;
   final bool urgent;
+  final bool overdue;
+  final bool pinned;
+  final bool important;
+  final double? todayQty;
   final List<SubPlanProgress> subplans;
 
   factory PlanProgressRow.fromJson(Map<String, dynamic> j) => PlanProgressRow(
@@ -440,10 +515,37 @@ class PlanProgressRow {
         percent: (j['percent'] as num?)?.toDouble() ?? 0,
         closed: j['closed'] == true,
         urgent: j['urgent'] == true,
+        overdue: j['overdue'] == true,
+        pinned: j['pinned'] == true,
+        important: j['important'] == true,
+        todayQty: (j['todayQty'] as num?)?.toDouble(),
         subplans: [
           for (final s in (j['subplans'] as List? ?? const []))
             SubPlanProgress.fromJson(s as Map<String, dynamic>),
         ],
+      );
+
+  /// 看板标记本地乐观更新用（置顶/重要）。
+  PlanProgressRow copyWith({bool? pinned, bool? important}) => PlanProgressRow(
+        planId: planId,
+        billNo: billNo,
+        billDate: billDate,
+        deliveryDate: deliveryDate,
+        workshopName: workshopName,
+        departmentId: departmentId,
+        lineCount: lineCount,
+        totalQty: totalQty,
+        inboundQty: inboundQty,
+        planBeginDate: planBeginDate,
+        planEndDate: planEndDate,
+        percent: percent,
+        closed: closed,
+        urgent: urgent,
+        overdue: overdue,
+        pinned: pinned ?? this.pinned,
+        important: important ?? this.important,
+        todayQty: todayQty,
+        subplans: subplans,
       );
 }
 

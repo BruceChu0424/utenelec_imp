@@ -22,5 +22,6 @@ public record GoodsQueryFilter(
         String cNumber,
         String requireRemark,
         Integer colorLegacyId,
-        Integer unitLegacyId) {
+        Integer unitLegacyId,
+        String sourceType) {
 }

@@ -24,7 +24,7 @@ import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
 import '../providers/subcontract_providers.dart';
-import '../../../features/purchase/providers/master_name_provider.dart' as mn;
+import '../../../shared/providers/master_name_provider.dart' as mn;
 
 /// 上游引入回填项：货品 + 本次数量 + 单价(可空) + 上游明细 id + 颜色/单位。
 /// [upstreamItemId] 由编辑页按 cfg 映射为对应 *ItemId 字段。

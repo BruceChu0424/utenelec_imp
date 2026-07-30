@@ -36,6 +36,7 @@ class UtenDropdownField extends StatefulWidget {
     this.enabled = true,
     this.hintText,
     this.searchable,
+    this.errorText,
   });
 
   /// 标签（表头字段用；grid 单元格可不传，由列头标识列）。
@@ -55,6 +56,9 @@ class UtenDropdownField extends StatefulWidget {
 
   /// 弹层是否带搜索框（输入实时过滤选项）。null=自动（选项 ≥4 个时启用）。
   final bool? searchable;
+
+  /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
+  final String? errorText;
 
   @override
   State<UtenDropdownField> createState() => _UtenDropdownFieldState();
@@ -117,6 +121,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 ? null
                 : (widget.required ? '${widget.label} *' : widget.label),
             hintText: widget.hintText,
+            errorText: widget.errorText,
             suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
           ),
           child: Text(

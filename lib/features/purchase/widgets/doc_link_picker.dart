@@ -24,7 +24,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
-import '../providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/purchase_repository.dart';
 
 /// 上游引入回填项：货品 + 本次数量 + 单价 + 上游明细 id（用于回写 *ItemId）+

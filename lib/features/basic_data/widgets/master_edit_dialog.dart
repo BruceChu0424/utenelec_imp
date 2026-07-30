@@ -34,6 +34,14 @@ const List<MasterSelectOption> kMasterStatusOptions = [
   MasterSelectOption(value: '禁用', label: '禁用'),
 ];
 
+/// 货品「来源」字段固定选项（自制/采购/委外），对应 goods.source_type（V128）。
+/// 值域与移植脚本 import_product_lists.py 的「产品角色」映射一致（自制件/外购件/委外件）。
+const List<MasterSelectOption> kGoodsSourceTypeOptions = [
+  MasterSelectOption(value: '自制', label: '自制'),
+  MasterSelectOption(value: '采购', label: '采购'),
+  MasterSelectOption(value: '委外', label: '委外'),
+];
+
 /// 主档字段定义。
 class MasterFieldDef {
   const MasterFieldDef({

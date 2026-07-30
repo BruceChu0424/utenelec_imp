@@ -22,7 +22,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../widgets/stock_grid_columns.dart';

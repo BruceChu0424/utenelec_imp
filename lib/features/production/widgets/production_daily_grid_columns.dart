@@ -6,7 +6,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../purchase/providers/master_name_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
 /// 完工量/单价控制器变更 → 自动重算金额（amountNotifier）。颜色/单位为透传（自动回填）。

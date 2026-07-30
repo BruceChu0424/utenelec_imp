@@ -25,7 +25,7 @@ import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
 import '../repositories/subcontract_repository.dart';
-import '../../../features/purchase/providers/master_name_provider.dart' as mn;
+import '../../../shared/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocListPage extends ConsumerStatefulWidget {
   const SubcontractDocListPage({super.key, required this.docType});

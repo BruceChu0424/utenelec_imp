@@ -63,6 +63,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onPageChange,
     this.toolbarActions,
     this.embedded = false,
+    this.rowColor,
   });
 
   final List<MasterColumnDef<T>> columns;
@@ -80,6 +81,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 嵌入模式：用于详情页 ListView 等无界高度场景（单据明细只读表）。
   /// 不渲染翻页条、不用 Expanded 撑满，表体按内容收缩。
   final bool embedded;
+
+  /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
+  /// 单击选中时组件自动把该色加深加亮（提高不透明度），无底色行维持原 primary 高亮。
+  final Color? Function(T item)? rowColor;
 
   /// 当前排序的列 key（与 MasterColumnDef.key 对齐）；null = 不排序（用后端默认顺序）。
   final String? sortColumn;
@@ -587,6 +592,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
 
   Widget _buildDataRow(ThemeData theme, T item) {
     final selected = identical(item, _selectedItem);
+    // 行底色：调用方可按行数据着色（货品按状态）；单击选中把当前色加深加亮。
+    final base = widget.rowColor?.call(item);
+    final Color rowBg;
+    if (selected) {
+      rowBg = base != null
+          ? base.withValues(alpha: (base.a + 0.22).clamp(0.0, 0.5))
+          : theme.colorScheme.primary.withValues(alpha: 0.10);
+    } else {
+      rowBg = base ?? Colors.transparent;
+    }
     return InkWell(
       onTap: () {
         // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。
@@ -603,9 +618,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           ),
         ),
         child: ColoredBox(
-        color: selected
-            ? theme.colorScheme.primary.withValues(alpha: 0.10)
-            : Colors.transparent,
+        color: rowBg,
         child: Row(
           children: [
             for (final i in _visibleIndices)
@@ -749,6 +762,9 @@ class _FilterCellState extends State<_FilterCell> {
   final LayerLink _link = LayerLink();
   OverlayEntry? _overlay;
 
+  /// 菜单内搜索框（选项多时启用，输入实时过滤 bucket 列表）。
+  TextEditingController? _searchCtl;
+
   /// 切换分类后旧选中值可能不在新 facet：sanitize 退回"所有"。
   String? get _sanitized {
     final validValues = <String>{for (final b in widget.buckets) b.value};
@@ -761,6 +777,7 @@ class _FilterCellState extends State<_FilterCell> {
 
   void _open() {
     if (_overlay != null) return;
+    _searchCtl = TextEditingController();
     _overlay = OverlayEntry(builder: _buildOverlay);
     Overlay.of(context, rootOverlay: true).insert(_overlay!);
   }
@@ -768,6 +785,8 @@ class _FilterCellState extends State<_FilterCell> {
   void _close() {
     _overlay?.remove();
     _overlay = null;
+    _searchCtl?.dispose();
+    _searchCtl = null;
   }
 
   void _select(String? value) {
@@ -892,6 +911,8 @@ class _FilterCellState extends State<_FilterCell> {
     final theme = Theme.of(ctx);
     final sanitized = _sanitized;
     final hasFacets = widget.buckets.isNotEmpty || widget.nullCount > 0;
+    // 选项较多时菜单顶部出搜索框（客户等长列表快速定位）。
+    final searchable = widget.buckets.length >= 6;
     return Stack(
       children: [
         // 点菜单外空白关闭（兜底；TapRegion 是主机制）。
@@ -914,63 +935,153 @@ class _FilterCellState extends State<_FilterCell> {
               clipBehavior: Clip.antiAlias,
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 360, maxWidth: 300),
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  children: <Widget>[
-                    if (widget.sortable) ...[
-                      _menuItem(
-                        ctx,
-                        label: _sortAscLabel,
-                        isSelected: widget.sortActive && widget.sortAscending,
-                        onTap: () => _sortSelect(widget.sortKey, true),
-                        theme: theme,
-                      ),
-                      _menuItem(
-                        ctx,
-                        label: _sortDescLabel,
-                        isSelected: widget.sortActive && !widget.sortAscending,
-                        onTap: () => _sortSelect(widget.sortKey, false),
-                        theme: theme,
-                      ),
-                      _menuItem(
-                        ctx,
-                        label: '取消排序', // TODO(l10n): 补 arb
-                        isSelected: !widget.sortActive,
-                        onTap: () => _sortSelect(null, true),
-                        theme: theme,
-                      ),
-                      if (hasFacets) const Divider(height: 1, thickness: 1),
-                    ],
-                    if (hasFacets) ...[
-                      _menuItem(
-                        ctx,
-                        label: '所有', // TODO(l10n): 补 arb
-                        isSelected: sanitized == null,
-                        onTap: () => _select(null),
-                        theme: theme,
-                      ),
-                      if (widget.nullCount > 0)
-                        _menuItem(
-                          ctx,
-                          label: '空值 (${widget.nullCount})', // TODO(l10n): 补 arb
-                          isSelected: sanitized == kMasterFilterNullValue,
-                          onTap: () => _select(kMasterFilterNullValue),
-                          theme: theme,
+                child: StatefulBuilder(
+                  builder: (ctx, setOverlayState) {
+                    final q =
+                        _searchCtl?.text.trim().toLowerCase() ?? '';
+                    final buckets = q.isEmpty
+                        ? widget.buckets
+                        : widget.buckets
+                            .where(
+                              (b) => b.display.toLowerCase().contains(q),
+                            )
+                            .toList();
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (searchable && hasFacets)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                            ),
+                            child: TextField(
+                              controller: _searchCtl,
+                              autofocus: true,
+                              style: theme.textTheme.bodyMedium,
+                              decoration: InputDecoration(
+                                isDense: true,
+                                hintText: '输入关键字搜索',
+                                prefixIcon: const Icon(
+                                  Icons.search_rounded,
+                                  size: 18,
+                                ),
+                                prefixIconConstraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
+                                suffixIcon: q.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(
+                                          Icons.close_rounded,
+                                          size: 16,
+                                        ),
+                                        onPressed: () {
+                                          _searchCtl!.clear();
+                                          setOverlayState(() {});
+                                        },
+                                      ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                contentPadding:
+                                    const EdgeInsets.symmetric(
+                                  horizontal: UtenSpacing.s8,
+                                  vertical: UtenSpacing.s8,
+                                ),
+                              ),
+                              onChanged: (_) => setOverlayState(() {}),
+                            ),
+                          ),
+                        Flexible(
+                          child: ListView(
+                            shrinkWrap: true,
+                            padding: EdgeInsets.zero,
+                            children: <Widget>[
+                              if (widget.sortable) ...[
+                                _menuItem(
+                                  ctx,
+                                  label: _sortAscLabel,
+                                  isSelected:
+                                      widget.sortActive && widget.sortAscending,
+                                  onTap: () =>
+                                      _sortSelect(widget.sortKey, true),
+                                  theme: theme,
+                                ),
+                                _menuItem(
+                                  ctx,
+                                  label: _sortDescLabel,
+                                  isSelected:
+                                      widget.sortActive && !widget.sortAscending,
+                                  onTap: () =>
+                                      _sortSelect(widget.sortKey, false),
+                                  theme: theme,
+                                ),
+                                _menuItem(
+                                  ctx,
+                                  label: '取消排序', // TODO(l10n): 补 arb
+                                  isSelected: !widget.sortActive,
+                                  onTap: () => _sortSelect(null, true),
+                                  theme: theme,
+                                ),
+                                if (hasFacets)
+                                  const Divider(height: 1, thickness: 1),
+                              ],
+                              if (hasFacets) ...[
+                                _menuItem(
+                                  ctx,
+                                  label: '所有', // TODO(l10n): 补 arb
+                                  isSelected: sanitized == null,
+                                  onTap: () => _select(null),
+                                  theme: theme,
+                                ),
+                                if (widget.nullCount > 0)
+                                  _menuItem(
+                                    ctx,
+                                    label:
+                                        '空值 (${widget.nullCount})', // TODO(l10n): 补 arb
+                                    isSelected:
+                                        sanitized == kMasterFilterNullValue,
+                                    onTap: () =>
+                                        _select(kMasterFilterNullValue),
+                                    theme: theme,
+                                  ),
+                                const Divider(height: 1, thickness: 1),
+                                for (final b in buckets)
+                                  _menuItem(
+                                    ctx,
+                                    label: b.count > 0
+                                        ? '${b.display} (${b.count})'
+                                        : b.display,
+                                    isSelected: sanitized == b.value,
+                                    onTap: () => _select(b.value),
+                                    theme: theme,
+                                  ),
+                                if (buckets.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: UtenSpacing.s12,
+                                      vertical: UtenSpacing.s12,
+                                    ),
+                                    child: Text(
+                                      '无匹配项',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                        color: theme
+                                            .colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ],
+                          ),
                         ),
-                      const Divider(height: 1, thickness: 1),
-                      for (final b in widget.buckets)
-                        _menuItem(
-                          ctx,
-                          label: b.count > 0
-                              ? '${b.display} (${b.count})'
-                              : b.display,
-                          isSelected: sanitized == b.value,
-                          onTap: () => _select(b.value),
-                          theme: theme,
-                        ),
-                    ],
-                  ],
+                      ],
+                    );
+                  },
                 ),
               ),
             ),

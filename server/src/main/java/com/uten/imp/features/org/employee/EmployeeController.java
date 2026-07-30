@@ -16,7 +16,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EmployeeController {
 
-    private final EmployeeService service;
+    private final EmployeeQueryService queryService;
+    private final EmployeeOnboardingService onboardingService;
+    private final EmployeeCommandService commandService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
@@ -27,54 +29,60 @@ public class EmployeeController {
             @RequestParam(required = false) Set<String> statuses,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(defaultValue = "false") boolean includeSubtree) {
-        return service.list(page, size, search, statuses, departmentId, includeSubtree);
+        return queryService.list(page, size, search, statuses, departmentId, includeSubtree);
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:view')")
     public EmployeeDetail detail(@PathVariable UUID id) {
-        return service.detail(id);
+        return queryService.detail(id);
     }
 
     @GetMapping("/{id}/history")
     @PreAuthorize("hasAuthority('employee:view')")
     public List<NestedDtos.EmploymentHistoryDto> history(@PathVariable UUID id) {
-        return service.history(id);
+        return commandService.history(id);
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('employee:create')")
     public EmployeeDetail onboard(@Valid @RequestBody OnboardingRequest req) {
-        return service.onboard(req);
+        return onboardingService.onboard(req);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:edit')")
-    public EmployeeDetail update(@PathVariable UUID id, @RequestBody UpdateEmployeeRequest req) {
-        return service.update(id, req);
+    public EmployeeDetail update(@PathVariable UUID id, @Valid @RequestBody UpdateEmployeeRequest req) {
+        return commandService.update(id, req);
     }
 
     @PostMapping("/{id}/transfer")
     @PreAuthorize("hasAuthority('employee:edit')")
     public void transfer(@PathVariable UUID id, @Valid @RequestBody TransferRequest req) {
-        service.transfer(id, req);
+        commandService.transfer(id, req);
     }
 
     @PostMapping("/{id}/offboard")
     @PreAuthorize("hasAuthority('employee:edit')")
     public void offboard(@PathVariable UUID id, @Valid @RequestBody OffboardRequest req) {
-        service.offboard(id, req);
+        commandService.offboard(id, req);
     }
 
     @PostMapping("/{id}/confirm")
     @PreAuthorize("hasAuthority('employee:edit')")
     public void confirm(@PathVariable UUID id) {
-        service.confirm(id);
+        commandService.confirm(id);
+    }
+
+    @PostMapping("/{id}/rehire")
+    @PreAuthorize("hasAuthority('employee:edit')")
+    public void rehire(@PathVariable UUID id) {
+        commandService.rehire(id);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:delete')")
     public void delete(@PathVariable UUID id) {
-        service.delete(id);
+        commandService.delete(id);
     }
 }

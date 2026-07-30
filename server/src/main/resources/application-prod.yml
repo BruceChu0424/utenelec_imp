@@ -3,13 +3,17 @@ server:
   ssl:
     enabled: ${UTEN_SSL_ENABLED:false}   # 由反向代理终结 TLS 时保持 false 并配 X-Forwarded-Proto
 
-spring:
-  jpa:
-    show-sql: false
-
 uten:
   security:
     require-https: ${UTEN_REQUIRE_HTTPS:true}
+    swagger-enabled: false
+
+# 生产关闭 OpenAPI 文档与 swagger-ui（端点不注册 → 404；配合上方白名单关闭双重保险）
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 
 logging:
   level:

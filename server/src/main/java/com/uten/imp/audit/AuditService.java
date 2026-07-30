@@ -1,6 +1,5 @@
 package com.uten.imp.audit;
 
-import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -19,25 +18,12 @@ import java.util.UUID;
 public class AuditService {
 
     private final AuditLogRepository repo;
-    private final SecurityContextCurrentUser currentUser;
 
-    public AuditService(AuditLogRepository repo, SecurityContextCurrentUser currentUser) {
+    public AuditService(AuditLogRepository repo) {
         this.repo = repo;
-        this.currentUser = currentUser;
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void log(String action, String targetType, String targetId, String result) {
-        AuditLog a = base(action, targetType, targetId, result);
-        currentUser.get().ifPresent(u -> {
-            a.setActorId(u.getId());
-            a.setActorAccount(u.getLoginAccount());
-        });
-        fillRequest(a);
-        repo.save(a);
-    }
-
-    /** 显式指定操作人（用于登录/改密等 SecurityContext 尚未或无法建立的场景）。 */
+    /** 显式指定操作人（登录/改密/logout 等场景；actor 由调用方给出）。 */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void logExplicit(UUID actorId, String actorAccount, String action,
                             String targetType, String targetId, String result) {
@@ -76,9 +62,5 @@ public class AuditService {
             return xff.split(",")[0].trim();
         }
         return req.getRemoteAddr();
-    }
-
-    public UUID currentUserIdOrSystem() {
-        return currentUser.id().orElse(null);
     }
 }

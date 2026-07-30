@@ -54,23 +54,31 @@ class _UtenButtonState extends State<UtenButton> {
   }
 
   EdgeInsetsGeometry get _padding => switch (widget.size) {
-        UtenButtonSize.small =>
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        UtenButtonSize.medium =>
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        UtenButtonSize.large =>
-          const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      };
+    UtenButtonSize.small => const EdgeInsets.symmetric(
+      horizontal: 14,
+      vertical: 8,
+    ),
+    UtenButtonSize.medium => const EdgeInsets.symmetric(
+      horizontal: 18,
+      vertical: 12,
+    ),
+    UtenButtonSize.large => const EdgeInsets.symmetric(
+      horizontal: 22,
+      vertical: 16,
+    ),
+  };
 
-  double get _iconSize =>
-      widget.size == UtenButtonSize.small ? 14 : (widget.size == UtenButtonSize.large ? 18 : 16);
+  double get _iconSize => widget.size == UtenButtonSize.small
+      ? 16
+      : (widget.size == UtenButtonSize.large ? 20 : 18);
 
   TextStyle get _textStyle => TextStyle(
-        fontSize:
-            widget.size == UtenButtonSize.small ? 12 : (widget.size == UtenButtonSize.large ? 15 : 13),
-        fontWeight: FontWeight.w600,
-        height: 1.2,
-      );
+    fontSize: widget.size == UtenButtonSize.small
+        ? 13
+        : (widget.size == UtenButtonSize.large ? 16 : 14),
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -78,8 +86,12 @@ class _UtenButtonState extends State<UtenButton> {
     final isDark = theme.brightness == Brightness.dark;
 
     final (bg, fg, borderColor) = _resolveColors(isDark);
-    final disabledBg = isDark ? UtenColors.darkSurfaceHigh : UtenColors.slate200;
-    final disabledFg = isDark ? UtenColors.darkTextTertiary : UtenColors.slate400;
+    final disabledBg = isDark
+        ? UtenColors.darkSurfaceHigh
+        : UtenColors.slate200;
+    final disabledFg = isDark
+        ? UtenColors.darkTextTertiary
+        : UtenColors.slate400;
 
     // 按下/悬停反馈：仅改透明度，无 layout 变换
     double opacity = 1.0;
@@ -109,21 +121,19 @@ class _UtenButtonState extends State<UtenButton> {
           decoration: BoxDecoration(
             color: _isEnabled ? bg : disabledBg,
             borderRadius: BorderRadius.circular(10),
-            border: borderColor != null
-                ? Border.all(color: borderColor)
-                : null,
+            border: borderColor != null ? Border.all(color: borderColor) : null,
           ),
           foregroundDecoration: _isEnabled
               ? BoxDecoration(
-                  color: Colors.white.withValues(alpha: opacity - 1.0 + 0.0001 <= -0.001 ? 0 : 0),
+                  color: Colors.white.withValues(
+                    alpha: opacity - 1.0 + 0.0001 <= -0.001 ? 0 : 0,
+                  ),
                 )
               : null,
           child: Opacity(
             opacity: _isEnabled ? opacity : 1.0,
             child: DefaultTextStyle.merge(
-              style: _textStyle.copyWith(
-                color: _isEnabled ? fg : disabledFg,
-              ),
+              style: _textStyle.copyWith(color: _isEnabled ? fg : disabledFg),
               child: Row(
                 mainAxisSize: widget.isExpanded
                     ? MainAxisSize.max
@@ -138,15 +148,20 @@ class _UtenButtonState extends State<UtenButton> {
                         height: _iconSize,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor:
-                              AlwaysStoppedAnimation(_isEnabled ? fg : disabledFg),
+                          valueColor: AlwaysStoppedAnimation(
+                            _isEnabled ? fg : disabledFg,
+                          ),
                         ),
                       ),
                     )
                   else if (widget.icon != null)
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
-                      child: Icon(widget.icon, size: _iconSize),
+                      child: Icon(
+                        widget.icon,
+                        size: _iconSize,
+                        color: _isEnabled ? fg : disabledFg,
+                      ),
                     ),
                   widget.child,
                 ],
@@ -161,36 +176,32 @@ class _UtenButtonState extends State<UtenButton> {
   /// 返回 (背景色, 文字色, 边框色)
   (Color, Color, Color?) _resolveColors(bool isDark) {
     return switch (widget.type) {
-      // 主按钮：实心深绿（浅色）/ 青绿（深色）
-      UtenButtonType.primary => isDark
-          ? (UtenColors.teal500, UtenColors.teal950, null)
-          : (UtenColors.primary, Colors.white, null),
+      // 主按钮：浅色 / 深色都用 teal500（青绿），统一品牌。
+      // 背景是品牌绿，文字/icon 统一用白色，保证品牌色背景下的视觉一致性。
+      UtenButtonType.primary =>
+        (UtenColors.teal500, Colors.white, null),
       // 次要按钮：浅灰背景 + 深文字（类似 macOS / Linear 的次按钮）
-      UtenButtonType.secondary => isDark
-          ? (UtenColors.darkSurfaceLow, UtenColors.darkTextPrimary, null)
-          : (UtenColors.surfaceMid, UtenColors.textPrimary, null),
+      UtenButtonType.secondary =>
+        isDark
+            ? (UtenColors.darkSurfaceLow, UtenColors.darkTextPrimary, null)
+            : (UtenColors.surfaceMid, UtenColors.textPrimary, null),
+      // 品牌色调实心按钮：深绿底（teal700）+ 白字。
+      // 原为浅青绿底深绿字，现场反馈"按钮看不见"，统一改为深绿实心白字（2026-07）。
+      UtenButtonType.tonal => isDark
+          ? (UtenColors.teal600, Colors.white, null)
+          : (UtenColors.teal700, Colors.white, null),
       // 幽灵按钮：透明 + 细边框
       UtenButtonType.ghost => (
-          Colors.transparent,
-          isDark ? UtenColors.darkTextPrimary : UtenColors.textPrimary,
-          isDark ? UtenColors.darkBorderStrong : UtenColors.borderStrong,
-        ),
+        Colors.transparent,
+        isDark ? UtenColors.darkTextPrimary : UtenColors.textPrimary,
+        isDark ? UtenColors.darkBorderStrong : UtenColors.borderStrong,
+      ),
       // 危险按钮：实心红
-      UtenButtonType.danger =>
-        (UtenColors.error, Colors.white, null),
+      UtenButtonType.danger => (UtenColors.error, Colors.white, null),
     };
   }
 }
 
-enum UtenButtonType {
-  primary,
-  secondary,
-  ghost,
-  danger,
-}
+enum UtenButtonType { primary, secondary, tonal, ghost, danger }
 
-enum UtenButtonSize {
-  small,
-  medium,
-  large,
-}
+enum UtenButtonSize { small, medium, large }

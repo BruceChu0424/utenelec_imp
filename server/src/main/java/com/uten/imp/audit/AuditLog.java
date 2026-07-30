@@ -16,7 +16,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * 审计日志。数据变更由 DB 触发器写入；登录/改密等事件由 AuthService 显式写入。
+ * 审计日志。数据变更由 DB 触发器写入；登录/改密等事件由 auth 包各 Service 显式写入。
  * before/after 为 jsonb；数据变更场景下敏感列已是密文，审计不含明文 PII。
  */
 @Getter

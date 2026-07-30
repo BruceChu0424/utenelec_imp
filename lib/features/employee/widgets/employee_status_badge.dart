@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 
 class EmployeeStatusBadge extends StatelessWidget {
   const EmployeeStatusBadge({
@@ -18,22 +19,23 @@ class EmployeeStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return UtenStatusBadge(label: _label, type: _type, size: size);
+    final l10n = AppLocalizations.of(context);
+    return UtenStatusBadge(label: _label(l10n), type: _type, size: size);
   }
 
-  String get _label => const {
-        'active': '在职',
-        'probation': '试用',
-        'onLeave': '休假',
-        'resigned': '离职',
-      }[status ?? ''] ??
-      '未知';
+  String _label(AppLocalizations l10n) => switch (status) {
+    'active' => l10n.employeeStatusActive,
+    'probation' => l10n.employeeStatusProbation,
+    'onLeave' => l10n.employeeStatusOnLeave,
+    'resigned' => l10n.employeeStatusResigned,
+    _ => l10n.employeeStatusUnknown,
+  };
 
   UtenStatusBadgeType get _type => switch (status) {
-        'active' => UtenStatusBadgeType.success,
-        'probation' => UtenStatusBadgeType.warning,
-        'onLeave' => UtenStatusBadgeType.info,
-        'resigned' => UtenStatusBadgeType.neutral,
-        _ => UtenStatusBadgeType.neutral,
-      };
+    'active' => UtenStatusBadgeType.success,
+    'probation' => UtenStatusBadgeType.warning,
+    'onLeave' => UtenStatusBadgeType.info,
+    'resigned' => UtenStatusBadgeType.neutral,
+    _ => UtenStatusBadgeType.neutral,
+  };
 }

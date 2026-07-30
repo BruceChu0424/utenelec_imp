@@ -1,4 +1,5 @@
 // 新建建议页
+// 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,8 +11,10 @@ import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
 
@@ -41,13 +44,17 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '提建议', showBackButton: true),
       body: Column(
         children: [
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
+            // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
+            child: UtenContentContainer.narrow(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(
+                  vertical: UtenSpacing.s16,
+                ),
+                children: [
                 // 类别
                 Text(
                   '建议类别',
@@ -55,10 +62,10 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: UtenSpacing.s8),
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
                   children: [
                     for (final cat in SuggestionCategory.values)
                       ChoiceChip(
@@ -70,7 +77,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
                 UtenCard(
                   child: Column(
                     children: [
@@ -80,7 +87,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                         hint: '一句话概括你的建议',
                         textInputAction: TextInputAction.next,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: UtenSpacing.s12),
                       UtenInput(
                         controller: _contentController,
                         label: '详细内容 *',
@@ -90,12 +97,12 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
                 // 匿名开关
                 UtenCard(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+                    horizontal: UtenSpacing.s16,
+                    vertical: UtenSpacing.s8,
                   ),
                   child: Material(
                     color: Colors.transparent,
@@ -109,7 +116,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                                 : Icons.visibility_outlined,
                             size: 20,
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: UtenSpacing.s12),
                           const Text('匿名提交'),
                         ],
                       ),
@@ -120,13 +127,13 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
                 // 提示
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: UtenRadius.lgAll,
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,7 +143,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                         size: 16,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: UtenSpacing.s8),
                       Expanded(
                         child: Text(
                           '提交后建议会进入"建议广场"，所有同事可见并可点赞。人事/管理层会尽快回复处理。',
@@ -149,7 +156,8 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                     ],
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
           UtenBottomActionBar(
@@ -188,7 +196,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
       );
       if (mounted) {
         UtenToast.success(context, '提交成功，感谢您的建议！');
-        context.go(RoutePath.suggestionDetail(s.id));
+        context.push(RoutePath.suggestionDetail(s.id));
       }
     } catch (e) {
       if (mounted) UtenToast.error(context, '提交失败：$e');

@@ -1,6 +1,7 @@
 package com.uten.imp.security;
 
 import com.uten.imp.config.props.JwtProperties;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -19,9 +20,11 @@ public class JwtService {
 
     private final SecretKey key;
     private final JwtProperties props;
+    private final SystemSettingsService settings;
 
-    public JwtService(JwtProperties props) {
+    public JwtService(JwtProperties props, SystemSettingsService settings) {
         this.props = props;
+        this.settings = settings;
         if (props.getSecret() == null || props.getSecret().isBlank()) {
             throw new IllegalStateException("缺少 UTEN_JWT_SECRET（在 server/.env 或环境变量配置）");
         }
@@ -36,7 +39,7 @@ public class JwtService {
     public String issueAccess(UUID userId, UUID employeeId, String loginAccount,
                               Set<String> roles, Set<String> permissions, boolean mustChangePassword) {
         Instant now = Instant.now();
-        Instant exp = now.plusSeconds(props.getAccessTtlMinutes() * 60);
+        Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
         return Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(userId.toString())
@@ -56,7 +59,7 @@ public class JwtService {
     public String issueVisitorAccess(UUID visitorId, String phone, String visitorNo,
                                      Set<String> permissions) {
         Instant now = Instant.now();
-        Instant exp = now.plusSeconds(props.getAccessTtlMinutes() * 60);
+        Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
         return Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(visitorId.toString())
@@ -79,6 +82,6 @@ public class JwtService {
     }
 
     public long getAccessTtlSeconds() {
-        return props.getAccessTtlMinutes() * 60;
+        return settings.readLong("jwt_access_ttl_minutes", 15) * 60;
     }
 }

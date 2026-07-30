@@ -1,19 +1,27 @@
 // 访客来访预约表单：姓名/身份证/单位/事由/开车+车牌/接待部门+接待人/到访时间。
+//
+// 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer.narrow
+//（表单页宜窄，宽屏居中不拉宽，水平 gutter 由容器提供）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/scale.dart';
-import '../../../components/inputs/uten_select.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../department/widgets/uten_department_picker.dart';
+import '../models/visitor_application.dart';
 import '../providers/visitor_providers.dart';
 import '../repositories/visitor_repository.dart';
 
@@ -33,6 +41,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
 
   bool _hasVehicle = false;
   String? _deptId;
+  String? _deptName;
   String? _hostId;
   DateTime? _visitTime;
   bool _submitting = false;
@@ -49,20 +58,97 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
   }
 
   Future<void> _pickTime() async {
+    final l10n = AppLocalizations.of(context);
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    // 允许预约的日期范围：今天 ~ 今天 + 30 天（过远日期不接预约）。
+    final firstDate = today;
+    final lastDate = today.add(const Duration(days: 30));
+
+    // initialDate：若已有选过的 visitTime，且落在允许范围内，沿用它；
+    // 否则用 today，但 lastDate 早于 today 时回退到 firstDate（防御）。
+    DateTime initialDate = _visitTime ?? today;
+    if (initialDate.isBefore(firstDate)) initialDate = firstDate;
+    if (initialDate.isAfter(lastDate)) initialDate = lastDate;
+
     final d = await showDatePicker(
       context: context,
-      initialDate: now,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 1),
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
     if (d == null) return;
+    if (!mounted) return;
+
+    // 选今天时，initialTime 推到「现在向上取整 5 分钟」，避免打开就是过去的钟点。
+    // 选未来日期时，默认 09:00（工作时段起点）。
+    final TimeOfDay initialTime;
+    if (_isSameDay(d, now)) {
+      final roundedMinute = ((now.minute + 4) ~/ 5) * 5;
+      initialTime = TimeOfDay(
+        hour: roundedMinute == 60 ? (now.hour + 1) % 24 : now.hour,
+        minute: roundedMinute == 60 ? 0 : roundedMinute,
+      );
+    } else {
+      initialTime = const TimeOfDay(hour: 9, minute: 0);
+    }
+
     final t = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.fromDateTime(now),
+      initialTime: initialTime,
+      helpText: l10n.visitorApplyVisitTime,
     );
     if (t == null) return;
-    setState(() => _visitTime = DateTime(d.year, d.month, d.day, t.hour, t.minute));
+    if (!mounted) return;
+
+    final picked = DateTime(d.year, d.month, d.day, t.hour, t.minute);
+
+    // 校验 1：组合时间必须在未来（防 pickTime 跨过零点等边界情况）。
+    if (!picked.isAfter(now)) {
+      setState(() {
+        _visitTime = null;
+        _error = l10n.visitorApplyValidateVisitTimeFuture;
+      });
+      return;
+    }
+
+    // 校验 2：与该访客已有 active 申请同时段冲突检查（pending/hostReviewing/
+    // approved/checkedIn；rejected/cancelled 不算）。
+    final myApps = ref.read(visitorApplicationsProvider(null)).valueOrNull ?? const [];
+    if (_hasConflictWithActive(picked, myApps)) {
+      setState(() {
+        _visitTime = null;
+        _error = l10n.visitorApplyDuplicateTime;
+      });
+      return;
+    }
+
+    setState(() {
+      _visitTime = picked;
+      _error = null;
+    });
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _hasConflictWithActive(
+    DateTime picked,
+    List<VisitorApplication> apps,
+  ) {
+    const active = <VisitorApplicationStatus>{
+      VisitorApplicationStatus.pending,
+      VisitorApplicationStatus.hostReviewing,
+      VisitorApplicationStatus.approved,
+      VisitorApplicationStatus.checkedIn,
+    };
+    for (final a in apps) {
+      if (active.contains(a.status) && a.plannedVisitAt.isAtSameMomentAs(picked)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<void> _submit() async {
@@ -101,7 +187,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
         'plannedVisitAt': _visitTime!.toUtc().toIso8601String(),
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(l10n.visitorApplySuccess)));
+      context.appSuccess(l10n.visitorApplySuccess);
       context.go('/visitor/apply/${app.id}');
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -116,9 +202,8 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final depts = ref.watch(visitorDirectoryDepartmentsProvider);
-    final employees = ref.watch(visitorDirectoryEmployeesProvider(
-        (departmentId: _deptId, keyword: null)));
+    // 接待部门树（访客 token 目录接口，经 treeOverride 喂给共享部门选择器）。
+    final deptTree = ref.watch(visitorDirectoryDepartmentTreeProvider);
 
     return Scaffold(
       appBar: UtenAppBar(title: l10n.visitorApplyTitle, showBackButton: true),
@@ -126,96 +211,128 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
         children: [
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  UtenCard(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        UtenSectionHeader(title: l10n.visitorApplyTitle, icon: Icons.person_rounded),
-                        const SizedBox(height: 12),
-                        UtenInput(controller: _nameCtl, label: l10n.visitorApplyName, hint: l10n.visitorApplyNameHint),
-                        const SizedBox(height: 12),
-                        UtenInput(controller: _idCardCtl, label: l10n.visitorApplyIdCard, hint: l10n.visitorApplyIdCardHint),
-                        const SizedBox(height: 12),
-                        UtenInput(controller: _companyCtl, label: l10n.visitorApplyCompany, hint: l10n.visitorApplyCompanyHint),
-                        const SizedBox(height: 12),
-                        UtenInput(
-                          controller: _purposeCtl,
-                          label: l10n.visitorApplyPurpose,
-                          hint: l10n.visitorApplyPurposeHint,
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 8),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(l10n.visitorApplyVehicle),
-                          value: _hasVehicle,
-                          onChanged: (v) => setState(() => _hasVehicle = v),
-                        ),
-                        if (_hasVehicle) ...[
-                          UtenInput(controller: _plateCtl, label: l10n.visitorApplyPlate, hint: l10n.visitorApplyPlateHint),
-                          const SizedBox(height: 12),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  UtenCard(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        UtenSectionHeader(title: l10n.visitorDetailHost, icon: Icons.people_outline_rounded),
-                        const SizedBox(height: 12),
-                        _DeptDropdown(
-                          value: _deptId,
-                          items: depts.valueOrNull ?? const [],
-                          label: l10n.visitorApplyDept,
-                          onChanged: (v) => setState(() {
-                            _deptId = v;
-                            _hostId = null;
-                          }),
-                        ),
-                        const SizedBox(height: 12),
-                        _EmployeeDropdown(
-                          value: _hostId,
-                          items: employees.valueOrNull ?? const [],
-                          label: l10n.visitorApplyHost,
-                          onChanged: (v) => setState(() => _hostId = v),
-                        ),
-                        const SizedBox(height: 12),
-                        InkWell(
-                          onTap: _pickTime,
-                          child: InputDecorator(
-                            decoration: InputDecoration(
-                              labelText: l10n.visitorApplyVisitTime,
-                              prefixIcon: Icon(Icons.event_rounded, size: context.scaled(20)),
-                            ),
-                            child: Text(_visitTime == null
-                                ? l10n.visitorApplyVisitTime
-                                : '${_visitTime!.year}-${_visitTime!.month.toString().padLeft(2, '0')}-${_visitTime!.day.toString().padLeft(2, '0')} ${_visitTime!.hour.toString().padLeft(2, '0')}:${_visitTime!.minute.toString().padLeft(2, '0')}'),
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
+              // 表单窄收敛（全断点）：水平 gutter 由容器提供
+              child: UtenContentContainer.narrow(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    UtenCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          UtenSectionHeader(title: l10n.visitorApplyTitle, icon: Icons.person_rounded),
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenInput(controller: _nameCtl, label: l10n.visitorApplyName, hint: l10n.visitorApplyNameHint),
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenInput(controller: _idCardCtl, label: l10n.visitorApplyIdCard, hint: l10n.visitorApplyIdCardHint),
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenInput(controller: _companyCtl, label: l10n.visitorApplyCompany, hint: l10n.visitorApplyCompanyHint),
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenInput(
+                            controller: _purposeCtl,
+                            label: l10n.visitorApplyPurpose,
+                            hint: l10n.visitorApplyPurposeHint,
+                            maxLines: 3,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: UtenColors.error.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
+                          const SizedBox(height: UtenSpacing.s8),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(l10n.visitorApplyVehicle),
+                            value: _hasVehicle,
+                            onChanged: (v) => setState(() => _hasVehicle = v),
+                          ),
+                          if (_hasVehicle) ...[
+                            UtenInput(controller: _plateCtl, label: l10n.visitorApplyPlate, hint: l10n.visitorApplyPlateHint),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                        ],
                       ),
-                      child: Text(_error!, style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.error)),
                     ),
+                    const SizedBox(height: UtenSpacing.s16),
+                    UtenCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          UtenSectionHeader(title: l10n.visitorDetailHost, icon: Icons.people_outline_rounded),
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenDepartmentPicker(
+                            mode: UtenDepartmentPickerMode.single,
+                            treeOverride: deptTree.valueOrNull ?? const [],
+                            enabled: deptTree.hasValue,
+                            label: l10n.visitorApplyDept,
+                            hint: '请选择接待部门',
+                            onChanged: (sel) => setState(() {
+                              // 换部门后接待人候选变化，清空已选接待人。
+                              _deptId = sel.isEmpty ? null : sel.first.id;
+                              _deptName = sel.isEmpty ? null : sel.first.name;
+                              _hostId = null;
+                            }),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenEmployeePicker(
+                            // 部门变化时重建，清空已选接待人（与 _deptId 联动）。
+                            key: ValueKey(_deptId),
+                            loader: (kw) async {
+                              final list = await ref
+                                  .read(visitorRepositoryProvider)
+                                  .directoryEmployees(
+                                      departmentId: _deptId, keyword: kw);
+                              return [
+                                for (final e in list)
+                                  UtenEmployeePickerItem(
+                                    id: e.id,
+                                    name: e.name,
+                                    departmentName: e.departmentName,
+                                  ),
+                              ];
+                            },
+                            label: l10n.visitorApplyHost,
+                            departmentName: _deptName,
+                            onChanged: (item) =>
+                                setState(() => _hostId = item?.id),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                          InkWell(
+                            onTap: _pickTime,
+                            child: InputDecorator(
+                              decoration: InputDecoration(
+                                labelText: l10n.visitorApplyVisitTime,
+                                prefixIcon: Icon(Icons.event_rounded, size: context.scaled(20)),
+                              ),
+                              child: Text(_visitTime == null
+                                  ? l10n.visitorApplyVisitTime
+                                  : '${_visitTime!.year}-${_visitTime!.month.toString().padLeft(2, '0')}-${_visitTime!.day.toString().padLeft(2, '0')} ${_visitTime!.hour.toString().padLeft(2, '0')}:${_visitTime!.minute.toString().padLeft(2, '0')}'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      Container(
+                        padding: const EdgeInsets.all(UtenSpacing.s12),
+                        decoration: BoxDecoration(
+                          color: UtenColors.error.withValues(alpha: 0.12),
+                          borderRadius: UtenRadius.mdAll,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline,
+                                color: UtenColors.error, size: 18),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Expanded(
+                              child: Text(_error!,
+                                  style: theme.textTheme.bodySmall
+                                      ?.copyWith(color: UtenColors.error)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: UtenSpacing.s16),
                   ],
-                  const SizedBox(height: 16),
-                ],
+                ),
               ),
             ),
           ),
@@ -230,55 +347,6 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _DeptDropdown extends StatelessWidget {
-  const _DeptDropdown({required this.value, required this.items, required this.label, required this.onChanged});
-  final String? value;
-  final List<DeptDirItem> items;
-  final String label;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return UtenSelect<String>(
-      label: label,
-      value: value,
-      prefixIcon: Icons.account_tree_outlined,
-      items: [
-        for (final d in items) DropdownMenuItem(value: d.id, child: Text(d.name, overflow: TextOverflow.ellipsis)),
-      ],
-      onChanged: onChanged,
-    );
-  }
-}
-
-class _EmployeeDropdown extends StatelessWidget {
-  const _EmployeeDropdown({required this.value, required this.items, required this.label, required this.onChanged});
-  final String? value;
-  final List<EmployeeDirItem> items;
-  final String label;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return UtenSelect<String>(
-      label: label,
-      value: value,
-      prefixIcon: Icons.person_search_rounded,
-      items: [
-        for (final e in items)
-          DropdownMenuItem(
-            value: e.id,
-            child: Text(
-              e.departmentName == null ? e.name : '${e.name}(${e.departmentName})',
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-      ],
-      onChanged: onChanged,
     );
   }
 }

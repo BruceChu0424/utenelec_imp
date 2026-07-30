@@ -10,8 +10,6 @@ import java.util.UUID;
 
 public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> {
 
-    List<UserRole> findByIdUserId(UUID userId);
-
     @Query(value = """
             SELECT r.code
             FROM user_roles ur
@@ -25,6 +23,13 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> 
             SELECT ur.role_id FROM user_roles ur WHERE ur.user_id IN (:userIds)
             """, nativeQuery = true)
     List<UUID> findRoleIdsByUserIds(@Param("userIds") Collection<UUID> userIds);
+
+    /** 按角色码反查用户（业务链通知广播：buyer/planner 等）。 */
+    @Query(value = """
+            SELECT ur.user_id FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+            WHERE r.code = :code
+            """, nativeQuery = true)
+    List<UUID> findUserIdsByRoleCode(@Param("code") String code);
 
     void deleteByIdUserId(UUID userId);
 }

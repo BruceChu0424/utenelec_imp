@@ -1,459 +1,309 @@
-// MainShellPage - App 响应式外壳（多角色分组导航）
-// 文档：docs/03-页面/App外壳.md · docs/05-架构/全局机制.md（按角色显隐）
+// MainShellPage - App 外壳 v4（响应式导航：compact 悬浮胶囊 / medium+ 左侧 Rail）
+// 文档：docs/03-页面/App外壳.md
 //
-// compact (<600dp)：底部 NavigationBar（4 项：工作台/通知/我的/设置）
-// medium (600-840dp)：折叠 NavigationRail（只图标）
-// expanded (>840dp)：展开侧栏（分组导航 + 业务模块）
+// 断点策略：
+//   - compact（<600dp）：底部悬浮胶囊导航，4 项：工作台 / 通知 / 我的 / 设置，
+//     布局与 v3 完全一致（overlay 悬浮、不占布局空间）
+//   - medium+（≥600dp）：全高左侧 NavigationRail（surface 底 + 右侧发丝边框），
+//     屏宽 ≥1280dp 时 extended 常驻标签，否则纯图标 + Tooltip；
+//     内容区套 UtenContentContainer（maxWidth 1600 居中），超宽屏不再无限拉宽
+//
+// 主 Tab 承载（全断点一致）：
+//   - 四个主 Tab 由 UtenSlidingTabView 承载：离散方向滑动转场（当前页左移 / 新页右进），
+//     不经过中间页（替代旧 PageView，消除工作台→设置 等跨多页点击时中间页闪烁）；
+//     四页常驻保活（Offstage 隐藏仍 layout、保留 State 与滚动位置）；
+//     compact 触屏支持横滑切相邻 Tab，胶囊滑块高亮随转场 lerp 联动
+//   - 业务子页面（工资条/报销/人事…）照常通过 go_router 进入，
+//     外壳仅保留导航（高亮归属 Tab），不提供页间滑动
+//   - 保活覆盖子页面：进入业务子页面（tabIndex==null）时滑动容器不从树移除，
+//     仅以 Offstage 隐藏（仍 layout、保留 State 与滚动位置），子页面叠在上层；
+//     故从任一 Tab 进子页再返回，各 Tab 滚动位置/状态不丢（不回顶部）。
+//     见 _buildCompactShell / _buildRailShell 的 Stack+Offstage 结构。
+//
+// 路由同步：
+//   - 横滑切相邻 Tab 落定 → onChanged → context.go(tab 路由)，URL 与页一致
+//   - 点击导航 / 深链 / 外部 go() 进 tab 路由 → build 检测 index 变化 →
+//     UtenSlidingTabView 内部 post-frame 启动转场
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
-import '../../../shared/models/role.dart';
-import '../../../shared/providers/session_provider.dart';
+import '../../dashboard/pages/dashboard_page.dart';
+import '../../notice/pages/notice_list_page.dart';
+import '../../notice/providers/notice_providers.dart';
+import '../../profile/pages/profile_page.dart';
+import '../../settings/pages/settings_page.dart';
+import '../widgets/floating_capsule_nav_bar.dart';
+import '../widgets/idle_timeout_guard.dart';
+import '../widgets/uten_side_nav_rail.dart';
+import '../widgets/uten_sliding_tab_view.dart';
 
-class MainShellPage extends ConsumerWidget {
+class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key, required this.child});
 
+  /// ShellRoute 传入的当前路由页面。
+  /// 四个主 Tab 路由时忽略它（由内部 PageView 承载，保证滑动 + 状态保留）。
   final Widget child;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MainShellPage> createState() => _MainShellPageState();
+}
+
+class _MainShellPageState extends ConsumerState<MainShellPage> {
+  /// 主 Tab 路由（顺序 = PageView 页序 = 导航项序）
+  static const _tabLocations = <String>[
+    RouteName.dashboard,
+    RouteName.notice,
+    RouteName.profile,
+    RouteName.settings,
+  ];
+
+  /// Rail 展开（常驻标签）的最小屏宽
+  static const double _railExtendedWidth = 1280;
+
+  /// 连续页位置（喂胶囊滑块跟手；由 UtenSlidingTabView 随转场 lerp 驱动）
+  late final ValueNotifier<double> _position;
+
+  @override
+  void initState() {
+    super.initState();
+    _position = ValueNotifier<double>(0);
+  }
+
+  @override
+  void dispose() {
+    _position.dispose();
+    super.dispose();
+  }
+
+  /// location 恰好是某主 Tab 根路由 → 返回页码；否则 null（业务子页面）
+  int? _exactTabIndex(String location) {
+    for (var i = 0; i < _tabLocations.length; i++) {
+      if (location == _tabLocations[i]) return i;
+    }
+    return null;
+  }
+
+  /// 导航高亮归属：前缀匹配（如 /notice/123 → 通知 tab），无匹配回 0
+  int _capsuleIndex(String location) {
+    for (var i = 0; i < _tabLocations.length; i++) {
+      final root = _tabLocations[i];
+      if (location == root || location.startsWith('$root/')) return i;
+    }
+    return 0;
+  }
+
+  /// 横滑切到相邻 Tab 落定：同步路由（与点击导航终点一致）。
+  void _onTabChanged(int index) {
+    final location = GoRouterState.of(context).matchedLocation;
+    if (location != _tabLocations[index]) {
+      context.go(_tabLocations[index]);
+    }
+  }
+
+  void _onTabTap(int index) {
+    // 收起键盘/焦点，避免切页后键盘残留
+    FocusManager.instance.primaryFocus?.unfocus();
+    final location = GoRouterState.of(context).matchedLocation;
+    if (location == _tabLocations[index]) return;
+    context.go(_tabLocations[index]);
+  }
+
+  /// 四页保活 + 离散滑动转场的 Tab 容器（两个断点分支共用同一份定义）。
+  /// 替代旧 PageView：避免点击非相邻 Tab 时「滚过」中间页闪烁
+  /// （工作台→我的 不再闪过通知；工作台→设置 不再闪过中间两页）。
+  Widget _slidingTabs({required int? tabIndex}) {
+    return UtenSlidingTabView(
+      index: tabIndex,
+      position: _position,
+      onChanged: _onTabChanged,
+      // compact：横滑手势 + 左右滑动转场（手机 PageView 直觉）；
+      // rail 桌面：都关——点 Tab 即时切换，避免大屏整页横移突兀，也不开横滑手势。
+      swipeEnabled: context.breakpoint.isCompact,
+      animated: context.breakpoint.isCompact,
+      children: const [
+        _KeepAlivePage(child: DashboardPage()),
+        _KeepAlivePage(child: NoticeListPage()),
+        _KeepAlivePage(child: ProfilePage()),
+        _KeepAlivePage(child: SettingsPage()),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final location = GoRouterState.of(context).matchedLocation;
-
-    final primaryDestinations = <_NavDestination>[
-      _NavDestination(
-        icon: Icons.dashboard_outlined,
-        selectedIcon: Icons.dashboard_rounded,
-        label: l10n.navDashboard,
-        location: RouteName.dashboard,
-      ),
-      const _NavDestination(
-        icon: Icons.notifications_none_rounded,
-        selectedIcon: Icons.notifications_rounded,
-        label: '通知',
-        location: RouteName.notice,
-      ),
-      _NavDestination(
-        icon: Icons.person_outline_rounded,
-        selectedIcon: Icons.person_rounded,
-        label: l10n.navProfile,
-        location: RouteName.profile,
-      ),
-      _NavDestination(
-        icon: Icons.settings_outlined,
-        selectedIcon: Icons.settings_rounded,
-        label: l10n.navSettings,
-        location: RouteName.settings,
-      ),
+    final labels = <String>[
+      l10n.navDashboard,
+      l10n.navNotice,
+      l10n.navProfile,
+      l10n.navSettings,
     ];
+    final unread = ref.watch(unreadNoticeCountProvider).valueOrNull ?? 0;
 
-    // 角色分组（按角色显隐）
-    final allGroups = <_NavGroup>[
-      _NavGroup(title: '业务模块', roles: null, items: [
-        const _NavDestination(icon: Icons.account_balance_wallet_outlined, selectedIcon: Icons.account_balance_wallet_rounded, label: '工资条', location: '/payroll/slip'),
-        const _NavDestination(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long_rounded, label: '我的报销', location: '/expense'),
-        const _NavDestination(icon: Icons.lightbulb_outline_rounded, selectedIcon: Icons.lightbulb_rounded, label: '建议箱', location: '/suggestion'),
-        _NavDestination(icon: Icons.person_search_outlined, selectedIcon: Icons.person_search_rounded, label: l10n.myVisitorsTitle, location: RouteName.myVisitors),
-      ]),
-      const _NavGroup(title: '人事管理', roles: [Role.hr, Role.admin, Role.manager], items: [
-        _NavDestination(icon: Icons.badge_outlined, selectedIcon: Icons.badge_rounded, label: '员工档案', location: '/employee'),
-        _NavDestination(icon: Icons.account_tree_outlined, selectedIcon: Icons.account_tree_rounded, label: '部门管理', location: '/department'),
-        _NavDestination(icon: Icons.person_add_outlined, selectedIcon: Icons.person_add_rounded, label: '入职办理', location: '/employee/onboarding'),
-        _NavDestination(icon: Icons.request_quote_outlined, selectedIcon: Icons.request_quote_rounded, label: '工资条生成', location: '/payroll/generate'),
-        _NavDestination(icon: Icons.campaign_outlined, selectedIcon: Icons.campaign_rounded, label: '通知发布', location: '/notice/publish'),
-      ]),
-      const _NavGroup(title: '财务管理', roles: [Role.finance, Role.admin, Role.manager], items: [
-        _NavDestination(icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check_rounded, label: '报销审批', location: '/expense/approval'),
-        _NavDestination(icon: Icons.rate_review_outlined, selectedIcon: Icons.rate_review_rounded, label: '工资条审核', location: '/payroll/review'),
-        _NavDestination(icon: Icons.bar_chart_outlined, selectedIcon: Icons.bar_chart_rounded, label: '财务报表', location: '/finance/report'),
-      ]),
-      const _NavGroup(title: '生产管理', roles: [Role.production, Role.admin, Role.manager], items: [
-        _NavDestination(icon: Icons.science_outlined, selectedIcon: Icons.science_rounded, label: '检测记录', location: '/lab/test'),
-        _NavDestination(icon: Icons.hvac_outlined, selectedIcon: Icons.hvac_rounded, label: '空调控制', location: '/hvac'),
-        _NavDestination(icon: Icons.view_timeline_outlined, selectedIcon: Icons.view_timeline_rounded, label: '流水线看板', location: '/production/line'),
-        _NavDestination(icon: Icons.edit_note_outlined, selectedIcon: Icons.edit_note_rounded, label: '产量录入', location: '/production/output/entry'),
-        _NavDestination(icon: Icons.insights_outlined, selectedIcon: Icons.insights_rounded, label: '产量统计', location: '/production/output'),
-        _NavDestination(icon: Icons.inventory_2_outlined, selectedIcon: Icons.inventory_2_rounded, label: '库存查询', location: '/inventory'),
-        _NavDestination(icon: Icons.swap_vert_rounded, selectedIcon: Icons.swap_vert_rounded, label: '出入库记录', location: '/inventory/movement'),
-      ]),
-      const _NavGroup(title: '决策支持', roles: [Role.manager, Role.admin], items: [
-        _NavDestination(icon: Icons.space_dashboard_outlined, selectedIcon: Icons.space_dashboard_rounded, label: '经营 Dashboard', location: '/analytics/dashboard'),
-        _NavDestination(icon: Icons.query_stats_outlined, selectedIcon: Icons.query_stats_rounded, label: '多维分析', location: '/analytics/explore'),
-        _NavDestination(icon: Icons.notifications_active_outlined, selectedIcon: Icons.notifications_active_rounded, label: '异常告警', location: '/analytics/alerts'),
-      ]),
-      _NavGroup(title: l10n.visitorApprovalTitle, roles: [Role.hr, Role.admin], items: [
-        _NavDestination(icon: Icons.how_to_reg_outlined, selectedIcon: Icons.how_to_reg_rounded, label: l10n.visitorApprovalTitle, location: RouteName.visitorApproval),
-      ]),
-      _NavGroup(title: l10n.securityTitle, roles: [Role.security, Role.admin], items: [
-        _NavDestination(icon: Icons.qr_code_scanner_rounded, selectedIcon: Icons.qr_code_scanner_rounded, label: l10n.securityTitle, location: RouteName.securityScan),
-      ]),
-    ];
+    final tabIndex = _exactTabIndex(location);
 
-    final userRoles = ref.watch(
-      sessionProvider.select((s) => s.user?.roles ?? const <Role>[]),
-    );
-    final groups = allGroups
-        .where((g) => g.roles == null || g.roles!.any(userRoles.contains))
-        .toList();
-
-    final breakpoint = context.breakpoint;
-
-    return Scaffold(
-      body: switch (breakpoint) {
-        UtenBreakpoint.compact => _CompactShell(
-            destinations: primaryDestinations,
-            currentLocation: location,
-            child: child,
-          ),
-        UtenBreakpoint.medium || UtenBreakpoint.expanded => _ExpandedShell(
-            primaryDestinations: primaryDestinations,
-            groups: groups,
-            currentLocation: location,
-            expanded: breakpoint.isExpanded,
-            child: child,
-          ),
-      },
-    );
-  }
-}
-
-class _NavDestination {
-  const _NavDestination({
-    required this.icon,
-    required this.selectedIcon,
-    required this.label,
-    required this.location,
-  });
-
-  final IconData icon;
-  final IconData selectedIcon;
-  final String label;
-  final String location;
-}
-
-class _NavGroup {
-  const _NavGroup({required this.title, required this.roles, required this.items});
-  final String title;
-  final List<Role>? roles;
-  final List<_NavDestination> items;
-}
-
-bool _isActive(String current, String target) {
-  if (current == target) return true;
-  return current.startsWith('$target/');
-}
-
-int _primaryIndex(String location, List<_NavDestination> all) {
-  for (var i = 0; i < all.length; i++) {
-    if (_isActive(location, all[i].location)) return i;
-  }
-  return 0;
-}
-
-class _CompactShell extends StatelessWidget {
-  const _CompactShell({
-    required this.destinations,
-    required this.currentLocation,
-    required this.child,
-  });
-
-  final List<_NavDestination> destinations;
-  final String currentLocation;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final currentIndex = _primaryIndex(currentLocation, destinations);
-
-    return Scaffold(
-      body: SafeArea(child: child),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: currentIndex,
-        onDestinationSelected: (i) => context.go(destinations[i].location),
-        destinations: [
-          for (final d in destinations)
-            NavigationDestination(
-              icon: Icon(d.icon),
-              selectedIcon: Icon(d.selectedIcon),
-              label: d.label,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExpandedShell extends StatelessWidget {
-  const _ExpandedShell({
-    required this.primaryDestinations,
-    required this.groups,
-    required this.currentLocation,
-    required this.child,
-    required this.expanded,
-  });
-
-  final List<_NavDestination> primaryDestinations;
-  final List<_NavGroup> groups;
-  final String currentLocation;
-  final Widget child;
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      body: Row(
-        children: [
-          Container(
-            width: expanded ? 240 : 72,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              border: Border(
-                right: BorderSide(color: theme.colorScheme.outlineVariant),
-              ),
-            ),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                  child: _Logo(expanded: expanded),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    children: [
-                      for (final d in primaryDestinations)
-                        _NavItem(
-                          destination: d,
-                          expanded: expanded,
-                          isSelected: _isActive(currentLocation, d.location),
-                          onTap: () => context.go(d.location),
-                        ),
-                      for (final g in groups) ...[
-                        if (expanded)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-                            child: Text(
-                              g.title,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          )
-                        else ...[
-                          const SizedBox(height: 12),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Divider(height: 1, color: theme.colorScheme.outlineVariant),
-                          ),
-                          const SizedBox(height: 4),
-                        ],
-                        for (final d in g.items)
-                          _NavItem(
-                            destination: d,
-                            expanded: expanded,
-                            isSelected: _isActive(currentLocation, d.location),
-                            onTap: () => context.go(d.location),
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                _UserFooter(expanded: expanded),
-              ],
-            ),
-          ),
-          Expanded(child: SafeArea(left: false, child: child)),
-        ],
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.destination,
-    required this.expanded,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final _NavDestination destination;
-  final bool expanded;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final selectedColor = theme.brightness == Brightness.dark
-        ? UtenColors.teal400
-        : UtenColors.teal600;
-    final iconColor =
-        isSelected ? selectedColor : theme.colorScheme.onSurfaceVariant;
-    final textColor = isSelected ? selectedColor : theme.colorScheme.onSurface;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Material(
-        color: isSelected
-            ? (theme.brightness == Brightness.dark
-                ? UtenColors.teal900.withValues(alpha: 0.3)
-                : UtenColors.teal50)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-                vertical: 10, horizontal: expanded ? 12 : 0),
-            child: expanded
-                ? Row(children: [
-                    Icon(isSelected ? destination.selectedIcon : destination.icon,
-                        size: 20, color: iconColor),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        destination.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: textColor,
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.w500,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ])
-                : Column(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(isSelected ? destination.selectedIcon : destination.icon,
-                        size: 22, color: iconColor),
-                    const SizedBox(height: 4),
-                    Text(
-                      destination.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 10,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
-                  ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Logo extends StatelessWidget {
-  const _Logo({required this.expanded});
-  final bool expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    if (!expanded) {
-      return Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0F3D2E), Color(0xFF14B8A6)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Center(
-          child: Text('U',
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 22)),
-        ),
-      );
+    // 业务子页面（tabIndex==null）：滑动容器被 Offstage 隐藏、不驱动 _position，
+    // 故在此把胶囊高亮固定到归属 Tab。主 Tab 页则交由 UtenSlidingTabView 驱动 _position。
+    if (tabIndex == null) {
+      _position.value = _capsuleIndex(location).toDouble();
     }
 
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0F3D2E), Color(0xFF14B8A6)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Center(
-          child: Text('U',
-              style: TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20)),
-        ),
-      ),
-      const SizedBox(width: 12),
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+    // compact 保留悬浮胶囊；medium+ 切换为左侧 Rail + 内容收敛
+    final shell = context.breakpoint.isCompact
+        ? _buildCompactShell(tabIndex: tabIndex, labels: labels, unread: unread)
+        : _buildRailShell(
+            tabIndex: tabIndex,
+            location: location,
+            labels: labels,
+            unread: unread,
+          );
+    // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
+    return IdleTimeoutGuard(child: shell);
+  }
+
+  /// compact 外壳：底部悬浮胶囊 overlay（与 v3 完全一致）
+  Widget _buildCompactShell({
+    required int? tabIndex,
+    required List<String> labels,
+    required int unread,
+  }) {
+    return Scaffold(
+      // 胶囊导航不随键盘升起；body 不被键盘压缩
+      resizeToAvoidBottomInset: false,
+      // 悬浮 overlay 布局：胶囊不占布局空间。
+      // - 主 Tab 页：内容全高直通屏底，胶囊浮在玻璃层上，
+      //   各 Tab 页自带底部留白（滚到底内容可越过胶囊）
+      // - 业务子页面：不少页面自带底部固定操作栏（bottomNavigationBar），
+      //   底部预留胶囊高度，保证按钮/列表最后一项不被遮挡
+      body: Stack(
         children: [
-          Text('优腾',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          Text('Uten IMP',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.5,
-              )),
+          Positioned.fill(
+            child: SafeArea(
+              bottom: false,
+              // PageView 常驻保活：进业务子页面（tabIndex==null）时不移除 PageView，
+              // 仅以 Offstage 隐藏；否则各 Tab 的滚动位置/状态随 PageView 卸载而丢失
+              // （从 Tab 进子页再返回会回到顶部）。Offstage 仍 layout 子树、保留 element
+              // 与 State，PageView 的 widget 树位置恒定，切回 Tab 原样恢复位置。
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Offstage(
+                      offstage: tabIndex == null,
+                      child: _slidingTabs(tabIndex: tabIndex),
+                    ),
+                  ),
+                  if (tabIndex == null)
+                    Positioned.fill(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: _navReserve(context)),
+                        child: widget.child,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 6,
+            child: SafeArea(
+              top: false,
+              child: FloatingCapsuleNavBar(
+                position: _position,
+                onTap: _onTabTap,
+                labels: labels,
+                badgeCounts: [0, unread, 0, 0],
+              ),
+            ),
+          ),
         ],
       ),
-    ]);
+    );
+  }
+
+  /// medium+ 外壳：左侧 Rail + UtenContentContainer 收敛内容区
+  Widget _buildRailShell({
+    required int? tabIndex,
+    required String location,
+    required List<String> labels,
+    required int unread,
+  }) {
+    return Scaffold(
+      // 与 compact 保持一致：键盘弹起不压缩页面（桌面端影响可忽略）
+      resizeToAvoidBottomInset: false,
+      body: SafeArea(
+        bottom: false,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenSideNavRail(
+              extended: context.screenWidth >= _railExtendedWidth,
+              // 主 Tab 页高亮当前页；业务子页面高亮归属 tab（前缀匹配）
+              selectedIndex: tabIndex ?? _capsuleIndex(location),
+              onTap: _onTabTap,
+              labels: labels,
+              badgeCounts: [0, unread, 0, 0],
+            ),
+            Expanded(
+              // 超宽屏内容居中收敛（maxWidth 1600 + 响应式 gutter）；
+              // 主 Tab 页与业务子页面统一收敛，无胶囊因此不再需要底部预留
+              child: UtenContentContainer(
+                // PageView 常驻保活（同 compact 分支理由）：进业务子页面时仅 Offstage
+                // 隐藏 PageView、子页面叠上层，切回 Tab 时滚动位置不丢
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Offstage(
+                        offstage: tabIndex == null,
+                        child: _slidingTabs(tabIndex: tabIndex),
+                      ),
+                    ),
+                    if (tabIndex == null)
+                      Positioned.fill(child: widget.child),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 业务子页面底部预留高度 = 胶囊高 + 上下间距 + 系统手势条高度（仅 compact）
+  static double _navReserve(BuildContext context) {
+    return FloatingCapsuleNavBar.navHeight +
+        10 +
+        MediaQuery.paddingOf(context).bottom;
   }
 }
 
-class _UserFooter extends StatelessWidget {
-  const _UserFooter({required this.expanded});
-  final bool expanded;
+/// PageView 子页保活：滑过的页常驻，滚动位置 / 页面状态不丢。
+class _KeepAlivePage extends StatefulWidget {
+  const _KeepAlivePage({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
+}
+
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: expanded
-          ? Row(children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-                child: Icon(Icons.person_rounded,
-                    size: 18,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text('张优腾',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                    overflow: TextOverflow.ellipsis),
-              ),
-            ])
-          : Icon(Icons.person_rounded,
-              size: 22, color: Theme.of(context).colorScheme.onSurfaceVariant),
-    );
+    super.build(context);
+    return widget.child;
   }
 }

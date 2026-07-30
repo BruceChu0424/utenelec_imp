@@ -1,9 +1,13 @@
 // UtenStatusBadge - 状态徽章（用于工资条/报销/审批状态展示）
 // 文档：docs/02-组件库/UtenStatusBadge.md（待写）
+//
+// 设计原则：柔和语义底色（UtenColors.*Bg）+ 深档同色文字，胶囊圆角，无边框。
+// 深色模式下自动切换为"半透明底色 + 亮档文字"，保证可读性。
 
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 
 /// Uten 状态徽章
 ///
@@ -25,33 +29,34 @@ class UtenStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = _resolveColors(type);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = _resolveColors(type, isDark);
     final (padH, padV, textSize, iconSize) = switch (size) {
-      UtenStatusBadgeSize.small => (8.0, 3.0, 11.0, 12.0),
-      UtenStatusBadgeSize.medium => (10.0, 4.0, 12.0, 13.0),
-      UtenStatusBadgeSize.large => (12.0, 6.0, 13.0, 14.0),
+      UtenStatusBadgeSize.small => (8.0, 2.0, 11.0, 12.0),
+      UtenStatusBadgeSize.medium => (10.0, 3.0, 12.0, 13.0),
+      UtenStatusBadgeSize.large => (12.0, 5.0, 13.0, 14.0),
     };
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
       decoration: BoxDecoration(
         color: colors.$1,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: colors.$2),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: iconSize, color: colors.$3),
+            Icon(icon, size: iconSize, color: colors.$2),
             const SizedBox(width: 4),
           ],
           Text(
             label,
             style: TextStyle(
-              color: colors.$3,
+              color: colors.$2,
               fontSize: textSize,
               fontWeight: FontWeight.w600,
+              height: 1.3,
             ),
           ),
         ],
@@ -59,38 +64,57 @@ class UtenStatusBadge extends StatelessWidget {
     );
   }
 
-  /// 解析三色：背景色（浅）/ 边框色（中）/ 文字色（深）
-  (Color, Color, Color) _resolveColors(UtenStatusBadgeType t) {
+  /// 解析两色：背景色（柔和浅底）/ 文字与图标色（深档同色）
+  ///
+  /// 浅色模式：*Bg 浅底 + *Text 深字（对比度达标）；
+  /// 深色模式：语义色 18% 透明底 + 亮档文字。
+  (Color, Color) _resolveColors(UtenStatusBadgeType t, bool isDark) {
+    if (isDark) {
+      return switch (t) {
+        UtenStatusBadgeType.neutral => (
+            UtenColors.slate400.withValues(alpha: 0.18),
+            UtenColors.slate300,
+          ),
+        UtenStatusBadgeType.info => (
+            UtenColors.info.withValues(alpha: 0.18),
+            const Color(0xFF60A5FA),
+          ),
+        UtenStatusBadgeType.success => (
+            UtenColors.success.withValues(alpha: 0.18),
+            const Color(0xFF34D399),
+          ),
+        UtenStatusBadgeType.warning => (
+            UtenColors.warning.withValues(alpha: 0.18),
+            const Color(0xFFFBBF24),
+          ),
+        UtenStatusBadgeType.danger => (
+            UtenColors.error.withValues(alpha: 0.18),
+            const Color(0xFFF87171),
+          ),
+        UtenStatusBadgeType.accent => (
+            UtenColors.teal500.withValues(alpha: 0.18),
+            UtenColors.teal300,
+          ),
+      };
+    }
     return switch (t) {
       UtenStatusBadgeType.neutral => (
-          UtenColors.slate200,
-          UtenColors.slate400,
-          UtenColors.slate700,
+          UtenColors.surfaceMid,
+          UtenColors.textSecondary,
         ),
-      UtenStatusBadgeType.info => (
-          const Color(0xFFDBEAFE),
-          const Color(0xFF93C5FD),
-          const Color(0xFF1E40AF),
-        ),
+      UtenStatusBadgeType.info => (UtenColors.infoBg, UtenColors.infoText),
       UtenStatusBadgeType.success => (
-          const Color(0xFFDCFCE7),
-          const Color(0xFF86EFAC),
-          const Color(0xFF166534),
+          UtenColors.successBg,
+          UtenColors.successText,
         ),
       UtenStatusBadgeType.warning => (
-          const Color(0xFFFEF3C7),
-          const Color(0xFFFCD34D),
-          const Color(0xFF92400E),
+          UtenColors.warningBg,
+          UtenColors.warningText,
         ),
-      UtenStatusBadgeType.danger => (
-          const Color(0xFFFEE2E2),
-          const Color(0xFFFCA5A5),
-          const Color(0xFF991B1B),
-        ),
+      UtenStatusBadgeType.danger => (UtenColors.errorBg, UtenColors.errorText),
       UtenStatusBadgeType.accent => (
-          UtenColors.teal100,
-          UtenColors.teal300,
-          UtenColors.teal800,
+          UtenColors.tealSurface,
+          UtenColors.teal700,
         ),
     };
   }

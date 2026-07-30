@@ -1,5 +1,8 @@
 // 工资条列表页（卡片网格版）
 // 文档：docs/03-页面/工资条列表页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,10 +13,13 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/payroll_slip.dart';
 import '../providers/payroll_providers.dart';
 
@@ -25,24 +31,9 @@ class PayrollSlipListPage extends ConsumerWidget {
     final list = ref.watch(payrollListProvider);
     final filter = ref.watch(payrollFilterProvider);
 
-    return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
-      body: Column(
+    // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+    Widget body = Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: UtenSegmentedFilter<PayrollFilter>(
-              selected: filter,
-              onChanged: (v) =>
-                  ref.read(payrollFilterProvider.notifier).state = v,
-              segments: const [
-                UtenSegment(value: PayrollFilter.all, label: '全部'),
-                UtenSegment(value: PayrollFilter.published, label: '已发布'),
-                UtenSegment(value: PayrollFilter.viewed, label: '已查看'),
-                UtenSegment(value: PayrollFilter.downloaded, label: '已下载'),
-              ],
-            ),
-          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
@@ -66,16 +57,20 @@ class PayrollSlipListPage extends ConsumerWidget {
                     );
                   }
                   // 卡片网格
+                  // 工资条为个人按月数据（mock 固定 12 条/最近 12 个月），天然有界且量小，
+                  // 无需分页；若产品改为暴露多年历史（>~50）再考虑客户端切片或服务端分页。
                   return SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s16,
+                    ),
                     child: UtenResponsiveGrid(
                       itemCount: slips.length,
                       itemBuilder: (context, i, _) => _SlipCard(
                         slip: slips[i],
                         onTap: () {
                           markPayrollViewed(ref, slips[i].id);
-                          context.go(RoutePath.payrollSlipDetail(slips[i].id));
+                          context.push(RoutePath.payrollSlipDetail(slips[i].id));
                         },
                       ),
                     ),
@@ -85,7 +80,28 @@ class PayrollSlipListPage extends ConsumerWidget {
             ),
           ),
         ],
+      );
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
+    return Scaffold(
+      appBar: UtenAppBar(
+        title: '工资条',
+        showBackButton: true,
+        centerWidget: UtenSegmentedFilter<PayrollFilter>(
+          selected: filter,
+          onChanged: (v) =>
+              ref.read(payrollFilterProvider.notifier).state = v,
+          segments: const [
+            UtenSegment(value: PayrollFilter.all, label: '全部'),
+            UtenSegment(value: PayrollFilter.published, label: '已发布'),
+            UtenSegment(value: PayrollFilter.viewed, label: '已查看'),
+            UtenSegment(value: PayrollFilter.downloaded, label: '已下载'),
+          ],
+        ),
       ),
+      body: body,
     );
   }
 }
@@ -103,7 +119,6 @@ class _SlipCard extends StatelessWidget {
 
     return UtenCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -135,7 +150,7 @@ class _SlipCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: UtenSpacing.s16),
           // 第二行：期间
           Text(
             slip.periodLabelZh,
@@ -143,7 +158,7 @@ class _SlipCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           // 第三行：实发金额（突出）
           Text(
             '实发金额',
@@ -152,7 +167,7 @@ class _SlipCard extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: UtenSpacing.s4),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -175,9 +190,9 @@ class _SlipCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           const Divider(),
-          const SizedBox(height: 10),
+          const SizedBox(height: UtenSpacing.s8),
           // 第四行：应发 / 扣除
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -194,29 +209,33 @@ class _SlipCard extends StatelessWidget {
   }
 
   Widget _miniStat(String label, String value, Color color) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            color: color,
-            fontWeight: FontWeight.w600,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
+    return Builder(
+      builder: (context) {
+        final theme = Theme.of(context);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 13,
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

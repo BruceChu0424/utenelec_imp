@@ -44,7 +44,7 @@ public final class IdCardUtil {
     }
 
     public static String last4(String id) {
-        return id.substring(14);
+        return Strings.last4(id);
     }
 
     public static String mask(String id) {

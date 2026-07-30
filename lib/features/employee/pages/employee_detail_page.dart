@@ -1,17 +1,28 @@
 // 员工详情页（真实后端 + 组件库）。敏感字段由后端按当前角色脱敏后返回。
-// 分组用 UtenCard，键值用 UtenInfoRow，状态用 EmployeeStatusBadge，空/错用 UtenEmpty。
+// 分组用 UtenSectionHeader + UtenCard，键值用 UtenInfoRow，状态用 EmployeeStatusBadge，
+// 空/错用 UtenEmpty。详情页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
 // 文档：docs/03-页面/员工详情页.md
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_section_header.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
+import '../widgets/employee_transfer_dialog.dart';
+import '../widgets/profile_change_pending_section.dart';
 
 class EmployeeDetailPage extends ConsumerStatefulWidget {
   const EmployeeDetailPage({super.key, required this.employeeId});
@@ -39,7 +50,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
       _error = null;
     });
     try {
-      final p = await ref.read(employeeRepositoryProvider).getById(widget.employeeId);
+      final p = await ref
+          .read(employeeRepositoryProvider)
+          .getById(widget.employeeId);
       if (!mounted) return;
       setState(() {
         _profile = p;
@@ -54,7 +67,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = '加载失败';
+        _error = AppLocalizations.of(context).employeeOffboardLoadFailed;
         _loading = false;
       });
     }
@@ -62,143 +75,596 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('员工详情')),
+      appBar: UtenAppBar(
+        title: l10n.employeeDetailTitle,
+        showBackButton: true,
+        actions: [
+          if (ref.watch(currentPermissionsProvider).contains(Perm.employeeEdit))
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: l10n.employeeEditTitle,
+              onPressed: () async {
+                await context.push('/employee/${widget.employeeId}/edit');
+                _load();
+              },
+            ),
+          _buildActionMenu(context, l10n),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? UtenEmpty.error(message: _error, actionLabel: '重试', onAction: _load)
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _header(theme),
-                      const SizedBox(height: 12),
-                      _section('基本信息', [
-                        UtenInfoRow(label: '工号', value: _p.code, showDivider: false),
-                        UtenInfoRow(label: '姓名', value: _p.fullName),
-                        UtenInfoRow(label: '性别', value: _genderText(_p.gender)),
-                        UtenInfoRow(label: '证件类型', value: _p.idType),
-                        UtenInfoRow(label: '证件号码', value: _p.idNumber),
-                        UtenInfoRow(label: '出生日期', value: _p.birthDate),
-                        UtenInfoRow(label: '民族', value: _p.ethnicity),
-                        UtenInfoRow(label: '政治面貌', value: _p.politicalStatus),
-                        UtenInfoRow(label: '婚姻状况', value: _p.maritalStatus, showDivider: false),
-                      ]),
-                      _section('联系与地址', [
-                        UtenInfoRow(label: '手机号', value: _p.phone, showDivider: false),
-                        UtenInfoRow(label: '办公电话', value: _p.officePhone),
-                        UtenInfoRow(label: '企业邮箱', value: _p.email),
-                        UtenInfoRow(label: '户籍地址', value: _p.hujiAddress),
-                        UtenInfoRow(label: '现居住地', value: _p.residenceAddress, showDivider: false),
-                      ]),
-                      _section('组织与用工', [
-                        UtenInfoRow(label: '所属部门', value: _p.departmentName, showDivider: false),
-                        UtenInfoRow(label: '岗位', value: _p.positionName),
-                        UtenInfoRow(label: '直属上级', value: _p.supervisorName),
-                        UtenInfoRow(label: '入职日期', value: _p.hireDate),
-                        UtenInfoRow(label: '转正日期', value: _p.confirmedAt),
-                        UtenInfoRow(label: '工作状态', value: null, valueWidget: EmployeeStatusBadge(status: _p.status, size: UtenStatusBadgeSize.medium)),
-                        UtenInfoRow(label: '用工形式', value: _employmentTypeText(_p.employmentType)),
-                        UtenInfoRow(label: '办公地点', value: _p.workLocation),
-                        UtenInfoRow(label: '工位号', value: _p.seatNo, showDivider: false),
-                      ]),
-                      if (_p.contractType != null || _p.baseSalary != null || _p.bankAccount != null)
-                        _section('合同 / 薪资（按权限可见）', [
-                          UtenInfoRow(label: '合同类型', value: _contractTypeText(_p.contractType), showDivider: false),
-                          UtenInfoRow(label: '合同起止', value: _p.contractStart == null ? null : '${_p.contractStart} ~ ${_p.contractEnd ?? ''}'),
-                          UtenInfoRow(label: '试用期', value: _p.probationMonths == null ? null : '${_p.probationMonths} 个月（至 ${_p.probationEndDate ?? ''}）'),
-                          UtenInfoRow(label: '续签次数', value: _p.renewCount == null ? null : '${_p.renewCount}'),
-                          UtenInfoRow(label: '基本工资', value: _p.baseSalary),
-                          UtenInfoRow(label: '绩效/补贴', value: _p.perfSalary),
-                          UtenInfoRow(label: '社保基数', value: _p.socialInsuranceBase),
-                          UtenInfoRow(label: '公积金基数', value: _p.housingFundBase),
-                          UtenInfoRow(label: '开户银行', value: _p.bankBranch),
-                          UtenInfoRow(label: '银行卡号', value: _p.bankAccount, showDivider: false),
-                        ]),
-                      if (_p.emergencyContacts.isNotEmpty)
-                        _section('紧急联系人', [
-                          for (final c in _p.emergencyContacts)
-                            UtenInfoRow(
-                              label: '${c.relationship ?? ''} ${c.name ?? ''}',
-                              value: c.phone,
-                              showDivider: c != _p.emergencyContacts.last,
-                            ),
-                        ]),
-                      if (_p.history.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        UtenCard(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('任职轨迹', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 8),
-                            for (final h in _p.history)
-                              ListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                leading: const Icon(Icons.history_rounded, size: 20),
-                                title: Text(_historyTitle(h)),
-                                subtitle: h.eventDate == null ? null : Text(h.eventDate!),
-                              ),
-                          ]),
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-                    ],
+          ? UtenEmpty.error(
+              message: _error,
+              actionLabel: l10n.commonRetry,
+              onAction: _load,
+            )
+          : RefreshIndicator(
+              onRefresh: _load,
+              // 详情页全断点窄版收敛（1120），避免宽屏信息行被拉得过长
+              child: UtenContentContainer.narrow(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s16,
                   ),
+                  children: [
+                    _header(theme, l10n),
+                    ProfileChangePendingSection(employeeId: widget.employeeId),
+                    ..._expiryBanners(theme, l10n),
+                    const SizedBox(height: UtenSpacing.s16),
+                  _section(l10n.employeeDetailBasic, [
+                    UtenInfoRow(
+                      label: l10n.employeeFieldCode,
+                      value: _p.code,
+                      showDivider: false,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldName,
+                      value: _p.fullName,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldGender,
+                      value: _genderText(l10n, _p.gender),
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldIdType,
+                      value: _p.idType,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldIdNumber,
+                      value: _p.idNumber,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldBirthDate,
+                      value: _p.birthDate,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldEthnicity,
+                      value: _p.ethnicity,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldPoliticalStatus,
+                      value: _p.politicalStatus,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldMaritalStatus,
+                      value: _p.maritalStatus,
+                      showDivider: false,
+                    ),
+                  ]),
+                  _section(l10n.employeeDetailContact, [
+                    UtenInfoRow(
+                      label: l10n.employeeFieldPhone,
+                      value: _p.phone,
+                      showDivider: false,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldOfficePhone,
+                      value: _p.officePhone,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldEmail,
+                      value: _p.email,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldHujiAddress,
+                      value: _p.hujiAddress,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldResidenceAddress,
+                      value: _p.residenceAddress,
+                      showDivider: false,
+                    ),
+                  ]),
+                  _section(l10n.employeeDetailOrg, [
+                    UtenInfoRow(
+                      label: l10n.employeeFieldDepartment,
+                      value: _p.departmentName,
+                      showDivider: false,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldPosition,
+                      value: _p.positionName,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldSupervisor,
+                      value: _p.supervisorName,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldHireDate,
+                      value: _p.hireDate,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldConfirmedDate,
+                      value: _p.confirmedAt,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldStatus,
+                      value: null,
+                      valueWidget: EmployeeStatusBadge(
+                        status: _p.status,
+                        size: UtenStatusBadgeSize.medium,
+                      ),
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldAccountStatus,
+                      value: null,
+                      valueWidget: _accountStatusBadge(theme, l10n),
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldEmploymentType,
+                      value: _employmentTypeText(l10n, _p.employmentType),
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldWorkLocation,
+                      value: _p.workLocation,
+                    ),
+                    UtenInfoRow(
+                      label: l10n.employeeFieldSeatNo,
+                      value: _p.seatNo,
+                      showDivider: false,
+                    ),
+                  ]),
+                  if (_p.contractType != null ||
+                      _p.baseSalary != null ||
+                      _p.bankAccount != null)
+                    _section(l10n.employeeDetailContract, [
+                      UtenInfoRow(
+                        label: l10n.employeeFieldContractType,
+                        value: _contractTypeText(l10n, _p.contractType),
+                        showDivider: false,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldContractPeriod,
+                        value: _p.contractStart == null
+                            ? null
+                            : l10n.employeeContractPeriodValue(
+                                _p.contractStart!,
+                                _p.contractEnd ?? '',
+                              ),
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldProbation,
+                        value: _p.probationMonths == null
+                            ? null
+                            : l10n.employeeProbationValue(
+                                _p.probationMonths!,
+                                _p.probationEndDate ?? '',
+                              ),
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldRenewCount,
+                        value: _p.renewCount == null
+                            ? null
+                            : l10n.employeeRenewCountValue(_p.renewCount!),
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldBaseSalary,
+                        value: _p.baseSalary,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldPerfSalary,
+                        value: _p.perfSalary,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldSocialBase,
+                        value: _p.socialInsuranceBase,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldHousingBase,
+                        value: _p.housingFundBase,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldBankBranch,
+                        value: _p.bankBranch,
+                      ),
+                      UtenInfoRow(
+                        label: l10n.employeeFieldBankAccount,
+                        value: _p.bankAccount,
+                        showDivider: false,
+                      ),
+                    ]),
+                  if (_p.emergencyContacts.isNotEmpty)
+                    _section(l10n.employeeDetailEmergency, [
+                      for (final c in _p.emergencyContacts)
+                        UtenInfoRow(
+                          label: '${c.relationship ?? ''} ${c.name ?? ''}',
+                          value: c.phone,
+                          showDivider: c != _p.emergencyContacts.last,
+                        ),
+                    ]),
+                    if (_p.history.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s24,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            UtenSectionHeader(
+                              title: l10n.employeeDetailHistory,
+                              icon: Icons.history_rounded,
+                            ),
+                            const SizedBox(height: UtenSpacing.s8),
+                            UtenCard(
+                              child: Column(
+                                children: [
+                                  for (final h in _p.history)
+                                    ListTile(
+                                      dense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: const Icon(
+                                        Icons.history_rounded,
+                                        size: 20,
+                                      ),
+                                      title: Text(_historyTitle(l10n, h)),
+                                      subtitle: Text(
+                                        [
+                                          if (h.eventDate != null) h.eventDate!,
+                                          if (h.remark != null &&
+                                              h.remark!.isNotEmpty)
+                                            h.remark!,
+                                        ].join(' · '),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: UtenSpacing.s24),
+                  ],
                 ),
+              ),
+            ),
     );
   }
 
   EmployeeProfile get _p => _profile!;
 
-  Widget _header(ThemeData theme) {
-    final p = _p;
-    return UtenCard(
-      padding: const EdgeInsets.all(16),
-      child: Row(children: [
-        CircleAvatar(
-          radius: 24,
-          backgroundColor: theme.colorScheme.primaryContainer,
-          foregroundColor: theme.colorScheme.onPrimaryContainer,
-          child: Text((p.fullName ?? '?').characters.first),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(p.fullName ?? '', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            Text('${p.code} · ${p.departmentName ?? ''} · ${p.positionName ?? ''}',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          ]),
-        ),
-        EmployeeStatusBadge(status: p.status),
-      ]),
+  /// 操作菜单：调岗 / 转正 / 办理离职 / 删除档案（按权限点 + 员工状态显隐）。
+  Widget _buildActionMenu(BuildContext context, AppLocalizations l10n) {
+    final p = _profile;
+    if (p == null) return const SizedBox.shrink();
+    final perms = ref.watch(currentPermissionsProvider);
+    final canEdit = perms.contains(Perm.employeeEdit);
+    final canDelete = perms.contains(Perm.employeeDelete);
+    final resigned = p.status == 'resigned';
+
+    final items = <PopupMenuEntry<String>>[
+      if (canEdit && !resigned)
+        PopupMenuItem(value: 'transfer', child: Text(l10n.employeeActionTransfer)),
+      if (canEdit && p.status == 'probation')
+        PopupMenuItem(value: 'confirm', child: Text(l10n.employeeActionConfirm)),
+      if (canEdit && !resigned)
+        PopupMenuItem(value: 'offboard', child: Text(l10n.employeeActionOffboard)),
+      if (canEdit && resigned)
+        PopupMenuItem(value: 'rehire', child: Text(l10n.employeeActionRehire)),
+      if (canDelete)
+        PopupMenuItem(value: 'delete', child: Text(l10n.employeeActionDelete)),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert_rounded),
+      tooltip: l10n.employeeActions,
+      itemBuilder: (_) => items,
+      onSelected: (v) => switch (v) {
+        'transfer' => _onTransfer(),
+        'confirm' => _onConfirm(),
+        'offboard' => _onOffboard(),
+        'rehire' => _onRehire(),
+        'delete' => _onDelete(),
+        _ => null,
+      },
     );
   }
 
-  Widget _section(String title, List<Widget> rows) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 8),
-      child: UtenCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-          ...rows,
-        ]),
+  Future<void> _onTransfer() async {
+    final ok = await showEmployeeTransferDialog(
+      context,
+      employeeId: widget.employeeId,
+      currentDepartmentId: _p.departmentId,
+    );
+    if (ok) _load();
+  }
+
+  Future<void> _onOffboard() async {
+    await context.push('/employee/${widget.employeeId}/offboarding');
+    _load();
+  }
+
+  Future<void> _onConfirm() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.employeeConfirmTitle),
+        content: Text(l10n.employeeConfirmBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(employeeRepositoryProvider).confirm(widget.employeeId);
+      if (!mounted) return;
+      context.appSuccess(l10n.employeeConfirmSuccess);
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
+  }
+
+  Future<void> _onRehire() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.employeeRehireTitle),
+        content: Text(l10n.employeeRehireBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(employeeRepositoryProvider).rehire(widget.employeeId);
+      if (!mounted) return;
+      context.appSuccess(l10n.employeeRehireSuccess);
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
+  }
+
+  Future<void> _onDelete() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.employeeDeleteTitle),
+        content: Text(l10n.employeeDeleteBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonDelete),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(employeeRepositoryProvider).delete(widget.employeeId);
+      if (!mounted) return;
+      context.appSuccess(l10n.employeeDeleteSuccess);
+      context.go('/employee');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
+  }
+
+  Widget _header(ThemeData theme, AppLocalizations l10n) {
+    final p = _p;
+    return UtenCard(
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: theme.colorScheme.primaryContainer,
+            foregroundColor: theme.colorScheme.onPrimaryContainer,
+            child: Text((p.fullName ?? '?').characters.first),
+          ),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  p.fullName ?? '',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '${p.code} · ${p.departmentName ?? ''} · ${p.positionName ?? ''}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          EmployeeStatusBadge(status: p.status),
+        ],
       ),
     );
   }
 
-  String? _genderText(String? g) => const {'male': '男', 'female': '女'}[g ?? ''];
-  String? _employmentTypeText(String? t) =>
-      const {'regular': '正式', 'dispatch': '劳务派遣', 'intern': '实习', 'outsource': '外包'}[t ?? ''];
-  String? _contractTypeText(String? t) =>
-      const {'fixed': '固定期限', 'open': '无固定期限', 'task': '任务', 'intern': '实习'}[t ?? ''];
-  String _historyTitle(EmploymentHistoryView h) {
-    const map = {'onboard': '入职', 'transfer': '调岗', 'resign': '离职'};
-    final type = map[h.eventType] ?? h.eventType ?? '';
+  /// 分组：UtenSectionHeader（卡外标题）+ UtenCard（键值行），区块间距 24。
+  Widget _section(String title, List<Widget> rows) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          UtenSectionHeader(title: title),
+          const SizedBox(height: UtenSpacing.s8),
+          UtenCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: rows,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String? _genderText(AppLocalizations l10n, String? g) => switch (g) {
+    'male' => l10n.genderMale,
+    'female' => l10n.genderFemale,
+    _ => null,
+  };
+
+  String? _employmentTypeText(AppLocalizations l10n, String? t) => switch (t) {
+    'regular' => l10n.employmentTypeRegular,
+    'dispatch' => l10n.employmentTypeDispatch,
+    'intern' => l10n.employmentTypeIntern,
+    'outsource' => l10n.employmentTypeOutsource,
+    _ => null,
+  };
+
+  String? _contractTypeText(AppLocalizations l10n, String? t) => switch (t) {
+    'fixed' => l10n.contractTypeFixed,
+    'open' => l10n.contractTypeOpen,
+    'task' => l10n.contractTypeTask,
+    'intern' => l10n.contractTypeIntern,
+    _ => null,
+  };
+
+  String _historyTitle(AppLocalizations l10n, EmploymentHistoryView h) {
+    final type = switch (h.eventType) {
+      'onboard' => l10n.historyEventOnboard,
+      'transfer' => l10n.historyEventTransfer,
+      'resign' => l10n.historyEventResign,
+      'rehire' => l10n.historyEventRehire,
+      _ => h.eventType ?? '',
+    };
     final dept = h.toDeptName ?? h.fromDeptName ?? '';
     return '$type · $dept';
+  }
+
+  /// 登录账号状态徽章：active=正常 / locked=锁定 / disabled=停用 / null=未开通。
+  Widget _accountStatusBadge(ThemeData theme, AppLocalizations l10n) {
+    final (label, color) = switch (_p.accountStatus) {
+      'active' => (l10n.accountStatusActive, Colors.green.shade700),
+      'locked' => (l10n.accountStatusLocked, Colors.orange.shade800),
+      'disabled' => (l10n.accountStatusDisabled, theme.colorScheme.error),
+      _ => (l10n.accountStatusNone, theme.colorScheme.onSurfaceVariant),
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.circle, size: 8, color: color),
+        const SizedBox(width: 6),
+        Text(label, style: theme.textTheme.bodyMedium?.copyWith(color: color)),
+      ],
+    );
+  }
+
+  /// 到期预警横幅：试用期/合同 30 天内到期或已过期时醒目提示（离职员工不再提示）。
+  List<Widget> _expiryBanners(ThemeData theme, AppLocalizations l10n) {
+    if (_p.status == 'resigned') return const [];
+    final banners = <Widget>[];
+    final today = DateUtils.dateOnly(DateTime.now());
+
+    String? check(String? dateStr, String Function(String date, int days) expiring,
+        String Function(String date) expired) {
+      if (dateStr == null) return null;
+      final d = DateTime.tryParse(dateStr);
+      if (d == null) return null;
+      final days = DateUtils.dateOnly(d).difference(today).inDays;
+      if (days < 0) return expired(dateStr);
+      if (days <= 30) return expiring(dateStr, days);
+      return null;
+    }
+
+    final msgs = <String>[
+      if (_p.status == 'probation')
+        ?check(
+          _p.probationEndDate,
+          (date, days) => l10n.employeeProbationExpiring(date, days),
+          (date) => l10n.employeeProbationExpired(date),
+        ),
+      ?check(
+        _p.contractEnd,
+        (date, days) => l10n.employeeContractExpiring(date, days),
+        (date) => l10n.employeeContractExpired(date),
+      ),
+    ];
+
+    for (final msg in msgs) {
+      banners.add(
+        Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s12),
+          child: Container(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.12),
+              borderRadius: UtenRadius.mdAll,
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.event_busy_rounded,
+                    size: 18, color: Colors.orange.shade800),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    msg,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.orange.shade900,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return banners;
   }
 }

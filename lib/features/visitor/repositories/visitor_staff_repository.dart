@@ -60,6 +60,18 @@ class VisitorStaffRepository {
     return list.map(VisitorApplication.fromJson).toList();
   }
 
+  /// HR 访客待办数（工作台/导航徽章）。
+  Future<int> pendingCount() async {
+    final r = await _api.get(ApiEndpoints.visitorApprovalPendingCount);
+    return (r['count'] as num?)?.toInt() ?? 0;
+  }
+
+  /// 我作为接待人的待确认数（工作台/导航徽章）。
+  Future<int> hostPendingCount() async {
+    final r = await _api.get(ApiEndpoints.visitorApprovalHostPendingCount);
+    return (r['count'] as num?)?.toInt() ?? 0;
+  }
+
   Future<VisitorApplicationDetail> approvalDetail(String id) async {
     final r = await _api.get(ApiEndpoints.visitorApprovalById(id));
     final app = VisitorApplication.fromJson(r);

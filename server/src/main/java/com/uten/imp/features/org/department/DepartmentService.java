@@ -84,6 +84,7 @@ public class DepartmentService {
             d.setManager(empRepo.findById(req.getManagerId())
                     .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "负责人员工不存在")));
         }
+        boolean parentChanged = false;
         if (req.getParentId() != null) {
             if (req.getParentId().equals(id)) {
                 throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
@@ -92,11 +93,44 @@ public class DepartmentService {
                 throw new ApiException(ErrorCode.CONFLICT, "不能将部门挂到其子部门下（会成环）");
             }
             d.setParent(requireDept(req.getParentId()));
+            parentChanged = true;
         }
         deptRepo.save(d);
         em.flush();
         em.refresh(d);
+        if (parentChanged) {
+            relevelSubtree(id);   // level 是有语义的层级标签，移动后按新父级重算整棵子树
+        }
         return detail(id);
+    }
+
+    /** 父部门层级 → 子部门层级（公司/骨架→一级；一级→二级；二级→三级；三级封顶）。 */
+    private String childDeptLevel(String parentLevel) {
+        if (parentLevel == null) return "一级部门";
+        return switch (parentLevel) {
+            case "公司", "决策层", "管理中心" -> "一级部门";
+            case "一级部门" -> "二级班组";
+            case "二级班组" -> "三级科室";
+            case "三级科室" -> "三级科室";
+            default -> "二级班组";
+        };
+    }
+
+    /** 移动后重算子树 level：findSubtree 按 path 排序（根先于后代），根的 level 由其新父级决定。 */
+    private void relevelSubtree(UUID rootId) {
+        List<Department> nodes = deptRepo.findSubtree(rootId);
+        Department root = nodes.stream().filter(d -> d.getId().equals(rootId)).findFirst().orElse(null);
+        if (root == null) return;
+        String rootParentLevel = root.getParent() == null ? null : root.getParent().getLevel();
+        Map<UUID, String> levelById = new HashMap<>();
+        for (Department d : nodes) {
+            String lvl = d.getId().equals(rootId)
+                    ? childDeptLevel(rootParentLevel)
+                    : childDeptLevel(levelById.get(d.getParent().getId()));
+            d.setLevel(lvl);
+            levelById.put(d.getId(), lvl);
+        }
+        deptRepo.saveAll(nodes);
     }
 
     @Transactional

@@ -49,8 +49,9 @@ class _UtenSkeletonState extends ConsumerState<UtenSkeleton>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tier = ref.watch(performanceProvider);
-    final baseColor = theme.colorScheme.surfaceContainerHighest;
-    final highlightColor = theme.colorScheme.surfaceContainerLow;
+    // 柔和的底色对：surfaceContainerHigh 底 + surface 高光，闪烁更细腻
+    final baseColor = theme.colorScheme.surfaceContainerHigh;
+    final highlightColor = theme.colorScheme.surface;
 
     // lite 档：静态
     if (!tier.enableSkeletonShimmer) {

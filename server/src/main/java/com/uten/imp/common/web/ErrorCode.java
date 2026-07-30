@@ -9,7 +9,6 @@ public enum ErrorCode {
     BAD_CREDENTIALS(401, "账号或密码错误"),
     ACCOUNT_LOCKED(401, "账号已锁定，请稍后再试"),
     ACCOUNT_DISABLED(401, "账号已停用"),
-    MUST_CHANGE_PASSWORD(401, "首次登录需修改密码"),
     UNAUTHORIZED(401, "未登录或会话已过期"),
     FORBIDDEN(403, "无权限访问"),
     NOT_FOUND(404, "资源不存在"),
@@ -23,9 +22,6 @@ public enum ErrorCode {
     SMS_CODE_INVALID(400, "验证码错误"),
     SMS_CODE_EXPIRED(400, "验证码已过期，请重新获取"),
     SMS_RATE_LIMITED(429, "验证码发送过于频繁，请稍后再试"),
-    QR_INVALID(400, "二维码无效或已损坏"),
-    QR_EXPIRED(400, "二维码已过期"),
-    QR_USED(400, "该访客凭证已使用"),
     VISITOR_NOT_FOUND(404, "访客申请不存在"),
     VISITOR_BLOCKED(403, "访客账号已被限制"),
     INTERNAL(500, "服务器内部错误");

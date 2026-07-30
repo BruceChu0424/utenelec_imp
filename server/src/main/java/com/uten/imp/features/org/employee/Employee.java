@@ -84,4 +84,25 @@ public class Employee extends SoftDeletableEntity {
     private String email;
 
     private String paperArchiveNo;
+
+    /**
+     * 老库 B_Worker.ID 融合键。采购等模块保留 *_legacy_id 引用老库人员 ID，
+     * 待员工档案回填 legacy_id 后自动对齐到本表（报表人名解析的最终一公里）。
+     */
+    @Column(name = "legacy_id", unique = true)
+    private Integer legacyId;
+
+    /**
+     * 老库 B_Worker 子类（如装配/机加/质检）。迁移自动补录的员工带入；报表人名后显示「（子类）」标记。
+     * HR 录入真实档案时可清空。为 null 则不显示标记。
+     */
+    @Column(name = "legacy_category")
+    private String legacyCategory;
+
+    /**
+     * 乐观锁版本号。每次写都 +1；前端在 profile_change_requests 上 snapshot employee_version，
+     * 审批时校验，不一致即 409（防止申请期内 HR 改了档案导致员工"按过期基线"被合并）。
+     */
+    @Column(name = "version", nullable = false)
+    private Integer version = 0;
 }

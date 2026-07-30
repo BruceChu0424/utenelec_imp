@@ -1,4 +1,5 @@
 // ChangePasswordPage - 改密页（首登强制改密 + 设置中修改密码）
+// 独立路由（不在 MainShell 内）：全断点自行套 UtenContentContainer 收敛宽度。
 // 文档：docs/03-页面/设置页.md（修改密码入口）· 全局机制首登强制改密
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,11 +8,15 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/security/input_validators.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../../../shared/providers/session_provider.dart';
 
 class ChangePasswordPage extends ConsumerStatefulWidget {
@@ -51,12 +56,12 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       _error = null;
     });
     try {
-      await ref.read(sessionProvider.notifier).changePassword(
-            oldPassword: _old.text,
-            newPassword: _new.text,
-          );
+      await ref
+          .read(sessionProvider.notifier)
+          .changePassword(oldPassword: _old.text, newPassword: _new.text);
       if (!mounted) return;
       // 状态已变 authenticated；强制模式路由守卫会重定向到工作台
+      context.appSuccess('密码已修改');
       if (widget.forced) {
         context.go(RouteName.dashboard);
       } else {
@@ -78,16 +83,19 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
     return PopScope(
       canPop: !widget.forced,
       child: Scaffold(
-        appBar: widget.forced
-            ? AppBar(automaticallyImplyLeading: false, title: Text('修改密码'))
-            : AppBar(title: Text('修改密码')),
+        appBar: UtenAppBar(
+          title: '修改密码',
+          // 强制改密模式不可返回（无返回按钮）
+          showBackButton: !widget.forced,
+        ),
+        // 独立路由：全断点套容器（maxWidth 480 居中，gutter 自适应）
         body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
+          child: UtenContentContainer(
+            maxWidth: 480,
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s24),
+            child: SingleChildScrollView(
               child: UtenCard(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(UtenSpacing.s24),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -95,31 +103,38 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Icon(
-                        widget.forced ? Icons.lock_reset_rounded : Icons.password_rounded,
+                        widget.forced
+                            ? Icons.lock_reset_rounded
+                            : Icons.password_rounded,
                         size: 40,
                         color: theme.colorScheme.primary,
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: UtenSpacing.s12),
                       Text(
                         widget.forced ? '首次登录，请修改默认密码' : '修改密码',
-                        style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: UtenSpacing.s4),
                       Text(
                         '密码至少 8 位，需同时包含字母和数字',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: UtenSpacing.s20),
                       UtenInput(
                         controller: _old,
                         label: '原密码',
                         isPassword: true,
                         textInputAction: TextInputAction.next,
-                        validator: (v) => InputValidators.required(v, label: '原密码'),
+                        validator: (v) =>
+                            InputValidators.required(v, label: '原密码'),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: UtenSpacing.s12),
                       UtenInput(
                         controller: _new,
                         label: '新密码',
@@ -127,20 +142,26 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                         textInputAction: TextInputAction.next,
                         validator: InputValidators.password,
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: UtenSpacing.s12),
                       UtenInput(
                         controller: _confirm,
                         label: '确认新密码',
                         isPassword: true,
                         textInputAction: TextInputAction.go,
                         onFieldSubmitted: (_) => _submit(),
-                        validator: (v) => InputValidators.required(v, label: '确认密码'),
+                        validator: (v) =>
+                            InputValidators.required(v, label: '确认密码'),
                       ),
                       if (_error != null) ...[
-                        const SizedBox(height: 12),
-                        Text(_error!, style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.error)),
+                        const SizedBox(height: UtenSpacing.s12),
+                        Text(
+                          _error!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: UtenColors.error,
+                          ),
+                        ),
                       ],
-                      const SizedBox(height: 20),
+                      const SizedBox(height: UtenSpacing.s20),
                       UtenButton(
                         onPressed: _loading ? null : _submit,
                         isLoading: _loading,

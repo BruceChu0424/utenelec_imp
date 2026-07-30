@@ -1,5 +1,8 @@
 // 报销列表页（卡片网格版）
 // 文档：docs/03-页面/报销列表页.md
+//
+// 响应式：compact 由页面自套 UtenContentContainer（gutter 16）；
+// medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,10 +14,13 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
 
@@ -26,31 +32,9 @@ class ExpenseListPage extends ConsumerWidget {
     final list = ref.watch(expenseListProvider);
     final filter = ref.watch(expenseFilterProvider);
 
-    return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go(RouteName.expenseNew),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('新建报销'),
-      ),
-      body: Column(
+    // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
+    Widget body = Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: UtenSegmentedFilter<ExpenseFilter>(
-              selected: filter,
-              onChanged: (v) =>
-                  ref.read(expenseFilterProvider.notifier).state = v,
-              segments: const [
-                UtenSegment(value: ExpenseFilter.all, label: '全部'),
-                UtenSegment(value: ExpenseFilter.draft, label: '草稿'),
-                UtenSegment(value: ExpenseFilter.processing, label: '处理中'),
-                UtenSegment(value: ExpenseFilter.finished, label: '已完成'),
-              ],
-            ),
-          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => ref.read(expenseListProvider.notifier).refresh(),
@@ -87,13 +71,19 @@ class ExpenseListPage extends ConsumerWidget {
                   }
                   return SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
+                    // 底部多留白：内容滚到底可越过悬浮 FAB
+                    padding: const EdgeInsets.only(
+                      top: UtenSpacing.s16,
+                      bottom: 96,
+                    ),
+                    // 个人报销历史（mock 4 条，生产为单员工几十量级），天然有界且量小，
+                    // 无需分页；若产品要求跨年归档查询（>~50）再考虑客户端切片。
                     child: UtenResponsiveGrid(
                       itemCount: claims.length,
                       itemBuilder: (context, i, _) => _ClaimCard(
                         claim: claims[i],
                         onTap: () => context
-                            .go(RoutePath.expenseDetail(claims[i].id)),
+                            .push(RoutePath.expenseDetail(claims[i].id)),
                       ),
                     ),
                   );
@@ -102,7 +92,35 @@ class ExpenseListPage extends ConsumerWidget {
             ),
           ),
         ],
+      );
+    if (context.breakpoint.isCompact) {
+      body = UtenContentContainer(child: body);
+    }
+
+    return Scaffold(
+      appBar: UtenAppBar(
+        title: '报销',
+        showBackButton: true,
+        centerWidget: UtenSegmentedFilter<ExpenseFilter>(
+          selected: filter,
+          onChanged: (v) =>
+              ref.read(expenseFilterProvider.notifier).state = v,
+          segments: const [
+            UtenSegment(value: ExpenseFilter.all, label: '全部'),
+            UtenSegment(value: ExpenseFilter.draft, label: '草稿'),
+            UtenSegment(value: ExpenseFilter.processing, label: '处理中'),
+            UtenSegment(value: ExpenseFilter.finished, label: '已完成'),
+          ],
+        ),
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.go(RouteName.expenseNew),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('新建报销'),
+      ),
+      body: body,
     );
   }
 }
@@ -119,7 +137,6 @@ class _ClaimCard extends StatelessWidget {
 
     return UtenCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -148,7 +165,7 @@ class _ClaimCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: UtenSpacing.s12),
           // 标题
           Text(
             claim.title,
@@ -158,7 +175,7 @@ class _ClaimCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: UtenSpacing.s4),
           // 副信息
           Text(
             '${_fmtDate(claim.createdAt)}  ·  ${claim.items.length} 项明细',
@@ -166,9 +183,9 @@ class _ClaimCard extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: UtenSpacing.s12),
           const Divider(),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           // 金额（突出）
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

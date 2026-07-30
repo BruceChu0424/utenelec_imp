@@ -5,9 +5,16 @@ server:
 
 logging:
   level:
-    com.uten.imp: DEBUG
     org.springframework.security: INFO
 
 uten:
   security:
     require-https: false
+
+app:
+  legacy:
+    # 本机 LocalDB（已还原 YTDQ_2023）；迁移时设 UTEN_LEGACY_ENABLED=true
+    enabled: ${UTEN_LEGACY_ENABLED:false}
+    datasource-url: "${UTEN_LEGACY_DB_URL:jdbc:sqlserver://(localdb)\\MSSQLLocalDB;databaseName=YTDQ_2023;encrypt=false}"
+    datasource-username: ${UTEN_LEGACY_DB_USER:}
+    datasource-password: ${UTEN_LEGACY_DB_PASSWORD:}

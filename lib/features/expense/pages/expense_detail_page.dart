@@ -1,22 +1,27 @@
 // 报销详情页
 // 文档：docs/03-页面/报销详情页.md（待写）
+//
+// 响应式：全断点套 UtenContentContainer.narrow（maxWidth 1120）——
+// 外壳只收敛到 1600，详情页需自行钳窄居中
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_toast.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
@@ -31,7 +36,7 @@ class ExpenseDetailPage extends ConsumerWidget {
     final detail = ref.watch(expenseDetailProvider(claimId));
 
     return Scaffold(
-      appBar: const UtenAppBar(showBackButton: true),
+      appBar: const UtenAppBar(title: '报销详情', showBackButton: true),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(
@@ -63,12 +68,14 @@ class _Content extends ConsumerWidget {
     return Column(
       children: [
         Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
+          // narrow 容器：compact 提供 gutter，medium+ 把内容钳到 1120 居中
+          child: UtenContentContainer.narrow(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
             children: [
               // 金额 Hero
               _buildHero(theme),
-              const SizedBox(height: 16),
+              const SizedBox(height: UtenSpacing.s16),
 
               // 基本信息
               UtenCard(
@@ -96,7 +103,7 @@ class _Content extends ConsumerWidget {
               ),
 
               if (claim.remark != null) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: UtenSpacing.s16),
                 _buildRemark(
                   theme,
                   '备注',
@@ -116,17 +123,18 @@ class _Content extends ConsumerWidget {
                 ),
               ],
 
-              const SizedBox(height: 16),
+              const SizedBox(height: UtenSpacing.s16),
               // 明细（瀑布流网格：手机 1 列、平板 2 列、桌面 3-4 列）
               const UtenSectionHeader(title: '报销明细'),
-              const SizedBox(height: 8),
+              const SizedBox(height: UtenSpacing.s8),
+              // 单张报销单的明细行，天然 1-20 条（受单据本身约束），无需分页。
               UtenResponsiveGrid(
                 itemCount: claim.items.length,
-                spacing: 10,
+                spacing: UtenSpacing.s12,
                 itemBuilder: (context, i, _) =>
                     _buildItemRow(theme, claim.items[i]),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: UtenSpacing.s16),
 
               // 合计
               UtenCard(
@@ -143,6 +151,7 @@ class _Content extends ConsumerWidget {
                 ),
               ),
             ],
+            ),
           ),
         ),
 
@@ -152,44 +161,48 @@ class _Content extends ConsumerWidget {
             child: Row(
               children: [
                 if (canDelete) ...[
-                  UtenButton(
-                    type: UtenButtonType.ghost,
+                  UtenActionButton(
+                    type: UtenActionButtonType.ghost,
                     icon: Icons.delete_outline_rounded,
-                    onPressed: () async {
+                    label: const Text('删除'),
+                    loadingLabel: const Text('删除中…'),
+                    onAction: () async {
                       await deleteExpense(ref, claim.id);
                       if (context.mounted) {
-                        UtenToast.success(context, '已删除');
+                        context.appSuccess('已删除');
                         context.go(RouteName.expense);
                       }
                     },
-                    child: const Text('删除'),
                   ),
                   const SizedBox(width: 12),
                 ],
                 Expanded(
                   child: canSubmit
-                      ? UtenButton(
+                      ? UtenActionButton(
                           icon: Icons.send_rounded,
+                          type: UtenActionButtonType.primary,
                           isExpanded: true,
-                          onPressed: () async {
+                          label: const Text('提交审批'),
+                          loadingLabel: const Text('提交中…'),
+                          onAction: () async {
                             await submitExpense(ref, claim.id);
                             if (context.mounted) {
-                              UtenToast.success(context, '已提交，等待审批');
+                              context.appSuccess('已提交，等待审批');
                             }
                           },
-                          child: const Text('提交审批'),
                         )
-                      : UtenButton(
-                          type: UtenButtonType.ghost,
+                      : UtenActionButton(
+                          type: UtenActionButtonType.ghost,
                           icon: Icons.undo_rounded,
                           isExpanded: true,
-                          onPressed: () async {
+                          label: const Text('撤回'),
+                          loadingLabel: const Text('撤回中…'),
+                          onAction: () async {
                             await withdrawExpense(ref, claim.id);
                             if (context.mounted) {
-                              UtenToast.success(context, '已撤回');
+                              context.appSuccess('已撤回');
                             }
                           },
-                          child: const Text('撤回'),
                         ),
                 ),
               ],
@@ -201,7 +214,7 @@ class _Content extends ConsumerWidget {
 
   Widget _buildHero(ThemeData theme) {
     return UtenCard(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(UtenSpacing.s24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -221,7 +234,7 @@ class _Content extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -246,7 +259,7 @@ class _Content extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: UtenSpacing.s8),
           Text(
             '共 ${claim.items.length} 项明细',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -266,10 +279,10 @@ class _Content extends ConsumerWidget {
     bool isWarning = false,
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: UtenRadius.lgAll,
         border: Border.all(
           color: isWarning
               ? UtenColors.error.withValues(alpha: 0.3)
@@ -313,13 +326,9 @@ class _Content extends ConsumerWidget {
   }
 
   Widget _buildItemRow(ThemeData theme, ExpenseItem item) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
+    // 明细小卡：UtenCard 无阴影变体（radius 14 + 细边框）
+    return UtenCard(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Row(
         children: [
           Container(

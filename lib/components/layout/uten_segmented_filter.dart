@@ -27,51 +27,50 @@ class UtenSegmentedFilter<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          for (final seg in segments) ...[
-            Expanded(
-              child: GestureDetector(
+    // 宽度自适应：tab 越多越宽、tab 越少越窄（用 IntrinsicWidth + Row.min）
+    // 而不是默认的 Expanded 撑满父容器。
+    return IntrinsicWidth(
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final seg in segments) ...[
+              GestureDetector(
                 onTap: () => onChanged(seg.value),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  // 选中态稍宽：horizontal 20 vs 未选 14，让选中 tab 在视觉上
+                  // 比未选中 tab 大一档，提示「当前激活项」。
+                  padding: EdgeInsets.symmetric(
+                    horizontal: selected == seg.value ? 20 : 14,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: selected == seg.value
                         ? theme.colorScheme.primary
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (selected == seg.value)
-                        Icon(Icons.check_rounded,
-                            size: 14, color: theme.colorScheme.onPrimary),
-                      if (selected == seg.value) const SizedBox(width: 4),
-                      Text(
-                        seg.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: selected == seg.value
-                              ? theme.colorScheme.onPrimary
-                              : theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    seg.label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: selected == seg.value
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

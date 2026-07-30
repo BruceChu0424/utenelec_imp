@@ -1,0 +1,513 @@
+package com.uten.imp.features.master.goods;
+
+import com.uten.imp.common.export.ExportColumn;
+import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.web.TableSort;
+import com.uten.imp.features.master.color.Color;
+import com.uten.imp.features.master.color.ColorRepository;
+import com.uten.imp.features.master.goods.dto.FacetBucket;
+import com.uten.imp.features.master.goods.dto.GoodsDetail;
+import com.uten.imp.features.master.goods.dto.GoodsDictItem;
+import com.uten.imp.features.master.goods.dto.GoodsFacets;
+import com.uten.imp.features.master.goods.dto.GoodsListItem;
+import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
+import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
+import com.uten.imp.features.master.materialcategory.MaterialCategory;
+import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
+import com.uten.imp.features.master.unit.Unit;
+import com.uten.imp.features.master.unit.UnitRepository;
+import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/**
+ * 货品主档：子树范围列表（动态筛选）+ facets + 详情 + 新建/编辑/删除（goods:edit）。
+ *
+ * <p>列表用 {@link Specification} 复刻 {@code EmployeeQueryService.list} 范式：子树 id 集合（复用
+ * {@link MaterialCategoryRepository#findSubtree} 递归 CTE）+ keyword 多字段 OR + 字段精确等值 +
+ * {@code nullFields} 空值白名单。
+ *
+ * <p>facets 用原生 SQL 聚合（字段→列名硬编码白名单，防注入；列名非用户输入）。
+ *
+ * <p>price 在 entity 是 Double（DOUBLE PRECISION 列），DTO 用 BigDecimal 便于前端精度展示，
+ * apply/toDetail 做双向转换。
+ *
+ * <p>颜色/单位名称解析：goods 只存 color_legacy_id/unit_legacy_id（老库主键），列表与详情在
+ * Service 层按 legacy_id 批量/单条查 colors/units 取 name（表小，内存关联，不动货品查询）。
+ * 解析不到（软删或孤儿引用）返回 null，前端回落显 #legacyId。
+ */
+@Service
+@RequiredArgsConstructor
+public class GoodsService {
+
+    private static final MasterCodePrefix CODE_PREFIX = MasterCodePrefix.GOODS;
+
+    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。 */
+    private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
+            "series", "model", "material", "code", "name", "spec",
+            "cNumber", "requireRemark", "colorLegacyId", "unitLegacyId");
+
+    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量/日期列；命中才排序，否则默认 id ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price");
+
+    /** facet 截断阈值（高基数列如 name 取前 N）。 */
+    private static final int FACET_LIMIT = 50;
+
+    /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。 */
+    private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
+    static {
+        FACET_COLUMNS.put("code", "code");
+        FACET_COLUMNS.put("series", "series");
+        FACET_COLUMNS.put("model", "model");
+        FACET_COLUMNS.put("name", "name");
+        FACET_COLUMNS.put("spec", "spec");
+        FACET_COLUMNS.put("material", "material");
+        FACET_COLUMNS.put("requireRemark", "require_remark");
+        FACET_COLUMNS.put("colorLegacyId", "color_legacy_id");
+        FACET_COLUMNS.put("unitLegacyId", "unit_legacy_id");
+    }
+
+    private final GoodsRepository repo;
+    private final MaterialCategoryRepository categoryRepo;
+    private final ColorRepository colorRepo;
+    private final UnitRepository unitRepo;
+    private final TxSessionVars tx;
+    private final EntityManager em;
+    private final MasterCodeService masterCodeService;
+    private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+
+    // ===== 归属可见性（外贸系列按员工授权，V85；判定逻辑统一在 OwnerVisibility） =====
+
+    /** facets 原生 SQL 片段：归属过滤 AND 子句（参数名 :__ownerEmp；无需绑参时 bindEmp[0]=false）。 */
+    private String ownerClause(boolean[] bindEmp) {
+        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        if (scope.seeAll()) { bindEmp[0] = false; return ""; }
+        if (scope.visibleOwners().isEmpty()) { bindEmp[0] = false; return " and owner_employee_id is null"; }
+        bindEmp[0] = true;
+        return " and (owner_employee_id is null or owner_employee_id in (:__ownerEmp))";
+    }
+
+    // ===== 列表（Specification 动态筛选） =====
+
+    @Transactional(readOnly = true)
+    public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size, String sort, String order) {
+        List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
+        Specification<Goods> spec = (Root<Goods> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
+                                     CriteriaBuilder cb) -> {
+            List<Predicate> ps = new ArrayList<>();
+            ps.add(cb.isFalse(root.get("deleted")));
+            // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见
+            var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+            if (!scope.seeAll()) {
+                if (scope.visibleOwners().isEmpty()) {
+                    ps.add(cb.isNull(root.get("ownerEmployeeId")));
+                } else {
+                    ps.add(cb.or(cb.isNull(root.get("ownerEmployeeId")),
+                            root.get("ownerEmployeeId").in(scope.visibleOwners())));
+                }
+            }
+            if (subtreeIds != null) {
+                ps.add(root.get("category").get("id").in(subtreeIds));
+            }
+            if (f.keyword() != null && !f.keyword().isBlank()) {
+                String like = "%" + f.keyword().toLowerCase() + "%";
+                ps.add(cb.or(
+                        cb.like(cb.lower(root.get("name")), like),
+                        cb.like(cb.lower(root.get("code")), like),
+                        cb.like(cb.lower(root.get("model")), like),
+                        cb.like(cb.lower(root.get("spec")), like),
+                        cb.like(cb.lower(root.get("series")), like)));
+            }
+            addEq(ps, cb, root, "series", f.series());
+            addEq(ps, cb, root, "model", f.model());
+            addEq(ps, cb, root, "material", f.material());
+            addEq(ps, cb, root, "code", f.code());
+            addEq(ps, cb, root, "name", f.name());
+            addEq(ps, cb, root, "spec", f.spec());
+            addEq(ps, cb, root, "cNumber", f.cNumber());
+            addEq(ps, cb, root, "requireRemark", f.requireRemark());
+            if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
+            if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
+            if (f.nullFields() != null) {
+                for (String fld : f.nullFields()) {
+                    if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
+                }
+            }
+            return cb.and(ps.toArray(new Predicate[0]));
+        };
+        Pageable pageable = Pageables.of(page, size,
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
+        Page<Goods> p = repo.findAll(spec, pageable);
+        List<Goods> content = p.getContent();
+        // 批量解析颜色/单位名（按本页出现的 legacy_id 一次性查 colors/units，避免 N+1）。
+        Map<Integer, String> colorNames = colorNamesFor(
+                content.stream().map(Goods::getColorLegacyId).toList());
+        Map<Integer, String> unitNames = unitNamesFor(
+                content.stream().map(Goods::getUnitLegacyId).toList());
+        List<GoodsListItem> items = content.stream()
+                .map(g -> toList(g, colorNames, unitNames))
+                .toList();
+        return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+    }
+
+    private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Goods> root,
+                              String field, String value) {
+        if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
+    }
+
+    private List<UUID> resolveSubtreeIds(UUID categoryId) {
+        return categoryRepo.findSubtree(categoryId).stream().map(MaterialCategory::getId).toList();
+    }
+
+    /** 批量按 legacy_id 查 colors 取 name（仅未软删）。空集合返回空 map。 */
+    private Map<Integer, String> colorNamesFor(Collection<Integer> legacyIds) {
+        Set<Integer> distinct = legacyIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (distinct.isEmpty()) return Map.of();
+        return colorRepo.findByLegacyIdInAndDeletedFalse(distinct).stream()
+                .filter(c -> c.getLegacyId() != null)
+                .collect(Collectors.toMap(Color::getLegacyId, Color::getName, (a, b) -> a));
+    }
+
+    /** 批量按 legacy_id 查 units 取 name（仅未软删）。空集合返回空 map。 */
+    private Map<Integer, String> unitNamesFor(Collection<Integer> legacyIds) {
+        Set<Integer> distinct = legacyIds.stream()
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (distinct.isEmpty()) return Map.of();
+        return unitRepo.findByLegacyIdInAndDeletedFalse(distinct).stream()
+                .filter(u -> u.getLegacyId() != null)
+                .collect(Collectors.toMap(Unit::getLegacyId, Unit::getName, (a, b) -> a));
+    }
+
+    // ===== 加密 Excel 导出（服务端权威列定义） =====
+
+    /**
+     * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限 1000 页=10万行防 OOM。
+     * 列定义服务端权威（不信任前端传列）；过滤/排序走 TableSort 白名单（list 已接 sort/order）。
+     */
+    @Transactional(readOnly = true)
+    public ExportPayload export(GoodsQueryFilter f, String sort, String order) {
+        List<ExportColumn> cols = List.of(
+                new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("series", "系列", ExportColumn.TEXT),
+                new ExportColumn("model", "型号", ExportColumn.TEXT),
+                new ExportColumn("name", "货品名称", ExportColumn.TEXT),
+                new ExportColumn("spec", "规格", ExportColumn.TEXT),
+                new ExportColumn("material", "材质", ExportColumn.TEXT),
+                new ExportColumn("cNumber", "客户型号", ExportColumn.TEXT),
+                new ExportColumn("requireRemark", "备注", ExportColumn.TEXT),
+                new ExportColumn("colorName", "主颜色", ExportColumn.TEXT),
+                new ExportColumn("unitName", "单位", ExportColumn.TEXT),
+                new ExportColumn("price", "价格", ExportColumn.MONEY),
+                new ExportColumn("status", "状态", ExportColumn.TEXT));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        int pageSize = 100;
+        int maxPages = 1000; // 10 万行硬上限，防 OOM
+        long total = -1;
+        for (int p = 1; p <= maxPages; p++) {
+            PageResponse<GoodsListItem> page = list(f, p, pageSize, sort, order);
+            if (total < 0) total = page.getTotal();
+            for (GoodsListItem g : page.getItems()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("code", g.getCode());
+                row.put("series", g.getSeries());
+                row.put("model", g.getModel());
+                row.put("name", g.getName());
+                row.put("spec", g.getSpec());
+                row.put("material", g.getMaterial());
+                row.put("cNumber", g.getCNumber());
+                row.put("requireRemark", g.getRequireRemark());
+                row.put("colorName", g.getColorName());
+                row.put("unitName", g.getUnitName());
+                row.put("price", g.getPrice());
+                row.put("status", g.getStatus());
+                rows.add(row);
+            }
+            if (page.getItems().size() < pageSize) break;   // 末页
+            if (rows.size() >= total) break;                // 已达 total
+            if (p == maxPages && rows.size() < total) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "导出数据超过 10 万行上限，请收窄筛选条件后重试");
+            }
+        }
+        return new ExportPayload(cols, rows, rows.size());
+    }
+
+    // ===== facets（子树范围内各字段 distinct + 空值计数） =====
+
+    @Transactional(readOnly = true)
+    public GoodsFacets facets(UUID categoryId) {
+        if (categoryId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
+        }
+        List<UUID> ids = resolveSubtreeIds(categoryId);
+        // 归属可见性（外贸按人授权）：与 list() 同规则
+        boolean[] bindEmp = new boolean[1];
+        String ownerClause = ownerClause(bindEmp);
+        java.util.Set<java.util.UUID> ownerEmps = ownerVisibility.evaluate("goods", "goods:view:all").visibleOwners();
+        // 颜色/单位 legacy_id → name（全量，表小）；颜色/单位桶 label 用名展示，筛选仍按 legacy id 回传。
+        Map<Integer, String> colorNames = allColorNames();
+        Map<Integer, String> unitNames = allUnitNames();
+        Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
+        Map<String, Long> nullCounts = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
+            String field = e.getKey();
+            // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
+            String col = e.getValue();
+            var fq = em.createNativeQuery(
+                    "select " + col + " as v, count(*) as c from goods "
+                            + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
+                            + ownerClause
+                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
+                    .setParameter("ids", ids);
+            if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
+            List<Object[]> rows = fq.getResultList();
+            List<FacetBucket> bucketList = new ArrayList<>(rows.size());
+            for (Object[] row : rows) {
+                String v = String.valueOf(row[0]);
+                long c = ((Number) row[1]).longValue();
+                bucketList.add(new FacetBucket(v, c, labelFor(field, v, colorNames, unitNames)));
+            }
+            buckets.put(field, bucketList);
+            var nq = em.createNativeQuery(
+                    "select count(*) from goods "
+                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null"
+                            + ownerClause)
+                    .setParameter("ids", ids);
+            if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
+            Long nc = ((Number) nq.getSingleResult()).longValue();
+            nullCounts.put(field, nc);
+        }
+        return new GoodsFacets(
+                buckets.get("code"), buckets.get("series"), buckets.get("model"),
+                buckets.get("name"), buckets.get("spec"), buckets.get("material"),
+                buckets.get("requireRemark"), buckets.get("colorLegacyId"), buckets.get("unitLegacyId"),
+                nullCounts);
+    }
+
+    /** facets 桶展示标签：颜色/单位字段用解析名（解析不到回落 #id），其余字段=label=value。 */
+    private static String labelFor(String field, String value,
+                                   Map<Integer, String> colorNames, Map<Integer, String> unitNames) {
+        if (value == null || value.isEmpty()) return value;
+        try {
+            Integer id = Integer.valueOf(value);
+            if ("colorLegacyId".equals(field)) {
+                String n = colorNames.get(id);
+                return (n != null && !n.isEmpty()) ? n : "#" + value;
+            }
+            if ("unitLegacyId".equals(field)) {
+                String n = unitNames.get(id);
+                return (n != null && !n.isEmpty()) ? n : "#" + value;
+            }
+        } catch (NumberFormatException ignored) {
+            // 非数字值（不应出现在 legacy id 列），回落原值
+        }
+        return value;
+    }
+
+    /** 全量颜色 legacy_id → name（未软删）。 */
+    private Map<Integer, String> allColorNames() {
+        return colorRepo.findAll().stream()
+                .filter(c -> !c.isDeleted() && c.getLegacyId() != null)
+                .collect(Collectors.toMap(Color::getLegacyId,
+                        c -> c.getName() == null ? "" : c.getName(), (a, b) -> a));
+    }
+
+    /** 全量单位 legacy_id → name（未软删）。 */
+    private Map<Integer, String> allUnitNames() {
+        return unitRepo.findAll().stream()
+                .filter(u -> !u.isDeleted() && u.getLegacyId() != null)
+                .collect(Collectors.toMap(Unit::getLegacyId,
+                        u -> u.getName() == null ? "" : u.getName(), (a, b) -> a));
+    }
+
+    // ===== 详情 / CRUD（不变） =====
+
+    /**
+     * 按 id 批量解析货品名（采购单据明细展示用）。货品约 3.5 万条不能全量拉，
+     * 故仅按传入的 id 集合查 id/编号/名称；软删的过滤掉。
+     */
+    @Transactional(readOnly = true)
+    public List<GoodsDictItem> lookup(Set<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        return repo.findAllById(ids).stream()
+                .filter(g -> !g.isDeleted())
+                .filter(g -> scope.seeAll() || g.getOwnerEmployeeId() == null
+                        || scope.visibleOwners().contains(g.getOwnerEmployeeId()))
+                .map(g -> new GoodsDictItem(g.getId(), g.getCode(), g.getName()))
+                .toList();
+    }
+
+    /**
+     * 归属可见性守卫（详情/编辑前调用）：归属货品非本人且未授权 → 404（不透出存在性）。
+     */
+    private void requireVisible(Goods g) {
+        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        if (scope.seeAll() || g.getOwnerEmployeeId() == null) return;
+        if (!scope.visibleOwners().contains(g.getOwnerEmployeeId())) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "货品不存在");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public GoodsDetail detail(UUID id) {
+        Goods g = requireGoods(id);
+        requireVisible(g);
+        return toDetail(g, colorNameOf(g.getColorLegacyId()), unitNameOf(g.getUnitLegacyId()));
+    }
+
+    @Transactional
+    public GoodsDetail create(GoodsSaveRequest req) {
+        tx.bind();
+        Goods g = new Goods();
+        apply(req, g);
+        g.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        if (g.getStatus() == null) g.setStatus("使用");
+        repo.save(g);
+        return toDetail(g, null, null);
+    }
+
+    @Transactional
+    public GoodsDetail update(UUID id, GoodsSaveRequest req) {
+        tx.bind();
+        Goods g = requireGoods(id);
+        requireVisible(g);
+        apply(req, g);
+        repo.save(g);
+        return toDetail(g, colorNameOf(g.getColorLegacyId()), unitNameOf(g.getUnitLegacyId()));
+    }
+
+    @Transactional
+    public void delete(UUID id) {
+        tx.bind();
+        Goods g = requireGoods(id);
+        requireVisible(g);
+        g.setDeleted(true);
+        g.setDeletedAt(OffsetDateTime.now());
+        repo.save(g);
+    }
+
+    private String colorNameOf(Integer legacyId) {
+        if (legacyId == null) return null;
+        return colorRepo.findByLegacyId(legacyId)
+                .filter(c -> !c.isDeleted())
+                .map(Color::getName)
+                .orElse(null);
+    }
+
+    private String unitNameOf(Integer legacyId) {
+        if (legacyId == null) return null;
+        return unitRepo.findByLegacyId(legacyId)
+                .filter(u -> !u.isDeleted())
+                .map(Unit::getName)
+                .orElse(null);
+    }
+
+    private void apply(GoodsSaveRequest req, Goods g) {
+        g.setCategory(requireCategory(req.getCategoryId()));
+        g.setName(req.getName());
+        g.setShortName(req.getShortName());
+        g.setModel(req.getModel());
+        g.setSpec(req.getSpec());
+        g.setPrice(req.getPrice() == null ? null : req.getPrice().doubleValue());
+        g.setMaterial(req.getMaterial());
+        g.setThickness(req.getThickness());
+        g.setMWeight(req.getMWeight());
+        g.setPack(req.getPack());
+        g.setPieces(req.getPieces());
+        g.setStatus(req.getStatus());
+        g.setColorLegacyId(req.getColorLegacyId());
+        g.setUnitLegacyId(req.getUnitLegacyId());
+        // 成本预算（「成本预算」页签字段；前端表单全量回传，null 即清空）
+        g.setSourceE(req.getSourceE());
+        g.setMachiningE(req.getMachiningE());
+        g.setIncidentalE(req.getIncidentalE());
+        g.setLacquerE(req.getLacquerE());
+        g.setPlatingE(req.getPlatingE());
+        g.setCasingE(req.getCasingE());
+        g.setPolishE(req.getPolishE());
+        g.setTotal(req.getTotal());
+        g.setWorkRate(req.getWorkRate());
+        g.setWorkE(req.getWorkE());
+        g.setLostRate(req.getLostRate());
+        g.setLostE(req.getLostE());
+        g.setRentRate(req.getRentRate());
+        g.setRentE(req.getRentE());
+        g.setMakeRate(req.getMakeRate());
+        g.setMakeE(req.getMakeE());
+        g.setCTotal(req.getCTotal());
+        g.setGTotal(req.getGTotal());
+    }
+
+    private GoodsDetail toDetail(Goods g, String colorName, String unitName) {
+        UUID categoryId = g.getCategory() == null ? null : g.getCategory().getId();
+        String categoryName = g.getCategory() == null ? null : g.getCategory().getName();
+        return new GoodsDetail(
+                g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
+                toPrice(g.getPrice()), g.getStatus(), g.getLegacyId(),
+                g.getShortName(), categoryId, categoryName, g.getPack(),
+                g.getMaterial(), g.getThickness(), g.getUnitLegacyId(),
+                g.getMWeight(), g.getPieces(), colorName, unitName, g.getColorLegacyId(),
+                g.getSourceE(), g.getMachiningE(), g.getIncidentalE(), g.getLacquerE(),
+                g.getPlatingE(), g.getCasingE(), g.getPolishE(), g.getTotal(),
+                g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
+                g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
+                g.getCTotal(), g.getGTotal());
+    }
+
+    private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames) {
+        return new GoodsListItem(
+                g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
+                toPrice(g.getPrice()), g.getStatus(), g.getLegacyId(),
+                g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
+                g.getColorLegacyId(), g.getUnitLegacyId(),
+                g.getColorLegacyId() == null ? null : colorNames.get(g.getColorLegacyId()),
+                g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()));
+    }
+
+    private static BigDecimal toPrice(Double p) {
+        return p == null ? null : BigDecimal.valueOf(p);
+    }
+
+    private MaterialCategory requireCategory(UUID id) {
+        return categoryRepo.findById(id)
+                .filter(c -> !c.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "货品分类不存在"));
+    }
+
+    private Goods requireGoods(UUID id) {
+        return repo.findById(id)
+                .filter(g -> !g.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "货品不存在"));
+    }
+}

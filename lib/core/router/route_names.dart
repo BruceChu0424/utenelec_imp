@@ -11,6 +11,22 @@ abstract final class RouteName {
   static const String changePassword = '/change-password';
   static const String department = '/department';
 
+  // 基础资料（登录即可访问，不设路由守卫）
+  // /basicinfo       = 资料入口 hub（货品资料 / 模具资料 / ...）
+  // /basicinfo/goods = 货品资料（分类树 + 货品）
+  // /basicinfo/mould = 模具资料（分类树 + 模具）
+  static const String basicinfo = '/basicinfo';
+  static const String basicinfoGoods = '/basicinfo/goods';
+  static const String basicinfoMould = '/basicinfo/mould';
+  static const String basicinfoClient = '/basicinfo/client';
+  static const String basicinfoSupplier = '/basicinfo/supplier';
+  static const String basicinfoColor = '/basicinfo/color';
+  static const String basicinfoUnit = '/basicinfo/unit';
+  static const String basicinfoCurrency = '/basicinfo/currency';
+  static const String basicinfoWarehouse = '/basicinfo/warehouse';
+  static const String basicinfoAccount = '/basicinfo/account';
+  static const String basicinfoPaymentStyle = '/basicinfo/payment-style';
+
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
   static const String payrollSlipDetail = '/payroll/slip/:id';
@@ -33,12 +49,21 @@ abstract final class RouteName {
   static const String employee = '/employee';
   static const String employeeDetail = '/employee/:id';
 
+  // 个人信息修改（Phase 6）
+  static const String profileEdit = '/profile/edit';
+  static const String profileMyChanges = '/profile/me/changes';
+
+  // HR 端：员工个人信息修改审批
+  static const String hrProfileChanges = '/hr/profile-changes';
+  static const String hrProfileChangeDetail = '/hr/profile-changes/:id';
+
   // 入口选择（登录前：内部人员 / 访客）
   static const String entry = '/entry';
 
   // 访客端（独立流程，不进 ShellRoute）
   static const String visitorLogin = '/visitor/login';
   static const String visitorHome = '/visitor/home';
+  static const String visitorSettings = '/visitor/settings';
   static const String visitorApply = '/visitor/apply';
   static const String visitorApplyDetail = '/visitor/apply/:id';
 
@@ -48,6 +73,81 @@ abstract final class RouteName {
   static const String myVisitors = '/my-visitors';
   static const String securityScan = '/security/scan';
   static const String securityCheck = '/security/check/:id';
+
+  // 系统管理（超级管理员）
+  static const String adminPermissions = '/admin/permissions';
+  // 审计日志（导出下载记录 / 登录 / 改密等全员审计；超管只读）
+  static const String adminAuditLogs = '/admin/audit-logs';
+  // 系统设置（安全/业务策略阈值；超管 user:manage，改设置二次密码确认）
+  static const String adminSystemSettings = '/admin/system-settings';
+
+  // 财税部新模块（页面未接入前由占位页承接，权限点已种子化）
+  static const String financeCustomers = '/finance/customers';
+  static const String financeSuppliers = '/finance/suppliers';
+  static const String financeAccounts = '/finance/accounts';
+
+  // 采购管理（PMC 运营部）：hub + 4 单据列表。
+  // new/detail/edit 走 RoutePath.purchaseDoc*(doc,id) 带参；doc=requests|orders|receipts|returns。
+  static const String purchase = '/purchase';
+  static const String purchaseRequestList = '/purchase/requests';
+  static const String purchaseOrderList = '/purchase/orders';
+  static const String purchaseReceiptList = '/purchase/receipts';
+  static const String purchaseReturnList = '/purchase/returns';
+  static const String purchaseReport = '/purchase/report';
+
+  // 库存查询（库存管理）：余额 + 出入库流水 + 即时库存。
+  static const String stockBalance = '/stock/balance';
+  static const String stockMovement = '/stock/movement';
+  static const String stockInstantInventory = '/stock/instant-inventory';
+
+  // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
+  static const String warehouse = '/warehouse';
+  static const String warehouseReport = '/warehouse/report';
+  static const String warehouseReportDetail = '/warehouse/report/detail';
+  static const String warehouseReportSummary = '/warehouse/report/summary';
+
+  // 销售管理（综合营销部）：hub + 5 单据 + 报表。
+  // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
+  static const String sales = '/sales';
+  static const String salesReport = '/sales/report';
+  static const String salesReportDetail = '/sales/report/detail';
+  static const String salesReportSummary = '/sales/report/summary';
+
+  // 委外管理（综合营销部）：hub + 8 单据 + 报表。
+  // seg = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
+  static const String subcontract = '/subcontract';
+  static const String subcontractReport = '/subcontract/report';
+
+  // 生产管理（生产部）：hub + 调度 + 计划单 + 日报 + 4 报表入口。
+  static const String production = '/production';
+  static const String productionSchedule = '/production/schedule';
+  static const String productionProgress = '/production/progress';
+  static const String productionPlanList = '/production/plans';
+  static const String productionDailyReportList = '/production/daily-reports';
+  static const String productionWhereUsed = '/production/where-used';
+  // /production/reports/{plan-detail|plan-summary|daily-detail|daily-summary} 用 RoutePath 助手。
+
+  // 钱流管理（财税部）：hub + 5 单据 + AR/AP 台账 + 对账 + 支票 + 报表。
+  // seg = receipts|payments|expenses|incomes|bank-transfers。
+  static const String finance = '/finance';
+  static const String financeArAp = '/finance/ar-ap';
+  static const String financeReconciliations = '/finance/reconciliations';
+  static const String financeChecks = '/finance/checks';
+  static const String financeReport = '/finance/report';
+  // 钱流报表 5 卡（镜像销售「明细+汇总+单独卡」）。
+  static const String financeReportDetail = '/finance/report/detail';
+  static const String financeReportSummary = '/finance/report/summary';
+  static const String financeReportOverview = '/finance/report/overview';
+  static const String financeReportStatement = '/finance/report/statement';
+  static const String financeReportAccountFlow = '/finance/report/account-flow';
+  // C2 对账单（委外加工/采购外放/供应商/其他应收/客户 5 chip）。
+  static const String financeReportRecon = '/finance/report/recon';
+  // C4 成本核算（产品成本/销售成本/铜柱加工费/酸洗明细/塑料耗用 8 chip）。
+  static const String financeReportCost = '/finance/report/cost';
+  // C3 总账报表（科目余额表+附 9~16 共 8 chip）。
+  static const String financeReportGl = '/finance/report/gl';
+  // C5 资产与待摊管理（固定资产/长期待摊 CRUD+计提）。
+  static const String financeAssets = '/finance/assets';
 }
 
 /// 路径拼接工具（带参数的路由）
@@ -64,4 +164,57 @@ abstract final class RoutePath {
   static String suggestionDetail(String id) => '/suggestion/$id';
   static String employeeDetail(String id) => '/employee/$id';
   static String employeeEdit(String id) => '/employee/$id/edit';
+
+  /// 采购单据：新建 / 详情 / 编辑。[doc] = requests|orders|receipts|returns。
+  static String purchaseDocNew(String doc) => '/purchase/$doc/new';
+  static String purchaseDocDetail(String doc, String id) => '/purchase/$doc/$id';
+  static String purchaseDocEdit(String doc, String id) => '/purchase/$doc/$id/edit';
+  static String purchaseReportTable(String kind) => '/purchase/report/$kind';
+
+  /// 仓库单据：列表 / 新建 / 详情 / 编辑。[code] = TRANSFER|OTHER_IN|...|CHECK。
+  static String stockDocList(String code) => '/warehouse/$code';
+  static String stockDocNew(String code) => '/warehouse/$code/new';
+  static String stockDocDetail(String code, String id) => '/warehouse/$code/$id';
+  static String stockDocEdit(String code, String id) => '/warehouse/$code/$id/edit';
+
+  /// 员工修改审批单批详情（HR 端）。
+  static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
+
+  /// 销售单据：列表 / 新建 / 详情 / 编辑。
+  /// [seg] = quotes|orders|shipments|other-shipments|returns。
+  static String salesDocList(String seg) => '/sales/$seg';
+  static String salesDocNew(String seg) => '/sales/$seg/new';
+  static String salesDocDetail(String seg, String id) => '/sales/$seg/$id';
+  static String salesDocEdit(String seg, String id) => '/sales/$seg/$id/edit';
+
+  /// 委外单据：列表 / 新建 / 详情 / 编辑。
+  /// [seg] = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
+  static String subcontractDocList(String seg) => '/subcontract/$seg';
+  static String subcontractDocNew(String seg) => '/subcontract/$seg/new';
+  static String subcontractDocDetail(String seg, String id) =>
+      '/subcontract/$seg/$id';
+  static String subcontractDocEdit(String seg, String id) =>
+      '/subcontract/$seg/$id/edit';
+
+  /// 生产计划单 / 日报表：新建 / 详情 / 编辑。
+  static String productionPlanNew() => '/production/plans/new';
+  static String productionPlanDetail(String id) => '/production/plans/$id';
+  static String productionPlanEdit(String id) => '/production/plans/$id/edit';
+  static String productionDailyReportNew() => '/production/daily-reports/new';
+  static String productionDailyReportDetail(String id) =>
+      '/production/daily-reports/$id';
+  static String productionDailyReportEdit(String id) =>
+      '/production/daily-reports/$id/edit';
+
+  /// 生产报表（4 入口）。
+  /// [seg] = plan-detail|plan-summary|daily-detail|daily-summary。
+  static String productionReport(String seg) => '/production/reports/$seg';
+
+  /// 钱流单据：列表 / 新建 / 详情 / 编辑。
+  /// [seg] = receipts|payments|expenses|incomes|bank-transfers。
+  static String financeDocList(String seg) => '/finance/$seg';
+  static String financeDocNew(String seg) => '/finance/$seg/new';
+  static String financeDocDetail(String seg, String id) => '/finance/$seg/$id';
+  static String financeDocEdit(String seg, String id) =>
+      '/finance/$seg/$id/edit';
 }

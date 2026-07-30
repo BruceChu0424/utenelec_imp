@@ -4,7 +4,9 @@
 // 统一各页面散落的区块标题实现（此前 _sectionTitle / _buildSectionTitle / 内联 Text
 // 存在颜色 onSurface vs onSurfaceVariant、字重 w600 vs w700、是否带图标等不一致）。
 //
-//   UtenSectionHeader(title: '报销明细')                       // 内容区标题（粗、onSurface）
+// 设计原则：纯文字为主（不使用彩色圆角方块图标容器），可选一个简洁的前缀线性图标。
+//
+//   UtenSectionHeader(title: '报销明细')                       // 内容区标题（15px w600）
 //   UtenSectionHeader(title: '应发明细', icon: Icons.add_circle_outline_rounded)
 //   UtenSectionHeader(title: '报销明细 (3)', trailing: 添加按钮)
 //   UtenSectionHeader(title: '外观', subdued: true)            // 设置页分组标题（弱化）
@@ -25,14 +27,14 @@ class UtenSectionHeader extends StatelessWidget {
   /// 标题文字。
   final String title;
 
-  /// 可选前缀图标（青绿色，仅 [subdued]=false 时着色）。
+  /// 可选前缀图标（简洁线性图标，青绿色，仅 [subdued]=false 时着色）。
   final IconData? icon;
 
   /// 可选尾部控件（如"添加"按钮、计数徽章）。
   final Widget? trailing;
 
-  /// 弱化样式：用于设置页等"分组标签"，颜色更浅、字重更轻。
-  /// 默认 false：内容区标题，onSurface + w700。
+  /// 弱化样式：用于设置页等"分组标签"，颜色更浅、字号更小。
+  /// 默认 false：内容区标题，15px w600 onSurface。
   final bool subdued;
 
   @override
@@ -51,13 +53,18 @@ class UtenSectionHeader extends StatelessWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: subdued ? FontWeight.w600 : FontWeight.w700,
-                color: subdued
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.onSurface,
-                letterSpacing: subdued ? 0.5 : 0,
-              ),
+              style: subdued
+                  ? theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurfaceVariant,
+                      letterSpacing: 0.5,
+                    )
+                  : const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
+                      letterSpacing: -0.1,
+                    ).copyWith(color: theme.colorScheme.onSurface),
             ),
           ),
           if (trailing != null) ...[const SizedBox(width: 8), trailing!],

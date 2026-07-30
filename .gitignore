@@ -57,5 +57,20 @@ server/mvnw.cmd
 *.jks
 
 # === AI / 本地工具配置（不进仓库） ===
-.claude/settings.local.json
+.claude/
 .zcode/
+
+# === 本地数据/临时文件（不进仓库） ===
+/YTDQ_2023-202607
+/.tmp-shot.png
+__pycache__/
+*.pyc
+server/backups/
+# 老库迁移数据导出（真实业务数据/PII：客户/供应商/货品/模具主档 + 分类，本地导出，绝不入库；
+# 需要时用 server/legacy_migration/export_legacy.ps1 重新生成）
+server/legacy_migration/data/
+server/src/main/resources/legacy-migration/
+
+# 调试/调查草稿区（一次性脚本与临时文件，完成后清理，不进仓库）
+# 覆盖根 _scratch/ 与 server/legacy_migration/_scratch/
+_scratch/

@@ -14,19 +14,21 @@ import 'package:flutter/services.dart';
 import 'uten_colors.dart';
 
 ThemeData buildLightTheme() {
+  // 浅色模式交互主色：统一使用深色模式下的 teal（青绿）系绿
+  // —— 按钮 / TabBar / 导航栏 选中色 均统一到 teal500 / teal400
   const colorScheme = ColorScheme(
     brightness: Brightness.light,
-    primary: UtenColors.primary,
+    primary: UtenColors.teal500,
     onPrimary: Colors.white,
-    primaryContainer: UtenColors.teal50,
+    primaryContainer: UtenColors.teal100,
     onPrimaryContainer: UtenColors.teal900,
-    secondary: UtenColors.accent,
-    onSecondary: Colors.white,
-    secondaryContainer: UtenColors.teal50,
+    secondary: UtenColors.teal400,
+    onSecondary: UtenColors.teal950,
+    secondaryContainer: UtenColors.teal100,
     onSecondaryContainer: UtenColors.teal900,
-    tertiary: UtenColors.teal600,
-    onTertiary: Colors.white,
-    tertiaryContainer: UtenColors.teal50,
+    tertiary: UtenColors.teal500,
+    onTertiary: UtenColors.teal950,
+    tertiaryContainer: UtenColors.teal100,
     onTertiaryContainer: UtenColors.teal900,
     error: UtenColors.error,
     onError: Colors.white,
@@ -46,14 +48,15 @@ ThemeData buildLightTheme() {
     scrim: UtenColors.slate950,
     inverseSurface: UtenColors.slate900,
     onInverseSurface: UtenColors.slate50,
-    inversePrimary: UtenColors.teal400,
-    surfaceTint: UtenColors.primary,
+    inversePrimary: UtenColors.teal500,
+    surfaceTint: UtenColors.teal500,
   );
 
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
     colorScheme: colorScheme,
+    fontFamily: 'NotoSansSC',
     scaffoldBackgroundColor: UtenColors.background,
     canvasColor: UtenColors.background,
     visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -61,64 +64,101 @@ ThemeData buildLightTheme() {
     // ===== 文字系统（Material type roles）=====
     textTheme: const TextTheme(
       displayLarge: TextStyle(
-        fontSize: 48, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.1, letterSpacing: -0.5,
+        fontSize: 48,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.1,
+        letterSpacing: -0.5,
       ),
       displayMedium: TextStyle(
-        fontSize: 36, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.15, letterSpacing: -0.3,
+        fontSize: 36,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.15,
+        letterSpacing: -0.3,
       ),
       displaySmall: TextStyle(
-        fontSize: 28, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.2,
+        fontSize: 28,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.2,
+        letterSpacing: -0.2,
       ),
       headlineLarge: TextStyle(
-        fontSize: 24, fontWeight: FontWeight.w700,
-        color: UtenColors.textPrimary, height: 1.3,
+        fontSize: 24,
+        fontWeight: FontWeight.w700,
+        color: UtenColors.textPrimary,
+        height: 1.3,
+        letterSpacing: -0.3,
       ),
       headlineMedium: TextStyle(
-        fontSize: 20, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.35,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.35,
+        letterSpacing: -0.2,
       ),
       headlineSmall: TextStyle(
-        fontSize: 18, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 18,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
+        letterSpacing: -0.2,
       ),
       titleLarge: TextStyle(
-        fontSize: 16, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
+        letterSpacing: -0.2,
       ),
       titleMedium: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       titleSmall: TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       bodyLarge: TextStyle(
-        fontSize: 15, fontWeight: FontWeight.w400,
-        color: UtenColors.textPrimary, height: 1.5,
+        fontSize: 15,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.textPrimary,
+        height: 1.5,
       ),
       bodyMedium: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w400,
-        color: UtenColors.textPrimary, height: 1.5,
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.textPrimary,
+        height: 1.5,
       ),
       bodySmall: TextStyle(
-        fontSize: 13, fontWeight: FontWeight.w400,
-        color: UtenColors.textSecondary, height: 1.45,
+        fontSize: 13,
+        fontWeight: FontWeight.w400,
+        color: UtenColors.textSecondary,
+        height: 1.45,
       ),
       labelLarge: TextStyle(
-        fontSize: 14, fontWeight: FontWeight.w600,
-        color: UtenColors.textPrimary, height: 1.4,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textPrimary,
+        height: 1.4,
       ),
       labelMedium: TextStyle(
-        fontSize: 12, fontWeight: FontWeight.w600,
-        color: UtenColors.textSecondary, height: 1.4,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: UtenColors.textSecondary,
+        height: 1.4,
       ),
       labelSmall: TextStyle(
-        fontSize: 11, fontWeight: FontWeight.w500,
-        color: UtenColors.textTertiary, height: 1.4,
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        color: UtenColors.textTertiary,
+        height: 1.4,
       ),
     ),
 
@@ -137,13 +177,13 @@ ThemeData buildLightTheme() {
       systemOverlayStyle: SystemUiOverlayStyle.dark,
     ),
 
-    // ===== Card：白底 + 细边框 + 极轻阴影 =====
+    // ===== Card：白底 + 细边框 + 更柔和的 14 圆角 =====
     cardTheme: CardThemeData(
       color: UtenColors.surface,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         side: const BorderSide(color: UtenColors.border),
       ),
     ),
@@ -155,12 +195,16 @@ ThemeData buildLightTheme() {
     ),
 
     // ===== 按钮：克制、清晰 =====
+    // 浅色模式按钮主色统一为深色模式用的 teal500（青绿），保持两模式一致
+    // 叠加态（overlayColor）：框架按 hover 8% / pressed 10% 自动派生透明度，
+    // 实心按钮叠 teal700（深一档，在 teal500 底上可见），线框/文字按钮叠 teal600
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: UtenColors.primary,
+        backgroundColor: UtenColors.teal500,
         foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
+        overlayColor: UtenColors.teal700,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -170,10 +214,11 @@ ThemeData buildLightTheme() {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: UtenColors.primary,
+        backgroundColor: UtenColors.teal500,
         foregroundColor: Colors.white,
         disabledBackgroundColor: UtenColors.slate200,
         disabledForegroundColor: UtenColors.slate400,
+        overlayColor: UtenColors.teal700,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
@@ -186,6 +231,7 @@ ThemeData buildLightTheme() {
         foregroundColor: UtenColors.textPrimary,
         backgroundColor: UtenColors.surface,
         disabledForegroundColor: UtenColors.slate400,
+        overlayColor: UtenColors.teal600,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         minimumSize: const Size(0, 44),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -195,7 +241,8 @@ ThemeData buildLightTheme() {
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: UtenColors.primary,
+        foregroundColor: UtenColors.teal600,
+        overlayColor: UtenColors.teal600,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         minimumSize: const Size(0, 40),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -224,7 +271,7 @@ ThemeData buildLightTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: UtenColors.primary, width: 2),
+        borderSide: const BorderSide(color: UtenColors.teal400, width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
@@ -238,18 +285,21 @@ ThemeData buildLightTheme() {
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: UtenColors.border),
       ),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       hintStyle: const TextStyle(color: UtenColors.textTertiary, fontSize: 14),
-      labelStyle: const TextStyle(color: UtenColors.textSecondary, fontSize: 14),
+      labelStyle: const TextStyle(
+        color: UtenColors.textSecondary,
+        fontSize: 14,
+      ),
     ),
 
     // ===== 导航 =====
+    // 选中态：teal100 浅底指示器 + teal600 图标/文字（比 teal400 对比度更高，符合 WCAG AA）
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: UtenColors.surface,
       elevation: 0,
       height: 64,
-      indicatorColor: UtenColors.teal50,
+      indicatorColor: UtenColors.teal100,
       indicatorShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
       ),
@@ -272,14 +322,18 @@ ThemeData buildLightTheme() {
     navigationRailTheme: NavigationRailThemeData(
       backgroundColor: UtenColors.surface,
       elevation: 0,
-      indicatorColor: UtenColors.teal50,
+      indicatorColor: UtenColors.teal100,
       indicatorShape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
       ),
-      selectedIconTheme:
-          const IconThemeData(color: UtenColors.teal600, size: 22),
-      unselectedIconTheme:
-          const IconThemeData(color: UtenColors.textTertiary, size: 22),
+      selectedIconTheme: const IconThemeData(
+        color: UtenColors.teal600,
+        size: 22,
+      ),
+      unselectedIconTheme: const IconThemeData(
+        color: UtenColors.textTertiary,
+        size: 22,
+      ),
       selectedLabelTextStyle: const TextStyle(
         color: UtenColors.teal600,
         fontSize: 12,
@@ -294,14 +348,14 @@ ThemeData buildLightTheme() {
 
     chipTheme: ChipThemeData(
       backgroundColor: UtenColors.surfaceMid,
-      selectedColor: UtenColors.teal50,
+      selectedColor: UtenColors.surfaceMid,
       labelStyle: const TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w500,
         color: UtenColors.textSecondary,
       ),
       side: const BorderSide(color: UtenColors.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
 
@@ -309,7 +363,7 @@ ThemeData buildLightTheme() {
       backgroundColor: UtenColors.surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(18),
         side: const BorderSide(color: UtenColors.border),
       ),
       titleTextStyle: const TextStyle(
@@ -326,7 +380,7 @@ ThemeData buildLightTheme() {
       backgroundColor: UtenColors.slate900,
       contentTextStyle: const TextStyle(color: Colors.white, fontSize: 14),
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
 
     listTileTheme: const ListTileThemeData(
@@ -343,19 +397,21 @@ ThemeData buildLightTheme() {
     ),
 
     progressIndicatorTheme: const ProgressIndicatorThemeData(
-      color: UtenColors.primary,
+      color: UtenColors.teal400,
       linearTrackColor: UtenColors.surfaceHigh,
       circularTrackColor: UtenColors.surfaceHigh,
     ),
 
     floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: UtenColors.primary,
+      backgroundColor: UtenColors.teal500,
       foregroundColor: Colors.white,
       elevation: 2,
       highlightElevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      extendedTextStyle:
-          const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      extendedTextStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
     ),
 
     switchTheme: SwitchThemeData(
@@ -364,7 +420,7 @@ ThemeData buildLightTheme() {
         return UtenColors.slate400;
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return UtenColors.primary;
+        if (states.contains(WidgetState.selected)) return UtenColors.teal500;
         return UtenColors.slate300;
       }),
       trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
@@ -372,7 +428,7 @@ ThemeData buildLightTheme() {
 
     checkboxTheme: CheckboxThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return UtenColors.primary;
+        if (states.contains(WidgetState.selected)) return UtenColors.teal400;
         return Colors.transparent;
       }),
       checkColor: WidgetStateProperty.all(Colors.white),
@@ -382,7 +438,7 @@ ThemeData buildLightTheme() {
 
     radioTheme: RadioThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) return UtenColors.primary;
+        if (states.contains(WidgetState.selected)) return UtenColors.teal400;
         return UtenColors.borderStrong;
       }),
     ),
@@ -390,12 +446,13 @@ ThemeData buildLightTheme() {
     tabBarTheme: const TabBarThemeData(
       labelColor: UtenColors.textPrimary,
       unselectedLabelColor: UtenColors.textSecondary,
-      labelStyle:
-          TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-      unselectedLabelStyle:
-          TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      labelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
       indicator: UnderlineTabIndicator(
-        borderSide: BorderSide(color: UtenColors.primary, width: 2),
+        borderSide: BorderSide(color: UtenColors.teal400, width: 2),
       ),
       indicatorSize: TabBarIndicatorSize.label,
       dividerColor: UtenColors.border,

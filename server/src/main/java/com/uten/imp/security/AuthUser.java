@@ -18,6 +18,9 @@ import java.util.stream.Stream;
  *   <li>VISITOR：访客（手机号验证码登录，visitor_accounts 表）</li>
  * </ul>
  * authorities = 功能权限 ∪ ROLE_角色；首登强制改密时仅授 CHANGE_PASSWORD。
+ *
+ * <p>superAdmin：TRUE 时绕过 role_permissions 缺漏，permissions 已是全量，
+ * 不必依赖具体 role/rolePermission 映射。
  */
 @Getter
 public class AuthUser implements UserDetails {
@@ -32,19 +35,21 @@ public class AuthUser implements UserDetails {
     private final Set<String> permissions;
     private final boolean mustChangePassword;
     private final boolean accountNonLocked;
+    private final boolean superAdmin;       // 超级管理员标记
 
-    /** 员工构造（兼容既有 JwtAuthFilter 调用）。 */
+    /** 员工构造（含 superAdmin 标记）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
                     Set<String> roles, Set<String> permissions,
-                    boolean mustChangePassword, boolean accountNonLocked) {
+                    boolean mustChangePassword, boolean accountNonLocked,
+                    boolean superAdmin) {
         this(id, SubjectType.STAFF, employeeId, null, loginAccount, null,
-                roles, permissions, mustChangePassword, accountNonLocked);
+                roles, permissions, mustChangePassword, accountNonLocked, superAdmin);
     }
 
     private AuthUser(UUID id, SubjectType subjectType, UUID employeeId, UUID visitorId,
                      String loginAccount, String visitorNo,
                      Set<String> roles, Set<String> permissions,
-                     boolean mustChangePassword, boolean accountNonLocked) {
+                     boolean mustChangePassword, boolean accountNonLocked, boolean superAdmin) {
         this.id = id;
         this.subjectType = subjectType;
         this.employeeId = employeeId;
@@ -55,16 +60,21 @@ public class AuthUser implements UserDetails {
         this.permissions = permissions;
         this.mustChangePassword = mustChangePassword;
         this.accountNonLocked = accountNonLocked;
+        this.superAdmin = superAdmin;
     }
 
     /** 访客主体工厂。 */
     public static AuthUser visitor(UUID visitorId, String phone, String visitorNo, Set<String> permissions) {
         return new AuthUser(visitorId, SubjectType.VISITOR, null, visitorId, phone, visitorNo,
-                Set.of(), permissions, false, true);
+                Set.of(), permissions, false, true, false);
     }
 
     public boolean isVisitor() {
         return subjectType == SubjectType.VISITOR;
+    }
+
+    public boolean isSuperAdmin() {
+        return superAdmin;
     }
 
     @Override

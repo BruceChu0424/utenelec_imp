@@ -1,5 +1,17 @@
 // 部门树/详情模型（对应后端 DepartmentNode / DepartmentDetail）。
 
+/// 可选部门层级（一级部门/二级班组/三级科室）。
+const kSelectableDepartmentLevels = {'一级部门', '二级班组', '三级科室'};
+
+/// 骨架层级（决策层/管理中心）：仅作展开骨架，不可选。
+const kSkeletonDepartmentLevels = {'决策层', '管理中心'};
+
+/// 公司根层级（选择器中不显示，从决策层开始列）。
+const kCompanyDepartmentLevel = '公司';
+
+/// 生产部 code（V07 seed：DEPT_PROD，下挂 6 个车间 WS_*）。用于车间选择器裁剪到生产部子树。
+const kDeptCodeProduction = 'DEPT_PROD';
+
 /// 部门树节点（递归 children）。
 class DepartmentNode {
   DepartmentNode({
@@ -37,9 +49,21 @@ class DepartmentNode {
       managerName: json['managerName'] as String?,
       sortOrder: json['sortOrder'] as int?,
       headcount: json['headcount'] as int?,
-      children: list.map((e) => DepartmentNode.fromJson(e as Map<String, dynamic>)).toList(),
+      children: list
+          .map((e) => DepartmentNode.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
+}
+
+/// 按 code 在部门树里递归查找节点（如找生产部 DEPT_PROD）。
+DepartmentNode? findDepartmentByCode(List<DepartmentNode> nodes, String code) {
+  for (final n in nodes) {
+    if (n.code == code) return n;
+    final hit = findDepartmentByCode(n.children, code);
+    if (hit != null) return hit;
+  }
+  return null;
 }
 
 /// 部门详情。
@@ -75,20 +99,20 @@ class DepartmentInfo {
   final int employeeCount;
 
   factory DepartmentInfo.fromJson(Map<String, dynamic> json) => DepartmentInfo(
-        id: json['id'] as String,
-        code: json['code'] as String,
-        name: json['name'] as String,
-        level: json['level'] as String,
-        parentId: json['parentId'] as String?,
-        parentName: json['parentName'] as String?,
-        managerId: json['managerId'] as String?,
-        managerName: json['managerName'] as String?,
-        sortOrder: json['sortOrder'] as int?,
-        headcount: json['headcount'] as int?,
-        path: json['path'] as String? ?? '',
-        childCount: (json['childCount'] as num?)?.toInt() ?? 0,
-        employeeCount: (json['employeeCount'] as num?)?.toInt() ?? 0,
-      );
+    id: json['id'] as String,
+    code: json['code'] as String,
+    name: json['name'] as String,
+    level: json['level'] as String,
+    parentId: json['parentId'] as String?,
+    parentName: json['parentName'] as String?,
+    managerId: json['managerId'] as String?,
+    managerName: json['managerName'] as String?,
+    sortOrder: json['sortOrder'] as int?,
+    headcount: json['headcount'] as int?,
+    path: json['path'] as String? ?? '',
+    childCount: (json['childCount'] as num?)?.toInt() ?? 0,
+    employeeCount: (json['employeeCount'] as num?)?.toInt() ?? 0,
+  );
 }
 
 /// 新建部门请求。
@@ -110,13 +134,13 @@ class DepartmentSaveInput {
   final int? sortOrder;
 
   Map<String, dynamic> toJson() => {
-        'code': code,
-        'name': name,
-        'level': level,
-        if (parentId != null) 'parentId': parentId,
-        if (managerId != null) 'managerId': managerId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-      };
+    'code': code,
+    'name': name,
+    'level': level,
+    if (parentId != null) 'parentId': parentId,
+    if (managerId != null) 'managerId': managerId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+  };
 }
 
 /// 编辑部门请求（后端 DepartmentUpdateRequest）。
@@ -134,9 +158,9 @@ class DepartmentUpdateInput {
   final int? sortOrder;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        if (parentId != null) 'parentId': parentId,
-        if (managerId != null) 'managerId': managerId,
-        if (sortOrder != null) 'sortOrder': sortOrder,
-      };
+    'name': name,
+    if (parentId != null) 'parentId': parentId,
+    if (managerId != null) 'managerId': managerId,
+    if (sortOrder != null) 'sortOrder': sortOrder,
+  };
 }

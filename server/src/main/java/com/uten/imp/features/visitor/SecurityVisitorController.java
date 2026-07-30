@@ -22,24 +22,24 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SecurityVisitorController {
 
-    private final VisitorApprovalService service;
+    private final VisitorGateService gateService;
 
     @PostMapping("/verify")
     @PreAuthorize("hasAuthority('visitor:check-in')")
     public VisitorVerifyResponse verify(@RequestBody VisitorVerifyRequest req) {
-        return service.verify(req.qrToken(), req.passcode());
+        return gateService.verify(req.qrToken(), req.passcode());
     }
 
     @PostMapping("/check-in/{appId}")
     @PreAuthorize("hasAuthority('visitor:check-in')")
     public VisitorVerifyResponse checkIn(@PathVariable UUID appId) {
-        return service.checkIn(appId);
+        return gateService.checkIn(appId);
     }
 
     /** H4：拉黑访客（status=blocked，JwtAuthFilter 即时拒绝其后续请求）。 */
     @PostMapping("/blacklist/{visitorId}")
     @PreAuthorize("hasAuthority('visitor:blacklist')")
     public void blacklist(@PathVariable UUID visitorId) {
-        service.blacklist(visitorId);
+        gateService.blacklist(visitorId);
     }
 }

@@ -35,6 +35,13 @@ dependencies:
   # 网络
   dio: ^5.7.0
 
+  # 文件保存（导出加密 Excel：桌面/移动写下载/文档目录；Web 走浏览器 blob 不依赖此包）
+  path_provider: ^2.1.5
+
+  # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
+  pdf: ^3.11.3
+  printing: ^5.14.2
+
   # 扫码 / 二维码（访客系统：保安扫码 + 访客凭证）
   mobile_scanner: ^7.0.0
   qr_flutter: ^4.1.0
@@ -55,6 +62,7 @@ dev_dependencies:
   riverpod_generator: ^2.6.3
   custom_lint: ^0.7.0
   riverpod_lint: ^2.6.3
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
@@ -65,3 +73,23 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/lottie/
+
+  # 中文字体本地化：CanvasKit 渲染中文需要 CJK 字体数据，默认从 fonts.gstatic.com 拉
+  # Noto Sans SC（中国网络失败）。本地打包后用本地，不依赖 CDN。
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC.ttf
+
+# 应用启动图标（手机/桌面 launcher icon + Web favicon）= logo_ip.png。
+# 生成命令：dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/images/logo_ip.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  min_sdk_version: 21
+  web:
+    generate: true
+    background_color: "#FFFFFF"
+    theme_color: "#039855"

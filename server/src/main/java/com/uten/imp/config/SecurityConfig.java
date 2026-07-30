@@ -1,10 +1,14 @@
 package com.uten.imp.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.web.ApiError;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
 import com.uten.imp.security.JwtAuthFilter;
-import org.springframework.beans.factory.annotation.Value;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -17,40 +21,63 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
 /**
  * 安全配置：无状态 JWT、CSRF 关闭（JWT 走 Authorization 头）、CORS 严格白名单、方法级 @PreAuthorize。
  * permitAll：登录/刷新/健康检查/文档；其余 authenticated（含 change-password，首登用户的 CHANGE_PASSWORD 权限可通过）。
+ *
+ * <p>{@link #filterChain} 显式配置 {@code AuthenticationEntryPoint}：未认证/匿名请求（含 access token
+ * 过期、缺失、伪造）统一返回 <b>401 + ApiError(UNAUTHORIZED)</b>。否则 Spring 默认用
+ * {@code Http403ForbiddenEntryPoint} 返 403，会被前端 AuthInterceptor 当成「无权限」（它只在 401 时刷新 token），
+ * 导致 access token 每次过期都误显「无权限」、需重登才恢复。业务接口本就要求登录，401 语义更正确。
+ * 「已认证但权限不足」仍由 {@code GlobalExceptionHandler.handleAccessDenied} 返 403 FORBIDDEN，不变。
  */
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    @Value("${uten.security.cors-allowed-origins:http://localhost:53764}")
-    private String corsOrigins;
-
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
-                                           SecurityProperties securityProps) throws Exception {
+                                           SecurityProperties securityProps,
+                                           ObjectMapper objectMapper) throws Exception {
+        String[] publicPaths = securityProps.isSwaggerEnabled()
+                ? new String[]{
+                        "/api/auth/login",
+                        "/api/auth/refresh",
+                        "/api/visitor/auth/**",
+                        "/actuator/health",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/v3/api-docs/**"
+                }
+                : new String[]{
+                        "/api/auth/login",
+                        "/api/auth/refresh",
+                        "/api/visitor/auth/**",
+                        "/actuator/health"
+                };
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .cors(cors -> cors.configurationSource(corsConfigurationSource(securityProps)))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers(
-                                "/api/auth/login",
-                                "/api/auth/refresh",
-                                "/api/visitor/auth/**",
-                                "/actuator/health",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**"
-                        ).permitAll()
+                        .requestMatchers(publicPaths).permitAll()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // 未认证/匿名（access token 过期、缺失、伪造）→ 401 + ApiError(UNAUTHORIZED)，
+                // 让前端 AuthInterceptor 识别 401 后自动 refresh 续期（用户无感），而非被默认
+                // Http403ForbiddenEntryPoint 返 403 误判成「无权限」。
+                .exceptionHandling(e -> e.authenticationEntryPoint((req, resp, ex) -> {
+                    resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                    resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
+                    resp.getWriter().write(objectMapper.writeValueAsString(
+                            ApiError.of(ErrorCode.UNAUTHORIZED, null)));
+                }));
 
         if (securityProps.isRequireHttps()) {
             http.requiresChannel(c -> c.anyRequest().requiresSecure());
@@ -65,9 +92,9 @@ public class SecurityConfig {
     }
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public CorsConfigurationSource corsConfigurationSource(SecurityProperties securityProps) {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(Arrays.asList(corsOrigins.split(",")));
+        cfg.setAllowedOrigins(Arrays.asList(securityProps.getCorsAllowedOrigins().split(",")));
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("*"));
         cfg.setAllowCredentials(true);

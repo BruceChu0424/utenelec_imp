@@ -1,19 +1,38 @@
-// ProfilePage - 我的页面（v2 - 大厂范）
+// ProfilePage - 我的页面（v4 — 去 AppBar 标题 + 角色徽章贴名 + 响应式分组）
 // 文档：docs/03-页面/我的页.md
 //
-// 设计：中性卡 + 品牌色点缀（头像方块用渐变）
+// 改造要点（vs v3）：
+//   * 去掉顶部 UtenAppBar 标题，内容从状态栏下方开始，腾出首屏
+//   * 角色徽章（员工 / HR / 管理员 …）紧贴名字右侧（一行 Wrap），
+//     超级管理员显示实心 teal「ADMIN」，普通角色细边框中性 chip
+//   * 响应式断点三档：
+//       - compact (<600dp)：单列，padding 16
+//       - medium  (600-840dp)：单列，padding 24，avatar 60
+//       - expanded(≥840dp)：双列 max-width 1200；左 380「身份组」= Hero + 修改申请，
+//         右 Expanded「档案组」= 基本信息
+//   * 「我的修改申请」快捷入口贴 Hero 卡下方（属于本人身份组），
+//     替代 v3 把它放到右侧栏底部被基础信息稀释的问题
+//   * 按角色脱敏规则保持不变
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_info_row.dart';
+import '../../../components/data_display/uten_user_avatar.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/models/role.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../providers/profile_change_providers.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -25,402 +44,483 @@ class ProfilePage extends ConsumerWidget {
     final user = session.user;
     final theme = Theme.of(context);
 
+    if (user == null) {
+      return const Scaffold(
+        body: SafeArea(
+          child: UtenEmpty(icon: Icons.person_outline, message: '—'),
+        ),
+      );
+    }
+
+    final bp = context.breakpoint;
+    final horizontalPadding = bp.select<double>(
+      compact: UtenSpacing.s16,
+      medium: UtenSpacing.s24,
+      expanded: UtenSpacing.s32,
+    );
+
+    final identityGroup = _buildIdentityGroup(
+      context,
+      ref,
+      theme,
+      l10n,
+      user,
+    );
+    final profileGroup = _buildProfileGroup(context, theme, l10n, user);
+
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final bp = context.breakpoint;
-          final isWide = bp.atLeastMedium;
+      // 顶部无 AppBar：标题已由侧栏 / NavigationBar 高亮表达，
+      // 节省首屏 56dp，主体内容直接顶到状态栏下方。
+      body: SafeArea(
+        bottom: false,
+        child: switch (bp) {
+          // ───── compact：单列垂直堆叠 ─────
+          UtenBreakpoint.compact => SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              UtenSpacing.s16,
+              horizontalPadding,
+              96, // 底部悬浮胶囊导航留白
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                identityGroup.hero,
+                const SizedBox(height: UtenSpacing.s12),
+                identityGroup.shortcut,
+                const SizedBox(height: UtenSpacing.s24),
+                profileGroup,
+              ],
+            ),
+          ),
 
-          final leftColumn = _buildLeftColumn(theme, user);
-          final rightColumn = _buildRightColumn(context, theme, l10n, user);
-
-          if (isWide) {
-            // 大屏：左右双栏，占满宽度
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+          // ───── medium：单列，但用更宽的内边距 + 更大头像 ─────
+          UtenBreakpoint.medium => SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              UtenSpacing.s24,
+              horizontalPadding,
+              96, // 底部悬浮胶囊导航留白
+            ),
+            child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1400),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // 左栏：用户卡 + 快捷入口（约 360 固定宽）
-                    SizedBox(width: 360, child: leftColumn),
-                    const SizedBox(width: 24),
-                    // 右栏：详细信息 + 设置（占满剩余）
-                    Expanded(child: rightColumn),
+                    identityGroup.hero,
+                    const SizedBox(height: UtenSpacing.s16),
+                    identityGroup.shortcut,
+                    const SizedBox(height: UtenSpacing.s24),
+                    profileGroup,
                   ],
                 ),
               ),
-            );
-          }
+            ),
+          ),
 
-          // 小屏：单栏
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+          // ───── expanded：双列靠左，左 380「身份组」+ 右 Expanded→≤720「档案组」 ─────
+          // 不再 Center + maxWidth，让内容从左边 padding 直接起；
+          // 右边 Expanded 吃掉 Row 剩余空间（视口自适应，无横向溢出），
+          // 再用 ConstrainedBox(maxWidth: 720) 锁住信息行最大宽度（60-75 字符可读）。
+          // ≥1196dp 浏览器时右列定宽 720 留白，是可读性设计取舍，不是溢出。
+          UtenBreakpoint.expanded => SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              UtenSpacing.s32,
+              horizontalPadding,
+              110, // 底部悬浮胶囊导航留白
+            ),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                leftColumn,
-                const SizedBox(height: 16),
-                rightColumn,
+                SizedBox(
+                  width: 380,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      identityGroup.hero,
+                      const SizedBox(height: UtenSpacing.s16),
+                      identityGroup.shortcut,
+                    ],
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s32),
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: profileGroup,
+                    ),
+                  ),
+                ),
               ],
             ),
-          );
+          ),
         },
       ),
     );
   }
 
-  /// 左栏：用户卡 + 快捷入口
-  Widget _buildLeftColumn(ThemeData theme, AppUser? user) {
+  // ─────────────────────────────────────────────────────────────
+  // 身份组：Hero 卡 + 我的修改申请
+  // ─────────────────────────────────────────────────────────────
+  _IdentityGroup _buildIdentityGroup(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    AppLocalizations l10n,
+    AppUser user,
+  ) {
+    return _IdentityGroup(
+      hero: _HeroCard(user: user, theme: theme, l10n: l10n),
+      shortcut: _MyChangesShortcut(l10n: l10n),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 档案组：基本信息（按角色脱敏的字段列表）
+  // ─────────────────────────────────────────────────────────────
+  Widget _buildProfileGroup(
+    BuildContext context,
+    ThemeData theme,
+    AppLocalizations l10n,
+    AppUser user,
+  ) {
+    return _section(l10n, l10n.profileTitle, [
+      UtenInfoRow(
+        label: l10n.profileEmployeeCode,
+        value: user.code,
+        showDivider: false,
+      ),
+      UtenInfoRow(label: l10n.profileChangeFieldFullName, value: user.name),
+      UtenInfoRow(label: l10n.profileDepartment, value: user.department),
+      UtenInfoRow(label: l10n.profilePosition, value: user.position),
+      UtenInfoRow(label: l10n.profileFieldEmail, value: _notSet),
+      UtenInfoRow(label: l10n.profileFieldOfficePhone, value: _notSet),
+      UtenInfoRow(label: l10n.profileFieldSeatNo, value: _notSet),
+      UtenInfoRow(label: l10n.profileFieldResidenceAddress, value: _notSet),
+      UtenInfoRow(label: l10n.profileFieldHujiAddress, value: _notSet),
+      UtenInfoRow(
+        label: l10n.profileFieldEthnicity,
+        value: _notSet,
+        showDivider: false,
+      ),
+    ]);
+  }
+
+  static const _notSet = '—';
+
+  Widget _section(AppLocalizations l10n, String title, List<Widget> rows) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 用户卡
+        UtenSectionHeader(title: title, subdued: true),
+        const SizedBox(height: UtenSpacing.s8),
         UtenCard(
-          padding: const EdgeInsets.all(20),
-          child: Row(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s16,
+            vertical: UtenSpacing.s4,
+          ),
+          child: Column(children: rows),
+        ),
+      ],
+    );
+  }
+}
+
+/// 把 Hero 卡 + 快捷入口包成一个结构体，避免 layout 里来回来回传参。
+class _IdentityGroup {
+  const _IdentityGroup({required this.hero, required this.shortcut});
+  final Widget hero;
+  final Widget shortcut;
+}
+
+/// 头部身份卡：头像 + 名字 + 角色 chip（一行）+ 部门职位 + 两个 CTA
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({
+    required this.user,
+    required this.theme,
+    required this.l10n,
+  });
+
+  final AppUser user;
+  final ThemeData theme;
+  final AppLocalizations l10n;
+
+  @override
+  Widget build(BuildContext context) {
+    // 大屏略放大头像，建立气场；保持 ≥44pt touch target 友好。
+    final avatarSize = context.breakpoint.select<double>(
+      compact: 56,
+      medium: 60,
+      expanded: 64,
+    );
+    final positionLabel = user.superAdmin
+        ? '系统管理员（超级管理员）'
+        : (user.position ?? '—');
+
+    return UtenCard(
+      padding: const EdgeInsets.all(UtenSpacing.s20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [UtenColors.deepGreen, UtenColors.teal700],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
+              UtenUserAvatar(size: avatarSize, name: user.name),
+              const SizedBox(width: UtenSpacing.s16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      user?.name ?? '—',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    // 名字 + 角色徽章同行：用 Wrap 让长名字能换行时 chip 跟着换
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: UtenSpacing.s8,
+                      runSpacing: UtenSpacing.s4,
+                      children: [
+                        Text(
+                          user.name,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        ),
+                        ..._buildRoleChips(user, theme),
+                      ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: UtenSpacing.s4),
                     Text(
-                      '${user?.department ?? '—'} · ${user?.position ?? '—'}',
+                      '${user.department ?? '—'} · $positionLabel',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      children: user != null
-                          ? user.roles.map<Widget>((r) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: UtenColors.teal50,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(
-                                    color: UtenColors.teal200,
-                                  ),
-                                ),
-                                child: Text(
-                                  r.displayNameZh,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: UtenColors.teal700,
-                                  ),
-                                ),
-                              );
-                            }).toList()
-                          : [],
                     ),
                   ],
                 ),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
-        // 快捷入口
-        const _QuickEntries(),
-      ],
-    );
-  }
-
-  /// 右栏：信息详情 + 设置入口 + 版本号
-  Widget _buildRightColumn(
-      BuildContext context, ThemeData theme, AppLocalizations l10n, AppUser? user) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 信息详情
-        const _SectionLabel(label: '个人信息'),
-        const SizedBox(height: 8),
-        UtenCard(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
+          const SizedBox(height: UtenSpacing.s16),
+          // CTA：修改我的信息 + 修改密码（全员可见；能改什么由编辑页字段策略定）
+          Row(
             children: [
-              _InfoTile(
-                icon: Icons.badge_outlined,
-                label: l10n.profileEmployeeCode,
-                value: user?.code ?? '—',
+              Expanded(
+                child: UtenButton(
+                  size: UtenButtonSize.small,
+                  icon: Icons.edit_outlined,
+                  // go_router 14：从 /profile（ShellRoute 主 Tab）push /profile/edit 会静默失效
+                  // （redirect 放行但路由未构造），改用 go；返回靠 AppBar ← 与提交后 pop。
+                  onPressed: () => context.go(RouteName.profileEdit),
+                  child: Text(l10n.profileChangeEditCta),
+                ),
               ),
-              const Divider(height: 1, indent: 56),
-              _InfoTile(
-                icon: Icons.groups_outlined,
-                label: l10n.profileDepartment,
-                value: user?.department ?? '—',
-              ),
-              const Divider(height: 1, indent: 56),
-              _InfoTile(
-                icon: Icons.work_outline_rounded,
-                label: l10n.profilePosition,
-                value: user?.position ?? '—',
-              ),
-              const Divider(height: 1, indent: 56),
-              _InfoTile(
-                icon: Icons.phone_outlined,
-                label: '联系电话',
-                value: user != null ? '138****1234' : '—',
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: UtenButton(
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.small,
+                  icon: Icons.lock_outline_rounded,
+                  onPressed: () => context.push(RouteName.changePassword),
+                  child: Text(l10n.profileChangePassword),
+                ),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 24),
-
-        // 设置入口
-        const _SectionLabel(label: '账号与设置'),
-        const SizedBox(height: 8),
-        UtenCard(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            children: [
-              _NavTile(
-                icon: Icons.settings_outlined,
-                label: '应用设置',
-                description: '主题、语言、字号、性能档',
-                onTap: () => context.go(RouteName.settings),
-              ),
-              const Divider(height: 1, indent: 56),
-              _NavTile(
-                icon: Icons.lock_outline_rounded,
-                label: '修改密码',
-                onTap: () {},
-              ),
-              const Divider(height: 1, indent: 56),
-              _NavTile(
-                icon: Icons.help_outline_rounded,
-                label: '帮助与反馈',
-                onTap: () {},
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        Center(
-          child: Text(
-            'Uten IMP v0.1.0',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-      ],
-    );
-  }
-}
-
-/// 区块标题
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              letterSpacing: 0.3,
-            ),
+        ],
       ),
     );
   }
+
+  /// 把角色渲染成紧贴名字的 chip。
+  ///
+  /// - superAdmin：实心 teal「ADMIN」徽章，最优先
+  /// - 普通角色：≤2 个全展示；>2 显示前 2 +「+N」折叠
+  List<Widget> _buildRoleChips(AppUser user, ThemeData theme) {
+    final chips = <Widget>[];
+
+    if (user.superAdmin) {
+      chips.add(
+        _RoleChip(
+          label: 'ADMIN',
+          icon: Icons.verified_rounded,
+          background: UtenColors.teal500,
+          foreground: Colors.white,
+          theme: theme,
+        ),
+      );
+    }
+
+    const maxNormalRoles = 2;
+    final roles = user.roles;
+    final showRoles = roles.length > maxNormalRoles
+        ? roles.take(maxNormalRoles).toList()
+        : roles;
+    for (final r in showRoles) {
+      chips.add(
+        _RoleChip(
+          label: r.displayNameZh,
+          icon: _iconForRole(r),
+          outline: true,
+          theme: theme,
+        ),
+      );
+    }
+    if (roles.length > maxNormalRoles) {
+      chips.add(
+        _RoleChip(
+          label: '+${roles.length - maxNormalRoles}',
+          outline: true,
+          theme: theme,
+          muted: true,
+        ),
+      );
+    }
+    return chips;
+  }
+
+  IconData _iconForRole(Role role) {
+    switch (role) {
+      case Role.admin:
+        return Icons.admin_panel_settings_rounded;
+      case Role.hr:
+        return Icons.badge_rounded;
+      case Role.finance:
+        return Icons.account_balance_rounded;
+      case Role.lab:
+        return Icons.science_rounded;
+      case Role.production:
+        return Icons.factory_rounded;
+      case Role.manager:
+        return Icons.supervisor_account_rounded;
+      case Role.security:
+        return Icons.shield_rounded;
+      case Role.employee:
+        return Icons.person_rounded;
+    }
+  }
 }
 
-class _QuickEntries extends StatelessWidget {
-  const _QuickEntries();
+/// 角色徽章：支持实心（superAdmin）/ 描边（普通角色）/ 静音（折叠 +N）
+class _RoleChip extends StatelessWidget {
+  const _RoleChip({
+    required this.label,
+    required this.theme,
+    this.icon,
+    this.background,
+    this.foreground,
+    this.outline = false,
+    this.muted = false,
+  });
+
+  final String label;
+  final IconData? icon;
+  final Color? background;
+  final Color? foreground;
+  final bool outline;
+  final bool muted;
+  final ThemeData theme;
 
   @override
   Widget build(BuildContext context) {
-    final entries = <_Entry>[
-      const _Entry(
-          icon: Icons.account_balance_wallet_rounded,
-          label: '工资条',
-          color: UtenColors.teal600,
-          path: RouteName.payrollSlipList),
-      const _Entry(
-          icon: Icons.receipt_long_rounded,
-          label: '我的报销',
-          color: UtenColors.info,
-          path: RouteName.expense),
-      const _Entry(
-          icon: Icons.campaign_rounded,
-          label: '公司通知',
-          color: UtenColors.warning,
-          path: RouteName.notice),
-      const _Entry(
-          icon: Icons.lightbulb_outline_rounded,
-          label: '建议箱',
-          color: UtenColors.success,
-          path: RouteName.suggestion),
-    ];
+    final fg =
+        foreground ??
+        (muted
+            ? theme.colorScheme.onSurfaceVariant
+            : theme.colorScheme.primary);
+    final bg =
+        background ??
+        (outline ? theme.colorScheme.surfaceContainer : Colors.transparent);
 
-    return UtenCard(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+    final borderSide = outline
+        ? BorderSide(color: theme.colorScheme.outlineVariant)
+        : BorderSide.none;
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: icon != null ? UtenSpacing.s8 : UtenSpacing.s12,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: UtenRadius.smAll,
+        border: outline ? Border.fromBorderSide(borderSide) : null,
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          for (final e in entries) ...[
-            Expanded(child: _EntryTile(entry: e)),
-            if (e != entries.last)
-              Container(
-                width: 1,
-                height: 32,
-                color: Theme.of(context).dividerColor,
-              ),
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: fg),
+            const SizedBox(width: UtenSpacing.s4),
           ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: fg,
+              letterSpacing: 0.3,
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _Entry {
-  const _Entry({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.path,
-  });
-  final IconData icon;
-  final String label;
-  final Color color;
-  final String path;
-}
-
-class _EntryTile extends StatelessWidget {
-  const _EntryTile({required this.entry});
-  final _Entry entry;
+/// 我的修改申请快捷入口：显示 pending 数 + 跳 /profile/me/changes。
+class _MyChangesShortcut extends ConsumerWidget {
+  const _MyChangesShortcut({required this.l10n});
+  final AppLocalizations l10n;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: () => context.go(entry.path),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: entry.color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(entry.icon, color: entry.color, size: 18),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                entry.label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
+    final async = ref.watch(
+      myProfileChangesProvider((status: 'pending', page: 1)),
+    );
+    final count = async.maybeWhen(data: (page) => page.total, orElse: () => 0);
+
+    return UtenCard(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s4,
+        ),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primaryContainer,
+            borderRadius: UtenRadius.lgAll,
+          ),
+          child: Icon(
+            Icons.assignment_outlined,
+            size: 18,
+            color: theme.colorScheme.onPrimaryContainer,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  const _InfoTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ListTile(
-      leading: Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-      title: Text(label),
-      trailing: Text(
-        value,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurface,
-          fontWeight: FontWeight.w500,
+        title: Text(
+          l10n.profileChangeListTitle,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _NavTile extends StatelessWidget {
-  const _NavTile({
-    required this.icon,
-    required this.label,
-    this.description,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final String? description;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      type: MaterialType.transparency,
-      child: ListTile(
-        onTap: onTap,
-        leading:
-            Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-        title: Text(label),
-        subtitle: description != null
-            ? Text(
-                description!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              )
-            : null,
+        subtitle: Text(
+          count > 0
+              ? l10n.profilePendingBadge(count)
+              : l10n.profileChangeListEmpty,
+          style: TextStyle(
+            color: count > 0
+                ? theme.colorScheme.primary
+                : theme.colorScheme.onSurfaceVariant,
+            fontWeight: count > 0 ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
         trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+        // 同上：主 Tab 前缀子路由用 go 不用 push。
+        onTap: () => context.go(RouteName.profileMyChanges),
       ),
     );
   }

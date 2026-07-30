@@ -1,5 +1,8 @@
 // 报销审批详情页（Phase 3）
 // 文档：docs/03-页面/报销审批详情页.md · 审批流见 docs/05-架构/全局机制.md §3.3
+//
+// 响应式：全断点套 UtenContentContainer.narrow（maxWidth 1120）——
+// 外壳只收敛到 1600，详情页需自行钳窄居中
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,8 +16,11 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
 
@@ -50,9 +56,7 @@ class _ExpenseApprovalDetailPageState
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (mounted) {
       setState(() => _acting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(approve ? '已通过（Mock）' : '已驳回（Mock）')),
-      );
+      context.appInfo(approve ? '已通过（Mock）' : '已驳回（Mock）');
       ref.invalidate(expenseApprovalListProvider);
       context.go('/expense/approval');
     }
@@ -100,18 +104,16 @@ class _ExpenseApprovalDetailPageState
           if (claim == null) {
             return const UtenEmpty(message: '报销单不存在');
           }
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
+          return UtenContentContainer.narrow(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _Hero(claim: claim),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: UtenSpacing.s16),
                     const UtenSectionHeader(title: '申请信息'),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: UtenSpacing.s8),
                     UtenCard(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 4),
@@ -126,11 +128,11 @@ class _ExpenseApprovalDetailPageState
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: UtenSpacing.s20),
                     const UtenSectionHeader(title: '报销明细'),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: UtenSpacing.s8),
                     UtenCard(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
                       child: Column(
                         children: [
                           for (final it in claim.items) ...[
@@ -141,7 +143,12 @@ class _ExpenseApprovalDetailPageState
                                   color: UtenColors.teal600, size: 20),
                               title: Text('${it.category.label}  ·  ${it.description ?? ''}',
                                   style: Theme.of(context).textTheme.bodyMedium),
-                              trailing: Text('¥ ${it.amount.toStringAsFixed(0)}'),
+                              trailing: Text(
+                                '¥ ${it.amount.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
+                              ),
                             ),
                             if (it != claim.items.last)
                               const Divider(height: 1),
@@ -160,24 +167,27 @@ class _ExpenseApprovalDetailPageState
                                         fontWeight: FontWeight.w700,
                                         color:
                                             Theme.of(context).colorScheme.primary,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures()
+                                        ],
                                       )),
                             ],
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: UtenSpacing.s20),
                     const UtenSectionHeader(title: '审批轨迹'),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: UtenSpacing.s8),
                     UtenCard(
                       child: _ApprovalTimeline(claim: claim),
                     ),
                     if (_isMinePending) ...[
-                      const SizedBox(height: 20),
+                      const SizedBox(height: UtenSpacing.s20),
                       const UtenSectionHeader(title: '审批意见'),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: UtenSpacing.s8),
                       UtenCard(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(UtenSpacing.s12),
                         child: TextField(
                           controller: _comment,
                           maxLines: 3,
@@ -188,11 +198,10 @@ class _ExpenseApprovalDetailPageState
                         ),
                       ),
                     ],
-                    const SizedBox(height: 32),
+                    const SizedBox(height: UtenSpacing.s32),
                   ],
                 ),
               ),
-            ),
           );
         },
       ),
@@ -206,23 +215,24 @@ class _Hero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(UtenSpacing.s20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [UtenColors.deepGreen, UtenColors.teal600],
+          colors: [UtenColors.teal500, UtenColors.teal600],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        // 与 UtenCard 一致的圆角面板，避免"通栏色条"观感
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           UtenStatusBadge(label: claim.status.label, type: _badge(claim.status)),
-          const SizedBox(height: 12),
+          const SizedBox(height: UtenSpacing.s12),
           const Text('报销总额',
               style: TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 4),
+          const SizedBox(height: UtenSpacing.s4),
           Text('¥ ${claim.totalAmount.toStringAsFixed(2)}',
               style: const TextStyle(
                   color: Colors.white,

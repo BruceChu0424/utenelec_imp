@@ -2,11 +2,12 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/api_client.dart';
 import '../models/suggestion.dart';
-import '../repositories/mock_suggestion_repository.dart';
+import '../repositories/suggestion_repository.dart';
 
-final suggestionRepositoryProvider = Provider<MockSuggestionRepository>((ref) {
-  return MockSuggestionRepository();
+final suggestionRepositoryProvider = Provider<SuggestionRepository>((ref) {
+  return DioSuggestionRepository(ref.watch(apiClientProvider));
 });
 
 /// 列表筛选：我的 / 全部

@@ -1,7 +1,17 @@
 # Phase 4 — 生产 / 实验室端总览
 
-> **lab（实验室）+ production（车间）角色端**总纲，10 个页面，覆盖质量检测、设备控制、生产、库存。
+> **⚠️ 2026-07-24 权限模型重构**：角色体系已下线（[ADR-011](../99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）。本文中"按角色分权/角色端"的表述仅作历史参考——现行权限 = 全员基础 ∪ 部门配置（含上级部门） ± 个人覆盖，由超管在权限管理页按部门配置。
+
+
+> **lab（实验室）+ production（车间）角色端**总纲，原计划 10 页，覆盖质量检测、设备控制、生产、库存。
 > 上层：[页面总览](页面总览.md)。全局机制见 [全局机制](../05-架构/全局机制.md)。
+>
+> 📍 **现状（2026-07-27）**：业务落地后**生产 / 仓库 / 库存查询已接真实后端**（老库 `F_`/库存/出入库全量迁移），其中：
+> - **生产管理**演化为独立业务模块（生产计划单 / 生产日报表 / BOM 成本展开只读 + 2 张生产报表），路由前缀 `/production`，见 [页面总览 §业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端)。
+> - **库存查询 + 出入库记录** 由新 `stock` 模块覆盖（`/stock`、`/stock/movement`，真实后端）。
+> - **仓库管理**（9 类出入库单据 + 14 张报表）作为独立模块 `/warehouse` 上线。
+> - **实验室检测 / 空调控制** 当前仍为前端实现（设备/检测类，未在老库迁移范围），待后续接入真实后端。
+> - 原「流水线看板 / 产量录入 / 产量统计」UX 页面保留为轻量页面。
 
 ---
 
@@ -9,22 +19,24 @@
 
 实验室技术员上传检测数据、出报告；车间/设备人员控制楼栋空调、看流水线进度、录产量；仓管管库存。**平板 + 手机**为主，车间现场多用平板。
 
-## 二、页面清单
+## 二、页面清单（原 UX 设计 + 现状标注）
 
-| # | 页面 | 路由 | 角色 |
-|---|---|---|---|
-| 1 | 检测上传 | `/lab/test/upload` | lab |
-| 2 | 检测列表 | `/lab/test` | lab |
-| 3 | 检测报告 | `/lab/test/:id` | lab |
-| 4 | 空调设备总览 | `/hvac` | production |
-| 5 | 空调控制 | `/hvac/:id` | production |
-| 6 | 流水线看板 | `/production/line` | production |
-| 7 | 产量录入 | `/production/output/entry` | production |
-| 8 | 产量统计 | `/production/output` | production |
-| 9 | 库存查询 | `/inventory` | production |
-| 10 | 出入库记录 | `/inventory/movement` | production |
+| # | 页面 | 路由 | 文档 | 现状 |
+|---|---|---|---|---|
+| 1 | 检测上传 | `/lab/test/upload` | [检测上传页.md](检测上传页.md) ⏳ | 前端已实现，后端待接入 |
+| 2 | 检测列表 | `/lab/test` | [检测列表页.md](检测列表页.md) ⏳ | 前端已实现，后端待接入 |
+| 3 | 检测报告 | `/lab/test/:id` | [检测报告页.md](检测报告页.md) ⏳ | 前端已实现，后端待接入 |
+| 4 | 空调设备总览 | `/hvac` | [空调总览页.md](空调总览页.md) ⏳ | 前端已实现，后端待接入 |
+| 5 | 空调控制 | `/hvac/:id` | [空调控制页.md](空调控制页.md) ⏳ | 前端已实现，后端待接入 |
+| 6 | 流水线看板 | `/production/line` | [流水线看板页.md](流水线看板页.md) ⏳ | UX 保留（业务由生产模块报表覆盖） |
+| 7 | 产量录入 | `/production/output/entry` | [产量录入页.md](产量录入页.md) ⏳ | UX 保留 |
+| 8 | 产量统计 | `/production/output` | [产量统计页.md](产量统计页.md) ⏳ | UX 保留 |
+| 9 | 库存查询 | `/stock/balance` | 见 [§业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端) | ✅ 真实后端（新 `stock` 模块） |
+| 10 | 出入库记录 | `/stock/movement` | 见 [§业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端) | ✅ 真实后端（新 `stock` 模块） |
 
-## 三、角色权限
+> ✅ **业务模块已落地**（不在原 10 页 UX 内，独立 hub 页）：生产管理 `/production`、仓库管理 `/warehouse`，详见 [页面总览 §业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端)。
+
+## 三、角色权限（历史参考，已下线）
 
 | 页面 | lab | production | manager | admin | 其他 |
 |---|---|---|---|---|---|
@@ -33,23 +45,24 @@
 | 流水线/产量* | ❌ | ✅ | ✅只读 | ✅ | ❌ |
 | 库存* | ❌ | ✅ | ✅只读 | ✅ | ❌ |
 
-权限点：`lab:test:view/upload`、`production:view`、`inventory:view`（见 [全局机制 §1.2](../05-架构/全局机制.md#12-角色与权限点)）。
+权限点（现行，按部门/个人配置）：`lab:test:view/upload`、`production:view`、`stock:view`、`stock_report:view/export`、`production_report:view/export`、`production_where_used:view`、`warehouse:*`。
 
 ## 四、共同特征
-- **平板优先**：多为数据录入/看板，桌面/平板用 DataTable + 看板，手机简化。
+- **平板优先**：多为数据录入/看板，桌面/平板用 `MasterDataTableView` + 看板，手机简化。
 - **车间现场**：性能档多为 lite/standard，重动画慎用。
 - **视角选择器**：产量统计、库存、流水线看板 manager 可切部门范围。
-- **实时性**：空调状态、流水线进度后端接入后走轮询/SSE（前端阶段 Mock）。
+- **实时性**：空调状态、流水线进度待后端接入后走轮询/SSE（当前前端静态/演示数据）。
 
 ## 五、依赖组件
-`UtenDataTable`、`UtenForm`、`UtenChartPlaceholder`、`UtenStatCard`、`UtenStatusBadge`（合格/不合格、设备在线/离线）、`UtenSwitch`/`UtenSlider`（空调控制）、`UtenConfirmDialog`、`UtenEmpty`。
+`MasterDataTableView`（统一表格，列排序 + autofilter + 加密导出，[文档](../02-组件库/MasterDataTableView.md)）、`UtenForm`、`UtenStatCard`、`UtenStatusBadge`（合格/不合格、设备在线/离线）、`UtenSwitch`/`UtenSlider`（空调控制）、`UtenConfirmDialog`、`UtenEmpty`、`UtenExportButton`（加密 Excel 导出）。
 
-## 六、涉及实体（需细化入实体字典）
-`LabTest`/`LabSample`/`LabReport`/`LabEquipment`（实验室）；`HvacDevice`/`Building`/`Floor`（空调）；`ProductionLine`/`ProductionShift`/`ProductionOutput`/`ProductionOrder`/`Product`（生产）；`Material`/`InventoryStock`/`InventoryMovement`/`Warehouse`（库存）。
+## 六、涉及实体
+`LabTest`/`LabSample`/`LabReport`/`LabEquipment`（实验室，待入库）；`HvacDevice`/`Building`/`Floor`（空调，待入库）；`production_plans`/`production_daily_reports`/`production_plan_cost_items`（生产，已落库）；`stock_documents`/`stock_movements`/`stock_balance`（库存/出入库，已落库）。
 
 ## 七、推进顺序
-实验室（检测上传→列表→报告）→ 空调（总览→控制）→ 流水线看板 → 产量（录入→统计）→ 库存（查询→出入库）。
+实验室（检测上传→列表→报告，待后端接入）→ 空调（总览→控制，待后端接入）→ 流水线看板 → 产量（录入→统计）→ 库存（查询→出入库，已落地）。
+**已落地**：生产管理 + 仓库管理 + 库存查询（含报表 + 加密导出）。
 
 ---
 
-**最后更新**：2026-07-22 · **状态**：总览定稿
+**最后更新**：2026-07-27 · **状态**：生产/仓库/库存 已接真实后端（含报表）；实验室/空调 前端已实现待后端接入；UX 总览作为页面文档索引保留

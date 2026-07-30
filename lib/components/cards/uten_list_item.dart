@@ -3,8 +3,6 @@
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
-
 /// Uten 列表项
 ///
 /// 通用一行卡片：左侧图标/头像 + 标题 + 副标题 + 右侧状态/数值/箭头
@@ -18,9 +16,10 @@ class UtenListItem extends StatelessWidget {
     this.leadingIcon,
     this.leadingColor,
     this.onTap,
-    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     this.showDivider = false,
     this.badge,
+    this.showChevron = false,
   });
 
   /// 主标题（必填）
@@ -47,16 +46,19 @@ class UtenListItem extends StatelessWidget {
   /// 内边距
   final EdgeInsetsGeometry padding;
 
-  /// 是否显示底部分隔线
+  /// 是否显示底部发丝级分隔线
   final bool showDivider;
 
   /// 右侧状态徽章（便捷参数，与 trailing 互斥）
   final Widget? badge;
 
+  /// 是否在最右侧显示导航箭头（chevron），提示可点击进入详情
+  final bool showChevron;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    const radius = 14.0;
 
     final Widget content = Padding(
       padding: padding,
@@ -99,25 +101,24 @@ class UtenListItem extends StatelessWidget {
           // 右侧
           if (badge != null) ...[const SizedBox(width: 8), badge!],
           if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+          if (showChevron) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
         ],
       ),
     );
 
-    // 先把容器（带背景色/边框/阴影）和内容组合好
+    // 卡片视觉：背景色 + 细边框，无阴影（全局卡片去阴影）
     final Widget decorated = DecoratedBox(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: theme.colorScheme.outlineVariant),
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: theme.shadowColor.withValues(alpha: 0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
       ),
       child: showDivider
           ? Column(
@@ -139,11 +140,11 @@ class UtenListItem extends StatelessWidget {
     if (onTap != null) {
       return Material(
         type: MaterialType.transparency,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(radius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(radius),
           child: decorated,
         ),
       );
@@ -153,7 +154,7 @@ class UtenListItem extends StatelessWidget {
   }
 
   Widget _buildLeadingIcon(ThemeData theme) {
-    final color = leadingColor ?? UtenColors.accent;
+    final color = leadingColor ?? theme.colorScheme.primary;
     return Container(
       width: 40,
       height: 40,

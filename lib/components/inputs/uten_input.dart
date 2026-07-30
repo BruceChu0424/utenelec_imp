@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 class UtenInput extends StatefulWidget {
   const UtenInput({
     super.key,
-    required this.label,
+    this.label,
     this.hint,
     this.controller,
     this.obscureText = false,
@@ -26,7 +26,7 @@ class UtenInput extends StatefulWidget {
   });
 
   /// 标签
-  final String label;
+  final String? label;
 
   /// 占位提示
   final String? hint;
@@ -106,15 +106,17 @@ class _UtenInputState extends State<UtenInput> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 标签
-        Text(
-          widget.label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-            color: theme.colorScheme.onSurface,
+        if (widget.label != null) ...[
+          // 标签
+          Text(
+            widget.label!,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: theme.colorScheme.onSurface,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
         // 输入框
         TextFormField(
           controller: _controller,
@@ -145,7 +147,9 @@ class _UtenInputState extends State<UtenInput> {
     if (widget.isPassword) {
       return IconButton(
         icon: Icon(
-          _isObscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+          _isObscured
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
           size: 20,
         ),
         onPressed: () => setState(() => _isObscured = !_isObscured),

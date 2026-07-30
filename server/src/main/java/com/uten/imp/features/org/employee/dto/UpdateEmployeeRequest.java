@@ -1,9 +1,11 @@
 package com.uten.imp.features.org.employee.dto;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
-/** 员工编辑（部分更新）。非 null 字段才更新；敏感/薪资字段若提供则重新加密。 */
+/** 员工编辑（部分更新）。非 null 字段才更新；敏感/薪资字段若提供则重新加密；
+ *  certificates/educations 若提供（非 null，含空数组）则整体替换。 */
 public record UpdateEmployeeRequest(
         String fullName,
         String gender,
@@ -36,5 +38,8 @@ public record UpdateEmployeeRequest(
         String socialInsuranceBase,
         String housingFundBase,
         String allowanceStandard,
-        String socialInsuranceLocation
+        String socialInsuranceLocation,
+        // 子集合（非 null 则整体替换；空数组 = 清空）
+        List<OnboardingRequest.CredentialInput> certificates,
+        List<OnboardingRequest.EducationInput> educations
 ) {}

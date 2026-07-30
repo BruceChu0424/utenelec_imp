@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/employee.dart';
 import '../repositories/mock_employee_repository.dart';
 
-final employeeRepositoryProvider = Provider<MockEmployeeRepository>((ref) {
+final mockEmployeeRepositoryProvider = Provider<MockEmployeeRepository>((ref) {
   return MockEmployeeRepository();
 });
 
@@ -27,7 +27,7 @@ class EmployeeListNotifier extends AutoDisposeAsyncNotifier<List<Employee>> {
   Future<List<Employee>> build() async {
     final search = ref.watch(employeeSearchProvider);
     final statuses = ref.watch(employeeStatusFilterProvider);
-    final repo = ref.watch(employeeRepositoryProvider);
+    final repo = ref.watch(mockEmployeeRepositoryProvider);
     return repo.list(search: search, statuses: statuses);
   }
 
@@ -36,7 +36,7 @@ class EmployeeListNotifier extends AutoDisposeAsyncNotifier<List<Employee>> {
     state = await AsyncValue.guard(() async {
       final search = ref.read(employeeSearchProvider);
       final statuses = ref.read(employeeStatusFilterProvider);
-      return ref.read(employeeRepositoryProvider).list(
+      return ref.read(mockEmployeeRepositoryProvider).list(
             search: search,
             statuses: statuses,
           );
@@ -47,11 +47,11 @@ class EmployeeListNotifier extends AutoDisposeAsyncNotifier<List<Employee>> {
 /// 详情
 final employeeDetailProvider =
     FutureProvider.autoDispose.family<Employee?, String>((ref, id) async {
-  return ref.watch(employeeRepositoryProvider).getById(id);
+  return ref.watch(mockEmployeeRepositoryProvider).getById(id);
 });
 
 /// 部门列表（筛选用）
 final employeeDepartmentListProvider =
     FutureProvider.autoDispose<List<String>>((ref) async {
-  return ref.watch(employeeRepositoryProvider).departments();
+  return ref.watch(mockEmployeeRepositoryProvider).departments();
 });

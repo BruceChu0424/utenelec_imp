@@ -32,4 +32,26 @@ public final class NestedDtos {
         private LocalDate eventDate;
         private String remark;
     }
+
+    @Getter
+    @AllArgsConstructor
+    public static class CredentialDto {
+        private UUID id;
+        private String type;
+        private String name;
+        private String certNo;
+        private LocalDate issuedAt;
+        private LocalDate expiresAt;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class EducationDto {
+        private UUID id;
+        private String degree;
+        private String school;
+        private String major;
+        private LocalDate startDate;
+        private LocalDate endDate;
+    }
 }

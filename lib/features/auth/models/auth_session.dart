@@ -7,6 +7,8 @@ class UserProfile {
     required this.loginAccount,
     required this.roles,
     required this.permissions,
+    required this.superAdmin,
+    this.employeeId,
     this.name,
     this.code,
     this.department,
@@ -15,24 +17,31 @@ class UserProfile {
 
   final String id;
   final String loginAccount;
+  /// 员工档案 ID（employees.id）。Phase 6 起用于「自助编辑个人信息」直接拉完整档案。
+  final String? employeeId;
   final String? name;
   final String? code;
   final String? department;
   final String? position;
   final List<String> roles;
   final List<String> permissions;
+  /// 后端 users.is_super_admin 直接透传——拥有该字段后所有权限检查短路放行，
+  /// 且 UI 上"岗位/职务"自动隐藏（super admin 不设置具体 position）。
+  final bool superAdmin;
 
-  bool get isAdmin => roles.contains('admin');
+  bool get isAdmin => superAdmin || roles.contains('admin');
   bool get isHr => roles.contains('hr');
   bool get canManageOrg => isAdmin || isHr;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
         id: json['id'] as String,
         loginAccount: json['loginAccount'] as String,
+        employeeId: json['employeeId'] as String?,
         name: json['name'] as String?,
         code: json['code'] as String?,
         department: json['department'] as String?,
         position: json['position'] as String?,
+        superAdmin: json['superAdmin'] as bool? ?? false,
         roles: ((json['roles'] as List<dynamic>?) ?? const []).map((e) => e as String).toList(),
         permissions:
             ((json['permissions'] as List<dynamic>?) ?? const []).map((e) => e as String).toList(),

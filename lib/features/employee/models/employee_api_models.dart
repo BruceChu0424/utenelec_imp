@@ -124,6 +124,7 @@ class EmployeeProfile {
     this.probationMonths,
     this.probationEndDate,
     this.renewCount,
+    this.accountStatus,
     this.emergencyContacts = const [],
     this.history = const [],
   });
@@ -178,6 +179,9 @@ class EmployeeProfile {
   final String? probationEndDate;
   final int? renewCount;
 
+  // 登录账号状态（active/locked/disabled；null = 未开通账号）
+  final String? accountStatus;
+
   final List<EmergencyContactView> emergencyContacts;
   final List<EmploymentHistoryView> history;
 
@@ -228,6 +232,7 @@ class EmployeeProfile {
       probationMonths: json['probationMonths'] as int?,
       probationEndDate: json['probationEndDate'] as String?,
       renewCount: json['renewCount'] as int?,
+      accountStatus: json['accountStatus'] as String?,
       emergencyContacts: ec.map((e) => EmergencyContactView.fromJson(e as Map<String, dynamic>)).toList(),
       history: hist.map((e) => EmploymentHistoryView.fromJson(e as Map<String, dynamic>)).toList(),
     );

@@ -45,6 +45,8 @@ uten:
     lockout-threshold: 5
     lockout-minutes: 15
     password-history-size: 5
+    # swagger 白名单开关：dev 默认放行；prod 在 application-prod.yml 关闭（同时 springdoc 整体禁用）
+    swagger-enabled: ${UTEN_SWAGGER_ENABLED:true}
   crypto:
     # 必填：pgcrypto 主密钥（PII 加密）。走 server/.env 或环境变量；缺省 fail-fast。生产放 Vault/KMS。
     pgp-master-key: ${UTEN_PGP_MASTER_KEY}
@@ -66,6 +68,14 @@ uten:
     code-ttl-minutes: 5
     send-interval-seconds: 60
     daily-limit: 10
+
+app:
+  legacy:
+    # 老库（SQL Server YTDQ_2023）迁移数据源；默认关，迁移时显式 UTEN_LEGACY_ENABLED=true
+    enabled: ${UTEN_LEGACY_ENABLED:false}
+    datasource-url: ${UTEN_LEGACY_DB_URL:}
+    datasource-username: ${UTEN_LEGACY_DB_USER:}
+    datasource-password: ${UTEN_LEGACY_DB_PASSWORD:}
 
 springdoc:
   swagger-ui:

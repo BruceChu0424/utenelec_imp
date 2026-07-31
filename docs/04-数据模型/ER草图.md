@@ -79,7 +79,9 @@ erDiagram
 
 ```mermaid
 erDiagram
-    Notice ||--o{ NoticeReadRecord : "已读"
+    Notice ||--o{ NoticeUserState : "接收快照及用户状态"
+    User ||--o{ NoticeUserState : "接收/已读/删除"
+    Department }o--o{ Notice : "发布时选择范围"
     Suggestion ||--o{ SuggestionReply : "回复"
 ```
 

@@ -5,6 +5,7 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportQueryFilter;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
+import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -45,6 +46,19 @@ import java.util.UUID;
 public class ProductionDailyReportController {
 
     private final ProductionDailyReportService service;
+    private final ReportablePlanLineQueryService reportablePlanLines;
+
+    @GetMapping("/reportable-plan-lines")
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public PageResponse<ReportablePlanLine> reportablePlanLines(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "30") int size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) UUID executionSegmentId) {
+        return reportablePlanLines.list(
+                page, size, keyword, departmentId, executionSegmentId);
+    }
 
     @GetMapping
     @PreAuthorize("hasAuthority('production_daily_report:view')")

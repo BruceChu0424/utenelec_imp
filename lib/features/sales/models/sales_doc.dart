@@ -634,6 +634,7 @@ class OrderPlanLink {
     this.allocatedQty,
     this.producedQty,
     this.inboundQty,
+    this.executionSegments = const [],
   });
   final String planId;
   final String? planNo;
@@ -643,6 +644,7 @@ class OrderPlanLink {
   final double? allocatedQty;
   final double? producedQty;
   final double? inboundQty;
+  final List<OrderExecutionSegmentProgress> executionSegments;
 
   factory OrderPlanLink.fromJson(Map<String, dynamic> j) => OrderPlanLink(
     planId: j['planId'] as String,
@@ -653,5 +655,60 @@ class OrderPlanLink {
     allocatedQty: (j['allocatedQty'] as num?)?.toDouble(),
     producedQty: (j['producedQty'] as num?)?.toDouble(),
     inboundQty: (j['inboundQty'] as num?)?.toDouble(),
+    executionSegments: [
+      for (final segment in (j['executionSegments'] as List? ?? const []))
+        OrderExecutionSegmentProgress.fromJson(
+          segment as Map<String, dynamic>,
+        ),
+    ],
   );
+}
+
+class OrderExecutionSegmentProgress {
+  const OrderExecutionSegmentProgress({
+    required this.executionSegmentId,
+    this.segmentCode,
+    this.status,
+    this.allocatedQty,
+    this.reportedQty,
+    this.inboundQty,
+    this.workshopName,
+    this.teamName,
+    this.planBeginDate,
+    this.planEndDate,
+    this.actualStartAt,
+    this.delayed = false,
+    this.delayReason,
+  });
+
+  final String executionSegmentId;
+  final String? segmentCode;
+  final String? status;
+  final double? allocatedQty;
+  final double? reportedQty;
+  final double? inboundQty;
+  final String? workshopName;
+  final String? teamName;
+  final String? planBeginDate;
+  final String? planEndDate;
+  final String? actualStartAt;
+  final bool delayed;
+  final String? delayReason;
+
+  factory OrderExecutionSegmentProgress.fromJson(Map<String, dynamic> json) =>
+      OrderExecutionSegmentProgress(
+        executionSegmentId: json['executionSegmentId'] as String,
+        segmentCode: json['segmentCode'] as String?,
+        status: json['status'] as String?,
+        allocatedQty: (json['allocatedQty'] as num?)?.toDouble(),
+        reportedQty: (json['reportedQty'] as num?)?.toDouble(),
+        inboundQty: (json['inboundQty'] as num?)?.toDouble(),
+        workshopName: json['workshopName'] as String?,
+        teamName: json['teamName'] as String?,
+        planBeginDate: json['planBeginDate'] as String?,
+        planEndDate: json['planEndDate'] as String?,
+        actualStartAt: json['actualStartAt'] as String?,
+        delayed: json['delayed'] == true,
+        delayReason: json['delayReason'] as String?,
+      );
 }

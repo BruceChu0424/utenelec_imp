@@ -40,9 +40,17 @@ import '../../../core/router/nav_helpers.dart';
 import '../widgets/purchase_grid_columns.dart';
 
 class PurchaseDocEditPage extends ConsumerStatefulWidget {
-  const PurchaseDocEditPage({super.key, required this.docType, this.id});
+  const PurchaseDocEditPage({
+    super.key,
+    required this.docType,
+    this.id,
+    this.sourceRequestId,
+    this.sourceRequestItemIds = const [],
+  });
   final PurchaseDocType docType;
   final String? id; // null=新建
+  final String? sourceRequestId;
+  final List<String> sourceRequestItemIds;
 
   @override
   ConsumerState<PurchaseDocEditPage> createState() =>
@@ -77,6 +85,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
+  String? _sourceRequestBillNo;
 
   @override
   void initState() {
@@ -118,6 +127,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         await _preloadEmployees([meId]);
       }
     }
+    if (widget.id == null && widget.docType == PurchaseDocType.order) {
+      await _prefillFromRequest();
+    }
     if (widget.id != null) {
       try {
         final d = await ref
@@ -154,7 +166,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         _createdAt = d.createdAt;
         final rows = <PurchaseGridRow>[];
         for (final it in d.items) {
-          final row = PurchaseGridRow()
+          final upstreamItemId =
+              it.receiptItemId ?? it.orderItemId ?? it.requestItemId;
+          final row = PurchaseGridRow(sourceLocked: upstreamItemId != null)
             ..goods = it.goodsId == null
                 ? null
                 : GoodsOption(
@@ -162,8 +176,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                     name: ref.read(masterNameServiceProvider).goods(it.goodsId),
                   )
             // 优先级与 _linkItemKey 一致（receipt > order > request），保证 round-trip。
-            ..upstreamItemId =
-                it.receiptItemId ?? it.orderItemId ?? it.requestItemId
+            ..upstreamItemId = upstreamItemId
             ..colorId = it.colorId
             ..unitId = it.unitId;
           row.qty.text = it.qty?.toString() ?? '';
@@ -205,7 +218,76 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     );
   }
 
+  Future<void> _prefillFromRequest() async {
+    final requestId = widget.sourceRequestId?.trim();
+    final selectedIds = widget.sourceRequestItemIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (requestId == null || requestId.isEmpty || selectedIds.isEmpty) return;
+    try {
+      final detail = await ref
+          .read(purchaseRepositoryProvider(PurchaseDocType.request))
+          .detail(requestId);
+      if (detail.status != kPurchaseStatusApproved) {
+        throw StateError('采购申请未审核，不能生成采购单');
+      }
+      final selected = [
+        for (final item in detail.items)
+          if (item.id != null && selectedIds.contains(item.id)) item,
+      ];
+      if (selected.length != selectedIds.length) {
+        throw StateError('所选采购申请明细已变化，请返回采购工作台刷新');
+      }
+      final open = [
+        for (final item in selected)
+          if ((item.qty ?? 0) - (item.orderedQty ?? 0) > 0) item,
+      ];
+      if (open.isEmpty) {
+        throw StateError('所选采购申请明细已全部订购，请返回采购工作台刷新');
+      }
+      final goodsIds = open
+          .map((item) => item.goodsId)
+          .whereType<String>()
+          .toSet();
+      await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
+      if (!mounted) return;
+      final names = ref.read(masterNameServiceProvider);
+      final rows = <PurchaseGridRow>[];
+      for (final item in open) {
+        if (item.id == null || item.goodsId == null) continue;
+        final remaining = (item.qty ?? 0) - (item.orderedQty ?? 0);
+        final linked = LinkedItem(
+          goodsId: item.goodsId!,
+          qty: remaining,
+          maxQty: remaining,
+          price: item.price,
+          upstreamItemId: item.id,
+          colorId: item.colorId,
+          unitId: item.unitId,
+        );
+        rows.add(
+          PurchaseGridRow.fromLinked(
+            linked,
+            GoodsOption(id: item.goodsId!, name: names.goods(item.goodsId)),
+          ),
+        );
+      }
+      if (rows.isEmpty) throw StateError('所选采购申请明细缺少有效物料');
+      _grid.replaceAll(rows);
+      _deliverDate = _parseDate(detail.needDate);
+      _sourceRequestBillNo = detail.billNo ?? requestId;
+    } on StateError catch (error) {
+      if (mounted) context.appError(error.message);
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
+    } catch (_) {
+      if (mounted) context.appError('读取采购申请失败，请从上游引入重试');
+    }
+  }
+
   Future<void> _pickGoods(PurchaseGridRow row) async {
+    if (row.sourceLocked) return;
     final g = await showUtenGoodsPicker(context, ref);
     if (g == null) return;
     final names = ref.read(masterNameServiceProvider);
@@ -276,6 +358,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     for (final r in rows) {
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text) ?? 0;
+      if (qty <= 0) {
+        context.appError('${r.goods!.name} 的数量必须大于 0');
+        return;
+      }
+      if (r.maxQty != null && qty > r.maxQty! + 0.0000001) {
+        context.appError('${r.goods!.name} 的数量不能超过上游剩余量 ${r.maxQty}');
+        return;
+      }
       final price = double.tryParse(r.price.text);
       itemsBody.add({
         'goodsId': r.goods!.id,
@@ -506,6 +596,34 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                           ),
                         ),
                       ),
+                      if (_sourceRequestBillNo != null) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        Container(
+                          padding: const EdgeInsets.all(UtenSpacing.s8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer
+                                .withValues(alpha: .35),
+                            borderRadius: UtenRadius.smAll,
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: .35,
+                              ),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.link_rounded, size: 18),
+                              const SizedBox(width: UtenSpacing.s8),
+                              Expanded(
+                                child: Text(
+                                  '已从采购申请 $_sourceRequestBillNo 引入 ${_grid.length} 行；'
+                                  '请补充供应商、交货日期和价格后保存。',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
                         children: [

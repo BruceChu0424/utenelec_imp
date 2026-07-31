@@ -67,6 +67,30 @@ List<String>? requiredAnyPermFor(String location) {
   if (location.startsWith('/finance/accounts')) {
     return const [Perm.accountView];
   }
+  // 统一履约工作台：沿用各部门现有单据查看权限，列表本身不授予写权限。
+  if (location == RouteName.operationsWarehouseWorkbench) {
+    return const [Perm.stockDocView];
+  }
+  if (location == RouteName.operationsPurchaseWorkbench) {
+    return const [
+      Perm.purchaseRequestView,
+      Perm.purchaseOrderView,
+      Perm.purchaseReceiptView,
+      Perm.purchaseReturnView,
+    ];
+  }
+  if (location == RouteName.operationsSubcontractWorkbench) {
+    return const [
+      Perm.subcontractInquiryView,
+      Perm.subcontractApplicationView,
+      Perm.subcontractOrderView,
+      Perm.subcontractReceiptView,
+      Perm.subcontractMaterialIssueView,
+      Perm.subcontractReturnView,
+      Perm.subcontractMaterialReturnView,
+      Perm.subcontractWasteView,
+    ];
+  }
   // 采购管理（PMC 运营部；V44 细粒度：view 全员、edit 归 PMC）
   if (location == RouteName.purchase) {
     // hub：任一采购单据 view 即可见

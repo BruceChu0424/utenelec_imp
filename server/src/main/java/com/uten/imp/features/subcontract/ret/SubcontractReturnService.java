@@ -125,7 +125,7 @@ public class SubcontractReturnService {
     @Transactional
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
+        SubcontractReturn r = requireReturnForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -140,7 +140,7 @@ public class SubcontractReturnService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
+        SubcontractReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -155,8 +155,7 @@ public class SubcontractReturnService {
     @Transactional
     public ReturnDetail approve(UUID id) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -217,8 +216,7 @@ public class SubcontractReturnService {
     @Transactional
     public ReturnDetail reverse(UUID id) {
         tx.bind();
-        SubcontractReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -396,5 +394,12 @@ public class SubcontractReturnService {
         return returnRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外退货单不存在"));
+    }
+    private SubcontractReturn requireReturnForUpdate(UUID id) {
+        SubcontractReturn subcontractReturn = em.find(
+                SubcontractReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return subcontractReturn == null || subcontractReturn.isDeleted()
+                ? requireReturn(id)
+                : subcontractReturn;
     }
 }

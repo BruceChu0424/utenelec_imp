@@ -1,5 +1,7 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -128,6 +130,19 @@ public class StockService {
         // Re-entrant when the top-level document already batch-locked its keys;
         // mandatory as a safe fallback for future single-movement callers.
         inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
+        if (req.direction() == DIR_OUT) {
+            BigDecimal available = balanceRepo
+                    .findByWarehouseIdAndGoodsIdAndColorId(
+                            req.warehouseId(), req.goodsId(), req.colorId())
+                    .map(StockBalance::getQty)
+                    .orElse(BigDecimal.ZERO);
+            if (available.compareTo(req.qty()) < 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "目标仓库存不足：当前 " + available.stripTrailingZeros().toPlainString()
+                                + "，本次出库 " + req.qty().stripTrailingZeros().toPlainString());
+            }
+        }
         OffsetDateTime ts = req.transactionDate() != null ? req.transactionDate() : OffsetDateTime.now();
 
         StockMovement m = new StockMovement();

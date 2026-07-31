@@ -75,6 +75,14 @@ public class ProductionDailyReportItem extends BaseEntity {
     @Column(name = "plan_item_id")
     private UUID planItemId;
 
+    /** Exact V155 execution segment; nullable only for legacy plans. */
+    @Column(name = "execution_segment_id")
+    private UUID executionSegmentId;
+
+    /** Exact V157 segment-to-sales-order allocation. */
+    @Column(name = "execution_segment_sales_allocation_id")
+    private UUID executionSegmentSalesAllocationId;
+
     /** 报工完结标记（V95）：该计划行不再继续报工；合格不足触发缺额封顶 + 自动补产。 */
     @Column(name = "is_final", nullable = false)
     private boolean isFinal = false;

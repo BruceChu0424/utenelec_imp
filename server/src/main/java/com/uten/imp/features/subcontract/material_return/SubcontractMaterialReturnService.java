@@ -117,7 +117,7 @@ public class SubcontractMaterialReturnService {
     @Transactional
     public MaterialReturnDetail update(UUID id, MaterialReturnSaveRequest req) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -132,7 +132,7 @@ public class SubcontractMaterialReturnService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -147,8 +147,7 @@ public class SubcontractMaterialReturnService {
     @Transactional
     public MaterialReturnDetail approve(UUID id) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -205,8 +204,7 @@ public class SubcontractMaterialReturnService {
     @Transactional
     public MaterialReturnDetail reverse(UUID id) {
         tx.bind();
-        SubcontractMaterialReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -342,5 +340,12 @@ public class SubcontractMaterialReturnService {
         return returnRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外材料退货单不存在"));
+    }
+    private SubcontractMaterialReturn requireReturnForUpdate(UUID id) {
+        SubcontractMaterialReturn materialReturn = em.find(
+                SubcontractMaterialReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return materialReturn == null || materialReturn.isDeleted()
+                ? requireReturn(id)
+                : materialReturn;
     }
 }

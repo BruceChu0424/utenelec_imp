@@ -117,7 +117,7 @@ public class SubcontractMaterialIssueService {
     @Transactional
     public MaterialIssueDetail update(UUID id, MaterialIssueSaveRequest req) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -132,7 +132,7 @@ public class SubcontractMaterialIssueService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -147,8 +147,7 @@ public class SubcontractMaterialIssueService {
     @Transactional
     public MaterialIssueDetail approve(UUID id) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -187,8 +186,7 @@ public class SubcontractMaterialIssueService {
     @Transactional
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
-        SubcontractMaterialIssue r = requireIssue(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractMaterialIssue r = requireIssueForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -338,5 +336,12 @@ public class SubcontractMaterialIssueService {
         return issueRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外材料出仓单不存在"));
+    }
+    private SubcontractMaterialIssue requireIssueForUpdate(UUID id) {
+        SubcontractMaterialIssue issue = em.find(
+                SubcontractMaterialIssue.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return issue == null || issue.isDeleted()
+                ? requireIssue(id)
+                : issue;
     }
 }

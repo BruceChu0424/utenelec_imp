@@ -110,7 +110,7 @@ public class PurchaseReturnService {
     @Transactional
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
+        PurchaseReturn r = requireReturnForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         applyHeader(req, r);
         itemRepo.deleteByReturnId(id);
@@ -123,7 +123,7 @@ public class PurchaseReturnService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
+        PurchaseReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -134,8 +134,7 @@ public class PurchaseReturnService {
     @Transactional
     public ReturnDetail approve(UUID id) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        PurchaseReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
@@ -180,8 +179,7 @@ public class PurchaseReturnService {
     @Transactional
     public ReturnDetail reverse(UUID id) {
         tx.bind();
-        PurchaseReturn r = requireReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        PurchaseReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
@@ -316,5 +314,12 @@ public class PurchaseReturnService {
     private PurchaseReturn requireReturn(UUID id) {
         return returnRepo.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购退货单不存在"));
+    }
+    private PurchaseReturn requireReturnForUpdate(UUID id) {
+        PurchaseReturn purchaseReturn = em.find(
+                PurchaseReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return purchaseReturn == null || purchaseReturn.isDeleted()
+                ? requireReturn(id)
+                : purchaseReturn;
     }
 }

@@ -8,9 +8,11 @@ import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -189,18 +191,33 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (mounted) context.appError('没有有效的数量');
       return;
     }
+    final canonical = body
+        .map((line) {
+          final itemId = line['itemId'] as String;
+          final current = _d!.items
+              .firstWhere((item) => item.id == itemId)
+              .issuedQty;
+          return '$itemId|issued=${current ?? 0}|delta=${line['qty']}';
+        })
+        .join(';');
+    final idempotencyKey = businessIdempotencyKey(
+      reverse ? 'DRAW-ISSUE-REVERSE' : 'DRAW-ISSUE',
+      '${widget.id}|$canonical',
+    );
 
     setState(() => _busy = true);
     try {
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
       if (reverse) {
-        await repo.reverseIssue(widget.id, body);
+        await repo.reverseIssue(widget.id, body, idempotencyKey);
       } else {
-        await repo.issue(widget.id, body);
+        await repo.issue(widget.id, body, idempotencyKey);
       }
       if (!mounted) return;
       context.appSuccess(reverse ? '已反出库' : '已出库');
       await _load();
+    } on ApiException catch (error) {
+      if (mounted) context.appError(error.message);
     } catch (_) {
       if (mounted) context.appError(reverse ? '反出库失败' : '出库失败');
     } finally {
@@ -271,6 +288,35 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               : ListView(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
+                    if (_d!.productionLinked) ...[
+                      Material(
+                        color: theme.colorScheme.primaryContainer,
+                        borderRadius: UtenRadius.mdAll,
+                        child: Padding(
+                          padding: const EdgeInsets.all(UtenSpacing.s12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.account_tree_outlined,
+                                color: theme.colorScheme.onPrimaryContainer,
+                              ),
+                              const SizedBox(width: UtenSpacing.s8),
+                              Expanded(
+                                child: Text(
+                                  '生产链自动生成\n'
+                                  '${_d!.restrictionReason ?? '请在对应生产任务中维护'}',
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -415,7 +461,21 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   Widget _actions(ThemeData theme) {
     final s = _d!.status;
     final children = <Widget>[];
-    if (s == 0 && _canEdit) {
+    if (s == 0 && _canEdit && _d!.productionLinked) {
+      children.add(
+        UtenButton(
+          icon: Icons.check_circle_outline,
+          onPressed: () => _act(
+            '审核将联动库存，确认？',
+            () => ref
+                .read(stockDocRepositoryProvider(widget.docType))
+                .approve(widget.id),
+            '已审核',
+          ),
+          child: const Text('审核'),
+        ),
+      );
+    } else if (s == 0 && _canEdit && _d!.canEdit && _d!.canDelete) {
       children
         ..add(
           UtenButton(
@@ -470,6 +530,16 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           children
             ..add(
               UtenButton(
+                type: UtenButtonType.tonal,
+                icon: Icons.assignment_return_outlined,
+                onPressed: () =>
+                    context.push(RoutePath.stockWdrawNewFromDraw(widget.id)),
+                child: const Text('余料退库'),
+              ),
+            )
+            ..add(const SizedBox(width: 8))
+            ..add(
+              UtenButton(
                 type: UtenButtonType.secondary,
                 icon: Icons.undo_rounded,
                 onPressed: () => _issueDialog(reverse: true),
@@ -479,20 +549,22 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             ..add(const SizedBox(width: 8));
         }
       }
-      children.add(
-        UtenButton(
-          type: UtenButtonType.danger,
-          icon: Icons.undo_outlined,
-          onPressed: () => _act(
-            '红冲将反向冲销库存，确认？',
-            () => ref
-                .read(stockDocRepositoryProvider(widget.docType))
-                .reverse(widget.id),
-            '已红冲',
+      if (!_d!.productionLinked || widget.docType == StockDocType.finishedIn) {
+        children.add(
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.undo_outlined,
+            onPressed: () => _act(
+              '红冲将反向冲销库存，确认？',
+              () => ref
+                  .read(stockDocRepositoryProvider(widget.docType))
+                  .reverse(widget.id),
+              '已红冲',
+            ),
+            child: const Text('红冲'),
           ),
-          child: const Text('红冲'),
-        ),
-      );
+        );
+      }
     } else {
       children.add(
         UtenButton(

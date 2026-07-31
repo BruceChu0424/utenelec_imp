@@ -2768,6 +2768,153 @@ abstract class AppLocalizations {
   /// **'通知已发布'**
   String get noticePublishPublished;
 
+  /// No description provided for @noticePublishPublishing.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布中…'**
+  String get noticePublishPublishing;
+
+  /// No description provided for @noticePublishContentSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知内容'**
+  String get noticePublishContentSection;
+
+  /// No description provided for @noticePublishTypeLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知类型'**
+  String get noticePublishTypeLabel;
+
+  /// No description provided for @noticePublishTitleLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'标题'**
+  String get noticePublishTitleLabel;
+
+  /// No description provided for @noticePublishContentLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'正文'**
+  String get noticePublishContentLabel;
+
+  /// No description provided for @noticePublishUrgentHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急通知会使用高优先级提醒，请只用于必须立即关注的事项。'**
+  String get noticePublishUrgentHint;
+
+  /// No description provided for @noticePublishTopPriorityHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'置顶后会优先显示，并按重要通知提醒接收人。'**
+  String get noticePublishTopPriorityHint;
+
+  /// No description provided for @noticePublishScopeSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'指定范围'**
+  String get noticePublishScopeSelected;
+
+  /// No description provided for @noticePublishScopeSelectedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。'**
+  String get noticePublishScopeSelectedHint;
+
+  /// No description provided for @noticePublishDepartmentsLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'接收部门（可多选）'**
+  String get noticePublishDepartmentsLabel;
+
+  /// No description provided for @noticePublishDepartmentsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择一个或多个部门'**
+  String get noticePublishDepartmentsHint;
+
+  /// No description provided for @noticePublishEmployeesLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'单独添加人员'**
+  String get noticePublishEmployeesLabel;
+
+  /// No description provided for @noticePublishEmployeesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择指定人员（可多选）'**
+  String get noticePublishEmployeesHint;
+
+  /// No description provided for @noticePublishEmployeePickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择接收人员'**
+  String get noticePublishEmployeePickerTitle;
+
+  /// No description provided for @noticePublishEmployeeSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索姓名 / 工号'**
+  String get noticePublishEmployeeSearchHint;
+
+  /// No description provided for @noticePublishEmployeeEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'未找到可接收通知的在职账号'**
+  String get noticePublishEmployeeEmpty;
+
+  /// No description provided for @noticePublishEmployeeSelectedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {count} 人'**
+  String noticePublishEmployeeSelectedCount(int count);
+
+  /// No description provided for @noticePublishEmployeeClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get noticePublishEmployeeClear;
+
+  /// No description provided for @noticePublishEmployeeConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定'**
+  String get noticePublishEmployeeConfirm;
+
+  /// No description provided for @noticePublishValidateAudience.
+  ///
+  /// In zh, this message translates to:
+  /// **'请至少选择一个部门或人员'**
+  String get noticePublishValidateAudience;
+
+  /// No description provided for @noticePublishAudienceSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选 {departmentCount} 个部门、{employeeCount} 人'**
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  );
+
+  /// No description provided for @noticePublishAudienceRecalculateHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布前会按当前组织与账号状态重新核算实际接收人数。'**
+  String get noticePublishAudienceRecalculateHint;
+
+  /// No description provided for @noticePublishConfirmAudience.
+  ///
+  /// In zh, this message translates to:
+  /// **'将发送给 {summary}，实际接收 {count} 人。'**
+  String noticePublishConfirmAudience(Object summary, Object count);
+
+  /// No description provided for @noticePublishPublishedTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知已发布给 {count} 人'**
+  String noticePublishPublishedTo(Object count);
+
   /// No description provided for @noticeTypeAnnouncement.
   ///
   /// In zh, this message translates to:

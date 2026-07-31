@@ -14,6 +14,7 @@ class StockQueryRepository {
     int page = 1,
     int size = 20,
     String? warehouseId,
+    String? goodsId,
     String? sort,
     String? order,
   }) async {
@@ -23,6 +24,7 @@ class StockQueryRepository {
         'page': page,
         'size': size,
         'warehouseId': ?warehouseId,
+        'goodsId': ?goodsId,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },

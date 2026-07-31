@@ -47,6 +47,7 @@ public class NoticeService {
     private final EmployeeRepository employeeRepo;
     private final SecurityContextCurrentUser currentUser;
     private final ObjectMapper objectMapper;
+    private final NoticeAudienceService audienceService;
 
     /** 当前用户可见通知列表（已删除的除外）。置顶优先，其余按发布时间倒序。 */
     @Transactional(readOnly = true)
@@ -77,10 +78,10 @@ public class NoticeService {
         UUID userId = requireStaffId();
         Notice n = noticeRepo.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "通知不存在"));
-        if (!visibleTo(n, userId)) {
+        NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId)).orElse(null);
+        if (!visibleTo(n, userId, st)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "通知不存在");
         }
-        NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId)).orElse(null);
         if (st != null && st.getDeletedAt() != null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "通知不存在");
         }
@@ -106,6 +107,18 @@ public class NoticeService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法重要度: " + priority);
         }
 
+        String audienceScope = req.audienceScope() == null ? "all" : req.audienceScope();
+        if (!Set.of("all", "selected").contains(audienceScope)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法接收范围: " + audienceScope);
+        }
+        NoticeAudienceService.ResolvedAudience audience = null;
+        if ("selected".equals(audienceScope)) {
+            audience = audienceService.resolveSelected(req.departmentIds(), req.employeeIds());
+        } else if ((req.departmentIds() != null && !req.departmentIds().isEmpty())
+                || (req.employeeIds() != null && !req.employeeIds().isEmpty())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "全员通知不能同时指定部门或人员");
+        }
+
         Notice n = new Notice();
         n.setTitle(req.title().trim());
         n.setContent(req.content().trim());
@@ -115,7 +128,23 @@ public class NoticeService {
         n.setTopPriority(Boolean.TRUE.equals(req.topPriority()));
         n.setPriority(priority);
         n.setAttachments(writeAttachments(req.attachments()));
-        noticeRepo.save(n);
+        n.setAudienceScope(audienceScope);
+        if (audience != null) {
+            n.setAudienceSummary(audience.summary());
+            n.setAudienceCount(audience.userIds().size());
+            n.setTargetDepartmentIds(writeIds(audience.departmentIds()));
+            n.setTargetEmployeeIds(writeIds(audience.employeeIds()));
+        } else {
+            n.setAudienceSummary("全体员工");
+            n.setAudienceCount(null);
+        }
+        noticeRepo.saveAndFlush(n);
+        if (audience != null) {
+            UUID noticeId = n.getId();
+            stateRepo.saveAll(audience.userIds().stream()
+                    .map(userId -> newState(noticeId, userId))
+                    .toList());
+        }
         return toDto(n, null);
     }
 
@@ -125,10 +154,12 @@ public class NoticeService {
         UUID userId = requireStaffId();
         Notice n = noticeRepo.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "通知不存在"));
-        if (!visibleTo(n, userId)) {
+        NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId))
+                .orElse(null);
+        if (!visibleTo(n, userId, st)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "通知不存在");
         }
-        NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId))
+        st = java.util.Optional.ofNullable(st)
                 .orElseGet(() -> newState(id, userId));
         if (st.getReadAt() == null) {
             st.setReadAt(Instant.now());
@@ -155,12 +186,13 @@ public class NoticeService {
                     ErrorCode.VALIDATION_FAILED,
                     "一次最多处理 " + MAX_BATCH_DELETE_ITEMS + " 条通知");
         }
-        Map<UUID, Notice> notices = noticeRepo.findAllById(unique).stream()
-                .filter(notice -> visibleTo(notice, userId))
-                .collect(java.util.stream.Collectors.toMap(Notice::getId, notice -> notice));
+        List<Notice> loaded = noticeRepo.findAllById(unique);
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
-                notices.keySet().stream().toList());
+                loaded.stream().map(Notice::getId).toList());
+        Map<UUID, Notice> notices = loaded.stream()
+                .filter(notice -> visibleTo(notice, userId, states.get(notice.getId())))
+                .collect(java.util.stream.Collectors.toMap(Notice::getId, notice -> notice));
         Instant now = Instant.now();
         int deleted = 0;
         List<NoticeUserState> changed = new ArrayList<>();
@@ -179,9 +211,12 @@ public class NoticeService {
 
     // ---------- 内部 ----------
 
-    /** 可见性：广播（audience 为空）人人可见；定向仅本人。 */
-    private boolean visibleTo(Notice n, UUID userId) {
-        return n.getAudienceUserId() == null || n.getAudienceUserId().equals(userId);
+    /** 可见性：全员广播人人可见；单用户定向仅本人；selected 以预创建状态行作为接收快照。 */
+    private boolean visibleTo(Notice n, UUID userId, NoticeUserState state) {
+        if (n.getAudienceUserId() != null) {
+            return n.getAudienceUserId().equals(userId);
+        }
+        return !"selected".equals(n.getAudienceScope()) || state != null;
     }
 
     /**
@@ -206,7 +241,12 @@ public class NoticeService {
         n.setPublishedAt(Instant.now());
         n.setPriority("normal");
         n.setAudienceUserId(audienceUserId);
-        return noticeRepo.save(n);
+        n.setAudienceScope("selected");
+        n.setAudienceSummary("指定人员");
+        n.setAudienceCount(1);
+        Notice saved = noticeRepo.saveAndFlush(n);
+        stateRepo.save(newState(saved.getId(), audienceUserId));
+        return saved;
     }
 
     private Map<UUID, NoticeUserState> stateMap(UUID userId, List<UUID> noticeIds) {
@@ -238,7 +278,10 @@ public class NoticeService {
                 st != null ? st.getReadAt() : null,
                 n.isTopPriority(),
                 n.getPriority(),
-                readAttachments(n.getAttachments()));
+                readAttachments(n.getAttachments()),
+                n.getAudienceScope(),
+                n.getAudienceSummary(),
+                n.getAudienceCount());
     }
 
     private String publisherName(AuthUser u) {
@@ -256,6 +299,15 @@ public class NoticeService {
             return objectMapper.writeValueAsString(attachments);
         } catch (Exception e) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件格式不合法");
+        }
+    }
+
+    private String writeIds(Set<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return "[]";
+        try {
+            return objectMapper.writeValueAsString(ids);
+        } catch (Exception e) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "接收范围格式不合法");
         }
     }
 

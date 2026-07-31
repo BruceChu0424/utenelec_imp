@@ -33,6 +33,28 @@ class WarehouseHubPage extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(
                   left: UtenSpacing.s4,
+                  bottom: UtenSpacing.s8,
+                ),
+                child: Text(
+                  '任务中心',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              UtenResponsiveGrid(
+                itemCount: 1,
+                spacing: UtenSpacing.s12,
+                columns: const UtenResponsiveColumns(compact: 2, medium: 4),
+                itemBuilder: (context, _, _) => _WarehouseTaskCenterTile(
+                  onTap: () =>
+                      goFrom(context, RouteName.operationsWarehouseWorkbench),
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s20),
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: UtenSpacing.s4,
                   bottom: UtenSpacing.s4,
                 ),
                 child: Text(
@@ -261,6 +283,66 @@ class WarehouseHubPage extends StatelessWidget {
                     ),
                   );
                 },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WarehouseTaskCenterTile extends StatelessWidget {
+  const _WarehouseTaskCenterTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.primary;
+    return Material(
+      type: MaterialType.transparency,
+      borderRadius: UtenRadius.lgAll,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(
+            vertical: UtenSpacing.s20,
+            horizontal: UtenSpacing.s16,
+          ),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: UtenRadius.lgAll,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: UtenRadius.mdAll,
+                ),
+                child: Icon(Icons.inventory_2_outlined, color: color, size: 22),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              Text(
+                '生产领料任务中心',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '提前备料并跟踪待领取、部分领取和已领取任务',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),

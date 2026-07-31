@@ -159,7 +159,7 @@ class SubcontractDocConfig {
     approveEffect: '审核仅变更状态（询价为链路起点，无库存/ArAp 联动）。',
   );
 
-  /// 委外申请单（老库 0 行，结构建立；灰显入口）。
+  /// 委外申请单（生产 SUBCONTRACT 缺口会自动创建草稿）。
   static const application = SubcontractDocConfig(
     type: SubcontractDocType.application,
     label: '委外申请单',
@@ -167,7 +167,6 @@ class SubcontractDocConfig {
     icon: Icons.assignment_outlined,
     listPerm: Perm.subcontractApplicationView,
     editPerm: Perm.subcontractApplicationEdit,
-    enabled: false,
     hasSupplier: true,
     itemHasWeight: true,
     approveEffect: '审核仅变更状态（申请无库存/ArAp 联动）。',

@@ -34,8 +34,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeSet;
 import java.util.UUID;
 
@@ -45,7 +47,7 @@ import java.util.UUID;
  * <p><b>审核（status 0→1）</b>：
  * <ul>
  *   <li>业务链排产联动（V90）：写 plan_order_item_links + 回写 sales_order_items.planned_qty
- *       + BOM 缺料检查（缺料行→3待物料 / 料够→4已排产）+ 防超排硬校验</li>
+ *       + BOM/分配核验（未核验或真实短缺→3待物料 / 已分配且齐套→4已排产）+ 防超排硬校验</li>
  *   <li>重算主表 {@code is_closed}（CheckFulfill4 派生：所有明细 {@code qty - iqty ≤ 0}）</li>
  *   <li>【本期后置】设 plan_items.step_legacy_id 首工序 / 填 F_ProductingItem（车间/排产模块）</li>
  * </ul>
@@ -63,7 +65,7 @@ public class ProductionPlanService {
     private static final short STATUS_REVERSED = -1;
 
     /** 订单行链路状态（V90 chain_status）：排产落点两态。 */
-    private static final short CHAIN_WAIT_MATERIAL = 3;  // 待物料（缺料）
+    private static final short CHAIN_WAIT_MATERIAL = 3;  // 待物料/待分配核验
     private static final short CHAIN_PLANNED = 4;        // 已排产
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期可排序；命中才排序，否则默认 billDate DESC）。 */
@@ -127,7 +129,7 @@ public class ProductionPlanService {
     @Transactional
     public PlanDetail update(UUID id, PlanSaveRequest req) {
         tx.bind();
-        ProductionPlan p = requirePlan(id);
+        ProductionPlan p = requirePlanForUpdate(id);
         if (p.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         applyHeader(req, p);
         itemRepo.deleteByPlanId(id);
@@ -140,7 +142,7 @@ public class ProductionPlanService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        ProductionPlan p = requirePlan(id);
+        ProductionPlan p = requirePlanForUpdate(id);
         if (p.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         p.setDeleted(true);
         p.setDeletedAt(OffsetDateTime.now());
@@ -156,18 +158,19 @@ public class ProductionPlanService {
     @Transactional
     public PlanDetail approve(UUID id) {
         tx.bind();
-        ProductionPlan p = requirePlan(id);
-        em.lock(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        ProductionPlan p = requirePlanForUpdate(id);
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
+        if (p.isStopped() || p.isCanceled())
+            throw new ApiException(ErrorCode.BUSINESS, "已中止或已取消的生产计划不可审核");
         if (itemRepo.findByPlanIdOrderByLineNoAsc(id).isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         p.setStatus(STATUS_APPROVED);
         p.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         planRepo.save(p);
-        boolean shortage = linkOrderItems(id); // 业务链：写 plan_order_item_links + 回写 planned_qty + BOM 缺料标状态（V90）
+        boolean shortage = linkOrderItems(id); // shortage 仅表示分配已核验后的真实及时缺口
         recomputeClosed(id);
-        chainNotice.notifyPlanScheduled(id, shortage); // 旁路通知：排产→销售（缺料→采购/调度），提交后发送
+        chainNotice.notifyPlanScheduled(id, shortage); // 未核验不伪装成缺料；真实缺料才通知采购/调度
         return detail(id);
     }
 
@@ -175,84 +178,244 @@ public class ProductionPlanService {
      * 排产联动（V90，docs/07-业务链路/02 §三）。两种来源：
      * ① 合并排产（调度工作台）：links 已在创建时预建（一行可挂多订单行），审核只做校验+回写；
      * ② 手工计划单：明细行带 salesOrderItemId（1:1），审核时按 qty 建行。
-     * 每笔分摊都做防超排硬校验（累计排产 ≤ 订货量 − 已预留 − 已排产）；
-     * 行状态推进：缺料→3待物料 / 料够→4已排产（只从 1/2 低态推进，不覆盖 6+ 后段状态）。
-     * @return 是否缺料（BOM 净需求 > 0），供审核后发缺料通知
+     * 每笔分摊按未交付量扣已预留与未完工计划量做防超排硬校验；
+     * 行状态推进：未核验或真实短缺→3待物料 / 已分配且及时齐套→4已排产。
+     * @return 是否为已核验的真实及时缺口；未核验返回 false，避免误发采购通知
      */
     private boolean linkOrderItems(UUID planId) {
-        List<ProductionPlanItem> items = itemRepo.findByPlanIdOrderByLineNoAsc(planId).stream()
-                .filter(i -> zeroIfNull(i.getQty()).signum() > 0)
-                .toList();
+        List<ProductionPlanItem> items = itemRepo.findByPlanIdOrderByLineNoAsc(planId);
         if (items.isEmpty()) return false;
-        lockSourceOrderItems(items);
-        short chain = materialShortage(planId) ? CHAIN_WAIT_MATERIAL : CHAIN_PLANNED;
-        for (ProductionPlanItem it : items) {
-            List<PlanOrderItemLink> prebuilt = linkRepo.findActiveByPlanItemIds(List.of(it.getId()));
-            if (!prebuilt.isEmpty()) {
-                // 合并排产：按预建 links 逐笔校验 + 回写
-                for (PlanOrderItemLink l : prebuilt) {
-                    applyAllocation(l.getOrderItemId(), l.getAllocatedQty(), chain);
-                }
-            } else if (it.getSalesOrderItemId() != null) {
-                // 手工计划单：1:1 建行
-                BigDecimal alloc = zeroIfNull(it.getQty());
-                applyAllocation(it.getSalesOrderItemId(), alloc, chain);
+        List<PlanAllocation> allocations = collectAllocations(items);
+        Map<UUID, LockedOrderItem> lockedOrderItems = lockAndValidateSourceOrderItems(allocations);
+        MaterialDecision material = materialDecision(planId);
+        short chain = material == MaterialDecision.READY ? CHAIN_PLANNED : CHAIN_WAIT_MATERIAL;
+        for (PlanAllocation allocation : allocations) {
+            applyAllocation(allocation, lockedOrderItems.get(allocation.orderItemId()), chain);
+            if (allocation.prebuiltLink() == null) {
                 PlanOrderItemLink link = new PlanOrderItemLink();
-                link.setPlanItemId(it.getId());
-                link.setOrderItemId(it.getSalesOrderItemId());
-                link.setAllocatedQty(alloc);
+                link.setPlanItemId(allocation.planItem().getId());
+                link.setOrderItemId(allocation.orderItemId());
+                link.setAllocatedQty(allocation.allocatedQty());
                 linkRepo.save(link);
             }
         }
-        return chain == CHAIN_WAIT_MATERIAL;
+        return material == MaterialDecision.VERIFIED_SHORTAGE;
     }
 
     /**
-     * Different production plans can allocate the same sales-order line.
-     * Lock every source row once in UUID order before recalculating remaining
-     * demand, otherwise two plan-header locks do not prevent over-allocation.
+     * Resolve both supported source forms into one allocation model. A merged
+     * plan item's active links must account for exactly the plan item quantity;
+     * otherwise the plan quantity and the order-side planned quantity would
+     * immediately diverge.
      */
-    private void lockSourceOrderItems(List<ProductionPlanItem> items) {
-        TreeSet<UUID> ids = new TreeSet<>();
+    private List<PlanAllocation> collectAllocations(List<ProductionPlanItem> items) {
+        List<PlanAllocation> allocations = new ArrayList<>();
         for (ProductionPlanItem item : items) {
+            BigDecimal planQty = validatePlanItemForApproval(item);
             List<PlanOrderItemLink> links = linkRepo.findActiveByPlanItemIds(List.of(item.getId()));
-            if (links.isEmpty()) {
-                if (item.getSalesOrderItemId() != null) {
-                    ids.add(item.getSalesOrderItemId());
+            if (!links.isEmpty()) {
+                if (item.getSalesOrderItemId() != null
+                        && (links.size() != 1
+                        || !item.getSalesOrderItemId().equals(links.getFirst().getOrderItemId()))) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "计划明细单值销售来源与预建分摊不一致");
                 }
-            } else {
-                links.stream().map(PlanOrderItemLink::getOrderItemId).forEach(ids::add);
+                BigDecimal linkedQty = BigDecimal.ZERO;
+                for (PlanOrderItemLink link : links) {
+                    if (!item.getId().equals(link.getPlanItemId())) {
+                        throw new ApiException(ErrorCode.CONFLICT, "排产关联不属于当前计划明细");
+                    }
+                    if (link.getOrderItemId() == null) {
+                        throw new ApiException(ErrorCode.CONFLICT, "排产关联缺少销售订单行");
+                    }
+                    BigDecimal allocatedQty = requirePositiveAllocation(link.getAllocatedQty());
+                    linkedQty = linkedQty.add(allocatedQty);
+                    allocations.add(new PlanAllocation(
+                            item, link.getOrderItemId(), allocatedQty, link));
+                }
+                if (linkedQty.compareTo(planQty) != 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "计划明细分摊合计必须等于计划数量（计划 "
+                                    + qtyText(planQty) + "，分摊 " + qtyText(linkedQty) + "）");
+                }
+            } else if (item.getSalesOrderItemId() != null) {
+                BigDecimal allocatedQty = planQty;
+                allocations.add(new PlanAllocation(
+                        item, item.getSalesOrderItemId(), allocatedQty, null));
+            } else if (hasHistoricalOrderLinks(item.getId())) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "计划明细的销售来源分摊已失效，不可降级为无来源计划审核");
             }
         }
-        lockSourceOrderItemIds(ids);
+        return allocations;
     }
 
-    private void lockSourceOrderItemIds(java.util.Collection<UUID> requestedIds) {
-        TreeSet<UUID> ids = new TreeSet<>(requestedIds);
-        if (ids.isEmpty()) return;
-        List<?> locked = em.createNativeQuery("""
-                        SELECT id
-                        FROM sales_order_items
-                        WHERE id IN (:ids) AND COALESCE(is_deleted, false) = false
-                        ORDER BY id
-                        FOR UPDATE
+    private boolean hasHistoricalOrderLinks(UUID planItemId) {
+        Number count = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM plan_order_item_links
+                        WHERE plan_item_id = :itemId
+                        """)
+                .setParameter("itemId", planItemId)
+                .getSingleResult();
+        return count.longValue() > 0;
+    }
+    /**
+     * Different production plans can allocate the same sales-order line.
+     * Lock the order headers and lines in stable order before validating any
+     * allocation, so no planned_qty write can occur against a changed/stopped
+     * source document and concurrent plans cannot over-allocate one order line.
+     */
+    private Map<UUID, LockedOrderItem> lockAndValidateSourceOrderItems(
+            List<PlanAllocation> allocations) {
+        TreeSet<UUID> ids = new TreeSet<>();
+        allocations.stream().map(PlanAllocation::orderItemId).forEach(ids::add);
+        if (ids.isEmpty()) return Map.of();
+
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT i.id, i.order_id,
+                               o.status, o.is_stopped, o.is_deleted, o.is_closed,
+                               i.is_deleted,
+                               i.goods_id, i.color_id, i.unit_id, i.unit_rate,
+                               i.qty, i.shipped_qty, i.returned_qty, i.flag_qty,
+                               i.reserved_qty, i.planned_qty, i.produced_qty, i.chain_status
+                        FROM sales_order_items i
+                        JOIN sales_orders o ON o.id = i.order_id
+                        WHERE i.id IN (:ids)
+                        ORDER BY o.id, i.id
+                        FOR UPDATE OF o, i
                         """)
                 .setParameter("ids", ids)
                 .getResultList();
-        if (locked.size() != ids.size()) {
-            throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单行不存在或已删除");
+        if (rows.size() != ids.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单或明细不存在");
+        }
+
+        Map<UUID, LockedOrderItem> locked = new HashMap<>();
+        for (Object[] row : rows) {
+            UUID orderItemId = (UUID) row[0];
+            short orderStatus = row[2] == null ? 0 : ((Number) row[2]).shortValue();
+            if (orderStatus != STATUS_APPROVED
+                    || Boolean.TRUE.equals(row[3])
+                    || Boolean.TRUE.equals(row[4])
+                    || Boolean.TRUE.equals(row[5])) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "排产关联的销售订单未审核、已中止、已关闭或已删除");
+            }
+            if (Boolean.TRUE.equals(row[6])) {
+                throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单行已删除");
+            }
+            BigDecimal unitRate = normalizedPositiveRate(
+                    row[10] == null ? BigDecimal.ONE : bd(row[10]), "销售订单行");
+            short chainStatus = row[18] == null ? 0 : ((Number) row[18]).shortValue();
+            if (chainStatus <= 0 || chainStatus > 8) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "销售订单行未进入待排产链路、已取消或已全部发货");
+            }
+            BigDecimal qty = bd(row[11]);
+            BigDecimal shipped = bd(row[12]);
+            BigDecimal returned = bd(row[13]);
+            BigDecimal flagged = bd(row[14]);
+            BigDecimal reserved = bd(row[15]);
+            BigDecimal planned = bd(row[16]);
+            BigDecimal produced = bd(row[17]);
+            if (hasNegative(qty, shipped, returned, flagged, reserved, planned, produced)
+                    || produced.compareTo(planned) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "销售订单行累计量为负或已生产量超过已排产量，请先核对数据");
+            }
+            BigDecimal outstanding = qty.subtract(shipped).add(returned).subtract(flagged);
+            if (outstanding.signum() < 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "销售订单行未交付量为负，请先核对发货、退货和结案数量");
+            }
+            BigDecimal unfinishedPlan = planned.subtract(produced);
+            BigDecimal remaining = outstanding.subtract(reserved).subtract(unfinishedPlan);
+            if (remaining.signum() < 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "销售订单行剩余可排数量为负，请先核对预留和已排产数据");
+            }
+            locked.put(orderItemId, new LockedOrderItem(
+                    (UUID) row[7], (UUID) row[8], (UUID) row[9], unitRate, remaining));
+        }
+        lockAndRevalidatePrebuiltLinks(allocations);
+
+        Map<UUID, BigDecimal> requestedByOrderItem = new HashMap<>();
+        for (PlanAllocation allocation : allocations) {
+            LockedOrderItem orderItem = locked.get(allocation.orderItemId());
+            if (orderItem == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单行不存在");
+            }
+            validateAllocationIdentity(allocation, orderItem);
+            requestedByOrderItem.merge(
+                    allocation.orderItemId(), allocation.allocatedQty(), BigDecimal::add);
+        }
+        for (Map.Entry<UUID, BigDecimal> entry : requestedByOrderItem.entrySet()) {
+            BigDecimal remaining = locked.get(entry.getKey()).remainingQty();
+            if (entry.getValue().compareTo(remaining) > 0) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "排产量超过订单未满足需求（剩余可排 " + qtyText(remaining) + "）");
+            }
+        }
+        return locked;
+    }
+
+    /** 销售头/行锁定后再锁并刷新预建 links，禁止使用发现阶段的陈旧分摊。 */
+    private void lockAndRevalidatePrebuiltLinks(List<PlanAllocation> allocations) {
+        List<PlanAllocation> prebuilt = allocations.stream()
+                .filter(allocation -> allocation.prebuiltLink() != null)
+                .sorted(java.util.Comparator.comparing(allocation -> allocation.prebuiltLink().getId()))
+                .toList();
+        Map<UUID, BigDecimal> qtyByPlanItem = new HashMap<>();
+        for (PlanAllocation allocation : prebuilt) {
+            PlanOrderItemLink link = allocation.prebuiltLink();
+            em.lock(link, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            em.refresh(link);
+            BigDecimal currentAllocated = requirePositiveAllocation(link.getAllocatedQty());
+            if (link.isDeleted()
+                    || !allocation.planItem().getId().equals(link.getPlanItemId())
+                    || !allocation.orderItemId().equals(link.getOrderItemId())
+                    || currentAllocated.compareTo(allocation.allocatedQty()) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "预建销售分摊已被删除或变更，请刷新计划后重试");
+            }
+            if (hasNonZero(link.getProducedQty(), link.getInboundQty(), link.getCappedQty())) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "草稿计划的预建分摊存在生产、入库或封顶累计量，不可审核");
+            }
+            qtyByPlanItem.merge(link.getPlanItemId(), currentAllocated, BigDecimal::add);
+        }
+        for (PlanAllocation allocation : prebuilt) {
+            BigDecimal total = qtyByPlanItem.get(allocation.planItem().getId());
+            if (total == null || total.compareTo(allocation.planItem().getQty()) != 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "锁定后的预建分摊合计与计划数量不一致");
+            }
+        }
+    }
+    private void validateAllocationIdentity(
+            PlanAllocation allocation, LockedOrderItem orderItem) {
+        ProductionPlanItem planItem = allocation.planItem();
+        BigDecimal planUnitRate = normalizedPositiveRate(
+                planItem.getUnitRate() == null ? BigDecimal.ONE : planItem.getUnitRate(),
+                "生产计划明细");
+        if (planItem.getGoodsId() == null || orderItem.goodsId() == null
+                || planItem.getUnitId() == null || orderItem.unitId() == null
+                || !Objects.equals(planItem.getGoodsId(), orderItem.goodsId())
+                || !Objects.equals(planItem.getColorId(), orderItem.colorId())
+                || !Objects.equals(planItem.getUnitId(), orderItem.unitId())
+                || planUnitRate.compareTo(orderItem.unitRate()) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "生产计划明细与销售订单行的货品、颜色、单位或换算率不一致");
         }
     }
 
-    /** 防超排校验 + planned_qty 回写 + 行状态推进（一笔分摊）。 */
-    private void applyAllocation(UUID orderItemId, BigDecimal alloc, short chain) {
-        Object[] r = (Object[]) em.createNativeQuery(
-                "SELECT qty, reserved_qty, planned_qty FROM sales_order_items WHERE id = :id")
-                .setParameter("id", orderItemId).getSingleResult();
-        BigDecimal need = bd(r[0]).subtract(bd(r[1])).subtract(bd(r[2]));
-        if (alloc.compareTo(need) > 0) {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "排产量超过订单未满足需求（剩余可排 " + need.stripTrailingZeros().toPlainString() + "）");
+    /** 全部来源锁定并预校验通过后，才允许逐笔写回 planned_qty。 */
+    private void applyAllocation(
+            PlanAllocation allocation, LockedOrderItem orderItem, short chain) {
+        if (orderItem == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "排产关联的销售订单行不存在");
         }
         em.createNativeQuery("""
                 UPDATE sales_order_items
@@ -260,44 +423,286 @@ public class ProductionPlanService {
                     chain_status = CASE WHEN COALESCE(chain_status,0) IN (1,2) THEN :st
                                    ELSE chain_status END
                 WHERE id = :id
-                """).setParameter("a", alloc).setParameter("st", chain)
-                .setParameter("id", orderItemId).executeUpdate();
+                """).setParameter("a", allocation.allocatedQty()).setParameter("st", chain)
+                .setParameter("id", allocation.orderItemId()).executeUpdate();
     }
 
-    /** BOM 物料检查：任一外购物料净需求 > 0 即缺料（复用 MRP-lite 展开口径；无 BOM 视为不缺料）。 */
-    private boolean materialShortage(UUID planId) {
-        return mrpService.preview(planId).stream()
-                .anyMatch(r -> !r.selfMade() && r.net() != null && r.net().signum() > 0);
+    private static BigDecimal validatePlanItemForApproval(ProductionPlanItem item) {
+        if (item.getGoodsId() == null || item.getUnitId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "生产计划明细的货品和单位不能为空");
+        }
+        BigDecimal planQty = requirePositiveAllocation(item.getQty());
+        normalizedPositiveRate(
+                item.getUnitRate() == null ? BigDecimal.ONE : item.getUnitRate(),
+                "生产计划明细");
+        if (hasNonZero(item.getLqty(), item.getIqty(), item.getFqty(), item.getRqty(),
+                item.getBqty(), item.getTqty(), item.getPaqty(), item.getIsrqty(),
+                item.getCpqty(), item.getPoqty(), item.getPiqty())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "草稿计划存在报工、入库、领料或采购累计量，不可审核");
+        }
+        return planQty;
+    }
+
+    private static boolean hasNonZero(BigDecimal... values) {
+        for (BigDecimal value : values) {
+            if (value != null && value.signum() != 0) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasNegative(BigDecimal... values) {
+        for (BigDecimal value : values) {
+            if (value != null && value.signum() < 0) return true;
+        }
+        return false;
+    }
+    private static BigDecimal requirePositiveAllocation(BigDecimal qty) {
+        if (qty == null || qty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "排产分摊数量必须大于 0");
+        }
+        return qty;
+    }
+
+    private static BigDecimal normalizedPositiveRate(BigDecimal rate, String source) {
+        BigDecimal normalized = rate == null ? BigDecimal.ONE : rate.stripTrailingZeros();
+        if (normalized.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, source + "的单位换算率必须大于 0");
+        }
+        return normalized;
+    }
+
+    private static String qtyText(BigDecimal qty) {
+        return qty.stripTrailingZeros().toPlainString();
+    }
+
+    private enum MaterialDecision {
+        READY, VERIFIED_SHORTAGE, UNVERIFIED
+    }
+
+    private record PlanAllocation(
+            ProductionPlanItem planItem,
+            UUID orderItemId,
+            BigDecimal allocatedQty,
+            PlanOrderItemLink prebuiltLink) {
+    }
+
+    private record LockedOrderItem(
+            UUID goodsId,
+            UUID colorId,
+            UUID unitId,
+            BigDecimal unitRate,
+            BigDecimal remainingQty) {
     }
 
     /**
-     * 红冲联动：软删 plan_order_item_links（留痕）+ 回退 planned_qty + 行状态回退
-     * （预留已覆盖→7可发货 / 未覆盖→2待排产）。已报工/已入库的计划禁止红冲。
+     * “未核验”和“真实缺料”都会 fail closed 为待料，但只有逐行分配已生效且
+     * 及时缺口为正时才返回 VERIFIED_SHORTAGE，避免把能力未就绪误报成采购缺料。
      */
-    private void unlinkOrderItems(UUID planId) {
-        List<UUID> itemIds = itemRepo.findByPlanIdOrderByLineNoAsc(planId).stream()
-                .map(ProductionPlanItem::getId).toList();
-        if (itemIds.isEmpty()) return;
-        List<PlanOrderItemLink> links = linkRepo.findActiveByPlanItemIds(itemIds);
-        lockSourceOrderItemIds(links.stream().map(PlanOrderItemLink::getOrderItemId).toList());
-        for (PlanOrderItemLink l : links) {
-            if (l.getInboundQty().signum() > 0 || l.getProducedQty().signum() > 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "已有报工/完工入库，不能红冲计划");
-            }
-            l.setDeleted(true);
-            l.setDeletedAt(OffsetDateTime.now());
-            linkRepo.save(l);
-            em.createNativeQuery("""
-                    UPDATE sales_order_items
-                    SET planned_qty = GREATEST(0, COALESCE(planned_qty,0) - :a),
-                        chain_status = CASE WHEN COALESCE(chain_status,0) IN (3,4) THEN
-                            CASE WHEN COALESCE(reserved_qty,0) >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
-                                 THEN 7 ELSE 2 END
-                        ELSE chain_status END
-                    WHERE id = :id
-                    """).setParameter("a", l.getAllocatedQty())
-                    .setParameter("id", l.getOrderItemId()).executeUpdate();
+    private MaterialDecision materialDecision(UUID planId) {
+        if (!mrpService.isPlanningWriteReady()) return MaterialDecision.UNVERIFIED;
+        List<MrpRow> rows = mrpService.preview(planId);
+        if (rows.isEmpty() || rows.stream().anyMatch(row ->
+                !row.allocationBacked()
+                        || !row.planningWriteReady()
+                        || row.timelyShortage() == null)) {
+            return MaterialDecision.UNVERIFIED;
         }
+        return rows.stream().anyMatch(row -> row.timelyShortage().signum() > 0)
+                ? MaterialDecision.VERIFIED_SHORTAGE
+                : MaterialDecision.READY;
+    }
+
+    /** 锁定全部有效计划行，并以行级累计量作为红冲的第一道门禁。 */
+    private List<UUID> lockAndValidatePlanItemsForReverse(UUID planId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT id, fqty, iqty
+                        FROM production_plan_items
+                        WHERE plan_id = :pid
+                          AND COALESCE(is_deleted, false) = false
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("pid", planId)
+                .getResultList();
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT, "已审核计划没有有效明细，不能红冲");
+        }
+        List<UUID> itemIds = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            itemIds.add((UUID) row[0]);
+            if (bd(row[1]).signum() != 0 || bd(row[2]).signum() != 0) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "计划已有报工或完工入库数量，不能红冲");
+            }
+        }
+        return itemIds;
+    }
+
+    /**
+     * 父计划不能越过仍有效的下游单据直接红冲。三类查询都锁定当前
+     * 联动与单据行；生成端同样锁父计划头，因此不会在检查后插入新下游。
+     */
+    private void validateNoActiveDownstream(UUID planId) {
+        List<?> stockDocuments = em.createNativeQuery("""
+                        SELECT d.id, d.doc_type, d.bill_no
+                        FROM plan_draw_links l
+                        JOIN stock_documents d ON d.id = l.draw_id
+                        WHERE l.plan_id = :pid
+                          AND COALESCE(l.is_deleted, false) = false
+                          AND COALESCE(d.is_deleted, false) = false
+                          AND COALESCE(d.status, 0) <> -1
+                          AND d.doc_type IN ('DRAW', 'FINISHED_IN')
+                        ORDER BY d.id
+                        FOR UPDATE OF l, d
+                        """)
+                .setParameter("pid", planId)
+                .setMaxResults(1)
+                .getResultList();
+        if (!stockDocuments.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "计划存在有效的领料单或成品入库单，请先删除或红冲下游单据");
+        }
+
+        List<?> purchaseRequests = em.createNativeQuery("""
+                        SELECT r.id, r.bill_no
+                        FROM mrp_generations g
+                        JOIN purchase_requests r ON r.id = g.request_id
+                        WHERE g.plan_id = :pid
+                          AND COALESCE(g.is_deleted, false) = false
+                          AND COALESCE(r.is_deleted, false) = false
+                          AND COALESCE(r.status, 0) <> -1
+                        ORDER BY r.id
+                        FOR UPDATE OF g, r
+                        """)
+                .setParameter("pid", planId)
+                .setMaxResults(1)
+                .getResultList();
+        if (!purchaseRequests.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "计划存在有效的采购申请，请先删除或红冲下游单据");
+        }
+
+        List<?> subplans = em.createNativeQuery("""
+                        SELECT sp.id, sp.bill_no
+                        FROM subplan_links l
+                        JOIN production_plans sp ON sp.id = l.subplan_id
+                        WHERE l.plan_id = :pid
+                          AND COALESCE(l.is_deleted, false) = false
+                          AND COALESCE(sp.is_deleted, false) = false
+                          AND COALESCE(sp.status, 0) <> -1
+                        ORDER BY sp.id
+                        FOR UPDATE OF l, sp
+                        """)
+                .setParameter("pid", planId)
+                .setMaxResults(1)
+                .getResultList();
+        if (!subplans.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "计划存在有效的子计划，请先删除或红冲下游单据");
+        }
+    }
+
+    /**
+     * 全部红冲门禁通过后，精确软删 links 并按订单行聚合回退 planned_qty。
+     * 不使用 GREATEST 掩盖历史错账；当前 planned_qty 小于待回退量时直接拒绝。
+     */
+    private void unlinkOrderItems(List<UUID> itemIds) {
+        if (itemIds.isEmpty()) return;
+        List<PlanOrderItemLink> discovered = new ArrayList<>(
+                linkRepo.findActiveByPlanItemIds(itemIds));
+        discovered.sort(java.util.Comparator.comparing(PlanOrderItemLink::getId));
+
+        Map<UUID, UUID> discoveredOrderItemByLink = new HashMap<>();
+        TreeSet<UUID> orderItemIds = new TreeSet<>();
+        for (PlanOrderItemLink link : discovered) {
+            if (link.getOrderItemId() == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "计划关联缺少销售订单行");
+            }
+            discoveredOrderItemByLink.put(link.getId(), link.getOrderItemId());
+            orderItemIds.add(link.getOrderItemId());
+        }
+
+        // 与销售改量/取消保持 sales row → link 的统一锁序。
+        Map<UUID, BigDecimal> lockedPlannedQty = lockOrderItemsForUnlink(orderItemIds);
+        List<PlanOrderItemLink> links = new ArrayList<>(discovered.size());
+        Map<UUID, BigDecimal> releaseByOrderItem = new java.util.TreeMap<>();
+        for (PlanOrderItemLink link : discovered) {
+            em.lock(link, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            em.refresh(link);
+            UUID discoveredOrderItemId = discoveredOrderItemByLink.get(link.getId());
+            if (link.isDeleted()
+                    || !Objects.equals(discoveredOrderItemId, link.getOrderItemId())) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "计划销售分摊已被删除或改绑，请刷新后重试");
+            }
+            BigDecimal allocated = requirePositiveAllocation(link.getAllocatedQty());
+            if (hasNonZero(link.getInboundQty(), link.getProducedQty(), link.getCappedQty())) {
+                throw new ApiException(ErrorCode.BUSINESS,
+                        "计划关联已有报工、入库或封顶累计，不能红冲");
+            }
+            links.add(link);
+            releaseByOrderItem.merge(link.getOrderItemId(), allocated, BigDecimal::add);
+        }
+
+        for (Map.Entry<UUID, BigDecimal> entry : releaseByOrderItem.entrySet()) {
+            BigDecimal plannedQty = lockedPlannedQty.get(entry.getKey());
+            if (plannedQty == null || plannedQty.signum() < 0
+                    || plannedQty.compareTo(entry.getValue()) < 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "销售订单行已排产量小于计划待回退量，请先核对联动数据");
+            }
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        for (PlanOrderItemLink link : links) {
+            link.setDeleted(true);
+            link.setDeletedAt(now);
+            linkRepo.save(link);
+        }
+        for (Map.Entry<UUID, BigDecimal> entry : releaseByOrderItem.entrySet()) {
+            int updated = em.createNativeQuery("""
+                            UPDATE sales_order_items
+                            SET planned_qty = COALESCE(planned_qty,0) - :a,
+                                chain_status = CASE WHEN COALESCE(chain_status,0) IN (3,4) THEN
+                                    CASE WHEN COALESCE(reserved_qty,0) >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
+                                         + COALESCE(returned_qty,0) - COALESCE(flag_qty,0)
+                                         THEN 7 ELSE 2 END
+                                ELSE chain_status END
+                            WHERE id = :id
+                            """)
+                    .setParameter("a", entry.getValue())
+                    .setParameter("id", entry.getKey())
+                    .executeUpdate();
+            if (updated != 1) {
+                throw new ApiException(ErrorCode.CONFLICT, "销售订单行回退失败");
+            }
+        }
+    }
+    private Map<UUID, BigDecimal> lockOrderItemsForUnlink(
+            java.util.Collection<UUID> requestedIds) {
+        TreeSet<UUID> ids = new TreeSet<>(requestedIds);
+        if (ids.isEmpty()) return Map.of();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT id, planned_qty
+                        FROM sales_order_items
+                        WHERE id IN (:ids)
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("ids", ids)
+                .getResultList();
+        if (rows.size() != ids.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "计划关联的销售订单行不存在");
+        }
+        Map<UUID, BigDecimal> plannedQty = new HashMap<>();
+        for (Object[] row : rows) {
+            plannedQty.put((UUID) row[0], bd(row[1]));
+        }
+        return plannedQty;
     }
 
     private static BigDecimal bd(Object v) {
@@ -307,17 +712,18 @@ public class ProductionPlanService {
     /**
      * 红冲（status 1→-1）。
      *
-     * <p>本期仅置状态：生产计划本身不动库存、不立帐，无需反向冲销；
-     * 累计量（iqty/rqty/...）由下游单据（仓库/采购/委外）各自负责回写，红冲计划不级联。
+     * <p>红冲前锁定并校验计划行与销售来源，且要求领料/成品入库、采购申请、
+     * 子计划等下游单据已先删除或红冲；通过后才精确回退订单 planned_qty。
      */
     @Transactional
     public PlanDetail reverse(UUID id) {
         tx.bind();
-        ProductionPlan p = requirePlan(id);
-        em.lock(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        ProductionPlan p = requirePlanForUpdate(id);
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        unlinkOrderItems(id); // 业务链：links 软删 + planned_qty 回退（已报工/入库则拒绝）
+        List<UUID> itemIds = lockAndValidatePlanItemsForReverse(id);
+        validateNoActiveDownstream(id);
+        unlinkOrderItems(itemIds); // 全部门禁通过后再软删 links + 精确回退 planned_qty
         p.setStatus(STATUS_REVERSED);
         planRepo.save(p);
         return detail(id);
@@ -335,9 +741,10 @@ public class ProductionPlanService {
                     + "p.bill_date ASC NULLS LAST, p.bill_no");
 
     /**
-     * 进度看板共用过滤片段（FROM…HAVING）：归属按 <b>派生口径</b>（所有明细 qty-iqty ≤ 0，
-     * HAVING bool_and，与 recomputeClosed 同口径）实时判定——已全部完工入库的计划立即归入
-     * 「已完成」，不再滞留「进行中」。可选条件按参数非空拼入，值全部走绑定参数。
+     * 进度看板共用过滤片段。完成态必须读取主表 {@code is_closed}，因为 V152 起数据库
+     * 会在成品数量已完成但材料尚未退库/结清时强制保持 false；若继续只按
+     * {@code qty-iqty} 实时聚合，会把材料未平账的任务错误展示为已完成。
+     * 可选条件按参数非空拼入，值全部走绑定参数。
      */
     private static String progressFilters(String kw, String ws,
                                           java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
@@ -347,6 +754,7 @@ public class ProductionPlanService {
                 WHERE p.is_deleted = false AND p.status = 1
                   AND p.is_stopped = false AND p.is_canceled = false
                   AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)
+                  AND p.is_closed = :closed
                 """
                 + (kw.isEmpty() ? ""
                         : "  AND (LOWER(p.bill_no) LIKE :kw OR LOWER(COALESCE(p.workshop_name,'')) LIKE :kw)\n")
@@ -356,7 +764,6 @@ public class ProductionPlanService {
                 + """
                 GROUP BY p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
                          p.is_pinned, p.is_important
-                HAVING COALESCE(bool_and(COALESCE(i.qty,0) - COALESCE(i.iqty,0) <= 0), true) = :closed
                 """;
     }
 
@@ -651,6 +1058,15 @@ public class ProductionPlanService {
                 p.getMakerId(), p.getApproverId(), p.getMakerLegacyId(), p.getApproverLegacyId(), p.getRemark(),
                 p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getSourceDocNo(), items,
                 nameResolver.nameOf(p.getMakerId()), p.getCreatedAt());
+    }
+
+    private ProductionPlan requirePlanForUpdate(UUID id) {
+        ProductionPlan plan = em.find(
+                ProductionPlan.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (plan == null || plan.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "生产计划单不存在");
+        }
+        return plan;
     }
 
     private ProductionPlan requirePlan(UUID id) {

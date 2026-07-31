@@ -8,6 +8,8 @@
 //   * 无 autofilter（审计日志无需列筛选，用动作 chip 替代）
 //   * 无新增/编辑/删除（只读）
 //   * 动作 chip：全部 / 仅导出 / 登录 / 改密 / 数据变更（单一选择，前缀匹配后端 action）
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -205,6 +207,55 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   Future<void> _refresh() => _load(1);
 
+  Future<void> _openDetail(AuditLogEntry entry) async {
+    final future = ref.read(auditLogRepositoryProvider).detail(entry.id);
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 720) {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (sheetContext) => FractionallySizedBox(
+          heightFactor: 0.92,
+          child: _AuditDetailPanel(
+            future: future,
+            onClose: () => Navigator.pop(sheetContext),
+          ),
+        ),
+      );
+      return;
+    }
+    final panelWidth = (width * 0.68).clamp(680.0, 920.0).toDouble();
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭审计详情',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 280),
+      pageBuilder: (dialogContext, _, _) => Align(
+        alignment: Alignment.centerRight,
+        child: Material(
+          elevation: 18,
+          child: SizedBox(
+            width: panelWidth,
+            height: double.infinity,
+            child: _AuditDetailPanel(
+              future: future,
+              onClose: () => Navigator.pop(dialogContext),
+            ),
+          ),
+        ),
+      ),
+      transitionBuilder: (_, animation, _, child) => SlideTransition(
+        position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+            .animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            ),
+        child: child,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -293,7 +344,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     nullCounts: const {},
                     filters: const {},
                     onFilterChanged: (_, _) {},
-                    onRowTap: (_) {},
+                    onRowTap: _openDetail,
                     isLoading: _loading && _page == null,
                     loadingMore: _loading && _page != null,
                     error: _error,
@@ -308,6 +359,294 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AuditDetailPanel extends StatelessWidget {
+  const _AuditDetailPanel({required this.future, required this.onClose});
+
+  final Future<AuditLogDetail> future;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AuditLogDetail>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          );
+        }
+        if (snapshot.hasError || snapshot.data == null) {
+          final message = snapshot.error is ApiException
+              ? (snapshot.error! as ApiException).message
+              : '审计详情加载失败';
+          return Column(
+            children: [
+              _AuditDetailHeader(title: '审计详情', onClose: onClose),
+              Expanded(
+                child: Center(
+                  child: Text(
+                    message,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+        return _AuditDetailContent(detail: snapshot.data!, onClose: onClose);
+      },
+    );
+  }
+}
+
+class _AuditDetailContent extends StatelessWidget {
+  const _AuditDetailContent({required this.detail, required this.onClose});
+
+  final AuditLogDetail detail;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _AuditDetailHeader(
+              title: '审计详情 #${detail.id}',
+              subtitle: _AdminAuditLogPageState._actionLabel(detail.action),
+              onClose: onClose,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Container(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLow,
+                borderRadius: UtenRadius.lgAll,
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Wrap(
+                spacing: UtenSpacing.s16,
+                runSpacing: UtenSpacing.s12,
+                children: [
+                  _AuditFact(
+                    label: '时间',
+                    value: _AdminAuditLogPageState._fmtTime(detail.createdAt),
+                  ),
+                  _AuditFact(
+                    label: '操作人',
+                    value: detail.actorAccount ?? '(系统)',
+                  ),
+                  _AuditFact(label: '对象类型', value: detail.targetType ?? '—'),
+                  _AuditFact(label: '对象 ID', value: detail.targetId ?? '—'),
+                  _AuditFact(label: '结果', value: detail.result ?? '—'),
+                  _AuditFact(label: 'IP', value: detail.ip ?? '—'),
+                ],
+              ),
+            ),
+            if (detail.userAgent?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '客户端：${detail.userAgent}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: UtenSpacing.s12),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final before = _AuditJsonPanel(
+                    label: '变更前',
+                    rawJson: detail.beforeJson,
+                    icon: Icons.history_rounded,
+                  );
+                  final after = _AuditJsonPanel(
+                    label: '变更后',
+                    rawJson: detail.afterJson,
+                    icon: Icons.update_rounded,
+                  );
+                  if (constraints.maxWidth < 720) {
+                    return Column(
+                      children: [
+                        Expanded(child: before),
+                        const SizedBox(height: UtenSpacing.s12),
+                        Expanded(child: after),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: before),
+                      const SizedBox(width: UtenSpacing.s12),
+                      Expanded(child: after),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              '敏感字段按审计脱敏策略保存；这里展示的是数据库已经留存的可追溯快照。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuditDetailHeader extends StatelessWidget {
+  const _AuditDetailHeader({
+    required this.title,
+    required this.onClose,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(UtenSpacing.s16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '关闭',
+            onPressed: onClose,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuditFact extends StatelessWidget {
+  const _AuditFact({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 150, maxWidth: 320),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          SelectableText(value),
+        ],
+      ),
+    );
+  }
+}
+
+class _AuditJsonPanel extends StatelessWidget {
+  const _AuditJsonPanel({
+    required this.label,
+    required this.rawJson,
+    required this.icon,
+  });
+
+  final String label;
+  final String? rawJson;
+  final IconData icon;
+
+  static String _pretty(String? value) {
+    if (value == null || value.trim().isEmpty) return '无';
+    try {
+      return const JsonEncoder.withIndent('  ').convert(jsonDecode(value));
+    } catch (_) {
+      return value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: UtenRadius.lgAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: theme.colorScheme.primary),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              child: SelectableText(
+                _pretty(rawJson),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                  height: 1.45,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

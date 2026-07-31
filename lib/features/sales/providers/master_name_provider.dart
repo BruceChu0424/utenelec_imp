@@ -26,8 +26,13 @@ class SalesMasterNameService extends MasterDictionaryService {
       for (final entry in items) {
         final id = entry['id'] as String;
         final name = (entry['name'] ?? '') as String;
+        final code = (entry['code'] ?? '') as String;
+        final selectable = entry['selectable'];
         clients[id] = name;
-        if (entry['selectable'] != false) selectableClients[id] = name;
+        if (selectable == true ||
+            selectable == null && !code.startsWith('LEGACY-FIN-CL-')) {
+          selectableClients[id] = name;
+        }
       }
       _clients = clients;
       _selectableClients = selectableClients;

@@ -1409,6 +1409,94 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishPublished => 'Notice published';
 
   @override
+  String get noticePublishPublishing => 'Publishing…';
+
+  @override
+  String get noticePublishContentSection => 'Notice content';
+
+  @override
+  String get noticePublishTypeLabel => 'Notice type';
+
+  @override
+  String get noticePublishTitleLabel => 'Title';
+
+  @override
+  String get noticePublishContentLabel => 'Body';
+
+  @override
+  String get noticePublishUrgentHint =>
+      'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
+
+  @override
+  String get noticePublishTopPriorityHint =>
+      'Pinned notices appear first and alert recipients as important.';
+
+  @override
+  String get noticePublishScopeSelected => 'Selected audience';
+
+  @override
+  String get noticePublishScopeSelectedHint =>
+      'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
+
+  @override
+  String get noticePublishDepartmentsLabel => 'Departments (multiple)';
+
+  @override
+  String get noticePublishDepartmentsHint => 'Choose one or more departments';
+
+  @override
+  String get noticePublishEmployeesLabel => 'Add individual people';
+
+  @override
+  String get noticePublishEmployeesHint => 'Choose specific people (multiple)';
+
+  @override
+  String get noticePublishEmployeePickerTitle => 'Choose recipients';
+
+  @override
+  String get noticePublishEmployeeSearchHint => 'Search name / employee code';
+
+  @override
+  String get noticePublishEmployeeEmpty => 'No active recipient account found';
+
+  @override
+  String noticePublishEmployeeSelectedCount(int count) {
+    return '$count selected';
+  }
+
+  @override
+  String get noticePublishEmployeeClear => 'Clear';
+
+  @override
+  String get noticePublishEmployeeConfirm => 'Done';
+
+  @override
+  String get noticePublishValidateAudience =>
+      'Choose at least one department or person';
+
+  @override
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
+    return '$departmentCount departments and $employeeCount people selected';
+  }
+
+  @override
+  String get noticePublishAudienceRecalculateHint =>
+      'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
+
+  @override
+  String noticePublishConfirmAudience(Object summary, Object count) {
+    return 'Send to $summary; $count actual recipients.';
+  }
+
+  @override
+  String noticePublishPublishedTo(Object count) {
+    return 'Notice published to $count people';
+  }
+
+  @override
   String get noticeTypeAnnouncement => 'Announcement';
 
   @override

@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /**
@@ -176,7 +177,7 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
-        SalesReturn r = requireWritableReturn(id);
+        SalesReturn r = requireWritableReturnForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -196,7 +197,7 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public void delete(UUID id) {
         tx.bind();
-        SalesReturn r = requireWritableReturn(id);
+        SalesReturn r = requireWritableReturnForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -213,8 +214,7 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
-        SalesReturn r = requireWritableReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SalesReturn r = requireWritableReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -228,7 +228,9 @@ public class SalesReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        lockStoredSourceGraph(items);
         assertStoredSources(r, items, true);
+        validateReturnWritebackCapacity(items, +1);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -270,13 +272,14 @@ public class SalesReturnService {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail reverse(UUID id) {
         tx.bind();
-        SalesReturn r = requireWritableReturn(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SalesReturn r = requireWritableReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        lockStoredSourceGraph(items);
         assertStoredSources(r, items, false);
+        validateReturnWritebackCapacity(items, -1);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -334,8 +337,61 @@ public class SalesReturnService {
                     "UPDATE sales_order_items SET returned_qty = COALESCE(returned_qty,0) + (:q * :s) WHERE id = :id")
                     .setParameter("q", it.getQty()).setParameter("s", sign)
                     .setParameter("id", it.getOrderItemId()).executeUpdate();
+            recomputeOrderItemChain(it.getOrderItemId());
             recalcOrderClosed(it.getOrderItemId());
         }
+    }
+
+    /**
+     * Re-open a fulfilled line after return and close it again after return
+     * reversal. All branches use the same authoritative outstanding formula.
+     */
+    private void recomputeOrderItemChain(UUID orderItemId) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT chain_status, qty, shipped_qty, returned_qty, flag_qty,
+                               reserved_qty, planned_qty, produced_qty
+                        FROM sales_order_items
+                        WHERE id = :id
+                        FOR UPDATE
+                        """)
+                .setParameter("id", orderItemId)
+                .getResultList();
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "退货关联的销售订单行不存在");
+        }
+        Object[] row = rows.getFirst();
+        short current = row[0] == null ? 0 : ((Number) row[0]).shortValue();
+        short next = chainAfterReturn(
+                current, bd(row[1]), bd(row[2]), bd(row[3]), bd(row[4]),
+                bd(row[5]), bd(row[6]), bd(row[7]));
+        em.createNativeQuery("""
+                        UPDATE sales_order_items
+                        SET chain_status = :chain
+                        WHERE id = :id
+                        """)
+                .setParameter("chain", next)
+                .setParameter("id", orderItemId)
+                .executeUpdate();
+    }
+
+    static short chainAfterReturn(
+            short current, BigDecimal qty, BigDecimal shipped, BigDecimal returned,
+            BigDecimal flagged, BigDecimal reserved, BigDecimal planned, BigDecimal produced) {
+        if (current <= 0) return current;
+        BigDecimal outstanding = qty.subtract(shipped).add(returned).subtract(flagged);
+        if (outstanding.signum() <= 0) return 9;
+        if (reserved.compareTo(outstanding) >= 0) return 7;
+        BigDecimal unfinishedPlan = planned.subtract(produced).max(BigDecimal.ZERO);
+        if (unfinishedPlan.signum() > 0) {
+            return current >= 3 && current <= 6 ? current : (short) 4;
+        }
+        if (reserved.signum() > 0) return 1;
+        return 2;
+    }
+
+    private static BigDecimal bd(Object value) {
+        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
     }
 
     /** 重算订货单结案：所有明细 qty - shipped_qty + returned_qty - flag_qty ≤ 0 → is_closed=true。 */
@@ -375,7 +431,8 @@ public class SalesReturnService {
         if (!outIds.isEmpty()) {
             @SuppressWarnings("unchecked")
             List<Object[]> rows = em.createNativeQuery("""
-                    SELECT i.id, i.goods_id, o.client_id, o.owner_employee_id,
+                    SELECT i.id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
+                           o.client_id, o.owner_employee_id,
                            i.order_item_id, o.status
                     FROM sales_shipment_items i
                     JOIN sales_shipments o ON o.id = i.shipment_id
@@ -396,7 +453,7 @@ public class SalesReturnService {
             if (out == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "来源出货行不存在或已删除");
             }
-            UUID sourceOrderItemId = (UUID) out[4];
+            UUID sourceOrderItemId = (UUID) out[7];
             if (sourceOrderItemId != null) {
                 if (line.getOrderItemId() == null) {
                     line.setOrderItemId(sourceOrderItemId);
@@ -415,7 +472,8 @@ public class SalesReturnService {
         if (!orderIds.isEmpty()) {
             @SuppressWarnings("unchecked")
             List<Object[]> rows = em.createNativeQuery("""
-                    SELECT i.id, i.goods_id, o.client_id, o.owner_employee_id, o.status
+                    SELECT i.id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
+                           o.client_id, o.owner_employee_id, o.status
                     FROM sales_order_items i
                     JOIN sales_orders o ON o.id = i.order_id
                     WHERE i.id IN (:ids)
@@ -432,16 +490,17 @@ public class SalesReturnService {
         for (ReturnItemLine line : lines) {
             if (line.getOutItemId() != null) {
                 Object[] out = outById.get(line.getOutItemId());
-                UUID owner = (UUID) out[3];
+                UUID owner = (UUID) out[6];
                 accessPolicy.requireWritable(owner, "无权引用该销售出货行", writeScope);
                 sourceOwners.add(owner);
-                if (!Objects.equals(req.getClientId(), out[2])) {
+                if (!Objects.equals(req.getClientId(), out[5])) {
                     throw new ApiException(ErrorCode.CONFLICT, "退货客户与来源出货客户不一致");
                 }
-                if (!Objects.equals(line.getGoodsId(), out[1])) {
-                    throw new ApiException(ErrorCode.CONFLICT, "退货货品与来源出货行不一致");
-                }
-                if (out[5] == null || ((Number) out[5]).shortValue() != STATUS_APPROVED) {
+                requireLinkedDimension(
+                        line.getGoodsId(), line.getColorId(), line.getUnitId(), line.getUnitRate(),
+                        (UUID) out[1], (UUID) out[2], (UUID) out[3], (BigDecimal) out[4],
+                        "退货与来源出货");
+                if (out[8] == null || ((Number) out[8]).shortValue() != STATUS_APPROVED) {
                     throw new ApiException(ErrorCode.BUSINESS, "仅可退已审核的销售出货");
                 }
             }
@@ -450,16 +509,17 @@ public class SalesReturnService {
                 if (order == null) {
                     throw new ApiException(ErrorCode.VALIDATION_FAILED, "来源订单行不存在或已删除");
                 }
-                UUID owner = (UUID) order[3];
+                UUID owner = (UUID) order[6];
                 accessPolicy.requireWritable(owner, "无权引用该销售订单行", writeScope);
                 sourceOwners.add(owner);
-                if (!Objects.equals(req.getClientId(), order[2])) {
+                if (!Objects.equals(req.getClientId(), order[5])) {
                     throw new ApiException(ErrorCode.CONFLICT, "退货客户与来源订单客户不一致");
                 }
-                if (!Objects.equals(line.getGoodsId(), order[1])) {
-                    throw new ApiException(ErrorCode.CONFLICT, "退货货品与来源订单行不一致");
-                }
-                if (order[4] == null || ((Number) order[4]).shortValue() != STATUS_APPROVED) {
+                requireLinkedDimension(
+                        line.getGoodsId(), line.getColorId(), line.getUnitId(), line.getUnitRate(),
+                        (UUID) order[1], (UUID) order[2], (UUID) order[3], (BigDecimal) order[4],
+                        "退货与来源订单");
+                if (order[7] == null || ((Number) order[7]).shortValue() != STATUS_APPROVED) {
                     throw new ApiException(ErrorCode.BUSINESS, "仅可引用已审核销售订单");
                 }
             }
@@ -474,6 +534,178 @@ public class SalesReturnService {
         return new LinkedSource(true, commonOwner);
     }
 
+    static void requireLinkedDimension(
+            UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
+            UUID sourceGoodsId, UUID sourceColorId, UUID sourceUnitId,
+            BigDecimal sourceUnitRate, String documentName) {
+        if (!Objects.equals(goodsId, sourceGoodsId)
+                || !Objects.equals(colorId, sourceColorId)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    documentName + "货品或颜色不一致");
+        }
+        if (unitId == null || sourceUnitId == null
+                || !Objects.equals(unitId, sourceUnitId)
+                || unitRate == null || sourceUnitRate == null
+                || unitRate.signum() <= 0 || sourceUnitRate.signum() <= 0
+                || unitRate.compareTo(sourceUnitRate) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    documentName + "单位或换算率不一致");
+        }
+    }
+
+    /**
+     * Lock the persisted shipment and order source graph in stable UUID order.
+     * Old drafts that only stored out_item_id are resolved before locking their
+     * order target, so approval cannot race shipment reversal or order changes.
+     */
+    private void lockStoredSourceGraph(List<SalesReturnItem> items) {
+        TreeSet<UUID> outItemIds = new TreeSet<>();
+        TreeSet<UUID> orderItemIds = new TreeSet<>();
+        for (SalesReturnItem item : items) {
+            if (item.getOutItemId() != null) outItemIds.add(item.getOutItemId());
+            if (item.getOrderItemId() != null) orderItemIds.add(item.getOrderItemId());
+        }
+
+        if (!outItemIds.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                            SELECT i.id, i.order_item_id
+                            FROM sales_shipment_items i
+                            JOIN sales_shipments s ON s.id = i.shipment_id
+                            WHERE i.id IN (:ids)
+                            ORDER BY s.id, i.id
+                            FOR UPDATE OF s, i
+                            """)
+                    .setParameter("ids", outItemIds)
+                    .getResultList();
+            if (rows.size() != outItemIds.size()) {
+                throw new ApiException(ErrorCode.CONFLICT, "退货关联的销售出货或出货行不存在");
+            }
+            for (Object[] row : rows) {
+                if (row[1] != null) orderItemIds.add((UUID) row[1]);
+            }
+        }
+
+        if (!orderItemIds.isEmpty()) {
+            List<?> rows = em.createNativeQuery("""
+                            SELECT i.id
+                            FROM sales_order_items i
+                            JOIN sales_orders o ON o.id = i.order_id
+                            WHERE i.id IN (:ids)
+                            ORDER BY o.id, i.id
+                            FOR UPDATE OF o, i
+                            """)
+                    .setParameter("ids", orderItemIds)
+                    .getResultList();
+            if (rows.size() != orderItemIds.size()) {
+                throw new ApiException(ErrorCode.CONFLICT, "退货关联的销售订单或订单行不存在");
+            }
+        }
+    }
+
+    /**
+     * Validate every cumulative write before inventory, AR/AP, or source
+     * counters change. Aggregation prevents two lines in one document from
+     * passing independent capacity checks.
+     */
+    private void validateReturnWritebackCapacity(List<SalesReturnItem> items, int sign) {
+        Map<UUID, BigDecimal> byShipmentItem = new HashMap<>();
+        Map<UUID, BigDecimal> byOrderItem = new HashMap<>();
+        for (SalesReturnItem item : items) {
+            BigDecimal quantity = item.getQty();
+            if (quantity == null || quantity.signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "退货明细数量必须大于 0");
+            }
+            if (item.getOutItemId() != null) {
+                byShipmentItem.merge(item.getOutItemId(), quantity, BigDecimal::add);
+            }
+            if (item.getOrderItemId() != null) {
+                byOrderItem.merge(item.getOrderItemId(), quantity, BigDecimal::add);
+            }
+        }
+
+        if (!byShipmentItem.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                            SELECT id, qty, COALESCE(returned_qty,0)
+                            FROM sales_shipment_items
+                            WHERE id IN (:ids)
+                            ORDER BY id
+                            FOR UPDATE
+                            """)
+                    .setParameter("ids", new TreeSet<>(byShipmentItem.keySet()))
+                    .getResultList();
+            if (rows.size() != byShipmentItem.size()) {
+                throw new ApiException(ErrorCode.CONFLICT, "退货关联的销售出货行不存在");
+            }
+            for (Object[] row : rows) {
+                BigDecimal request = byShipmentItem.get((UUID) row[0]);
+                BigDecimal shipped = bd(row[1]);
+                BigDecimal returned = bd(row[2]);
+                if ((sign > 0 && returned.add(request).compareTo(shipped) > 0)
+                        || (sign < 0 && returned.compareTo(request) < 0)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "退货数量超过来源出货行可退或可回退数量");
+                }
+            }
+        }
+
+        if (!byOrderItem.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                            SELECT id, COALESCE(shipped_qty,0), COALESCE(returned_qty,0),
+                                   COALESCE(qty,0), COALESCE(flag_qty,0),
+                                   COALESCE(reserved_qty,0), COALESCE(planned_qty,0),
+                                   COALESCE(produced_qty,0)
+                            FROM sales_order_items
+                            WHERE id IN (:ids)
+                            ORDER BY id
+                            FOR UPDATE
+                            """)
+                    .setParameter("ids", new TreeSet<>(byOrderItem.keySet()))
+                    .getResultList();
+            if (rows.size() != byOrderItem.size()) {
+                throw new ApiException(ErrorCode.CONFLICT, "退货关联的销售订单行不存在");
+            }
+            for (Object[] row : rows) {
+                BigDecimal request = byOrderItem.get((UUID) row[0]);
+                BigDecimal shipped = bd(row[1]);
+                BigDecimal returned = bd(row[2]);
+                if ((sign > 0 && returned.add(request).compareTo(shipped) > 0)
+                        || (sign < 0 && returned.compareTo(request) < 0)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "退货数量超过来源订单行已发或可回退数量");
+                }
+                if (sign < 0 && !canReverseWithoutStrandingCommitment(
+                        bd(row[3]), shipped, returned, bd(row[4]),
+                        bd(row[5]), bd(row[6]), bd(row[7]), request)) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "退货红冲后的未交量不足以覆盖预留或未完计划，"
+                                    + "请先释放预留并红冲/取消返补计划");
+                }
+                }
+            }
+        }
+
+    static boolean canReverseWithoutStrandingCommitment(
+            BigDecimal qty, BigDecimal shipped, BigDecimal returned,
+            BigDecimal flagged, BigDecimal reserved, BigDecimal planned,
+            BigDecimal produced, BigDecimal reversingReturn) {
+        if (qty == null || shipped == null || returned == null || flagged == null
+                || reserved == null || planned == null || produced == null
+                || reversingReturn == null
+                || qty.signum() < 0 || shipped.signum() < 0 || returned.signum() < 0
+                || flagged.signum() < 0 || reserved.signum() < 0
+                || planned.signum() < 0 || produced.signum() < 0
+                || reversingReturn.signum() <= 0
+                || returned.compareTo(reversingReturn) < 0
+                || produced.compareTo(planned) > 0) {
+            return false;
+        }
+        BigDecimal postOutstanding = qty.subtract(shipped)
+                .add(returned.subtract(reversingReturn)).subtract(flagged);
+        BigDecimal commitment = reserved.add(planned.subtract(produced));
+        return postOutstanding.compareTo(commitment) >= 0;
+    }
+
     private void assertStoredSources(SalesReturn salesReturn,
                                      List<SalesReturnItem> items,
                                      boolean completeMissingOrderLink) {
@@ -484,7 +716,14 @@ public class SalesReturnService {
             ReturnItemLine line = new ReturnItemLine();
             line.setOutItemId(item.getOutItemId());
             line.setOrderItemId(item.getOrderItemId());
+            if (item.getQty() == null || item.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "历史退货明细数量无效，禁止继续联动");
+            }
             line.setGoodsId(item.getGoodsId());
+            line.setColorId(item.getColorId());
+            line.setUnitId(item.getUnitId());
+            line.setUnitRate(item.getUnitRate());
             links.add(line);
         }
         snapshot.setItems(links);
@@ -690,8 +929,12 @@ public class SalesReturnService {
         return salesReturn;
     }
 
-    private SalesReturn requireWritableReturn(UUID id) {
-        SalesReturn salesReturn = requireReturn(id);
+    private SalesReturn requireWritableReturnForUpdate(UUID id) {
+        SalesReturn salesReturn = em.find(
+                SalesReturn.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (salesReturn == null || salesReturn.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "销售退货单不存在");
+        }
         accessPolicy.requireWritable(salesReturn.getOwnerEmployeeId(), "只能操作本人负责的销售退货单");
         return salesReturn;
     }

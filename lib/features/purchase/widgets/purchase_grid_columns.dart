@@ -12,11 +12,13 @@ import 'doc_link_picker.dart';
 /// 采购明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。
 class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
-  PurchaseGridRow() {
+  PurchaseGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
     price.addListener(_recalc);
   }
 
+  final bool sourceLocked;
+  double? maxQty;
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
   );
@@ -34,9 +36,10 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
 
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory PurchaseGridRow.fromLinked(LinkedItem li, GoodsOption goods) {
-    final r = PurchaseGridRow()
+    final r = PurchaseGridRow(sourceLocked: true)
       ..goods = goods
       ..upstreamItemId = li.upstreamItemId
+      ..maxQty = li.maxQty
       ..colorId = li.colorId
       ..unitId = li.unitId;
     r.qty.text = li.qty.toString();
@@ -68,7 +71,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       label: '货品',
       width: 220,
       cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
+        onTap: row.sourceLocked ? null : () => onPickGoods(row),
         child: InputDecorator(
           decoration: const InputDecoration(isDense: true),
           child: Row(
@@ -86,7 +89,10 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
                   ),
                 ),
               ),
-              const Icon(Icons.search_rounded, size: 16),
+              Icon(
+                row.sourceLocked ? Icons.lock_outline : Icons.search_rounded,
+                size: 16,
+              ),
             ],
           ),
         ),

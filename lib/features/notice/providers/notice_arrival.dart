@@ -10,29 +10,23 @@
 // 仓储入库 → 列表/角标失效刷新 → dispatchNoticeArrival 弹提醒。
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../../../components/feedback/uten_center_alert.dart';
-import '../../../core/router/app_router.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../models/notice.dart';
+import '../widgets/notice_detail_dialog.dart';
 
 /// 分派一条到达的通知到对应弹出通道。
 ///
-/// [onOpenDetail] 可选，自定义「查看详情」跳转；默认经全局 router push 通知详情页
-/// （不依赖触发页面的 context，页面已销毁后点击仍有效）。
+/// [onOpenDetail] 可选，自定义「查看详情」行为；默认打开自适应详情弹层，
+/// 与通知列表的点击体验保持一致。
 void dispatchNoticeArrival(
   BuildContext context,
   Notice notice, {
   VoidCallback? onOpenDetail,
 }) {
-  final router = ProviderScope.containerOf(
-    context,
-    listen: false,
-  ).read(appRouterProvider);
   final openDetail =
-      onOpenDetail ?? () => router.push(RoutePath.noticeDetail(notice.id));
+      onOpenDetail ??
+      () => showNoticeDetailDialog(context, noticeId: notice.id);
 
   switch (notice.priority) {
     case NoticePriority.urgent:

@@ -104,6 +104,11 @@ class StockDocItem {
     this.place,
     this.remark,
     this.issuedQty,
+    this.unitRate,
+    this.upstreamItemId,
+    this.executionSegmentId,
+    this.executionSegmentSalesAllocationId,
+    this.sourceDocNo,
   });
   final String? id;
   final int? lineNo;
@@ -118,6 +123,11 @@ class StockDocItem {
   final double? countQty;
   final String? place;
   final String? remark;
+  final double? unitRate;
+  final String? upstreamItemId;
+  final String? executionSegmentId;
+  final String? executionSegmentSalesAllocationId;
+  final String? sourceDocNo;
 
   /// 已出库量（仅 DRAW 领料行；qty−issuedQty=剩余可出）
   final double? issuedQty;
@@ -140,7 +150,74 @@ class StockDocItem {
     place: json['place'] as String?,
     remark: json['remark'] as String?,
     issuedQty: (json['issuedQty'] as num?)?.toDouble(),
+    unitRate: (json['unitRate'] as num?)?.toDouble(),
+    upstreamItemId: json['upstreamItemId'] as String?,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    executionSegmentId: json['executionSegmentId'] as String?,
+    executionSegmentSalesAllocationId:
+        json['executionSegmentSalesAllocationId'] as String?,
   );
+}
+
+class ReturnableMaterialSource {
+  const ReturnableMaterialSource({
+    required this.planId,
+    required this.packageId,
+    required this.drawId,
+    required this.drawNo,
+    required this.drawItemId,
+    required this.warehouseId,
+    required this.goodsId,
+    required this.goodsCode,
+    required this.goodsName,
+    required this.unitId,
+    required this.unitRate,
+    required this.issuedQty,
+    required this.returnedQty,
+    required this.maxReturnQty,
+    this.colorId,
+    this.colorName,
+    this.unitName,
+  });
+
+  final String planId;
+  final String packageId;
+  final String drawId;
+  final String drawNo;
+  final String drawItemId;
+  final String warehouseId;
+  final String goodsId;
+  final String goodsCode;
+  final String goodsName;
+  final String? colorId;
+  final String? colorName;
+  final String unitId;
+  final String? unitName;
+  final double unitRate;
+  final double issuedQty;
+  final double returnedQty;
+  final double maxReturnQty;
+
+  factory ReturnableMaterialSource.fromJson(Map<String, dynamic> json) =>
+      ReturnableMaterialSource(
+        planId: json['planId'] as String,
+        packageId: json['packageId'] as String,
+        drawId: json['drawId'] as String,
+        drawNo: json['drawNo'] as String,
+        drawItemId: json['drawItemId'] as String,
+        warehouseId: json['warehouseId'] as String,
+        goodsId: json['goodsId'] as String,
+        goodsCode: json['goodsCode']?.toString() ?? '',
+        goodsName: json['goodsName']?.toString() ?? '',
+        colorId: json['colorId'] as String?,
+        colorName: json['colorName'] as String?,
+        unitId: json['unitId'] as String,
+        unitName: json['unitName'] as String?,
+        unitRate: (json['unitRate'] as num?)?.toDouble() ?? 1,
+        issuedQty: (json['issuedQty'] as num?)?.toDouble() ?? 0,
+        returnedQty: (json['returnedQty'] as num?)?.toDouble() ?? 0,
+        maxReturnQty: (json['maxReturnQty'] as num?)?.toDouble() ?? 0,
+      );
 }
 
 class StockDocDetail {
@@ -161,6 +238,10 @@ class StockDocDetail {
     this.makerName,
     this.createdAt,
     this.items = const [],
+    this.productionLinked = false,
+    this.canEdit = false,
+    this.canDelete = false,
+    this.restrictionReason,
   });
   final String id;
   final String? docType;
@@ -186,6 +267,10 @@ class StockDocDetail {
   /// 制单时间 ISO（审计 created_at，创建后不可变）
   final String? createdAt;
   final List<StockDocItem> items;
+  final bool productionLinked;
+  final bool canEdit;
+  final bool canDelete;
+  final String? restrictionReason;
 
   factory StockDocDetail.fromJson(Map<String, dynamic> json) => StockDocDetail(
     id: json['id'] as String,
@@ -203,6 +288,10 @@ class StockDocDetail {
     issueStatus: (json['issueStatus'] as num?)?.toInt(),
     makerName: json['makerName'] as String?,
     createdAt: json['createdAt'] as String?,
+    productionLinked: (json['productionLinked'] as bool?) ?? false,
+    canEdit: (json['canEdit'] as bool?) ?? false,
+    canDelete: (json['canDelete'] as bool?) ?? false,
+    restrictionReason: json['restrictionReason'] as String?,
     items:
         (json['items'] as List?)
             ?.map((e) => StockDocItem.fromJson(e as Map<String, dynamic>))

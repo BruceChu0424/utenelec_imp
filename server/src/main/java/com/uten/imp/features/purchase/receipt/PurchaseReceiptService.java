@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.receipt;
 
+import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -59,6 +60,7 @@ public class PurchaseReceiptService {
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ArApLedgerService arApService;
+    private final ProductionSupplyTransitionPort productionSupply;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
@@ -113,7 +115,7 @@ public class PurchaseReceiptService {
     @Transactional
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -128,7 +130,7 @@ public class PurchaseReceiptService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -141,8 +143,9 @@ public class PurchaseReceiptService {
     @Transactional
     public ReceiptDetail approve(UUID id) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        productionSupply.lockPurchaseReceiptMutationDimensions(
+                id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -162,6 +165,8 @@ public class PurchaseReceiptService {
                                 it.getColorId(),
                                 it.getUnitId()))
                         .toList());
+        productionSupply.lockReceiptProductionDemands(
+                id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -177,6 +182,7 @@ public class PurchaseReceiptService {
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
+        productionSupply.onPurchaseReceiptApproved(id);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         receiptRepo.save(r);
@@ -197,17 +203,19 @@ public class PurchaseReceiptService {
     @Transactional
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
-        PurchaseReceipt r = requireReceipt(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        productionSupply.lockPurchaseReceiptMutationDimensions(
+                id);
+        PurchaseReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if (items.stream().anyMatch(it ->
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
         }
+        productionSupply.beforePurchaseReceiptReversed(id);
+        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -336,5 +344,12 @@ public class PurchaseReceiptService {
         return receiptRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购收货单不存在"));
+    }
+    private PurchaseReceipt requireReceiptForUpdate(UUID id) {
+        PurchaseReceipt receipt = em.find(
+                PurchaseReceipt.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return receipt == null || receipt.isDeleted()
+                ? requireReceipt(id)
+                : receipt;
     }
 }

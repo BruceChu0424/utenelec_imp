@@ -113,7 +113,7 @@ class SalesShipmentOwnerBoundaryTest {
     private Object[] batchRow(UUID itemId, UUID goodsId, UUID clientId,
                               UUID currencyId, UUID ownerId, String billNo) {
         return new Object[]{
-                itemId, goodsId, null, null, BigDecimal.ONE, BigDecimal.TEN,
+                itemId, goodsId, null, goodsId, BigDecimal.ONE, BigDecimal.TEN,
                 BigDecimal.TEN, clientId, currencyId, billNo, ownerId,
                 (short) 1, false, false
         };
@@ -122,8 +122,8 @@ class SalesShipmentOwnerBoundaryTest {
     private Object[] sourceRow(UUID itemId, UUID goodsId, UUID clientId,
                                UUID ownerId, String billNo) {
         return new Object[]{
-                itemId, goodsId, clientId, ownerId, (short) 1,
-                false, false, billNo
+                itemId, goodsId, null, goodsId, BigDecimal.ONE,
+                clientId, ownerId, (short) 1, false, false, billNo
         };
     }
 

@@ -17,6 +17,7 @@ import com.uten.imp.features.master.goods.GoodsController;
 import com.uten.imp.features.master.goods.GoodsService;
 import com.uten.imp.features.notice.NoticeController;
 import com.uten.imp.features.notice.NoticeService;
+import com.uten.imp.features.notice.dto.NoticeAudienceRequest;
 import com.uten.imp.features.notice.dto.NoticeBatchDeleteRequest;
 import com.uten.imp.features.notice.dto.NoticePublishRequest;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
@@ -138,8 +139,58 @@ class RequestBoundaryValidationTest {
                         "announcement",
                         false,
                         "normal",
-                        Collections.nCopies(RequestLimits.NOTICE_ATTACHMENTS + 1, "file.pdf")),
+                        Collections.nCopies(RequestLimits.NOTICE_ATTACHMENTS + 1, "file.pdf"),
+                        "all",
+                        List.of(),
+                        List.of()),
                 "attachments");
+        assertHasSizeViolation(
+                new NoticePublishRequest(
+                        "title",
+                        "content",
+                        "announcement",
+                        false,
+                        "normal",
+                        List.of(),
+                        "selected",
+                        Collections.nCopies(
+                                RequestLimits.NOTICE_AUDIENCE_TARGETS + 1,
+                                UUID.randomUUID()),
+                        List.of()),
+                "departmentIds");
+        assertHasSizeViolation(
+                new NoticePublishRequest(
+                        "title",
+                        "content",
+                        "announcement",
+                        false,
+                        "normal",
+                        List.of(),
+                        "selected",
+                        List.of(),
+                        Collections.nCopies(
+                                RequestLimits.NOTICE_AUDIENCE_TARGETS + 1,
+                                UUID.randomUUID())),
+                "employeeIds");
+        assertHasSizeViolation(
+                new NoticePublishRequest(
+                        "x".repeat(RequestLimits.NOTICE_TITLE_LENGTH + 1),
+                        "content",
+                        "announcement",
+                        false,
+                        "normal",
+                        List.of(),
+                        "all",
+                        List.of(),
+                        List.of()),
+                "title");
+        assertHasSizeViolation(
+                new NoticeAudienceRequest(
+                        Collections.nCopies(
+                                RequestLimits.NOTICE_AUDIENCE_TARGETS + 1,
+                                UUID.randomUUID()),
+                        List.of()),
+                "departmentIds");
     }
 
     @Test
@@ -225,7 +276,9 @@ class RequestBoundaryValidationTest {
     @Test
     void noticeControllerReturnsValidationContractBeforeCallingService() throws Exception {
         NoticeService service = mock(NoticeService.class);
-        MockMvc mvc = MockMvcBuilders.standaloneSetup(new NoticeController(service))
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new NoticeController(
+                        service,
+                        mock(com.uten.imp.features.notice.NoticeAudienceService.class)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
 

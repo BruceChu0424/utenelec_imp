@@ -14,12 +14,14 @@ import com.uten.imp.features.purchase.request.PurchaseRequest;
 import com.uten.imp.features.purchase.request.PurchaseRequestItem;
 import com.uten.imp.features.purchase.request.PurchaseRequestItemRepository;
 import com.uten.imp.features.purchase.request.PurchaseRequestRepository;
+import com.uten.imp.features.stock.FinishedInboundAllocator;
 import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,12 +38,14 @@ import java.util.UUID;
 /**
  * MRP-lite：生产计划 → BOM 展开物料需求 → 一键生成采购申请（业务联动核心）。
  *
- * <p>口径（design doc 37）：
+ * <p>齐套口径：
  * <ol>
  *   <li>毛需求：计划明细排产量 × BOM 递归展开（goods_bom_items，≤10 层、路径防环），
- *       按货品聚合（颜色取需求最大贡献行参考色，净需求按货品级计算）。</li>
- *   <li>净需求 = 毛需求 − 即时库存（stock_balances 全仓合计）− 在途订货
- *       （已审采购订货单 数量−已收数量），小于 0 归 0。</li>
+ *       按货品 + BOM 行颜色（空时回落组件主颜色）聚合。</li>
+ *   <li>当前可用 = 全仓账面库存 − 生效销售预留 − 货品安全库存，最小为 0。
+ *       安全库存当前仅有货品级字段，对每个颜色分别应用是保守口径。</li>
+ *   <li>全部在途与需求日前可到在途分开计算；日期为空的采购行不计入及时在途。
+ *       所有库存、预留、在途和 MRP 数量均换算为基本单位。</li>
  *   <li>半成品（本身有 BOM 的组件）标记「自制」，只做预览不进采购申请。</li>
  *   <li>生成：一张采购申请（草稿，单号走 CS 序列），明细挂 production_plan_no 溯源；
  *       mrp_generations 记录联动，防重复生成（未删且未红冲的生成单存在即拒绝，
@@ -52,92 +56,272 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MrpService {
 
-    /** 毛需求展开 + 净需求 SQL（一次性算完，行数=物料种数，规模可控）。 */
-    private static final String MRP_SQL = """
-            WITH RECURSIVE exp AS (
-                SELECT b.component_goods_id AS goods_id, b.color_legacy_id,
-                       (i.qty * COALESCE(i.unit_rate,1) * b.qty)::numeric AS req_qty, 1 AS lvl, ARRAY[b.id]::uuid[] AS path
-                FROM production_plan_items i
-                JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
-                WHERE i.plan_id = :planId AND i.is_deleted = false
-                UNION ALL
-                SELECT b.component_goods_id, b.color_legacy_id,
-                       (e.req_qty * b.qty)::numeric, e.lvl + 1, e.path || b.id
-                FROM exp e
-                JOIN goods_bom_items b ON b.goods_id = e.goods_id AND b.is_deleted = false
-                WHERE e.lvl < 10 AND NOT b.id = ANY(e.path)
-            ),
-            agg AS (
-                SELECT e.goods_id,
-                       (array_agg((SELECT c.id FROM colors c WHERE c.legacy_id = e.color_legacy_id)
-                                  ORDER BY e.req_qty DESC))[1] AS color_id,
-                       SUM(e.req_qty) AS gross,
-                       bool_or(EXISTS (SELECT 1 FROM goods_bom_items c
-                                       WHERE c.goods_id = e.goods_id AND c.is_deleted = false)) AS has_bom
-                FROM exp e GROUP BY e.goods_id
-            )
-            SELECT a.goods_id, g.code, g.name, g.spec, a.color_id, a.gross,
-                   COALESCE(sb.onhand, 0) AS onhand, COALESCE(po.openqty, 0) AS openqty,
-                   GREATEST(a.gross - COALESCE(sb.onhand, 0) - COALESCE(po.openqty, 0), 0) AS net,
-                   a.has_bom, u.id AS unit_id, g.a_price
-            FROM agg a
-            JOIN goods g ON g.id = a.goods_id
-            LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
-            LEFT JOIN (SELECT goods_id, SUM(qty) AS onhand FROM stock_balances GROUP BY goods_id) sb
-                   ON sb.goods_id = a.goods_id
-            LEFT JOIN (SELECT oi.goods_id,
-                              SUM(GREATEST(oi.qty - COALESCE(oi.received_qty, 0), 0)) AS openqty
-                       FROM purchase_order_items oi
-                       JOIN purchase_orders o ON o.id = oi.order_id
-                       WHERE o.status = 1 AND o.is_deleted = false AND oi.is_deleted = false
-                       GROUP BY oi.goods_id) po
-                   ON po.goods_id = a.goods_id
-            ORDER BY net DESC, g.code
-            """;
+    /**
+     * 必须在统一原料占用、PO 供给分配和目标仓校验落地后才可开启。
+     * 保持编译期默认关闭，避免仅靠前端按钮控制数据安全。
+     */
+    private static final boolean PLANNING_WRITE_READY = true;
+    private static final boolean LEGACY_DERIVED_WRITE_READY = false;
+
+    /** Server-authoritative capability used by every caller that would persist MRP-derived state. */
+    public boolean isPlanningWriteReady() {
+        return PLANNING_WRITE_READY;
+    }
+
+    /** 生产计划需求源：开工日优先，未排开工日时回落计划交货日。 */
+    private static final String MRP_SQL = buildMrpSql("""
+            SELECT b.component_goods_id AS goods_id,
+                   resolved_color.id AS color_id,
+                   CASE
+                       WHEN COALESCE(i.unit_rate,1) > 0 AND b.qty > 0 AND COALESCE(i.qty,0) >= 0
+                       THEN (COALESCE(i.qty,0) * COALESCE(i.unit_rate,1) * b.qty)::numeric
+                       ELSE 0::numeric
+                   END AS req_qty,
+                   COALESCE(i.plan_begin_date, p.delivery_date) AS need_date,
+                   (source.is_deleted OR component.is_deleted
+                    OR COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL
+                    OR b.qty <= 0 OR COALESCE(i.qty,0) < 0
+                    OR (COALESCE(NULLIF(b.color_legacy_id, 0),
+                                 NULLIF(component.color_legacy_id, 0)) IS NOT NULL
+                        AND (resolved_color.id IS NULL OR resolved_color.is_deleted)))
+                       AS invalid_requirement,
+                   1 AS lvl,
+                   ARRAY[b.id]::uuid[] AS path
+            FROM production_plan_items i
+            JOIN production_plans p ON p.id = i.plan_id AND p.is_deleted = false
+            JOIN goods source ON source.id = i.goods_id
+            JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
+            JOIN goods component ON component.id = b.component_goods_id
+            LEFT JOIN colors resolved_color
+                   ON resolved_color.legacy_id = COALESCE(
+                       NULLIF(b.color_legacy_id, 0),
+                       NULLIF(component.color_legacy_id, 0))
+            WHERE i.plan_id = :planId AND i.is_deleted = false
+            """);
 
     /** D3：销售订单行需求源（已审订单）的同构展开 SQL。 */
-    private static final String MRP_ORDER_SQL = """
+    private static final String MRP_ORDER_SQL = buildMrpSql("""
+            SELECT b.component_goods_id AS goods_id,
+                   resolved_color.id AS color_id,
+                   CASE
+                       WHEN COALESCE(i.unit_rate,1) > 0 AND b.qty > 0 AND COALESCE(i.qty,0) >= 0
+                       THEN (COALESCE(i.qty,0) * COALESCE(i.unit_rate,1) * b.qty)::numeric
+                       ELSE 0::numeric
+                   END AS req_qty,
+                   COALESCE(i.deliver_date, o.deliver_date) AS need_date,
+                   (source.is_deleted OR component.is_deleted
+                    OR COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL
+                    OR b.qty <= 0 OR COALESCE(i.qty,0) < 0
+                    OR (COALESCE(NULLIF(b.color_legacy_id, 0),
+                                 NULLIF(component.color_legacy_id, 0)) IS NOT NULL
+                        AND (resolved_color.id IS NULL OR resolved_color.is_deleted)))
+                       AS invalid_requirement,
+                   1 AS lvl,
+                   ARRAY[b.id]::uuid[] AS path
+            FROM sales_order_items i
+            JOIN sales_orders o ON o.id = i.order_id AND o.status = 1 AND o.is_deleted = false
+            JOIN goods source ON source.id = i.goods_id
+            JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
+            JOIN goods component ON component.id = b.component_goods_id
+            LEFT JOIN colors resolved_color
+                   ON resolved_color.legacy_id = COALESCE(
+                       NULLIF(b.color_legacy_id, 0),
+                       NULLIF(component.color_legacy_id, 0))
+            WHERE i.order_id = :orderId AND i.is_deleted = false
+            """);
+
+    private static String buildMrpSql(String seed) {
+        return """
             WITH RECURSIVE exp AS (
-                SELECT b.component_goods_id AS goods_id, b.color_legacy_id,
-                       (i.qty * COALESCE(i.unit_rate,1) * b.qty)::numeric AS req_qty, 1 AS lvl, ARRAY[b.id]::uuid[] AS path
-                FROM sales_order_items i
-                JOIN sales_orders o ON o.id = i.order_id AND o.status = 1 AND o.is_deleted = false
-                JOIN goods_bom_items b ON b.goods_id = i.goods_id AND b.is_deleted = false
-                WHERE i.order_id = :orderId AND i.is_deleted = false
+                %s
                 UNION ALL
-                SELECT b.component_goods_id, b.color_legacy_id,
-                       (e.req_qty * b.qty)::numeric, e.lvl + 1, e.path || b.id
+                SELECT b.component_goods_id,
+                       resolved_color.id,
+                       CASE WHEN b.qty > 0 THEN (e.req_qty * b.qty)::numeric ELSE 0::numeric END,
+                       e.need_date,
+                       (e.invalid_requirement OR b.qty <= 0 OR component.is_deleted
+                        OR (COALESCE(NULLIF(b.color_legacy_id, 0),
+                                     NULLIF(component.color_legacy_id, 0)) IS NOT NULL
+                            AND (resolved_color.id IS NULL OR resolved_color.is_deleted))),
+                       e.lvl + 1,
+                       e.path || b.id
                 FROM exp e
                 JOIN goods_bom_items b ON b.goods_id = e.goods_id AND b.is_deleted = false
+                JOIN goods component ON component.id = b.component_goods_id
+                LEFT JOIN colors resolved_color
+                       ON resolved_color.legacy_id = COALESCE(
+                           NULLIF(b.color_legacy_id, 0),
+                           NULLIF(component.color_legacy_id, 0))
                 WHERE e.lvl < 10 AND NOT b.id = ANY(e.path)
             ),
+            demand_buckets AS (
+                SELECT e.goods_id, e.color_id, e.need_date,
+                       SUM(e.req_qty)::numeric AS bucket_gross
+                FROM exp e
+                GROUP BY e.goods_id, e.color_id, e.need_date
+            ),
+            demand_timeline AS (
+                SELECT d.goods_id, d.color_id, d.need_date,
+                       SUM(d.bucket_gross) OVER (
+                           PARTITION BY d.goods_id, d.color_id
+                           ORDER BY d.need_date NULLS FIRST
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                       )::numeric AS cumulative_gross
+                FROM demand_buckets d
+            ),
             agg AS (
-                SELECT e.goods_id,
-                       (array_agg((SELECT c.id FROM colors c WHERE c.legacy_id = e.color_legacy_id)
-                                  ORDER BY e.req_qty DESC))[1] AS color_id,
-                       SUM(e.req_qty) AS gross,
+                SELECT e.goods_id, e.color_id,
+                       SUM(e.req_qty)::numeric AS gross,
+                       CASE WHEN bool_or(e.need_date IS NULL)
+                            THEN NULL
+                            ELSE MIN(e.need_date)
+                       END AS need_date,
+                       bool_or(e.invalid_requirement) AS invalid_requirement,
                        bool_or(EXISTS (SELECT 1 FROM goods_bom_items c
                                        WHERE c.goods_id = e.goods_id AND c.is_deleted = false)) AS has_bom
-                FROM exp e GROUP BY e.goods_id
+                FROM exp e
+                GROUP BY e.goods_id, e.color_id
+            ),
+            stock AS (
+                SELECT goods_id, color_id, SUM(qty)::numeric AS book_stock
+                FROM stock_balances
+                GROUP BY goods_id, color_id
+            ),
+            reserved AS (
+                SELECT goods_id, color_id,
+                       SUM(GREATEST(qty - consumed_qty - released_qty, 0))::numeric AS sales_reserved
+                FROM stock_reservations
+                WHERE is_deleted = false AND status = 0
+                GROUP BY goods_id, color_id
             )
             SELECT a.goods_id, g.code, g.name, g.spec, a.color_id, a.gross,
-                   COALESCE(sb.onhand, 0) AS onhand, COALESCE(po.openqty, 0) AS openqty,
-                   GREATEST(a.gross - COALESCE(sb.onhand, 0) - COALESCE(po.openqty, 0), 0) AS net,
-                   a.has_bom, u.id AS unit_id, g.a_price
+                   COALESCE(s.book_stock, 0)::numeric AS book_stock,
+                   COALESCE(r.sales_reserved, 0)::numeric AS sales_reserved,
+                   GREATEST(COALESCE(g.min_qty, 0), 0)::numeric AS safety_stock,
+                   COALESCE(po.open_total, 0)::numeric AS open_total,
+                   COALESCE(po.open_on_time, 0)::numeric AS open_on_time,
+                   a.need_date,
+                   po.earliest_arrival,
+                   a.has_bom,
+                   u.id AS unit_id,
+                   (a.invalid_requirement OR g.is_deleted
+                    OR u.id IS NULL OR COALESCE(u.is_deleted, true)) AS invalid_requirement,
+                   COALESCE(po.invalid_rate, false) AS invalid_po_rate
             FROM agg a
             JOIN goods g ON g.id = a.goods_id
             LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
-            LEFT JOIN (SELECT goods_id, SUM(qty) AS onhand FROM stock_balances GROUP BY goods_id) sb
-                   ON sb.goods_id = a.goods_id
-            LEFT JOIN (SELECT oi.goods_id,
-                              SUM(GREATEST(oi.qty - COALESCE(oi.received_qty, 0), 0)) AS openqty
-                       FROM purchase_order_items oi
-                       JOIN purchase_orders o ON o.id = oi.order_id
-                       WHERE o.status = 1 AND o.is_deleted = false AND oi.is_deleted = false
-                       GROUP BY oi.goods_id) po
-                   ON po.goods_id = a.goods_id
-            ORDER BY net DESC, g.code
-            """;
+            LEFT JOIN stock s
+                   ON s.goods_id = a.goods_id AND s.color_id IS NOT DISTINCT FROM a.color_id
+            LEFT JOIN reserved r
+                   ON r.goods_id = a.goods_id AND r.color_id IS NOT DISTINCT FROM a.color_id
+            CROSS JOIN LATERAL (
+                SELECT GREATEST(
+                           COALESCE(s.book_stock, 0)
+                           - COALESCE(r.sales_reserved, 0)
+                           - GREATEST(COALESCE(g.min_qty, 0), 0),
+                           0
+                       )::numeric AS available_now
+            ) av
+            LEFT JOIN LATERAL (
+                WITH po_line AS (
+                    SELECT CASE
+                               WHEN COALESCE(oi.unit_rate,1) > 0 AND oi.unit_id IS NOT NULL
+                               THEN (GREATEST(COALESCE(oi.qty,0) - COALESCE(oi.received_qty,0), 0)
+                                     * COALESCE(oi.unit_rate,1))::numeric
+                               ELSE 0::numeric
+                           END AS open_base,
+                           COALESCE(oi.deliver_date, o.deliver_date) AS eta,
+                           (GREATEST(COALESCE(oi.qty,0) - COALESCE(oi.received_qty,0), 0) > 0
+                            AND (COALESCE(oi.unit_rate,1) <= 0 OR oi.unit_id IS NULL))
+                               AS invalid_rate
+                    FROM purchase_order_items oi
+                    JOIN purchase_orders o ON o.id = oi.order_id
+                    WHERE o.status = 1
+                      AND o.is_deleted = false
+                      AND COALESCE(o.is_stopped, false) = false
+                      AND o.is_closed = false
+                      AND oi.is_deleted = false
+                      AND oi.goods_id = a.goods_id
+                      AND oi.color_id IS NOT DISTINCT FROM a.color_id
+                )
+                SELECT COALESCE(SUM(pl.open_base), 0)::numeric AS open_total,
+                       GREATEST(
+                           a.gross - av.available_now
+                           - COALESCE((
+                               SELECT MAX(GREATEST(
+                                   dt.cumulative_gross - av.available_now
+                                   - COALESCE((
+                                       SELECT SUM(pl_due.open_base)
+                                       FROM po_line pl_due
+                                       WHERE dt.need_date IS NOT NULL
+                                         AND pl_due.eta IS NOT NULL
+                                         AND pl_due.eta <= dt.need_date
+                                   ), 0),
+                                   0
+                               ))
+                               FROM demand_timeline dt
+                               WHERE dt.goods_id = a.goods_id
+                                 AND dt.color_id IS NOT DISTINCT FROM a.color_id
+                           ), GREATEST(a.gross - av.available_now, 0)),
+                           0
+                       )::numeric AS open_on_time,
+                       MIN(pl.eta) FILTER (WHERE pl.open_base > 0) AS earliest_arrival,
+                       COALESCE(bool_or(pl.invalid_rate), false) AS invalid_rate
+                FROM po_line pl
+            ) po ON true
+            ORDER BY a.need_date NULLS LAST, g.code, a.color_id NULLS FIRST
+            """.formatted(seed);
+    }
+
+    private static final String PLAN_BOM_VALIDATION_SQL = buildBomValidationSql("""
+            SELECT DISTINCT goods_id
+            FROM production_plan_items
+            WHERE plan_id = :sourceId AND is_deleted = false
+            """);
+
+    private static final String ORDER_BOM_VALIDATION_SQL = buildBomValidationSql("""
+            SELECT DISTINCT i.goods_id
+            FROM sales_order_items i
+            JOIN sales_orders o ON o.id = i.order_id
+            WHERE i.order_id = :sourceId
+              AND i.is_deleted = false
+              AND o.is_deleted = false
+              AND o.status = 1
+            """);
+
+    /**
+     * BOM 展开虽然有深度/路径护栏，但不能把截断结果当成真实需求。
+     * 先验证当前需求根可达图；存在环或超过十层时整次 MRP 失败。
+     */
+    private static String buildBomValidationSql(String roots) {
+        return """
+            WITH RECURSIVE roots(goods_id) AS (
+                %s
+            ),
+            walk(root_id, goods_id, path, depth, cycle) AS (
+                SELECT r.goods_id, b.component_goods_id,
+                       ARRAY[r.goods_id, b.component_goods_id]::uuid[],
+                       1,
+                       b.component_goods_id = r.goods_id
+                FROM roots r
+                JOIN goods_bom_items b ON b.goods_id = r.goods_id AND b.is_deleted = false
+                UNION ALL
+                SELECT w.root_id, b.component_goods_id,
+                       w.path || b.component_goods_id,
+                       w.depth + 1,
+                       b.component_goods_id = ANY(w.path)
+                FROM walk w
+                JOIN goods_bom_items b ON b.goods_id = w.goods_id AND b.is_deleted = false
+                WHERE w.cycle = false AND w.depth < 10
+            )
+            SELECT COALESCE(bool_or(cycle), false) AS has_cycle,
+                   COALESCE(bool_or(depth = 10 AND EXISTS (
+                       SELECT 1 FROM goods_bom_items child
+                       WHERE child.goods_id = walk.goods_id AND child.is_deleted = false)), false)
+                       AS exceeds_depth
+            FROM walk
+            """.formatted(roots);
+    }
 
     private final EntityManager em;
     private final ProductionPlanRepository planRepo;
@@ -148,12 +332,41 @@ public class MrpService {
     private final StockDocumentItemRepository stockDocItemRepo;
     private final DocNumberService docNumberService;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService fulfillmentLedger;
 
     /** 物料需求预览：全部物料行（含自制半成品标记）。 */
     @Transactional(readOnly = true)
     public List<MrpRow> preview(UUID planId) {
         requirePlan(planId);
-        return explode(planId);
+        var backed = fulfillmentLedger.allocationBackedDimensions(planId);
+        return explode(planId).stream()
+                .map(row -> row.withCapabilities(
+                        backed.contains(new com.uten.imp.features.production.fulfillment
+                                .ProductionFulfillmentLedgerService.MaterialDimension(
+                                row.goodsId(), row.colorId())),
+                        PLANNING_WRITE_READY))
+                .toList();
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public List<MrpRow> packageRows(UUID planId) {
+        requirePlan(planId);
+        List<MrpRow> rows = explode(planId);
+        if (rows.stream().anyMatch(MrpRow::selfMade)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "多层 BOM 计划包暂未启用：父计划直接领料与子计划展开尚未拆分，禁止重复占料");
+        }
+        return rows;
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public List<GenerateSubplansRequest.Created> createPackageSubplans(
+            UUID planId,
+            List<GenerateSubplansRequest.Line> items) {
+        GenerateSubplansRequest request = new GenerateSubplansRequest();
+        request.setItems(items);
+        return generateSubplansLocked(lockPlan(planId), request);
     }
 
     /**
@@ -218,41 +431,54 @@ public class MrpService {
     /** 生成采购申请：净需求>0（strategy=gross 时毛需求>0）的外购物料 → 一张草稿申请；防重复生成。 */
     @Transactional
     public MrpGenerateResult generate(UUID planId, String strategy) {
+        ProductionPlan plan = lockPlan(planId);
+        assertLegacyDerivedWriteAllowed(planId, "采购申请");
+        return generatePurchaseLocked(plan, strategy, true);
+    }
+
+    /** 调用方已持有父计划写锁；emptyIsError=false 用于计划包无新购缺口时返回 null。 */
+    private MrpGenerateResult generatePurchaseLocked(
+            ProductionPlan plan, String strategy, boolean emptyIsError) {
         boolean grossMode = "gross".equalsIgnoreCase(strategy);
-        ProductionPlan plan = requirePlan(planId);
-        if (plan.getStatus() != null && plan.getStatus() == -1) {
-            throw new ApiException(ErrorCode.BUSINESS, "已红冲的计划不可生成采购申请");
+        requireNotTerminal(plan, "采购申请");
+        requirePlanningWriteReady();
+
+        List<MrpRow> rows = explode(plan.getId());
+        List<MrpRow> buy = rows.stream()
+                .filter(r -> !r.selfMade()
+                        && (grossMode ? r.gross() : r.purchaseNetShortage()) != null
+                        && (grossMode ? r.gross() : r.purchaseNetShortage()).signum() > 0)
+                .toList();
+        if (buy.isEmpty()) {
+            if (!emptyIsError) return null;
+            throw new ApiException(ErrorCode.BUSINESS, grossMode
+                    ? "无毛需求外购物料（或全部为自制件）"
+                    : "无新增采购净缺口（当前可用/有效在途已覆盖，晚到在途请走催交或改配）");
         }
 
-        // 防重复：存在未删且未红冲的生成申请 → 拒绝（并发下靠 mrp_generations + 申请状态复查）
+        // 父计划写锁使“查重 + 生成”串行；联动表继续承担业务溯源与历史留痕。
         var dup = em.createNativeQuery("""
                 SELECT r.bill_no FROM mrp_generations g
                 JOIN purchase_requests r ON r.id = g.request_id
                 WHERE g.plan_id = :planId AND g.is_deleted = false
                   AND r.is_deleted = false AND r.status <> -1
                 LIMIT 1
-                """).setParameter("planId", planId).getResultList();
+                """).setParameter("planId", plan.getId()).getResultList();
         if (!dup.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "本计划已生成过采购申请（" + dup.get(0) + "），如需重生成请先删除或红冲该申请");
         }
 
-        List<MrpRow> rows = explode(planId);
-        List<MrpRow> buy = rows.stream()
-                .filter(r -> !r.selfMade()
-                        && (grossMode ? r.gross() : r.net()) != null
-                        && (grossMode ? r.gross() : r.net()).signum() > 0).toList();
-        if (buy.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS, grossMode
-                    ? "无毛需求外购物料（或全部为自制件）"
-                    : "无净需求外购物料（库存/在途已覆盖，或全部为自制件）");
-        }
-
         LocalDate today = BusinessTime.today();
+        LocalDate requestNeedDate = buy.stream()
+                .map(MrpRow::needDate)
+                .filter(java.util.Objects::nonNull)
+                .min(LocalDate::compareTo)
+                .orElse(plan.getDeliveryDate());
         PurchaseRequest r = new PurchaseRequest();
         r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
         r.setBillDate(today);
-        r.setNeedDate(plan.getDeliveryDate());
+        r.setNeedDate(requestNeedDate);
         r.setApplicantId(currentUser.requireId());
         r.setMakerId(currentUser.requireEmployeeId());
         r.setRemark("生产计划 " + plan.getBillNo() + " 物料需求自动生成");
@@ -273,19 +499,20 @@ public class MrpService {
             it.setColorId(row.colorId());
             it.setUnitId(row.unitId());
             it.setUnitRate(BigDecimal.ONE);
-            it.setQty(grossMode ? row.gross() : row.net());
+            it.setQty(grossMode ? row.gross() : row.purchaseNetShortage());
             it.setPrice(BigDecimal.ZERO);
             it.setAmountOriginal(BigDecimal.ZERO);
             it.setAmountLocal(BigDecimal.ZERO);
             it.setGiftQty(BigDecimal.ZERO);
-            it.setDeliverDate(plan.getDeliveryDate());
+            it.setDeliverDate(row.needDate() == null ? requestNeedDate : row.needDate());
             it.setProductionPlanNo(plan.getBillNo());
             it.setSourceDocNo(plan.getBillNo());
             it.setRemark(grossMode
                     ? "毛需求开单（不扣库存/在途）"
                     : "毛需求 " + row.gross().stripTrailingZeros().toPlainString()
-                    + " − 库存 " + row.onhand().stripTrailingZeros().toPlainString()
-                    + " − 在途 " + row.openPo().stripTrailingZeros().toPlainString());
+                    + " − 当前可用 " + row.availableNow().stripTrailingZeros().toPlainString()
+                    + " − 全部在途 " + row.openPoTotal().stripTrailingZeros().toPlainString()
+                    + "；需求日前缺口 " + row.timelyShortage().stripTrailingZeros().toPlainString());
             requestItemRepo.save(it);
         }
         r.setTotalOriginal(total);
@@ -296,15 +523,15 @@ public class MrpService {
         em.createNativeQuery("""
                 UPDATE mrp_generations SET is_deleted = true, deleted_at = now()
                 WHERE plan_id = :planId AND is_deleted = false
-                """).setParameter("planId", planId).executeUpdate();
+                """).setParameter("planId", plan.getId()).executeUpdate();
         em.createNativeQuery("""
                 INSERT INTO mrp_generations (plan_id, request_id, created_by)
                 VALUES (:planId, :requestId, :by)
-                """).setParameter("planId", planId).setParameter("requestId", r.getId())
+                """).setParameter("planId", plan.getId()).setParameter("requestId", r.getId())
                 .setParameter("by", currentUser.requireId()).executeUpdate();
 
         return new MrpGenerateResult(r.getId(), r.getBillNo(), line,
-                rows.stream().filter(MrpRow::selfMade).map(MrpRow::goodsId).toList());
+                rows.stream().filter(MrpRow::selfMade).map(MrpRow::goodsId).distinct().toList());
     }
 
     // ======================== 计划 → 生产领料单（DRAW） ========================
@@ -315,10 +542,10 @@ public class MrpService {
      */
     @Transactional
     public MrpGenerateResult generateDraw(UUID planId, UUID warehouseId) {
-        ProductionPlan plan = requirePlan(planId);
-        if (plan.getStatus() != null && plan.getStatus() == -1) {
-            throw new ApiException(ErrorCode.BUSINESS, "已红冲的计划不可生成领料单");
-        }
+        requirePlanningWriteReady();
+        ProductionPlan plan = lockPlan(planId);
+        assertLegacyDerivedWriteAllowed(planId, "领料单");
+        requireApprovedPlanForStock(plan, "领料单");
         if (warehouseId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "生成领料单需指定仓库");
         }
@@ -391,14 +618,27 @@ public class MrpService {
     // ======================== 计划 → 成品入库单（FINISHED_IN） ========================
 
     /**
-     * 生成成品入库单：计划明细自身（非 BOM 展开），数量 = 排产量 − 已入库量（iqty），
-     * 防重复与其他生成单同规则（plan_draw_links 按 doc_type 区分 DRAW / FINISHED_IN）。
+     * 生成成品入库单：计划明细自身（非 BOM 展开），数量 = 已审核合格量（fqty）− 已入库量（iqty）。
+     * 没有逐笔销售分摊台账时，多销售行合并计划禁止生成，避免 FIFO 猜测数据归属。
      */
     @Transactional
     public MrpGenerateResult generateFinishedIn(UUID planId, UUID warehouseId) {
-        ProductionPlan plan = requirePlan(planId);
-        if (plan.getStatus() != null && plan.getStatus() == -1) {
-            throw new ApiException(ErrorCode.BUSINESS, "已红冲的计划不可生成成品入库单");
+        ProductionPlan plan = lockPlan(planId);
+        assertLegacyDerivedWriteAllowed(planId, "成品入库单");
+        requireApprovedPlanForStock(plan, "成品入库单");
+        Number segmented = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_planning_packages package
+                        WHERE package.plan_id = :planId
+                          AND package.status = 'CONFIRMED'
+                          AND package.execution_model_version = 1
+                          AND package.is_deleted = FALSE
+                        """)
+                .setParameter("planId", planId)
+                .getSingleResult();
+        if (segmented.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该计划已启用执行子计划，请从具体子计划报工；报工审核后系统会生成精确归属的成品入库单");
         }
         if (warehouseId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "生成成品入库单需指定仓库");
@@ -416,8 +656,10 @@ public class MrpService {
         }
 
         var itemRows = em.createNativeQuery("""
-                SELECT i.goods_id, i.color_id, i.unit_id,
-                       GREATEST(COALESCE(i.qty,0) - COALESCE(i.iqty,0), 0) AS remain
+                SELECT i.id, i.goods_id, i.color_id, i.unit_id, COALESCE(i.unit_rate,1),
+                       COALESCE(i.fqty,0) AS finished_qty, COALESCE(i.iqty,0) AS inbound_qty,
+                       (SELECT COUNT(*) FROM plan_order_item_links l
+                        WHERE l.plan_item_id = i.id AND l.is_deleted = false) AS active_link_count
                 FROM production_plan_items i
                 WHERE i.plan_id = :planId AND i.is_deleted = false
                 ORDER BY i.line_no
@@ -425,10 +667,24 @@ public class MrpService {
         List<Object[]> lines = new java.util.ArrayList<>();
         for (Object x : itemRows) {
             Object[] r = (Object[]) x;
-            if (r[3] != null && ((BigDecimal) r[3]).signum() > 0) lines.add(r);
+            BigDecimal rate = r[4] == null ? BigDecimal.ONE : (BigDecimal) r[4];
+            if (rate.signum() <= 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "生产计划行单位换算率必须大于 0");
+            }
+            BigDecimal remain = FinishedInboundAllocator.reportedRemaining(
+                    (BigDecimal) r[5], (BigDecimal) r[6]);
+            if (remain.signum() > 0) {
+                long activeLinkCount = r[7] == null ? 0L : ((Number) r[7]).longValue();
+                if (activeLinkCount > 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "合并销售订单的成品入库缺少持久化分摊明细，禁止生成入库单");
+                }
+                r[5] = remain;
+                lines.add(r);
+            }
         }
         if (lines.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS, "计划明细均已全部入库（或无明细），无可入库数量");
+            throw new ApiException(ErrorCode.BUSINESS, "无已报工待入库量");
         }
 
         LocalDate today = BusinessTime.today();
@@ -454,12 +710,15 @@ public class MrpService {
             it.setBillNo(d.getBillNo());
             it.setBillDate(d.getBillDate());
             it.setLineNo(line);
-            it.setGoodsId((UUID) r[0]);
-            it.setColorId((UUID) r[1]);
-            it.setUnitId((UUID) r[2]);
-            it.setUnitRate(BigDecimal.ONE);
-            it.setQty((BigDecimal) r[3]);
-            it.setBaseQty((BigDecimal) r[3]);
+            it.setGoodsId((UUID) r[1]);
+            it.setColorId((UUID) r[2]);
+            it.setUnitId((UUID) r[3]);
+            BigDecimal rate = (BigDecimal) r[4];
+            BigDecimal remain = (BigDecimal) r[5];
+            it.setUnitRate(rate);
+            it.setQty(remain);
+            it.setBaseQty(remain.multiply(rate));
+            it.setUpstreamItemId((UUID) r[0]);
             it.setSourceDocNo(plan.getBillNo());
             stockDocItemRepo.save(it);
         }
@@ -486,10 +745,10 @@ public class MrpService {
      */
     @Transactional
     public MrpGenerateResult generateSubplan(UUID planId) {
-        ProductionPlan plan = requirePlan(planId);
-        if (plan.getStatus() != null && plan.getStatus() == -1) {
-            throw new ApiException(ErrorCode.BUSINESS, "已红冲的计划不可生成子计划");
-        }
+        ProductionPlan plan = lockPlan(planId);
+        assertLegacyDerivedWriteAllowed(planId, "旧版自制件子计划");
+        requireNotTerminal(plan, "子计划");
+        requirePlanningWriteReady();
         var dup = em.createNativeQuery("""
                 SELECT p.bill_no FROM subplan_links l
                 JOIN production_plans p ON p.id = l.subplan_id
@@ -575,17 +834,49 @@ public class MrpService {
      */
     @Transactional
     public List<GenerateSubplansRequest.Created> generateSubplans(UUID planId, GenerateSubplansRequest req) {
-        ProductionPlan plan = requirePlan(planId);
-        if (plan.getStatus() != null && plan.getStatus() == -1) {
-            throw new ApiException(ErrorCode.BUSINESS, "已红冲的计划不可生成子计划");
+        requirePlanningWriteReady();
+        ProductionPlan plan = lockPlan(planId);
+        assertLegacyDerivedWriteAllowed(planId, "旧版车间拆分子计划");
+        return generateSubplansLocked(plan, req);
+    }
+
+    /**
+     * 一键计划包：子计划与可选采购申请在同一事务、同一父计划写锁下生成。
+     * 任何一步失败都会回滚，避免出现“计划已建但采购缺失”的半套状态。
+     */
+    @Transactional
+    public PlanningPackageResult generatePlanningPackage(
+            UUID planId, GeneratePlanningPackageRequest req) {
+        ProductionPlan plan = lockPlan(planId);
+        assertLegacyDerivedWriteAllowed(planId, "旧版计划包");
+        requireNotTerminal(plan, "计划包");
+        requirePlanningWriteReady();
+        if (req == null || req.getItems() == null || req.getItems().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "至少选择一行自制件");
         }
-        // 净需求 + 毛需求/库存/在途 按 货品|颜色 建索引（仅自制件允许拆）
-        record Key(UUID g, UUID c) {}
+        GenerateSubplansRequest subplanRequest = new GenerateSubplansRequest();
+        subplanRequest.setItems(req.getItems());
+        List<GenerateSubplansRequest.Created> subplans =
+                generateSubplansLocked(plan, subplanRequest);
+        MrpGenerateResult purchaseRequest = req.isGeneratePurchaseRequest()
+                ? generatePurchaseLocked(plan, "net", false)
+                : null;
+        return new PlanningPackageResult(null, "LEGACY", false, subplans, purchaseRequest, null);
+    }
+
+    /** 调用方已持有父计划写锁。 */
+    private List<GenerateSubplansRequest.Created> generateSubplansLocked(
+            ProductionPlan plan, GenerateSubplansRequest req) {
+        requireNotTerminal(plan, "子计划");
+        if (req == null || req.getItems() == null || req.getItems().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "至少选择一行自制件");
+        }
+        // 及时缺口按 货品|颜色 建索引（仅自制件允许拆）。
         Map<Key, MrpRow> netByKey = new LinkedHashMap<>();
-        for (MrpRow r : explode(planId)) {
+        for (MrpRow r : explode(plan.getId())) {
             if (r.selfMade()) netByKey.put(new Key(r.goodsId(), r.colorId()), r);
         }
-        // 已有子计划累计量（未删联动 + 未删未红冲子计划）
+        // 已有子计划累计量（未删联动 + 未删未红冲子计划）。
         Map<Key, BigDecimal> usedByKey = new HashMap<>();
         for (Object o : em.createNativeQuery("""
                 SELECT i.goods_id, i.color_id, COALESCE(SUM(i.qty),0)
@@ -594,61 +885,67 @@ public class MrpService {
                 JOIN production_plan_items i ON i.plan_id = sp.id AND i.is_deleted = false
                 WHERE l.plan_id = :planId AND l.is_deleted = false
                 GROUP BY i.goods_id, i.color_id
-                """).setParameter("planId", planId).getResultList()) {
+                """).setParameter("planId", plan.getId()).getResultList()) {
             Object[] r = (Object[]) o;
             usedByKey.put(new Key((UUID) r[0], (UUID) r[1]), (BigDecimal) r[2]);
         }
-        // 逐行校验 + 归组
-        Map<String, List<GenerateSubplansRequest.Line>> byWorkshop = new LinkedHashMap<>();
-        Map<String, String> workshopNames = new LinkedHashMap<>();
+
+        // 逐行校验 + 按“车间/负责人”归组；名称全部以主档为准，禁止自由文本伪造。
+        Map<Assignment, List<PreparedLine>> groups = new LinkedHashMap<>();
+        Map<UUID, String> departmentNames = new HashMap<>();
+        Map<UUID, String> employeeNames = new HashMap<>();
         Map<Key, BigDecimal> requested = new HashMap<>();
         for (GenerateSubplansRequest.Line line : req.getItems()) {
+            validateSubplanLine(line);
             Key k = new Key(line.getGoodsId(), line.getColorId());
             MrpRow row = netByKey.get(k);
             if (row == null) {
                 throw new ApiException(ErrorCode.BUSINESS, "所选货品不是本计划的自制件需求行: " + line.getGoodsId());
             }
-            BigDecimal cap = (row.net() == null ? BigDecimal.ZERO : row.net())
+            if (line.getUnitId() != null && !java.util.Objects.equals(line.getUnitId(), row.unitId())) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "货品 " + row.goodsCode() + " 的单位与 MRP 基本单位不一致，请刷新后重试");
+            }
+            BigDecimal cap = (row.timelyShortage() == null ? BigDecimal.ZERO : row.timelyShortage())
                     .subtract(usedByKey.getOrDefault(k, BigDecimal.ZERO))
                     .subtract(requested.getOrDefault(k, BigDecimal.ZERO));
             if (line.getQty().compareTo(cap) > 0) {
                 throw new ApiException(ErrorCode.BUSINESS,
-                        "货品 " + row.goodsCode() + " 排产量超过可拆量（净需求扣减已有子计划后剩 "
+                        "货品 " + row.goodsCode() + " 排产量超过可拆量（及时缺口扣减已有子计划后剩 "
                                 + cap.stripTrailingZeros().toPlainString() + "）");
             }
             requested.merge(k, line.getQty(), BigDecimal::add);
-            String wk = line.getDepartmentId() == null ? "" : line.getDepartmentId().toString();
-            byWorkshop.computeIfAbsent(wk, x -> new ArrayList<>()).add(line);
-            if (line.getWorkshopName() != null && !line.getWorkshopName().isBlank()) {
-                workshopNames.putIfAbsent(wk, line.getWorkshopName());
-            }
+            Assignment assignment = resolveAssignment(line, departmentNames, employeeNames);
+            groups.computeIfAbsent(assignment, ignored -> new ArrayList<>())
+                    .add(new PreparedLine(line, row));
         }
 
         LocalDate today = BusinessTime.today();
         Object begin = em.createNativeQuery("""
                 SELECT MIN(plan_begin_date) FROM production_plan_items
                 WHERE plan_id = :planId AND is_deleted = false
-                """).setParameter("planId", planId).getSingleResult();
-        LocalDate subDelivery = begin != null
-                ? ((java.sql.Date) begin).toLocalDate() : plan.getDeliveryDate();
+                """).setParameter("planId", plan.getId()).getSingleResult();
+        LocalDate defaultDelivery = localDate(begin);
+        if (defaultDelivery == null) defaultDelivery = plan.getDeliveryDate();
 
         List<GenerateSubplansRequest.Created> created = new ArrayList<>();
         int suffix = nextSubSuffix(plan.getBillNo());
-        for (var e : byWorkshop.entrySet()) {
-            String wk = e.getKey();
-            String wsName = workshopNames.get(wk);
-            UUID deptId = wk.isEmpty() ? null : UUID.fromString(wk);
-            if (wsName == null && deptId != null) {
-                wsName = str(em.createNativeQuery("SELECT name FROM departments WHERE id = :d")
-                        .setParameter("d", deptId).getSingleResult());
-            }
+        for (var entry : groups.entrySet()) {
+            Assignment assignment = entry.getKey();
+            LocalDate groupDelivery = entry.getValue().stream()
+                    .map(PreparedLine::input)
+                    .map(GenerateSubplansRequest.Line::getPlanEndDate)
+                    .filter(java.util.Objects::nonNull)
+                    .max(LocalDate::compareTo)
+                    .orElse(defaultDelivery);
             ProductionPlan sub = new ProductionPlan();
-            // 子计划编号 = 父计划号-N（按创建顺序递增）
             sub.setBillNo(plan.getBillNo() + "-" + suffix++);
             sub.setBillDate(today);
-            sub.setDeliveryDate(subDelivery);
-            sub.setDepartmentId(deptId);
-            sub.setWorkshopName(wsName);
+            sub.setDeliveryDate(groupDelivery);
+            sub.setDepartmentId(assignment.departmentId());
+            sub.setWorkshopName(assignment.workshopName());
+            sub.setWorkerId(assignment.workerId());
+            sub.setWorkerName(assignment.workerName());
             sub.setRemark("父计划 " + plan.getBillNo() + " 自制件拆分生成");
             sub.setSourceDocNo(plan.getBillNo());
             sub.setMakerId(currentUser.requireEmployeeId());
@@ -656,41 +953,110 @@ public class MrpService {
             planRepo.save(sub);
 
             int line = 0;
-            for (GenerateSubplansRequest.Line l : e.getValue()) {
+            for (PreparedLine prepared : entry.getValue()) {
                 line++;
-                MrpRow row = netByKey.get(new Key(l.getGoodsId(), l.getColorId()));
+                GenerateSubplansRequest.Line input = prepared.input();
+                MrpRow row = prepared.mrp();
                 ProductionPlanItem it = new ProductionPlanItem();
                 it.setPlanId(sub.getId());
                 it.setBillNo(sub.getBillNo());
                 it.setBillDate(sub.getBillDate());
                 it.setLineNo(line);
                 it.setProductNo(sub.getBillNo() + "-" + line);
-                it.setGoodsId(l.getGoodsId());
-                it.setColorId(l.getColorId());
-                it.setUnitId(l.getUnitId());
+                it.setGoodsId(input.getGoodsId());
+                it.setColorId(input.getColorId());
+                it.setUnitId(row.unitId());
                 it.setUnitRate(BigDecimal.ONE); // MRP 展开行已是基本单位口径
-                it.setQty(l.getQty());
+                it.setQty(input.getQty());
                 it.setOqty(row.gross());
+                it.setPlanBeginDate(input.getPlanBeginDate());
+                it.setPlanEndDate(input.getPlanEndDate());
                 it.setSourceDocNo(plan.getBillNo());
                 it.setRemark("毛需求 " + row.gross().stripTrailingZeros().toPlainString()
-                        + " − 库存 " + row.onhand().stripTrailingZeros().toPlainString()
-                        + " − 在途 " + row.openPo().stripTrailingZeros().toPlainString());
+                        + " − 当前可用 " + row.availableNow().stripTrailingZeros().toPlainString()
+                        + " − 及时在途 " + row.openPoOnTime().stripTrailingZeros().toPlainString());
                 itemRepo.save(it);
             }
             em.createNativeQuery("""
                     INSERT INTO subplan_links (plan_id, subplan_id, created_by)
                     VALUES (:planId, :subplanId, :by)
-                    """).setParameter("planId", planId).setParameter("subplanId", sub.getId())
+                    """).setParameter("planId", plan.getId()).setParameter("subplanId", sub.getId())
                     .setParameter("by", currentUser.requireId()).executeUpdate();
             created.add(new GenerateSubplansRequest.Created(
-                    sub.getId(), sub.getBillNo(), line, wsName));
+                    sub.getId(), sub.getBillNo(), line, assignment.workshopName()));
         }
         return created;
     }
 
-    private static String str(Object v) {
-        return v == null ? null : v.toString();
+    private void validateSubplanLine(GenerateSubplansRequest.Line line) {
+        if (line == null || line.getGoodsId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "子计划货品不能为空");
+        }
+        if (line.getQty() == null || line.getQty().signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "子计划数量必须大于 0");
+        }
+        if (line.getPlanBeginDate() != null
+                && line.getPlanEndDate() != null
+                && line.getPlanEndDate().isBefore(line.getPlanBeginDate())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "计划完工日期不能早于计划开工日期");
+        }
+        if (line.getDepartmentId() == null && hasText(line.getWorkshopName())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "车间名称必须通过有效部门选择");
+        }
+        if (line.getWorkerId() == null && hasText(line.getWorkerName())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "负责人姓名必须通过有效员工选择");
+        }
     }
+
+    private Assignment resolveAssignment(
+            GenerateSubplansRequest.Line line,
+            Map<UUID, String> departmentNames,
+            Map<UUID, String> employeeNames) {
+        String workshopName = null;
+        if (line.getDepartmentId() != null) {
+            workshopName = departmentNames.get(line.getDepartmentId());
+            if (workshopName == null) {
+                List<?> rows = em.createNativeQuery("""
+                        SELECT name FROM departments
+                        WHERE id = :id AND is_deleted = false
+                        """).setParameter("id", line.getDepartmentId()).getResultList();
+                if (rows.isEmpty()) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "所选车间不存在或已停用");
+                }
+                workshopName = rows.get(0).toString();
+                departmentNames.put(line.getDepartmentId(), workshopName);
+            }
+        }
+        String workerName = null;
+        if (line.getWorkerId() != null) {
+            workerName = employeeNames.get(line.getWorkerId());
+            if (workerName == null) {
+                List<?> rows = em.createNativeQuery("""
+                        SELECT full_name FROM employees
+                        WHERE id = :id AND is_deleted = false
+                          AND status IN ('active', 'probation')
+                        """).setParameter("id", line.getWorkerId()).getResultList();
+                if (rows.isEmpty()) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "所选负责人不存在或当前不可排产");
+                }
+                workerName = rows.get(0).toString();
+                employeeNames.put(line.getWorkerId(), workerName);
+            }
+        }
+        return new Assignment(
+                line.getDepartmentId(), workshopName, line.getWorkerId(), workerName);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private record Key(UUID goodsId, UUID colorId) {}
+
+    private record Assignment(
+            UUID departmentId, String workshopName, UUID workerId, String workerName) {}
+
+    private record PreparedLine(GenerateSubplansRequest.Line input, MrpRow mrp) {}
 
     /** 子计划编号后缀：父计划已有子计划（含已删，防号冲突）的最大 -N + 1。 */
     private int nextSubSuffix(String parentBillNo) {
@@ -709,12 +1075,81 @@ public class MrpService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在"));
     }
 
+    private ProductionPlan lockPlan(UUID planId) {
+        ProductionPlan plan = em.find(
+                ProductionPlan.class, planId, LockModeType.PESSIMISTIC_WRITE);
+        if (plan == null || plan.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在");
+        }
+        return plan;
+    }
+
+    /**
+     * A plan must never mix the V155 execution-segment ledger with legacy
+     * derived-document endpoints. Both paths lock the parent plan first, so
+     * this check is also safe against a concurrent V1 confirmation.
+     */
+    private void assertLegacyDerivedWriteAllowed(UUID planId, String targetName) {
+        Number count = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_planning_packages package
+                        WHERE package.plan_id = :planId
+                          AND package.execution_model_version = 1
+                          AND package.is_deleted = FALSE
+                        """)
+                .setParameter("planId", planId)
+                .getSingleResult();
+        requireNoMixedExecutionModel(count.longValue(), targetName);
+    }
+
+    static void requireNoMixedExecutionModel(
+            long executionSegmentPackageCount,
+            String targetName) {
+        if (executionSegmentPackageCount > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该计划已启用执行子计划，不能再通过旧接口生成" + targetName
+                            + "；请在执行子计划链路内处理，避免重复锁料或重复开单");
+        }
+    }
+
+    private static void requireNotTerminal(ProductionPlan plan, String targetName) {
+        if ((plan.getStatus() != null && plan.getStatus() == -1)
+                || plan.isCanceled()
+                || plan.isStopped()) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    "已红冲、已取消或已中止的生产计划不可生成" + targetName);
+        }
+    }
+
+    private static void requirePlanningWriteReady() {
+        if (!LEGACY_DERIVED_WRITE_READY) {
+            // 不允许两个计划把同一库存/在途重复当作可用后直接落单。
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "MRP 规划写入尚未启用：需先上线统一原料占用、采购供给分配和目标仓校验");
+        }
+    }
+
+    private static void requireApprovedPlanForStock(ProductionPlan plan, String targetName) {
+        if (plan.getStatus() == null
+                || plan.getStatus() != 1
+                || plan.isCanceled()
+                || plan.isStopped()) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    "仅已审核且未取消、未中止的生产计划可生成" + targetName);
+        }
+    }
+
     private List<MrpRow> explode(UUID planId) {
+        validateBomGraph(PLAN_BOM_VALIDATION_SQL, planId);
         return runExplode(MRP_SQL, "planId", planId);
     }
 
     /** D3：销售订单行 BOM 展开（同 MRP_SQL，仅需求源换成已审订单行 qty）。 */
     private List<MrpRow> explodeOrder(UUID orderId) {
+        validateBomGraph(ORDER_BOM_VALIDATION_SQL, orderId);
         return runExplode(MRP_ORDER_SQL, "orderId", orderId);
     }
 
@@ -723,11 +1158,55 @@ public class MrpService {
         List<Object[]> rs = NativeQueryResults.objectArrayRows(q);
         List<MrpRow> out = new ArrayList<>(rs.size());
         for (Object[] x : rs) {
-            out.add(new MrpRow(
-                    (UUID) x[0], (String) x[1], (String) x[2], (String) x[3],
-                    (UUID) x[4], (BigDecimal) x[5], (BigDecimal) x[6], (BigDecimal) x[7],
-                    (BigDecimal) x[8], Boolean.TRUE.equals(x[9]), (UUID) x[10]));
+            String goodsCode = (String) x[1];
+            if (Boolean.TRUE.equals(x[15])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "货品 " + goodsCode + " 的 BOM 数量、颜色映射或需求单位无效，禁止计算齐套");
+            }
+            if (Boolean.TRUE.equals(x[16])) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "货品 " + goodsCode + " 存在未完成采购行的单位或换算率无效，禁止计算齐套");
+            }
+            if (x[14] == null) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "货品 " + goodsCode + " 未维护可解析的基本单位，禁止生成采购或子计划");
+            }
+            out.add(MrpRow.fromAvailability(
+                    (UUID) x[0], goodsCode, (String) x[2], (String) x[3],
+                    (UUID) x[4], decimal(x[5]), Boolean.TRUE.equals(x[13]), (UUID) x[14],
+                    decimal(x[6]), decimal(x[7]), decimal(x[8]),
+                    decimal(x[9]), decimal(x[10]),
+                    localDate(x[11]), localDate(x[12])));
         }
         return out;
+    }
+
+    private void validateBomGraph(String sql, UUID sourceId) {
+        Object result = em.createNativeQuery(sql)
+                .setParameter("sourceId", sourceId)
+                .getSingleResult();
+        Object[] row = (Object[]) result;
+        if (Boolean.TRUE.equals(row[0])) {
+            throw new ApiException(ErrorCode.CONFLICT, "BOM 结构存在循环引用，禁止计算物料需求");
+        }
+        if (Boolean.TRUE.equals(row[1])) {
+            throw new ApiException(ErrorCode.CONFLICT, "BOM 结构超过 10 层，禁止按截断结果排产");
+        }
+    }
+
+    private static BigDecimal decimal(Object value) {
+        if (value == null) return BigDecimal.ZERO;
+        if (value instanceof BigDecimal decimal) return decimal;
+        return new BigDecimal(value.toString());
+    }
+
+    private static LocalDate localDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDate date) return date;
+        if (value instanceof java.sql.Date date) return date.toLocalDate();
+        throw new ApiException(ErrorCode.CONFLICT, "MRP 日期字段类型异常");
     }
 }

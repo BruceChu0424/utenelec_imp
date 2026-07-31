@@ -15,7 +15,11 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             FROM Notice n
             LEFT JOIN NoticeUserState s
               ON s.id.noticeId = n.id AND s.id.userId = :userId
-            WHERE (n.audienceUserId IS NULL OR n.audienceUserId = :userId)
+            WHERE (
+                    (n.audienceUserId IS NULL AND n.audienceScope = 'all')
+                    OR n.audienceUserId = :userId
+                    OR (n.audienceScope = 'selected' AND s IS NOT NULL)
+                  )
               AND (s IS NULL OR s.deletedAt IS NULL)
               AND (:onlyUnread = false OR s IS NULL OR s.readAt IS NULL)
             ORDER BY n.topPriority DESC, n.publishedAt DESC
@@ -30,7 +34,11 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             FROM Notice n
             LEFT JOIN NoticeUserState s
               ON s.id.noticeId = n.id AND s.id.userId = :userId
-            WHERE (n.audienceUserId IS NULL OR n.audienceUserId = :userId)
+            WHERE (
+                    (n.audienceUserId IS NULL AND n.audienceScope = 'all')
+                    OR n.audienceUserId = :userId
+                    OR (n.audienceScope = 'selected' AND s IS NOT NULL)
+                  )
               AND (s IS NULL OR (s.deletedAt IS NULL AND s.readAt IS NULL))
             """)
     long countVisibleUnread(@Param("userId") UUID userId);

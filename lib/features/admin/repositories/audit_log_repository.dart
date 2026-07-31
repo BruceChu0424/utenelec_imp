@@ -23,6 +23,9 @@ abstract interface class AuditLogRepository {
     String? dateFrom,
     String? dateTo,
   });
+
+  /// Loads the redacted before/after payload only when an administrator opens it.
+  Future<AuditLogDetail> detail(int id);
 }
 
 class DioAuditLogRepository implements AuditLogRepository {
@@ -51,6 +54,12 @@ class DioAuditLogRepository implements AuditLogRepository {
       },
     );
     return PagedResult.fromJson(json, AuditLogEntry.fromJson);
+  }
+
+  @override
+  Future<AuditLogDetail> detail(int id) async {
+    final json = await api.get('${ApiEndpoints.adminAuditLogs}/$id');
+    return AuditLogDetail.fromJson(Map<String, dynamic>.from(json as Map));
   }
 }
 

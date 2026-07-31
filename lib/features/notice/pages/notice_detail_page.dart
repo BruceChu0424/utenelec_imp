@@ -101,34 +101,75 @@ class _Content extends StatelessWidget {
           ),
           const SizedBox(height: UtenSpacing.s12),
           // 发布信息
-          Row(
+          Wrap(
+            spacing: UtenSpacing.s16,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: notice.type.color.withValues(alpha: 0.15),
-                child: Icon(
-                  Icons.account_circle_rounded,
-                  size: 20,
-                  color: notice.type.color,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: notice.type.color.withValues(alpha: 0.15),
+                    child: Icon(
+                      Icons.account_circle_rounded,
+                      size: 20,
+                      color: notice.type.color,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    notice.publisher,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: UtenSpacing.s8),
-              Text(
-                notice.publisher,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Text(
-                _fmt(notice.publishedAt),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.schedule_rounded,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s4),
+                  Text(
+                    _fmt(notice.publishedAt),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          if (notice.audienceSummary.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Row(
+              children: [
+                Icon(
+                  Icons.groups_2_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    notice.audienceCount == null
+                        ? notice.audienceSummary
+                        : '${notice.audienceSummary} · ${notice.audienceCount} 人',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s24),
           // 正文
           UtenCard(

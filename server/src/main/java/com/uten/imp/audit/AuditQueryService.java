@@ -2,6 +2,8 @@ package com.uten.imp.audit;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.Pageables;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -68,5 +70,14 @@ public class AuditQueryService {
         Page<AuditLog> p = repo.findAll(spec, pageable);
         List<AuditLogRow> items = p.getContent().stream().map(AuditLogRow::of).toList();
         return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public AuditLogDetail detail(long id) {
+        return repo.findById(id)
+                .map(AuditLogDetail::of)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND, "审计日志不存在或已归档"));
     }
 }

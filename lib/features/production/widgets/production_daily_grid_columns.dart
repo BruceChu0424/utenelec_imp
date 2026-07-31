@@ -27,6 +27,22 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
   final TextEditingController planNo = TextEditingController(); // 关联生产计划号
   final TextEditingController remark = TextEditingController();
 
+  /// 权威报工来源。合并排产必须同时带计划行和销售订单行，禁止只靠计划号猜分摊。
+  String? planItemId;
+  String? executionSegmentId;
+  String? executionSegmentSalesAllocationId;
+  String? executionSegmentCode;
+  int? executionSegmentVersion;
+  String? salesOrderItemId;
+  String? salesOrderNo;
+  String? clientName;
+  double? unitRate;
+  double? orderQty;
+  double? maxReportQty;
+  bool legacyManual = false;
+
+  bool get hasLinkedSource => planItemId != null && planItemId!.isNotEmpty;
+
   /// 颜色/单位（选货品后自动回填；单元格只读显示）。
   final colorIdNotifier = ValueNotifier<String?>(null);
   String? get colorId => colorIdNotifier.value;
@@ -62,6 +78,8 @@ class DailyGridRow extends EditableGridRow with AmountRowMixin {
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   required Future<void> Function(DailyGridRow row) onPickGoods,
+  required Future<void> Function(DailyGridRow row) onPickSource,
+  required void Function(DailyGridRow row) onClearSource,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
 }) {
@@ -71,7 +89,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       label: '货品',
       width: 220,
       cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
+        onTap: row.hasLinkedSource ? null : () => onPickGoods(row),
         child: InputDecorator(
           decoration: const InputDecoration(isDense: true),
           child: Row(
@@ -111,8 +129,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'qty',
-      label: '完工量',
-      width: 96,
+      label: '合格完工量',
+      width: 118,
       numeric: true,
       cellBuilder: (context, row) => TextField(
         controller: row.qty,
@@ -145,11 +163,43 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'planNo',
-      label: '关联计划号',
-      width: 140,
-      cellBuilder: (context, row) => TextField(
-        controller: row.planNo,
-        decoration: const InputDecoration(isDense: true, hintText: '可选'),
+      label: '来源子任务',
+      width: 190,
+      cellBuilder: (context, row) => InkWell(
+        onTap: () => onPickSource(row),
+        child: InputDecorator(
+          decoration: const InputDecoration(isDense: true),
+          child: Row(
+            children: [
+              Expanded(
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: row.planNo,
+                  builder: (_, value, _) => Text(
+                    value.text.isEmpty
+                        ? '点击选择'
+                        : '${value.text}${row.salesOrderNo == null ? '' : ' · ${row.salesOrderNo}'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: value.text.isEmpty
+                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+              if (row.hasLinkedSource)
+                IconButton(
+                  tooltip: '清除来源',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => onClearSource(row),
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                )
+              else
+                const Icon(Icons.search_rounded, size: 16),
+            ],
+          ),
+        ),
       ),
     ),
     EditableGridColumn<DailyGridRow>(

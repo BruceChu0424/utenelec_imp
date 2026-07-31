@@ -18,5 +18,8 @@ public record NoticeDto(
         Instant readAt,
         boolean topPriority,
         String priority,
-        List<String> attachments) {
+        List<String> attachments,
+        String audienceScope,
+        String audienceSummary,
+        Integer audienceCount) {
 }

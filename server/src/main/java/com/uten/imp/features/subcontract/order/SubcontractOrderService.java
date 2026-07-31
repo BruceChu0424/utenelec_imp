@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.order;
 
+import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -8,6 +9,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.features.subcontract.order.dto.OrderCostItemDto;
 import com.uten.imp.features.subcontract.order.dto.OrderDetail;
 import com.uten.imp.features.subcontract.order.dto.OrderItemDto;
@@ -67,6 +69,8 @@ public class SubcontractOrderService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final ProductionSubcontractSupplyTransitionPort productionSupply;
+    private final ProductionSupplySourceGuard productionSourceGuard;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
@@ -124,10 +128,11 @@ public class SubcontractOrderService {
     @Transactional
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
-        SubcontractOrder r = requireOrder(id);
+        SubcontractOrder r = requireOrderForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        productionSourceGuard.requireSubcontractOrderMutable(id);
         applyHeader(req, r);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -139,10 +144,11 @@ public class SubcontractOrderService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractOrder r = requireOrder(id);
+        SubcontractOrder r = requireOrderForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
+        productionSourceGuard.requireSubcontractOrderMutable(id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         orderRepo.save(r);
@@ -155,8 +161,7 @@ public class SubcontractOrderService {
     @Transactional
     public OrderDetail approve(UUID id) {
         tx.bind();
-        SubcontractOrder r = requireOrder(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractOrder r = requireOrderForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -174,6 +179,7 @@ public class SubcontractOrderService {
                                 it.getUnitId(),
                                 it.getQty()))
                         .toList());
+        productionSupply.onSubcontractOrderApproved(id);
         for (SubcontractOrderItem it : items) {
             if (it.getApplicationItemId() != null) {
                 em.createNativeQuery(
@@ -194,8 +200,7 @@ public class SubcontractOrderService {
     @Transactional
     public OrderDetail reverse(UUID id) {
         tx.bind();
-        SubcontractOrder r = requireOrder(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractOrder r = requireOrderForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -211,6 +216,7 @@ public class SubcontractOrderService {
         }
         sourceIntegrity.lockSubcontractApplicationItemsForReversal(
                 items.stream().map(SubcontractOrderItem::getApplicationItemId).toList());
+        productionSupply.onSubcontractOrderReversed(id);
         for (SubcontractOrderItem it : items) {
             if (it.getApplicationItemId() != null) {
                 em.createNativeQuery(
@@ -321,17 +327,32 @@ public class SubcontractOrderService {
     }
 
     private OrderDetail toDetail(SubcontractOrder r, List<OrderItemDto> items) {
+        boolean productionLinked =
+                productionSourceGuard.isSubcontractOrderLinked(r.getId());
         return new OrderDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getCurrencyId(), r.getExchangeRate(), r.getTaxRate(),
                 r.getPurchaserId(), r.getMakerId(), r.getApproverId(), r.getDeliverDate(), r.isFulfill(),
                 r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(), r.isClosed(),
                 r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                productionLinked, !productionLinked, !productionLinked, true,
+                restrictionReason(productionLinked));
+    }
+
+    private String restrictionReason(boolean linked) {
+        return linked ? "该委外订单承接生产物料需求，编辑和删除已锁定；红冲须走守恒校验" : null;
     }
 
     private SubcontractOrder requireOrder(UUID id) {
         return orderRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在"));
+    }
+    private SubcontractOrder requireOrderForUpdate(UUID id) {
+        SubcontractOrder order = em.find(
+                SubcontractOrder.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return order == null || order.isDeleted()
+                ? requireOrder(id)
+                : order;
     }
 }

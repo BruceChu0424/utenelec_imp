@@ -232,6 +232,11 @@ class SubcontractDocDetail {
     this.fulfill = false,
     this.sourceDocNo,
     this.items = const [],
+    this.productionLinked = false,
+    this.canEdit = true,
+    this.canDelete = true,
+    this.canReverse = true,
+    this.restrictionReason,
   });
 
   final String id;
@@ -268,6 +273,11 @@ class SubcontractDocDetail {
   final bool fulfill;
   final String? sourceDocNo;
   final List<SubcontractDocItem> items;
+  final bool productionLinked;
+  final bool canEdit;
+  final bool canDelete;
+  final bool canReverse;
+  final String? restrictionReason;
 
   factory SubcontractDocDetail.fromJson(Map<String, dynamic> json) =>
       SubcontractDocDetail(
@@ -300,6 +310,11 @@ class SubcontractDocDetail {
         apPosted: (json['apPosted'] as bool?) ?? false,
         fulfill: (json['fulfill'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
+        productionLinked: (json['productionLinked'] as bool?) ?? false,
+        canEdit: (json['canEdit'] as bool?) ?? true,
+        canDelete: (json['canDelete'] as bool?) ?? true,
+        canReverse: (json['canReverse'] as bool?) ?? true,
+        restrictionReason: json['restrictionReason'] as String?,
         items:
             (json['items'] as List?)
                 ?.map(

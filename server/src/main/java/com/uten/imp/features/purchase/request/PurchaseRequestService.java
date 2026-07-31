@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -52,6 +53,7 @@ public class PurchaseRequestService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final jakarta.persistence.EntityManager em;
+    private final ProductionSupplySourceGuard productionSourceGuard;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -99,8 +101,9 @@ public class PurchaseRequestService {
     @Transactional
     public RequestDetail update(UUID id, RequestSaveRequest req) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        productionSourceGuard.requirePurchaseRequestMutable(id);
         applyHeader(req, r);
         itemRepo.deleteByRequestId(id);
         itemRepo.flush();
@@ -112,8 +115,9 @@ public class PurchaseRequestService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        productionSourceGuard.requirePurchaseRequestMutable(id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         requestRepo.save(r);
@@ -123,8 +127,7 @@ public class PurchaseRequestService {
     @Transactional
     public RequestDetail approve(UUID id) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (itemRepo.findByRequestIdOrderByLineNoAsc(id).isEmpty())
@@ -138,10 +141,10 @@ public class PurchaseRequestService {
     @Transactional
     public RequestDetail reverse(UUID id) {
         tx.bind();
-        PurchaseRequest r = requireRequest(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        productionSourceGuard.requirePurchaseRequestMutable(id);
         List<PurchaseRequestItem> items = itemRepo.findByRequestIdOrderByLineNoAsc(id);
         if (items.stream().anyMatch(it ->
                 it.getOrderedQty() != null && it.getOrderedQty().signum() > 0)) {
@@ -213,15 +216,31 @@ public class PurchaseRequestService {
     }
 
     private RequestDetail toDetail(PurchaseRequest r, List<RequestItemDto> items) {
+        boolean productionLinked =
+                productionSourceGuard.isPurchaseRequestLinked(r.getId());
         return new RequestDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(),
                 r.getStatus(), r.isClosed(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                productionLinked, !productionLinked, !productionLinked,
+                !productionLinked,
+                restrictionReason(productionLinked));
+    }
+
+    private String restrictionReason(boolean linked) {
+        return linked ? "该采购申请关联生产物料需求，请在生产计划专用流程中调整或红冲" : null;
     }
 
     private PurchaseRequest requireRequest(UUID id) {
         return requestRepo.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购申请单不存在"));
+    }
+    private PurchaseRequest requireRequestForUpdate(UUID id) {
+        PurchaseRequest request = em.find(
+                PurchaseRequest.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return request == null || request.isDeleted()
+                ? requireRequest(id)
+                : request;
     }
 }

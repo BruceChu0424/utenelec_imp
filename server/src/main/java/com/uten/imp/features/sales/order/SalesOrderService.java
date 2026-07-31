@@ -35,6 +35,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
@@ -257,12 +258,92 @@ public class SalesOrderService {
                 ORDER BY i.line_no NULLS LAST, i.id
                 """).setParameter("oid", id).getResultList();
         List<UUID> itemIds = rows.stream().map(r -> (UUID) r[0]).toList();
+        Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.ExecutionSegmentProgress>>
+                segmentsByLink = new HashMap<>();
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.PlanLink>> byItem =
                 new HashMap<>();
         if (!itemIds.isEmpty()) {
             @SuppressWarnings("unchecked")
+            List<Object[]> segmentRows = em.createNativeQuery("""
+                    SELECT allocation.plan_order_item_link_id,
+                           segment.id, segment.segment_code, segment.status,
+                           allocation.allocated_qty,
+                           COALESCE((
+                               SELECT SUM(report_item.qty)
+                               FROM production_daily_report_items report_item
+                               JOIN production_daily_reports report
+                                 ON report.id = report_item.report_id
+                               WHERE report_item.execution_segment_sales_allocation_id =
+                                     allocation.id
+                                 AND report_item.is_deleted = FALSE
+                                 AND report.is_deleted = FALSE
+                                 AND report.status = 1
+                           ), 0) AS reported_qty,
+                           COALESCE((
+                               SELECT SUM(stock_item.qty)
+                               FROM stock_document_items stock_item
+                               JOIN stock_documents stock_document
+                                 ON stock_document.id = stock_item.doc_id
+                               WHERE stock_item.execution_segment_sales_allocation_id =
+                                     allocation.id
+                                 AND stock_item.is_deleted = FALSE
+                                 AND stock_document.is_deleted = FALSE
+                                 AND stock_document.doc_type = 'FINISHED_IN'
+                                 AND stock_document.status = 1
+                           ), 0) AS inbound_qty,
+                           workshop.name, team.name,
+                           segment.plan_begin_date, segment.plan_end_date,
+                           (
+                               SELECT MIN(event.created_at)
+                               FROM production_execution_segment_events event
+                               WHERE event.execution_segment_id = segment.id
+                                 AND event.action = 'START'
+                           ) AS actual_start_at,
+                           (
+                               segment.status <> 'COMPLETED'
+                               AND segment.plan_end_date IS NOT NULL
+                               AND segment.plan_end_date < CURRENT_DATE
+                           ) AS delayed
+                    FROM execution_segment_sales_allocations allocation
+                    JOIN production_execution_segments segment
+                      ON segment.id = allocation.execution_segment_id
+                     AND segment.is_deleted = FALSE
+                    LEFT JOIN departments workshop
+                      ON workshop.id = segment.workshop_department_id
+                     AND workshop.is_deleted = FALSE
+                    LEFT JOIN departments team
+                      ON team.id = segment.team_department_id
+                     AND team.is_deleted = FALSE
+                    WHERE allocation.sales_order_item_id IN (:ids)
+                    ORDER BY allocation.plan_order_item_link_id,
+                             segment.plan_begin_date ASC NULLS LAST,
+                             segment.segment_no,
+                             segment.id
+                    """).setParameter("ids", itemIds).getResultList();
+            for (Object[] segment : segmentRows) {
+                boolean delayed = Boolean.TRUE.equals(segment[12]);
+                segmentsByLink.computeIfAbsent(
+                                (UUID) segment[0],
+                                ignored -> new ArrayList<>())
+                        .add(new com.uten.imp.features.sales.order.dto.PlanProgressLine.ExecutionSegmentProgress(
+                                (UUID) segment[1],
+                                (String) segment[2],
+                                (String) segment[3],
+                                nz((BigDecimal) segment[4]),
+                                nz((BigDecimal) segment[5]),
+                                nz((BigDecimal) segment[6]),
+                                (String) segment[7],
+                                (String) segment[8],
+                                localDate(segment[9]),
+                                localDate(segment[10]),
+                                offsetDateTime(segment[11]),
+                                delayed,
+                                delayed ? "Planned completion date has passed" : null));
+            }
+
+            @SuppressWarnings("unchecked")
             List<Object[]> links = em.createNativeQuery("""
-                    SELECT l.order_item_id, p.id, p.bill_no, p.status, p.is_closed, p.bill_date,
+                    SELECT l.id, l.order_item_id, p.id, p.bill_no, p.status, p.is_closed, p.bill_date,
                            l.allocated_qty, COALESCE(l.produced_qty,0), COALESCE(l.inbound_qty,0)
                     FROM plan_order_item_links l
                     JOIN production_plan_items pi ON pi.id = l.plan_item_id
@@ -271,13 +352,16 @@ public class SalesOrderService {
                     ORDER BY p.bill_date DESC NULLS LAST, p.bill_no
                     """).setParameter("ids", itemIds).getResultList();
             for (Object[] l : links) {
-                byItem.computeIfAbsent((UUID) l[0], k -> new ArrayList<>())
+                byItem.computeIfAbsent((UUID) l[1], k -> new ArrayList<>())
                         .add(new com.uten.imp.features.sales.order.dto.PlanProgressLine.PlanLink(
-                                (UUID) l[1], (String) l[2],
-                                l[3] == null ? null : ((Number) l[3]).shortValue(),
-                                Boolean.TRUE.equals(l[4]),
-                                l[5] == null ? null : ((java.sql.Date) l[5]).toLocalDate(),
-                                nz((BigDecimal) l[6]), nz((BigDecimal) l[7]), nz((BigDecimal) l[8])));
+                                (UUID) l[2], (String) l[3],
+                                l[4] == null ? null : ((Number) l[4]).shortValue(),
+                                Boolean.TRUE.equals(l[5]),
+                                localDate(l[6]),
+                                nz((BigDecimal) l[7]), nz((BigDecimal) l[8]),
+                                nz((BigDecimal) l[9]),
+                                segmentsByLink.getOrDefault(
+                                        (UUID) l[0], List.of())));
             }
         }
         List<com.uten.imp.features.sales.order.dto.PlanProgressLine> out = new ArrayList<>(rows.size());
@@ -377,7 +461,7 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
-        SalesOrder o = requireWritableOrder(id);
+        SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -398,7 +482,7 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public void delete(UUID id) {
         tx.bind();
-        SalesOrder o = requireWritableOrder(id);
+        SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -412,12 +496,11 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail approve(UUID id) {
         tx.bind();
-        SalesOrder o = requireWritableOrder(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
-        List<SalesOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        List<SalesOrderItem> items = lockOrderItems(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
@@ -433,17 +516,21 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail reverse(UUID id) {
         tx.bind();
-        SalesOrder o = requireWritableOrder(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        List<SalesOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        List<SalesOrderItem> items = lockOrderItems(id);
+        Map<UUID, List<PlanOrderItemLink>> activeLinks = lockActivePlanLinks(items);
+        for (SalesOrderItem item : items) {
+            requireConsistentPlanningLedger(item, activeLinks.getOrDefault(item.getId(), List.of()));
+        }
         for (SalesOrderItem it : items) {
             if (nz(it.getShippedQty()).signum() > 0) {
                 throw new ApiException(ErrorCode.BUSINESS, "订单已有发货记录，不能整单红冲；请只取消未发货部分");
             }
-            if (nz(it.getPlannedQty()).signum() > 0) {
+            if (nz(it.getPlannedQty()).signum() > 0
+                    || !activeLinks.getOrDefault(it.getId(), List.of()).isEmpty()) {
                 throw new ApiException(ErrorCode.BUSINESS, "订单已排产，需生产部确认后走取消流程");
             }
             if (nz(it.getProducedQty()).signum() > 0) {
@@ -476,7 +563,10 @@ public class SalesOrderService {
         for (SalesOrderItem it : items) {
             BigDecimal rate = it.getUnitRate() != null && it.getUnitRate().signum() > 0
                     ? it.getUnitRate() : BigDecimal.ONE;
-            BigDecimal needBase = nz(it.getQty()).multiply(rate);
+            BigDecimal needQty = outstanding(
+                    it.getQty(), it.getShippedQty(), it.getReturnedQty(), it.getFlagQty())
+                    .max(BigDecimal.ZERO);
+            BigDecimal needBase = needQty.multiply(rate);
             String key = it.getGoodsId() + "|" + (it.getColorId() == null ? "" : it.getColorId());
             BigDecimal avail = pool.computeIfAbsent(key,
                     k -> reservationService.globalAvailableBase(it.getGoodsId(), it.getColorId()));
@@ -487,7 +577,8 @@ public class SalesOrderService {
                 pool.put(key, avail.subtract(take));
             }
             it.setReservedQty(take.divide(rate, 4, RoundingMode.HALF_UP));
-            it.setChainStatus(take.compareTo(needBase) >= 0 ? CHAIN_SHIPPABLE
+            it.setChainStatus(needQty.signum() == 0 ? CHAIN_SHIPPED
+                    : take.compareTo(needBase) >= 0 ? CHAIN_SHIPPABLE
                     : take.signum() > 0 ? CHAIN_PARTIAL_RESERVED : CHAIN_PENDING_PLAN);
             itemRepo.save(it);
         }
@@ -502,8 +593,7 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail changeQty(UUID id, com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest req) {
         tx.bind();
-        SalesOrder o = requireWritableOrder(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可改量（草稿请直接编辑）");
         }
@@ -511,25 +601,39 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "已中止订单不可改量");
         }
         Map<UUID, SalesOrderItem> items = new HashMap<>();
-        for (SalesOrderItem it : itemRepo.findByOrderIdOrderByLineNoAsc(id)) items.put(it.getId(), it);
+        List<SalesOrderItem> lockedItems = lockOrderItems(id);
+        for (SalesOrderItem it : lockedItems) items.put(it.getId(), it);
+        Map<UUID, List<PlanOrderItemLink>> activeLinks = lockActivePlanLinks(lockedItems);
+        for (SalesOrderItem item : lockedItems) {
+            requireConsistentPlanningLedger(item, activeLinks.getOrDefault(item.getId(), List.of()));
+        }
 
         // 第一遍：校验 + 是否涉及已排产/已产（触发生产确认权限点）
+        java.util.Set<UUID> changedOrderItemIds = new java.util.HashSet<>();
         boolean touchesPlanned = false;
         for (var l : req.getItems()) {
+            if (l.getOrderItemId() == null
+                    || !changedOrderItemIds.add(l.getOrderItemId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "改量订单行不可为空或重复");
+            }
             SalesOrderItem it = items.get(l.getOrderItemId());
             if (it == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单行不属于本订单");
             if (l.getNewQty() == null || l.getNewQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "新数量必须大于 0");
             }
-            BigDecimal floor = nz(it.getShippedQty()).subtract(nz(it.getReturnedQty())).max(BigDecimal.ZERO);
+            BigDecimal floor = minimumOrderQty(
+                    it.getShippedQty(), it.getReturnedQty(), it.getFlagQty());
             if (l.getNewQty().compareTo(floor) < 0) {
                 throw new ApiException(ErrorCode.BUSINESS,
-                        "新数量不能低于已发净量（" + floor.stripTrailingZeros().toPlainString() + "）");
+                        "新数量不能低于已履约净量（" + floor.stripTrailingZeros().toPlainString() + "）");
             }
-            if (nz(it.getPlannedQty()).signum() > 0 || nz(it.getProducedQty()).signum() > 0) {
+            if (nz(it.getPlannedQty()).signum() > 0
+                    || nz(it.getProducedQty()).signum() > 0
+                    || !activeLinks.getOrDefault(it.getId(), List.of()).isEmpty()) {
                 touchesPlanned = true;
             }
         }
+        requireNoFrozenExecutionAllocationDecrease(req, items);
         if (touchesPlanned) requirePlannedChangePermission();
 
         // 第二遍：逐行应用
@@ -566,13 +670,15 @@ public class SalesOrderService {
                     BigDecimal rem = cut.subtract(relRow);
                     if (rem.signum() > 0) {
                         List<PlanOrderItemLink> links = new ArrayList<>(
-                                linkRepo.findActiveByOrderItemId(it.getId()));
-                        links.sort(java.util.Comparator.comparing(PlanOrderItemLink::getCreatedAt,
-                                java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())));
+                                activeLinks.getOrDefault(it.getId(), List.of()));
                         for (PlanOrderItemLink link : links) {
                             if (rem.signum() <= 0) break;
                             BigDecimal c = link.getAllocatedQty().subtract(link.getProducedQty()).min(rem);
                             if (c.signum() <= 0) continue;
+                            if (planned.compareTo(c) < 0) {
+                                throw new ApiException(ErrorCode.CONFLICT,
+                                        "订单已排产累计小于联动回退量，禁止自动吞并错账");
+                            }
                             if (c.compareTo(link.getAllocatedQty()) == 0) {
                                 link.setDeleted(true); // 整笔分摊取消（留痕）
                                 link.setDeletedAt(OffsetDateTime.now());
@@ -589,11 +695,14 @@ public class SalesOrderService {
                     }
                 }
             }
-            BigDecimal open = newQty.subtract(nz(it.getShippedQty()));
+            BigDecimal open = outstanding(
+                    newQty, it.getShippedQty(), it.getReturnedQty(), it.getFlagQty());
+            BigDecimal unfinishedPlan = planned.subtract(nz(it.getProducedQty()))
+                    .max(BigDecimal.ZERO);
             short chain = !chained ? 0
                     : open.signum() <= 0 ? CHAIN_SHIPPED
                     : reserved.compareTo(open) >= 0 ? CHAIN_SHIPPABLE
-                    : planned.signum() > 0 ? CHAIN_PLANNED
+                    : unfinishedPlan.signum() > 0 ? CHAIN_PLANNED
                     : reserved.signum() > 0 ? CHAIN_PARTIAL_RESERVED : CHAIN_PENDING_PLAN;
             em.createNativeQuery("""
                     UPDATE sales_order_items
@@ -603,7 +712,7 @@ public class SalesOrderService {
                         reserved_qty = :r, planned_qty = :p, chain_status = :cs, updated_at = now()
                     WHERE id = :id
                     """).setParameter("q", newQty).setParameter("r", reserved)
-                    .setParameter("p", planned.max(BigDecimal.ZERO)).setParameter("cs", chain)
+                    .setParameter("p", planned).setParameter("cs", chain)
                     .setParameter("id", it.getId()).executeUpdate();
         }
         recalcTotalsAndClosed(id);
@@ -619,28 +728,38 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail cancel(UUID id) {
         tx.bind();
-        SalesOrder o = requireWritableOrder(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单可取消（草稿直接删除）");
         }
         if (o.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "订单已中止");
         }
-        List<SalesOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        List<SalesOrderItem> items = lockOrderItems(id);
+        Map<UUID, List<PlanOrderItemLink>> activeLinks = lockActivePlanLinks(items);
+        for (SalesOrderItem item : items) {
+            requireConsistentPlanningLedger(item, activeLinks.getOrDefault(item.getId(), List.of()));
+        }
         boolean anyShipped = items.stream().anyMatch(i -> nz(i.getShippedQty()).signum() > 0);
         if (anyShipped) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "已有发货记录，不能整单取消；请用改量把数量改为已发量以取消未发部分");
         }
         boolean touchesPlanned = items.stream()
-                .anyMatch(i -> nz(i.getPlannedQty()).signum() > 0 || nz(i.getProducedQty()).signum() > 0);
-        if (touchesPlanned) requirePlannedChangePermission();
+                .anyMatch(i -> cancellationRequiresProductionClearance(
+                        i.getPlannedQty(),
+                        i.getProducedQty(),
+                        !activeLinks.getOrDefault(i.getId(), List.of()).isEmpty()));
+        if (touchesPlanned) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "订单已有排产、在产或完工关联；请先取消/红冲未开工子计划，"
+                            + "已领料先退料、已完工先解除订单预留，再取消订单");
+        }
 
         // 释放全部预留（已产成品的预留一并释放=回通用库存）
         reservationService.releaseByOrderItems(items.stream().map(SalesOrderItem::getId).toList());
         for (SalesOrderItem it : items) {
-            for (PlanOrderItemLink link : linkRepo.findActiveByOrderItemId(it.getId())) {
+            for (PlanOrderItemLink link : activeLinks.getOrDefault(it.getId(), List.of())) {
                 link.setDeleted(true);
                 link.setDeletedAt(OffsetDateTime.now());
                 linkRepo.save(link);
@@ -656,6 +775,51 @@ public class SalesOrderService {
         return detail(id);
     }
 
+    /**
+     * V157 segment ownership is immutable.  A quantity decrease must not
+     * shrink or soft-delete a plan link after a V1 package was confirmed.
+     */
+    private void requireNoFrozenExecutionAllocationDecrease(
+            com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest request,
+            Map<UUID, SalesOrderItem> items) {
+        List<UUID> decreasingOrderItemIds = request.getItems().stream()
+                .filter(line -> {
+                    SalesOrderItem item = items.get(line.getOrderItemId());
+                    return item != null
+                            && line.getNewQty() != null
+                            && line.getNewQty().compareTo(
+                                    nz(item.getQty())) < 0;
+                })
+                .map(line -> line.getOrderItemId())
+                .distinct()
+                .sorted()
+                .toList();
+        if (decreasingOrderItemIds.isEmpty()) {
+            return;
+        }
+        Number frozen = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM execution_segment_sales_allocations allocation
+                        JOIN production_execution_segments segment
+                          ON segment.id = allocation.execution_segment_id
+                         AND segment.is_deleted = FALSE
+                        JOIN production_planning_packages package
+                          ON package.id = segment.package_id
+                         AND package.is_deleted = FALSE
+                        WHERE allocation.sales_order_item_id IN (:ids)
+                          AND package.status = 'CONFIRMED'
+                          AND package.execution_model_version = 1
+                          AND segment.status NOT IN ('CANCELLED', 'REVERSED')
+                        """)
+                .setParameter("ids", decreasingOrderItemIds)
+                .getSingleResult();
+        if (frozen.longValue() > 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "订单数量已被已确认执行计划包冻结；请先取消或红冲对应执行计划包后再减量");
+        }
+    }
+
     /** 生产确认权限点（V100）：改量/取消涉及已排产或已产行时必须。 */
     private void requirePlannedChangePermission() {
         var u = currentUser.get()
@@ -667,6 +831,15 @@ public class SalesOrderService {
         }
     }
 
+
+    /**
+     * 权限不能替代计划红冲、物料退回和成品预留解除。
+     */
+    static boolean cancellationRequiresProductionClearance(
+            BigDecimal planned, BigDecimal produced, boolean hasActivePlanLink) {
+        return nz(planned).signum() > 0
+                || nz(produced).signum() > 0 || hasActivePlanLink;
+    }
     /** 主表合计 + 结案重算（改量后；与出货 Service 结案口径一致）。 */
     private void recalcTotalsAndClosed(UUID orderId) {
         em.createNativeQuery("""
@@ -689,6 +862,18 @@ public class SalesOrderService {
         return v == null ? BigDecimal.ZERO : v;
     }
 
+
+    /** 订单数量不可低于已发净量再加业务核销量。 */
+    static BigDecimal minimumOrderQty(
+            BigDecimal shipped, BigDecimal returned, BigDecimal flagged) {
+        return nz(shipped).subtract(nz(returned)).add(nz(flagged)).max(BigDecimal.ZERO);
+    }
+
+    /** 统一未交口径：订单量 - 已发 + 已退 - 核销。 */
+    static BigDecimal outstanding(
+            BigDecimal qty, BigDecimal shipped, BigDecimal returned, BigDecimal flagged) {
+        return nz(qty).subtract(nz(shipped)).add(nz(returned)).subtract(nz(flagged));
+    }
     /**
      * 中止位切换（业务链收口）：已审订单的中止=取消（释放预留/断排产联动，V100）；
      * 恢复中止=重跑库存检查+软预留（排产联动已断，缺口回到调度待排产）。草稿单仅置位。
@@ -697,14 +882,13 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail toggleStopped(UUID id, boolean stopped) {
         tx.bind();
-        SalesOrder o = requireWritableOrder(id);
+        SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() != null && o.getStatus() == STATUS_APPROVED) {
             if (stopped && !o.isStopped()) {
                 return cancel(id);
             }
             if (!stopped && o.isStopped()) {
-                em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-                List<SalesOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+                List<SalesOrderItem> items = lockOrderItems(id);
                 reserveOnApprove(o, items); // 重预留（行状态 7/1/2 自动重算）
                 o.setStopped(false);
                 orderRepo.save(o);
@@ -860,5 +1044,151 @@ public class SalesOrderService {
         SalesOrder order = requireOrder(id);
         accessPolicy.requireWritable(order.getOwnerEmployeeId(), "只能操作本人负责的销售订货单");
         return order;
+    }
+
+    /**
+     * 先做归属校验，再以数据库当前值重新加写锁并 refresh。
+     * 避免普通 find 得到的受管实体在等待并发事务后仍携带旧 status/isStopped。
+     */
+    private SalesOrder requireWritableOrderForUpdate(UUID id) {
+        SalesOrder visible = requireWritableOrder(id);
+        SalesOrder locked = em.find(
+                SalesOrder.class, visible.getId(),
+                jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (locked == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在");
+        }
+        em.refresh(locked, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (locked.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在");
+        }
+        accessPolicy.requireWritable(locked.getOwnerEmployeeId(), "只能操作本人负责的销售订货单");
+        return locked;
+    }
+
+    /**
+     * 锁后核对订单累计与当前有效联动。禁止用 max(0) 掩盖历史错账。
+     */
+    private static void requireConsistentPlanningLedger(
+            SalesOrderItem item, List<PlanOrderItemLink> links) {
+        BigDecimal reserved = item.getReservedQty();
+        BigDecimal planned = item.getPlannedQty();
+        BigDecimal produced = item.getProducedQty();
+        if (reserved == null || reserved.signum() < 0
+                || planned == null || planned.signum() < 0
+                || produced == null || produced.signum() < 0
+                || produced.compareTo(planned) > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "订单预留/排产/完工累计异常，禁止改量或取消");
+        }
+        BigDecimal linkedAllocated = links.stream()
+                .map(PlanOrderItemLink::getAllocatedQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (planned.compareTo(linkedAllocated) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "订单已排产累计与有效分摊不一致，禁止自动修正");
+        }
+    }
+
+    /** 订单头锁定后，按 UUID 稳定顺序锁定并刷新当前有效订单行。 */
+    private List<SalesOrderItem> lockOrderItems(UUID orderId) {
+        List<UUID> ids = com.uten.imp.common.util.NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT id
+                        FROM sales_order_items
+                        WHERE order_id = :orderId
+                          AND COALESCE(is_deleted, false) = false
+                        ORDER BY id
+                        FOR UPDATE
+                        """).setParameter("orderId", orderId), UUID.class);
+        List<SalesOrderItem> items = new ArrayList<>(ids.size());
+        for (UUID itemId : ids) {
+            SalesOrderItem item = em.find(
+                    SalesOrderItem.class, itemId,
+                    jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (item == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "销售订货单明细已被并发删除");
+            }
+            em.refresh(item, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (!orderId.equals(item.getOrderId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "销售订货单明细归属已变化");
+            }
+            items.add(item);
+        }
+        items.sort(java.util.Comparator
+                .comparing(SalesOrderItem::getLineNo,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                .thenComparing(SalesOrderItem::getId));
+        return items;
+    }
+
+    /** 订单头/行之后锁有效排产联动，后续减量或取消只写 refresh 后的当前实体。 */
+    private Map<UUID, List<PlanOrderItemLink>> lockActivePlanLinks(
+            List<SalesOrderItem> items) {
+        if (items.isEmpty()) return Map.of();
+        List<UUID> orderItemIds = items.stream()
+                .map(SalesOrderItem::getId).sorted().toList();
+        List<UUID> linkIds = com.uten.imp.common.util.NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT id
+                        FROM plan_order_item_links
+                        WHERE order_item_id IN (:orderItemIds)
+                          AND COALESCE(is_deleted, false) = false
+                        ORDER BY id
+                        FOR UPDATE
+                        """).setParameter("orderItemIds", orderItemIds), UUID.class);
+        Map<UUID, List<PlanOrderItemLink>> byOrderItem = new HashMap<>();
+        java.util.Set<UUID> allowed = new java.util.HashSet<>(orderItemIds);
+        for (UUID linkId : linkIds) {
+            PlanOrderItemLink link = em.find(
+                    PlanOrderItemLink.class, linkId,
+                    jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (link == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "排产分摊已被并发删除");
+            }
+            em.refresh(link, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            BigDecimal allocated = link.getAllocatedQty();
+            BigDecimal produced = link.getProducedQty();
+            if (link.isDeleted()
+                    || !allowed.contains(link.getOrderItemId())
+                    || allocated == null || allocated.signum() < 0
+                    || produced == null || produced.signum() < 0
+                    || produced.compareTo(allocated) > 0
+                    || (link.getCappedQty() != null && link.getCappedQty().signum() < 0)) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "排产分摊状态或数量异常，禁止改量/取消");
+            }
+            byOrderItem.computeIfAbsent(link.getOrderItemId(), ignored -> new ArrayList<>())
+                    .add(link);
+        }
+        for (List<PlanOrderItemLink> links : byOrderItem.values()) {
+            links.sort(java.util.Comparator
+                    .comparing(PlanOrderItemLink::getCreatedAt,
+                            java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder()))
+                    .thenComparing(PlanOrderItemLink::getId)
+                    .reversed());
+        }
+        return byOrderItem;
+    }
+
+    private static LocalDate localDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDate date) return date;
+        return ((java.sql.Date) value).toLocalDate();
+    }
+
+    private static OffsetDateTime offsetDateTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof OffsetDateTime dateTime) return dateTime;
+        if (value instanceof java.time.ZonedDateTime dateTime) {
+            return dateTime.toOffsetDateTime();
+        }
+        if (value instanceof java.time.Instant instant) {
+            return instant.atOffset(java.time.ZoneOffset.UTC);
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        }
+        throw new IllegalArgumentException("Unsupported timestamp type: " + value.getClass());
     }
 }

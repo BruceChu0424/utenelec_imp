@@ -24,6 +24,8 @@ public class DailyReportItemDto {
     private UUID salesOrderItemId;
     private String salesOrderNo;
     private UUID planItemId;
+    private UUID executionSegmentId;
+    private UUID executionSegmentSalesAllocationId;
     private String planNo;
     private String outboundNo;
     private BigDecimal outboundQty;

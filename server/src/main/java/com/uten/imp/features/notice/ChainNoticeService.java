@@ -1,16 +1,13 @@
 package com.uten.imp.features.notice;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.features.notice.outbox.BusinessOutboxPublisher;
 import com.uten.imp.features.rbac.UserRoleRepository;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -22,18 +19,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW;
-
 /**
  * 业务链自动通知（SOP §一 8 类：排产/完工/部分完工/数量不足补产/发货/驳回/延期预警/取消确认/缺料）。
  *
- * <p><b>旁路原则</b>：所有发送都推迟到主事务提交后（afterCommit）执行，且在独立新事务
- * （REQUIRES_NEW）中读数+落库，单个接收人失败只记日志，绝不影响主业务事务。
+ * <p><b>可靠旁路原则</b>：业务事务只向 {@code business_outbox} 追加事件；后台处理器
+ * 以 {@code FOR UPDATE SKIP LOCKED} 认领，并在同一事务中生成全部站内通知和送达标记。
+ * 任一接收人失败会整体回滚并指数退避重试，因此不会出现主单回滚后误发或部分通知永久丢失。
  *
  * <p>接收人解析：订单归属销售（owner_employee_id，回退 seller_id）→ 员工账号；
  * 采购/调度按角色码（buyer/planner）广播。业务 Service 只传单据 ID，内容在此统一按 ID 自查组装。
  */
-@Slf4j
 @Service
 public class ChainNoticeService {
 
@@ -43,31 +38,92 @@ public class ChainNoticeService {
     public static final String TYPE_URGENT = "urgent";
 
     private static final String PUBLISHER = "系统";
+    static final String EVENT_PLAN_SCHEDULED = "PRODUCTION_PLAN_SCHEDULED";
+    static final String EVENT_PRODUCTION_REPORTED = "PRODUCTION_REPORTED";
+    static final String EVENT_FINISHED_INBOUND = "PRODUCTION_FINISHED_INBOUND";
+    static final String EVENT_REMAKE_CREATED = "PRODUCTION_REMAKE_CREATED";
+    static final String EVENT_SEGMENT_READY = "PRODUCTION_SEGMENT_READY";
+    static final String EVENT_SEGMENT_DISPATCHED = "PRODUCTION_SEGMENT_DISPATCHED";
+    static final String EVENT_SEGMENT_STARTED = "PRODUCTION_SEGMENT_STARTED";
+    static final String EVENT_SHIPMENT_APPROVED = "SALES_SHIPMENT_APPROVED";
+    static final String EVENT_SHIPMENT_REJECTED = "SALES_SHIPMENT_REJECTED";
+    static final String EVENT_ORDER_CANCELED = "SALES_ORDER_CANCELED";
+    static final String EVENT_ORDER_APPROVED = "SALES_ORDER_APPROVED";
+    static final String EVENT_DELIVERY_DUE = "SALES_DELIVERY_DUE";
+    private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
+            ThreadLocal.withInitial(() -> false);
+
 
     private final NoticeService noticeService;
     private final UserAccountRepository userRepo;
     private final UserRoleRepository userRoleRepo;
     private final JdbcTemplate jdbc;
-    private final TransactionTemplate newTx;
+    private final BusinessOutboxPublisher outbox;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
                               UserRoleRepository userRoleRepo,
                               JdbcTemplate jdbc,
-                              PlatformTransactionManager txManager) {
+                              BusinessOutboxPublisher outbox) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.userRoleRepo = userRoleRepo;
         this.jdbc = jdbc;
-        this.newTx = new TransactionTemplate(txManager);
-        this.newTx.setPropagationBehavior(PROPAGATION_REQUIRES_NEW);
+        this.outbox = outbox;
+    }
+
+    /** Called only by the locked outbox processor inside its delivery transaction. */
+    public void deliverOutboxEvent(String eventType, UUID aggregateId, JsonNode payload) {
+        OUTBOX_DELIVERY.set(true);
+        try {
+            switch (eventType) {
+                case EVENT_PLAN_SCHEDULED ->
+                        notifyPlanScheduled(aggregateId, payload.path("shortage").asBoolean(false));
+                case EVENT_PRODUCTION_REPORTED ->
+                        notifyProductionReported(aggregateId);
+                case EVENT_FINISHED_INBOUND -> notifyFinishedInbound(aggregateId);
+                case EVENT_REMAKE_CREATED ->
+                        notifyRemakeCreated(payload.path("reportBillNo").asText());
+                case EVENT_SEGMENT_READY ->
+                        notifyExecutionSegmentReady(
+                                aggregateId,
+                                null,
+                                payload.path("sourceType").asText(""));
+                case EVENT_SEGMENT_DISPATCHED ->
+                        notifyExecutionSegmentTransition(aggregateId, false);
+                case EVENT_SEGMENT_STARTED ->
+                        notifyExecutionSegmentTransition(aggregateId, true);
+                case EVENT_SHIPMENT_APPROVED -> notifyShipmentApproved(aggregateId);
+                case EVENT_SHIPMENT_REJECTED ->
+                        notifyShipmentRejected(aggregateId, payload.path("reason").asText(""));
+                case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
+                case EVENT_ORDER_APPROVED -> notifyOrderApproved(aggregateId);
+                case EVENT_DELIVERY_DUE -> {
+                    long daysLeft = payload.path("daysLeft").asLong();
+                    if (payload.path("daily").asBoolean(false)) {
+                        notifyDeliveryDueIfNotSentToday(aggregateId, daysLeft);
+                    } else {
+                        notifyDeliveryDue(aggregateId, daysLeft);
+                    }
+                }
+                default -> throw new IllegalArgumentException(
+                        "Unsupported business outbox event: " + eventType);
+            }
+        } finally {
+            OUTBOX_DELIVERY.remove();
+        }
     }
 
     // ---------- 8 类通知入口（业务 Service 一行调用） ----------
 
     /** ① 排产通知销售：计划单审核后，按订单聚合本次排产量。shortage=true 时另发缺料通知（⑧）。 */
     public void notifyPlanScheduled(UUID planId, boolean shortage) {
-        afterCommit(() -> {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_PLAN_SCHEDULED, "PRODUCTION_PLAN", planId,
+                    Map.of("shortage", shortage));
+            return;
+        }
+        deliverAtomically(() -> {
             String planNo = str(one("SELECT bill_no FROM production_plans WHERE id = ?", planId));
             Map<UUID, BigDecimal> byOrder = new LinkedHashMap<>();
             Map<UUID, String> goodsByOrder = new LinkedHashMap<>();
@@ -91,6 +147,13 @@ public class ChainNoticeService {
                         "排产通知：" + o.billNo(),
                         "订单 " + o.billNo() + " 货品 " + goodsByOrder.get(e.getKey())
                                 + " 已排产 " + qty(e.getValue()) + "（计划单 " + planNo + "）。");
+                if (shortage) {
+                    notifyUser(o.ownerUserId(), TYPE_URGENT,
+                            "生产缺料：" + o.billNo(),
+                            "订单 " + o.billNo() + " 的计划单 " + planNo
+                                    + " 已核验存在及时物料缺口，采购/调度已收到处理任务；"
+                                    + "销售端排产进度会随到料、开工和完工继续更新。");
+                }
             }
             if (shortage) {
                 notifyRoles(List.of("buyer", "planner"), TYPE_TASK,
@@ -100,9 +163,81 @@ public class ChainNoticeService {
         });
     }
 
+    /**
+     * 报工审核后通知归属销售。销售端进度直接读取订单/计划累计量，本通知只做可靠提醒，
+     * 不复制一份易漂移的“进度状态”；Outbox 默认 2 秒轮询，正常情况下十秒内可见。
+     */
+    public void notifyProductionReported(UUID reportId) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_PRODUCTION_REPORTED,
+                    "PRODUCTION_DAILY_REPORT", reportId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            String reportNo = str(one(
+                    "SELECT bill_no FROM production_daily_reports WHERE id = ?", reportId));
+            for (Map<String, Object> r : jdbc.queryForList("""
+                    WITH affected AS (
+                        SELECT DISTINCT allocation.sales_order_item_id AS order_item_id
+                        FROM production_daily_report_items ri
+                        JOIN execution_segment_sales_allocations allocation
+                          ON allocation.id =
+                             ri.execution_segment_sales_allocation_id
+                        WHERE ri.report_id = ?
+                          AND ri.is_deleted = false
+                        UNION
+                        SELECT DISTINCT ri.sales_order_item_id AS order_item_id
+                        FROM production_daily_report_items ri
+                        WHERE ri.report_id = ?
+                          AND ri.is_deleted = false
+                          AND ri.sales_order_item_id IS NOT NULL
+                        UNION
+                        SELECT DISTINCT l.order_item_id AS order_item_id
+                        FROM production_daily_report_items ri
+                        JOIN plan_order_item_links l
+                          ON l.plan_item_id = ri.plan_item_id
+                         AND l.is_deleted = false
+                        WHERE ri.report_id = ?
+                          AND ri.is_deleted = false
+                          AND ri.execution_segment_id IS NULL
+                          AND ri.sales_order_item_id IS NULL
+                    )
+                    SELECT oi.order_id,
+                           SUM(COALESCE(oi.produced_qty,0)) AS produced_qty,
+                           SUM(COALESCE(oi.planned_qty,0)) AS planned_qty,
+                           SUM(COALESCE(oi.qty,0)) AS order_qty,
+                           string_agg(DISTINCT g.code, ' / ') AS goods
+                    FROM affected a
+                    JOIN sales_order_items oi ON oi.id = a.order_item_id
+                    LEFT JOIN goods g ON g.id = oi.goods_id
+                    WHERE oi.is_deleted = false
+                    GROUP BY oi.order_id
+                    """, reportId, reportId, reportId)) {
+                OrderRef order = orderRef((UUID) r.get("order_id"));
+                if (order == null) continue;
+                BigDecimal produced = bd(r.get("produced_qty"));
+                BigDecimal planned = bd(r.get("planned_qty"));
+                boolean reportedComplete =
+                        planned.signum() > 0 && produced.compareTo(planned) >= 0;
+                notifyUser(order.ownerUserId(), TYPE_WORKFLOW,
+                        (reportedComplete ? "生产报工完成（待入库）：" : "生产进度更新：")
+                                + order.billNo(),
+                        "订单 " + order.billNo() + " 货品 " + str(r.get("goods"))
+                                + " 的报工单 " + reportNo + " 已审核，累计合格 "
+                                + qty(produced) + "/已排产 " + qty(planned)
+                                + "（订单数量 " + qty(bd(r.get("order_qty"))) + "）。"
+                                + (reportedComplete ? "成品入库审核后会再次通知可发货状态。" : ""));
+            }
+        });
+    }
+
     /** ②③ 完工/部分完工通知销售：成品入库审核后，按本单补的预留溯源订单行。 */
     public void notifyFinishedInbound(UUID stockDocId) {
-        afterCommit(() -> {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_FINISHED_INBOUND, "STOCK_DOCUMENT", stockDocId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
             String docNo = str(one("SELECT bill_no FROM stock_documents WHERE id = ?", stockDocId));
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, rv.qty, oi.produced_qty, oi.qty AS order_qty,
@@ -126,7 +261,12 @@ public class ChainNoticeService {
 
     /** ④ 数量不足（补产）通知销售：报工完结缺额自动生成补产计划后。 */
     public void notifyRemakeCreated(String reportBillNo) {
-        afterCommit(() -> {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_REMAKE_CREATED, "PRODUCTION_DAILY_REPORT", null,
+                    Map.of("reportBillNo", reportBillNo));
+            return;
+        }
+        deliverAtomically(() -> {
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, rp.bill_no AS plan_no, SUM(rl.allocated_qty) AS qty
                     FROM production_plans rp
@@ -147,9 +287,121 @@ public class ChainNoticeService {
         });
     }
 
+    /**
+     * 执行段派工/开工节点通知归属销售。销售来源只认 V157 的精确分摊账，
+     * 不按相同货品或计划行猜测订单；内部生产段因此不会误发销售通知。
+     */
+    public void notifyExecutionSegmentTransition(UUID segmentId, boolean started) {
+        String eventType = started ? EVENT_SEGMENT_STARTED : EVENT_SEGMENT_DISPATCHED;
+        if (!isOutboxDelivery()) {
+            outbox.publish(eventType, "PRODUCTION_EXECUTION_SEGMENT", segmentId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> segment = one("""
+                    SELECT s.segment_code, s.planned_qty, s.plan_begin_date,
+                           s.plan_end_date, p.bill_no AS plan_no, g.code AS goods
+                    FROM production_execution_segments s
+                    JOIN production_plans p ON p.id = s.plan_id
+                    JOIN goods g ON g.id = s.product_goods_id
+                    WHERE s.id = ? AND s.is_deleted = false
+                    """, segmentId);
+            if (segment == null) return;
+            List<Map<String, Object>> owners = jdbc.queryForList("""
+                    SELECT oi.order_id, SUM(a.allocated_qty) AS allocated_qty
+                    FROM execution_segment_sales_allocations a
+                    JOIN sales_order_items oi ON oi.id = a.sales_order_item_id
+                    WHERE a.execution_segment_id = ?
+                      AND oi.is_deleted = false
+                    GROUP BY oi.order_id
+                    ORDER BY oi.order_id
+                    """, segmentId);
+            String node = started ? "已开工" : "已派工";
+            String titlePrefix = started ? "生产开工：" : "生产派工：";
+            for (Map<String, Object> owner : owners) {
+                OrderRef order = orderRef((UUID) owner.get("order_id"));
+                if (order == null) continue;
+                String begin = segment.get("plan_begin_date") == null
+                        ? "未定" : segment.get("plan_begin_date").toString();
+                String end = segment.get("plan_end_date") == null
+                        ? "未定" : segment.get("plan_end_date").toString();
+                notifyUser(order.ownerUserId(), TYPE_WORKFLOW,
+                        titlePrefix + order.billNo(),
+                        "订单 " + order.billNo() + " 的货品 "
+                                + str(segment.get("goods")) + " " + node
+                                + " " + qty(bd(owner.get("allocated_qty")))
+                                + "（计划 " + str(segment.get("plan_no"))
+                                + "，子任务 " + str(segment.get("segment_code"))
+                                + "，计划 " + begin + " 至 " + end + "）。");
+            }
+        });
+    }
+
+    /**
+     * A purchase/subcontract receipt changed a material-complete execution
+     * segment from WAITING to READY. The receipt id is part of the dedupe key:
+     * replaying the same receipt is silent, while a later legitimate
+     * demotion/re-kit can notify again from its new receipt.
+     */
+    public void notifyExecutionSegmentReady(
+            UUID segmentId,
+            UUID triggeringReceiptId,
+            String sourceType) {
+        String normalizedSource = sourceType == null ? "" : sourceType.strip();
+        if (!isOutboxDelivery()) {
+            if (triggeringReceiptId == null) {
+                throw new IllegalArgumentException(
+                        "triggeringReceiptId is required for a READY event");
+            }
+            outbox.publishOnce(
+                    EVENT_SEGMENT_READY,
+                    "PRODUCTION_EXECUTION_SEGMENT",
+                    segmentId,
+                    Map.of(
+                            "triggeringReceiptId",
+                            triggeringReceiptId.toString(),
+                            "sourceType",
+                            normalizedSource),
+                    EVENT_SEGMENT_READY + ':' + segmentId + ':'
+                            + triggeringReceiptId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> segment = one("""
+                    SELECT s.segment_code, s.planned_qty,
+                           s.plan_begin_date, s.plan_end_date,
+                           p.bill_no AS plan_no, g.code AS goods
+                    FROM production_execution_segments s
+                    JOIN production_plans p ON p.id = s.plan_id
+                    JOIN goods g ON g.id = s.product_goods_id
+                    WHERE s.id = ? AND s.status = 'READY'
+                      AND s.is_deleted = false
+                    """, segmentId);
+            if (segment == null) return;
+            String sourceLabel = "SUBCONTRACT".equals(normalizedSource)
+                    ? "委外回厂" : "采购到货";
+            notifyRoles(
+                    List.of("planner", "production"),
+                    TYPE_TASK,
+                    "待料子任务已齐套："
+                            + str(segment.get("segment_code")),
+                    sourceLabel + "后物料已重新核验并完整占用。生产计划 "
+                            + str(segment.get("plan_no")) + "、产品 "
+                            + str(segment.get("goods")) + "、数量 "
+                            + qty(bd(segment.get("planned_qty")))
+                            + " 已转为可生产，请安排派工；计划日期 "
+                            + str(segment.get("plan_begin_date")) + " 至 "
+                            + str(segment.get("plan_end_date")) + "。");
+        });
+    }
+
     /** ⑤ 发货通知销售：出货单审核后，按订单聚合本次出货量。（出货单暂无物流单号字段，内容含单号/数量/仓库。） */
     public void notifyShipmentApproved(UUID shipmentId) {
-        afterCommit(() -> {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_SHIPMENT_APPROVED, "SALES_SHIPMENT", shipmentId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
             Map<String, Object> h = one("SELECT bill_no, warehouse_id FROM sales_shipments WHERE id = ?", shipmentId);
             if (h == null) return;
             String wh = str(one("SELECT name FROM warehouses WHERE id = ?", h.get("warehouse_id")));
@@ -176,7 +428,12 @@ public class ChainNoticeService {
 
     /** ⑥ 驳回通知销售：仓库驳回出货单（草稿）后，按订单聚合缺口量。 */
     public void notifyShipmentRejected(UUID shipmentId, String reason) {
-        afterCommit(() -> {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_SHIPMENT_REJECTED, "SALES_SHIPMENT", shipmentId,
+                    Map.of("reason", reason == null ? "" : reason));
+            return;
+        }
+        deliverAtomically(() -> {
             String billNo = str(one("SELECT bill_no FROM sales_shipments WHERE id = ?", shipmentId));
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, SUM(si.qty) AS qty
@@ -198,21 +455,30 @@ public class ChainNoticeService {
 
     /** ⑦ 取消确认：订单整单取消后，确认销售 + 通知调度不用排。 */
     public void notifyOrderCanceled(UUID orderId) {
-        afterCommit(() -> {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_CANCELED, "SALES_ORDER", orderId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                     "取消确认：" + o.billNo(),
-                    "订单 " + o.billNo() + " 已整单取消：全部预留已释放（已产成品回通用库存），排产联动已断开。");
+                    "订单 " + o.billNo() + " 已整单取消：销售库存预留已释放；"
+                            + "系统已确认不存在待清理的排产、领料或完工承诺。");
             notifyRoles(List.of("planner"), TYPE_WORKFLOW,
                     "订单取消·无需排产：" + o.billNo(),
-                    "订单 " + o.billNo() + " 已取消，相关排产联动已断开，请调度停止/忽略该单后续排产。");
+                    "订单 " + o.billNo() + " 已取消且没有有效生产承诺，无需后续排产。");
         });
     }
 
     /** ⑦.5 新订单待排产：订单审核后通知调度（planner），生产部工作台徽标同源（待排产计数）。 */
     public void notifyOrderApproved(UUID orderId) {
-        afterCommit(() -> {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_ORDER_APPROVED, "SALES_ORDER", orderId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             Map<String, Object> agg = one("""
@@ -237,6 +503,11 @@ public class ChainNoticeService {
 
     /** ⑧ 延期预警（每日扫描调用）：交货 ≤3 天未结案订单，通知业务员 + 调度。 */
     public void notifyDeliveryDue(UUID orderId, long daysLeft) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_DELIVERY_DUE, "SALES_ORDER", orderId,
+                    Map.of("daysLeft", daysLeft, "daily", false));
+            return;
+        }
         OrderRef o = orderRef(orderId);
         if (o == null) return;
         String when = daysLeft < 0 ? "已超期 " + (-daysLeft) + " 天"
@@ -253,6 +524,12 @@ public class ChainNoticeService {
 
     /** ⑧ 延期预警（调度器入口）：同一订单同一接收人同日只发一条（notices 标题+接收人+当日去重）。 */
     public void notifyDeliveryDueIfNotSentToday(UUID orderId, long daysLeft) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(EVENT_DELIVERY_DUE, "SALES_ORDER", orderId,
+                    Map.of("daysLeft", daysLeft, "daily", true),
+                    EVENT_DELIVERY_DUE + ':' + orderId + ':' + BusinessTime.today());
+            return;
+        }
         try {
             OrderRef o = orderRef(orderId);
             if (o == null) return;
@@ -271,8 +548,8 @@ public class ChainNoticeService {
                 if (Boolean.TRUE.equals(sent)) continue;
                 sendToUser(uid, TYPE_URGENT, title, content);
             }
-        } catch (Exception e) {
-            log.warn("延期预警单发失败 order={}: {}", orderId, e.toString());
+        } catch (Exception error) {
+            throw new IllegalStateException("Failed to deliver due-date warning for " + orderId, error);
         }
     }
 
@@ -308,45 +585,70 @@ public class ChainNoticeService {
         Set<UUID> targets = new LinkedHashSet<>();
         for (String code : roleCodes) {
             targets.addAll(userRoleRepo.findUserIdsByRoleCode(code));
+            String departmentCode = switch (code) {
+                case "buyer" -> "SUB_PURCHASE";
+                case "planner" -> "SUB_PLAN";
+                case "production" -> "DEPT_PROD";
+                default -> null;
+            };
+            if (departmentCode != null) {
+                targets.addAll(departmentUserIds(departmentCode));
+            }
         }
         for (UUID uid : targets) {
             sendToUser(uid, type, title, content);
         }
     }
 
-    /** 单发：逐人隔离异常（一个接收人失败不影响其他人）；停用/删除账号跳过。 */
+    /**
+     * Operational recipients follow the current department-permission model.
+     * Legacy role lookup remains above for migrated accounts, while this query
+     * covers the selected department and all active descendants.
+     */
+    private List<UUID> departmentUserIds(String departmentCode) {
+        return jdbc.queryForList("""
+                WITH RECURSIVE subtree(id) AS (
+                    SELECT id
+                    FROM departments
+                    WHERE code = ? AND is_deleted = false
+                    UNION ALL
+                    SELECT child.id
+                    FROM departments child
+                    JOIN subtree parent ON child.parent_id = parent.id
+                    WHERE child.is_deleted = false
+                )
+                SELECT DISTINCT user_account.id
+                FROM users user_account
+                JOIN employees employee
+                  ON employee.id = user_account.employee_id
+                WHERE employee.department_id IN (SELECT id FROM subtree)
+                  AND employee.is_deleted = false
+                  AND employee.status <> 'resigned'
+                  AND user_account.is_deleted = false
+                  AND user_account.status = 'active'
+                ORDER BY user_account.id
+                """, UUID.class, departmentCode);
+    }
+
+    /** 停用/删除账号跳过；写入失败交给 Outbox 整体回滚重试。 */
     private void sendToUser(UUID userId, String type, String title, String content) {
-        try {
-            UserAccount u = userRepo.findById(userId).orElse(null);
-            if (u == null || !"active".equals(u.getStatus()) || u.isDeleted()) return;
-            noticeService.publishForUser(userId, title, content, type, PUBLISHER);
-        } catch (Exception e) {
-            log.warn("业务链通知单发失败 user={} title={}: {}", userId, title, e.toString());
-        }
+        UserAccount u = userRepo.findById(userId).orElse(null);
+        if (u == null || !"active".equals(u.getStatus()) || u.isDeleted()) return;
+        noticeService.publishForUser(userId, title, content, type, PUBLISHER);
     }
 
-    // ---------- 旁路执行 ----------
+    // ---------- Outbox 原子送达 ----------
 
-    /** 主事务提交后在独立新事务中执行；无事务则直接执行。任何异常只记日志。 */
-    private void afterCommit(Runnable task) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    safeRun(() -> newTx.executeWithoutResult(s -> task.run()));
-                }
-            });
-        } else {
-            safeRun(task);
+    /** 只允许已锁定 Outbox 事件的处理事务执行真实通知写入。 */
+    private void deliverAtomically(Runnable task) {
+        if (!isOutboxDelivery()) {
+            throw new IllegalStateException("Notice delivery must be invoked by the outbox processor");
         }
+        task.run();
     }
 
-    private void safeRun(Runnable task) {
-        try {
-            task.run();
-        } catch (Exception e) {
-            log.warn("业务链通知发送失败（不影响主业务）: {}", e.toString());
-        }
+    private boolean isOutboxDelivery() {
+        return Boolean.TRUE.equals(OUTBOX_DELIVERY.get());
     }
 
     // ---------- 查询小工具 ----------

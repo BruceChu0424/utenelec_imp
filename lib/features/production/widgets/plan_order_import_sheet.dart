@@ -1,17 +1,17 @@
-// 新建生产计划单「从订单带明细」弹窗。
+// 新建生产计划单「从订单带明细」面板。
 //
-// 选好来源销售订单后弹出：列出该订单的货品明细（订货量 / 已排产 / 待排产缺口 / 交货日），
-// 每行可展开看该货品的一层 BOM 零件清单（单件用量 × 缺口 = 需求小计 + 即时库存 + 自制标记），
-// 勾选要排产的行（缺口>0 默认勾选）→ 确认返回所选行，由编辑页填入明细网格。
-// 带入的行携 salesOrderItemId，计划审核时走手工 1:1 link 分支回写 planned_qty，业务链闭合。
-//
-// 数据源：GET /production/schedule/order-lines?orderId=（仅已审核订单）。
+// 产品 BOM 默认全部展开：每个产品卡片直接展示统一只读表格，不提供折叠控件。
+// 这里的库存仅是订单接口返回的即时库存，用于排产初筛；真正齐套判断必须在计划
+// 详情的 MRP 中按安全库存、锁定量和及时到货量复核。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
 
 /// 弹出「从订单带明细」面板；返回勾选行（null=取消）。
@@ -35,7 +35,7 @@ Future<List<ScheduleOrderLine>?> showPlanOrderImportSheet(
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
         child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * 0.9,
+          height: MediaQuery.sizeOf(ctx).height * 0.94,
           child: sheet,
         ),
       ),
@@ -46,19 +46,28 @@ Future<List<ScheduleOrderLine>?> showPlanOrderImportSheet(
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (ctx, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: Theme.of(ctx).colorScheme.surface,
-        child: SizedBox(width: 760, height: double.infinity, child: sheet),
-      ),
-    ),
+    transitionDuration: UtenAnim.normal,
+    pageBuilder: (ctx, _, _) {
+      final viewportWidth = MediaQuery.sizeOf(ctx).width;
+      final panelWidth = viewportWidth < 920 ? viewportWidth * 0.92 : 840.0;
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Material(
+          color: Theme.of(ctx).colorScheme.surface,
+          elevation: 12,
+          child: SizedBox(
+            width: panelWidth,
+            height: double.infinity,
+            child: sheet,
+          ),
+        ),
+      );
+    },
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(
       position: Tween<Offset>(
         begin: const Offset(1, 0),
         end: Offset.zero,
-      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+      ).animate(CurvedAnimation(parent: anim, curve: UtenAnim.standard)),
       child: child,
     ),
   );
@@ -78,7 +87,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
   List<ScheduleOrderLine>? _lines;
   String? _error;
 
-  /// 勾选状态：orderItemId（默认勾选缺口>0 的行）。
+  /// orderItemId；仅允许选择仍有排产缺口且已维护 BOM 的产品。
   final Set<String> _selected = {};
 
   @override
@@ -94,11 +103,14 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
           .scheduleOrderLines(widget.orderId);
       if (!mounted) return;
       setState(() {
+        _error = null;
         _lines = lines;
         _selected
           ..clear()
           ..addAll(
-            lines.where((l) => (l.needQty ?? 0) > 0).map((l) => l.orderItemId),
+            lines
+                .where((line) => (line.needQty ?? 0) > 0 && line.bom.isNotEmpty)
+                .map((line) => line.orderItemId),
           );
       });
     } catch (e) {
@@ -117,45 +129,42 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s8,
+                UtenSpacing.s16,
                 UtenSpacing.s12,
-                UtenSpacing.s4,
+                UtenSpacing.s8,
                 UtenSpacing.s8,
               ),
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '订单 ${widget.billNo} 的货品',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '订单 ${widget.billNo} 的产品与物料',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s4),
+                        Text(
+                          'BOM 已全部展开。勾选可排产品带入计划；BOM 缺失的产品必须先补资料。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(
+                    tooltip: '关闭',
                     icon: const Icon(Icons.close_rounded),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                0,
-                UtenSpacing.s16,
-                UtenSpacing.s8,
-              ),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '勾选要排产的货品行带入计划明细；点行可展开查看该产品的零件（BOM）',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
+            _inventoryScopeNotice(theme),
             const Divider(height: 1),
             Expanded(
               child: _error != null
@@ -181,212 +190,314 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     )
                   : lines.isEmpty
-                  ? const Center(child: Text('该订单没有可排产的货品行'))
+                  ? const Center(child: Text('该订单没有可排产的产品行'))
                   : ListView.separated(
                       padding: const EdgeInsets.all(UtenSpacing.s12),
                       itemCount: lines.length,
                       separatorBuilder: (_, _) =>
-                          const SizedBox(height: UtenSpacing.s8),
+                          const SizedBox(height: UtenSpacing.s12),
                       itemBuilder: (_, i) => _lineCard(lines[i]),
                     ),
             ),
             const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '已选 ${_selected.length} 行',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s16),
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
-                  ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  UtenButton(
-                    icon: Icons.playlist_add_rounded,
-                    onPressed: _selected.isEmpty || lines == null
-                        ? null
-                        : () => Navigator.of(context).pop([
-                            for (final l in lines)
-                              if (_selected.contains(l.orderItemId)) l,
-                          ]),
-                    child: const Text('带入明细'),
-                  ),
-                ],
-              ),
-            ),
+            _footer(lines),
           ],
         ),
       ),
     );
   }
 
-  Widget _lineCard(ScheduleOrderLine l) {
-    final theme = Theme.of(context);
-    final need = l.needQty ?? 0;
-    final plannable = need > 0;
-    final checked = _selected.contains(l.orderItemId);
-    final deliver = l.deliverDate == null
-        ? '交货未定'
-        : '交货 ${l.deliverDate!.substring(0, 10)}';
-    return Material(
-      color: theme.colorScheme.surface,
-      borderRadius: UtenRadius.mdAll,
-      clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-          borderRadius: UtenRadius.mdAll,
-        ),
-        child: ExpansionTile(
-          // 无 BOM 的行不显示展开箭头（checkbox 勾选不受影响）
-          trailing: l.bom.isEmpty ? const SizedBox.shrink() : null,
-          tilePadding: const EdgeInsets.only(right: UtenSpacing.s8),
-          leading: Checkbox(
-            value: checked,
-            onChanged: plannable
-                ? (v) => setState(() {
-                    if (v ?? false) {
-                      _selected.add(l.orderItemId);
-                    } else {
-                      _selected.remove(l.orderItemId);
-                    }
-                  })
-                : null,
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${l.goodsName ?? l.goodsCode ?? '—'}'
-                  '${l.spec != null && l.spec!.isNotEmpty ? ' · ${l.spec}' : ''}'
-                  '${l.colorName != null ? ' · ${l.colorName}' : ''}',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (l.bom.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${l.bom.length} 种零件',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          subtitle: Text(
-            '订货 ${_fmt(l.qty)} · 已排 ${_fmt(l.plannedQty)} · '
-            '缺口 ${_fmt(l.needQty)}${l.unitName != null ? ' ${l.unitName}' : ''}'
-            ' · $deliver'
-            '${plannable ? '' : '（已排完）'}',
-            style: TextStyle(
-              fontSize: 11,
-              color: plannable
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.error,
-            ),
-          ),
-          children: [
-            if (l.bom.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  0,
-                  UtenSpacing.s16,
-                  UtenSpacing.s12,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '零件清单（按缺口 ${_fmt(l.needQty)} 折算需求）',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    for (final b in l.bom) _bomRow(b),
-                  ],
-                ),
-              ),
-          ],
+  Widget _inventoryScopeNotice(ThemeData theme) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(
+        UtenSpacing.s16,
+        0,
+        UtenSpacing.s16,
+        UtenSpacing.s8,
+      ),
+      padding: const EdgeInsets.all(UtenSpacing.s8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.45),
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(
+          color: theme.colorScheme.tertiary.withValues(alpha: 0.35),
         ),
       ),
-    );
-  }
-
-  Widget _bomRow(ScheduleBomComponent b) {
-    final theme = Theme.of(context);
-    final shortage = (b.onhand ?? 0) < (b.needQty ?? 0);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: theme.colorScheme.onTertiaryContainer,
+          ),
+          const SizedBox(width: UtenSpacing.s8),
           Expanded(
             child: Text(
-              '${b.name ?? b.code ?? '—'}'
-              '${b.spec != null && b.spec!.isNotEmpty ? ' · ${b.spec}' : ''}'
-              '${b.selfMade ? '（自制）' : ''}',
-              style: const TextStyle(fontSize: 12),
-              overflow: TextOverflow.ellipsis,
+              '库存口径：下表只显示当前即时库存，未扣安全库存、其他计划锁定量，也未判断在途是否能在开工前到达。'
+              '带入计划后必须以 MRP 齐套结果为准。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
             ),
           ),
-          _bomNum(theme, '单件', b.perQty),
-          _bomNum(theme, '需求', b.needQty, highlight: true, danger: shortage),
-          _bomNum(theme, '库存', b.onhand, danger: shortage),
         ],
       ),
     );
   }
 
-  Widget _bomNum(
-    ThemeData theme,
-    String label,
-    double? v, {
-    bool highlight = false,
-    bool danger = false,
-  }) {
-    return SizedBox(
-      width: 72,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+  Widget _footer(List<ScheduleOrderLine>? lines) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: UtenSpacing.s12,
+          runSpacing: UtenSpacing.s8,
+          children: [
+            Text(
+              '已选 ${_selected.length} 个产品',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            UtenButton(
+              type: UtenButtonType.secondary,
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            UtenButton(
+              icon: Icons.playlist_add_rounded,
+              onPressed: _selected.isEmpty || lines == null
+                  ? null
+                  : () => Navigator.of(context).pop([
+                      for (final line in lines)
+                        if (_selected.contains(line.orderItemId)) line,
+                    ]),
+              child: const Text('带入计划明细'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _lineCard(ScheduleOrderLine line) {
+    final theme = Theme.of(context);
+    final need = line.needQty ?? 0;
+    final hasBom = line.bom.isNotEmpty;
+    final plannable = need > 0 && hasBom;
+    final checked = _selected.contains(line.orderItemId);
+    final shortageCount = line.bom.where((item) {
+      final onhand = item.onhand;
+      final required = item.needQty;
+      return onhand != null && required != null && onhand + 1e-6 < required;
+    }).length;
+    final unknownCount = line.bom
+        .where((item) => item.onhand == null || item.needQty == null)
+        .length;
+    final deliver = line.deliverDate == null
+        ? '交货未定'
+        : '交货 ${productionDateOnly(line.deliverDate)}';
+
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Checkbox(
+                  value: checked,
+                  onChanged: plannable
+                      ? (value) => setState(() {
+                          if (value ?? false) {
+                            _selected.add(line.orderItemId);
+                          } else {
+                            _selected.remove(line.orderItemId);
+                          }
+                        })
+                      : null,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${line.goodsName ?? line.goodsCode ?? '未命名产品'}'
+                        '${line.spec?.isNotEmpty == true ? ' · ${line.spec}' : ''}'
+                        '${line.colorName?.isNotEmpty == true ? ' · ${line.colorName}' : ''}',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        '产品编码 ${line.goodsCode ?? '—'} · 订货 ${_fmt(line.qty)} · '
+                        '已排 ${_fmt(line.plannedQty)} · 待排 ${_fmt(line.needQty)}'
+                        '${line.unitName == null ? '' : ' ${line.unitName}'} · $deliver',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: plannable
+                              ? theme.colorScheme.onSurfaceVariant
+                              : theme.colorScheme.error,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                _bomCountBadge(theme, line.bom.length),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            if (!hasBom)
+              _missingBomWarning(theme)
+            else ...[
+              Text(
+                '物料明细（按待排数量 ${_fmt(line.needQty)} 折算）',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              MasterDataTableView<ScheduleBomComponent>(
+                embedded: true,
+                columns: [
+                  MasterColumnDef(
+                    key: 'code',
+                    label: '物料编码',
+                    width: 130,
+                    value: (item) => item.code,
+                  ),
+                  MasterColumnDef(
+                    key: 'name',
+                    label: '物料名称',
+                    width: 180,
+                    value: (item) => item.name,
+                  ),
+                  MasterColumnDef(
+                    key: 'spec',
+                    label: '规格',
+                    width: 150,
+                    value: (item) => item.spec,
+                  ),
+                  MasterColumnDef(
+                    key: 'source',
+                    label: '来源',
+                    width: 80,
+                    value: (item) => item.selfMade ? '自制' : '外购',
+                  ),
+                  MasterColumnDef(
+                    key: 'perQty',
+                    label: '单台用量',
+                    width: 90,
+                    type: 'number',
+                    value: (item) => _fmt(item.perQty),
+                  ),
+                  MasterColumnDef(
+                    key: 'needQty',
+                    label: '总需求',
+                    width: 90,
+                    type: 'number',
+                    value: (item) => _fmt(item.needQty),
+                  ),
+                  MasterColumnDef(
+                    key: 'onhand',
+                    label: '即时库存',
+                    width: 90,
+                    type: 'number',
+                    value: (item) => _fmt(item.onhand),
+                  ),
+                  MasterColumnDef(
+                    key: 'status',
+                    label: '初筛状态',
+                    width: 110,
+                    value: _availabilityStatus,
+                  ),
+                ],
+                items: line.bom,
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                onRowTap: (_) {},
+                rowColor: (item) {
+                  final onhand = item.onhand;
+                  final required = item.needQty;
+                  if (onhand == null || required == null) return null;
+                  return onhand + 1e-6 < required
+                      ? theme.colorScheme.errorContainer.withValues(alpha: 0.28)
+                      : theme.colorScheme.primaryContainer.withValues(
+                          alpha: 0.18,
+                        );
+                },
+                emptyMessage: 'BOM 没有物料行',
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '即时初筛：共 ${line.bom.length} 种，已知缺 $shortageCount 种'
+                '${unknownCount == 0 ? '' : '，待复核 $unknownCount 种'}。'
+                '物料单位可能不同，不汇总缺口数量；最终以计划 MRP 为准。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: shortageCount > 0
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bomCountBadge(ThemeData theme, int count) {
+    final missing = count == 0;
+    final color = missing ? theme.colorScheme.error : theme.colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: UtenRadius.smAll,
+      ),
+      child: Text(
+        missing ? 'BOM 缺失' : '$count 种物料',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _missingBomWarning(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: theme.colorScheme.error),
+      ),
+      child: Row(
         children: [
-          Text(
-            _fmt(v),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: highlight || danger
-                  ? FontWeight.w700
-                  : FontWeight.normal,
-              color: danger ? theme.colorScheme.error : null,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: theme.colorScheme.onSurfaceVariant,
+          Icon(Icons.error_outline_rounded, color: theme.colorScheme.error),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              '该产品未维护 BOM，系统无法计算用料和齐套状态，已禁止带入排产。请先补齐组装物料资料。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -394,7 +505,17 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
     );
   }
 
-  String _fmt(double? v) => v == null
-      ? '—'
-      : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+  String _availabilityStatus(ScheduleBomComponent item) {
+    final onhand = item.onhand;
+    final required = item.needQty;
+    if (onhand == null || required == null) return '待 MRP 复核';
+    return onhand + 1e-6 >= required ? '即时库存够' : '即时库存不足';
+  }
+
+  String _fmt(double? value) {
+    if (value == null) return '—';
+    return value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+  }
 }

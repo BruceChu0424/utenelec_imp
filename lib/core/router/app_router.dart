@@ -54,6 +54,8 @@ import '../../features/lab/pages/lab_test_list_page.dart';
 import '../../features/lab/pages/lab_test_report_page.dart';
 import '../../features/lab/pages/lab_test_upload_page.dart';
 import '../../features/notice/pages/notice_detail_page.dart';
+import '../../features/operations_workbench/models/operations_workbench.dart';
+import '../../features/operations_workbench/pages/operations_workbench_page.dart';
 import '../../features/purchase/pages/purchase_doc_detail_page.dart';
 import '../../features/purchase/pages/purchase_doc_edit_page.dart';
 import '../../features/purchase/pages/purchase_doc_list_page.dart';
@@ -459,6 +461,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const PaymentStylePage(),
           ),
 
+          // —— 统一履约任务工作台（只从后端真实任务与动作单据读取）——
+          GoRoute(
+            path: RouteName.operationsWarehouseWorkbench,
+            name: 'operations-workbench-warehouse',
+            builder: (_, _) => const OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.warehouse,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.operationsPurchaseWorkbench,
+            name: 'operations-workbench-purchase',
+            builder: (_, _) => const OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.operationsSubcontractWorkbench,
+            name: 'operations-workbench-subcontract',
+            builder: (_, _) => const OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.subcontract,
+            ),
+          ),
+
           // —— 采购管理（hub + 4 单据 list + new/detail/edit）——
           GoRoute(
             path: RouteName.purchase,
@@ -502,6 +527,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'purchase-doc-new',
             builder: (_, s) => PurchaseDocEditPage(
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
+              sourceRequestId: s.uri.queryParameters['requestId'],
+              sourceRequestItemIds:
+                  s.uri.queryParameters['requestItemIds']
+                      ?.split(',')
+                      .where((id) => id.trim().isNotEmpty)
+                      .toList() ??
+                  const [],
             ),
           ),
           GoRoute(
@@ -583,6 +615,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-doc-new',
             builder: (_, s) => StockDocEditPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
+              sourceDrawId: s.uri.queryParameters['drawId'],
             ),
           ),
           GoRoute(

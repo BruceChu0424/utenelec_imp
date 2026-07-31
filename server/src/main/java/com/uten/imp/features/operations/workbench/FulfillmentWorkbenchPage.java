@@ -1,0 +1,23 @@
+package com.uten.imp.features.operations.workbench;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+
+public record FulfillmentWorkbenchPage(
+        List<FulfillmentTaskRow> items,
+        int page,
+        int size,
+        long total,
+        int totalPages,
+        Summary summary) {
+
+    public record Summary(
+            long totalTasks,
+            long overdueTasks,
+            long openTasks,
+            BigDecimal openQty,
+            Map<String, Long> statusCounts,
+            Map<String, Long> exceptionCounts) {
+    }
+}

@@ -32,6 +32,15 @@ class PurchaseHubPage extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.only(top: UtenSpacing.s12),
             children: [
+              _section(context, theme, '任务中心', [
+                _Entry(
+                  icon: Icons.pending_actions_rounded,
+                  label: '采购任务中心',
+                  description: '集中处理缺料申请、采购订单与到货进度',
+                  location: RouteName.operationsPurchaseWorkbench,
+                ),
+              ]),
+              const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '采购管理', [
                 _Entry.fromCfg(PurchaseDocConfig.request),
                 _Entry.fromCfg(PurchaseDocConfig.order),

@@ -2,6 +2,7 @@ package com.uten.imp.features.sales.order.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +35,24 @@ public record PlanProgressLine(
             LocalDate billDate,
             BigDecimal allocatedQty,
             BigDecimal producedQty,
-            BigDecimal inboundQty) {
+            BigDecimal inboundQty,
+            List<ExecutionSegmentProgress> executionSegments) {
+    }
+
+    /** Sales-safe execution detail; no material, cost or supplier fields. */
+    public record ExecutionSegmentProgress(
+            UUID executionSegmentId,
+            String segmentCode,
+            String status,
+            BigDecimal allocatedQty,
+            BigDecimal reportedQty,
+            BigDecimal inboundQty,
+            String workshopName,
+            String teamName,
+            LocalDate planBeginDate,
+            LocalDate planEndDate,
+            OffsetDateTime actualStartAt,
+            boolean delayed,
+            String delayReason) {
     }
 }

@@ -218,7 +218,7 @@ const _allGroups = <_ModuleGroup>[
         label: '基础资料',
         location: RouteName.basicinfo,
       ),
-      // 以下仍为前端 Mock、未接后端：置灰放最后，名字追加「（功能规划接入中）」、暂不跳转
+      // 工资条与报销仍待完整生产验收；意见箱已接真实后端并开放入口。
       _ModuleItem(
         icon: Icons.account_balance_wallet_outlined,
         label: '工资条',
@@ -235,7 +235,6 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.lightbulb_outline_rounded,
         label: '意见箱',
         location: RouteName.suggestion,
-        comingSoon: true,
       ),
     ],
   ),
@@ -378,6 +377,11 @@ const _allGroups = <_ModuleGroup>[
         label: '仓库管理',
         location: RouteName.warehouse,
       ),
+      _ModuleItem(
+        icon: Icons.assignment_outlined,
+        label: '仓库任务',
+        location: RouteName.operationsWarehouseWorkbench,
+      ),
       // 采购管理 → hub（hub 内分「采购管理」4 单据卡片 + 「采购报表」卡片）
       // 徽标 = 缺料待备料行数（生产计划已审但 BOM 净需求不足），提醒 PMC 主动备料。
       _ModuleItem(
@@ -385,6 +389,11 @@ const _allGroups = <_ModuleGroup>[
         label: '采购管理',
         location: RouteName.purchase,
         badge: PmcShortageBadge(),
+      ),
+      _ModuleItem(
+        icon: Icons.playlist_add_check_rounded,
+        label: '采购任务',
+        location: RouteName.operationsPurchaseWorkbench,
       ),
     ],
   ),
@@ -417,6 +426,11 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.precision_manufacturing_outlined,
         label: '委外管理',
         location: RouteName.subcontract,
+      ),
+      _ModuleItem(
+        icon: Icons.factory_outlined,
+        label: '委外任务',
+        location: RouteName.operationsSubcontractWorkbench,
       ),
     ],
   ),

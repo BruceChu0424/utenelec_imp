@@ -15,7 +15,7 @@ import '../../../shared/providers/master_name_provider.dart';
 /// - 盘点（isCheck=true）：填 [bookQty]（账面）+ [checkQty]（实盘）；
 ///   amountNotifier = 盘盈亏 = 实盘 - 账面（订阅两控制器自动重算）。
 class StockGridRow extends EditableGridRow with AmountRowMixin {
-  StockGridRow({this.isCheck = false}) {
+  StockGridRow({this.isCheck = false, this.sourceLocked = false}) {
     // 仅盘点模式连线重算：非盘点无金额概念，amountNotifier 恒 0（不订阅省一次空更新）。
     if (isCheck) {
       bookQty.addListener(_recalc);
@@ -24,6 +24,16 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   }
 
   final bool isCheck;
+  final bool sourceLocked;
+  String? upstreamItemId;
+  String? executionSegmentId;
+  String? executionSegmentSalesAllocationId;
+  String? sourceDrawId;
+  String? sourceDrawNo;
+  String? colorId;
+  String? unitId;
+  double unitRate = 1;
+  double? maxQty;
 
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
@@ -64,6 +74,7 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 List<EditableGridColumn<StockGridRow>> stockGridColumns(
   Future<void> Function(StockGridRow row) onPickGoods, {
   bool isCheck = false,
+  bool isWdraw = false,
 }) {
   return [
     EditableGridColumn<StockGridRow>(
@@ -71,7 +82,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       label: '货品',
       width: 220,
       cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
+        onTap: row.sourceLocked ? null : () => onPickGoods(row),
         child: InputDecorator(
           decoration: const InputDecoration(isDense: true),
           child: Row(
@@ -89,12 +100,33 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
                   ),
                 ),
               ),
-              const Icon(Icons.search_rounded, size: 16),
+              Icon(
+                row.sourceLocked ? Icons.lock_outline : Icons.search_rounded,
+                size: 16,
+              ),
             ],
           ),
         ),
       ),
     ),
+    if (isWdraw) ...[
+      EditableGridColumn<StockGridRow>(
+        key: 'source',
+        label: '原领料单',
+        width: 150,
+        cellBuilder: (_, row) => Text(row.sourceDrawNo ?? '未选择来源'),
+      ),
+      EditableGridColumn<StockGridRow>(
+        key: 'maxReturn',
+        label: '最多可退',
+        width: 100,
+        numeric: true,
+        cellBuilder: (_, row) => Text(
+          row.maxQty == null ? '—' : row.maxQty!.toStringAsFixed(4),
+          textAlign: TextAlign.right,
+        ),
+      ),
+    ],
     if (isCheck) ...[
       EditableGridColumn<StockGridRow>(
         key: 'bookQty',
@@ -102,10 +134,16 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         width: 96,
         numeric: true,
         cellBuilder: (context, row) => TextField(
+          readOnly: true,
           controller: row.bookQty,
           textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: const InputDecoration(
+            isDense: true,
+            filled: true,
+            hintText: '选择货品后读取',
+            suffixIcon: Icon(Icons.lock_outline, size: 16),
+          ),
         ),
       ),
       EditableGridColumn<StockGridRow>(

@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.application;
 
+import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
+import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -60,6 +62,8 @@ public class SubcontractApplicationService {
     private final EntityManager em;
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
+    private final ProductionSubcontractSupplyTransitionPort productionSupply;
+    private final ProductionSupplySourceGuard productionSourceGuard;
 
     @Transactional(readOnly = true)
     public PageResponse<ApplicationListItem> list(ApplicationQueryFilter f, int page, int size, String sort, String order) {
@@ -108,10 +112,11 @@ public class SubcontractApplicationService {
     @Transactional
     public ApplicationDetail update(UUID id, ApplicationSaveRequest req) {
         tx.bind();
-        SubcontractApplication r = requireApplication(id);
+        SubcontractApplication r = requireApplicationForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        productionSourceGuard.requireSubcontractApplicationMutable(id);
         applyHeader(req, r);
         itemRepo.deleteByApplicationId(id);
         itemRepo.flush();
@@ -123,10 +128,12 @@ public class SubcontractApplicationService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractApplication r = requireApplication(id);
+        SubcontractApplication r = requireApplicationForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
+        productionSourceGuard.requireSubcontractApplicationMutable(id);
+        productionSupply.onSubcontractApplicationRemoved(id);
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         applicationRepo.save(r);
@@ -136,8 +143,7 @@ public class SubcontractApplicationService {
     @Transactional
     public ApplicationDetail approve(UUID id) {
         tx.bind();
-        SubcontractApplication r = requireApplication(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractApplication r = requireApplicationForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -154,8 +160,7 @@ public class SubcontractApplicationService {
     @Transactional
     public ApplicationDetail reverse(UUID id) {
         tx.bind();
-        SubcontractApplication r = requireApplication(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractApplication r = requireApplicationForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -165,6 +170,7 @@ public class SubcontractApplicationService {
                 it.getOrderedQty() != null && it.getOrderedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "委外申请已有订货记录，请先红冲下游订货单");
         }
+        productionSupply.onSubcontractApplicationRemoved(id);
         r.setStatus(STATUS_REVERSED);
         applicationRepo.save(r);
         return detail(id);
@@ -234,16 +240,31 @@ public class SubcontractApplicationService {
     }
 
     private ApplicationDetail toDetail(SubcontractApplication r, List<ApplicationItemDto> items) {
+        boolean productionLinked =
+                productionSourceGuard.isSubcontractApplicationLinked(r.getId());
         return new ApplicationDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getSupplierId(), r.getWarehouseId(), r.getApplicantId(), r.getMakerId(), r.getApproverId(),
                 r.getNeedDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), r.getSourceDocNo(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(),
+                productionLinked, !productionLinked, !productionLinked, true,
+                restrictionReason(productionLinked));
+    }
+
+    private String restrictionReason(boolean linked) {
+        return linked ? "该委外申请关联生产物料需求，编辑和删除已锁定；红冲须走生产供给校验" : null;
     }
 
     private SubcontractApplication requireApplication(UUID id) {
         return applicationRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外申请单不存在"));
+    }
+    private SubcontractApplication requireApplicationForUpdate(UUID id) {
+        SubcontractApplication application = em.find(
+                SubcontractApplication.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return application == null || application.isDeleted()
+                ? requireApplication(id)
+                : application;
     }
 }

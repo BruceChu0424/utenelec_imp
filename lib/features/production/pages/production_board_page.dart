@@ -127,7 +127,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   DateTime? _endDate;
   DateTime? _deliverFrom; // 交货日期范围筛选（从）
   DateTime? _deliverTo; // 交货日期范围筛选（至）
-  final _workshopCtrl = TextEditingController();
   final _workerCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
   String _keyword = '';
@@ -159,7 +158,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   @override
   void dispose() {
     _debounce?.cancel();
-    _workshopCtrl.dispose();
     _workerCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
@@ -208,19 +206,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     }
   }
 
-  /// 合并后计划行数：本页已选按 货品+颜色 合并计数；其它页已选各行保守按 1 行估算。
-  int get _mergedLineCount {
-    final keys = <String>{};
-    var known = 0;
-    for (final r in _rows) {
-      if (_selected.containsKey(r.orderItemId)) {
-        keys.add('${r.goodsId}|${r.colorName ?? ''}');
-        known++;
-      }
-    }
-    return keys.length + (_selected.length - known);
-  }
-
   Future<void> _pickDate(bool begin) async {
     final now = ChinaDateTime.today();
     final d = await showDatePicker(
@@ -256,6 +241,14 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   Future<void> _suggestAllAndSubmit() async {
     final rows = _rows;
     if (rows.isEmpty || _submitting) return;
+    final missingBom = rows.where((row) => !row.bomReady).length;
+    if (missingBom > 0) {
+      context.appWarning(
+        '当前页有 $missingBom 条产品缺少 BOM，建议计划未生成；'
+        '请先维护组装物料资料，或手动选择其它可排产品。',
+      );
+      return;
+    }
     setState(() {
       for (final r in rows) {
         _selected[r.orderItemId] = r.needQty ?? 0;
@@ -299,6 +292,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     // 本页勾选的行先做前端校验；其它页勾选量=勾选时的缺口，由服务端硬校验兜底
     for (final r in _rows) {
       final v = _selected[r.orderItemId];
+      if (v != null && !r.bomReady) {
+        context.appWarning(
+          '产品 ${r.goodsCode ?? r.goodsName ?? '未编码货品'} 缺少有效 BOM，'
+          '请先维护组装物料资料。',
+        );
+        return;
+      }
       if (v != null && (v <= 0 || v > (r.needQty ?? 0) + 1e-6)) {
         context.appWarning(
           '订单 ${r.orderBillNo} 排产量需在 0 ~ 缺口 '
@@ -316,8 +316,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         ],
         if (_beginDate != null) 'planBeginDate': _fmtDate(_beginDate!),
         if (_endDate != null) 'planEndDate': _fmtDate(_endDate!),
-        if (_workshopCtrl.text.trim().isNotEmpty)
-          'workshopName': _workshopCtrl.text.trim(),
+
         if (_workerCtrl.text.trim().isNotEmpty)
           'workerName': _workerCtrl.text.trim(),
       }),
@@ -334,6 +333,13 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 
   void _toggle(SchedulePendingRow r, bool on) {
+    if (on && !r.bomReady) {
+      context.appWarning(
+        '产品 ${r.goodsCode ?? r.goodsName ?? '未编码货品'} 缺少有效 BOM，'
+        '请先维护组装物料资料。',
+      );
+      return;
+    }
     setState(() {
       if (on) {
         _selected[r.orderItemId] = r.needQty ?? 0;
@@ -560,13 +566,15 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         : r.deliverDate!.substring(0, 10);
     final color = r.urgent ? theme.colorScheme.error : null;
     return Material(
-      color: r.urgent
+      color: !r.bomReady
+          ? theme.colorScheme.errorContainer.withValues(alpha: 0.3)
+          : r.urgent
           ? theme.colorScheme.error.withValues(alpha: 0.06)
           : theme.colorScheme.surface,
       borderRadius: UtenRadius.mdAll,
       child: InkWell(
         borderRadius: UtenRadius.mdAll,
-        onTap: _canEdit ? () => _toggle(r, !checked) : null,
+        onTap: _canEdit && r.bomReady ? () => _toggle(r, !checked) : null,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: UtenSpacing.s8,
@@ -577,7 +585,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
               if (_canEdit)
                 Checkbox(
                   value: checked,
-                  onChanged: (v) => _toggle(r, v ?? false),
+                  onChanged: r.bomReady ? (v) => _toggle(r, v ?? false) : null,
                 ),
               Expanded(
                 flex: 3,
@@ -601,6 +609,29 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
+                    if (!r.bomReady) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 14,
+                            color: theme.colorScheme.error,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'BOM 缺失 · 请先维护组装物料资料',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -703,16 +734,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                   tooltip: '建议完工日期',
                   onPressed: _selected.isEmpty ? null : _suggestFinish,
                 ),
-                SizedBox(
-                  width: 120,
-                  child: TextField(
-                    controller: _workshopCtrl,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      labelText: '车间',
-                    ),
-                  ),
-                ),
+
                 SizedBox(
                   width: 120,
                   child: TextField(
@@ -728,12 +750,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
           ),
           const SizedBox(width: UtenSpacing.s8),
           UtenButton(
-            icon: Icons.merge_type_rounded,
+            icon: Icons.playlist_add_check_rounded,
             onPressed: _selected.isEmpty || _submitting ? null : _submit,
             child: Text(
-              _submitting
-                  ? '提交中…'
-                  : '合并排产（${_selected.length} 行 → $_mergedLineCount 行）',
+              _submitting ? '生成中…' : '生成生产计划（${_selected.length} 个订单行）',
             ),
           ),
         ],

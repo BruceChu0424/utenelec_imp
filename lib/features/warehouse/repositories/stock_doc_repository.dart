@@ -81,20 +81,42 @@ class StockDocRepository {
   Future<StockDocDetail> issue(
     String id,
     List<Map<String, dynamic>> lines,
+    String idempotencyKey,
   ) async => StockDocDetail.fromJson(
-    await api.post(ApiEndpoints.stockDocIssue(id), body: {'lines': lines}),
+    await api.post(
+      ApiEndpoints.stockDocIssue(id),
+      body: {'lines': lines, 'idempotencyKey': idempotencyKey},
+    ),
   );
 
   /// DRAW 反出库：对称回退已出库量
   Future<StockDocDetail> reverseIssue(
     String id,
     List<Map<String, dynamic>> lines,
+    String idempotencyKey,
   ) async => StockDocDetail.fromJson(
     await api.post(
       ApiEndpoints.stockDocIssueReverse(id),
-      body: {'lines': lines},
+      body: {'lines': lines, 'idempotencyKey': idempotencyKey},
     ),
   );
+
+  Future<List<ReturnableMaterialSource>> returnableSources({
+    String? planId,
+    String? drawId,
+  }) async {
+    if (planId == null && drawId == null) {
+      throw ArgumentError('planId or drawId is required');
+    }
+    final list = await api.getList(
+      ApiEndpoints.productionMaterialReturnableSources,
+      query: {
+        'planId': ?planId,
+        'drawId': ?drawId,
+      },
+    );
+    return list.map(ReturnableMaterialSource.fromJson).toList();
+  }
 }
 
 final stockDocRepositoryProvider =

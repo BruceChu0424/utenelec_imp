@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -43,5 +44,12 @@ public class AuditController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return auditQuery.query(action, actorAccount, dateFrom, dateTo, page, size);
+    }
+
+    /** Full redacted before/after payload for one row; never exposed in list. */
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public AuditLogDetail detail(@PathVariable long id) {
+        return auditQuery.detail(id);
     }
 }

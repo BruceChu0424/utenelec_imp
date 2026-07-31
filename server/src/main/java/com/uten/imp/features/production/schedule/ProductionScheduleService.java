@@ -6,6 +6,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.features.production.plan.ProductionPlan;
 import com.uten.imp.features.production.plan.ProductionPlanItem;
 import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
@@ -25,9 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -46,12 +49,24 @@ import java.util.UUID;
 public class ProductionScheduleService {
 
     private final EntityManager em;
+    /** 新增排产缺口：订单净未交 - 当前可发预留 - 尚未入库的计划量（均为行单位）。 */
+    static final String SCHEDULING_NEED_SQL = """
+            GREATEST(
+                COALESCE(i.qty,0) - COALESCE(i.shipped_qty,0)
+                + COALESCE(i.returned_qty,0) - COALESCE(i.flag_qty,0)
+                - COALESCE(i.reserved_qty,0)
+                - GREATEST(COALESCE(i.planned_qty,0) - COALESCE(i.produced_qty,0), 0),
+                0)
+            """.strip();
+
+
     private final ProductionPlanRepository planRepo;
     private final ProductionPlanItemRepository itemRepo;
     private final PlanOrderItemLinkRepository linkRepo;
     private final DocNumberService docNumberService;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final MrpService mrpService;
 
     /** 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天或已逾期）。
      *  keyword 模糊 订单号/客户/货品名/货品编码；dateFrom/dateTo 交货日期范围（行级优先、缺省取单头）。
@@ -72,9 +87,9 @@ public class ProductionScheduleService {
                 WHERE o.is_deleted = false AND o.status = 1
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false
-                  AND COALESCE(i.chain_status,0) > 0 AND i.chain_status < 8
-                  AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
-                """
+                  AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
+                  AND %s > 0
+                """.formatted(SCHEDULING_NEED_SQL)
                 + (kw.isEmpty() ? ""
                         : "  AND (LOWER(o.bill_no) LIKE :kw OR LOWER(COALESCE(c.name,'')) LIKE :kw"
                           + " OR LOWER(g.name) LIKE :kw OR LOWER(g.code) LIKE :kw)\n")
@@ -94,10 +109,13 @@ public class ProductionScheduleService {
                        i.goods_id, g.code, g.name, g.spec,
                        i.color_id, col.name, i.unit_id, u.name,
                        i.qty, COALESCE(i.reserved_qty,0), COALESCE(i.planned_qty,0),
-                       i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
+                       %s AS need,
                        COALESCE(i.deliver_date, o.deliver_date) AS deliver,
-                       i.chain_status
-                """ + filters
+                       i.chain_status,
+                       EXISTS (SELECT 1 FROM goods_bom_items b
+                               WHERE b.goods_id = i.goods_id
+                                 AND b.is_deleted = false) AS bom_ready
+                """.formatted(SCHEDULING_NEED_SQL) + filters
                 + " ORDER BY deliver ASC NULLS LAST, o.bill_date LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo);
         @SuppressWarnings("unchecked")
@@ -115,6 +133,7 @@ public class ProductionScheduleService {
                     (UUID) r[9], (String) r[10], (UUID) r[11], (String) r[12],
                     bd(r[13]), bd(r[14]), bd(r[15]), bd(r[16]),
                     deliver, r[18] == null ? null : ((Number) r[18]).shortValue(),
+                    Boolean.TRUE.equals(r[19]),
                     deliver != null && !deliver.isAfter(warn)));
         }
         return new com.uten.imp.common.web.PageResponse<>(out, p, sz, total, totalPages);
@@ -146,7 +165,12 @@ public class ProductionScheduleService {
                     UUID unitId, BigDecimal unitRate, BigDecimal orderQty, BigDecimal need,
                     LocalDate deliver, BigDecimal planQty) {}
         List<Snap> snaps = new ArrayList<>();
+        Set<UUID> requestedOrderItemIds = new HashSet<>();
         for (MergePlanRequest.Line line : req.getItems()) {
+            if (line.getOrderItemId() == null
+                    || !requestedOrderItemIds.add(line.getOrderItemId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "排产来源订单行不可为空或重复");
+            }
             if (line.getQty() == null || line.getQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "排产量必须大于 0");
             }
@@ -155,20 +179,28 @@ public class ProductionScheduleService {
                 r = (Object[]) em.createNativeQuery("""
                         SELECT i.id, o.id, o.bill_no, o.bill_date, o.client_id, c.name,
                                i.goods_id, i.color_id, i.unit_id, i.unit_rate, i.qty,
-                               i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
-                               COALESCE(i.deliver_date, o.deliver_date)
+                               %s AS need,
+                               COALESCE(i.deliver_date, o.deliver_date),
+                               g.code, g.name,
+                               EXISTS (SELECT 1 FROM goods_bom_items b
+                                       WHERE b.goods_id = i.goods_id
+                                         AND b.is_deleted = false) AS bom_ready
                         FROM sales_order_items i
                         JOIN sales_orders o ON o.id = i.order_id
+                        JOIN goods g ON g.id = i.goods_id
                         LEFT JOIN clients c ON c.id = o.client_id
                         WHERE i.id = :id AND i.is_deleted = false
                           AND o.is_deleted = false AND o.status = 1
                           AND o.is_closed = false AND o.is_stopped = false
-                          AND COALESCE(i.chain_status,0) > 0
-                        """).setParameter("id", line.getOrderItemId()).getSingleResult();
+                          AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
+                        FOR UPDATE OF i
+                        """.formatted(SCHEDULING_NEED_SQL))
+                        .setParameter("id", line.getOrderItemId()).getSingleResult();
             } catch (jakarta.persistence.NoResultException e) {
                 throw new ApiException(ErrorCode.BUSINESS,
                         "订单行不可排产（不存在/未审核/已结案/已中止）: " + line.getOrderItemId());
             }
+            requireBomReady(Boolean.TRUE.equals(r[15]), (String) r[13], (String) r[14]);
             BigDecimal need = bd(r[11]);
             if (line.getQty().compareTo(need) > 0) {
                 throw new ApiException(ErrorCode.BUSINESS,
@@ -200,11 +232,20 @@ public class ProductionScheduleService {
         p.setStatus((short) 0);
         planRepo.save(p);
 
-        // 3) 按 货品+颜色 合并计划行；每订单行预建 link
+        // 3) 按 货品+颜色+单位换算 合并计划行；每订单行预建 link。
+        // 同货同色但单位或换算率不同不能共用一条 links 数量口径。
         Map<String, ProductionPlanItem> byGoods = new LinkedHashMap<>();
         int auto = 0;
         for (Snap s : snaps) {
-            String key = s.goodsId() + "|" + (s.colorId() == null ? "" : s.colorId());
+            BigDecimal normalizedRate = s.unitRate() == null
+                    ? BigDecimal.ONE : s.unitRate().stripTrailingZeros();
+            if (normalizedRate.signum() <= 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "订单行 " + s.orderItemId() + " 的单位换算率必须大于 0");
+            }
+            String key = s.goodsId() + "|" + (s.colorId() == null ? "" : s.colorId())
+                    + "|" + (s.unitId() == null ? "" : s.unitId())
+                    + "|" + normalizedRate.toPlainString();
             ProductionPlanItem it = byGoods.get(key);
             if (it == null) {
                 auto++;
@@ -217,7 +258,7 @@ public class ProductionScheduleService {
                 it.setGoodsId(s.goodsId());
                 it.setColorId(s.colorId());
                 it.setUnitId(s.unitId());
-                it.setUnitRate(s.unitRate());
+                it.setUnitRate(normalizedRate);
                 it.setQty(BigDecimal.ZERO);
                 it.setOqty(BigDecimal.ZERO);
                 it.setOrderDate(s.orderDate());
@@ -252,11 +293,25 @@ public class ProductionScheduleService {
         return p.getId();
     }
 
+    static void requireBomReady(boolean bomReady, String goodsCode, String goodsName) {
+        if (bomReady) return;
+        String code = goodsCode == null || goodsCode.isBlank()
+                ? "未编码货品" : goodsCode.trim();
+        String name = goodsName == null || goodsName.isBlank()
+                ? "" : "（" + goodsName.trim() + "）";
+        throw new ApiException(
+                ErrorCode.BUSINESS,
+                "货品 " + code + name + " 缺少有效 BOM，请先维护组装物料资料");
+    }
+
     // ======================== 工作台徽标：待排产计数 ========================
 
     /** 缺料待备料计数（PMC 采购管理徽标）：链路行状态=3 待物料（计划已审但 BOM 净需求不足）的行数。 */
     @Transactional(readOnly = true)
     public Map<String, Long> shortageCount() {
+        if (!mrpService.isPlanningWriteReady()) {
+            return Map.of("count", 0L);
+        }
         // 单列原生查询返回标量（Long），不能当 Object[] 强转（多列才返回 Object[]）。
         Number n = (Number) em.createNativeQuery("""
                 SELECT COUNT(*)
@@ -285,9 +340,9 @@ public class ProductionScheduleService {
                 WHERE o.is_deleted = false AND o.status = 1
                   AND o.is_closed = false AND o.is_stopped = false
                   AND i.is_deleted = false
-                  AND COALESCE(i.chain_status,0) > 0 AND i.chain_status < 8
-                  AND i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) > 0
-                """)
+                  AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
+                  AND %s > 0
+                """.formatted(SCHEDULING_NEED_SQL))
                 .setParameter("today", BusinessTime.today())
                 .getSingleResult();
         return Map.of("count", ((Number) r[0]).longValue(),
@@ -305,7 +360,11 @@ public class ProductionScheduleService {
     @Transactional(readOnly = true)
     public List<ScheduleOrderLine> orderLines(UUID orderId) {
         Object n = em.createNativeQuery(
-                "SELECT COUNT(*) FROM sales_orders WHERE id=:id AND status=1 AND is_deleted=false")
+                """
+                SELECT COUNT(*) FROM sales_orders
+                WHERE id=:id AND status=1 AND is_deleted=false
+                  AND is_closed=false AND is_stopped=false
+                """)
                 .setParameter("id", orderId).getSingleResult();
         if (((Number) n).intValue() == 0) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可带入计划明细");
@@ -315,7 +374,7 @@ public class ProductionScheduleService {
                 SELECT i.id, i.line_no, i.goods_id, g.code, g.name, g.spec,
                        i.color_id, col.name, i.unit_id, u.name,
                        i.qty, COALESCE(i.planned_qty,0),
-                       i.qty - COALESCE(i.reserved_qty,0) - COALESCE(i.planned_qty,0) AS need,
+                       %s AS need,
                        COALESCE(i.deliver_date, o.deliver_date) AS deliver,
                        o.bill_no, c.name, COALESCE(i.unit_rate, 1)
                 FROM sales_order_items i
@@ -325,8 +384,10 @@ public class ProductionScheduleService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units u ON u.id = i.unit_id
                 WHERE i.order_id = :orderId AND i.is_deleted = false
+                  AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
                 ORDER BY i.line_no NULLS LAST, i.id
-                """).setParameter("orderId", orderId).getResultList();
+                """.formatted(SCHEDULING_NEED_SQL))
+                .setParameter("orderId", orderId).getResultList();
         List<ScheduleOrderLine> out = new ArrayList<>(rs.size());
         for (Object[] r : rs) {
             UUID goodsId = (UUID) r[2];
@@ -459,6 +520,32 @@ public class ProductionScheduleService {
                 SELECT COALESCE(MAX(depth), 1) FROM bom
                 """).setParameter("g", goodsId).getSingleResult();
         return d == null ? 1 : ((Number) d).intValue();
+    }
+
+    /** Java 镜像口径，供边界测试与非 SQL 调用复用。 */
+    static BigDecimal schedulingNeed(
+            BigDecimal qty,
+            BigDecimal shippedQty,
+            BigDecimal returnedQty,
+            BigDecimal flagQty,
+            BigDecimal reservedQty,
+            BigDecimal plannedQty,
+            BigDecimal producedQty) {
+        BigDecimal outstanding = zero(qty)
+                .subtract(zero(shippedQty))
+                .add(zero(returnedQty))
+                .subtract(zero(flagQty));
+        BigDecimal unfinishedPlan = zero(plannedQty)
+                .subtract(zero(producedQty))
+                .max(BigDecimal.ZERO);
+        return outstanding
+                .subtract(zero(reservedQty))
+                .subtract(unfinishedPlan)
+                .max(BigDecimal.ZERO);
+    }
+
+    private static BigDecimal zero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     private static BigDecimal bd(Object v) {

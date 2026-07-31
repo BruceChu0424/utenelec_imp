@@ -187,7 +187,10 @@ class _ProgressList extends ConsumerWidget {
         : theme.colorScheme.error;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
         children: [
           Expanded(
             child: InkWell(
@@ -225,6 +228,115 @@ class _ProgressList extends ConsumerWidget {
             ),
           ),
         ],
+          ),
+          for (final segment in p.executionSegments)
+            _executionSegmentRow(theme, segment),
+        ],
+      ),
+    );
+  }
+
+  Widget _executionSegmentRow(
+    ThemeData theme,
+    OrderExecutionSegmentProgress segment,
+  ) {
+    final statusLabel = switch (segment.status) {
+      'READY' => '待派工',
+      'WAITING' => '待料',
+      'DISPATCHED' => '已派工',
+      'IN_PROGRESS' => '生产中',
+      'COMPLETED' => '已完成',
+      'CANCELLED' => '已取消',
+      'REVERSED' => '已红冲',
+      _ => segment.status ?? '未知状态',
+    };
+    final statusColor = switch (segment.status) {
+      'COMPLETED' => theme.colorScheme.primary,
+      'WAITING' => theme.colorScheme.tertiary,
+      'CANCELLED' || 'REVERSED' => theme.colorScheme.error,
+      _ => theme.colorScheme.secondary,
+    };
+    final assignment = [
+      segment.workshopName,
+      segment.teamName,
+    ].where((value) => value?.isNotEmpty == true).join(' · ');
+    final dates = [
+      segment.planBeginDate,
+      segment.planEndDate,
+    ].where((value) => value?.isNotEmpty == true).join(' → ');
+
+    return Semantics(
+      label:
+          '${segment.segmentCode ?? '执行子计划'}，$statusLabel，'
+          '分摊 ${_fmt(segment.allocatedQty)}，'
+          '报工 ${_fmt(segment.reportedQty)}，'
+          '入库 ${_fmt(segment.inboundQty)}',
+      child: Container(
+        margin: const EdgeInsets.only(top: UtenSpacing.s8),
+        padding: const EdgeInsets.all(UtenSpacing.s8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(UtenRadius.sm),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    segment.segmentCode ?? '执行子计划',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  statusLabel,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: statusColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              '分摊 ${_fmt(segment.allocatedQty)} · '
+              '报工 ${_fmt(segment.reportedQty)} · '
+              '入库 ${_fmt(segment.inboundQty)}',
+              style: theme.textTheme.bodySmall,
+            ),
+            if (assignment.isNotEmpty || dates.isNotEmpty)
+              Text(
+                [assignment, dates].where((value) => value.isNotEmpty).join(' · '),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            if (segment.delayed)
+              Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 16,
+                    color: theme.colorScheme.error,
+                  ),
+                  const SizedBox(width: UtenSpacing.s4),
+                  Expanded(
+                    child: Text(
+                      segment.delayReason ?? '已超过计划完工日期',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -24,6 +24,8 @@ public class DailyReportItemLine {
     private UUID salesOrderItemId;
     private String salesOrderNo;
     private UUID planItemId;
+    private UUID executionSegmentId;
+    private UUID executionSegmentSalesAllocationId;
     private String planNo;
     /** 报工完结标记（V95）：该计划行报工结束；合格不足自动补产。 */
     private Boolean isFinal;

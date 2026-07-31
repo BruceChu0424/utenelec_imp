@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/notice.dart';
+import '../models/notice_audience.dart';
 
 abstract interface class NoticeRepository {
   /// 当前用户可见通知列表（置顶优先 + 时间倒序）
@@ -28,6 +29,18 @@ abstract interface class NoticeRepository {
     bool topPriority = false,
     NoticePriority priority = NoticePriority.normal,
     List<String> attachments = const [],
+    NoticeAudienceScope audienceScope = NoticeAudienceScope.all,
+    List<String> departmentIds = const [],
+    List<String> employeeIds = const [],
+  });
+
+  Future<NoticeAudiencePreview> previewAudience({
+    required List<String> departmentIds,
+    required List<String> employeeIds,
+  });
+
+  Future<List<NoticeAudienceEmployee>> searchAudienceEmployees({
+    String? search,
   });
 
   /// 批量删除（从当前用户列表移除；他人不受影响）。返回实际删除条数。
@@ -85,6 +98,9 @@ class DioNoticeRepository implements NoticeRepository {
     bool topPriority = false,
     NoticePriority priority = NoticePriority.normal,
     List<String> attachments = const [],
+    NoticeAudienceScope audienceScope = NoticeAudienceScope.all,
+    List<String> departmentIds = const [],
+    List<String> employeeIds = const [],
   }) async {
     final json = await _api.post(
       ApiEndpoints.notices,
@@ -95,9 +111,37 @@ class DioNoticeRepository implements NoticeRepository {
         'topPriority': topPriority,
         'priority': priority.name,
         'attachments': attachments,
+        'audienceScope': audienceScope.name,
+        'departmentIds': departmentIds,
+        'employeeIds': employeeIds,
       },
     );
     return _fromJson(json);
+  }
+
+  @override
+  Future<NoticeAudiencePreview> previewAudience({
+    required List<String> departmentIds,
+    required List<String> employeeIds,
+  }) async {
+    final json = await _api.post(
+      ApiEndpoints.noticesAudiencePreview,
+      body: {'departmentIds': departmentIds, 'employeeIds': employeeIds},
+    );
+    return NoticeAudiencePreview.fromJson(json);
+  }
+
+  @override
+  Future<List<NoticeAudienceEmployee>> searchAudienceEmployees({
+    String? search,
+  }) async {
+    final items = await _api.getList(
+      ApiEndpoints.noticesAudienceEmployees,
+      query: search == null || search.trim().isEmpty
+          ? null
+          : {'search': search.trim()},
+    );
+    return [for (final item in items) NoticeAudienceEmployee.fromJson(item)];
   }
 
   @override
@@ -128,6 +172,11 @@ class DioNoticeRepository implements NoticeRepository {
       priority: _priorityFrom(json['priority'] as String?),
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
           .cast<String>(),
+      audienceScope: NoticeAudienceScope.fromName(
+        json['audienceScope'] as String?,
+      ),
+      audienceSummary: json['audienceSummary'] as String? ?? '全体员工',
+      audienceCount: (json['audienceCount'] as num?)?.toInt(),
     );
   }
 

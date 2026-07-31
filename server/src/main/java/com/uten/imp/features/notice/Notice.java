@@ -57,4 +57,26 @@ public class Notice extends BaseEntity {
      */
     @Column(name = "audience_user_id")
     private java.util.UUID audienceUserId;
+
+    /** all = 全员动态广播；selected = 发布时固化接收人快照。 */
+    @Column(name = "audience_scope", nullable = false)
+    private String audienceScope = "all";
+
+    /** 发布时生成的可读范围摘要，例如「生产部等 2 个部门、张三等 3 人」。 */
+    @Column(name = "audience_summary", nullable = false)
+    private String audienceSummary = "全体员工";
+
+    /** selected 模式下去重后的实际接收人数；all 模式为 null。 */
+    @Column(name = "audience_count")
+    private Integer audienceCount;
+
+    /** 发布时直接选择的部门 id 快照；部门子树解析结果见 notice_user_states。 */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "target_department_ids", nullable = false, columnDefinition = "jsonb")
+    private String targetDepartmentIds = "[]";
+
+    /** 发布时直接选择的员工 id 快照；实际有账号的接收人见 notice_user_states。 */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "target_employee_ids", nullable = false, columnDefinition = "jsonb")
+    private String targetEmployeeIds = "[]";
 }

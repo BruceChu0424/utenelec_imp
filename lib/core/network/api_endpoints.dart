@@ -125,6 +125,16 @@ abstract final class ApiEndpoints {
   static String stockDocIssue(String id) => '/stock/docs/$id/issue';
   static String stockDocIssueReverse(String id) =>
       '/stock/docs/$id/issue/reverse';
+  static const productionMaterialReturnableSources =
+      '/stock/production-materials/returnable-sources';
+  static String productionMaterialClearance(String planId) =>
+      '/stock/production-materials/plans/$planId/clearance';
+  static String productionMaterialSettlements(String planId) =>
+      '/stock/production-materials/plans/$planId/settlements';
+  static String productionMaterialSettlementReverse(String planId) =>
+      '/stock/production-materials/plans/$planId/settlements/reverse';
+  static String productionMaterialClose(String planId) =>
+      '/stock/production-materials/plans/$planId/close';
 
   // 岗位（部门下）
   static String departmentPositions(String deptId) =>
@@ -228,6 +238,8 @@ abstract final class ApiEndpoints {
   static const noticesUnreadCount = '/notices/unread-count';
   static const noticesReadAll = '/notices/read-all';
   static const noticesBatchDelete = '/notices/batch-delete';
+  static const noticesAudiencePreview = '/notices/audience/preview';
+  static const noticesAudienceEmployees = '/notices/audience/employees';
   static String noticeRead(String id) => '/notices/$id/read';
 
   // 建议箱（广场/我的/提交/点赞/官方回复；后端 features/suggestion/SuggestionController）

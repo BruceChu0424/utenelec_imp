@@ -17,7 +17,7 @@ public class DepartmentController {
     private final DepartmentService service;
 
     @GetMapping("/tree")
-    @PreAuthorize("hasAuthority('department:view')")
+    @PreAuthorize("hasAnyAuthority('department:view', 'notice:publish')")
     public List<DepartmentNode> tree() {
         return service.tree();
     }

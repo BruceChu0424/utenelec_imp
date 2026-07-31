@@ -86,6 +86,14 @@ abstract final class RouteName {
   static const String financeSuppliers = '/finance/suppliers';
   static const String financeAccounts = '/finance/accounts';
 
+  // 统一履约任务工作台（仓库 / 采购 / 委外）。
+  static const String operationsWarehouseWorkbench =
+      '/operations/workbench/warehouse';
+  static const String operationsPurchaseWorkbench =
+      '/operations/workbench/purchase';
+  static const String operationsSubcontractWorkbench =
+      '/operations/workbench/subcontract';
+
   // 采购管理（PMC 运营部）：hub + 4 单据列表。
   // new/detail/edit 走 RoutePath.purchaseDoc*(doc,id) 带参；doc=requests|orders|receipts|returns。
   static const String purchase = '/purchase';
@@ -180,6 +188,8 @@ abstract final class RoutePath {
       '/warehouse/$code/$id';
   static String stockDocEdit(String code, String id) =>
       '/warehouse/$code/$id/edit';
+  static String stockWdrawNewFromDraw(String drawId) =>
+      '/warehouse/WDRAW/new?drawId=$drawId';
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

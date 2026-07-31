@@ -36,6 +36,15 @@ class SubcontractHubPage extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.only(top: UtenSpacing.s12),
             children: [
+              _section(context, theme, '任务中心', [
+                _Entry(
+                  icon: Icons.precision_manufacturing_outlined,
+                  label: '生产委外需求',
+                  description: '处理申请、下单、回厂审核与齐套转生产',
+                  location: RouteName.operationsSubcontractWorkbench,
+                ),
+              ]),
+              const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '委外管理', [
                 _Entry.fromCfg(SubcontractDocConfig.inquiry),
                 _Entry.fromCfg(SubcontractDocConfig.application),

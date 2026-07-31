@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.receipt;
 
+import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -76,6 +77,7 @@ public class SubcontractReceiptService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final ProductionSubcontractSupplyTransitionPort productionSupply;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -124,7 +126,7 @@ public class SubcontractReceiptService {
     @Transactional
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
-        SubcontractReceipt r = requireReceipt(id);
+        SubcontractReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -139,7 +141,7 @@ public class SubcontractReceiptService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractReceipt r = requireReceipt(id);
+        SubcontractReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -155,8 +157,8 @@ public class SubcontractReceiptService {
     @Transactional
     public ReceiptDetail approve(UUID id) {
         tx.bind();
-        SubcontractReceipt r = requireReceipt(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        productionSupply.lockSubcontractReceiptMutationDimensions(id);
+        SubcontractReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -179,6 +181,8 @@ public class SubcontractReceiptService {
                                 it.getColorId(),
                                 it.getUnitId()))
                         .toList());
+        productionSupply.lockSubcontractReceiptProductionDemands(
+                id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -199,6 +203,7 @@ public class SubcontractReceiptService {
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
         postAp(r, totalLocalOf(items), +1);
         r.setStatus(STATUS_APPROVED);
+        productionSupply.onSubcontractReceiptApproved(id);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setApPosted(true);
         receiptRepo.save(r);
@@ -209,8 +214,8 @@ public class SubcontractReceiptService {
     @Transactional
     public ReceiptDetail reverse(UUID id) {
         tx.bind();
-        SubcontractReceipt r = requireReceipt(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        productionSupply.lockSubcontractReceiptMutationDimensions(id);
+        SubcontractReceipt r = requireReceiptForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -221,6 +226,7 @@ public class SubcontractReceiptService {
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "委外进仓已有退货记录，请先红冲下游退货单");
         }
+        productionSupply.beforeSubcontractReceiptReversed(id);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -392,5 +398,12 @@ public class SubcontractReceiptService {
         return receiptRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外进仓单不存在"));
+    }
+    private SubcontractReceipt requireReceiptForUpdate(UUID id) {
+        SubcontractReceipt receipt = em.find(
+                SubcontractReceipt.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return receipt == null || receipt.isDeleted()
+                ? requireReceipt(id)
+                : receipt;
     }
 }

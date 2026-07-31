@@ -104,6 +104,7 @@ class PurchaseDocItem {
     this.price,
     this.amountOriginal,
     this.amountLocal,
+    this.orderedQty,
     this.receivedQty,
     this.returnedQty,
     this.giftQty,
@@ -126,6 +127,7 @@ class PurchaseDocItem {
   final double? price;
   final double? amountOriginal;
   final double? amountLocal;
+  final double? orderedQty;
   final double? receivedQty;
   final double? returnedQty;
   final double? giftQty;
@@ -149,6 +151,7 @@ class PurchaseDocItem {
         price: (json['price'] as num?)?.toDouble(),
         amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+        orderedQty: (json['orderedQty'] as num?)?.toDouble(),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
         returnedQty: (json['returnedQty'] as num?)?.toDouble(),
         giftQty: (json['giftQty'] as num?)?.toDouble(),
@@ -190,6 +193,11 @@ class PurchaseDocDetail {
     this.closed = false,
     this.sourceDocNo,
     this.items = const [],
+    this.productionLinked = false,
+    this.canEdit = true,
+    this.canDelete = true,
+    this.canReverse = true,
+    this.restrictionReason,
   });
 
   final String id;
@@ -222,6 +230,11 @@ class PurchaseDocDetail {
   final bool closed;
   final String? sourceDocNo;
   final List<PurchaseDocItem> items;
+  final bool productionLinked;
+  final bool canEdit;
+  final bool canDelete;
+  final bool canReverse;
+  final String? restrictionReason;
 
   factory PurchaseDocDetail.fromJson(Map<String, dynamic> json) =>
       PurchaseDocDetail(
@@ -250,6 +263,11 @@ class PurchaseDocDetail {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
+        productionLinked: (json['productionLinked'] as bool?) ?? false,
+        canEdit: (json['canEdit'] as bool?) ?? true,
+        canDelete: (json['canDelete'] as bool?) ?? true,
+        canReverse: (json['canReverse'] as bool?) ?? true,
+        restrictionReason: json['restrictionReason'] as String?,
         items:
             (json['items'] as List?)
                 ?.map(

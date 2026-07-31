@@ -57,7 +57,10 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: '/production/daily-reports/new',
     name: 'production-daily-report-new',
-    builder: (_, _) => const ProductionDailyReportEditPage(),
+    builder: (_, state) => ProductionDailyReportEditPage(
+      initialExecutionSegmentId:
+          state.uri.queryParameters['executionSegmentId'],
+    ),
   ),
   GoRoute(
     path: '/production/daily-reports/:id/edit',

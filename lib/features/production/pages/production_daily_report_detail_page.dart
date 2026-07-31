@@ -84,8 +84,12 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  Future<void> _approve() =>
-      _doAction('审核后日报生效，确认？', (repo) => repo.approve(widget.id), '已审核');
+  Future<void> _approve() => _doAction(
+    '审核后只按“合格完工量”累计生产进度，并生成成品入库草稿；'
+        '不良品不得填写在该数量中。确认继续？',
+    (repo) => repo.approve(widget.id),
+    '已审核',
+  );
   Future<void> _reverse() =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
@@ -291,8 +295,8 @@ class _ProductionDailyReportDetailPageState
             ),
             MasterColumnDef(
               key: 'qty',
-              label: '完工量',
-              width: 90,
+              label: '合格完工量',
+              width: 112,
               type: 'number',
               value: (it) => it.qty?.toStringAsFixed(2),
             ),

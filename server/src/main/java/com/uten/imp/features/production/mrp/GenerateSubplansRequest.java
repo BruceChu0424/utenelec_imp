@@ -2,6 +2,7 @@ package com.uten.imp.features.production.mrp;
 
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -10,6 +11,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,7 +41,24 @@ public class GenerateSubplansRequest {
         /** 归属车间（部门 id）；空则归入未指定车间组。 */
         private UUID departmentId;
         /** 车间名冗余（报表 facet）；空则由服务端按部门解析。 */
+        @Size(max = 250)
         private String workshopName;
+        /** 可编辑计划开工日；允许留空，填写时完工日不得早于它。 */
+        private LocalDate planBeginDate;
+        /** 可编辑计划完工日；允许留空，填写时不得早于开工日。 */
+        private LocalDate planEndDate;
+        /** 生产负责人/工人；由服务端校验员工有效性并以主档姓名落库。 */
+        private UUID workerId;
+        /** 仅作输入回显兼容；落库时以 workerId 对应的员工主档姓名为准。 */
+        @Size(max = 250)
+        private String workerName;
+
+        @AssertTrue(message = "计划完工日期不能早于计划开工日期")
+        public boolean isDateRangeValid() {
+            return planBeginDate == null
+                    || planEndDate == null
+                    || !planEndDate.isBefore(planBeginDate);
+        }
     }
 
     /** 一张生成的子计划结果。 */

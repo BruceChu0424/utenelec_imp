@@ -96,6 +96,8 @@ class ProductionDailyReportItem {
     this.salesOrderItemId,
     this.salesOrderNo,
     this.planItemId,
+    this.executionSegmentId,
+    this.executionSegmentSalesAllocationId,
     this.planNo,
     this.outboundNo,
     this.outboundQty,
@@ -124,6 +126,8 @@ class ProductionDailyReportItem {
   final String? salesOrderItemId;
   final String? salesOrderNo;
   final String? planItemId; // → production_plan_items.id
+  final String? executionSegmentId; // → production_execution_segments.id
+  final String? executionSegmentSalesAllocationId;
   final String? planNo;
   final String? outboundNo;
   final double? outboundQty;
@@ -153,6 +157,9 @@ class ProductionDailyReportItem {
         salesOrderItemId: json['salesOrderItemId'] as String?,
         salesOrderNo: json['salesOrderNo'] as String?,
         planItemId: json['planItemId'] as String?,
+        executionSegmentId: json['executionSegmentId'] as String?,
+        executionSegmentSalesAllocationId:
+            json['executionSegmentSalesAllocationId'] as String?,
         planNo: json['planNo'] as String?,
         outboundNo: json['outboundNo'] as String?,
         outboundQty: _asDouble(json['outboundQty']),

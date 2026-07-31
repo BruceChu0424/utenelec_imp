@@ -100,6 +100,15 @@ class ApiClient {
     }
   }
 
+  Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
+    try {
+      final r = await _dio.patch<dynamic>(path, data: body);
+      return _asMap(r.data);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   /// 后端 200 空体（void 接口）时 Dio 给的是 '' 而不是 null，
   /// 直接 `as Map` 会抛 TypeError —— 保存其实成功了却提示失败。
   /// 只对真正的 JSON 对象做转换，其余（null/空串/数组）一律视为空 Map。

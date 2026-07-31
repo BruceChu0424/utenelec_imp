@@ -30,4 +30,9 @@ public class RequestDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    private boolean productionLinked;
+    private boolean canEdit;
+    private boolean canDelete;
+    private boolean canReverse;
+    private String restrictionReason;
 }

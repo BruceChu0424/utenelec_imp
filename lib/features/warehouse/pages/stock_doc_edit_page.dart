@@ -6,6 +6,8 @@
 // - 日期统一 UtenDateField（outlined，与其它字段同款）。
 // 明细改 Excel 表：货品/数量（+账面/实盘/盘盈亏 当 CHECK）+ 添加行/添加多行 + 行尾删除 + sticky 表头。
 // 保存组装 body 调 create/update，成功后跳详情。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,15 +25,22 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../stock/repositories/stock_query_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../widgets/stock_grid_columns.dart';
 
 class StockDocEditPage extends ConsumerStatefulWidget {
-  const StockDocEditPage({super.key, required this.docType, this.id});
+  const StockDocEditPage({
+    super.key,
+    required this.docType,
+    this.id,
+    this.sourceDrawId,
+  });
   final StockDocType docType;
   final String? id; // null=新建
+  final String? sourceDrawId;
 
   @override
   ConsumerState<StockDocEditPage> createState() => _StockDocEditPageState();
@@ -39,6 +48,7 @@ class StockDocEditPage extends ConsumerStatefulWidget {
 
 class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   bool get _isCheck => widget.docType == StockDocType.check;
+  bool get _isWdraw => widget.docType == StockDocType.wdraw;
 
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
@@ -51,7 +61,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   final _grid = UtenEditableGridController<StockGridRow>();
   final _scrollCtl = ScrollController();
   bool _saving = false;
+  bool _loadingCheckBooks = false;
   bool _loading = false;
+  bool _loadedCanEdit = false;
+  String? _editRestrictionReason;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -75,7 +88,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
-    if (widget.id == null) {
+    if (widget.id == null && _isWdraw && widget.sourceDrawId != null) {
+      await _loadReturnableSources(widget.sourceDrawId!);
+    }
+    if (widget.id == null && _warehouseId == null) {
       // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
       try {
         final last = await ref
@@ -110,15 +126,36 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         _departmentId = d.departmentId;
         _makerName = d.makerName;
         _createdAt = d.createdAt;
+        _loadedCanEdit = d.canEdit;
+        _editRestrictionReason = d.restrictionReason;
         final rows = <StockGridRow>[];
         for (final it in d.items) {
-          final row = StockGridRow(isCheck: _isCheck)
-            ..goods = it.goodsId == null
-                ? null
-                : GoodsOption(
-                    id: it.goodsId!,
-                    name: ref.read(masterNameServiceProvider).goods(it.goodsId),
-                  );
+          final row =
+              StockGridRow(
+                  isCheck: _isCheck,
+                  sourceLocked: _isWdraw && it.upstreamItemId != null,
+                )
+                ..goods = it.goodsId == null
+                    ? null
+                    : GoodsOption(
+                        id: it.goodsId!,
+                        name: ref
+                            .read(masterNameServiceProvider)
+                            .goods(it.goodsId),
+                      );
+          row
+            ..upstreamItemId = it.upstreamItemId
+            ..colorId = it.colorId
+            ..unitId = it.unitId
+            ..unitRate = it.unitRate ?? 1
+            ..executionSegmentId = it.executionSegmentId
+            ..executionSegmentSalesAllocationId =
+                it.executionSegmentSalesAllocationId;
+          if (_isWdraw) {
+            row
+              ..upstreamItemId = it.upstreamItemId
+              ..sourceDrawNo = it.sourceDocNo;
+          }
           if (_isCheck) {
             // 盘点：账面 = items.qty，实盘 = items.countQty
             row.bookQty.text = it.qty?.toString() ?? '';
@@ -133,18 +170,129 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
         // 静默降级
       }
     }
-    if (_grid.isEmpty) _grid.addRow(StockGridRow(isCheck: _isCheck));
+    if (_grid.isEmpty && !_isWdraw) {
+      _grid.addRow(StockGridRow(isCheck: _isCheck));
+    }
     if (mounted) setState(() => _loading = false);
   }
 
+  Future<void> _loadReturnableSources(String drawId) async {
+    try {
+      final sources = await ref
+          .read(stockDocRepositoryProvider(StockDocType.wdraw))
+          .returnableSources(drawId: drawId);
+      if (sources.isEmpty) {
+        if (mounted) context.appWarning('该领料单没有尚可退回的已领良品');
+        return;
+      }
+      _warehouseId = sources.first.warehouseId;
+      final rows = sources.map((source) {
+        final row = StockGridRow(sourceLocked: true)
+          ..goods = GoodsOption(
+            id: source.goodsId,
+            code: source.goodsCode,
+            name: source.goodsName,
+          );
+        row
+          ..upstreamItemId = source.drawItemId
+          ..sourceDrawId = source.drawId
+          ..sourceDrawNo = source.drawNo
+          ..unitId = source.unitId
+          ..unitRate = source.unitRate
+          ..maxQty = source.maxReturnQty;
+        return row;
+      }).toList();
+      _grid.replaceAll(rows);
+    } catch (_) {
+      if (mounted) {
+        context.appError('读取可退料来源失败，请刷新原领料单后重试');
+      }
+    }
+  }
+
   Future<void> _pickGoods(StockGridRow row) async {
+    if (_isCheck && _warehouseId == null) {
+      context.appWarning('请先选择盘点仓库，再添加货品');
+      return;
+    }
     final g = await showUtenGoodsPicker(context, ref);
+
     if (g == null) return;
-    row.goods = GoodsOption(id: g.id, code: g.code, name: g.name);
+    final names = ref.read(masterNameServiceProvider);
+    row
+      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
+      ..unitId = names.unitIdByLegacy(g.unitLegacyId)
+      ..unitRate = 1;
+    if (_isCheck) {
+      await _loadCheckBookQty(row);
+    }
+  }
+
+  Future<void> _loadCheckBookQty(StockGridRow row) async {
+    final warehouseId = _warehouseId;
+    final goods = row.goods;
+    if (!_isCheck || warehouseId == null || goods == null) {
+      row.bookQty.clear();
+      return;
+    }
+    try {
+      final result = await ref
+          .read(stockQueryRepositoryProvider)
+          .balances(size: 100, warehouseId: warehouseId, goodsId: goods.id);
+      var qty = 0.0;
+      var found = false;
+      for (final balance in result.items) {
+        if (balance.colorId == row.colorId) {
+          qty = balance.qty ?? 0;
+          found = true;
+          break;
+        }
+      }
+      // 历史主档颜色缺失但该货品在目标仓只有一条余额时，沿用该余额颜色，避免误读为零。
+      if (!found && row.colorId == null && result.items.length == 1) {
+        final balance = result.items.single;
+        row.colorId = balance.colorId;
+        qty = balance.qty ?? 0;
+      }
+      row.bookQty.text = _qtyText(qty);
+    } catch (error) {
+      row.bookQty.clear();
+      if (mounted) {
+        context.appApiError(error, fallback: '读取账面库存失败，请重试');
+      }
+    }
+  }
+
+  Future<void> _refreshCheckBooks() async {
+    if (!_isCheck) return;
+    if (mounted) setState(() => _loadingCheckBooks = true);
+    try {
+      for (final row in _grid.rows.where((row) => row.goods != null)) {
+        await _loadCheckBookQty(row);
+      }
+    } finally {
+      if (mounted) setState(() => _loadingCheckBooks = false);
+    }
+  }
+
+  String _qtyText(double value) {
+    final fixed = value.toStringAsFixed(4);
+    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
   Future<void> _save() async {
+    if (widget.id != null && !_loadedCanEdit) {
+      return context.appError(_editRestrictionReason ?? '该单据不可通过仓库通用页面编辑');
+    }
+
     final rows = _grid.rows;
+    if (_warehouseId == null) {
+      return context.appError('请选择仓库');
+    }
+    if (_isCheck && _loadingCheckBooks) {
+      return context.appInfo('账面库存仍在读取，请稍候');
+    }
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       return context.appError('请至少添加一条明细');
     }
@@ -152,17 +300,54 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     for (final r in rows) {
       if (r.goods == null) continue;
       final m = <String, dynamic>{'goodsId': r.goods!.id};
-      if (_isCheck) {
-        final bookQty = double.tryParse(r.bookQty.text) ?? 0;
-        final countQty = double.tryParse(r.checkQty.text);
+      if (r.colorId != null) m['colorId'] = r.colorId;
+      if (r.unitId != null) m['unitId'] = r.unitId;
+      m['unitRate'] = r.unitRate;
+      if (_isWdraw) {
+        if (r.upstreamItemId == null) {
+          return context.appError('生产退料必须逐行引用原领料明细');
+        }
+        final qty = double.tryParse(r.qty.text.trim()) ?? 0;
+        if (qty <= 0) continue;
+        if (r.maxQty != null && qty > r.maxQty! + 0.0000001) {
+          return context.appError(
+            '${r.goods!.name} 退料数量不能超过 ${r.maxQty!.toStringAsFixed(4)}',
+          );
+        }
+        m
+          ..['qty'] = qty
+          ..['upstreamItemId'] = r.upstreamItemId
+          ..['unitId'] = r.unitId
+          ..['unitRate'] = r.unitRate
+          ..['sourceDocNo'] = r.sourceDrawNo;
+      } else if (_isCheck) {
+        final bookQty = double.tryParse(r.bookQty.text);
+        if (bookQty == null) {
+          return context.appError('${r.goods!.name} 的账面库存尚未读取');
+        }
+        final countQty = double.tryParse(r.checkQty.text.trim());
+        if (countQty == null || countQty < 0) {
+          return context.appError('${r.goods!.name} 的实盘数量必须填写且不能小于 0');
+        }
         m['qty'] = bookQty; // 账面写入 items.qty
-        if (countQty != null) m['countQty'] = countQty;
-        // 盈亏 = 实盘 - 账面；后端按 surplus 联动库存
-        m['surplusQty'] = (countQty ?? 0) - bookQty;
+        m['countQty'] = countQty;
+        // 仅作前端预览；后端会按权威账面快照重新计算盈亏。
+        m['surplusQty'] = countQty - bookQty;
       } else {
         m['qty'] = double.tryParse(r.qty.text) ?? 0;
       }
+      if (r.upstreamItemId != null) m['upstreamItemId'] = r.upstreamItemId;
+      if (r.executionSegmentId != null) {
+        m['executionSegmentId'] = r.executionSegmentId;
+      }
+      if (r.executionSegmentSalesAllocationId != null) {
+        m['executionSegmentSalesAllocationId'] =
+            r.executionSegmentSalesAllocationId;
+      }
       items.add(m);
+    }
+    if (items.isEmpty) {
+      return context.appError(_isWdraw ? '请填写至少一行实际退料数量' : '请至少添加一条明细');
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
@@ -187,8 +372,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       context.replace(RoutePath.stockDocDetail(widget.docType.code, d.id));
-    } catch (_) {
-      if (mounted) context.appError('保存失败');
+    } catch (error) {
+      if (mounted) context.appApiError(error, fallback: '保存失败');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -274,7 +459,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                     '仓库',
                                     _warehouseId,
                                     names.warehouseEntries,
-                                    (v) => setState(() => _warehouseId = v),
+                                    (v) {
+                                      setState(() => _warehouseId = v);
+                                      if (_isCheck) {
+                                        unawaited(_refreshCheckBooks());
+                                      }
+                                    },
                                   ),
                                   if (widget.docType == StockDocType.transfer)
                                     _dd(
@@ -312,6 +502,17 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
+                      if (_isCheck) ...[
+                        Text(
+                          '账面数量由系统按所选仓库读取，保存后形成盘点快照。'
+                          '审核前如发生其它出入库，系统会拒绝用旧快照修正库存，'
+                          '请刷新账面并重新核对实盘数。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
+                      ],
                       Row(
                         children: [
                           Text(
@@ -328,8 +529,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                         columns: stockGridColumns(
                           _pickGoods,
                           isCheck: _isCheck,
+                          isWdraw: _isWdraw,
                         ),
-                        createBlankRow: () => StockGridRow(isCheck: _isCheck),
+                        createBlankRow: () => StockGridRow(
+                          isCheck: _isCheck,
+                          sourceLocked: _isWdraw,
+                        ),
+                        showAddRow: !_isWdraw,
                       ),
                     ],
                   ),
@@ -367,9 +573,14 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
               ),
               const SizedBox(width: UtenSpacing.s12),
               UtenButton(
-                isLoading: _saving,
+                isLoading: _saving || _loadingCheckBooks,
                 icon: Icons.save_outlined,
-                onPressed: _saving ? null : _save,
+                onPressed:
+                    _saving ||
+                        _loadingCheckBooks ||
+                        (widget.id != null && !_loadedCanEdit)
+                    ? null
+                    : _save,
                 child: const Text('保存'),
               ),
             ],

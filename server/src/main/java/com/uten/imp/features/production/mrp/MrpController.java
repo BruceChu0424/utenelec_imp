@@ -21,6 +21,7 @@ import java.util.UUID;
 public class MrpController {
 
     private final MrpService mrpService;
+    private final ProductionPlanningPackageService planningPackageService;
 
     /** 物料需求预览（毛需求/库存/在途/净需求，自制件标记）。 */
     @GetMapping("/{id}/mrp")
@@ -78,6 +79,48 @@ public class MrpController {
         return mrpService.generateSubplans(id, req);
     }
 
+    /**
+     * 原子生成计划包：用户校对后的子计划，以及可选的缺料采购申请。
+     * 任一校验或写入失败时整包回滚，不留下半套单据。
+     */
+    @PostMapping("/{id}/mrp/generate-planning-package")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public PlanningPackageResult generatePlanningPackage(
+            @PathVariable UUID id,
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
+            GeneratePlanningPackageRequest req) {
+        return planningPackageService.confirm(id, req);
+    }
+
     /** 生成领料单请求体。 */
+    @GetMapping("/{id}/mrp/planning-preview")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public PlanningPreviewResult planningPreview(
+            @PathVariable UUID id,
+            @org.springframework.web.bind.annotation.RequestParam UUID warehouseId) {
+        return planningPackageService.preview(id, warehouseId);
+    }
+
+    @PostMapping("/{id}/mrp/planning-packages/{packageId}/cancel")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public PlanningPackageLifecycleResult cancelPlanningPackage(
+            @PathVariable UUID id,
+            @PathVariable UUID packageId,
+            @jakarta.validation.Valid
+            @org.springframework.web.bind.annotation.RequestBody
+            PlanningPackageLifecycleRequest request) {
+        return planningPackageService.cancel(id, packageId, request);
+    }
+
+    @PostMapping("/{id}/mrp/planning-packages/{packageId}/reverse")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public PlanningPackageLifecycleResult reversePlanningPackage(
+            @PathVariable UUID id,
+            @PathVariable UUID packageId,
+            @jakarta.validation.Valid
+            @org.springframework.web.bind.annotation.RequestBody
+            PlanningPackageLifecycleRequest request) {
+        return planningPackageService.reverse(id, packageId, request);
+    }
     public record GenerateDrawBody(UUID warehouseId) {}
 }

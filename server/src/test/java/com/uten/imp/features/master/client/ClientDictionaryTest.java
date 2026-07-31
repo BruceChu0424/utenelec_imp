@@ -2,6 +2,7 @@ package com.uten.imp.features.master.client;
 
 import com.uten.imp.features.master.client.dto.ClientDictItem;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -19,7 +20,9 @@ class ClientDictionaryTest {
         Client active = client("Active client", "C-ACTIVE", "\u4f7f\u7528");
         Client disabled = client("Historical client", "C-DISABLED", "\u7981\u7528");
         ClientRepository repo = mock(ClientRepository.class);
-        when(repo.findAll(any(Specification.class), any(Sort.class)))
+        when(repo.findAll(
+                        ArgumentMatchers.<Specification<Client>>any(),
+                        any(Sort.class)))
                 .thenReturn(List.of(active, disabled));
         ClientService service = new ClientService(repo, null, null, null, null, null);
 

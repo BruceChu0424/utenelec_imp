@@ -3,6 +3,8 @@
 
 import 'package:flutter/material.dart';
 
+import 'notice_audience.dart';
+
 /// 通知类型
 enum NoticeType {
   /// 公司公告（人事发布）
@@ -81,6 +83,9 @@ class Notice {
     this.priority = NoticePriority.normal,
     this.attachments = const [],
     this.readAt,
+    this.audienceScope = NoticeAudienceScope.all,
+    this.audienceSummary = '全体员工',
+    this.audienceCount,
   });
 
   final String id;
@@ -115,6 +120,15 @@ class Notice {
   /// 附件（前端 Mock 用文件名表示）
   final List<String> attachments;
 
+  /// 全员广播 / 发布时固化的指定接收范围。
+  final NoticeAudienceScope audienceScope;
+
+  /// 可读接收范围摘要。
+  final String audienceSummary;
+
+  /// 指定范围去重后的实际接收人数；全员广播为 null。
+  final int? audienceCount;
+
   Notice copyWith({bool? isRead, DateTime? readAt}) {
     return Notice(
       id: id,
@@ -128,6 +142,9 @@ class Notice {
       priority: priority,
       attachments: attachments,
       readAt: readAt ?? this.readAt,
+      audienceScope: audienceScope,
+      audienceSummary: audienceSummary,
+      audienceCount: audienceCount,
     );
   }
 }

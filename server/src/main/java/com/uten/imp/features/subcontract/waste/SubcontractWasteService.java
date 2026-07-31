@@ -121,7 +121,7 @@ public class SubcontractWasteService {
     @Transactional
     public WasteDetail update(UUID id, WasteSaveRequest req) {
         tx.bind();
-        SubcontractWaste r = requireWaste(id);
+        SubcontractWaste r = requireWasteForUpdate(id);
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -136,7 +136,7 @@ public class SubcontractWasteService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        SubcontractWaste r = requireWaste(id);
+        SubcontractWaste r = requireWasteForUpdate(id);
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -152,8 +152,7 @@ public class SubcontractWasteService {
     @Transactional
     public WasteDetail approve(UUID id) {
         tx.bind();
-        SubcontractWaste r = requireWaste(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractWaste r = requireWasteForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -203,8 +202,7 @@ public class SubcontractWasteService {
     @Transactional
     public WasteDetail reverse(UUID id) {
         tx.bind();
-        SubcontractWaste r = requireWaste(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        SubcontractWaste r = requireWasteForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -329,5 +327,12 @@ public class SubcontractWasteService {
         return wasteRepo.findById(id)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外损耗单不存在"));
+    }
+    private SubcontractWaste requireWasteForUpdate(UUID id) {
+        SubcontractWaste waste = em.find(
+                SubcontractWaste.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return waste == null || waste.isDeleted()
+                ? requireWaste(id)
+                : waste;
     }
 }

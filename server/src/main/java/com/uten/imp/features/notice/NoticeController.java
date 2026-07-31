@@ -1,5 +1,8 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.features.notice.dto.NoticeAudienceEmployeeDto;
+import com.uten.imp.features.notice.dto.NoticeAudiencePreviewDto;
+import com.uten.imp.features.notice.dto.NoticeAudienceRequest;
 import com.uten.imp.features.notice.dto.NoticeBatchDeleteRequest;
 import com.uten.imp.features.notice.dto.NoticeDto;
 import com.uten.imp.features.notice.dto.NoticePublishRequest;
@@ -37,6 +40,7 @@ import java.util.UUID;
 public class NoticeController {
 
     private final NoticeService service;
+    private final NoticeAudienceService audienceService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('notice:read')")
@@ -60,6 +64,20 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:publish')")
     public NoticeDto publish(@Valid @RequestBody NoticePublishRequest req) {
         return service.publish(req);
+    }
+
+    @GetMapping("/audience/employees")
+    @PreAuthorize("hasAuthority('notice:publish')")
+    public List<NoticeAudienceEmployeeDto> audienceEmployees(
+            @RequestParam(required = false) String search) {
+        return audienceService.searchEmployees(search);
+    }
+
+    @PostMapping("/audience/preview")
+    @PreAuthorize("hasAuthority('notice:publish')")
+    public NoticeAudiencePreviewDto previewAudience(
+            @Valid @RequestBody NoticeAudienceRequest req) {
+        return audienceService.preview(req.departmentIds(), req.employeeIds());
     }
 
     @PostMapping("/{id}/read")

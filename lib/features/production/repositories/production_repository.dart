@@ -33,8 +33,10 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_execution_planning.dart';
 import '../models/production_plan.dart';
 import '../models/production_report.dart';
+import '../models/reportable_plan_line.dart';
 
 // ───────────────────────── 生产计划单 ─────────────────────────
 
@@ -201,6 +203,82 @@ class ProductionPlanRepository {
     return list.map(MrpRow.fromJson).toList();
   }
 
+  /// 目标发料仓口径的齐套预览。服务端返回指纹和 READY/WAITING 执行段，
+  /// 确认时必须原样回传，避免预览后库存变化导致重复占料。
+  Future<ProductionPlanningPreview> planningExecutionPreview(
+    String id,
+    String warehouseId,
+  ) async {
+    final json = await api.get(
+      '/production/plans/$id/mrp/planning-preview',
+      query: {'warehouseId': warehouseId},
+    ); // ENDPOINT
+    return ProductionPlanningPreview.fromJson(json);
+  }
+
+  Future<ProductionPlanningConfirmResult> confirmExecutionPlanning(
+    String id,
+    ProductionPlanningConfirmRequest request,
+  ) async {
+    final json = await api.post(
+      '/production/plans/$id/mrp/generate-planning-package',
+      body: request.toJson(),
+    ); // ENDPOINT
+    return ProductionPlanningConfirmResult.fromJson(json);
+  }
+
+  Future<List<ProductionExecutionSegmentView>> executionSegments(
+    String planId,
+  ) async {
+    final list = await api.getList(
+      '/production/plans/$planId/execution-segments',
+    ); // ENDPOINT
+    return list.map(ProductionExecutionSegmentView.fromJson).toList();
+  }
+
+  Future<ProductionExecutionSegmentView> assignExecutionSegment(
+    String planId,
+    String segmentId, {
+    required int expectedVersion,
+    required String idempotencyKey,
+    String? workshopDepartmentId,
+    String? teamDepartmentId,
+    String? responsibleEmployeeId,
+    String? planBeginDate,
+    String? planEndDate,
+  }) async {
+    final json = await api.patch(
+      '/production/plans/$planId/execution-segments/$segmentId/assignment',
+      body: {
+        'expectedVersion': expectedVersion,
+        'idempotencyKey': idempotencyKey,
+        'workshopDepartmentId': workshopDepartmentId,
+        'teamDepartmentId': teamDepartmentId,
+        'responsibleEmployeeId': responsibleEmployeeId,
+        'planBeginDate': planBeginDate,
+        'planEndDate': planEndDate,
+      },
+    ); // ENDPOINT
+    return ProductionExecutionSegmentView.fromJson(json);
+  }
+
+  Future<ProductionExecutionSegmentView> transitionExecutionSegment(
+    String planId,
+    String segmentId, {
+    required String action,
+    required int expectedVersion,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      '/production/plans/$planId/execution-segments/$segmentId/$action',
+      body: {
+        'expectedVersion': expectedVersion,
+        'idempotencyKey': idempotencyKey,
+      },
+    ); // ENDPOINT
+    return ProductionExecutionSegmentView.fromJson(json);
+  }
+
   /// 按净需求生成采购申请（草稿）；已生成过且单据有效时后端 409 业务错误。
   /// D3：strategy=gross 按毛需求开单（不扣库存/在途）。
   Future<MrpGenerateResult> mrpGenerate(String id, {String? strategy}) async {
@@ -259,17 +337,28 @@ class ProductionPlanRepository {
     return list.map(MrpSubplanRef.fromJson).toList();
   }
 
-  /// 按车间拆分生成子计划：自选自制件行+数量+车间，按车间分组各生成一张草稿。
-  /// body items: [{goodsId, colorId?, unitId?, qty, departmentId?, workshopName?}]
+  /// 按用户校对后的行生成子计划；服务端按车间分组。
   Future<List<SubplanCreated>> mrpGenerateSubplans(
     String id,
-    List<Map<String, dynamic>> items,
+    GenerateSubplansRequest request,
   ) async {
     final list = await api.postList(
       '/production/plans/$id/mrp/generate-subplans', // ENDPOINT
-      body: {'items': items},
+      body: request.toJson(),
     );
     return list.map(SubplanCreated.fromJson).toList();
+  }
+
+  /// 原子生成子计划，并可在同一事务内生成缺料采购申请。
+  Future<PlanningPackageResult> mrpGeneratePlanningPackage(
+    String id,
+    PlanningPackageRequest request,
+  ) async {
+    final json = await api.post(
+      '/production/plans/$id/mrp/generate-planning-package',
+      body: request.toJson(),
+    ); // ENDPOINT
+    return PlanningPackageResult.fromJson(json);
   }
 
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
@@ -362,6 +451,7 @@ class SchedulePendingRow {
     this.needQty,
     this.deliverDate,
     this.chainStatus,
+    this.bomReady = true,
     this.urgent = false,
   });
   final String orderItemId;
@@ -380,6 +470,7 @@ class SchedulePendingRow {
   final double? needQty;
   final String? deliverDate;
   final int? chainStatus;
+  final bool bomReady;
   final bool urgent;
 
   factory SchedulePendingRow.fromJson(Map<String, dynamic> j) =>
@@ -400,6 +491,7 @@ class SchedulePendingRow {
         needQty: (j['needQty'] as num?)?.toDouble(),
         deliverDate: j['deliverDate'] as String?,
         chainStatus: (j['chainStatus'] as num?)?.toInt(),
+        bomReady: j['bomReady'] != false,
         urgent: j['urgent'] == true,
       );
 }
@@ -630,7 +722,7 @@ class SubPlanProgress {
   );
 }
 
-/// MRP 预览行。
+/// MRP 预览行。旧字段保留兼容；新版字段显式区分账面、保留、安全库存、及时在途与净缺口。
 class MrpRow {
   const MrpRow({
     required this.goodsId,
@@ -644,12 +736,29 @@ class MrpRow {
     this.net,
     required this.selfMade,
     this.unitId,
+    this.bookStock,
+    this.salesReserved,
+    this.safetyStock,
+    this.availableNow,
+    this.openPoTotal,
+    this.openPoOnTime,
+    this.needDate,
+    this.earliestArrivalDate,
+    this.purchaseNetShortage,
+    this.timelyShortage,
+    this.materialStatus,
+    this.allocationBacked = false,
+    this.planningWriteReady = false,
+    this.isLegacyAvailability = false,
   });
+
   final String goodsId;
   final String? goodsCode;
   final String? goodsName;
   final String? spec;
   final String? colorId;
+
+  /// 旧口径：毛需求 / 账面库存 / 全部在途 / 采购总净缺口。
   final double? gross;
   final double? onhand;
   final double? openPo;
@@ -657,19 +766,161 @@ class MrpRow {
   final bool selfMade;
   final String? unitId;
 
-  factory MrpRow.fromJson(Map<String, dynamic> j) => MrpRow(
-    goodsId: j['goodsId'] as String,
-    goodsCode: j['goodsCode'] as String?,
-    goodsName: j['goodsName'] as String?,
-    spec: j['spec'] as String?,
-    colorId: j['colorId'] as String?,
-    gross: (j['gross'] as num?)?.toDouble(),
-    onhand: (j['onhand'] as num?)?.toDouble(),
-    openPo: (j['openPo'] as num?)?.toDouble(),
-    net: (j['net'] as num?)?.toDouble(),
-    selfMade: j['selfMade'] == true,
-    unitId: j['unitId'] as String?,
-  );
+  /// 新口径：账面库存、销售锁定、安全库存和当前可用库存。
+  final double? bookStock;
+  final double? salesReserved;
+  final double? safetyStock;
+  final double? availableNow;
+
+  /// 新口径：全部在途、需求日前能到的在途及日期信息。
+  final double? openPoTotal;
+  final double? openPoOnTime;
+  final String? needDate;
+  final String? earliestArrivalDate;
+
+  /// 新口径：不考虑到货日/考虑到货日的净缺口。
+  final double? purchaseNetShortage;
+  final double? timelyShortage;
+
+  /// READY / PARTIAL_SHORTAGE / SHORTAGE。
+  final String? materialStatus;
+
+  /// 是否已由统一原料占用账和采购供给挂接支撑。
+  final bool allocationBacked;
+
+  /// 是否允许基于本次 MRP 结果执行排产、采购和领料写操作。
+  final bool planningWriteReady;
+
+  /// 后端未返回完整新口径时为 true；UI 应明确显示兼容口径提示。
+  final bool isLegacyAvailability;
+
+  /// 只有齐套口径完整且供给已分配时才可作为排产数量。
+  double? get planningShortage =>
+      isLegacyAvailability || !allocationBacked || !planningWriteReady
+      ? null
+      : timelyShortage;
+
+  String get statusLabel => switch (materialStatus) {
+    'READY_NOW' => '可立即生产',
+    'READY_BY_DATE' => '按期到料',
+    'INBOUND_LATE' => '在途晚到',
+    'PARTIAL' || 'PARTIAL_SHORTAGE' => '部分缺料',
+    'SHORTAGE' => '缺料',
+    'BOM_MISSING' => 'BOM 缺失',
+    'READY' => '齐套',
+    _ => '待复核',
+  };
+
+  factory MrpRow.fromJson(Map<String, dynamic> j) {
+    const newKeys = <String>[
+      'bookStock',
+      'salesReserved',
+      'safetyStock',
+      'availableNow',
+      'openPoTotal',
+      'openPoOnTime',
+      'purchaseNetShortage',
+      'timelyShortage',
+      'materialStatus',
+    ];
+    final legacy = newKeys.any((key) => !j.containsKey(key));
+
+    return MrpRow(
+      goodsId: j['goodsId'] as String,
+      goodsCode: j['goodsCode'] as String?,
+      goodsName: j['goodsName'] as String?,
+      spec: j['spec'] as String?,
+      colorId: j['colorId'] as String?,
+      gross: (j['gross'] as num?)?.toDouble(),
+      onhand: (j['onhand'] as num?)?.toDouble(),
+      openPo: (j['openPo'] as num?)?.toDouble(),
+      net: (j['net'] as num?)?.toDouble(),
+      selfMade: j['selfMade'] == true,
+      unitId: j['unitId'] as String?,
+      bookStock: (j['bookStock'] as num?)?.toDouble(),
+      salesReserved: (j['salesReserved'] as num?)?.toDouble(),
+      safetyStock: (j['safetyStock'] as num?)?.toDouble(),
+      availableNow: (j['availableNow'] as num?)?.toDouble(),
+      openPoTotal: (j['openPoTotal'] as num?)?.toDouble(),
+      openPoOnTime: (j['openPoOnTime'] as num?)?.toDouble(),
+      needDate: j['needDate'] as String?,
+      earliestArrivalDate: j['earliestArrivalDate'] as String?,
+      purchaseNetShortage: (j['purchaseNetShortage'] as num?)?.toDouble(),
+      timelyShortage: (j['timelyShortage'] as num?)?.toDouble(),
+      materialStatus: j['materialStatus']?.toString(),
+      allocationBacked: j['allocationBacked'] == true,
+      planningWriteReady: j['planningWriteReady'] == true,
+      isLegacyAvailability: legacy,
+    );
+  }
+}
+
+/// 一键生成子计划的单行参数；字段与后端 GenerateSubplansRequest.Line 对齐。
+class GenerateSubplanLine {
+  const GenerateSubplanLine({
+    required this.goodsId,
+    required this.qty,
+    this.colorId,
+    this.unitId,
+    this.departmentId,
+    this.workshopName,
+    this.planBeginDate,
+    this.planEndDate,
+    this.workerId,
+    this.workerName,
+  });
+
+  final String goodsId;
+  final double qty;
+  final String? colorId;
+  final String? unitId;
+  final String? departmentId;
+  final String? workshopName;
+  final String? planBeginDate;
+  final String? planEndDate;
+  final String? workerId;
+  final String? workerName;
+
+  Map<String, dynamic> toJson() => {
+    'goodsId': goodsId,
+    'qty': qty,
+    if (colorId != null) 'colorId': colorId,
+    if (unitId != null) 'unitId': unitId,
+    if (departmentId != null) 'departmentId': departmentId,
+    if (workshopName?.trim().isNotEmpty == true)
+      'workshopName': workshopName!.trim(),
+    if (planBeginDate != null) 'planBeginDate': planBeginDate,
+    if (planEndDate != null) 'planEndDate': planEndDate,
+    if (workerId != null) 'workerId': workerId,
+    if (workerName?.trim().isNotEmpty == true) 'workerName': workerName!.trim(),
+  };
+}
+
+/// 生成子计划请求。
+class GenerateSubplansRequest {
+  const GenerateSubplansRequest({required this.items});
+
+  final List<GenerateSubplanLine> items;
+
+  Map<String, dynamic> toJson() => {
+    'items': [for (final item in items) item.toJson()],
+  };
+}
+
+/// 原子生成计划包：子计划 + 可选采购申请。
+class PlanningPackageRequest {
+  const PlanningPackageRequest({
+    required this.items,
+    this.generatePurchaseRequest = false,
+  });
+
+  final List<GenerateSubplanLine> items;
+  final bool generatePurchaseRequest;
+
+  Map<String, dynamic> toJson() => {
+    'items': [for (final item in items) item.toJson()],
+    'generatePurchaseRequest': generatePurchaseRequest,
+  };
 }
 
 /// MRP 生成结果。
@@ -678,16 +929,22 @@ class MrpGenerateResult {
     required this.requestId,
     required this.requestBillNo,
     required this.lineCount,
+    this.skippedSelfMade = const [],
   });
   final String requestId;
   final String requestBillNo;
   final int lineCount;
+  final List<String> skippedSelfMade;
 
   factory MrpGenerateResult.fromJson(Map<String, dynamic> j) =>
       MrpGenerateResult(
         requestId: j['requestId'] as String,
         requestBillNo: j['requestBillNo'] as String,
         lineCount: (j['lineCount'] as num).toInt(),
+        skippedSelfMade: [
+          for (final id in (j['skippedSelfMade'] as List? ?? const []))
+            id.toString(),
+        ],
       );
 }
 
@@ -710,6 +967,27 @@ class SubplanCreated {
     lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
     workshopName: j['workshopName'] as String?,
   );
+}
+
+/// 原子计划包结果。
+class PlanningPackageResult {
+  const PlanningPackageResult({this.subplans = const [], this.purchaseRequest});
+
+  final List<SubplanCreated> subplans;
+  final MrpGenerateResult? purchaseRequest;
+
+  factory PlanningPackageResult.fromJson(Map<String, dynamic> j) {
+    final purchase = j['purchaseRequest'];
+    return PlanningPackageResult(
+      subplans: [
+        for (final item in (j['subplans'] as List? ?? const []))
+          SubplanCreated.fromJson(item as Map<String, dynamic>),
+      ],
+      purchaseRequest: purchase is Map<String, dynamic>
+          ? MrpGenerateResult.fromJson(purchase)
+          : null,
+    );
+  }
 }
 
 /// 自制件子计划溯源行（父计划 MRP 面板/详情页进度区展示用，含完工进度）。
@@ -809,6 +1087,29 @@ class ProductionDailyReportRepository {
   Future<ProductionDailyReportDetail> detail(String id) async {
     final json = await api.get('/production/daily-reports/$id'); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
+  }
+
+  Future<PagedResult<ReportablePlanLine>> reportablePlanLines({
+    int page = 1,
+    int size = 30,
+    String? keyword,
+    String? departmentId,
+    String? executionSegmentId,
+  }) async {
+    final json = await api.get(
+      '/production/daily-reports/reportable-plan-lines',
+      query: <String, dynamic>{
+        'page': page,
+        'size': size,
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+        if (departmentId != null && departmentId.isNotEmpty)
+          'departmentId': departmentId,
+        if (executionSegmentId != null && executionSegmentId.isNotEmpty)
+          'executionSegmentId': executionSegmentId,
+      },
+    );
+    return PagedResult.fromJson(json, ReportablePlanLine.fromJson);
   }
 
   Future<ProductionDailyReportDetail> create(Map<String, dynamic> body) async {

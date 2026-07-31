@@ -53,7 +53,7 @@ class _SubcontractDocDetailPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  bool get _canEdit =>
+  bool get _hasEditPermission =>
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
 
   Future<void> _load() async {
@@ -207,6 +207,10 @@ class _SubcontractDocDetailPageState
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
                     _headerCard(theme),
+                    if (_detail!.productionLinked) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _productionSourceBanner(theme),
+                    ],
                     const SizedBox(height: UtenSpacing.s12),
                     _itemsCard(theme),
                   ],
@@ -384,21 +388,54 @@ class _SubcontractDocDetailPageState
     );
   }
 
+  Widget _productionSourceBanner(ThemeData theme) {
+    final reason = _detail!.restrictionReason ?? '该单据关联生产物料需求，通用修改和删除已锁定。';
+    return Card(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.lock_outline_rounded,
+              color: theme.colorScheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '$reason\n仍可查看和审核；后续调整请从生产计划专用流程发起。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onTertiaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _actions(ThemeData theme) {
-    final s = _detail!.status;
+    final d = _detail!;
+    final s = d.status;
     final children = <Widget>[];
-    if (s == kSubcontractStatusDraft && _canEdit) {
-      children
-        ..add(
+    if (s == kSubcontractStatusDraft && _hasEditPermission) {
+      if (d.canDelete) {
+        children.add(
           UtenButton(
             type: UtenButtonType.danger,
             icon: Icons.delete_outline,
             onPressed: _delete,
             child: const Text('删除'),
           ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
+        );
+      }
+      if (d.canEdit) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
           UtenButton(
             type: UtenButtonType.secondary,
             icon: Icons.edit_outlined,
@@ -407,16 +444,21 @@ class _SubcontractDocDetailPageState
             ),
             child: const Text('编辑'),
           ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
-          UtenButton(
-            icon: Icons.check_circle_outline,
-            onPressed: _approve,
-            child: const Text('审核'),
-          ),
         );
-    } else if (s == kSubcontractStatusApproved && _canEdit) {
+      }
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(width: UtenSpacing.s8));
+      }
+      children.add(
+        UtenButton(
+          icon: Icons.check_circle_outline,
+          onPressed: _approve,
+          child: const Text('审核'),
+        ),
+      );
+    } else if (s == kSubcontractStatusApproved &&
+        _hasEditPermission &&
+        d.canReverse) {
       children.add(
         UtenButton(
           type: UtenButtonType.danger,

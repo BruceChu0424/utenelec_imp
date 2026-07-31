@@ -1394,6 +1394,91 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishPublished => '通知已发布';
 
   @override
+  String get noticePublishPublishing => '发布中…';
+
+  @override
+  String get noticePublishContentSection => '通知内容';
+
+  @override
+  String get noticePublishTypeLabel => '通知类型';
+
+  @override
+  String get noticePublishTitleLabel => '标题';
+
+  @override
+  String get noticePublishContentLabel => '正文';
+
+  @override
+  String get noticePublishUrgentHint => '紧急通知会使用高优先级提醒，请只用于必须立即关注的事项。';
+
+  @override
+  String get noticePublishTopPriorityHint => '置顶后会优先显示，并按重要通知提醒接收人。';
+
+  @override
+  String get noticePublishScopeSelected => '指定范围';
+
+  @override
+  String get noticePublishScopeSelectedHint =>
+      '部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。';
+
+  @override
+  String get noticePublishDepartmentsLabel => '接收部门（可多选）';
+
+  @override
+  String get noticePublishDepartmentsHint => '选择一个或多个部门';
+
+  @override
+  String get noticePublishEmployeesLabel => '单独添加人员';
+
+  @override
+  String get noticePublishEmployeesHint => '选择指定人员（可多选）';
+
+  @override
+  String get noticePublishEmployeePickerTitle => '选择接收人员';
+
+  @override
+  String get noticePublishEmployeeSearchHint => '搜索姓名 / 工号';
+
+  @override
+  String get noticePublishEmployeeEmpty => '未找到可接收通知的在职账号';
+
+  @override
+  String noticePublishEmployeeSelectedCount(int count) {
+    return '已选 $count 人';
+  }
+
+  @override
+  String get noticePublishEmployeeClear => '清空';
+
+  @override
+  String get noticePublishEmployeeConfirm => '确定';
+
+  @override
+  String get noticePublishValidateAudience => '请至少选择一个部门或人员';
+
+  @override
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
+    return '已选 $departmentCount 个部门、$employeeCount 人';
+  }
+
+  @override
+  String get noticePublishAudienceRecalculateHint =>
+      '发布前会按当前组织与账号状态重新核算实际接收人数。';
+
+  @override
+  String noticePublishConfirmAudience(Object summary, Object count) {
+    return '将发送给 $summary，实际接收 $count 人。';
+  }
+
+  @override
+  String noticePublishPublishedTo(Object count) {
+    return '通知已发布给 $count 人';
+  }
+
+  @override
   String get noticeTypeAnnouncement => '公告';
 
   @override

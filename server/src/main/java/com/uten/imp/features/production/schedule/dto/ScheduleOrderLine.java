@@ -7,7 +7,9 @@ import java.util.UUID;
 
 /**
  * 已审订单明细行（新建计划单「从订单带明细」弹窗数据）。
- * 含待排产缺口 + 该货品一层 BOM 零件清单（点行展开看"这个产品由哪些零件组成"）。
+ * 含新增排产缺口 + 该货品一层 BOM 零件清单（点行展开看"这个产品由哪些零件组成"）。
+ * 缺口与调度列表同口径：净未交减当前预留，再减尚未入库的计划量，
+ * 即 qty-shipped+returned-flag-reserved-max(planned-produced,0)。
  */
 public record ScheduleOrderLine(
         UUID orderItemId,

@@ -33,10 +33,16 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';
+import '../widgets/reportable_plan_line_picker.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
-  const ProductionDailyReportEditPage({super.key, this.id});
+  const ProductionDailyReportEditPage({
+    super.key,
+    this.id,
+    this.initialExecutionSegmentId,
+  });
   final String? id; // null=新建
+  final String? initialExecutionSegmentId;
 
   @override
   ConsumerState<ProductionDailyReportEditPage> createState() =>
@@ -111,6 +117,17 @@ class _ProductionDailyReportEditPageState
           final row = DailyGridRow()
             ..planNo.text = it.planNo ?? ''
             ..remark.text = it.remark ?? ''
+            ..planItemId = it.planItemId
+            ..executionSegmentId = it.executionSegmentId
+            ..executionSegmentSalesAllocationId =
+                it.executionSegmentSalesAllocationId
+            ..salesOrderItemId = it.salesOrderItemId
+            ..salesOrderNo = it.salesOrderNo
+            ..clientName = it.clientName
+            ..unitRate = it.unitRate
+            ..orderQty = it.orderQty
+            ..legacyManual =
+                it.planItemId == null && (it.planNo?.isEmpty ?? true)
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..goods = it.goodsId == null
@@ -132,7 +149,15 @@ class _ProductionDailyReportEditPageState
       }
     }
     if (_grid.isEmpty) _grid.addRow(DailyGridRow());
-    if (mounted) setState(() => _loading = false);
+    if (!mounted) return;
+    setState(() => _loading = false);
+    final initialSegmentId = widget.initialExecutionSegmentId;
+    if (widget.id == null &&
+        initialSegmentId != null &&
+        initialSegmentId.isNotEmpty &&
+        _grid.rows.isNotEmpty) {
+      await _pickSource(_grid.rows.first, executionSegmentId: initialSegmentId);
+    }
   }
 
   String _fmt(DateTime d) =>
@@ -160,6 +185,10 @@ class _ProductionDailyReportEditPageState
   }
 
   Future<void> _pickGoods(DailyGridRow row) async {
+    if (!row.legacyManual) {
+      await _pickSource(row);
+      return;
+    }
     final g = await showUtenGoodsPicker(context, ref);
     if (g == null) return;
     final names = ref.read(masterNameServiceProvider);
@@ -169,17 +198,125 @@ class _ProductionDailyReportEditPageState
       ..unitId = names.unitIdByLegacy(g.unitLegacyId);
   }
 
+  Future<void> _pickSource(
+    DailyGridRow row, {
+    String? executionSegmentId,
+  }) async {
+    final source = await showReportablePlanLinePicker(
+      context,
+      ref,
+      departmentId: _departmentId,
+      executionSegmentId: executionSegmentId,
+    );
+    if (source == null || !mounted) return;
+    setState(() {
+      row
+        ..planItemId = source.planItemId
+        ..executionSegmentId = source.executionSegmentId
+        ..executionSegmentSalesAllocationId =
+            source.executionSegmentSalesAllocationId
+        ..executionSegmentCode = source.executionSegmentCode
+        ..executionSegmentVersion = source.executionSegmentVersion
+        ..salesOrderItemId = source.orderItemId
+        ..salesOrderNo = source.orderNo
+        ..clientName = source.clientName
+        ..unitRate = source.unitRate
+        ..orderQty = source.orderQty
+        ..maxReportQty = source.maxReportQty
+        ..legacyManual = false
+        ..planNo.text = source.planNo
+        ..goods = GoodsOption(
+          id: source.goodsId,
+          code: source.goodsCode,
+          name: source.goodsName,
+        )
+        ..colorId = source.colorId
+        ..unitId = source.unitId
+        ..qty.text = _quantityText(source.maxReportQty);
+      if (_departmentId == null && source.departmentId != null) {
+        _departmentId = source.departmentId;
+        _workshopName = source.workshopName;
+      }
+    });
+  }
+
+  void _clearSource(DailyGridRow row) {
+    setState(() {
+      row
+        ..planItemId = null
+        ..executionSegmentId = null
+        ..executionSegmentSalesAllocationId = null
+        ..executionSegmentCode = null
+        ..executionSegmentVersion = null
+        ..salesOrderItemId = null
+        ..salesOrderNo = null
+        ..clientName = null
+        ..unitRate = null
+        ..orderQty = null
+        ..maxReportQty = null
+        ..legacyManual = false
+        ..planNo.clear()
+        ..goods = null
+        ..colorId = null
+        ..unitId = null
+        ..qty.clear();
+    });
+  }
+
+  String _quantityText(double value) => value == value.roundToDouble()
+      ? value.toStringAsFixed(0)
+      : value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+
   Future<void> _save() async {
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
       return;
     }
+    if (_warehouseId == null &&
+        rows.any((row) => row.executionSegmentId != null)) {
+      context.appError('执行子计划报工必须选择成品入库仓库');
+      return;
+    }
     for (var i = 0; i < rows.length; i++) {
       final r = rows[i];
       if (r.goods == null) continue;
-      if (double.tryParse(r.qty.text) == null) {
-        context.appError('第 ${i + 1} 行完工量无效');
+      final qty = double.tryParse(r.qty.text);
+      if (qty == null || qty <= 0) {
+        context.appError('第 ${i + 1} 行合格完工量必须大于 0');
+        return;
+      }
+      if (!r.legacyManual && !r.hasLinkedSource) {
+        context.appError('第 ${i + 1} 行必须先选择来源子任务');
+        return;
+      }
+      if (r.hasLinkedSource &&
+          (r.unitId == null || r.unitRate == null || r.unitRate! <= 0)) {
+        context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
+        return;
+      }
+      if (r.maxReportQty != null && qty > r.maxReportQty! + 0.000001) {
+        context.appError(
+          '第 ${i + 1} 行合格完工量超过当前可报数量 ${_quantityText(r.maxReportQty!)}',
+        );
+        return;
+      }
+    }
+    final sourceTotals = <String, double>{};
+    final sourceCaps = <String, double>{};
+    for (final r in rows.where((row) => row.hasLinkedSource)) {
+      final key =
+          r.executionSegmentSalesAllocationId ??
+          '${r.executionSegmentId ?? r.planItemId}:'
+              '${r.salesOrderItemId ?? 'internal'}';
+      sourceTotals[key] =
+          (sourceTotals[key] ?? 0) + (double.tryParse(r.qty.text) ?? 0);
+      if (r.maxReportQty != null) sourceCaps[key] = r.maxReportQty!;
+    }
+    for (final entry in sourceTotals.entries) {
+      final cap = sourceCaps[entry.key];
+      if (cap != null && entry.value > cap + 0.000001) {
+        context.appError('同一来源子任务的累计合格完工量超过当前可报数量 ${_quantityText(cap)}');
         return;
       }
     }
@@ -194,6 +331,17 @@ class _ProductionDailyReportEditPageState
         if (price != null) ...{'price': price, 'total': qty * price},
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
+        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.planItemId != null) 'planItemId': r.planItemId,
+        if (r.executionSegmentId != null)
+          'executionSegmentId': r.executionSegmentId,
+        if (r.executionSegmentSalesAllocationId != null)
+          'executionSegmentSalesAllocationId':
+              r.executionSegmentSalesAllocationId,
+        if (r.salesOrderItemId != null) 'salesOrderItemId': r.salesOrderItemId,
+        if (r.salesOrderNo != null) 'salesOrderNo': r.salesOrderNo,
+        if (r.clientName != null) 'clientName': r.clientName,
+        if (r.orderQty != null) 'orderQty': r.orderQty,
         if (r.planNo.text.trim().isNotEmpty) 'planNo': r.planNo.text.trim(),
         if (r.isFinal) 'isFinal': true,
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
@@ -401,6 +549,34 @@ class _ProductionDailyReportEditPageState
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
+                      Container(
+                        padding: const EdgeInsets.all(UtenSpacing.s12),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.tertiaryContainer,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: theme.colorScheme.onTertiaryContainer,
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Expanded(
+                              child: Text(
+                                '数量口径：这里只填写可进入成品入库的合格完工量，不良品不得计入。'
+                                '发现不良时请暂停审核并交由生产主管处理；不良品隔离、返工和补产链路'
+                                '未上线前，系统不会把不良数量自动当成合格成品。',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onTertiaryContainer,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
                       Text(
                         '明细 (${_grid.length})',
                         style: theme.textTheme.titleSmall?.copyWith(
@@ -411,6 +587,8 @@ class _ProductionDailyReportEditPageState
                         controller: _grid,
                         columns: dailyGridColumns(
                           onPickGoods: _pickGoods,
+                          onPickSource: _pickSource,
+                          onClearSource: _clearSource,
                           colorEntries: names.colorEntries,
                           unitEntries: names.unitEntries,
                         ),

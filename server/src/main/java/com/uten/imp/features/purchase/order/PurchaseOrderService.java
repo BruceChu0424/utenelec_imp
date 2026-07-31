@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.order;
 
+import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -8,6 +9,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderItemDto;
 import com.uten.imp.features.purchase.order.dto.OrderItemLine;
@@ -55,11 +57,13 @@ public class PurchaseOrderService {
     private final PurchaseOrderRepository orderRepo;
     private final PurchaseOrderItemRepository itemRepo;
     private final LinkedDocumentIntegrityService sourceIntegrity;
+    private final ProductionSupplyTransitionPort productionSupply;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final ProductionSupplySourceGuard productionSourceGuard;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
@@ -106,8 +110,9 @@ public class PurchaseOrderService {
     @Transactional
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
-        PurchaseOrder o = requireOrder(id);
+        PurchaseOrder o = requireOrderForUpdate(id);
         if (o.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        productionSourceGuard.requirePurchaseOrderMutable(id);
         applyHeader(req, o);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -119,8 +124,9 @@ public class PurchaseOrderService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        PurchaseOrder o = requireOrder(id);
+        PurchaseOrder o = requireOrderForUpdate(id);
         if (o.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        productionSourceGuard.requirePurchaseOrderMutable(id);
         o.setDeleted(true);
         o.setDeletedAt(OffsetDateTime.now());
         orderRepo.save(o);
@@ -130,8 +136,7 @@ public class PurchaseOrderService {
     @Transactional
     public OrderDetail approve(UUID id) {
         tx.bind();
-        PurchaseOrder o = requireOrder(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        PurchaseOrder o = requireOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
@@ -144,6 +149,7 @@ public class PurchaseOrderService {
                         it.getUnitId(),
                         it.getQty()))
                 .toList());
+        productionSupply.onPurchaseOrderApproved(id);
         for (PurchaseOrderItem it : items) {
             if (it.getRequestItemId() != null) {
                 em.createNativeQuery(
@@ -163,8 +169,7 @@ public class PurchaseOrderService {
     @Transactional
     public OrderDetail reverse(UUID id) {
         tx.bind();
-        PurchaseOrder o = requireOrder(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥
+        PurchaseOrder o = requireOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
@@ -174,6 +179,7 @@ public class PurchaseOrderService {
         }
         sourceIntegrity.lockPurchaseRequestItemsForReversal(
                 items.stream().map(PurchaseOrderItem::getRequestItemId).toList());
+        productionSupply.onPurchaseOrderReversed(id);
         for (PurchaseOrderItem it : items) {
             if (it.getRequestItemId() != null) {
                 em.createNativeQuery(
@@ -272,15 +278,30 @@ public class PurchaseOrderService {
     }
 
     private OrderDetail toDetail(PurchaseOrder o, List<OrderItemDto> items) {
+        boolean productionLinked =
+                productionSourceGuard.isPurchaseOrderLinked(o.getId());
         return new OrderDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
                 o.getSupplierId(), o.getWarehouseId(), o.getCurrencyId(), o.getExchangeRate(), o.getTaxRate(),
                 o.getPurchaserId(), o.getMakerId(), o.getApproverId(), o.getDeliverDate(), o.getRemark(),
                 o.getTotalOriginal(), o.getTotalLocal(), o.getStatus(), o.isClosed(), o.getSourceDocNo(), items,
-                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt());
+                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt(),
+                productionLinked, !productionLinked, !productionLinked, true,
+                restrictionReason(productionLinked));
+    }
+
+    private String restrictionReason(boolean linked) {
+        return linked ? "该采购订单承接生产物料需求，编辑和删除已锁定；红冲须走守恒校验" : null;
     }
 
     private PurchaseOrder requireOrder(UUID id) {
         return orderRepo.findById(id).filter(o -> !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在"));
+    }
+    private PurchaseOrder requireOrderForUpdate(UUID id) {
+        PurchaseOrder order = em.find(
+                PurchaseOrder.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return order == null || order.isDeleted()
+                ? requireOrder(id)
+                : order;
     }
 }

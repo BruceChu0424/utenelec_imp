@@ -41,4 +41,12 @@ public class StockDocDetail {
     private String makerName;
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
+    /** 是否由生产链自动生成并持有，禁止通用仓库 CRUD 改写。 */
+    private boolean productionLinked;
+    /** 当前单据是否允许通过通用仓库编辑入口修改。 */
+    private boolean canEdit;
+    /** 当前单据是否允许通过通用仓库入口删除。 */
+    private boolean canDelete;
+    /** 只读原因；为空表示没有额外来源限制。 */
+    private String restrictionReason;
 }

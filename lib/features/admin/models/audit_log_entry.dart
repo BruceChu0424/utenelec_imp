@@ -52,3 +52,58 @@ class AuditLogEntry {
     return null;
   }
 }
+
+/// Super-admin-only full audit detail.
+///
+/// [beforeJson]/[afterJson] are the already-redacted JSON payloads persisted by
+/// the database trigger. They are intentionally loaded only after a row is
+/// opened so the normal audit list remains small.
+class AuditLogDetail {
+  const AuditLogDetail({
+    required this.id,
+    this.actorId,
+    this.actorAccount,
+    required this.action,
+    this.targetType,
+    this.targetId,
+    this.beforeJson,
+    this.afterJson,
+    this.ip,
+    this.userAgent,
+    this.result,
+    this.createdAt,
+  });
+
+  final int id;
+  final String? actorId;
+  final String? actorAccount;
+  final String action;
+  final String? targetType;
+  final String? targetId;
+  final String? beforeJson;
+  final String? afterJson;
+  final String? ip;
+  final String? userAgent;
+  final String? result;
+  final String? createdAt;
+
+  factory AuditLogDetail.fromJson(Map<String, dynamic> json) => AuditLogDetail(
+    id: AuditLogEntry._parseInt(json['id']) ?? 0,
+    actorId: json['actorId'] as String?,
+    actorAccount: json['actorAccount'] as String?,
+    action: json['action'] as String? ?? '',
+    targetType: json['targetType'] as String?,
+    targetId: json['targetId'] as String?,
+    beforeJson: _jsonText(json['before']),
+    afterJson: _jsonText(json['after']),
+    ip: json['ip'] as String?,
+    userAgent: json['userAgent'] as String?,
+    result: json['result'] as String?,
+    createdAt: json['createdAt'] as String?,
+  );
+
+  static String? _jsonText(dynamic value) {
+    if (value == null) return null;
+    return value is String ? value : value.toString();
+  }
+}

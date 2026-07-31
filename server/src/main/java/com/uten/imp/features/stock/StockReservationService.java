@@ -151,16 +151,18 @@ public class StockReservationService {
         List<StockReservation> rs = em.createNativeQuery(
                         "SELECT * FROM stock_reservations"
                                 + " WHERE source_doc_type = :t AND source_doc_id = :d"
-                                + " AND is_deleted = FALSE AND status = 0 ORDER BY id FOR UPDATE",
+                                + " AND is_deleted = FALSE ORDER BY id FOR UPDATE",
                         StockReservation.class)
                 .setParameter("t", sourceDocType)
                 .setParameter("d", sourceDocId)
                 .getResultList();
+        // 必须检查全部状态。完全消费的预留已经 status=DONE，但正是最不能红冲入库的情况。
+        if (rs.stream().anyMatch(r ->
+                r.getConsumedQty() != null && r.getConsumedQty().signum() > 0)) {
+            throw new ApiException(ErrorCode.BUSINESS, "该入库的货已有发货记录，不能红冲入库单");
+        }
         BigDecimal total = BigDecimal.ZERO;
         for (StockReservation r : rs) {
-            if (r.getConsumedQty().signum() > 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "该入库的货已有发货记录，不能红冲入库单");
-            }
             BigDecimal eff = r.effectiveQty();
             if (eff.signum() > 0) {
                 r.setReleasedQty(r.getReleasedQty().add(eff));

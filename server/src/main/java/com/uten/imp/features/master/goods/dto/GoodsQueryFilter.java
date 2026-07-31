@@ -23,5 +23,6 @@ public record GoodsQueryFilter(
         String requireRemark,
         Integer colorLegacyId,
         Integer unitLegacyId,
-        String sourceType) {
+        String sourceType,
+        Boolean excludeDisabled) {
 }

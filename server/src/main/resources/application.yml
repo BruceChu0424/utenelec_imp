@@ -65,6 +65,10 @@ server:
   forward-headers-strategy: none
 
 uten:
+  features:
+    # 货品归属可见性（外贸按人隔离）。2026-07-31 起默认关闭：全员可见全部货品；
+    # 代码保留，置 true（或环境变量 UTEN_GOODS_OWNER_SCOPE_ENABLED=true）即恢复按归属人+授权过滤。
+    goods-owner-scope-enabled: ${UTEN_GOODS_OWNER_SCOPE_ENABLED:false}
   audit:
     retention:
       enabled: ${UTEN_AUDIT_RETENTION_ENABLED:true}

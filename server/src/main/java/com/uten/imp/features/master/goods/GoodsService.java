@@ -105,11 +105,26 @@ public class GoodsService {
     private final MasterCodeService masterCodeService;
     private final com.uten.imp.security.OwnerVisibility ownerVisibility;
 
+    /**
+     * 货品归属隔离总开关（uten.features.goods-owner-scope-enabled，默认 false）。
+     * 2026-07-31 决策：货品暂不按外贸归属人隔离，全员可见全部货品；代码保留，置 true 即恢复。
+     */
+    @org.springframework.beans.factory.annotation.Value("${uten.features.goods-owner-scope-enabled:false}")
+    private boolean goodsOwnerScopeEnabled;
+
     // ===== 归属可见性（外贸系列按员工授权，V85；判定逻辑统一在 OwnerVisibility） =====
+
+    /** 货品归属可见性判定唯一入口：开关关闭时直接放行（seeAll），开启时走 OwnerVisibility 三态。 */
+    private com.uten.imp.security.OwnerVisibility.OwnerScope goodsScope() {
+        if (!goodsOwnerScopeEnabled) {
+            return new com.uten.imp.security.OwnerVisibility.OwnerScope(true, java.util.Set.of());
+        }
+        return ownerVisibility.evaluate("goods", "goods:view:all");
+    }
 
     /** facets 原生 SQL 片段：归属过滤 AND 子句（参数名 :__ownerEmp；无需绑参时 bindEmp[0]=false）。 */
     private String ownerClause(boolean[] bindEmp) {
-        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        var scope = goodsScope();
         if (scope.seeAll()) { bindEmp[0] = false; return ""; }
         if (scope.visibleOwners().isEmpty()) { bindEmp[0] = false; return " and owner_employee_id is null"; }
         bindEmp[0] = true;
@@ -125,8 +140,9 @@ public class GoodsService {
                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见
-            var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+            // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见；
+            // 2026-07-31 起经 goodsScope() 总开关默认放行（全员可见全部货品）
+            var scope = goodsScope();
             if (!scope.seeAll()) {
                 if (scope.visibleOwners().isEmpty()) {
                     ps.add(cb.isNull(root.get("ownerEmployeeId")));
@@ -145,7 +161,10 @@ public class GoodsService {
                         cb.like(cb.lower(root.get("code")), like),
                         cb.like(cb.lower(root.get("model")), like),
                         cb.like(cb.lower(root.get("spec")), like),
-                        cb.like(cb.lower(root.get("series")), like)));
+                        cb.like(cb.lower(root.get("series")), like),
+                        cb.like(cb.lower(root.get("cNumber")), like),
+                        cb.like(cb.lower(root.get("material")), like),
+                        cb.like(cb.lower(root.get("requireRemark")), like)));
             }
             addEq(ps, cb, root, "series", f.series());
             addEq(ps, cb, root, "model", f.model());
@@ -158,6 +177,10 @@ public class GoodsService {
             addEq(ps, cb, root, "sourceType", f.sourceType());
             if (f.colorLegacyId() != null) ps.add(cb.equal(root.get("colorLegacyId"), f.colorLegacyId()));
             if (f.unitLegacyId() != null) ps.add(cb.equal(root.get("unitLegacyId"), f.unitLegacyId()));
+            // 滑窗选货品默认隐藏已禁用（status='禁用'）；保留 null/其他状态避免误伤（货品资料管理页不传此参数，仍显示全部）。
+            if (Boolean.TRUE.equals(f.excludeDisabled())) {
+                ps.add(cb.or(cb.isNull(root.get("status")), cb.notEqual(root.get("status"), "禁用")));
+            }
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
@@ -278,7 +301,7 @@ public class GoodsService {
         // 归属可见性（外贸按人授权）：与 list() 同规则
         boolean[] bindEmp = new boolean[1];
         String ownerClause = ownerClause(bindEmp);
-        java.util.Set<java.util.UUID> ownerEmps = ownerVisibility.evaluate("goods", "goods:view:all").visibleOwners();
+        java.util.Set<java.util.UUID> ownerEmps = goodsScope().visibleOwners();
         // 颜色/单位 legacy_id → name（全量，表小）；颜色/单位桶 label 用名展示，筛选仍按 legacy id 回传。
         Map<Integer, String> colorNames = allColorNames();
         Map<Integer, String> unitNames = allUnitNames();
@@ -365,7 +388,7 @@ public class GoodsService {
     @Transactional(readOnly = true)
     public List<GoodsDictItem> lookup(Set<UUID> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
-        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        var scope = goodsScope();
         return repo.findAllById(ids).stream()
                 .filter(g -> !g.isDeleted())
                 .filter(g -> scope.seeAll() || g.getOwnerEmployeeId() == null
@@ -378,7 +401,7 @@ public class GoodsService {
      * 归属可见性守卫（详情/编辑前调用）：归属货品非本人且未授权 → 404（不透出存在性）。
      */
     private void requireVisible(Goods g) {
-        var scope = ownerVisibility.evaluate("goods", "goods:view:all");
+        var scope = goodsScope();
         if (scope.seeAll() || g.getOwnerEmployeeId() == null) return;
         if (!scope.visibleOwners().contains(g.getOwnerEmployeeId())) {
             throw new ApiException(ErrorCode.NOT_FOUND, "货品不存在");
@@ -500,7 +523,8 @@ public class GoodsService {
                 g.getColorLegacyId(), g.getUnitLegacyId(),
                 g.getColorLegacyId() == null ? null : colorNames.get(g.getColorLegacyId()),
                 g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()),
-                g.getSourceType());
+                g.getSourceType(),
+                g.getCategory() == null ? null : g.getCategory().getId());
     }
 
     private MaterialCategory requireCategory(UUID id) {

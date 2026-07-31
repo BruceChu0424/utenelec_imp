@@ -333,8 +333,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       _minColWidth,
       growable: true,
     );
-    final sampleCount = widget.items.length < _autoFitSampleSize
-        ? widget.items.length
+    // 取样池：主数据 + 前导分组条目（分组行与主行共用同一套列宽，故一并参与测算，
+    // 保证展开/折叠分组时列宽不跳动；分组条目通常是禁用/不明货品，量小不影响性能）。
+    final pool = <T>[
+      ...widget.items,
+      for (final g in (widget.leadingGroups ?? const <MasterDataGroup<T>>[]))
+        ...g.items,
+    ];
+    final sampleCount = pool.length < _autoFitSampleSize
+        ? pool.length
         : _autoFitSampleSize;
     for (var i = 0; i < widget.columns.length; i++) {
       if (_manualResized.contains(i) && i < _widths.length) {
@@ -344,7 +351,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       final def = widget.columns[i];
       double w = _measureText(def.label, headerStyle);
       for (var r = 0; r < sampleCount; r++) {
-        final tw = _measureText(def.value(widget.items[r]) ?? '', bodyStyle);
+        final tw = _measureText(def.value(pool[r]) ?? '', bodyStyle);
         if (tw > w) w = tw;
       }
       next[i] =
@@ -456,7 +463,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         ),
       );
     }
-    if (widget.items.isEmpty) {
+    final groups = widget.leadingGroups ?? const <MasterDataGroup<T>>[];
+    final hasGroupRows = groups.any(
+      (g) => g.items.isNotEmpty || (g.total ?? 0) > 0,
+    );
+    // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
+    if (widget.items.isEmpty && !hasGroupRows) {
       return Center(
         child: UtenEmpty(
           icon: Icons.table_rows_outlined,
@@ -466,6 +478,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     }
     _ensureWidths(context);
     final total = _totalWidth;
+    // 行计划：前导分组（表头下第一区）+ 主数据行。分组折叠=仅一条跨满宽标题行；
+    // 展开=其 items 按主表同款列逐行渲染（与主行共用 _widths / _visibleIndices / 横滚）。
+    final plan = <({bool header, MasterDataGroup<T>? group, T? item})>[];
+    for (final g in groups) {
+      if (g.items.isEmpty && (g.total ?? 0) == 0) continue; // N=0 分组不渲染
+      plan.add((header: true, group: g, item: null));
+      if (_expandedGroups.contains(g.id)) {
+        for (final it in g.items) {
+          plan.add((header: false, group: g, item: it));
+        }
+      }
+    }
+    for (final it in widget.items) {
+      plan.add((header: false, group: null, item: it));
+    }
     // stretch：列总宽 < 视口宽时（颜色/单位等列少主档）表头与表体撑满视口宽、
     // 内容靠左，而非整体水平居中（Column 默认 crossAxisAlignment.center 会把窄于
     // 视口的表格居中、左右留白）。仅作用于交叉轴（横向），不影响主轴 Flexible(loose)
@@ -552,10 +579,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                         shrinkWrap: true,
                         physics: const ClampingScrollPhysics(),
                         padding: EdgeInsets.zero,
-                        itemCount:
-                            widget.items.length + (widget.loadingMore ? 1 : 0),
+                        itemCount: plan.length + (widget.loadingMore ? 1 : 0),
                         itemBuilder: (ctx, i) {
-                          if (i == widget.items.length) {
+                          if (widget.loadingMore && i == plan.length) {
                             return const Padding(
                               padding: EdgeInsets.all(UtenSpacing.s12),
                               child: Center(
@@ -569,7 +595,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                               ),
                             );
                           }
-                          return _buildDataRow(theme, widget.items[i]);
+                          final row = plan[i];
+                          if (row.header) {
+                            return _buildGroupHeader(theme, row.group!);
+                          }
+                          return _buildDataRow(theme, row.item!);
                         },
                       ),
                     ),
@@ -580,6 +610,107 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 前导分组标题行：跨满表宽（_totalWidth），与表头/数据行同处一个横向 ScrollView，
+  /// 故横滚同步、列边界对齐。底色取 [MasterDataGroup.tint]（禁用=浅红等）；点击切换展开。
+  /// 右侧「下拉详情 ▾」文字 + 旋转箭头（展开后朝上、文案语义=可收起）。
+  Widget _buildGroupHeader(ThemeData theme, MasterDataGroup<T> group) {
+    final expanded = _expandedGroups.contains(group.id);
+    final tint = group.tint ?? theme.colorScheme.surfaceContainerHigh;
+    final moreLeft =
+        (group.total ?? group.items.length) > group.items.length;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          if (expanded) {
+            _expandedGroups.remove(group.id);
+          } else {
+            _expandedGroups.add(group.id);
+          }
+        });
+        // 全屏路由经 _fsTick 驱动重建；bump 使全屏里展开/折叠同步（与列显隐同款）。
+        _fsTick.value++;
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tint,
+          border: Border(
+            bottom: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s8,
+          ),
+          child: Row(
+            children: [
+              if (group.icon != null) ...[
+                Icon(
+                  group.icon,
+                  size: 18,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      group.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    if (group.subtitle != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          group.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (moreLeft && expanded)
+                Padding(
+                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
+                  child: Text(
+                    '仅前 ${group.items.length}/${group.total}', // TODO(l10n): 补 arb
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              Text(
+                group.detailLabel,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              AnimatedRotation(
+                turns: expanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 20,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

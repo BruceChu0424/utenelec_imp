@@ -41,7 +41,6 @@ import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/goods_detail_dialog.dart';
 import '../widgets/master_data_table_view.dart';
-import '../widgets/special_goods_collections.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
@@ -489,6 +488,11 @@ class _DetailPaneState extends State<_DetailPane> {
   bool _goodsLoading = false;
   String? _goodsError;
 
+  // 特殊货品集合（表头下前导分组）：禁用货品（当前分类子树）/ 不明货品（仅未分类节点）。
+  // 主表已 excludeDisabled+excludeStub，二者不重复；这里作为可折叠分组渲染于表头下第一区。
+  PagedResult<GoodsListItem>? _disabledGoods;
+  PagedResult<GoodsListItem>? _stubGoods;
+
   // 字段筛选 + 搜索 + facet（筛选栏用）。切换分类时重置。
   Map<String, String?> _filters = {};
   String _keyword = '';
@@ -566,7 +570,7 @@ class _DetailPaneState extends State<_DetailPane> {
       setState(() {
         _detail = d;
         _loading = false;
-        // 切换分类时重置货品分页 + 筛选状态 + facet + 排序态。
+        // 切换分类时重置货品分页 + 筛选状态 + facet + 排序态 + 特殊集合。
         _goodsPage = null;
         _goodsPageNum = 1;
         _goodsError = null;
@@ -575,9 +579,15 @@ class _DetailPaneState extends State<_DetailPane> {
         _facets = null;
         _sortKey = null;
         _sortAsc = true;
+        _disabledGoods = null;
+        _stubGoods = null;
       });
-      // 父分类也加载（后端按子树汇总）；并行拉货品列表与字段 facet。
-      await Future.wait([_loadGoods(1), _loadFacets()]);
+      // 父分类也加载（后端按子树汇总）；并行拉货品列表、字段 facet 与特殊集合。
+      await Future.wait([
+        _loadGoods(1),
+        _loadFacets(),
+        _loadSpecialCollections(),
+      ]);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {

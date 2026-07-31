@@ -216,7 +216,7 @@ class ExecutionSegmentSalesAllocationPostgresTest {
 
         SalesOrderService service = new SalesOrderService(
                 null, null, null, null, null, null, null, null, null,
-                null, null, null, null, em, null);
+                null, null, null, null, em, null, null);
         UUID orderItemId = UUID.randomUUID();
         SalesOrderItem item = new SalesOrderItem();
         item.setQty(new BigDecimal("10"));

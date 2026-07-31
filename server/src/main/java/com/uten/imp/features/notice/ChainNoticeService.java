@@ -50,6 +50,8 @@ public class ChainNoticeService {
     static final String EVENT_ORDER_CANCELED = "SALES_ORDER_CANCELED";
     static final String EVENT_ORDER_APPROVED = "SALES_ORDER_APPROVED";
     static final String EVENT_DELIVERY_DUE = "SALES_DELIVERY_DUE";
+    static final String EVENT_RESERVATION_HOLD_OVERDUE = "SALES_RESERVATION_HOLD_OVERDUE";
+    static final String EVENT_RESERVATION_YIELDED = "SALES_RESERVATION_YIELDED";
     private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
             ThreadLocal.withInitial(() -> false);
 
@@ -106,6 +108,17 @@ public class ChainNoticeService {
                         notifyDeliveryDue(aggregateId, daysLeft);
                     }
                 }
+                case EVENT_RESERVATION_HOLD_OVERDUE -> {
+                    long overdueDays = payload.path("overdueDays").asLong();
+                    if (payload.path("daily").asBoolean(false)) {
+                        notifyReservationHoldOverdueIfNotSentToday(aggregateId, overdueDays);
+                    } else {
+                        notifyReservationHoldOverdue(aggregateId, overdueDays);
+                    }
+                }
+                case EVENT_RESERVATION_YIELDED ->
+                        notifyReservationYielded(aggregateId, payload.path("qty").asText(""),
+                                payload.path("reason").asText(""), payload.path("yielderOrderNo").asText(""));
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
             }
@@ -551,6 +564,84 @@ public class ChainNoticeService {
         } catch (Exception error) {
             throw new IllegalStateException("Failed to deliver due-date warning for " + orderId, error);
         }
+    }
+
+    /**
+     * ⑨ 预留持有逾期（V178，即时）：订单有生效预留且持有截止已过、仍未发完，通知归属销售跟进发货或释放。
+     * 持有截止 = COALESCE(预留 hold_until, 订单交货日 + 宽限期)；与延期预警(⑧ 交货前)互补、不重叠。
+     */
+    public void notifyReservationHoldOverdue(UUID orderId, long overdueDays) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_RESERVATION_HOLD_OVERDUE, "SALES_ORDER", orderId,
+                    Map.of("overdueDays", overdueDays, "daily", false));
+            return;
+        }
+        sendHoldOverdueNotice(orderId, overdueDays);
+    }
+
+    /** ⑨ 预留持有逾期（调度器入口）：同一订单同一接收人同日只发一条（notices 标题+接收人+当日去重）。 */
+    public void notifyReservationHoldOverdueIfNotSentToday(UUID orderId, long overdueDays) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(EVENT_RESERVATION_HOLD_OVERDUE, "SALES_ORDER", orderId,
+                    Map.of("overdueDays", overdueDays, "daily", true),
+                    EVENT_RESERVATION_HOLD_OVERDUE + ':' + orderId + ':' + BusinessTime.today());
+            return;
+        }
+        try {
+            OrderRef o = orderRef(orderId);
+            if (o == null || o.ownerUserId() == null) return;
+            String title = "预留持有逾期：" + o.billNo();
+            Instant startOfToday = BusinessTime.startOfDayInstant(BusinessTime.today());
+            Boolean sent = jdbc.queryForObject(
+                    "SELECT EXISTS(SELECT 1 FROM notices WHERE audience_user_id = ? AND title = ? AND published_at >= ?)",
+                    Boolean.class, o.ownerUserId(), title, startOfToday);
+            if (Boolean.TRUE.equals(sent)) return;
+            sendHoldOverdueNotice(orderId, overdueDays);
+        } catch (Exception error) {
+            throw new IllegalStateException("Failed to deliver hold-overdue notice for " + orderId, error);
+        }
+    }
+
+    private void sendHoldOverdueNotice(UUID orderId, long overdueDays) {
+        OrderRef o = orderRef(orderId);
+        if (o == null || o.ownerUserId() == null) return;
+        String title = "预留持有逾期：" + o.billNo();
+        String content = "订单 " + o.billNo() + " 的现货预留已过持有截止"
+                + (overdueDays <= 0 ? "" : " " + overdueDays + " 天")
+                + "，仍未发货。请尽快安排出货；若客户暂不需要，请改量或取消以释放库存，"
+                + "或由主管做稀缺让单重排。长期不处理将影响可承诺量。";
+        sendToUser(o.ownerUserId(), TYPE_URGENT, title, content);
+    }
+
+    /**
+     * ⑩ 让单通知（V178）：低优先级订单行的预留被主管让单重排后，通知其归属销售——
+     * 库存已被高优先级急单调用，其缺口已自动回到调度待排产（将转生产补足）。
+     */
+    public void notifyReservationYielded(UUID orderItemId, String qtyText, String reason, String yielderOrderNo) {
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_RESERVATION_YIELDED, "SALES_ORDER_ITEM", orderItemId, Map.of(
+                    "qty", qtyText == null ? "" : qtyText,
+                    "reason", reason == null ? "" : reason,
+                    "yielderOrderNo", yielderOrderNo == null ? "" : yielderOrderNo));
+            return;
+        }
+        Map<String, Object> row = one("""
+                SELECT o.id AS order_id, o.bill_no, g.code AS goods
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                LEFT JOIN goods g ON g.id = i.goods_id
+                WHERE i.id = ?
+                """, orderItemId);
+        if (row == null) return;
+        OrderRef o = orderRef((UUID) row.get("order_id"));
+        if (o == null) return;
+        String why = reason == null || reason.isBlank() ? "急单优先" : reason.trim();
+        notifyUser(o.ownerUserId(), TYPE_URGENT,
+                "库存被让单重排：" + o.billNo(),
+                "订单 " + o.billNo() + " 货品 " + str(row.get("goods")) + " 的现货预留 "
+                        + (qtyText == null || qtyText.isBlank() ? "" : qtyText + " ")
+                        + "已被主管让单给" + (yielderOrderNo == null || yielderOrderNo.isBlank() ? "急单" : "订单 " + yielderOrderNo)
+                        + "（原因：" + why + "）。缺口已自动回到调度待排产，将转生产补足，进度会在排产后更新。");
     }
 
     // ---------- 接收人解析与发送 ----------

@@ -215,6 +215,9 @@
 | **订单归属隔离（只看/只动自己的单）** | ✅ 已落地（V91 owner_employee_id + `sales:view:all` + 变更守卫 assertOwnable） |
 | **`sales_order:price:view` 价格脱敏权限点** | ✅ 已落地（`SalesPriceMasker` 按权限点判定〔V30 同型〕：订单列表 totalLocal / 详情主表金额族+订金+明细价格族〔数量族保留〕置 null + `priceMasked` 标记；订货明细报表+导出同口径置 null（totalAmount/machiningPrice/price/discount/amount）+ 待交货 pending_amt；Flutter 列表/详情/明细渲染 ***；双账号（有/无权限点）实测三表面一致） |
 | **批量发货开单（同客户合并，可部分数量）** | ✅ 已落地（`GET /orders/shippable-lines` 可发行〔reserved>0，归属同列表口径〕+ `POST /shipments/batch` 按客户分组合并出货草稿〔逐行校验可发≤预留/归属/在途态，行带 orderItemId+sourceDocNo+unitRate/price 带入〕；Flutter 订单列表「批量发货」右滑面板勾选+改本次数量+全选+选仓；实测 3 单 2 客户合并 2 张出货单、超预留 400、审核回写部分发货 chain 8 正确） |
+| **销售 ATP 扣安全库存（V178 缺口 C）** | ✅ 已落地（`globalAvailableBase` 扣 `goods.min_qty` + `GREATEST(...,0)` 钳位，对齐生产侧 `MrpService` 口径〔账面−销售预留−货品安全库存，最小0，保守按颜色分别应用〕；仅销售审核/改量调用，生产侧读 `v_stock_available` 另扣不双重扣减；dev 库实测 V51022 账面92850<安全200000→可预留0，存量零变更）— 详见 [05](05-销售现货预留生命周期与稀缺仲裁.md) |
+| **预留持有逾期预警（V178 缺口 A）** | ✅ 已落地（`stock_reservations.hold_until` 可选覆盖〔null=用默认交货日+7天宽限动态算，免回填、交期改后跟随〕；`ReservationHoldScheduler` 每日 08:37 扫"生效预留+持有截止已过+未发完"通知归属销售〔与交货前3天延期预警互补不重叠〕；**默认只通知不自动释放**〔数据安全〕，三大 ERP 无此原生=差异化；`ChainNoticeService.notifyReservationHoldOverdue` Outbox 旁路+当日去重）— 详见 [05](05-销售现货预留生命周期与稀缺仲裁.md) |
+| **稀缺手动让单重排（V178 缺口 B）** | ✅ 已落地（`sales_order_items.priority`〔1急/2普/3现货，source of truth〕+ `POST /items/{id}/priority`〔`sales_order:priority` 权限，急单须原因+审计〕+ `POST /items/{id}/yield-reservation`〔`sales_order:reallocate` 权限，复用 `releaseForOrderItem`+镜像出货驳回 chain_status 回退 SQL+`updated!=1` 防错账+通知被让单销售〕+ `GET /reservations/scarce` 让单面板；**不自动抢占**〔对标 SAP backorder，镜像 doc04 §11 急单哲学〕；Flutter 模型+急单标识就位）— 详见 [05](05-销售现货预留生命周期与稀缺仲裁.md) |
 
 ---
 

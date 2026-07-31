@@ -32,6 +32,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockReservationService {
 
+    /**
+     * 预留持有宽限期（天，V178）：交货日过后再容忍 N 天才视为"逾期持有"。
+     * hold_until 为 NULL 的预留，其持有截止 = 订单交货日 + 本宽限（动态算，免回填、交期改后跟随）。
+     * 销售订单详情逾期天数计算（SalesOrderService）与过期扫描调度器（ReservationHoldScheduler）
+     * 共用此常量，保证口径一致。对齐 SAP OMBN 保留期"按需求日期"语义。
+     */
+    public static final int HOLD_GRACE_DAYS = 7;
+
     private final StockReservationRepository reservationRepo;
     private final TxSessionVars tx;
     private final EntityManager em;

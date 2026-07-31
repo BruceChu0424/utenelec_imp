@@ -77,6 +77,14 @@ public class StockReservation extends BaseEntity {
     @Column(name = "source_doc_id")
     private UUID sourceDocId;
 
+    /**
+     * 预留持有截止（可选覆盖，V178）：
+     * NULL = 用默认（订单交货日 + 宽限期）动态算，免回填且交期改后自动跟随；
+     * 非 NULL = 大客户长单等自定义截止。调度器据此判定是否过期通知（默认只通知）。
+     */
+    @Column(name = "hold_until")
+    private OffsetDateTime holdUntil;
+
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted = false;
 

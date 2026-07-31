@@ -97,6 +97,7 @@ import '../../features/sales/pages/sales_doc_list_page.dart';
 import '../../features/sales/pages/sales_hub_page.dart';
 import '../../features/sales/config/sales_report_config.dart';
 import '../../features/sales/pages/sales_report_page.dart';
+import '../../features/sales/pages/sales_scarcity_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_doc_detail_page.dart';
 import '../../features/subcontract/pages/subcontract_doc_edit_page.dart';
@@ -698,6 +699,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     const SalesReportPage(kind: SalesReportKind.summary),
               ),
             ],
+          ),
+          GoRoute(
+            path: RouteName.salesScarcity,
+            name: 'sales-scarcity',
+            builder: (_, s) => SalesScarcityPage(
+              initialGoodsId: s.uri.queryParameters['goodsId'],
+              initialColorId: s.uri.queryParameters['colorId'],
+            ),
           ),
           GoRoute(
             path: '/sales/:seg/new',

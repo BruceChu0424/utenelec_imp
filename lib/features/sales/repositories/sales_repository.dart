@@ -23,6 +23,7 @@ class SalesDocFilter {
     this.dateTo,
     this.closed,
     this.chain,
+    this.sellerId,
   });
   final String? keyword;
   final String? clientId;
@@ -32,6 +33,7 @@ class SalesDocFilter {
   final String? dateTo;
   final bool? closed; // 结案筛选（订货工作台「本月完成」卡用）
   final List<int>? chain; // 订单行链路状态组（统计卡钻取，逗号拼接多值）
+  final String? sellerId; // 按销售员筛选（生产计划选来源单按跟单员收敛）
 }
 
 class SalesRepository {
@@ -55,6 +57,7 @@ class SalesRepository {
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
         'keyword': filter.keyword!.trim(),
       if (filter.clientId != null) 'clientId': filter.clientId,
+      if (filter.sellerId != null) 'sellerId': filter.sellerId,
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
       if (filter.status != null) 'status': filter.status,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
@@ -158,6 +161,54 @@ class SalesRepository {
   Future<SalesDocDetail> cancel(String id) async {
     final json = await api.post('${_doc(id)}/cancel');
     return SalesDocDetail.fromJson(json);
+  }
+
+  /// 设置订单行优先级（POST /items/{id}/priority；V178，仅 order 类型可用）。
+  /// 1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。
+  Future<SalesDocDetail> setLinePriority(
+    String orderItemId,
+    int priority, {
+    String? reason,
+  }) async {
+    final json = await api.post(
+      '/sales/orders/items/$orderItemId/priority',
+      body: {'priority': priority, 'reason': ?reason},
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 稀缺让单重排（POST /items/{id}/yield-reservation；V178）：主管释放某低优先级订单行的现货预留，
+  /// 库存回池供急单占用，该行缺口自动回调度待排产，并通知其归属销售。
+  Future<SalesDocDetail> yieldReservation(
+    String orderItemId, {
+    required double qty,
+    required String reason,
+    String? yielderOrderNo,
+  }) async {
+    final json = await api.post(
+      '/sales/orders/items/$orderItemId/yield-reservation',
+      body: {
+        'qty': qty,
+        'reason': reason,
+        'yielderOrderNo': ?yielderOrderNo,
+      },
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 稀缺库存占用视图（GET /reservations/scarce；V178）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期。
+  Future<List<ScarceReservation>> scarceReservations(
+    String goodsId, {
+    String? colorId,
+  }) async {
+    final json = await api.get('/sales/orders/reservations/scarce', query: {
+      'goodsId': goodsId,
+      'colorId': ?colorId,
+    });
+    return (json as List?)
+            ?.map((e) => ScarceReservation.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [];
   }
 
   /// 报价转订货（POST /quotes/{id}/convert；SOP §三1，仅 quote 类型可用）。

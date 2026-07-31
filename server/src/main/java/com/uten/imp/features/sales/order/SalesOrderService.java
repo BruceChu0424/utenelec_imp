@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.order;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -13,6 +14,9 @@ import com.uten.imp.features.sales.order.dto.OrderCostItemDto;
 import com.uten.imp.features.sales.order.dto.OrderDetail;
 import com.uten.imp.features.sales.order.dto.OrderItemDto;
 import com.uten.imp.features.sales.order.dto.OrderItemLine;
+import com.uten.imp.features.sales.order.dto.OrderPriorityRequest;
+import com.uten.imp.features.sales.order.dto.OrderYieldRequest;
+import com.uten.imp.features.sales.order.dto.ScarceStockReservationView;
 import com.uten.imp.features.sales.order.dto.OrderListItem;
 import com.uten.imp.features.sales.order.dto.OrderQueryFilter;
 import com.uten.imp.features.sales.order.dto.OrderSaveRequest;
@@ -23,6 +27,7 @@ import com.uten.imp.features.stock.StockReservation;
 import com.uten.imp.features.stock.StockReservationService;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -88,6 +93,7 @@ public class SalesOrderService {
     private final DocNumberService docNumberService;
     private final EntityManager em;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    private final AuditService auditService;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
@@ -113,6 +119,7 @@ public class SalesOrderService {
                         root.get("clientId").in(cs)));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
+            if (f.sellerId() != null) ps.add(cb.equal(root.get("sellerId"), f.sellerId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
@@ -145,6 +152,7 @@ public class SalesOrderService {
         Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
         boolean canEdit = accessPolicy.hasAuthority("sales_order:edit");
         return new PageResponse<>(p.map(o -> toList(o,
+                        nameResolver.nameOf(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
                 page, size, p.getTotalElements(), p.getTotalPages());
     }
@@ -775,6 +783,197 @@ public class SalesOrderService {
         return detail(id);
     }
 
+    // ======================= V178：预留生命周期 + 稀缺仲裁 =======================
+
+    /**
+     * 设置订单行优先级（V178 缺口 B）：1急单 / 2普通 / 3现货。设为急单须填原因。
+     * 优先级仅用于稀缺手动让单的决策与排序，不触发任何自动抢占；全程显式审计 + DB 触发器。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_order:priority')")
+    public OrderDetail setLinePriority(UUID orderItemId, OrderPriorityRequest req) {
+        tx.bind();
+        if (req == null || req.getPriority() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "优先级必填（1急单/2普通/3现货）");
+        }
+        short priority = req.getPriority();
+        if (priority < 1 || priority > 3) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "优先级取值 1急单/2普通/3现货");
+        }
+        if (priority == 1 && (req.getReason() == null || req.getReason().isBlank())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "设为急单须填写原因");
+        }
+        SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
+        if (it == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
+        }
+        short old = it.getPriority() == null ? 3 : it.getPriority();
+        it.setPriority(priority);
+        itemRepo.save(it);
+        String reason = req.getReason() == null ? "" : req.getReason().trim();
+        currentUser.get().ifPresent(u -> auditService.logExplicit(u.getId(), u.getUsername(),
+                "sales_order_priority", "sales_order_item", orderItemId.toString(),
+                "优先级 " + old + "→" + priority + (reason.isEmpty() ? "" : "；原因：" + reason)));
+        return detail(it.getOrderId());
+    }
+
+    /**
+     * 稀缺让单重排（V178 缺口 B）：主管释放某低优先级订单行的部分/全部现货预留。
+     * 库存回到可分配池；该行 reserved_qty 回减 + chain_status 回退待排产（缺口自动回调度转生产补足），
+     * 并通知其归属销售。不自动给急单预留——急单销售随后经改量/新建审核走正常预留链占用释放出的库存。
+     *
+     * <p>数据安全：复用 {@code releaseForOrderItem}（FIFO + 行锁 + advisory lock），
+     * chain_status 回退 SQL 逐字镜像出货驳回 {@code SalesShipmentService.reject}，
+     * {@code updated!=1} 抛错防吞并错账。已发货订单行无生效预留，自然拦在 reserved 校验。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_order:reallocate')")
+    public OrderDetail yieldReservation(UUID orderItemId, OrderYieldRequest req) {
+        tx.bind();
+        if (req == null || req.getQty() == null || req.getQty().signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "让单数量必须大于 0");
+        }
+        if (req.getReason() == null || req.getReason().isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "让单须填写原因");
+        }
+        SalesOrderItem it = em.find(SalesOrderItem.class, orderItemId, LockModeType.PESSIMISTIC_WRITE);
+        if (it == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在");
+        }
+        SalesOrder o = orderRepo.findById(it.getOrderId())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "订单不存在"));
+        if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核订单的预留可让单");
+        }
+        BigDecimal reserved = nz(it.getReservedQty());
+        if (reserved.signum() <= 0) {
+            throw new ApiException(ErrorCode.BUSINESS, "该行无生效预留可让单");
+        }
+        BigDecimal yieldRow = req.getQty().min(reserved); // 截断到生效预留，防超让
+        BigDecimal rate = (it.getUnitRate() != null && it.getUnitRate().signum() > 0)
+                ? it.getUnitRate() : BigDecimal.ONE;
+        // 1) 释放预留（基本单位；FIFO + 行锁 + advisory lock，已有原语）
+        reservationService.releaseForOrderItem(orderItemId, yieldRow.multiply(rate));
+        // 2) 回减 reserved_qty + 行状态回退（行单位；逐字镜像 SalesShipmentService.reject）
+        int updated = em.createNativeQuery("""
+                UPDATE sales_order_items
+                SET reserved_qty = COALESCE(reserved_qty,0) - :q,
+                    chain_status = CASE WHEN COALESCE(chain_status,0) > 0 THEN
+                        CASE
+                          WHEN COALESCE(reserved_qty,0) - :q
+                               >= COALESCE(qty,0) - COALESCE(shipped_qty,0)
+                                  + COALESCE(returned_qty,0) - COALESCE(flag_qty,0) THEN 7
+                          WHEN GREATEST(COALESCE(planned_qty,0) - COALESCE(produced_qty,0), 0) > 0 THEN 4
+                          WHEN COALESCE(reserved_qty,0) - :q > 0 THEN 1
+                          ELSE 2
+                        END
+                    ELSE chain_status END
+                WHERE id = :id AND COALESCE(reserved_qty,0) >= :q
+                """).setParameter("q", yieldRow).setParameter("id", orderItemId).executeUpdate();
+        if (updated != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "订单预留累计小于让单量，禁止自动吞并错账");
+        }
+        String reason = req.getReason().trim();
+        currentUser.get().ifPresent(u -> auditService.logExplicit(u.getId(), u.getUsername(),
+                "sales_reservation_yield", "sales_order_item", orderItemId.toString(),
+                "让单释放预留 " + yieldRow.stripTrailingZeros().toPlainString() + "；原因：" + reason));
+        // 3) 旁路通知被让单的归属销售（缺口已回待排产，提交后发送）
+        chainNotice.notifyReservationYielded(orderItemId, yieldRow.stripTrailingZeros().toPlainString(),
+                reason, req.getYielderOrderNo());
+        return detail(o.getId());
+    }
+
+    /**
+     * 稀缺库存占用视图（V178 缺口 B）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期天数，
+     * 供主管"稀缺让单"面板判断让谁、让多少。按优先级升序、创建时间升序（急单在前、先占的在前）。
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:reallocate')")
+    public List<ScarceStockReservationView> scarceReservations(UUID goodsId, UUID colorId) {
+        if (goodsId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "货品必填");
+        }
+        int grace = StockReservationService.HOLD_GRACE_DAYS;
+        List<ScarceStockReservationView> out = new ArrayList<>();
+        for (Object[] row : com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT r.id, r.order_item_id, o.id, o.bill_no, g.code,
+                       o.client_id, c.name, i.priority, i.deliver_date,
+                       CASE WHEN COALESCE(i.unit_rate,0) > 0
+                            THEN (r.qty - r.consumed_qty - r.released_qty) / i.unit_rate
+                            ELSE (r.qty - r.consumed_qty - r.released_qty) END AS reserved_row,
+                       r.hold_until
+                FROM stock_reservations r
+                JOIN sales_order_items i ON i.id = r.order_item_id
+                JOIN sales_orders o ON o.id = i.order_id
+                LEFT JOIN goods g ON g.id = r.goods_id
+                LEFT JOIN clients c ON c.id = o.client_id
+                WHERE r.is_deleted = FALSE AND r.status = 0
+                  AND (r.qty - r.consumed_qty - r.released_qty) > 0
+                  AND r.goods_id = :gid
+                  AND (:cid IS NULL
+                       OR r.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid))
+                  AND o.status = 1
+                  AND COALESCE(o.is_closed, FALSE) = FALSE
+                ORDER BY i.priority ASC NULLS LAST, r.created_at ASC
+                """).setParameter("gid", goodsId).setParameter("cid", colorId))) {
+            OffsetDateTime holdUntil = toOffsetDateTime(row[10]);
+            LocalDate deliverDate = toLocalDate(row[8]);
+            out.add(new ScarceStockReservationView(
+                    (UUID) row[0], (UUID) row[1], (UUID) row[2], strOf(row[3]), strOf(row[4]),
+                    (UUID) row[5], strOf(row[6]),
+                    row[7] == null ? null : ((Number) row[7]).shortValue(),
+                    deliverDate,
+                    toBigDecimal(row[9]),
+                    holdUntil,
+                    overdueDays(deliverDate, holdUntil, grace)));
+        }
+        return out;
+    }
+
+    /** 持有逾期天数（V178）：截止 = COALESCE(hold_until, 交货日+宽限)；截止已过且未发完(调用方已过滤生效预留) → 距今天数，否则 null。 */
+    private static Long overdueDays(LocalDate deliverDate, OffsetDateTime holdUntil, int grace) {
+        java.time.Instant deadline;
+        if (holdUntil != null) {
+            deadline = holdUntil.toInstant();
+        } else if (deliverDate != null) {
+            deadline = deliverDate.plusDays(grace).atStartOfDay(java.time.ZoneOffset.UTC).toInstant();
+        } else {
+            return null;
+        }
+        java.time.Instant now = java.time.Instant.now();
+        if (!deadline.isBefore(now)) return null;
+        return Math.max(0, java.time.Duration.between(deadline, now).toDays());
+    }
+
+    /** JPA 原生查询日期列类型随驱动/Hibernate 版本而变，统一健壮提取，防 ClassCastException。 */
+    private static LocalDate toLocalDate(Object v) {
+        if (v == null) return null;
+        if (v instanceof LocalDate ld) return ld;
+        if (v instanceof java.sql.Date d) return d.toLocalDate();
+        if (v instanceof java.sql.Timestamp t) return t.toLocalDateTime().toLocalDate();
+        if (v instanceof java.util.Date d) return d.toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        return null;
+    }
+
+    private static OffsetDateTime toOffsetDateTime(Object v) {
+        if (v == null) return null;
+        if (v instanceof OffsetDateTime odt) return odt;
+        if (v instanceof java.sql.Timestamp t) return t.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        if (v instanceof java.util.Date d) return d.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        return null;
+    }
+
+    private static BigDecimal toBigDecimal(Object v) {
+        if (v == null) return null;
+        if (v instanceof BigDecimal bd) return bd;
+        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+        return null;
+    }
+
+    private static String strOf(Object v) {
+        return v == null ? null : v.toString();
+    }
+
     /**
      * V157 segment ownership is immutable.  A quantity decrease must not
      * shrink or soft-delete a plan link after a V1 package was confirmed.
@@ -971,7 +1170,7 @@ public class SalesOrderService {
         orderRepo.save(o);
     }
 
-    private OrderListItem toList(SalesOrder o, boolean writable) {
+    private OrderListItem toList(SalesOrder o, String sellerName, boolean writable) {
         // 延期预警：已审未结案 + 距交货日 ≤3 天（含逾期）；草稿/红冲/结案不预警
         boolean delayWarning = o.getDeliverDate() != null
                 && o.getStatus() != null && o.getStatus() == STATUS_APPROVED
@@ -980,7 +1179,7 @@ public class SalesOrderService {
         boolean mask = !priceMasker.canView(); // 价格脱敏（SOP §三8）：无权限置 null + priceMasked 标记
         return new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getClientId(),
                 o.getCurrencyId(), mask ? null : o.getTotalLocal(), o.getStatus(), o.isClosed(), o.isStopped(),
-                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable);
+                o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId());
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
@@ -990,7 +1189,8 @@ public class SalesOrderService {
                 it.getDiscount(), it.getTaxAmount(), it.getWeight(), it.getClientNo(), it.getClientModel(),
                 it.getDeliverDate(), it.getSourceDocNo(), it.getMachiningPrice(), it.getCircumference(),
                 it.getInboundQty(), it.getInNo(), it.getOutNo(), it.getRemark(),
-                it.getReservedQty(), it.getPlannedQty(), it.getProducedQty(), it.getChainStatus(), null);
+                it.getReservedQty(), it.getPlannedQty(), it.getProducedQty(), it.getChainStatus(), null,
+                it.getPriority());
     }
 
     private OrderCostItemDto toCostDto(SalesOrderCostItem c) {

@@ -156,6 +156,10 @@ abstract final class Perm {
   static const salesOrderEdit = 'sales_order:edit';
   static const salesOrderPriceView = 'sales_order:price:view';
   static const salesOrderChangePlanned = 'sales_order:change_planned';
+  /// V178 订单行设优先级（急单/普通/现货）：稀缺让单决策用。
+  static const salesOrderPriority = 'sales_order:priority';
+  /// V178 稀缺库存让单（释放低优先级订单行的现货预留）：主管仲裁用。
+  static const salesOrderReallocate = 'sales_order:reallocate';
   static const salesShipmentView = 'sales_shipment:view';
   static const salesShipmentEdit = 'sales_shipment:edit';
   static const salesShipmentReject = 'sales_shipment:reject';
@@ -332,6 +336,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.salesQuoteView, Perm.salesQuoteEdit,
       Perm.salesOrderView, Perm.salesOrderEdit,
       Perm.salesOrderPriceView, Perm.salesOrderChangePlanned,
+      Perm.salesOrderPriority, Perm.salesOrderReallocate,
       Perm.salesShipmentView, Perm.salesShipmentEdit,
       Perm.salesShipmentReject,
       Perm.salesOtherShipmentView, Perm.salesOtherShipmentEdit,

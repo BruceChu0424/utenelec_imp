@@ -78,6 +78,20 @@ Color salesStatusColor(int? code, ThemeData theme) {
   }
 }
 
+/// 订单行优先级标签（V178 priority）：1急单/2普通/3现货。仅稀缺让单决策用。
+String priorityLabel(int? p) {
+  switch (p) {
+    case 1:
+      return '急单';
+    case 2:
+      return '普通';
+    case 3:
+      return '现货';
+    default:
+      return '现货';
+  }
+}
+
 /// 订单行链路状态（V90 chain_status）标签。
 String chainStatusLabel(int? code) {
   switch (code) {
@@ -222,6 +236,8 @@ class SalesDocListItem {
     this.priceMasked = false,
     this.writable = false,
     this.canReject = false,
+    this.sellerName,
+    this.sellerId,
   });
 
   final String id;
@@ -244,6 +260,13 @@ class SalesDocListItem {
   final bool writable; // 服务端权威：功能权限 + 负责人范围均允许普通写操作
   final bool canReject; // 服务端权威：仅出货草稿且具备特殊驳回权限
 
+  /// 销售员姓名（服务端按 seller_id 解析；仅销售订单列表下发，生产计划选单展示）。
+  /// 其它单据类型列表不下发，保持 null。
+  final String? sellerName;
+
+  /// 销售员 id（仅销售订单列表下发；前端跟单员联动回填用）。
+  final String? sellerId;
+
   factory SalesDocListItem.fromJson(Map<String, dynamic> json) =>
       SalesDocListItem(
         id: json['id'] as String,
@@ -265,6 +288,8 @@ class SalesDocListItem {
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         writable: (json['writable'] as bool?) ?? false,
         canReject: (json['canReject'] as bool?) ?? false,
+        sellerName: json['sellerName'] as String?,
+        sellerId: json['sellerId'] as String?,
       );
 }
 
@@ -317,6 +342,8 @@ class SalesDocItem {
     this.chainStatus,
     // 报价转入（SOP §三1）：来源报价行单价（价格留痕比对，系统回联填充，只读）
     this.quotePrice,
+    // V178 稀缺仲裁：订单行优先级 1急单/2普通/3现货(默认)；只读展示，设急单走独立权限点
+    this.priority,
   });
 
   final String? id;
@@ -365,6 +392,9 @@ class SalesDocItem {
   /// 报价转入：来源报价行单价（只读，价格比对用；非转入单为 null）
   final double? quotePrice;
 
+  /// V178 订单行优先级：1急单/2普通/3现货(默认/null)。仅稀缺让单决策与排序用，不自动抢占。
+  final int? priority;
+
   factory SalesDocItem.fromJson(Map<String, dynamic> json) => SalesDocItem(
     id: json['id'] as String?,
     lineNo: (json['lineNo'] as num?)?.toInt(),
@@ -407,7 +437,60 @@ class SalesDocItem {
     producedQty: (json['producedQty'] as num?)?.toDouble(),
     chainStatus: (json['chainStatus'] as num?)?.toInt(),
     quotePrice: (json['quotePrice'] as num?)?.toDouble(),
+    priority: (json['priority'] as num?)?.toInt(),
   );
+}
+
+/// 稀缺库存占用视图（GET /reservations/scarce；V178）：某货品+颜色的生效预留 + 订单上下文 + 持有逾期。
+/// 供主管"稀缺让单"面板判断让谁、让多少（按优先级升序、创建时间升序返回）。
+class ScarceReservation {
+  const ScarceReservation({
+    this.reservationId,
+    this.orderItemId,
+    this.orderId,
+    this.orderNo,
+    this.goodsCode,
+    this.clientId,
+    this.clientName,
+    this.priority,
+    this.deliverDate,
+    this.reservedQty,
+    this.holdUntil,
+    this.overdueDays,
+  });
+
+  final String? reservationId;
+  final String? orderItemId;
+  final String? orderId;
+  final String? orderNo;
+  final String? goodsCode;
+  final String? clientId;
+  final String? clientName;
+  /// 1急单/2普通/3现货。
+  final int? priority;
+  final String? deliverDate;
+  /// 生效预留量（行单位）。
+  final double? reservedQty;
+  /// 持有截止（可空，null=用默认交货日+宽限）。
+  final String? holdUntil;
+  /// 持有已逾期天数（截止已过且未发完；未逾期/不适用为 null）。
+  final int? overdueDays;
+
+  factory ScarceReservation.fromJson(Map<String, dynamic> json) =>
+      ScarceReservation(
+        reservationId: json['reservationId'] as String?,
+        orderItemId: json['orderItemId'] as String?,
+        orderId: json['orderId'] as String?,
+        orderNo: json['orderNo'] as String?,
+        goodsCode: json['goodsCode'] as String?,
+        clientId: json['clientId'] as String?,
+        clientName: json['clientName'] as String?,
+        priority: (json['priority'] as num?)?.toInt(),
+        deliverDate: json['deliverDate'] as String?,
+        reservedQty: (json['reservedQty'] as num?)?.toDouble(),
+        holdUntil: json['holdUntil'] as String?,
+        overdueDays: (json['overdueDays'] as num?)?.toInt(),
+      );
 }
 
 class SalesDocDetail {

@@ -43,11 +43,12 @@ public class SalesOrderController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) java.util.List<Short> chain,
+            @RequestParam(required = false) UUID sellerId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain), page, size, sort, order);
+        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId), page, size, sort, order);
     }
 
     /** 工作台统计卡：待生产 / 生产中 / 待发货 / 本月完成（同列表数据范围）。 */
@@ -128,5 +129,35 @@ public class SalesOrderController {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail cancel(@PathVariable UUID id) {
         return service.cancel(id);
+    }
+
+    // ======================= V178：预留生命周期 + 稀缺仲裁 =======================
+
+    /** 设置订单行优先级（V178）：1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。 */
+    @PostMapping("/items/{id}/priority")
+    @PreAuthorize("hasAuthority('sales_order:priority')")
+    public OrderDetail setLinePriority(@PathVariable UUID id,
+                                       @Valid @RequestBody com.uten.imp.features.sales.order.dto.OrderPriorityRequest req) {
+        return service.setLinePriority(id, req);
+    }
+
+    /**
+     * 稀缺让单重排（V178）：主管释放某低优先级订单行的现货预留，库存回池供急单占用，
+     * 该行缺口自动回调度待排产，并通知其归属销售。复用既有释放原语 + 出货驳回同款状态回退。
+     */
+    @PostMapping("/items/{id}/yield-reservation")
+    @PreAuthorize("hasAuthority('sales_order:reallocate')")
+    public OrderDetail yieldReservation(@PathVariable UUID id,
+                                        @Valid @RequestBody com.uten.imp.features.sales.order.dto.OrderYieldRequest req) {
+        return service.yieldReservation(id, req);
+    }
+
+    /** 稀缺库存占用视图（V178）：某货品+颜色的全部生效预留 + 订单上下文 + 持有逾期，供让单面板决策。 */
+    @GetMapping("/reservations/scarce")
+    @PreAuthorize("hasAuthority('sales_order:reallocate')")
+    public List<com.uten.imp.features.sales.order.dto.ScarceStockReservationView> scarceReservations(
+            @RequestParam UUID goodsId,
+            @RequestParam(required = false) UUID colorId) {
+        return service.scarceReservations(goodsId, colorId);
     }
 }

@@ -200,6 +200,9 @@ List<String>? requiredAnyPermFor(String location) {
     ];
   }
   if (location == RouteName.salesReport) return const [Perm.salesReportView];
+  if (location == RouteName.salesScarcity) {
+    return const [Perm.salesOrderReallocate];
+  }
   if (location.startsWith('/sales/')) {
     final seg = location.split('/'); // ['', 'sales', seg, ...]
     final doc = seg.length > 2 ? seg[2] : '';

@@ -131,5 +131,12 @@ public class SalesOrderItem extends BaseEntity {
     @Column(name = "chain_status", nullable = false)
     private Short chainStatus = 0;
 
+    /**
+     * 订单行优先级（V178，稀缺重排用）：1急单 / 2普通 / 3现货(默认)。
+     * 急单需 sales_order:priority 权限 + 原因 + 审计；让单时低优先级行预留可被释放回退待排产。
+     */
+    @Column(name = "priority", nullable = false)
+    private Short priority = 3;
+
     private String remark;
 }

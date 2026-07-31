@@ -118,6 +118,7 @@ abstract final class RouteName {
   // 销售管理（综合营销部）：hub + 5 单据 + 报表。
   // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
   static const String sales = '/sales';
+  static const String salesScarcity = '/sales/scarcity';
   static const String salesReport = '/sales/report';
   static const String salesReportDetail = '/sales/report/detail';
   static const String salesReportSummary = '/sales/report/summary';

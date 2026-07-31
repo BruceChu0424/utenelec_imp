@@ -96,6 +96,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('转订货单'),
         content: const Text('将按报价行生成订货草稿（货品/数量/价格带入，可再修改），确认转入？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -254,6 +255,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ],
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -314,6 +316,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('财务审核发货'),
         content: const Text('现金结算客户请先核对到款；月结客户可直接审。确认审核发货？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -359,6 +362,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('财务反审'),
         content: const Text('回退财务审核后，现金客户的出货单将无法仓库审核。确认反审？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -405,6 +409,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           autofocus: true,
           decoration: const InputDecoration(hintText: '驳回原因（如：预留货物损坏 / 找不到）'),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -437,6 +442,84 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     }
   }
 
+  // ======================= V178：行级预留管理（优先级 + 让单）=======================
+
+  bool get _canSetPriority =>
+      ref.read(currentPermissionsProvider).contains(Perm.salesOrderPriority);
+
+  bool get _canReallocate => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.salesOrderReallocate);
+
+  /// 点订单明细行 → 弹底部 sheet（设优先级 / 让单），按权限与行可发量显隐段。
+  /// 仅订货单；草稿/已红冲/无可操作权限的行只维持表格自带的高亮。
+  Future<void> _showLineActions(SalesDocItem item) async {
+    if (widget.docType != SalesDocType.order) return;
+    if (item.id == null) return;
+    final canYield = _canReallocate && (item.reservedQty ?? 0) > 0;
+    if (!_canSetPriority && !canYield) {
+      context.appInfo('当前行无可执行的管理操作');
+      return;
+    }
+    final names = ref.read(salesMasterNameServiceProvider);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      constraints: const BoxConstraints(maxWidth: 560),
+      builder: (ctx) => _LineActionSheet(
+        item: item,
+        canSetPriority: _canSetPriority,
+        canYield: canYield,
+        goodsLabel:
+            '${names.goods(item.goodsId)}（${names.color(item.colorId)}）',
+        qtyLabel:
+            '订货 ${item.qty?.toStringAsFixed(2) ?? '-'} · 已发 ${item.shippedQty?.toStringAsFixed(2) ?? '-'} · 可发 ${item.reservedQty?.toStringAsFixed(2) ?? '-'}',
+        onSetPriority: (p, reason) => _setLinePriority(item.id!, p, reason),
+        onYield: (qty, reason) => _yieldLine(item.id!, qty, reason),
+      ),
+    );
+  }
+
+  Future<void> _setLinePriority(String itemId, int p, String? reason) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final d = await ref
+          .read(salesRepositoryProvider(widget.docType))
+          .setLinePriority(itemId, p, reason: reason);
+      if (!mounted) return;
+      context.appSuccess('已设为 ${priorityLabel(p)}');
+      setState(() => _detail = d);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('设优先级失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _yieldLine(String itemId, double qty, String reason) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final d = await ref
+          .read(salesRepositoryProvider(widget.docType))
+          .yieldReservation(itemId,
+              qty: qty, reason: reason, yielderOrderNo: _detail?.billNo);
+      if (!mounted) return;
+      context.appSuccess('已让单 ${qty.toStringAsFixed(2)}，库存已回池，缺口将转生产补足');
+      setState(() => _detail = d);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('让单失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _doAction(
     String confirm,
     Future<SalesDocDetail> Function(SalesRepository) fn,
@@ -452,6 +535,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -490,6 +574,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除单据'),
         content: const Text('确定删除该草稿单据吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -773,6 +858,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 type: 'number',
                 value: (it) => it.producedQty?.toStringAsFixed(2),
               ),
+              MasterColumnDef(
+                key: 'priority',
+                label: '优先级',
+                width: 80,
+                value: (it) => priorityLabel(it.priority),
+              ),
             ],
             MasterColumnDef(
               key: 'remark',
@@ -787,7 +878,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          onRowTap: (_) {},
+          onRowTap: (it) => _showLineActions(it),
           emptyMessage: '（无明细）',
         ),
       ],
@@ -1142,5 +1233,164 @@ class _BusyBar extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// V178 行级管理底部 sheet：设优先级（急单须原因）+ 让单（释放现货预留）。
+/// 纯输入收集——校验通过后回调父页执行（父页负责 _busy/网络/刷新），避免本组件持异步态。
+class _LineActionSheet extends StatefulWidget {
+  const _LineActionSheet({
+    required this.item,
+    required this.canSetPriority,
+    required this.canYield,
+    required this.goodsLabel,
+    required this.qtyLabel,
+    required this.onSetPriority,
+    required this.onYield,
+  });
+  final SalesDocItem item;
+  final bool canSetPriority;
+  final bool canYield;
+  final String goodsLabel;
+  final String qtyLabel;
+  final void Function(int priority, String? reason) onSetPriority;
+  final void Function(double qty, String reason) onYield;
+
+  @override
+  State<_LineActionSheet> createState() => _LineActionSheetState();
+}
+
+class _LineActionSheetState extends State<_LineActionSheet> {
+  late int _priority;
+  late final TextEditingController _priorityReason;
+  late final TextEditingController _yieldQty;
+  late final TextEditingController _yieldReason;
+
+  @override
+  void initState() {
+    super.initState();
+    _priority = widget.item.priority ?? 3;
+    _priorityReason = TextEditingController();
+    _yieldQty = TextEditingController(
+        text: (widget.item.reservedQty ?? 0).toStringAsFixed(2));
+    _yieldReason = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _priorityReason.dispose();
+    _yieldQty.dispose();
+    _yieldReason.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final reserved = widget.item.reservedQty ?? 0;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          UtenSpacing.s16,
+          UtenSpacing.s8,
+          UtenSpacing.s16,
+          MediaQuery.of(context).viewInsets.bottom + UtenSpacing.s16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(widget.goodsLabel, style: theme.textTheme.titleMedium),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(widget.qtyLabel, style: theme.textTheme.bodySmall),
+            const SizedBox(height: UtenSpacing.s16),
+            if (widget.canSetPriority) ...[
+              _sectionLabel(theme, '优先级'),
+              const SizedBox(height: UtenSpacing.s8),
+              Wrap(
+                spacing: UtenSpacing.s8,
+                children: [
+                  for (final e in const [(1, '急单'), (2, '普通'), (3, '现货')])
+                    ChoiceChip(
+                      label: Text(e.$2),
+                      selected: _priority == e.$1,
+                      onSelected: (_) => setState(() => _priority = e.$1),
+                    ),
+                ],
+              ),
+              if (_priority == 1) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                TextField(
+                  controller: _priorityReason,
+                  autofocus: true,
+                  decoration: const InputDecoration(hintText: '急单原因（必填）'),
+                ),
+              ],
+              const SizedBox(height: UtenSpacing.s12),
+              FilledButton.icon(
+                onPressed: _applyPriority,
+                icon: const Icon(Icons.flag_outlined),
+                label: const Text('应用优先级'),
+              ),
+              if (widget.canYield) const Divider(height: UtenSpacing.s32),
+            ],
+            if (widget.canYield) ...[
+              _sectionLabel(theme, '让单（释放现货预留，回池供急单占用）'),
+              const SizedBox(height: UtenSpacing.s8),
+              TextField(
+                controller: _yieldQty,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                    hintText: '让单数量（0 < 数量 ≤ 可发 $reserved）'),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              TextField(
+                controller: _yieldReason,
+                decoration: const InputDecoration(hintText: '让单原因（必填）'),
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              OutlinedButton.icon(
+                onPressed: _doYield,
+                icon: const Icon(Icons.swap_horiz_outlined),
+                label: const Text('确认让单'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(ThemeData theme, String text) => Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text,
+            style: theme.textTheme.labelMedium
+                ?.copyWith(fontWeight: FontWeight.w600)),
+      );
+
+  void _applyPriority() {
+    final reason = _priorityReason.text.trim();
+    if (_priority == 1 && reason.isEmpty) {
+      context.appWarning('急单须填原因');
+      return;
+    }
+    widget.onSetPriority(_priority, _priority == 1 ? reason : null);
+    Navigator.of(context).pop();
+  }
+
+  void _doYield() {
+    final qty = double.tryParse(_yieldQty.text.trim());
+    final reserved = widget.item.reservedQty ?? 0;
+    if (qty == null || qty <= 0 || qty > reserved) {
+      context.appWarning('让单数量须 > 0 且 ≤ 可发 $reserved');
+      return;
+    }
+    final reason = _yieldReason.text.trim();
+    if (reason.isEmpty) {
+      context.appWarning('让单须填原因');
+      return;
+    }
+    widget.onYield(qty, reason);
+    Navigator.of(context).pop();
   }
 }

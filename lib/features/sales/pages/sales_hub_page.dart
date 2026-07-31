@@ -52,6 +52,17 @@ class SalesHubPage extends ConsumerWidget {
       ),
     ].where((e) => perms.contains(e.listPerm)).toList();
 
+    // V178 稀缺仲裁：主管查看货品预留占用、释放低优先级现货预留（让单）。仅持让单权限者可见。
+    final scarcityEntries = <_Entry>[
+      _Entry(
+        icon: Icons.swap_horizontal_circle_outlined,
+        label: '稀缺库存让单',
+        description: '查看货品预留 · 释放低优先级占用',
+        location: RouteName.salesScarcity,
+        listPerm: Perm.salesOrderReallocate,
+      ),
+    ].where((e) => perms.contains(e.listPerm)).toList();
+
     return Scaffold(
       appBar: UtenAppBar(
         title: '销售管理',
@@ -70,6 +81,10 @@ class SalesHubPage extends ConsumerWidget {
                 const SizedBox(height: UtenSpacing.s16),
               if (reportEntries.isNotEmpty)
                 _section(context, theme, '销售报表', reportEntries),
+              if (reportEntries.isNotEmpty && scarcityEntries.isNotEmpty)
+                const SizedBox(height: UtenSpacing.s16),
+              if (scarcityEntries.isNotEmpty)
+                _section(context, theme, '稀缺仲裁', scarcityEntries),
             ],
           ),
         ),

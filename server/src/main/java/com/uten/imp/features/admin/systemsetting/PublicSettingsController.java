@@ -24,9 +24,13 @@ public class PublicSettingsController {
     @GetMapping("/public")
     public PublicSettings publicSettings() {
         return new PublicSettings(
-                settings.readInt("session_idle_timeout_minutes", 30));
+                settings.readInt("session_idle_timeout_minutes", 30),
+                settings.readInt("audit_hot_retention_months", 6)
+                        + settings.readInt("audit_archive_retention_months", 30));
     }
 
     /** 前端运行时需要的公共设置（非敏感）。后续可按需扩展（如密码最小长度，供前端校验提示）。 */
-    public record PublicSettings(int idleTimeoutMinutes) {}
+    public record PublicSettings(
+            int idleTimeoutMinutes,
+            int auditReceiptRetentionMonths) {}
 }

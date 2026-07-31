@@ -47,6 +47,17 @@ enum NoticeType {
   };
 }
 
+/// 普通通知只进入消息中心；待办通知同时进入接收人的工作台。
+enum NoticeKind {
+  normal,
+  todo;
+
+  static NoticeKind fromName(String? value) => switch (value) {
+    'TODO' || 'todo' => NoticeKind.todo,
+    _ => NoticeKind.normal,
+  };
+}
+
 /// 通知重要度（驱动卡片样式与到达时的弹出通道）
 enum NoticePriority {
   /// 一般：到达时顶部弹条（微信式，不阻塞）
@@ -86,6 +97,11 @@ class Notice {
     this.audienceScope = NoticeAudienceScope.all,
     this.audienceSummary = '全体员工',
     this.audienceCount,
+    this.kind = NoticeKind.normal,
+    this.actionRoute,
+    this.dueAt,
+    this.taskCompleted = false,
+    this.taskCompletedAt,
   });
 
   final String id;
@@ -129,7 +145,26 @@ class Notice {
   /// 指定范围去重后的实际接收人数；全员广播为 null。
   final int? audienceCount;
 
-  Notice copyWith({bool? isRead, DateTime? readAt}) {
+  /// 普通通知 / 工作台待办通知。
+  final NoticeKind kind;
+
+  /// 待办对应的站内办理入口。
+  final String? actionRoute;
+
+  /// 待办截止时间。
+  final DateTime? dueAt;
+
+  /// 当前接收人是否已完成该通知待办。
+  final bool taskCompleted;
+
+  final DateTime? taskCompletedAt;
+
+  Notice copyWith({
+    bool? isRead,
+    DateTime? readAt,
+    bool? taskCompleted,
+    DateTime? taskCompletedAt,
+  }) {
     return Notice(
       id: id,
       title: title,
@@ -145,6 +180,11 @@ class Notice {
       audienceScope: audienceScope,
       audienceSummary: audienceSummary,
       audienceCount: audienceCount,
+      kind: kind,
+      actionRoute: actionRoute,
+      dueAt: dueAt,
+      taskCompleted: taskCompleted ?? this.taskCompleted,
+      taskCompletedAt: taskCompletedAt ?? this.taskCompletedAt,
     );
   }
 }

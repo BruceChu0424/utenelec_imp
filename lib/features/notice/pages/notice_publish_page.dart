@@ -29,12 +29,15 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
+  final _actionRouteController = TextEditingController();
 
   NoticeType _type = NoticeType.announcement;
+  NoticeKind _kind = NoticeKind.normal;
   bool _topPriority = false;
   NoticeAudienceScope _audienceScope = NoticeAudienceScope.all;
   List<DeptSelection> _departments = const [];
   List<UtenEmployeePickerItem> _employees = const [];
+  DateTime? _dueAt;
 
   static const _publishableTypes = <NoticeType>[
     NoticeType.announcement,
@@ -48,6 +51,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   void dispose() {
     _titleController.dispose();
     _contentController.dispose();
+    _actionRouteController.dispose();
     super.dispose();
   }
 
@@ -100,7 +104,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       final confirmed = await _confirmPublish(l10n, preview);
       if (confirmed != true || !mounted) return;
 
-      final type = _type;
+      final type = _kind == NoticeKind.todo ? NoticeType.task : _type;
       final priority = type == NoticeType.urgent
           ? NoticePriority.urgent
           : (_topPriority ? NoticePriority.important : NoticePriority.normal);
@@ -115,6 +119,11 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
             audienceScope: _audienceScope,
             departmentIds: _departments.map((item) => item.id).toList(),
             employeeIds: _employees.map((item) => item.id).toList(),
+            kind: _kind,
+            actionRoute: _actionRouteController.text.trim().isEmpty
+                ? null
+                : _actionRouteController.text.trim(),
+            dueAt: _dueAt,
           );
       ref.invalidate(noticeListProvider);
       ref.invalidate(unreadNoticeCountProvider);
@@ -250,26 +259,94 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DropdownButtonFormField<NoticeType>(
-                initialValue: _type,
-                decoration: InputDecoration(
-                  labelText: l10n.noticePublishTypeLabel,
-                  prefixIcon: Icon(_type.icon, color: _type.color),
-                  border: const OutlineInputBorder(),
-                ),
-                items: [
-                  for (final type in _publishableTypes)
-                    DropdownMenuItem(
-                      value: type,
-                      child: Text(_typeLabel(l10n, type)),
-                    ),
+              SegmentedButton<NoticeKind>(
+                segments: const [
+                  ButtonSegment(
+                    value: NoticeKind.normal,
+                    icon: Icon(Icons.notifications_none_rounded),
+                    label: Text('普通通知'),
+                  ),
+                  ButtonSegment(
+                    value: NoticeKind.todo,
+                    icon: Icon(Icons.task_alt_rounded),
+                    label: Text('待办通知'),
+                  ),
                 ],
-                onChanged: (value) {
-                  if (value == null) return;
-                  setState(() => _type = value);
+                selected: {_kind},
+                onSelectionChanged: (selection) {
+                  setState(() {
+                    _kind = selection.first;
+                    if (_kind == NoticeKind.todo) _type = NoticeType.task;
+                  });
                 },
               ),
-              if (_type == NoticeType.urgent) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Text(
+                _kind == NoticeKind.todo
+                    ? '发布后会进入接收人的工作台待办；接收人仍需具备目标页面权限。'
+                    : '普通通知只进入消息中心，不会产生待办任务。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              if (_kind == NoticeKind.normal)
+                DropdownButtonFormField<NoticeType>(
+                  initialValue: _type,
+                  decoration: InputDecoration(
+                    labelText: l10n.noticePublishTypeLabel,
+                    prefixIcon: Icon(_type.icon, color: _type.color),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final type in _publishableTypes)
+                      DropdownMenuItem(
+                        value: type,
+                        child: Text(_typeLabel(l10n, type)),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _type = value);
+                  },
+                )
+              else ...[
+                TextFormField(
+                  controller: _actionRouteController,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    labelText: '办理页面（可选）',
+                    hintText: '例如 /production/schedule',
+                    prefixIcon: Icon(Icons.link_rounded),
+                    border: OutlineInputBorder(),
+                    helperText: '仅支持应用内以 / 开头的路径',
+                  ),
+                  validator: (value) {
+                    final route = value?.trim() ?? '';
+                    if (route.isNotEmpty &&
+                        (!route.startsWith('/') || route.startsWith('//'))) {
+                      return '请输入有效的站内路径';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                OutlinedButton.icon(
+                  onPressed: _pickDueDate,
+                  icon: const Icon(Icons.event_outlined),
+                  label: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      _dueAt == null
+                          ? '设置截止日期（可选）'
+                          : '截止日期：${_dueAt!.year}-'
+                                '${_dueAt!.month.toString().padLeft(2, '0')}-'
+                                '${_dueAt!.day.toString().padLeft(2, '0')}',
+                    ),
+                  ),
+                ),
+              ],
+              if (_kind == NoticeKind.normal && _type == NoticeType.urgent) ...[
                 const SizedBox(height: UtenSpacing.s8),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -334,6 +411,21 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _pickDueDate() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _dueAt ?? now,
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 3),
+      helpText: '选择待办截止日期',
+    );
+    if (date == null || !mounted) return;
+    setState(() {
+      _dueAt = DateTime(date.year, date.month, date.day, 23, 59);
+    });
   }
 
   Widget _buildAudienceColumn(BuildContext context, AppLocalizations l10n) {

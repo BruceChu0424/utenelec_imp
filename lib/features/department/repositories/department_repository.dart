@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/department_node.dart';
+import '../models/workforce_overview.dart';
 
 abstract interface class DepartmentRepository {
   Future<List<DepartmentNode>> tree();
   Future<List<DepartmentNode>> subtree(String id);
   Future<DepartmentInfo> detail(String id);
+  Future<WorkforceOverview> workforceOverview(String id);
   Future<DepartmentInfo> create(DepartmentSaveInput input);
   Future<DepartmentInfo> update(String id, DepartmentUpdateInput input);
   Future<void> delete(String id);
@@ -34,6 +36,12 @@ class DioDepartmentRepository implements DepartmentRepository {
   Future<DepartmentInfo> detail(String id) async {
     final json = await api.get(ApiEndpoints.department(id));
     return DepartmentInfo.fromJson(json);
+  }
+
+  @override
+  Future<WorkforceOverview> workforceOverview(String id) async {
+    final json = await api.get(ApiEndpoints.departmentWorkforceOverview(id));
+    return WorkforceOverview.fromJson(json);
   }
 
   @override

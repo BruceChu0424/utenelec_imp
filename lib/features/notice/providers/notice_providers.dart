@@ -67,6 +67,13 @@ Future<void> markNoticeRead(WidgetRef ref, String id) async {
   ref.invalidate(unreadNoticeCountProvider);
 }
 
+Future<void> completeNoticeTodo(WidgetRef ref, String id) async {
+  await ref.read(noticeRepositoryProvider).completeTodo(id);
+  ref.invalidate(noticeDetailProvider(id));
+  ref.invalidate(noticeListProvider);
+  ref.invalidate(unreadNoticeCountProvider);
+}
+
 Future<void> markAllNoticeRead(WidgetRef ref) async {
   await ref.read(noticeRepositoryProvider).markAllRead();
   ref.invalidate(noticeListProvider);

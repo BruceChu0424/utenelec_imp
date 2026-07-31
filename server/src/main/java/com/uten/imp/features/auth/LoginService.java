@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Locale;
 
 /**
  * 登录：防枚举（dummy hash 抹平时序 + 同消息）、失败计数与锁定、限流。
@@ -52,14 +53,22 @@ public class LoginService {
 
     @Transactional
     public TokenResponse login(LoginRequest req, String ip) {
-        rateLimiter.check(
-                LoginRateLimiter.Scope.STAFF_LOGIN,
-                ip,
-                req.loginAccount());
+        try {
+            rateLimiter.check(
+                    LoginRateLimiter.Scope.STAFF_LOGIN,
+                    ip,
+                    req.loginAccount());
+        } catch (ApiException ex) {
+            audit.logExplicit(null, req.loginAccount(), "login_failed",
+                    "users", null, ex.getCode().name().toLowerCase(Locale.ROOT));
+            throw ex;
+        }
 
         // 密码长度上限：超长直接拒（防 Argon2 CPU DoS），消息与错密码一致（防枚举）
         if (req.password() == null || req.password().length() > PASSWORD_MAX_LENGTH) {
             passwordEncoder.matches(req.password() == null ? "" : req.password(), dummyHash);
+            audit.logExplicit(null, req.loginAccount(), "login_failed",
+                    "users", null, "bad_credentials");
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);
         }
 
@@ -72,6 +81,7 @@ public class LoginService {
         }
 
         UserAccount user = userOpt.get();
+        tx.bindActor(user.getId(), user.getLoginAccount());
 
         // 先校验密码（M2：密码正确前不暴露账号状态，防枚举）
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
@@ -80,14 +90,20 @@ public class LoginService {
         }
         // 密码正确后，才告知停用/锁定（仍锁定期内）
         if ("disabled".equals(user.getStatus())) {
+            audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed",
+                    "users", user.getId().toString(), "account_disabled");
             throw new ApiException(ErrorCode.ACCOUNT_DISABLED);
         }
         // 暴力破解临时锁：只看 lockedUntil 时间戳（到期自动恢复，M1）
         if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(OffsetDateTime.now())) {
+            audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed",
+                    "users", user.getId().toString(), "account_locked");
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED);
         }
         // 管理员手动锁定（无 lockedUntil）：明确拒绝，文案与暴力临时锁/停用区分
         if ("locked".equals(user.getStatus()) && user.getLockedUntil() == null) {
+            audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed",
+                    "users", user.getId().toString(), "account_locked_by_admin");
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED, "账号已被管理员锁定，请联系管理员解锁");
         }
 
@@ -99,10 +115,10 @@ public class LoginService {
             user.setStatus("active");   // 暴力临时锁到期自动恢复
         }
         user.setLastLoginAt(OffsetDateTime.now());
-        tx.bindActor(user.getId());   // 审计 actor = 登录者本人
         userRepo.save(user);
+        TokenResponse response = tokenIssuer.issueTokens(user);
         audit.logExplicit(user.getId(), user.getLoginAccount(), "login", "users", user.getId().toString(), "success");
 
-        return tokenIssuer.issueTokens(user);
+        return response;
     }
 }

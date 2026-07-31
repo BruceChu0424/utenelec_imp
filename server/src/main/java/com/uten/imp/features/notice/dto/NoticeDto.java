@@ -21,5 +21,10 @@ public record NoticeDto(
         List<String> attachments,
         String audienceScope,
         String audienceSummary,
-        Integer audienceCount) {
+        Integer audienceCount,
+        String kind,
+        String actionRoute,
+        Instant dueAt,
+        boolean taskCompleted,
+        Instant taskCompletedAt) {
 }

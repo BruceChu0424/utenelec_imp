@@ -43,6 +43,8 @@ class UtenEmployeePicker extends StatefulWidget {
     this.hint = '请选择被访人',
     this.validator,
     this.departmentName,
+    this.sheetTitle = '选择被访人',
+    this.allowClear = false,
   });
 
   /// 候选加载器（抽屉内搜索时调用）。
@@ -63,6 +65,10 @@ class UtenEmployeePicker extends StatefulWidget {
 
   /// 已选部门名（抽屉副标题展示，便于确认"在哪个部门里找人"）。
   final String? departmentName;
+
+  final String sheetTitle;
+
+  final bool allowClear;
 
   @override
   State<UtenEmployeePicker> createState() => _UtenEmployeePickerState();
@@ -89,6 +95,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   Future<void> _open() async {
     final sheet = _EmployeePickerSheet(
       loader: widget.loader,
+      title: widget.sheetTitle,
       selectedId: _selected?.id,
       departmentName: widget.departmentName,
     );
@@ -138,6 +145,12 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
     }
   }
 
+  void _clear() {
+    setState(() => _selected = null);
+    _fieldKey.currentState?.didChange(null);
+    widget.onChanged(null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -168,10 +181,16 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
                 enabled: widget.enabled,
                 errorText: field.errorText,
                 prefixIcon: const Icon(Icons.person_search_rounded),
-                suffixIcon: Icon(
-                  Icons.unfold_more_rounded,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                suffixIcon: sel != null && widget.allowClear
+                    ? IconButton(
+                        tooltip: '清除选择',
+                        onPressed: widget.enabled ? _clear : null,
+                        icon: const Icon(Icons.clear_rounded),
+                      )
+                    : Icon(
+                        Icons.unfold_more_rounded,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(color: theme.colorScheme.outline),
@@ -207,11 +226,13 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
 class _EmployeePickerSheet extends StatefulWidget {
   const _EmployeePickerSheet({
     required this.loader,
+    required this.title,
     this.selectedId,
     this.departmentName,
   });
 
   final UtenEmployeePickerLoader loader;
+  final String title;
   final String? selectedId;
   final String? departmentName;
 
@@ -267,7 +288,7 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '选择被访人',
+                      widget.title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),

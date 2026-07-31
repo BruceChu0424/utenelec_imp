@@ -12,6 +12,7 @@ import com.uten.imp.features.suggestion.dto.SuggestionReplyRequest;
 import com.uten.imp.features.suggestion.dto.SuggestionSubmitRequest;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -47,6 +48,7 @@ public class SuggestionService {
     private final SuggestionLikeRepository likeRepo;
     private final EmployeeRepository employeeRepo;
     private final SecurityContextCurrentUser currentUser;
+    private final TxSessionVars tx;
 
     /**
      * 广场/我的建议服务端分页。
@@ -131,6 +133,7 @@ public class SuggestionService {
     @Transactional
     public SuggestionDto submit(SuggestionSubmitRequest req) {
         AuthUser u = requireStaff();
+        tx.bind();
         if (req.title() == null || req.title().isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "标题不能为空");
         }
@@ -164,6 +167,7 @@ public class SuggestionService {
     @Transactional
     public SuggestionDto toggleLike(UUID id) {
         AuthUser u = requireStaff();
+        tx.bind();
         Suggestion s = suggestionRepo.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "建议不存在"));
         SuggestionLikeId likeId = new SuggestionLikeId(id, u.getId());
@@ -197,6 +201,7 @@ public class SuggestionService {
     @Transactional
     public SuggestionDto reply(UUID id, SuggestionReplyRequest req) {
         AuthUser u = requireStaff();
+        tx.bind();
         Suggestion s = suggestionRepo.findByIdForUpdate(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "建议不存在"));
         if (req.content() == null || req.content().isBlank()) {

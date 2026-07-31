@@ -47,6 +47,18 @@ public class Notice extends BaseEntity {
     @Column(nullable = false)
     private String priority = "normal";
 
+    /** NORMAL = 普通通知；TODO = 进入接收人的工作台待办。 */
+    @Column(nullable = false)
+    private String kind = "NORMAL";
+
+    /** TODO 可选的站内办理入口；只能是以 / 开头的应用路由。 */
+    @Column(name = "action_route", length = 500)
+    private String actionRoute;
+
+    /** TODO 可选截止时间。 */
+    @Column(name = "due_at")
+    private Instant dueAt;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(nullable = false, columnDefinition = "jsonb")
     private String attachments = "[]";

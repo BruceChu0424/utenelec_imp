@@ -1167,6 +1167,7 @@ class ProductionMrpErrorGuidance {
     if (_containsAny(normalized, const [
       '未维护 bom',
       '没有有效 bom',
+      '缺少有效 bom',
       '没有可排产的成品行或有效 bom',
       '无物料可领',
     ])) {
@@ -1207,8 +1208,10 @@ class ProductionMrpErrorGuidance {
       return const ProductionMrpErrorGuidance(
         title: '物料单位或换算率无效',
         nextStep:
-            '请维护货品基本单位、BOM 用量单位及正确换算率，'
-            '并确认未完成采购行使用同一基本单位后再刷新。',
+            'BOM 用量按组件货品基本单位计算，不另设 BOM 单位。'
+            '请维护货品基本单位；仅对仍有未收数量的采购行，'
+            '确认采购单位有效且换算率大于 0。'
+            '没有未完成采购行时不受这项校验影响。',
         icon: Icons.straighten_outlined,
       );
     }

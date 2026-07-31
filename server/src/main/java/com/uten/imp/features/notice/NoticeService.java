@@ -10,6 +10,7 @@ import com.uten.imp.features.notice.dto.NoticePublishRequest;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,9 @@ public class NoticeService {
             "announcement", "policy", "benefit", "system", "urgent", "task", "approval", "workflow");
     /** 合法重要度。 */
     private static final Set<String> PRIORITIES = Set.of("normal", "important", "urgent");
+    private static final Set<String> KINDS = Set.of("NORMAL", "TODO");
     private static final int MAX_LIST_ITEMS = 500;
+    private static final int MAX_TODO_ITEMS = 100;
     private static final int MAX_BATCH_DELETE_ITEMS = RequestLimits.BATCH_IDS;
 
     private final NoticeRepository noticeRepo;
@@ -48,6 +51,7 @@ public class NoticeService {
     private final SecurityContextCurrentUser currentUser;
     private final ObjectMapper objectMapper;
     private final NoticeAudienceService audienceService;
+    private final TxSessionVars tx;
 
     /** 当前用户可见通知列表（已删除的除外）。置顶优先，其余按发布时间倒序。 */
     @Transactional(readOnly = true)
@@ -72,6 +76,27 @@ public class NoticeService {
         return noticeRepo.countVisibleUnread(userId);
     }
 
+    /** 当前用户未完成的通知待办；业务批量待办由 Dashboard 聚合服务另行生成。 */
+    @Transactional(readOnly = true)
+    public List<NoticeDto> pendingTodos(int limit) {
+        UUID userId = requireStaffId();
+        int safeLimit = Math.min(Math.max(limit, 1), MAX_TODO_ITEMS);
+        List<Notice> notices = noticeRepo.findPendingTodos(
+                userId,
+                PageRequest.of(0, safeLimit));
+        Map<UUID, NoticeUserState> states = stateMap(
+                userId,
+                notices.stream().map(Notice::getId).toList());
+        return notices.stream()
+                .map(notice -> toDto(notice, states.get(notice.getId())))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public long pendingTodoCount() {
+        return noticeRepo.countPendingTodos(requireStaffId());
+    }
+
     /** 详情（不存在 / 定向他人 / 已被当前用户删除 → 404 语义）。 */
     @Transactional(readOnly = true)
     public NoticeDto getById(UUID id) {
@@ -92,6 +117,7 @@ public class NoticeService {
     @Transactional
     public NoticeDto publish(NoticePublishRequest req) {
         AuthUser u = requireStaff();
+        tx.bind();
         if (req.title() == null || req.title().isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "标题不能为空");
         }
@@ -105,6 +131,14 @@ public class NoticeService {
         String priority = req.priority() == null ? "normal" : req.priority();
         if (!PRIORITIES.contains(priority)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法重要度: " + priority);
+        }
+        String kind = req.kind() == null ? "NORMAL" : req.kind().strip().toUpperCase();
+        if (!KINDS.contains(kind)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法通知用途: " + kind);
+        }
+        String actionRoute = validatedActionRoute(req.actionRoute(), kind);
+        if ("NORMAL".equals(kind) && req.dueAt() != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "普通通知不能设置截止时间");
         }
 
         String audienceScope = req.audienceScope() == null ? "all" : req.audienceScope();
@@ -127,6 +161,9 @@ public class NoticeService {
         n.setPublishedAt(Instant.now());
         n.setTopPriority(Boolean.TRUE.equals(req.topPriority()));
         n.setPriority(priority);
+        n.setKind(kind);
+        n.setActionRoute(actionRoute);
+        n.setDueAt(req.dueAt());
         n.setAttachments(writeAttachments(req.attachments()));
         n.setAudienceScope(audienceScope);
         if (audience != null) {
@@ -152,6 +189,7 @@ public class NoticeService {
     @Transactional
     public void markRead(UUID id) {
         UUID userId = requireStaffId();
+        tx.bind();
         Notice n = noticeRepo.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "通知不存在"));
         NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId))
@@ -167,10 +205,38 @@ public class NoticeService {
         }
     }
 
+    /** 完成通知待办（幂等），同时标记为已读。 */
+    @Transactional
+    public void completeTodo(UUID id) {
+        UUID userId = requireStaffId();
+        tx.bind();
+        Notice n = noticeRepo.findById(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "通知不存在"));
+        NoticeUserState st = stateRepo.findById(new NoticeUserStateId(id, userId))
+                .orElse(null);
+        if (!visibleTo(n, userId, st)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "通知不存在");
+        }
+        if (!"TODO".equals(n.getKind())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "该通知不是待办");
+        }
+        st = java.util.Optional.ofNullable(st)
+                .orElseGet(() -> newState(id, userId));
+        Instant now = Instant.now();
+        if (st.getReadAt() == null) {
+            st.setReadAt(now);
+        }
+        if (st.getTaskCompletedAt() == null) {
+            st.setTaskCompletedAt(now);
+        }
+        stateRepo.save(st);
+    }
+
     /** 全部已读：对当前用户可见且未读的通知批量落状态行。 */
     @Transactional
     public void markAllRead() {
         UUID userId = requireStaffId();
+        tx.bind();
         stateRepo.markAllVisibleRead(userId);
     }
 
@@ -178,6 +244,7 @@ public class NoticeService {
     @Transactional
     public int deleteForCurrentUser(List<UUID> ids) {
         UUID userId = requireStaffId();
+        tx.bind();
         if (ids == null || ids.isEmpty()) return 0;
         // 去重 + 校验存在性（不存在的静默跳过，与「从列表移除」语义一致）
         Set<UUID> unique = new HashSet<>(ids);
@@ -199,6 +266,11 @@ public class NoticeService {
         for (UUID id : notices.keySet()) {
             NoticeUserState st = java.util.Optional.ofNullable(states.get(id))
                     .orElseGet(() -> newState(id, userId));
+            Notice notice = notices.get(id);
+            if ("TODO".equals(notice.getKind()) && st.getTaskCompletedAt() == null) {
+                // 待办必须先完成，不能通过删除通知绕过工作台。
+                continue;
+            }
             if (st.getDeletedAt() == null) {
                 st.setDeletedAt(now);
                 changed.add(st);
@@ -240,6 +312,7 @@ public class NoticeService {
         n.setPublisher(publisher == null || publisher.isBlank() ? "系统" : publisher);
         n.setPublishedAt(Instant.now());
         n.setPriority("normal");
+        n.setKind("NORMAL");
         n.setAudienceUserId(audienceUserId);
         n.setAudienceScope("selected");
         n.setAudienceSummary("指定人员");
@@ -281,7 +354,29 @@ public class NoticeService {
                 readAttachments(n.getAttachments()),
                 n.getAudienceScope(),
                 n.getAudienceSummary(),
-                n.getAudienceCount());
+                n.getAudienceCount(),
+                n.getKind(),
+                n.getActionRoute(),
+                n.getDueAt(),
+                st != null && st.getTaskCompletedAt() != null,
+                st != null ? st.getTaskCompletedAt() : null);
+    }
+
+    private String validatedActionRoute(String raw, String kind) {
+        if (raw == null || raw.isBlank()) return null;
+        if (!"TODO".equals(kind)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "普通通知不能设置办理入口");
+        }
+        String route = raw.strip();
+        if (route.length() > 500
+                || !route.startsWith("/")
+                || route.startsWith("//")
+                || route.contains("\\")
+                || route.contains("\r")
+                || route.contains("\n")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "办理入口必须是有效的站内路径");
+        }
+        return route;
     }
 
     private String publisherName(AuthUser u) {

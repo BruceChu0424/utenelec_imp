@@ -98,8 +98,6 @@ class VisitorSettingsPage extends ConsumerWidget {
                 ],
               ),
 
-              const SizedBox(height: UtenSpacing.s24),
-
               // 退出访客
               UtenCard(
                 padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),

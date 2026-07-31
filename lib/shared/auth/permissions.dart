@@ -16,8 +16,14 @@ abstract final class Perm {
   /// 锁定、启停账号以及重置一次性临时密码。
   static const accountSupport = 'account:support';
 
-  /// 权限、数据范围、审计日志和系统设置管理；后端同时要求超级管理员身份。
+  /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
+
+  /// 查看审计中心及核查本机操作回执。
+  static const auditLogView = 'audit_log:view';
+
+  /// 审计日志加密导出；独立于查看权限，只授予明确指定的导出人员。
+  static const auditLogExport = 'audit_log:export';
   static const payrollViewSelf = 'payroll:view:self';
   static const payrollViewAll = 'payroll:view:all';
   static const payrollGenerate = 'payroll:generate';
@@ -127,6 +133,9 @@ abstract final class Perm {
 
   /// 库存查看（V45 种子化，全员；本轮采购审核联动库存，库存页未接入）
   static const stockView = 'stock:view';
+
+  /// 领导或库存负责人明确授权后，可直接把库存余额修正为目标值。
+  static const stockBalanceAdjust = 'stock:balance:adjust';
 
   /// 仓库管理单据（V48 种子化，view 全员 / edit 归 PMC）
   static const stockDocView = 'stock_doc:view';
@@ -243,6 +252,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.departmentEdit,
       Perm.accountSupport,
       Perm.authorizationManage,
+      Perm.auditLogView,
+      Perm.auditLogExport,
       Perm.payrollViewSelf,
       Perm.payrollViewAll,
       Perm.payrollGenerate,
@@ -282,6 +293,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.warehouseView,
       Perm.warehouseEdit,
       Perm.stockView,
+      Perm.stockBalanceAdjust,
       Perm.stockDocView,
       Perm.stockDocEdit,
       Perm.stockReportView,

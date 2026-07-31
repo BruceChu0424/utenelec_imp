@@ -20,6 +20,7 @@ import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
@@ -333,6 +334,7 @@ public class MrpService {
     private final DocNumberService docNumberService;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService fulfillmentLedger;
+    private final TxSessionVars tx;
 
     /** 物料需求预览：全部物料行（含自制半成品标记）。 */
     @Transactional(readOnly = true)
@@ -425,12 +427,18 @@ public class MrpService {
     /** 生成采购申请：默认净需求（strategy=gross 时按毛需求）。 */
     @Transactional
     public MrpGenerateResult generate(UUID planId) {
-        return generate(planId, "net");
+        tx.bind();
+        return generateInternal(planId, "net");
     }
 
     /** 生成采购申请：净需求>0（strategy=gross 时毛需求>0）的外购物料 → 一张草稿申请；防重复生成。 */
     @Transactional
     public MrpGenerateResult generate(UUID planId, String strategy) {
+        tx.bind();
+        return generateInternal(planId, strategy);
+    }
+
+    private MrpGenerateResult generateInternal(UUID planId, String strategy) {
         ProductionPlan plan = lockPlan(planId);
         assertLegacyDerivedWriteAllowed(planId, "采购申请");
         return generatePurchaseLocked(plan, strategy, true);
@@ -542,6 +550,7 @@ public class MrpService {
      */
     @Transactional
     public MrpGenerateResult generateDraw(UUID planId, UUID warehouseId) {
+        tx.bind();
         requirePlanningWriteReady();
         ProductionPlan plan = lockPlan(planId);
         assertLegacyDerivedWriteAllowed(planId, "领料单");
@@ -623,6 +632,7 @@ public class MrpService {
      */
     @Transactional
     public MrpGenerateResult generateFinishedIn(UUID planId, UUID warehouseId) {
+        tx.bind();
         ProductionPlan plan = lockPlan(planId);
         assertLegacyDerivedWriteAllowed(planId, "成品入库单");
         requireApprovedPlanForStock(plan, "成品入库单");
@@ -745,6 +755,7 @@ public class MrpService {
      */
     @Transactional
     public MrpGenerateResult generateSubplan(UUID planId) {
+        tx.bind();
         ProductionPlan plan = lockPlan(planId);
         assertLegacyDerivedWriteAllowed(planId, "旧版自制件子计划");
         requireNotTerminal(plan, "子计划");
@@ -834,6 +845,7 @@ public class MrpService {
      */
     @Transactional
     public List<GenerateSubplansRequest.Created> generateSubplans(UUID planId, GenerateSubplansRequest req) {
+        tx.bind();
         requirePlanningWriteReady();
         ProductionPlan plan = lockPlan(planId);
         assertLegacyDerivedWriteAllowed(planId, "旧版车间拆分子计划");
@@ -847,6 +859,7 @@ public class MrpService {
     @Transactional
     public PlanningPackageResult generatePlanningPackage(
             UUID planId, GeneratePlanningPackageRequest req) {
+        tx.bind();
         ProductionPlan plan = lockPlan(planId);
         assertLegacyDerivedWriteAllowed(planId, "旧版计划包");
         requireNotTerminal(plan, "计划包");

@@ -4,6 +4,7 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.security.TxSessionVars;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,17 +24,21 @@ public class LoginFailureRecorder {
     private final UserAccountRepository userRepo;
     private final SystemSettingsService settings;
     private final AuditService audit;
+    private final TxSessionVars tx;
 
     public LoginFailureRecorder(UserAccountRepository userRepo,
                                 SystemSettingsService settings,
-                                AuditService audit) {
+                                AuditService audit,
+                                TxSessionVars tx) {
         this.userRepo = userRepo;
         this.settings = settings;
         this.audit = audit;
+        this.tx = tx;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(UUID userId, String loginAccount) {
+        tx.bindActor(userId, loginAccount);
         UserAccount user = userRepo.findByIdForUpdate(userId).orElse(null);
         if (user == null) {
             return;

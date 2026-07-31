@@ -8,11 +8,17 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 
 class PublicSettings {
-  const PublicSettings({this.idleTimeoutMinutes = 30});
+  const PublicSettings({
+    this.idleTimeoutMinutes = 30,
+    this.auditReceiptRetentionMonths = 36,
+  });
   final int idleTimeoutMinutes;
+  final int auditReceiptRetentionMonths;
 
   factory PublicSettings.fromJson(Map<String, dynamic> j) => PublicSettings(
     idleTimeoutMinutes: (j['idleTimeoutMinutes'] as num?)?.toInt() ?? 30,
+    auditReceiptRetentionMonths:
+        (j['auditReceiptRetentionMonths'] as num?)?.toInt() ?? 36,
   );
 }
 

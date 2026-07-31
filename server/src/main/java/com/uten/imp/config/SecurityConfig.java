@@ -1,6 +1,10 @@
 package com.uten.imp.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditDeviceContext;
+import com.uten.imp.audit.AuditRequestContext;
+import com.uten.imp.audit.AuditRequestContextFilter;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiError;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
@@ -21,10 +25,12 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 安全配置：无状态 JWT、CSRF 关闭（JWT 走 Authorization 头）、CORS 严格白名单、方法级 @PreAuthorize。
@@ -38,12 +44,16 @@ import java.util.List;
  */
 @Configuration
 @EnableMethodSecurity(prePostEnabled = true)
+@Slf4j
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtAuthFilter,
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                           AuditRequestContextFilter auditContextFilter,
+                                           JwtAuthFilter jwtAuthFilter,
                                            SecurityProperties securityProps,
-                                           ObjectMapper objectMapper) throws Exception {
+                                           ObjectMapper objectMapper,
+                                           AuditService auditService) throws Exception {
         String[] publicPaths = securityProps.isSwaggerEnabled()
                 ? new String[]{
                         "/api/auth/login",
@@ -74,10 +84,20 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // CORS can reject an invalid Origin before JWT/MVC. The audit
+                // filter must wrap that rejection so the resulting 403 is not lost.
+                .addFilterBefore(auditContextFilter, CorsFilter.class)
                 // 未认证/匿名（access token 过期、缺失、伪造）→ 401 + ApiError(UNAUTHORIZED)，
                 // 让前端 AuthInterceptor 识别 401 后自动 refresh 续期（用户无感），而非被默认
                 // Http403ForbiddenEntryPoint 返 403 误判成「无权限」。
                 .exceptionHandling(e -> e.authenticationEntryPoint((req, resp, ex) -> {
+                    try {
+                        auditService.logSecurityEvent(
+                                req, null, null,
+                                "access_denied", "unauthorized", 401);
+                    } catch (RuntimeException auditFailure) {
+                        log.error("Failed to persist authentication-denied audit event", auditFailure);
+                    }
                     resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     resp.setContentType(MediaType.APPLICATION_JSON_VALUE);
                     resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -111,8 +131,16 @@ public class SecurityConfig {
         origins.forEach(SecurityConfig::validateCorsOrigin);
         cfg.setAllowedOrigins(origins);
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
-        cfg.setExposedHeaders(List.of("Content-Disposition"));
+        cfg.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type",
+                "Accept",
+                AuditDeviceContext.HEADER_CLIENT_EVENT_ID,
+                AuditDeviceContext.HEADER_DEVICE_CONTEXT));
+        cfg.setExposedHeaders(List.of(
+                "Content-Disposition",
+                AuditRequestContext.RESPONSE_REQUEST_ID_HEADER,
+                AuditDeviceContext.HEADER_CLIENT_EVENT_ID));
         // Authentication is carried only in an explicit Bearer header, never cookies.
         cfg.setAllowCredentials(false);
         cfg.setMaxAge(3600L);

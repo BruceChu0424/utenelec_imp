@@ -1,4 +1,4 @@
-// 审计日志查询仓库（超级管理员只读）。
+// 审计日志查询仓库（持 audit_log:view 的核查人员只读）。
 //
 // 模仿 DioAdminRepository：注入 ApiClient，DioException 已在 ApiClient 层统一转为
 // ApiException。所有查询参数都经 Dio query 传递，参数化查询由后端 Specification 处理。
@@ -20,6 +20,17 @@ abstract interface class AuditLogRepository {
     int size = 20,
     String? action,
     String? actorAccount,
+    String? riskLevel,
+    String? eventCategory,
+    String? outcome,
+    String? dateFrom,
+    String? dateTo,
+  });
+
+  Future<AuditSummary> summary({
+    String? action,
+    String? actorAccount,
+    String? eventCategory,
     String? dateFrom,
     String? dateTo,
   });
@@ -38,6 +49,9 @@ class DioAuditLogRepository implements AuditLogRepository {
     int size = 20,
     String? action,
     String? actorAccount,
+    String? riskLevel,
+    String? eventCategory,
+    String? outcome,
     String? dateFrom,
     String? dateTo,
   }) async {
@@ -49,11 +63,38 @@ class DioAuditLogRepository implements AuditLogRepository {
         if (action != null && action.isNotEmpty) 'action': action,
         if (actorAccount != null && actorAccount.isNotEmpty)
           'actorAccount': actorAccount,
+        if (riskLevel != null && riskLevel.isNotEmpty) 'riskLevel': riskLevel,
+        if (eventCategory != null && eventCategory.isNotEmpty)
+          'eventCategory': eventCategory,
+        if (outcome != null && outcome.isNotEmpty) 'outcome': outcome,
         if (dateFrom != null && dateFrom.isNotEmpty) 'dateFrom': dateFrom,
         if (dateTo != null && dateTo.isNotEmpty) 'dateTo': dateTo,
       },
     );
     return PagedResult.fromJson(json, AuditLogEntry.fromJson);
+  }
+
+  @override
+  Future<AuditSummary> summary({
+    String? action,
+    String? actorAccount,
+    String? eventCategory,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await api.get(
+      '${ApiEndpoints.adminAuditLogs}/summary',
+      query: <String, dynamic>{
+        if (action != null && action.isNotEmpty) 'action': action,
+        if (actorAccount != null && actorAccount.isNotEmpty)
+          'actorAccount': actorAccount,
+        if (eventCategory != null && eventCategory.isNotEmpty)
+          'eventCategory': eventCategory,
+        if (dateFrom != null && dateFrom.isNotEmpty) 'dateFrom': dateFrom,
+        if (dateTo != null && dateTo.isNotEmpty) 'dateTo': dateTo,
+      },
+    );
+    return AuditSummary.fromJson(Map<String, dynamic>.from(json as Map));
   }
 
   @override

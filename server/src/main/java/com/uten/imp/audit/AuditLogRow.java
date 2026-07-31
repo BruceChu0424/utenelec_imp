@@ -22,9 +22,24 @@ public class AuditLogRow {
     private final String targetId;
     private final String ip;
     private final String result;
+    private final String actionLabel;
+    private final String objectLabel;
+    private final String summary;
+    private final String riskLevel;
+    private final String riskReason;
+    private final String eventCategory;
+    private final String eventSource;
+    private final UUID requestId;
+    private final UUID clientEventId;
+    private final UUID deviceInstallationId;
+    private final String deviceLabel;
+    private final String devicePlatform;
+    private final Integer statusCode;
+    private final Long durationMs;
     private final OffsetDateTime createdAt;
 
-    static AuditLogRow of(AuditLog a) {
+    static AuditLogRow of(AuditLog a, AuditEventInterpreter interpreter) {
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(a);
         return new AuditLogRow(
                 a.getId(),
                 a.getActorId(),
@@ -34,6 +49,20 @@ public class AuditLogRow {
                 a.getTargetId(),
                 a.getIp(),
                 a.getResult(),
+                event.actionLabel(),
+                event.objectLabel(),
+                event.summary(),
+                event.riskLevel(),
+                event.riskReason(),
+                event.category(),
+                a.getEventSource(),
+                a.getRequestId(),
+                a.getClientEventId(),
+                a.getDeviceInstallationId(),
+                AuditDeviceEvidence.from(a).displayLabel(),
+                a.getDevicePlatform(),
+                a.getStatusCode(),
+                a.getDurationMs(),
                 a.getCreatedAt());
     }
 }

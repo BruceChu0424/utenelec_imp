@@ -1,6 +1,8 @@
 package com.uten.imp.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditRequestContext;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.visitor.VisitorAccountRepository;
@@ -44,6 +46,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final UserAccountRepository userRepo;
     private final VisitorAccountRepository visitorRepo;
     private final ObjectMapper objectMapper;
+    private final AuditService auditService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -70,12 +73,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 // Keep this branch outside the token-parsing catch. A response-serialization
                 // failure must never fall through to the protected endpoint.
                 SecurityContextHolder.clearContext();
+                try {
+                    auditService.logSecurityEvent(
+                            request, null, null,
+                            "access_denied", "account_state_changed", 401);
+                } catch (RuntimeException ignored) {
+                    // The authentication rejection must remain fail-closed even if the audit sink is down.
+                }
                 writeUnauthorized(response);
                 return;
             }
             UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(authUser, null, authUser.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(auth);
+            AuditRequestContext.bindVerifiedActor(
+                    request,
+                    authUser.getId(),
+                    authUser.getLoginAccount());
         }
         chain.doFilter(request, response);
     }

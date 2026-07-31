@@ -35,6 +35,12 @@ public class AdminUserController {
         return userAccountAdmin.list(page, size, search, status);
     }
 
+    @GetMapping("/users/by-employee/{employeeId}")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public UserSummary byEmployee(@PathVariable UUID employeeId) {
+        return userAccountAdmin.getByEmployeeId(employeeId);
+    }
+
     @PostMapping("/users/{id}/lock")
     @PreAuthorize("hasAuthority('account:support')")
     public void lock(@PathVariable UUID id) {

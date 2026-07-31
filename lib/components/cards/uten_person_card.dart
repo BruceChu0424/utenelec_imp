@@ -12,6 +12,7 @@ class UtenPersonCard extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.titleLeading,
     this.avatarText,
     this.avatarColor,
     this.trailing,
@@ -23,6 +24,7 @@ class UtenPersonCard extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+  final Widget? titleLeading;
   final String? avatarText;
   final Color? avatarColor;
   final Widget? trailing;
@@ -37,6 +39,20 @@ class UtenPersonCard extends StatelessWidget {
     final initial = (avatarText == null || avatarText!.isEmpty)
         ? (title.isEmpty ? '?' : title.characters.first)
         : avatarText!.characters.first;
+    final titleText = Text(
+      title,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+    );
+    final titleWidget = titleLeading == null
+        ? titleText
+        : Row(
+            children: [
+              titleLeading!,
+              const SizedBox(width: 6),
+              Expanded(child: titleText),
+            ],
+          );
     return UtenCard(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -55,13 +71,7 @@ class UtenPersonCard extends StatelessWidget {
             foregroundColor: theme.colorScheme.onPrimaryContainer,
             child: Text(initial),
           ),
-          title: Text(
-            title,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          title: titleWidget,
           subtitle: subtitle == null || subtitle!.isEmpty
               ? null
               : Text(

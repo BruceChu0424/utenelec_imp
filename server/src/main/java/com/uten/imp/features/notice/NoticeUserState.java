@@ -11,7 +11,7 @@ import lombok.Setter;
 import java.time.Instant;
 
 /**
- * 通知的每用户状态（已读/删除）。无记录 = 未读未删。
+ * 通知的每用户状态（已读/删除/待办完成）。无记录 = 未读未删且待办未完成。
  * 删除是「从自己列表移除」语义（deleted_at 非空即对该用户隐藏），不影响其他收件人。
  */
 @Getter
@@ -29,4 +29,7 @@ public class NoticeUserState {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    @Column(name = "task_completed_at")
+    private Instant taskCompletedAt;
 }

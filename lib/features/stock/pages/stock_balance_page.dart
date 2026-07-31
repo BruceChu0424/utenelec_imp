@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -14,11 +15,13 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/stock_query.dart';
 import '../repositories/stock_query_repository.dart';
+import '../widgets/stock_balance_detail_sheet.dart';
 
 class StockBalancePage extends ConsumerStatefulWidget {
   const StockBalancePage({super.key});
@@ -120,6 +123,67 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
     _load(1);
   }
 
+  String _quantity(double value) {
+    final fixed = value.toStringAsFixed(4);
+    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  Future<void> _openBalance(BalanceRow balance) async {
+    final goodsId = balance.goodsId;
+    if (goodsId == null || goodsId.isEmpty) return;
+
+    final names = ref.read(masterNameServiceProvider);
+    final canAdjust = ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.stockBalanceAdjust);
+    final result = await showStockBalanceDetailSheet(
+      context: context,
+      balance: balance,
+      goodsName: names.goods(goodsId),
+      warehouseName: names.warehouse(balance.warehouseId),
+      colorName: names.color(balance.colorId),
+      canAdjust: canAdjust,
+      onViewMovements: () {
+        if (!mounted) return;
+        final warehouseId = balance.warehouseId;
+        context.push(
+          '${RouteName.stockMovement}?goodsId=$goodsId'
+          '${warehouseId == null ? '' : '&warehouseId=$warehouseId'}',
+        );
+      },
+      onAdjust: (targetQty, reason, idempotencyKey) => ref
+          .read(stockQueryRepositoryProvider)
+          .adjustBalance(
+            balance: balance,
+            targetQty: targetQty,
+            reason: reason,
+            idempotencyKey: idempotencyKey,
+          ),
+    );
+    if (!mounted) return;
+
+    await _load(_pageNum);
+    if (!mounted || result == null) return;
+    final operator = result.adjustedByName.isEmpty
+        ? '当前登录人员'
+        : result.adjustedByName;
+    final openRecord = await UtenDialog.show(
+      context,
+      title: '库存调整成功',
+      content: Text(
+        '单号：${result.billNo}\n'
+        '数量：${_quantity(result.beforeQty)} → ${_quantity(result.afterQty)}\n'
+        '差额：${result.deltaQty >= 0 ? '+' : ''}${_quantity(result.deltaQty)}\n'
+        '修改人：$operator',
+      ),
+      confirmLabel: '查看记录',
+      cancelLabel: '关闭',
+    );
+    if (openRecord == true && mounted) {
+      context.push(RoutePath.stockDocDetail('CHECK', result.documentId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -210,15 +274,7 @@ class _StockBalancePageState extends ConsumerState<StockBalancePage> {
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
-                      // 行点击 → 出入库流水页（本行货品+仓库双过滤，push 保活本页筛选）
-                      onRowTap: (b) {
-                        final gid = b.goodsId;
-                        if (gid == null || gid.isEmpty) return;
-                        final wid = b.warehouseId;
-                        context.push(
-                          '${RouteName.stockMovement}?goodsId=$gid${wid == null ? '' : '&warehouseId=$wid'}',
-                        );
-                      },
+                      onRowTap: _openBalance,
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

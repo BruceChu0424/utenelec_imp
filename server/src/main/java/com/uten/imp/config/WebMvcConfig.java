@@ -42,17 +42,15 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // 审计必须先进入拦截链；后续导出限流/并发闸门拒绝请求时，
+        // 已进入的审计拦截器仍会在 afterCompletion 记录 429 结果。
+        registry.addInterceptor(userOperationAuditInterceptor)
+                .addPathPatterns("/api/**");
         // 拦截所有模块的导出端点及工资条 PDF 下载；这些端点均为 POST，
         // 非 POST 在拦截器内放行。
         registry.addInterceptor(exportRateLimitInterceptor)
                 .addPathPatterns(
                         "/api/**/export",
                         "/api/payroll/slips/*/download");
-        registry.addInterceptor(userOperationAuditInterceptor)
-                .addPathPatterns("/api/**")
-                .excludePathPatterns(
-                        "/api/auth/login",
-                        "/api/auth/refresh",
-                        "/api/visitor/auth/**");
     }
 }

@@ -21,6 +21,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/settings_section.dart';
 
@@ -31,6 +32,9 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final canViewAuditLog = ref
+        .watch(currentPermissionsProvider)
+        .contains(Perm.auditLogView);
 
     return Scaffold(
       body: UtenContentContainer.narrow(
@@ -96,6 +100,26 @@ class SettingsPage extends ConsumerWidget {
               SettingsSection(
                 title: '账号',
                 children: [
+                  if (canViewAuditLog) ...[
+                    Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.devices_other_outlined,
+                          size: 20,
+                        ),
+                        title: const Text('本机信息与操作回执'),
+                        subtitle: const Text('按本地操作 ID 核查这台设备保存的回执'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () =>
+                            context.push(RouteName.deviceAuditReceipts),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: UtenSpacing.s8,
+                        ),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                  ],
                   Material(
                     color: Colors.transparent,
                     child: ListTile(

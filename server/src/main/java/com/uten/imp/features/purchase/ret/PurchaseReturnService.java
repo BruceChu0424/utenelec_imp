@@ -9,6 +9,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemDto;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemLine;
@@ -62,6 +63,7 @@ public class PurchaseReturnService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final PurchaseLineUnitPolicy lineUnitPolicy;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
@@ -140,6 +142,7 @@ public class PurchaseReturnService {
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        normalizePersistedItemUnits(items);
         sourceIntegrity.validatePurchaseReturn(
                 r.getSupplierId(),
                 items.stream()
@@ -256,15 +259,19 @@ public class PurchaseReturnService {
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (ReturnItemLine l : lines) {
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             PurchaseReturnItem it = new PurchaseReturnItem();
             it.setReturnId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
+            it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
-            it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            it.setUnitId(resolvedUnit.unitId());
+            it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
@@ -279,6 +286,20 @@ public class PurchaseReturnService {
             auto++;
         }
         return out;
+    }
+
+    private void normalizePersistedItemUnits(List<PurchaseReturnItem> items) {
+        int fallbackLineNo = 1;
+        for (PurchaseReturnItem item : items) {
+            int lineNo = item.getLineNo() != null ? item.getLineNo() : fallbackLineNo;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            item.getGoodsId(), item.getUnitId(), item.getUnitRate(), lineNo);
+            item.setUnitId(resolvedUnit.unitId());
+            item.setUnitRate(resolvedUnit.unitRate());
+            fallbackLineNo++;
+        }
+        itemRepo.saveAll(items);
     }
 
     private void applyTotals(PurchaseReturn r, List<ReturnItemDto> items) {

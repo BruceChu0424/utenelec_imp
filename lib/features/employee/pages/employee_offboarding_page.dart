@@ -140,7 +140,7 @@ class _EmployeeOffboardingPageState
                         context: context,
                         initialDate: _date ?? ChinaDateTime.today(),
                         firstDate: DateTime(2020),
-                        lastDate: DateTime(2100),
+                        lastDate: ChinaDateTime.today(),
                       );
                       if (d != null) setState(() => _date = d);
                     },

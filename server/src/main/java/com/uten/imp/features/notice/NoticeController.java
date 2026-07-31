@@ -54,6 +54,15 @@ public class NoticeController {
         return Map.of("count", service.unreadCount());
     }
 
+    @GetMapping("/todos")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public Map<String, Object> pendingTodos(
+            @RequestParam(defaultValue = "20") int limit) {
+        return Map.of(
+                "items", service.pendingTodos(limit),
+                "count", service.pendingTodoCount());
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('notice:read')")
     public NoticeDto detail(@PathVariable UUID id) {
@@ -84,6 +93,12 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public void markRead(@PathVariable UUID id) {
         service.markRead(id);
+    }
+
+    @PostMapping("/{id}/complete")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public void completeTodo(@PathVariable UUID id) {
+        service.completeTodo(id);
     }
 
     @PostMapping("/read-all")

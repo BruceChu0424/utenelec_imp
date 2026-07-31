@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/widgets/uten_location_field.dart';
@@ -24,12 +25,14 @@ class DepartmentEditResult {
     this.code,
     required this.name,
     this.parentId,
+    this.managerId,
     required this.level,
   });
 
   final String? code;
   final String name;
   final String? parentId;
+  final String? managerId;
 
   /// 由父级推导出的新节点 level（新建上送；编辑态后端按新父级重算，忽略此值）。
   final String level;
@@ -43,6 +46,7 @@ class DepartmentEditDialog extends StatefulWidget {
     this.initialParent,
     this.editing,
     this.suggestions = const <String>[],
+    this.managerLoader,
   });
 
   /// 全树，用于父级挑选子弹层。
@@ -57,6 +61,9 @@ class DepartmentEditDialog extends StatefulWidget {
   /// 新建模式下展示的常用部门名称建议，点击即填入「名称」。编辑态忽略。
   final List<String> suggestions;
 
+  /// 编辑态的直属在册员工候选，用于设置部门负责人。
+  final UtenEmployeePickerLoader? managerLoader;
+
   /// 提交回调：返回 true 表示成功（对话框关闭），false 表示失败（保持打开）。
   final Future<bool> Function(DepartmentEditResult result) onSubmit;
 
@@ -68,6 +75,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
   late final TextEditingController _codeCtl;
   late final TextEditingController _nameCtl;
   DepartmentNode? _parent;
+  UtenEmployeePickerItem? _manager;
   String? _formError;
 
   bool get _isEdit => widget.editing != null;
@@ -78,6 +86,13 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
     final e = widget.editing;
     _codeCtl = TextEditingController(text: e?.code ?? '');
     _nameCtl = TextEditingController(text: e?.name ?? '');
+    if (e?.managerId != null && e?.managerName != null) {
+      _manager = UtenEmployeePickerItem(
+        id: e!.managerId!,
+        name: e.managerName!,
+        departmentName: e.name,
+      );
+    }
     // 编辑态：用详情里的 parentId 在树里反查父节点；新建态：用传入的默认父级。
     if (e != null) {
       if (e.parentId != null) _parent = _findById(widget.tree, e.parentId!);
@@ -142,6 +157,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
       name: _nameCtl.text.trim(),
       parentId: _parent?.id,
       level: _resultLevel,
+      managerId: _manager?.id,
     );
     // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
     late final bool ok;
@@ -222,6 +238,19 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
                 labelText: '名称', // TODO(l10n): 补 arb
               ),
             ),
+            if (_isEdit && widget.managerLoader != null) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              UtenEmployeePicker(
+                loader: widget.managerLoader!,
+                initial: _manager,
+                label: '部门负责人',
+                hint: '从本部门直属在册员工中选择',
+                sheetTitle: '选择部门负责人',
+                allowClear: true,
+                departmentName: widget.editing?.name,
+                onChanged: (value) => setState(() => _manager = value),
+              ),
+            ],
             if (!_isEdit && widget.suggestions.isNotEmpty) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(

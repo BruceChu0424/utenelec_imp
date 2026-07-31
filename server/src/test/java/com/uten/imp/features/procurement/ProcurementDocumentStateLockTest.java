@@ -3,6 +3,7 @@ package com.uten.imp.features.procurement;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.request.PurchaseRequest;
 import com.uten.imp.features.purchase.request.PurchaseRequestItemRepository;
 import com.uten.imp.features.purchase.request.PurchaseRequestRepository;
@@ -80,7 +81,8 @@ class ProcurementDocumentStateLockTest {
                 mock(DocNumberService.class),
                 em,
                 mock(com.uten.imp.common.integrity
-                        .ProductionSupplySourceGuard.class));
+                        .ProductionSupplySourceGuard.class),
+                mock(PurchaseLineUnitPolicy.class));
         UUID id = UUID.randomUUID();
         PurchaseRequest committed = new PurchaseRequest();
         committed.setStatus((short) 1);

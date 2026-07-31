@@ -8,6 +8,7 @@
 // （清除=看全部货品）；仓库下拉与货品过滤可叠加。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -268,7 +269,19 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
                       sortColumn: _sortKey,
                       sortAscending: _sortAsc,
                       onSortChange: _onSortChange,
-                      onRowTap: (_) {},
+                      onRowTap: (movement) {
+                        final sourceId = movement.sourceDocId;
+                        final isCheck =
+                            movement.movementType == 9 ||
+                            movement.movementType == 10;
+                        if (isCheck &&
+                            sourceId != null &&
+                            sourceId.isNotEmpty) {
+                          context.push(
+                            RoutePath.stockDocDetail('CHECK', sourceId),
+                          );
+                        }
+                      },
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

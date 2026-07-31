@@ -19,7 +19,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../department/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 
@@ -94,8 +93,6 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   String _gender = 'male';
   String _employmentType = 'regular';
   String _status = 'active';
-  String? _departmentId;
-  List<DeptSelection> _deptSelection = const [];
 
   EmployeeProfile? _profile;
 
@@ -189,18 +186,6 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
         ? p.employmentType!
         : 'regular';
     _status = _statusCodes.contains(p.status) ? p.status! : 'active';
-    _departmentId = p.departmentId;
-    // fullPath 留空：选择器树加载后自动解析路径显示。
-    _deptSelection = p.departmentId == null
-        ? const []
-        : [
-            DeptSelection(
-              id: p.departmentId!,
-              name: p.departmentName ?? '',
-              fullPath: '',
-              level: '',
-            ),
-          ];
   }
 
   Future<void> _pickBirthDate() async {
@@ -239,7 +224,6 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     text('email', _email, p.email);
     text('hujiAddress', _huji, p.hujiAddress);
     text('residenceAddress', _residence, p.residenceAddress);
-    code('departmentId', _departmentId, p.departmentId);
     code('employmentType', _employmentType, p.employmentType);
     code('status', _status, p.status);
     text('workLocation', _workLocation, p.workLocation);
@@ -391,16 +375,19 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       _text(_residence, l10n.employeeFieldResidenceAddress),
                     ]),
                     _section(l10n.employeeEditOrg, [
-                      UtenDepartmentPicker(
-                        mode: UtenDepartmentPickerMode.single,
-                        label: l10n.employeeFieldDepartment,
-                        initialSelection: _deptSelection,
-                        onChanged: (sel) => setState(() {
-                          _deptSelection = sel;
-                          _departmentId = sel.isEmpty ? null : sel.first.id;
-                        }),
-                        validator: (sel) =>
-                            sel.isEmpty ? l10n.employeeEditRequired : null,
+                      InputDecorator(
+                        decoration: _deco(l10n.employeeFieldDepartment)
+                            .copyWith(
+                              helperText: '调整部门请使用员工详情中的「调岗」功能',
+                              prefixIcon: const Icon(
+                                Icons.account_tree_outlined,
+                              ),
+                            ),
+                        child: Text(
+                          (_profile?.departmentName ?? '').trim().isEmpty
+                              ? '—'
+                              : _profile!.departmentName!,
+                        ),
                       ),
                       DropdownButtonFormField<String>(
                         initialValue: _employmentType,

@@ -1,6 +1,8 @@
 package com.uten.imp.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.audit.AuditRequestContext;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.visitor.VisitorAccountRepository;
 import io.jsonwebtoken.Claims;
@@ -18,6 +20,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,7 +33,12 @@ class JwtAuthorizationVersionTest {
     private final UserAccountRepository userRepo = mock(UserAccountRepository.class);
     private final VisitorAccountRepository visitorRepo = mock(VisitorAccountRepository.class);
     private final JwtAuthFilter filter =
-            new JwtAuthFilter(jwtService, userRepo, visitorRepo, new ObjectMapper());
+            new JwtAuthFilter(
+                    jwtService,
+                    userRepo,
+                    visitorRepo,
+                    new ObjectMapper(),
+                    mock(AuditService.class));
 
     @AfterEach
     void clearSecurityContext() {
@@ -52,6 +60,7 @@ class JwtAuthorizationVersionTest {
 
         assertEquals(401, response.getStatus());
         assertNull(SecurityContextHolder.getContext().getAuthentication());
+        assertNull(request.getAttribute(AuditRequestContext.VERIFIED_ACTOR_ATTRIBUTE));
         verify(chain, never()).doFilter(request, response);
     }
 
@@ -69,6 +78,7 @@ class JwtAuthorizationVersionTest {
         filter.doFilter(request, response, chain);
 
         assertEquals(401, response.getStatus());
+        assertNull(request.getAttribute(AuditRequestContext.VERIFIED_ACTOR_ATTRIBUTE));
         verify(chain, never()).doFilter(request, response);
     }
 
@@ -91,6 +101,7 @@ class JwtAuthorizationVersionTest {
                 SecurityContextHolder.getContext().getAuthentication().getPrincipal());
         assertEquals(userId, principal.getId());
         assertEquals(List.of("employee:view"), principal.getPermissions().stream().toList());
+        assertNotNull(request.getAttribute(AuditRequestContext.VERIFIED_ACTOR_ATTRIBUTE));
     }
 
     private Claims claims(UUID userId, long authVersion, long authorizationEpoch) {

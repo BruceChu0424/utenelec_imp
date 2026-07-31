@@ -19,4 +19,7 @@ public class EmployeeListItem {
     private String status;
     private String employmentType;
     private LocalDate hireDate;
+    private String positionLevel;
+    private boolean departmentManager;
+    private int leaderRank;
 }

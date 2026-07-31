@@ -4,7 +4,6 @@ import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
@@ -15,17 +14,11 @@ import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.DataAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
-import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -33,12 +26,13 @@ import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.maskPhone;
 
-/** 员工档案查询：列表（Specification 摘要）与详情组装（按权限点脱敏）。 */
+/** 员工档案查询：列表摘要与详情组装（按权限点脱敏）。 */
 @Service
 @RequiredArgsConstructor
 public class EmployeeQueryService {
 
     private final EmployeeRepository empRepo;
+    private final EmployeeListQuery employeeListQuery;
     private final EmployeeSensitiveRepository sensitiveRepo;
     private final EmployeeCompensationRepository compensationRepo;
     private final EmergencyContactRepository emergencyRepo;
@@ -57,27 +51,19 @@ public class EmployeeQueryService {
     public PageResponse<EmployeeListItem> list(int page, int size, String search,
                                                 Set<String> statuses, UUID departmentId, boolean includeSubtree) {
         Collection<UUID> deptIds = resolveDeptIds(departmentId, includeSubtree);
-        Specification<Employee> spec = (root, q, cb) -> {
-            List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
-            if (search != null && !search.isBlank()) {
-                String like = "%" + search.toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("code")), like),
-                        cb.like(cb.lower(root.get("fullName")), like)));
-            }
-            if (statuses != null && !statuses.isEmpty()) {
-                ps.add(root.get("status").in(statuses));
-            }
-            if (deptIds != null && !deptIds.isEmpty()) {
-                ps.add(root.get("department").get("id").in(deptIds));
-            }
-            return cb.and(ps.toArray(new Predicate[0]));
-        };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
-        Page<Employee> p = empRepo.findAll(spec, pageable);
-        List<EmployeeListItem> items = p.getContent().stream().map(this::toList).toList();
-        return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+        EmployeeListQuery.Result result = employeeListQuery.query(
+                page,
+                size,
+                search,
+                statuses,
+                deptIds,
+                departmentId != null);
+        return new PageResponse<>(
+                result.items(),
+                result.page(),
+                result.size(),
+                result.total(),
+                result.totalPages());
     }
 
     // ===== 详情（按权限点脱敏，ADR-011/V29 后不再按角色） =====
@@ -105,6 +91,10 @@ public class EmployeeQueryService {
         d.setDepartmentName(e.getDepartment() == null ? null : e.getDepartment().getName());
         d.setPositionId(e.getPosition() == null ? null : e.getPosition().getId());
         d.setPositionName(e.getPosition() == null ? null : e.getPosition().getName());
+        d.setPositionLevel(e.getPosition() == null ? null : e.getPosition().getLevel());
+        int leaderRank = leaderRank(e);
+        d.setDepartmentManager(leaderRank == 0);
+        d.setLeaderRank(leaderRank);
         d.setSupervisorId(e.getSupervisor() == null ? null : e.getSupervisor().getId());
         d.setSupervisorName(e.getSupervisor() == null ? null : e.getSupervisor().getFullName());
         d.setHireDate(e.getHireDate());
@@ -227,11 +217,18 @@ public class EmployeeQueryService {
         return deptRepo.findSubtree(departmentId).stream().map(Department::getId).toList();
     }
 
-    private EmployeeListItem toList(Employee e) {
-        return new EmployeeListItem(e.getId(), e.getCode(), e.getFullName(), e.getGender(),
-                e.getDepartment() == null ? null : e.getDepartment().getName(),
-                e.getPosition() == null ? null : e.getPosition().getName(),
-                e.getStatus(), e.getEmploymentType(), e.getHireDate());
+    private int leaderRank(Employee employee) {
+        if (employee.getDepartment() != null
+                && employee.getDepartment().getManager() != null
+                && employee.getId().equals(employee.getDepartment().getManager().getId())) {
+            return 0;
+        }
+        String positionLevel = employee.getPosition() == null
+                ? null
+                : employee.getPosition().getLevel();
+        if ("领导层".equals(positionLevel)) return 1;
+        if ("班组管理".equals(positionLevel)) return 2;
+        return 3;
     }
 
     private static LocalDate probationEnd(LocalDate hire, Integer months) {

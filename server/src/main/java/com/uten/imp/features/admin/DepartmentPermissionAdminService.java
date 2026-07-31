@@ -41,6 +41,10 @@ import java.util.stream.Collectors;
 @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
 public class DepartmentPermissionAdminService {
 
+    private static final Set<String> INDIVIDUAL_ONLY_PERMISSION_CODES = Set.of(
+            "audit_log:view",
+            "audit_log:export");
+
     private final PermissionRepository permissionRepo;
     private final DepartmentRepository departmentRepo;
     private final DepartmentPermissionRepository departmentPermissionRepo;
@@ -103,6 +107,9 @@ public class DepartmentPermissionAdminService {
         requireDepartment(departmentId);
         // 去重（保持顺序），避免主键冲突
         Set<String> codes = new LinkedHashSet<>(permissionCodes == null ? List.of() : permissionCodes);
+        if (codes.stream().anyMatch(INDIVIDUAL_ONLY_PERMISSION_CODES::contains)) {
+            throw new ApiException(ErrorCode.BUSINESS, "审计权限仅允许个人授权");
+        }
         Map<String, Permission> byCode = permissionRepo.findByCodeIn(codes).stream()
                 .collect(Collectors.toMap(Permission::getCode, p -> p));
         for (String code : codes) {

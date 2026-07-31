@@ -11,9 +11,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,11 +20,12 @@ class UserOperationAuditInterceptorTest {
 
     private AuditService auditService;
     private UserOperationAuditInterceptor interceptor;
+    private SecurityContextCurrentUser currentUser;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
-        SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+        currentUser = mock(SecurityContextCurrentUser.class);
         AuthUser user = mock(AuthUser.class);
         auditService = mock(AuditService.class);
         userId = UUID.randomUUID();
@@ -46,17 +46,18 @@ class UserOperationAuditInterceptorTest {
         interceptor.preHandle(request, response, new Object());
         interceptor.afterCompletion(request, response, new Object(), null);
 
-        verify(auditService).logExplicit(
+        verify(auditService).logHttpOperation(
                 eq(userId),
                 eq("auditor"),
-                eq("http_patch"),
-                eq("api/sales/orders"),
+                eq("PATCH"),
                 eq("/api/sales/orders/123"),
-                startsWith("failure:409:"));
+                eq("api/sales/orders"),
+                eq(409),
+                org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
     }
 
     @Test
-    void ignoresReadOnlyRequest() {
+    void recordsAuthenticatedReadWithoutQueryValuesOrBody() {
         MockHttpServletRequest request =
                 new MockHttpServletRequest("GET", "/api/sales/orders/123");
         MockHttpServletResponse response = new MockHttpServletResponse();
@@ -64,12 +65,79 @@ class UserOperationAuditInterceptorTest {
         interceptor.preHandle(request, response, new Object());
         interceptor.afterCompletion(request, response, new Object(), null);
 
-        verify(auditService, never()).logExplicit(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
+        verify(auditService).logHttpOperation(
+                eq(userId),
+                eq("auditor"),
+                eq("GET"),
+                eq("/api/sales/orders/123"),
+                eq("api/sales/orders"),
+                eq(200),
+                org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
+    }
+
+    @Test
+    void recordsAnonymousMalformedLoginWithoutCredentialsOrQueryValues() {
+        when(currentUser.get()).thenReturn(Optional.empty());
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("POST", "/api/auth/login");
+        request.setQueryString("debug=secret-query-value");
+        request.setContent("password=must-not-be-audited".getBytes());
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(400);
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        verify(auditService).logHttpOperation(
+                isNull(),
+                isNull(),
+                eq("POST"),
+                eq("/api/auth/login"),
+                eq("api/auth/login"),
+                eq(400),
+                org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
+    }
+
+    @Test
+    void recordsAuthenticatedAuthReadThatHasNoDedicatedBusinessEvent() {
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/api/auth/me");
+        request.setQueryString("include=private-query-value");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(request, response, new Object(), null);
+
+        verify(auditService).logHttpOperation(
+                eq(userId),
+                eq("auditor"),
+                eq("GET"),
+                eq("/api/auth/me"),
+                eq("api/auth/me"),
+                eq(200),
+                org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
+    }
+
+    @Test
+    void recordsUnhandledMvcExceptionAsServerFailureBeforeStatusIsRendered() {
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("POST", "/api/orders");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        interceptor.preHandle(request, response, new Object());
+        interceptor.afterCompletion(
+                request,
+                response,
+                new Object(),
+                new IllegalStateException("controller failed"));
+
+        verify(auditService).logHttpOperation(
+                eq(userId),
+                eq("auditor"),
+                eq("POST"),
+                eq("/api/orders"),
+                eq("api/orders"),
+                eq(500),
+                org.mockito.ArgumentMatchers.longThat(value -> value >= 0));
     }
 }

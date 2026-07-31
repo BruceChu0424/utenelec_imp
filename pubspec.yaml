@@ -37,6 +37,9 @@ dependencies:
   # 网络
   dio: ^5.7.0
 
+  # 打开政策与监管的政府官方网站原文
+  url_launcher: ^6.3.2
+
   # 文件保存（导出加密 Excel：桌面/移动写下载/文档目录；Web 走浏览器 blob 不依赖此包）
   path_provider: ^2.1.5
 
@@ -49,6 +52,7 @@ dependencies:
   qr_flutter: ^4.1.0
 
   # 工具
+  crypto: ^3.0.7
   uuid: ^4.5.1
   collection: ^1.18.0
   web: ^1.1.1

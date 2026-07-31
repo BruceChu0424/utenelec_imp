@@ -1,10 +1,7 @@
-// AdminDepartmentPermView - 按部门配置权限点
+// AdminDepartmentPermView - 按部门配置动态权限目录。
 //
-// 单选部门（组织树任意节点）→ 从完整权限目录（/admin/permission-catalog，动态、不硬编码）勾选
-// 权限点 → 保存（PUT /admin/departments/{id}/permissions，整体替换）。
-// 部门初始为空白，由超级管理员按需配置；勾选权限授予该部门及其下级部门员工，
-// 下次登录或令牌刷新后生效。
-// 切换部门时若有未保存修改，二次确认后丢弃。
+// 部门配置保留完整权限点，使用搜索、状态筛选、默认折叠和整组批量操作降低
+// 高密度目录的设置成本；未保存修改通过固定底部操作栏统一提交。
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,16 +9,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_toast.dart';
+import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
-import 'perm_catalog_group_section.dart';
+import 'permission_catalog_browser.dart';
 
 class AdminDepartmentPermView extends ConsumerStatefulWidget {
-  const AdminDepartmentPermView({super.key});
+  const AdminDepartmentPermView({super.key, this.initialDepartmentId});
+
+  final String? initialDepartmentId;
 
   @override
   ConsumerState<AdminDepartmentPermView> createState() =>
@@ -30,41 +33,67 @@ class AdminDepartmentPermView extends ConsumerStatefulWidget {
 
 class _AdminDepartmentPermViewState
     extends ConsumerState<AdminDepartmentPermView> {
-  /// 当前选中的部门（单选）
+  static const _individualOnlyPermissions = <String>{
+    Perm.auditLogView,
+    Perm.auditLogExport,
+  };
+
   DeptSelection? _dept;
-
-  /// 本地待保存的勾选集合；null = 未做任何编辑（跟随服务端数据）
   Set<String>? _localChecked;
-
   bool _saving = false;
-
-  /// 用于强制重置部门选择器（取消切换时恢复显示原部门）
   int _pickerVersion = 0;
 
-  /// 服务端已保存的勾选集合（未选部门或加载中为 null）
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _resolveInitialDepartment();
+    });
+  }
+
+  Future<void> _resolveInitialDepartment() async {
+    final id = widget.initialDepartmentId;
+    if (id == null || id.isEmpty) return;
+    try {
+      final tree = await ref.read(adminDepartmentTreeProvider.future);
+      final selection = buildDeptSelectionMap(tree)[id];
+      if (!mounted || selection == null || _dept != null) return;
+      setState(() => _dept = selection);
+    } catch (_) {
+      // 选择器仍可手动使用；路由中的失效部门 id 不阻塞权限页。
+    }
+  }
+
   Set<String>? get _serverChecked {
-    final dept = _dept;
-    if (dept == null) return null;
+    final department = _dept;
+    if (department == null) return null;
     return ref
-        .watch(adminDepartmentPermissionsProvider(dept.id))
+        .read(adminDepartmentPermissionsProvider(department.id))
         .valueOrNull
         ?.toSet();
   }
 
-  /// 当前生效显示的勾选集合
-  Set<String> get _checked => _localChecked ?? _serverChecked ?? const {};
+  Set<String> get _checked =>
+      _localChecked ?? _serverChecked ?? const <String>{};
 
-  /// 是否有未保存修改
   bool get _isDirty {
     final local = _localChecked;
     final server = _serverChecked;
     return local != null && server != null && !setEquals(local, server);
   }
 
-  // ===== 部门切换（含未保存确认） =====
+  int get _dirtyCount {
+    final local = _localChecked;
+    final server = _serverChecked;
+    if (local == null || server == null) return 0;
+    return {
+      ...local,
+      ...server,
+    }.where((code) => local.contains(code) != server.contains(code)).length;
+  }
 
-  Future<void> _onDeptChanged(List<DeptSelection> sel) async {
-    final next = sel.isEmpty ? null : sel.first;
+  Future<void> _onDeptChanged(List<DeptSelection> selection) async {
+    final next = selection.firstOrNull;
     if (next?.id == _dept?.id) return;
     if (_isDirty) {
       final confirmed = await UtenDialog.show(
@@ -76,7 +105,6 @@ class _AdminDepartmentPermViewState
       );
       if (!mounted) return;
       if (confirmed != true) {
-        // 取消切换：强制选择器恢复显示原部门
         setState(() => _pickerVersion++);
         return;
       }
@@ -87,91 +115,136 @@ class _AdminDepartmentPermViewState
     });
   }
 
-  // ===== 保存 =====
-
   Future<void> _save() async {
-    final dept = _dept;
-    if (dept == null || _saving) return;
+    final department = _dept;
+    if (department == null || _saving || !_isDirty) return;
     setState(() => _saving = true);
     try {
       await ref
           .read(adminRepositoryProvider)
-          .updateDepartmentPermissions(dept.id, _checked.toList());
-      // 保存成功后重新拉取确认
-      ref.invalidate(adminDepartmentPermissionsProvider(dept.id));
+          .updateDepartmentPermissions(department.id, _checked.toList());
+      ref.invalidate(adminDepartmentPermissionsProvider(department.id));
       if (!mounted) return;
       setState(() => _localChecked = null);
-      UtenToast.success(context, '已保存「${dept.name}」的权限配置');
+      UtenToast.success(context, '已保存「${department.name}」的权限配置并即时生效');
     } catch (_) {
       if (!mounted) return;
-      UtenToast.error(context, '保存失败，请稍后重试');
+      UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _toggle(String code, bool value) {
+  void _setPermissions(Iterable<String> codes, bool value) {
     setState(() {
-      final next = {...(_localChecked ?? _serverChecked ?? const <String>{})};
-      if (value) {
-        next.add(code);
-      } else {
-        next.remove(code);
-      }
+      final next = {..._checked};
+      value ? next.addAll(codes) : next.removeAll(codes);
       _localChecked = next;
     });
   }
 
+  void _toggle(String code, bool value) => _setPermissions([code], value);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dept = _dept;
+    final department = _dept;
+    final showSaveBar = department != null && _isDirty;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+    return Column(
       children: [
-        // 顶部说明条（与页面说明条同风格）
-        UtenCard(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s16,
+              UtenSpacing.s4,
+              UtenSpacing.s16,
+              UtenSpacing.s32,
+            ),
             children: [
-              Icon(
-                Icons.info_outline_rounded,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '勾选的权限将授予该部门及其下级部门的所有员工，下次登录或令牌刷新后生效。'
-                  '部门初始为空白，由超级管理员按需配置。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
+              UtenCard(
+                margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s16,
+                  vertical: UtenSpacing.s12,
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s12),
+                    Expanded(
+                      child: Text(
+                        '勾选的权限会授予该部门及其下级部门员工。'
+                        '可搜索、按状态筛选，或从分组右侧菜单整组配置。'
+                        '审计查看与导出涉及调查证据，只能在个人授权中点名配置，不支持部门授权。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+              UtenDepartmentPicker(
+                key: ValueKey('${department?.id ?? 'none'}-$_pickerVersion'),
+                mode: UtenDepartmentPickerMode.single,
+                label: '选择部门',
+                initialSelection: [?department],
+                onChanged: _onDeptChanged,
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              if (department == null)
+                _emptyGuide(theme)
+              else
+                _catalogCard(theme, department),
             ],
           ),
         ),
-        // 单选部门
-        UtenDepartmentPicker(
-          key: ValueKey('${dept?.id ?? 'none'}-$_pickerVersion'),
-          mode: UtenDepartmentPickerMode.single,
-          label: '选择部门',
-          initialSelection: [?dept],
-          onChanged: _onDeptChanged,
-        ),
-        const SizedBox(height: 16),
-        if (dept == null) _emptyGuide(theme) else _catalogCard(theme, dept),
+        if (showSaveBar)
+          UtenBottomActionBar(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s16,
+              vertical: UtenSpacing.s12,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '已修改 $_dirtyCount 项',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _saving
+                      ? null
+                      : () => setState(() => _localChecked = null),
+                  child: const Text('撤销'),
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                UtenButton(
+                  size: UtenButtonSize.small,
+                  isLoading: _saving,
+                  onPressed: _saving ? null : _save,
+                  child: const Text('保存更改'),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
 
   Widget _emptyGuide(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s48),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -181,9 +254,9 @@ class _AdminDepartmentPermViewState
               size: 48,
               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: UtenSpacing.s12),
             Text(
-              '先在上方选择一个部门，再为其勾选权限点',
+              '先在上方选择一个部门，再为其配置权限点',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -194,8 +267,10 @@ class _AdminDepartmentPermViewState
     );
   }
 
-  Widget _catalogCard(ThemeData theme, DeptSelection dept) {
-    final permsAsync = ref.watch(adminDepartmentPermissionsProvider(dept.id));
+  Widget _catalogCard(ThemeData theme, DeptSelection department) {
+    final permissionsAsync = ref.watch(
+      adminDepartmentPermissionsProvider(department.id),
+    );
     final catalogAsync = ref.watch(permissionCatalogProvider);
     final checked = _checked;
 
@@ -203,158 +278,131 @@ class _AdminDepartmentPermViewState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '部门权限 · ${dept.name}',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _isDirty
-                          ? '已勾选 ${checked.length} 项 · 有未保存修改'
-                          : '已勾选 ${checked.length} 项',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: _isDirty
-                            ? UtenColors.warning
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              UtenButton(
-                size: UtenButtonSize.small,
-                isLoading: _saving,
-                onPressed: permsAsync.hasValue && catalogAsync.hasValue
-                    ? _save
-                    : null,
-                child: const Text('保存'),
-              ),
-            ],
+          Text(
+            '部门权限 · ${department.name}',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          const SizedBox(height: 8),
-          _catalogBody(permsAsync, catalogAsync, checked),
+          const SizedBox(height: 2),
+          Text(
+            _isDirty
+                ? '已配置 ${checked.length} 项 · $_dirtyCount 项未保存'
+                : '已配置 ${checked.length} 项',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: _isDirty
+                  ? UtenColors.warning
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          _catalogBody(permissionsAsync, catalogAsync, checked),
         ],
       ),
     );
   }
 
   Widget _catalogBody(
-    AsyncValue<List<String>> permsAsync,
+    AsyncValue<List<String>> permissionsAsync,
     AsyncValue<List<PermissionCatalogGroup>> catalogAsync,
     Set<String> checked,
   ) {
-    final theme = Theme.of(context);
-    // 已配权限加载失败：重试
-    if (permsAsync.hasError) {
-      return _loadErrorWithRetry(
-        theme,
-        '部门权限加载失败',
-        () => ref.invalidate(adminDepartmentPermissionsProvider(_dept!.id)),
+    if (permissionsAsync.hasError || catalogAsync.hasError) {
+      return UtenEmpty.error(
+        message: '部门权限加载失败',
+        description: '请检查网络后重试。',
+        actionLabel: '重试',
+        onAction: () {
+          final department = _dept;
+          if (department != null) {
+            ref.invalidate(adminDepartmentPermissionsProvider(department.id));
+          }
+          ref.invalidate(permissionCatalogProvider);
+        },
       );
     }
-    // 权限目录加载失败：重试
-    if (catalogAsync.hasError) {
-      return _loadErrorWithRetry(
-        theme,
-        '权限目录加载失败',
-        () => ref.invalidate(permissionCatalogProvider),
-      );
-    }
-    final groups = catalogAsync.valueOrNull;
-    if (groups == null || permsAsync.isLoading) {
+    final rawGroups = catalogAsync.valueOrNull;
+    if (rawGroups == null || permissionsAsync.isLoading) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),
         child: Center(child: CircularProgressIndicator()),
       );
     }
+    final groups = rawGroups
+        .map(
+          (group) => PermissionCatalogGroup(
+            category: group.category,
+            permissions: group.permissions
+                .where(
+                  (permission) =>
+                      !_individualOnlyPermissions.contains(permission.code),
+                )
+                .toList(growable: false),
+          ),
+        )
+        .where((group) => group.permissions.isNotEmpty)
+        .toList(growable: false);
     if (groups.isEmpty) {
-      return Text(
-        '权限目录为空',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+      return const UtenEmpty(
+        icon: Icons.security_outlined,
+        message: '权限目录为空',
+        description: '后端尚未返回可配置的权限点。',
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final group in groups)
-          PermCatalogGroupSection(
-            title: group.category,
-            countLabel:
-                '${group.permissions.where((p) => checked.contains(p.code)).length}/${group.permissions.length}',
+
+    return PermissionCatalogBrowser(
+      groups: groups,
+      enabledFilterLabel: '已配置',
+      disabledFilterLabel: '未配置',
+      enableGroupLabel: '本组全部配置',
+      disableGroupLabel: '本组全部取消配置',
+      isEnabled: (permission) => checked.contains(permission.code),
+      onEnableGroup: (permissions) => _setPermissions(
+        permissions.map((permission) => permission.code),
+        true,
+      ),
+      onDisableGroup: (permissions) => _setPermissions(
+        permissions.map((permission) => permission.code),
+        false,
+      ),
+      itemBuilder: (context, permission) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+          child: Row(
             children: [
-              for (final p in group.permissions)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              p.name,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              p.code,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      permission.name,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
-                      Switch(
-                        value: checked.contains(p.code),
-                        onChanged: (v) => _toggle(p.code, v),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      permission.code,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Semantics(
+                label:
+                    '${permission.name}${checked.contains(permission.code) ? '已配置' : '未配置'}',
+                child: Switch(
+                  value: checked.contains(permission.code),
+                  onChanged: (value) => _toggle(permission.code, value),
+                ),
+              ),
             ],
           ),
-      ],
-    );
-  }
-
-  Widget _loadErrorWithRetry(
-    ThemeData theme,
-    String message,
-    VoidCallback onRetry,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              message,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: UtenColors.error,
-              ),
-            ),
-          ),
-          UtenButton(
-            type: UtenButtonType.ghost,
-            size: UtenButtonSize.small,
-            onPressed: onRetry,
-            child: const Text('重试'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

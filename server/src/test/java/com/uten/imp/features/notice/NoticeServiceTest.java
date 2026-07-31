@@ -7,11 +7,13 @@ import com.uten.imp.features.notice.dto.NoticePublishRequest;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -20,6 +22,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -54,7 +57,8 @@ class NoticeServiceTest {
                 mock(EmployeeRepository.class),
                 currentUser,
                 new ObjectMapper(),
-                audienceService);
+                audienceService,
+                mock(TxSessionVars.class));
     }
 
     @Test
@@ -134,5 +138,28 @@ class NoticeServiceTest {
 
         assertThrows(ApiException.class, () -> service.publish(request));
         verify(audienceService, never()).resolveSelected(any(), any());
+    }
+
+    @Test
+    void completingTodoIsIdempotentAndAlsoMarksItRead() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setKind("TODO");
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+        when(stateRepository.findById(new NoticeUserStateId(noticeId, userId)))
+                .thenReturn(Optional.empty());
+
+        Instant before = Instant.now().minus(1, ChronoUnit.SECONDS);
+        service.completeTodo(noticeId);
+
+        verify(stateRepository).save(argThat(state ->
+                state.getId().getNoticeId().equals(noticeId)
+                        && state.getId().getUserId().equals(userId)
+                        && state.getReadAt() != null
+                        && state.getReadAt().isAfter(before)
+                        && state.getTaskCompletedAt() != null
+                        && state.getTaskCompletedAt().isAfter(before)));
     }
 }

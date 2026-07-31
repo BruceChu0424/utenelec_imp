@@ -115,4 +115,4 @@ flutter analyze --no-pub
 git diff --check
 ```
 
-当前组合结果：后端 335 tests、0 failure/error、48 skipped（PG 默认跳过）；真实 PostgreSQL 16 classes / 44 tests、0 failure/error/skip，空库 146 个迁移到 V165；Flutter 144/144，`flutter analyze --no-pub` 无问题，Web Release 构建成功。
+当前组合结果：后端 343 tests、0 failure/error、48 skipped（PG 默认跳过）；真实 PostgreSQL 16 classes / 44 tests、0 failure/error/skip，空库 146 个迁移到 V165；Flutter 157/157，`flutter analyze --no-pub` 无问题，Web Release 构建成功。

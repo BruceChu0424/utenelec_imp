@@ -30,8 +30,19 @@ class SecurityDefaultsTest {
                         "https://admin.example.test"),
                 configuration.getAllowedOrigins());
         assertEquals(
-                java.util.List.of("Authorization", "Content-Type", "Accept"),
+                java.util.List.of(
+                        "Authorization",
+                        "Content-Type",
+                        "Accept",
+                        "X-Uten-Operation-Id",
+                        "X-Uten-Audit-Context"),
                 configuration.getAllowedHeaders());
+        assertEquals(
+                java.util.List.of(
+                        "Content-Disposition",
+                        "X-Uten-Audit-Request-Id",
+                        "X-Uten-Operation-Id"),
+                configuration.getExposedHeaders());
         assertFalse(Boolean.TRUE.equals(configuration.getAllowCredentials()));
     }
 

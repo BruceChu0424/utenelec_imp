@@ -72,8 +72,8 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 | **供应商分类** | ✅ 已实现 | `SystemItem` (ItemclassID=3，15 扁平根) | `supplier_categories` | `migrate.sh --supplier` | [08-老库溯源](08-供应商资料-老库溯源.md) · [09-新库与迁移](09-供应商资料-新库与迁移.md) |
 | **供应商主档** | ✅ 已实现 | `B_Provider`（386 条，29 字段） | `suppliers` | `migrate.sh --supplier-data` | （字段映射见 V38__supplier.sql） |
 | **币种 / 仓库** | ✅ 已实现 | `B_Currency`(3) / `B_Storage`(6) | `currencies` / `warehouses` | `migrate.sh --currency-data` / `--warehouse-data` | [15-采购 §三](15-采购模块-新库与迁移.md)（归基础资料） |
-| **采购管理** | ✅ 已实现 | `P_Application`/`P_Order`/`P_In`/`P_Withdraw`（主+明，十几万行） | `purchase_requests/orders/receipts/returns(+_items)` + V65 报表列 | `migrate.sh --purchase` | [14-老库溯源](14-采购模块-老库溯源.md) · [15-新库与迁移](15-采购模块-新库与迁移.md)（**9 报表 + V65 迁移补全**） |
-| **库存（流水+余额）+ 仓库报表** | ✅ 已实现 | `StockGoods`(45万) + 9 类 `O_*` 单据 | `stock_movements` / `stock_balances` / `stock_documents(+_items)` | `migrate.sh --stock-docs`（含人员 *_legacy_id + B_Worker stub + 末尾刷 MV） | [16-老库溯源](16-仓库管理-老库溯源.md) · [17-新库与迁移](17-仓库管理-新库与迁移.md) · **14 张仓库报表**（V67：7 单据 × 明细/汇总，`/api/stock/reports/{docType}/{detail|summary}`） |
+| **采购管理** | ✅ 已实现（单位歧义行待治理） | `P_Application`/`P_Order`/`P_In`/`P_Withdraw`（主+明，十几万行） | `purchase_requests/orders/receipts/returns(+_items)` + V65 报表列 + V168 历史单位安全规范化 | `migrate.sh --purchase`（`migrate_purchase.sql`） | [14-老库溯源](14-采购模块-老库溯源.md) · [15-新库与迁移](15-采购模块-新库与迁移.md)（**9 报表 + V65 迁移补全 + V168 单位治理**） |
+| **库存（流水+余额）+ 仓库报表** | ✅ 已实现 | `StockGoods`(45万) + 9 类 `O_*` 单据 | `stock_movements` / `stock_balances` / `stock_documents(+_items)` | `migrate.sh --stock-docs`（含人员 *_legacy_id + B_Worker stub + 末尾刷 MV） | [16-老库溯源](16-仓库管理-老库溯源.md) · [17-新库与迁移](17-仓库管理-新库与迁移.md) · [50-盘点修正与历史处理](50-仓库盘点修正与历史单据处理.md) · **14 张仓库报表**（V67：7 单据 × 明细/汇总，`/api/stock/reports/{docType}/{detail|summary}`） |
 | **销售管理** | 🟡 单据导入已实现，owner/对象授权待最终验收 | `S_Order`(10653)/`S_Out`(12124)/`S_OtherOut`(1558)/`S_Withdraw`(221)（在用）+`S_Quote`(0) | `sales_orders/shipments/other_shipments/returns(+_items)` | `--sales` 导单；员工迁入后 `--sales-owner` 回填（完整流程用 `--bootstrap-all`） | [18-总路线图](18-业务四模块-总路线图.md) · [20-新库与迁移](20-销售管理-新库与迁移.md) · [39-owner 迁移/授权](39-销售单据归属授权.md)；未映射 owner 只能公共只读，须进入对账/reject 清单 |
 | **委外管理** | ⛔ 历史发料待重迁验收 | `E_` 前缀：`E_In`/`E_SOut`/`E_WithDraw`/`E_SWithDraw`/`E_SWaste` | `subcontract_*`（8 单据） | `migrate.sh --subcontract --confirm-destructive` | 现有历史库 49,889 发料明细数量口径失真；须用修正导出重迁并复核 [22](22-委外管理-新库与迁移.md) / [42](42-财务对账单自动生成.md) |
 | **生产管理** | ✅ 已实现 | `F_Plan`(7235)+Item(73388) / **`F_PlanCostItem`(1359892)** / `F_DateReport`(0) | `production_plans(+items/+costs 按年分区)` / `production_daily_reports` | `migrate.sh --production` | [18] · [23-老库溯源](23-生产管理-老库溯源.md) · [24-新库与迁移](24-生产管理-新库与迁移.md) |
@@ -192,6 +192,7 @@ server/legacy_migration/                        ← shell 离线破坏性引导�
 ├─ migrate_client.sql / migrate_client_data.sql （客户分类[递归CTE] / 主档）
 ├─ migrate_supplier.sql / migrate_supplier_data.sql （供应商分类[扁平根] / 主档）
 ├─ migrate_color.sql / migrate_unit.sql        （颜色 / 基本单位 主档[扁平，无分类]）
+├─ migrate_purchase.sql                         （采购四类单据；单位确定性回填 + 歧义行诊断）
 ├─ export_legacy.ps1                            （老库→UTF-8 CSV；输出 JSON manifest + sha256 清单）
 └─ data/                                        ← 离线 CSV + export_manifest.json + export_manifest.sha256（敏感迁移包，不进 git，受控保管）
 
@@ -226,9 +227,29 @@ V134 提供 `legacy_migration_reconciliation_items`、`legacy_migration_rejects`
 只有 `legacy_migration_runs.reconciliation_status = PASSED` 且对应结构化明细完整，才可作为机器验收证据；
 `status = SUCCESS` 只表示脚本无错误退出。
 
+### 采购单位专项门禁
+
+采购明细的 `QTY` 是单据单位量，必须先用有效 `unit_rate` 换为货品基本单位后才能参与库存和 MRP：
+
+- **安全修复**：源 `UnitID=0/NULL`、`COALESCE(URate,1)=1`，且货品基本单位可解析时，
+  全量导入脚本 `migrate_purchase.sql` 和既有库规范化迁移
+  `V168__normalize_legacy_purchase_item_units.sql` 均回填货品基本单位及换算率 1。
+- **待治理**：不满足上述唯一确定条件的行不得猜测单位或换算率，保持待治理并 fail-closed；
+  不能把它们当成零在途继续计算齐套。
+- **MRP 阻塞范围**：只有“订货单已审核、未中止、未结案、未删除，明细未删除，且
+  `GREATEST(qty-received_qty,0)>0`（源字段口径 `QTY-RQTY>0`）”的开放订货明细参与在途与单位有效性检查；历史已完成、已中止、已结案或已删除行不阻塞。
+- **旧尾数处置**：若开放订货尾数已不再履约，必须由业务执行中止/结案并留痕；禁止迁移脚本仅按单据年龄
+  自动关单。
+
+2026-07-31 对 V168 做过事务内演练并已**回滚**：四类采购明细分别可安全规范化
+345/394/756/39 行；开放订货单位异常 54 行中 41 行可安全修复、13 行仍待治理，
+货品 `V51115` 的异常开放行由 5 行降为 0。该结果仅证明迁移可执行，**不表示正式数据库已经应用**；
+正式应用状态必须以目标库 `flyway_schema_history` 和发布迁移记录为准。
+
 ---
 
-**最后更新**：2026-07-30。迁移脚本和多数业务映射已经形成，但当前发布结论仍为
+**最后更新**：2026-07-31。补充采购单位确定性回填、V168 事务演练和歧义行 fail-closed 门禁。
+迁移脚本和多数业务映射已经形成，但当前发布结论仍为
 **NO-GO**：BOM 20,717 条拒绝行、委外发料 49,889 条历史数量、客户归属计数、
 总账开账/材料结转，以及全模块增量追平/回滚尚未关闭。财务 API/UI 已实现不等于财务数据已签字验收；
 一般费用单也不等于员工报销。统一以

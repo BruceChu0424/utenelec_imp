@@ -3,6 +3,8 @@ import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/role.dart';
+import 'package:uten_imp/shared/models/user.dart';
 
 void main() {
   group('visitor portal path policy', () {
@@ -24,7 +26,10 @@ void main() {
         Perm.authorizationManage,
       ]);
       expect(requiredAnyPermFor(RouteName.adminAuditLogs), const [
-        Perm.authorizationManage,
+        Perm.auditLogView,
+      ]);
+      expect(requiredAnyPermFor(RouteName.deviceAuditReceipts), const [
+        Perm.auditLogView,
       ]);
       expect(requiredAnyPermFor(RouteName.adminSystemSettings), const [
         Perm.authorizationManage,
@@ -32,6 +37,39 @@ void main() {
       expect(requiredAnyPermFor('/admin/unknown'), const [
         Perm.authorizationManage,
       ]);
+    });
+
+    test('ordinary employee deep links are redirected by the route guard', () {
+      const ordinary = AppUser(
+        id: 'employee-1',
+        code: 'E001',
+        name: '普通员工',
+        roles: [Role.employee],
+      );
+      const auditor = AppUser(
+        id: 'auditor-1',
+        code: 'A001',
+        name: '审计员',
+        roles: [Role.employee],
+        permissions: [Perm.auditLogView],
+      );
+
+      expect(
+        employeePermissionRedirect(ordinary, RouteName.deviceAuditReceipts),
+        RouteName.dashboard,
+      );
+      expect(
+        employeePermissionRedirect(ordinary, RouteName.adminAuditLogs),
+        RouteName.dashboard,
+      );
+      expect(
+        employeePermissionRedirect(auditor, RouteName.deviceAuditReceipts),
+        isNull,
+      );
+      expect(
+        employeePermissionRedirect(auditor, RouteName.adminAuditLogs),
+        isNull,
+      );
     });
 
     test(

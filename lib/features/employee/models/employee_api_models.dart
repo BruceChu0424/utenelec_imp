@@ -12,6 +12,9 @@ class EmployeeSummary {
     this.status,
     this.employmentType,
     this.hireDate,
+    this.positionLevel,
+    this.departmentManager = false,
+    this.leaderRank = 3,
   });
 
   final String id;
@@ -23,6 +26,9 @@ class EmployeeSummary {
   final String? status;
   final String? employmentType;
   final String? hireDate; // yyyy-MM-dd
+  final String? positionLevel;
+  final bool departmentManager;
+  final int leaderRank;
 
   factory EmployeeSummary.fromJson(Map<String, dynamic> json) =>
       EmployeeSummary(
@@ -35,6 +41,9 @@ class EmployeeSummary {
         status: json['status'] as String?,
         employmentType: json['employmentType'] as String?,
         hireDate: json['hireDate'] as String?,
+        positionLevel: json['positionLevel'] as String?,
+        departmentManager: json['departmentManager'] as bool? ?? false,
+        leaderRank: (json['leaderRank'] as num?)?.toInt() ?? 3,
       );
 }
 
@@ -105,6 +114,9 @@ class EmployeeProfile {
     this.positionId,
     this.positionName,
     this.supervisorId,
+    this.positionLevel,
+    this.departmentManager = false,
+    this.leaderRank = 3,
     this.supervisorName,
     this.hireDate,
     this.confirmedAt,
@@ -153,6 +165,9 @@ class EmployeeProfile {
   final String? positionId;
   final String? positionName;
   final String? supervisorId;
+  final String? positionLevel;
+  final bool departmentManager;
+  final int leaderRank;
   final String? supervisorName;
   final String? hireDate;
   final String? confirmedAt;
@@ -214,6 +229,9 @@ class EmployeeProfile {
       positionName: json['positionName'] as String?,
       supervisorId: json['supervisorId'] as String?,
       supervisorName: json['supervisorName'] as String?,
+      positionLevel: json['positionLevel'] as String?,
+      departmentManager: json['departmentManager'] as bool? ?? false,
+      leaderRank: (json['leaderRank'] as num?)?.toInt() ?? 3,
       hireDate: json['hireDate'] as String?,
       confirmedAt: json['confirmedAt'] as String?,
       status: json['status'] as String?,

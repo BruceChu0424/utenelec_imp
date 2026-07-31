@@ -17,7 +17,7 @@ import java.util.UUID;
 
 /**
  * 审计日志。数据变更由 DB 触发器写入；登录/改密等事件由 auth 包各 Service 显式写入。
- * before/after 为 jsonb；数据变更场景下敏感列已是密文，审计不含明文 PII。
+ * before/after 为 jsonb；数据变更场景由数据库函数先剔除凭证、PII、薪资与自由文本。
  */
 @Getter
 @Setter
@@ -59,6 +59,84 @@ public class AuditLog {
     private String userAgent;
 
     private String result;
+
+    @Column(name = "request_id")
+    private UUID requestId;
+
+    @Column(name = "event_source", nullable = false)
+    private String eventSource = "business";
+
+    @Column(name = "http_method")
+    private String httpMethod;
+
+    @Column(name = "http_path")
+    private String httpPath;
+
+    @Column(name = "status_code")
+    private Integer statusCode;
+
+    @Column(name = "duration_ms")
+    private Long durationMs;
+
+    @Column(name = "client_event_id")
+    private UUID clientEventId;
+
+    @Column(name = "device_installation_id")
+    private UUID deviceInstallationId;
+
+    @Column(name = "device_name")
+    private String deviceName;
+
+    @Column(name = "device_manufacturer")
+    private String deviceManufacturer;
+
+    @Column(name = "device_model")
+    private String deviceModel;
+
+    @Column(name = "device_platform")
+    private String devicePlatform;
+
+    @Column(name = "device_os_version")
+    private String deviceOsVersion;
+
+    @Column(name = "app_version")
+    private String appVersion;
+
+    @Column(name = "app_build")
+    private String appBuild;
+
+    @Column(name = "device_form_factor")
+    private String deviceFormFactor;
+
+    @Column(name = "device_browser")
+    private String deviceBrowser;
+
+    @Column(name = "device_locale")
+    private String deviceLocale;
+
+    @Column(name = "device_time_zone")
+    private String deviceTimeZone;
+
+    @Column(name = "device_time_zone_offset_minutes")
+    private Integer deviceTimeZoneOffsetMinutes;
+
+    @Column(name = "device_is_physical")
+    private Boolean deviceIsPhysical;
+
+    @Column(name = "client_event_at")
+    private OffsetDateTime clientEventAt;
+
+    @Column(name = "device_capture_status", nullable = false)
+    private String deviceCaptureStatus = "missing";
+
+    @Column(name = "device_profile_hash")
+    private String deviceProfileHash;
+
+    @Column(name = "risk_level", insertable = false, updatable = false)
+    private String riskLevel;
+
+    @Column(name = "event_category", insertable = false, updatable = false)
+    private String eventCategory;
 
     @Column(name = "created_at")
     private OffsetDateTime createdAt = OffsetDateTime.now();

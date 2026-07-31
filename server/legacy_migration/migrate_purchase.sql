@@ -186,7 +186,19 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
+       COALESCE(
+           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
+           (
+               SELECT u.id
+               FROM goods g
+               JOIN units u ON u.legacy_id = g.unit_legacy_id
+                           AND u.is_deleted = FALSE
+               WHERE g.legacy_id = s.goods_legacy_id
+                 AND g.is_deleted = FALSE
+                 AND COALESCE(s.unit_legacy_id, 0) = 0
+                 AND COALESCE(s.unit_rate, 1) = 1
+           )
+       ),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
        COALESCE(s.ordered_qty, 0), s.weight, NULLIF(s.source_doc_no, ''),
        s.deliver_date,
@@ -223,7 +235,19 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
+       COALESCE(
+           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
+           (
+               SELECT u.id
+               FROM goods g
+               JOIN units u ON u.legacy_id = g.unit_legacy_id
+                           AND u.is_deleted = FALSE
+               WHERE g.legacy_id = s.goods_legacy_id
+                 AND g.is_deleted = FALSE
+                 AND COALESCE(s.unit_legacy_id, 0) = 0
+                 AND COALESCE(s.unit_rate, 1) = 1
+           )
+       ),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
        COALESCE(s.received_qty, 0), COALESCE(s.returned_qty, 0),
        (SELECT id FROM purchase_request_items WHERE legacy_id = s.request_item_legacy_id),
@@ -263,7 +287,19 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
+       COALESCE(
+           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
+           (
+               SELECT u.id
+               FROM goods g
+               JOIN units u ON u.legacy_id = g.unit_legacy_id
+                           AND u.is_deleted = FALSE
+               WHERE g.legacy_id = s.goods_legacy_id
+                 AND g.is_deleted = FALSE
+                 AND COALESCE(s.unit_legacy_id, 0) = 0
+                 AND COALESCE(s.unit_rate, 1) = 1
+           )
+       ),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
        COALESCE(s.returned_qty, 0), COALESCE(s.gift_qty, 0), s.weight, NULLIF(s.source_doc_no, ''),
        NULLIF(s.order_no, ''), NULLIF(s.sales_order_no, ''), NULLIF(s.production_plan_no, '')
@@ -299,7 +335,19 @@ SELECT s.legacy_id, a.bill_no, a.bill_date,
        ROW_NUMBER() OVER (PARTITION BY s.bill_legacy_id ORDER BY s.legacy_id),
        (SELECT id FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
-       (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
+       COALESCE(
+           (SELECT id FROM units WHERE legacy_id = NULLIF(s.unit_legacy_id, 0)),
+           (
+               SELECT u.id
+               FROM goods g
+               JOIN units u ON u.legacy_id = g.unit_legacy_id
+                           AND u.is_deleted = FALSE
+               WHERE g.legacy_id = s.goods_legacy_id
+                 AND g.is_deleted = FALSE
+                 AND COALESCE(s.unit_legacy_id, 0) = 0
+                 AND COALESCE(s.unit_rate, 1) = 1
+           )
+       ),
        COALESCE(s.unit_rate, 1), s.qty, s.price, s.amount_original, s.amount_original,
        s.weight, NULLIF(s.source_doc_no, ''),
        NULLIF(s.receipt_no, ''), NULLIF(s.order_no, ''), NULLIF(s.sales_order_no, ''), NULLIF(s.production_plan_no, '')
@@ -324,4 +372,25 @@ UNION ALL SELECT '结帐 订货 settlement 非空 ' || (SELECT count(*) FROM pur
 UNION ALL SELECT '结帐 收货 settlement 非空 ' || (SELECT count(*) FROM purchase_receipts WHERE settlement_style_legacy IS NOT NULL)
 UNION ALL SELECT '结帐 退货 settlement 非空 ' || (SELECT count(*) FROM purchase_returns WHERE settlement_style_legacy IS NOT NULL)
 UNION ALL SELECT '采购员 收货 sman 非空 ' || (SELECT count(*) FROM purchase_receipts WHERE purchaser_legacy_id IS NOT NULL)
-UNION ALL SELECT '明细 申请 production_plan_no 非空 ' || (SELECT count(*) FROM purchase_request_items WHERE production_plan_no IS NOT NULL);
+UNION ALL SELECT '明细 申请 production_plan_no 非空 ' || (SELECT count(*) FROM purchase_request_items WHERE production_plan_no IS NOT NULL)
+UNION ALL SELECT '待治理 采购全链明细单位无法确定 ' || (
+    SELECT count(*)
+    FROM (
+        SELECT unit_id, unit_rate FROM purchase_request_items
+        UNION ALL SELECT unit_id, unit_rate FROM purchase_order_items
+        UNION ALL SELECT unit_id, unit_rate FROM purchase_receipt_items
+        UNION ALL SELECT unit_id, unit_rate FROM purchase_return_items
+    ) i
+    WHERE i.unit_id IS NULL OR COALESCE(i.unit_rate, 1) <= 0
+)
+UNION ALL SELECT '阻塞MRP 未完成订货明细单位无法确定 ' || (
+    SELECT count(*)
+    FROM purchase_order_items i
+    JOIN purchase_orders o ON o.id = i.order_id
+    WHERE o.status = 1
+      AND o.is_deleted = FALSE
+      AND COALESCE(o.is_stopped, FALSE) = FALSE
+      AND o.is_closed = FALSE
+      AND i.is_deleted = FALSE
+      AND GREATEST(COALESCE(i.qty, 0) - COALESCE(i.received_qty, 0), 0) > 0
+      AND (i.unit_id IS NULL OR COALESCE(i.unit_rate, 1) <= 0)

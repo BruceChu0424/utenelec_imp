@@ -73,6 +73,7 @@ public class EmployeeOnboardingService {
                 || isBlank(em.employmentType()) || isBlank(em.status())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "必填项缺失");
         }
+        assertHireDateNotFuture(em.hireDate());
         if (empRepo.existsByCode(p.code())) {
             throw new ApiException(ErrorCode.CONFLICT, "工号已存在");
         }
@@ -240,6 +241,14 @@ public class EmployeeOnboardingService {
         }
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword);
+    }
+
+    static void assertHireDateNotFuture(LocalDate hireDate) {
+        if (hireDate.isAfter(BusinessTime.today())) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "入职日期不能晚于今天");
+        }
     }
 
 }

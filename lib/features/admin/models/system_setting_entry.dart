@@ -19,7 +19,7 @@ class SystemSettingEntry {
   final String key;
   final String value;
   final String valueType; // int / long / string / bool
-  final String category; // security / token / sms / business
+  final String category; // security / token / sms / business / audit
   final String label; // 中文显示名
   final String? description; // 说明（UI 提示）
   final String? unit; // 单位（次/分 / 分钟 / 天 / 秒 / 行）

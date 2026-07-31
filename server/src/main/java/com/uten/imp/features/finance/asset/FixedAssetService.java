@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.asset;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportFacet;
@@ -36,6 +37,7 @@ import java.util.UUID;
 public class FixedAssetService {
 
     private final EntityManager em;
+    private final TxSessionVars tx;
 
     // ======================== 固定资产 CRUD ========================
 
@@ -60,6 +62,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public UUID createAsset(Map<String, Object> b) {
+        tx.bind();
         validatePeriod(str(b, "startPeriod"));
         UUID id = UUID.randomUUID();
         em.createNativeQuery("""
@@ -85,6 +88,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void updateAsset(UUID id, Map<String, Object> b) {
+        tx.bind();
         if (str(b, "startPeriod") != null) validatePeriod(str(b, "startPeriod"));
         int n = em.createNativeQuery("""
                 UPDATE fixed_assets SET name=COALESCE(:name,name), department_id=COALESCE(:dept,department_id),
@@ -111,6 +115,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void deleteAsset(UUID id) {
+        tx.bind();
         em.createNativeQuery("UPDATE fixed_assets SET is_deleted=true, deleted_at=now() WHERE id=:id")
                 .setParameter("id", id).executeUpdate();
     }
@@ -137,6 +142,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public UUID createDeferred(Map<String, Object> b) {
+        tx.bind();
         validatePeriod(str(b, "startPeriod"));
         UUID id = UUID.randomUUID();
         em.createNativeQuery("""
@@ -160,6 +166,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void updateDeferred(UUID id, Map<String, Object> b) {
+        tx.bind();
         int n = em.createNativeQuery("""
                 UPDATE deferred_expenses SET name=COALESCE(:name,name), expense_style_id=COALESCE(:style,expense_style_id),
                     total_amount=COALESCE(:ta,total_amount), useful_months=COALESCE(:um,useful_months),
@@ -182,6 +189,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public void deleteDeferred(UUID id) {
+        tx.bind();
         em.createNativeQuery("UPDATE deferred_expenses SET is_deleted=true, deleted_at=now() WHERE id=:id")
                 .setParameter("id", id).executeUpdate();
     }
@@ -192,6 +200,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public int depreciate(String period) {
+        tx.bind();
         validatePeriod(period);
         // 回滚该期间计提（日志 + 凭证级联分录）
         em.createNativeQuery("DELETE FROM fa_depreciation_log WHERE period = :p")
@@ -261,6 +270,7 @@ public class FixedAssetService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public int amortize(String period) {
+        tx.bind();
         validatePeriod(period);
         em.createNativeQuery("DELETE FROM da_amortization_log WHERE period = :p")
                 .setParameter("p", period).executeUpdate();

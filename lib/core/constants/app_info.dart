@@ -4,5 +4,9 @@ abstract final class AppInfo {
     'APP_VERSION',
     defaultValue: '0.1.0',
   );
+  static const buildId = String.fromEnvironment(
+    'APP_BUILD_ID',
+    defaultValue: 'dev',
+  );
   static const copyright = '© 2026 Uten';
 }

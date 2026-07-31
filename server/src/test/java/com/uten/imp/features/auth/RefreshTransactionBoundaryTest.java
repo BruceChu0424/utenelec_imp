@@ -106,7 +106,8 @@ class RefreshTransactionBoundaryTest {
                 null,
                 staffRotation,
                 staffCompromise,
-                null);
+                null,
+                audit);
 
         assertThrows(ApiException.class, () -> issuer.refresh("reused"));
         verify(staffCompromise).revoke(userId, tokenId);

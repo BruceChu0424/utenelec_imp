@@ -85,6 +85,7 @@ import '../../features/profile/pages/my_profile_changes_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
 import '../../features/settings/pages/settings_page.dart';
+import '../../features/settings/pages/device_audit_receipts_page.dart';
 import '../../features/shell/pages/main_shell_page.dart';
 import '../../features/suggestion/pages/suggestion_detail_page.dart';
 import '../../features/suggestion/pages/suggestion_list_page.dart';
@@ -116,7 +117,6 @@ import '../../features/visitor/pages/visitor_login_page.dart';
 import '../../features/visitor/providers/visitor_session_provider.dart';
 import '../../shared/providers/session_provider.dart';
 import '../../features/auth/pages/change_password_page.dart';
-import 'permission_by_path.dart';
 import 'route_access_policy.dart';
 import 'route_names.dart';
 
@@ -167,18 +167,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           // 注意：isChangePw 不在此重定向——"我的→修改密码"是已登录用户的合法入口。
           // 强制改密（mustChangePassword）由前两个分支独立处理。
           if (isLogin) return RouteName.dashboard;
-          // "多级权限任一满足即可"的路径（如客户资料）返回列表，任一命中即放行
-          final requiredAny = requiredAnyPermFor(loc);
-          if (requiredAny != null &&
-              !(session.user?.canAny(requiredAny) ?? false)) {
-            return RouteName.dashboard;
-          }
-          final requiredAll = requiredAllPermsFor(loc);
-          if (requiredAll.isNotEmpty &&
-              !requiredAll.every(session.user?.can ?? (_) => false)) {
-            return RouteName.dashboard;
-          }
-          return null;
+          return employeePermissionRedirect(session.user, loc);
       }
     },
     routes: [
@@ -257,6 +246,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.settings,
             name: 'settings',
             builder: (_, _) => const SettingsPage(),
+          ),
+          GoRoute(
+            path: RouteName.deviceAuditReceipts,
+            name: 'device-audit-receipts',
+            builder: (_, state) => DeviceAuditReceiptsPage(
+              backRoute: RouteName.settings,
+              initialOperationId: state.uri.queryParameters['operationId'],
+            ),
           ),
 
           // —— 工资 ——
@@ -945,7 +942,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: RouteName.adminPermissions,
             name: 'admin-permissions',
-            builder: (_, _) => const AdminPermissionsPage(),
+            builder: (_, state) => AdminPermissionsPage(
+              initialEmployeeId: state.uri.queryParameters['employeeId'],
+              initialDepartmentId: state.uri.queryParameters['departmentId'],
+            ),
           ),
           GoRoute(
             path: RouteName.adminAuditLogs,

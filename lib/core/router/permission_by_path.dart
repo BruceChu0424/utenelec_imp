@@ -15,9 +15,13 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.adminPermissions) {
     return const [Perm.accountSupport, Perm.authorizationManage];
   }
-  // 审计日志和系统设置均是高敏管理面，后端还会校验 superAdmin。
+  // 审计中心与本机回执核查共享独立的只读权限；导出仍另需 audit_log:export。
   if (location == RouteName.adminAuditLogs ||
-      location == RouteName.adminSystemSettings ||
+      location == RouteName.deviceAuditReceipts) {
+    return const [Perm.auditLogView];
+  }
+  // 其余系统管理页面仍由授权管理权限保护。
+  if (location == RouteName.adminSystemSettings ||
       location.startsWith('/admin/')) {
     return const [Perm.authorizationManage];
   }

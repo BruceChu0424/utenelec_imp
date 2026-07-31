@@ -10,8 +10,11 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../dashboard/providers/dashboard_overview_provider.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 
@@ -40,12 +43,12 @@ class NoticeDetailPage extends ConsumerWidget {
   }
 }
 
-class _Content extends StatelessWidget {
+class _Content extends ConsumerWidget {
   const _Content({required this.notice});
   final Notice notice;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
     // 详情页全断点窄版收敛（1120），避免宽屏正文被拉得过长
@@ -67,6 +70,18 @@ class _Content extends StatelessWidget {
                   label: '工作',
                   type: UtenStatusBadgeType.accent,
                   icon: Icons.work_outline_rounded,
+                ),
+              ],
+              if (notice.kind == NoticeKind.todo) ...[
+                const SizedBox(width: UtenSpacing.s8),
+                UtenStatusBadge(
+                  label: notice.taskCompleted ? '待办已完成' : '待办',
+                  type: notice.taskCompleted
+                      ? UtenStatusBadgeType.success
+                      : UtenStatusBadgeType.warning,
+                  icon: notice.taskCompleted
+                      ? Icons.task_alt_rounded
+                      : Icons.pending_actions_rounded,
                 ),
               ],
               if (notice.priority.showBadge) ...[
@@ -170,6 +185,25 @@ class _Content extends StatelessWidget {
               ],
             ),
           ],
+          if (notice.kind == NoticeKind.todo && notice.dueAt != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Row(
+              children: [
+                Icon(
+                  Icons.event_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '截止时间：${_fmt(notice.dueAt!)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s24),
           // 正文
           UtenCard(
@@ -189,6 +223,46 @@ class _Content extends StatelessWidget {
             for (final f in notice.attachments) ...[
               _buildAttachment(theme, f),
               const SizedBox(height: UtenSpacing.s8),
+            ],
+          ],
+          if (notice.kind == NoticeKind.todo) ...[
+            const SizedBox(height: UtenSpacing.s24),
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                if (!notice.taskCompleted)
+                  FilledButton.icon(
+                    onPressed: () async {
+                      try {
+                        await completeNoticeTodo(ref, notice.id);
+                        ref.invalidate(dashboardOverviewProvider);
+                        if (context.mounted) {
+                          context.appSuccess('待办已完成');
+                        }
+                      } catch (error) {
+                        if (context.mounted) context.appApiError(error);
+                      }
+                    },
+                    icon: const Icon(Icons.task_alt_rounded),
+                    label: const Text('标记完成'),
+                  ),
+                if (notice.actionRoute != null)
+                  OutlinedButton.icon(
+                    onPressed: () => goFrom(context, notice.actionRoute!),
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: const Text('前往办理页面'),
+                  ),
+              ],
+            ),
+            if (notice.taskCompletedAt != null) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '已于 ${_fmt(notice.taskCompletedAt!)} 完成',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ],
           const SizedBox(height: UtenSpacing.s16),

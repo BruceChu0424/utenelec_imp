@@ -16,9 +16,11 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../core/ui/app_notification.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
+import '../widgets/employee_leadership_badge.dart';
 
 class EmployeeListPage extends ConsumerStatefulWidget {
   const EmployeeListPage({super.key});
@@ -38,6 +40,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   bool _loading = true;
   bool _loadingMore = false;
   String? _error;
+  int _request = 0;
 
   @override
   void initState() {
@@ -46,34 +49,39 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   }
 
   Future<void> _reload() async {
+    final request = ++_request;
+    final search = _search;
+    final statuses = Set<String>.of(_statuses);
     setState(() {
       _loading = true;
       _error = null;
+      _loadingMore = false;
+      _page = 1;
     });
-    _page = 1;
     try {
       final r = await ref
           .read(employeeRepositoryProvider)
           .list(
-            search: _search.isEmpty ? null : _search,
-            statuses: _statuses.isEmpty ? null : _statuses,
+            search: search.isEmpty ? null : search,
+            statuses: statuses.isEmpty ? null : statuses,
           );
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _items
           ..clear()
           ..addAll(r.items);
+        _page = r.page;
         _totalPages = r.totalPages;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _error = AppLocalizations.of(context).employeeOnboardLoadFailed;
         _loading = false;
@@ -83,25 +91,34 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || _page >= _totalPages) return;
+    final request = ++_request;
+    final search = _search;
+    final statuses = Set<String>.of(_statuses);
+    final nextPage = _page + 1;
     setState(() => _loadingMore = true);
     try {
       final r = await ref
           .read(employeeRepositoryProvider)
           .list(
-            page: _page + 1,
-            search: _search.isEmpty ? null : _search,
-            statuses: _statuses.isEmpty ? null : _statuses,
+            page: nextPage,
+            search: search.isEmpty ? null : search,
+            statuses: statuses.isEmpty ? null : statuses,
           );
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _items.addAll(r.items);
-        _page = _page + 1;
+        _page = r.page;
         _totalPages = r.totalPages;
         _loadingMore = false;
       });
-    } catch (_) {
-      if (!mounted) return;
+    } catch (error) {
+      if (!mounted || request != _request) return;
       setState(() => _loadingMore = false);
+      if (error is ApiException) {
+        context.appError(error.message);
+      } else {
+        context.appError('加载更多员工失败，请稍后重试');
+      }
     }
   }
 
@@ -232,14 +249,30 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
           return const SizedBox(height: 80);
         }
         final e = _items[i];
+        final leadershipLabel = employeeLeadershipLabel(
+          departmentManager: e.departmentManager,
+          positionLevel: e.positionLevel,
+          leaderRank: e.leaderRank,
+        );
         return UtenPersonCard(
           margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
           title: e.fullName,
+          titleLeading: leadershipLabel == null
+              ? null
+              : EmployeeLeadershipBadge(
+                  departmentManager: e.departmentManager,
+                  positionLevel: e.positionLevel,
+                  leaderRank: e.leaderRank,
+                ),
           subtitle:
               '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
           avatarText: e.fullName,
           trailing: EmployeeStatusBadge(status: e.status),
-          onTap: () => context.push('/employee/${e.id}'),
+          onTap: () async {
+            await context.push('/employee/${e.id}');
+            if (!mounted) return;
+            _reload();
+          },
         );
       },
     );

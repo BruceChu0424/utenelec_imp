@@ -1,7 +1,7 @@
 // AdminSystemSettingsPage - 系统设置（authorization:manage + 后端 superAdmin）
 //
 // 运行时可配的安全/业务策略阈值：登录限流 / 账号锁定 / 密码历史 / 导出限流 / 令牌TTL /
-// 短信验证 / 导出行数上限。密钥与部署类（jwt.secret/crypto/sms AK/CORS/swagger/DB）不在此
+// 短信验证 / 导出行数上限 / 审计留存。密钥与部署类（jwt.secret/crypto/sms AK/CORS/swagger/DB）不在此
 // （走 application.yml / 环境变量）。
 //
 // 安全（用户铁律，全方面）：
@@ -46,6 +46,7 @@ class _AdminSystemSettingsPageState
     ('token', '登录令牌', Icons.vpn_key_outlined),
     ('sms', '短信验证', Icons.sms_outlined),
     ('business', '业务限制', Icons.assessment_outlined),
+    ('audit', '审计与留存', Icons.policy_outlined),
   ];
 
   @override
@@ -107,7 +108,9 @@ class _AdminSystemSettingsPageState
     if (_dirty.isEmpty || _saving) return;
     final pwd = await showDialog<String>(
       context: context,
-      builder: (_) => const _ConfirmPasswordDialog(),
+      builder: (_) => _ConfirmPasswordDialog(
+        retentionChanged: _dirty.any((key) => key.startsWith('audit_')),
+      ),
     );
     if (pwd == null || pwd.isEmpty || !mounted) return;
     setState(() => _saving = true);
@@ -119,8 +122,9 @@ class _AdminSystemSettingsPageState
       }
       if (!mounted) return;
       context.appSuccess('已保存 ${keys.length} 项设置');
-      // 若改了「自动退出登录」阈值，通知 IdleTimeoutGuard 立即重拉（当前会话即时生效，不必重登）。
-      if (keys.contains('session_idle_timeout_minutes')) {
+      // 公共运行时设置变更后立即重拉：同步空闲阈值，也让本机回执采用新的总留存月数。
+      if (keys.contains('session_idle_timeout_minutes') ||
+          keys.any((key) => key.startsWith('audit_'))) {
         ref.read(idleThresholdVersionProvider.notifier).state++;
       }
       await _load(); // 重载拿最新 updatedAt
@@ -234,7 +238,7 @@ class _AdminSystemSettingsPageState
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '此处调整将立即影响全员安全策略（登录/锁定/令牌/导出等），请谨慎操作。保存需二次密码确认，且记入审计日志。',
+              '多数设置保存后立即生效；审计留存设置在下一次每日 03:17 清理任务生效。缩短期限可能永久删除历史日志，请谨慎操作。保存需二次密码确认，且记入审计日志。',
               style: theme.textTheme.bodySmall,
             ),
           ),
@@ -290,6 +294,16 @@ class _SettingGroupCard extends StatelessWidget {
               ],
             ),
             const Divider(height: 20),
+            if (group.$1 == 'audit' &&
+                controllers.containsKey('audit_hot_retention_months') &&
+                controllers.containsKey('audit_archive_retention_months')) ...[
+              _AuditRetentionNotice(
+                hotController: controllers['audit_hot_retention_months']!,
+                archiveController:
+                    controllers['audit_archive_retention_months']!,
+              ),
+              const Divider(height: 20),
+            ],
             for (final e in items)
               _SettingRow(
                 entry: e,
@@ -299,6 +313,89 @@ class _SettingGroupCard extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 把两个独立月份翻译成用户真正关心的“何时归档、何时永久删除”。
+class _AuditRetentionNotice extends StatelessWidget {
+  const _AuditRetentionNotice({
+    required this.hotController,
+    required this.archiveController,
+  });
+
+  final TextEditingController hotController;
+  final TextEditingController archiveController;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: hotController,
+      builder: (context, hotValue, _) => ValueListenableBuilder<TextEditingValue>(
+        valueListenable: archiveController,
+        builder: (context, archiveValue, _) {
+          final hot = int.tryParse(hotValue.text.trim());
+          final archive = int.tryParse(archiveValue.text.trim());
+          final valid =
+              hot != null &&
+              hot >= 1 &&
+              hot <= 120 &&
+              archive != null &&
+              archive >= 0 &&
+              archive <= 240;
+          final policy = valid
+              ? '当前填写：前 $hot 个月可在审计中心查询和导出；随后冷归档 $archive 个月；共 ${hot + archive} 个月后永久删除。'
+              : '请输入有效月份后，这里会计算在线查询期和最终删除时间。';
+          final theme = Theme.of(context);
+          return Semantics(
+            label: '审计日志留存说明',
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.tertiaryContainer.withValues(
+                  alpha: 0.35,
+                ),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: theme.colorScheme.tertiary.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.auto_delete_outlined,
+                    size: 20,
+                    color: theme.colorScheme.tertiary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          policy,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '每日北京时间 03:17 分批执行。各客户端的本机回执在下次同步公共设置后，也按总月数清理（同时最多 300 条）。永久删除不可恢复；缩短期限前请先完成合规确认和必要备份。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -387,7 +484,10 @@ class _SettingRow extends StatelessWidget {
 
 /// 二次密码确认对话框（防令牌被盗后恶意改安全策略）。
 class _ConfirmPasswordDialog extends StatefulWidget {
-  const _ConfirmPasswordDialog();
+  const _ConfirmPasswordDialog({required this.retentionChanged});
+
+  final bool retentionChanged;
+
   @override
   State<_ConfirmPasswordDialog> createState() => _ConfirmPasswordDialogState();
 }
@@ -416,13 +516,15 @@ class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
     final theme = Theme.of(context);
     return AlertDialog(
       icon: const Icon(Icons.lock_outline),
-      title: const Text('二次密码确认'),
+      title: Text(widget.retentionChanged ? '确认审计留存修改' : '二次密码确认'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '为防止账号令牌被盗后恶意篡改安全策略，请输入您当前登录账号的密码以确认修改。',
+            widget.retentionChanged
+                ? '本次包含审计留存调整。缩短期限可能在下一次 03:17 清理中永久删除历史日志且不可恢复。确认合规与备份后，请输入当前账号密码。'
+                : '为防止账号令牌被盗后恶意篡改安全策略，请输入您当前登录账号的密码以确认修改。',
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),

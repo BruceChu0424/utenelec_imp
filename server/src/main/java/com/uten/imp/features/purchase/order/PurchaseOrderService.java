@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderItemDto;
 import com.uten.imp.features.purchase.order.dto.OrderItemLine;
@@ -64,6 +65,7 @@ public class PurchaseOrderService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final ProductionSupplySourceGuard productionSourceGuard;
+    private final PurchaseLineUnitPolicy lineUnitPolicy;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
@@ -141,6 +143,7 @@ public class PurchaseOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        normalizePersistedItemUnits(items);
         sourceIntegrity.validatePurchaseOrder(items.stream()
                 .map(it -> new LinkedDocumentIntegrityService.QuantityLinkedLine(
                         it.getRequestItemId(),
@@ -229,15 +232,19 @@ public class PurchaseOrderService {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (OrderItemLine l : lines) {
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             PurchaseOrderItem it = new PurchaseOrderItem();
             it.setOrderId(o.getId());
             it.setBillNo(o.getBillNo());
             it.setBillDate(o.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
+            it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
-            it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            it.setUnitId(resolvedUnit.unitId());
+            it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
@@ -253,6 +260,20 @@ public class PurchaseOrderService {
             auto++;
         }
         return out;
+    }
+
+    private void normalizePersistedItemUnits(List<PurchaseOrderItem> items) {
+        int fallbackLineNo = 1;
+        for (PurchaseOrderItem item : items) {
+            int lineNo = item.getLineNo() != null ? item.getLineNo() : fallbackLineNo;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            item.getGoodsId(), item.getUnitId(), item.getUnitRate(), lineNo);
+            item.setUnitId(resolvedUnit.unitId());
+            item.setUnitRate(resolvedUnit.unitRate());
+            fallbackLineNo++;
+        }
+        itemRepo.saveAll(items);
     }
 
     private void applyTotals(PurchaseOrder o, List<OrderItemDto> items) {

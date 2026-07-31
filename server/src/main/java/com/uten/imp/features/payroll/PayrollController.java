@@ -1,5 +1,6 @@
 package com.uten.imp.features.payroll;
 
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.payroll.dto.PayrollBatchCreateRequest;
@@ -7,6 +8,8 @@ import com.uten.imp.features.payroll.dto.PayrollBatchDto;
 import com.uten.imp.features.payroll.dto.PayrollPdf;
 import com.uten.imp.features.payroll.dto.PayrollRejectRequest;
 import com.uten.imp.features.payroll.dto.PayrollSlipDto;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -28,6 +31,8 @@ import java.util.UUID;
 public class PayrollController {
 
     private final PayrollService service;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
 
     @GetMapping("/slips")
     @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:view:all')")
@@ -57,6 +62,17 @@ public class PayrollController {
     @PreAuthorize("hasAnyAuthority('payroll:view:self','payroll:export')")
     public ResponseEntity<byte[]> download(@PathVariable UUID id) {
         PayrollPdf pdf = service.downloadSlip(id);
+        AuthUser actor = currentUser.get()
+                .orElseThrow(() -> new IllegalStateException("未登录"));
+        // Only the operation identity and slip UUID are recorded. PDF bytes,
+        // password-equivalent data, filenames and payroll PII never enter audit.
+        audit.logExplicit(
+                actor.getId(),
+                actor.getLoginAccount(),
+                "download_payroll_slip",
+                "payroll_slips",
+                id.toString(),
+                "success");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(

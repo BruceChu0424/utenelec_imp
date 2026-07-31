@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,11 +31,17 @@ import java.util.UUID;
 public class GlPostingService {
 
     private final EntityManager em;
+    private final TxSessionVars tx;
 
     /** 重生成指定期间（YYYY-MM）的 AUTO 凭证。返回凭证数。 */
     @Transactional
     @PreAuthorize("hasAuthority('finance_post:execute')")
     public int generate(String period) {
+        tx.bind();
+        return generatePeriod(period);
+    }
+
+    private int generatePeriod(String period) {
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period = :p")
                 .setParameter("p", period).executeUpdate();
 
@@ -55,6 +62,7 @@ public class GlPostingService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_post:execute')")
     public int generateAll() {
+        tx.bind();
         @SuppressWarnings("unchecked")
         List<String> periods = em.createNativeQuery("""
                 SELECT DISTINCT to_char(d, 'YYYY-MM') FROM (
@@ -65,7 +73,7 @@ public class GlPostingService {
                     UNION SELECT bill_date FROM finance_other_incomes WHERE COALESCE(is_deleted,false)=false
                 ) t ORDER BY 1
                 """).getResultList();
-        for (String p : periods) generate(p);
+        for (String p : periods) generatePeriod(p);
         return periods.size();
     }
 
@@ -311,6 +319,7 @@ public class GlPostingService {
     /** 费用单审核钩子：该单幂等过账（先删同单号 AUTO EXPENSE 凭证再重建），返回 voucher_id。 */
     @Transactional
     public UUID postExpenseDoc(UUID expenseId) {
+        tx.bind();
         @SuppressWarnings("unchecked")
         List<Object[]> docs = em.createNativeQuery(
                 "SELECT bill_no, bill_date, account_id, remark FROM finance_expenses WHERE id = :id")
@@ -321,7 +330,7 @@ public class GlPostingService {
         LocalDate billDate = ((java.sql.Date) d[1]).toLocalDate();
         String period = billDate.toString().substring(0, 7);
 
-        removeExpenseDoc(billNo);
+        removeExpenseDocInternal(billNo);
         UUID voucherId = UUID.randomUUID();
         em.createNativeQuery("""
                 INSERT INTO gl_vouchers (id, voucher_no, period, voucher_date, source, source_type, remark)
@@ -356,6 +365,11 @@ public class GlPostingService {
     /** 费用单红冲钩子：删该单 AUTO EXPENSE 凭证（级联分录）。 */
     @Transactional
     public void removeExpenseDoc(String billNo) {
+        tx.bind();
+        removeExpenseDocInternal(billNo);
+    }
+
+    private void removeExpenseDocInternal(String billNo) {
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND source_type='EXPENSE' AND voucher_no = :no")
                 .setParameter("no", billNo).executeUpdate();
     }

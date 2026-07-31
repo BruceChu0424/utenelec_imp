@@ -27,6 +27,9 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>, JpaSp
 
     long countByDepartmentIdAndDeletedFalse(UUID departmentId);
 
+    long countByDepartmentIdAndDeletedFalseAndStatusIn(
+            UUID departmentId, java.util.Collection<String> statuses);
+
     /**
      * 批量读取员工及其部门，供跨模块列表装配使用，避免逐行加载员工/部门的 N+1 查询。
      */

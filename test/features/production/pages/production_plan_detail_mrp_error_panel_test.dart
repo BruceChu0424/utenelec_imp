@@ -31,6 +31,17 @@ void main() {
       expect(guidance.nextStep, contains('基本单位和换算率'));
     });
 
+    test('explains unit validation scope and BOM unit semantics', () {
+      final guidance = ProductionMrpErrorGuidance.fromServerMessage(
+        '货品 V51115 存在未完成采购行的单位或换算率无效，禁止计算齐套',
+      );
+
+      expect(guidance.title, '物料单位或换算率无效');
+      expect(guidance.nextStep, contains('不另设 BOM 单位'));
+      expect(guidance.nextStep, contains('仍有未收数量'));
+      expect(guidance.nextStep, contains('没有未完成采购行'));
+    });
+
     test('keeps a useful fallback for unknown server errors', () {
       final guidance = ProductionMrpErrorGuidance.fromServerMessage(
         'unexpected validation failure',

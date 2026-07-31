@@ -3,6 +3,12 @@ spring:
     name: uten-imp-server
   lifecycle:
     timeout-per-shutdown-phase: 30s
+  task:
+    scheduling:
+      # 留存归档可能持续数分钟，独立线程避免阻塞 Outbox、预警和报表刷新。
+      pool:
+        size: ${UTEN_SCHEDULING_POOL_SIZE:4}
+      thread-name-prefix: uten-scheduler-
   profiles:
     # Fail closed: an omitted profile starts with production constraints.
     # Local development must explicitly set UTEN_PROFILE=dev.
@@ -59,9 +65,21 @@ server:
   forward-headers-strategy: none
 
 uten:
+  audit:
+    retention:
+      enabled: ${UTEN_AUDIT_RETENTION_ENABLED:true}
+      # 每天北京时间 03:17 执行；留存月数由「系统设置」动态读取。
+      cron: ${UTEN_AUDIT_RETENTION_CRON:0 17 3 * * *}
   http:
     # JSON API 请求体的全局上限；覆盖 chunked 请求。multipart/二进制上传不走此限制。
     max-json-body-bytes: ${UTEN_MAX_JSON_BODY_BYTES:1048576}
+  policy-intelligence:
+    enabled: ${UTEN_POLICY_INTELLIGENCE_ENABLED:false}
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+    refresh-cron: ${UTEN_POLICY_INTELLIGENCE_CRON:0 15 6 * * *}
+    max-candidates: ${UTEN_POLICY_INTELLIGENCE_MAX_CANDIDATES:12}
   jwt:
     # 必填：HS256 密钥（≥32 字节）。走 server/.env 的 UTEN_JWT_SECRET 或环境变量；缺省 fail-fast。
     secret: ${UTEN_JWT_SECRET}

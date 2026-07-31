@@ -31,12 +31,47 @@ class BalanceRow {
   );
 }
 
+class StockBalanceAdjustmentResult {
+  const StockBalanceAdjustmentResult({
+    required this.documentId,
+    required this.billNo,
+    required this.beforeQty,
+    required this.afterQty,
+    required this.deltaQty,
+    this.adjustedByEmployeeId,
+    required this.adjustedByName,
+    required this.adjustedAt,
+  });
+
+  final String documentId;
+  final String billNo;
+  final double beforeQty;
+  final double afterQty;
+  final double deltaQty;
+  final String? adjustedByEmployeeId;
+  final String adjustedByName;
+  final String adjustedAt;
+
+  factory StockBalanceAdjustmentResult.fromJson(Map<String, dynamic> json) =>
+      StockBalanceAdjustmentResult(
+        documentId: json['documentId'] as String,
+        billNo: json['billNo'] as String? ?? '',
+        beforeQty: (json['beforeQty'] as num).toDouble(),
+        afterQty: (json['afterQty'] as num).toDouble(),
+        deltaQty: (json['deltaQty'] as num).toDouble(),
+        adjustedByEmployeeId: json['adjustedByEmployeeId'] as String?,
+        adjustedByName: json['adjustedByName'] as String? ?? '',
+        adjustedAt: json['adjustedAt'] as String? ?? '',
+      );
+}
+
 class MovementRow {
   const MovementRow({
     required this.id,
     this.transactionDate,
     this.movementType,
     this.sourceDocType,
+    this.sourceDocId,
     this.goodsId,
     this.colorId,
     this.warehouseId,
@@ -50,6 +85,7 @@ class MovementRow {
   final String? transactionDate;
   final int? movementType;
   final String? sourceDocType;
+  final String? sourceDocId;
   final String? goodsId;
   final String? colorId;
   final String? warehouseId;
@@ -63,6 +99,7 @@ class MovementRow {
     transactionDate: json['transactionDate'] as String?,
     movementType: (json['movementType'] as num?)?.toInt(),
     sourceDocType: json['sourceDocType'] as String?,
+    sourceDocId: json['sourceDocId'] as String?,
     goodsId: json['goodsId'] as String?,
     colorId: json['colorId'] as String?,
     warehouseId: json['warehouseId'] as String?,

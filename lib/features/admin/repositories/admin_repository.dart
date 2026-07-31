@@ -16,7 +16,11 @@ abstract interface class AdminRepository {
     int page = 1,
     int size = 20,
     String? search,
+    String? status,
   });
+
+  /// 由员工档案 id 精确解析其登录账号，供人事详情页深链权限设置。
+  Future<AdminUserSummary> userByEmployeeId(String employeeId);
 
   /// 全部权限点。
   Future<List<AdminPermission>> listPermissions();
@@ -81,6 +85,7 @@ class DioAdminRepository implements AdminRepository {
     int page = 1,
     int size = 20,
     String? search,
+    String? status,
   }) async {
     final json = await api.get(
       ApiEndpoints.adminUsers,
@@ -88,9 +93,16 @@ class DioAdminRepository implements AdminRepository {
         'page': page,
         'size': size,
         if (search != null && search.isNotEmpty) 'search': search,
+        if (status != null && status.isNotEmpty) 'status': status,
       },
     );
     return PagedResult.fromJson(json, AdminUserSummary.fromJson);
+  }
+
+  @override
+  Future<AdminUserSummary> userByEmployeeId(String employeeId) async {
+    final json = await api.get(ApiEndpoints.adminUserByEmployee(employeeId));
+    return AdminUserSummary.fromJson(json);
   }
 
   @override
@@ -153,10 +165,8 @@ class DioAdminRepository implements AdminRepository {
   }
 
   @override
-  Future<List<String>> getUserDataScopes(String userId, String scope) async {
-    final json = await api.get(ApiEndpoints.userDataScopes(userId, scope));
-    return (json as List<dynamic>).map((e) => e as String).toList();
-  }
+  Future<List<String>> getUserDataScopes(String userId, String scope) =>
+      api.getStringList(ApiEndpoints.userDataScopes(userId, scope));
 
   @override
   Future<void> updateUserDataScopes(

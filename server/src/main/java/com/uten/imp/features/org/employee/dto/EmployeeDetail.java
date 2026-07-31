@@ -39,6 +39,9 @@ public class EmployeeDetail {
     private String departmentName;
     private UUID positionId;
     private String positionName;
+    private String positionLevel;
+    private boolean departmentManager;
+    private int leaderRank;
     private UUID supervisorId;
     private String supervisorName;
     private LocalDate hireDate;

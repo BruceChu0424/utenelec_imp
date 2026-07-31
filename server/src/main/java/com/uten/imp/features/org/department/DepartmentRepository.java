@@ -13,6 +13,8 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
 
     List<Department> findByParentIdOrderBySortOrderAscNameAsc(UUID parentId);
 
+    List<Department> findByManagerId(UUID managerId);
+
     List<Department> findByDeletedFalseOrderById();
 
     /** 递归 CTE：返回某部门及其全部后代（含自身），仅未软删。 */

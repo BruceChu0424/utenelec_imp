@@ -15,6 +15,8 @@ abstract interface class NoticeRepository {
 
   Future<Notice> markRead(String id);
 
+  Future<void> completeTodo(String id);
+
   /// 全部标记已读
   Future<void> markAllRead();
 
@@ -32,6 +34,9 @@ abstract interface class NoticeRepository {
     NoticeAudienceScope audienceScope = NoticeAudienceScope.all,
     List<String> departmentIds = const [],
     List<String> employeeIds = const [],
+    NoticeKind kind = NoticeKind.normal,
+    String? actionRoute,
+    DateTime? dueAt,
   });
 
   Future<NoticeAudiencePreview> previewAudience({
@@ -80,6 +85,11 @@ class DioNoticeRepository implements NoticeRepository {
   }
 
   @override
+  Future<void> completeTodo(String id) async {
+    await _api.post(ApiEndpoints.noticeComplete(id));
+  }
+
+  @override
   Future<void> markAllRead() async {
     await _api.post(ApiEndpoints.noticesReadAll);
   }
@@ -101,6 +111,9 @@ class DioNoticeRepository implements NoticeRepository {
     NoticeAudienceScope audienceScope = NoticeAudienceScope.all,
     List<String> departmentIds = const [],
     List<String> employeeIds = const [],
+    NoticeKind kind = NoticeKind.normal,
+    String? actionRoute,
+    DateTime? dueAt,
   }) async {
     final json = await _api.post(
       ApiEndpoints.notices,
@@ -114,6 +127,9 @@ class DioNoticeRepository implements NoticeRepository {
         'audienceScope': audienceScope.name,
         'departmentIds': departmentIds,
         'employeeIds': employeeIds,
+        'kind': kind.name.toUpperCase(),
+        'actionRoute': actionRoute,
+        'dueAt': dueAt?.toUtc().toIso8601String(),
       },
     );
     return _fromJson(json);
@@ -177,6 +193,15 @@ class DioNoticeRepository implements NoticeRepository {
       ),
       audienceSummary: json['audienceSummary'] as String? ?? '全体员工',
       audienceCount: (json['audienceCount'] as num?)?.toInt(),
+      kind: NoticeKind.fromName(json['kind'] as String?),
+      actionRoute: json['actionRoute'] as String?,
+      dueAt: json['dueAt'] == null
+          ? null
+          : ChinaDateTime.tryParse(json['dueAt'] as String?),
+      taskCompleted: json['taskCompleted'] as bool? ?? false,
+      taskCompletedAt: json['taskCompletedAt'] == null
+          ? null
+          : ChinaDateTime.tryParse(json['taskCompletedAt'] as String?),
     );
   }
 

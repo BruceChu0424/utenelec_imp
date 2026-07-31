@@ -1,6 +1,9 @@
 package com.uten.imp.security;
 
+import com.uten.imp.audit.AuditRequestContext;
+import com.uten.imp.audit.AuditDeviceContext;
 import com.uten.imp.config.props.CryptoProperties;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.stereotype.Component;
@@ -38,21 +41,55 @@ public class TxSessionVars {
 
     private final CryptoProperties crypto;
     private final SecurityContextCurrentUser currentUser;
+    private final AuditDeviceContext auditDeviceContext;
 
-    public TxSessionVars(CryptoProperties crypto, SecurityContextCurrentUser currentUser) {
+    public TxSessionVars(
+            CryptoProperties crypto,
+            SecurityContextCurrentUser currentUser,
+            AuditDeviceContext auditDeviceContext) {
         this.crypto = crypto;
         this.currentUser = currentUser;
+        this.auditDeviceContext = auditDeviceContext;
     }
 
     /** 绑定审计 actor（当前登录用户，可为空）。 */
     public void bind() {
-        currentUser.id().ifPresent(id -> setConfig("app.actor_id", id.toString()));
+        currentUser.get().ifPresent(user -> {
+            setConfig("app.actor_id", user.getId().toString());
+            setConfig("app.actor_account", truncate(user.getLoginAccount(), 200));
+        });
+        bindRequestMetadata();
     }
 
     public void bindActor(UUID actorId) {
+        bindActor(actorId, null);
+    }
+
+    public void bindActor(UUID actorId, String actorAccount) {
         if (actorId != null) {
             setConfig("app.actor_id", actorId.toString());
         }
+        if (actorAccount != null && !actorAccount.isBlank()) {
+            setConfig("app.actor_account", truncate(actorAccount, 200));
+        }
+        bindRequestMetadata();
+    }
+
+    private void bindRequestMetadata() {
+        HttpServletRequest request = AuditRequestContext.currentRequest();
+        if (request == null) {
+            return;
+        }
+        setConfig("app.audit_request_id",
+                AuditRequestContext.ensureRequestId(request).toString());
+        setConfig("app.audit_ip", truncate(request.getRemoteAddr(), 64));
+        String userAgent = request.getHeader("User-Agent");
+        if (userAgent != null && !userAgent.isBlank()) {
+            setConfig("app.audit_user_agent", truncate(userAgent, 1000));
+        }
+        setConfig(
+                "app.audit_device_context",
+                auditDeviceContext.sessionJson(request));
     }
 
     private void setConfig(String name, String value) {
@@ -60,6 +97,13 @@ public class TxSessionVars {
                 .setParameter("name", name)
                 .setParameter("value", value)
                 .getSingleResult();
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     /** 密钥环：当前版本→当前密钥 ∪ 旧密钥。 */

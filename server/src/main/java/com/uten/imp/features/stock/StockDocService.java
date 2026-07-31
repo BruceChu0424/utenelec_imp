@@ -28,6 +28,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +41,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -54,6 +56,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class StockDocService {
+
+    private static final String AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE =
+            "AUTHORIZED_BALANCE_ADJUSTMENT:";
+    private static final String BALANCE_ADJUSTMENT_PERMISSION = "stock:balance:adjust";
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -146,9 +152,40 @@ public class StockDocService {
 
     @Transactional
     public StockDocDetail create(StockDocSaveRequest req) {
+        return createInternal(req, null);
+    }
+
+    /**
+     * 创建由高权限余额调整入口产生的 CHECK 单。
+     *
+     * <p>结构化来源标记不接受客户端传入，用于幂等约束和后续红冲/删除权限保护。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('stock:balance:adjust')")
+    public StockDocDetail createAuthorizedBalanceAdjustment(
+            StockDocSaveRequest req,
+            String idempotencyKey) {
+        return createInternal(req, AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE + idempotencyKey);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('stock:balance:adjust')")
+    public Optional<StockDocDetail> findAuthorizedBalanceAdjustment(String idempotencyKey) {
+        return docRepo
+                .findBySourceDocNoAndDeletedFalse(
+                        AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE + idempotencyKey)
+                .map(document -> toDetail(
+                        document,
+                        itemRepo.findByDocIdOrderByLineNoAsc(document.getId()).stream()
+                                .map(this::toItemDto)
+                                .toList()));
+    }
+
+    private StockDocDetail createInternal(StockDocSaveRequest req, String sourceDocNo) {
         tx.bind();
         StockDocument d = new StockDocument();
         applyHeader(req, d);
+        d.setSourceDocNo(sourceDocNo);
         d.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（服务端权威，忽略客户端值）
         d.setStatus(STATUS_DRAFT);
         docRepo.save(d);
@@ -161,6 +198,7 @@ public class StockDocService {
     public StockDocDetail update(UUID id, StockDocSaveRequest req) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+        requireBalanceAdjustmentPermission(d);
         rejectGenericMutationOfProductionDocument(d);
         if (d.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         applyHeader(req, d);
@@ -175,6 +213,11 @@ public class StockDocService {
     public void delete(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+        if (isAuthorizedBalanceAdjustment(d)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "授权库存余额调整记录必须永久保留；如需纠正，请由授权人员红冲后重新调整");
+        }
         rejectGenericMutationOfProductionDocument(d);
         if (d.getStatus() == STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
@@ -190,6 +233,7 @@ public class StockDocService {
     public StockDocDetail approve(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+        requireBalanceAdjustmentPermission(d);
         if (d.getStatus() == null || d.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (("DRAW".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType()))
@@ -228,6 +272,7 @@ public class StockDocService {
     public StockDocDetail reverse(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+        requireBalanceAdjustmentPermission(d);
         if ("DRAW".equals(d.getDocType()) && isProductionLinked(d.getId())) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "生产链领料单不能在仓库通用页面红冲；"
@@ -1333,11 +1378,14 @@ public class StockDocService {
 
     private StockDocDetail toDetail(StockDocument d, List<StockDocItemDto> items) {
         boolean productionLinked = isProductionLinked(d.getId());
-        boolean canEdit = !productionLinked && d.getStatus() != null
+        boolean authorizedBalanceAdjustment = isAuthorizedBalanceAdjustment(d);
+        boolean canEdit = !productionLinked && !authorizedBalanceAdjustment && d.getStatus() != null
                 && d.getStatus() == STATUS_DRAFT;
-        boolean canDelete = !productionLinked && d.getStatus() != null
+        boolean canDelete = !productionLinked && !authorizedBalanceAdjustment && d.getStatus() != null
                 && d.getStatus() != STATUS_APPROVED;
-        String restrictionReason = productionLinked
+        String restrictionReason = authorizedBalanceAdjustment
+                ? "该单据是授权库存余额调整的永久审计记录，不能编辑或删除"
+                : productionLinked
                 ? "生产链自动生成单据由执行计划、物料占用和报工共同维护，"
                   + "请在对应生产任务中执行调整或反向操作"
                 : null;
@@ -1348,6 +1396,25 @@ public class StockDocService {
                 d.getSourceDocNo(), d.getDepartmentId(), d.getIssueStatus(), items,
                 nameResolver.nameOf(d.getMakerId()), d.getCreatedAt(),
                 productionLinked, canEdit, canDelete, restrictionReason);
+    }
+
+    private boolean isAuthorizedBalanceAdjustment(StockDocument document) {
+        return document.getSourceDocNo() != null
+                && document.getSourceDocNo().startsWith(
+                        AUTHORIZED_BALANCE_ADJUSTMENT_SOURCE);
+    }
+
+    private void requireBalanceAdjustmentPermission(StockDocument document) {
+        if (!isAuthorizedBalanceAdjustment(document)) return;
+        boolean allowed = currentUser.get()
+                .map(user -> user.isSuperAdmin()
+                        || user.getPermissions().contains(BALANCE_ADJUSTMENT_PERMISSION))
+                .orElse(false);
+        if (!allowed) {
+            throw new ApiException(
+                    ErrorCode.FORBIDDEN,
+                    "该单据由领导授权调整库存产生，仅授权人员可以审核或红冲");
+        }
     }
 
     private void rejectGenericMutationOfProductionDocument(StockDocument document) {

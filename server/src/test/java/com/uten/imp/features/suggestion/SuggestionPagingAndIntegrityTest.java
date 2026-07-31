@@ -5,6 +5,7 @@ import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.suggestion.dto.SuggestionReplyRequest;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,7 +63,8 @@ class SuggestionPagingAndIntegrityTest {
                 replyRepository,
                 likeRepository,
                 mock(EmployeeRepository.class),
-                currentUser);
+                currentUser,
+                mock(TxSessionVars.class));
     }
 
     @Test

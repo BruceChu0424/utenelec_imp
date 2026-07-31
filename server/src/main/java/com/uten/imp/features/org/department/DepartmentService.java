@@ -18,6 +18,9 @@ import java.util.*;
 @RequiredArgsConstructor
 public class DepartmentService {
 
+    private static final Set<String> CURRENT_EMPLOYEE_STATUSES =
+            Set.of("active", "probation", "onLeave");
+
     private final DepartmentRepository deptRepo;
     private final EmployeeRepository empRepo;
     private final EntityManager em;
@@ -42,7 +45,8 @@ public class DepartmentService {
         UUID managerId = d.getManager() == null ? null : d.getManager().getId();
         String managerName = d.getManager() == null ? null : d.getManager().getFullName();
         long childCount = deptRepo.findByParentIdOrderBySortOrderAscNameAsc(id).size();
-        long empCount = empRepo.countByDepartmentIdAndDeletedFalse(id);
+        long empCount = empRepo.countByDepartmentIdAndDeletedFalseAndStatusIn(
+                id, CURRENT_EMPLOYEE_STATUSES);
         return new DepartmentDetail(d.getId(), d.getCode(), d.getName(), d.getLevel(),
                 parentId, parentName, managerId, managerName, d.getSortOrder(), d.getHeadcount(),
                 d.getPath(), childCount, empCount);
@@ -63,8 +67,7 @@ public class DepartmentService {
             d.setParent(requireDept(req.getParentId()));
         }
         if (req.getManagerId() != null) {
-            d.setManager(empRepo.findById(req.getManagerId())
-                    .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "负责人员工不存在")));
+            d.setManager(requireCurrentEmployee(req.getManagerId()));
         }
         deptRepo.save(d);
         em.flush();
@@ -80,9 +83,19 @@ public class DepartmentService {
         if (req.getSortOrder() != null) {
             d.setSortOrder(req.getSortOrder());
         }
-        if (req.getManagerId() != null) {
-            d.setManager(empRepo.findById(req.getManagerId())
-                    .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "负责人员工不存在")));
+        if (req.isManagerIdSpecified()) {
+            if (req.getManagerId() == null) {
+                d.setManager(null);
+            } else {
+                Employee manager = requireCurrentEmployee(req.getManagerId());
+                if (manager.getDepartment() == null
+                        || !id.equals(manager.getDepartment().getId())) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT,
+                            "部门负责人必须是该部门的直属在岗员工");
+                }
+                d.setManager(manager);
+            }
         }
         boolean parentChanged = false;
         if (req.getParentId() != null) {
@@ -154,6 +167,16 @@ public class DepartmentService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在"));
     }
 
+    private Employee requireCurrentEmployee(UUID id) {
+        Employee employee = empRepo.findById(id)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "负责人员工不存在"));
+        if (!CURRENT_EMPLOYEE_STATUSES.contains(employee.getStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT, "离职员工不能设置为部门负责人");
+        }
+        return employee;
+    }
+
     /** 把扁平部门列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */
     private List<DepartmentNode> buildTree(List<Department> all, UUID rootId) {
         Map<UUID, DepartmentNode> map = new LinkedHashMap<>();
@@ -182,6 +205,8 @@ public class DepartmentService {
         n.setName(d.getName());
         n.setLevel(d.getLevel());
         n.setParentId(d.getParent() == null ? null : d.getParent().getId());
+        n.setManagerId(d.getManager() == null ? null : d.getManager().getId());
+        n.setManagerName(d.getManager() == null ? null : d.getManager().getFullName());
         n.setSortOrder(d.getSortOrder());
         n.setHeadcount(d.getHeadcount());
         return n;

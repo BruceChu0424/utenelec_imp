@@ -1,18 +1,29 @@
 package com.uten.imp.migration;
 
+import com.uten.imp.audit.AuditLogRepository;
+import com.uten.imp.audit.AuditRetentionScheduler;
+import com.uten.imp.audit.AuditRuntimeSettings;
+import com.uten.imp.audit.AuditService;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.postgresql.ds.PGSimpleDataSource;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,6 +35,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Applies the complete migration chain to a clean PostgreSQL instance and verifies the
@@ -59,6 +74,8 @@ class SecurityPermissionMigrationTest {
                 POSTGRES.getPassword());
              Statement statement = connection.createStatement()) {
             statement.execute("""
+                    CREATE TABLE audit_log_archive
+                        (LIKE audit_log INCLUDING DEFAULTS INCLUDING INDEXES);
                     ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_status_chk;
                     ALTER TABLE suppliers DROP CONSTRAINT IF EXISTS suppliers_status_chk;
                     INSERT INTO clients (legacy_id, code, name, status, remark) VALUES
@@ -251,18 +268,132 @@ class SecurityPermissionMigrationTest {
                     from system_settings
                     where key = 'login_ip_rate_limit_per_minute'
                     """));
+            assertEquals(6, scalarLong(statement, """
+                    select value::bigint
+                    from system_settings
+                    where key = 'audit_hot_retention_months'
+                    """));
+            assertEquals(30, scalarLong(statement, """
+                    select value::bigint
+                    from system_settings
+                    where key = 'audit_archive_retention_months'
+                    """));
+            assertEquals(2, scalarLong(statement, """
+                    select count(*)
+                    from permissions
+                    where code in ('audit_log:view', 'audit_log:export')
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from department_permissions dp
+                    join permissions p on p.id = dp.permission_id
+                    where p.code in ('audit_log:view', 'audit_log:export')
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from user_permission_overrides upo
+                    join permissions p on p.id = upo.permission_id
+                    join users u on u.id = upo.user_id
+                    where p.code in ('audit_log:view', 'audit_log:export')
+                      and upo.effect = 'grant'
+                      and u.is_super_admin = false
+                    """));
             assertTrue(scalarBoolean(statement, """
                     select fn_audit_redact_row(
                         'employees',
                         '{"id_card_enc":"secret","phone_hash":"hash","full_name":"张三","status":"active"}'::jsonb
                     ) = '{"status":"active"}'::jsonb
                     """));
-            assertEquals("165", scalarString(statement, """
-                    select version
+            assertEquals(26, scalarLong(statement, """
+                    select count(*)
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'audit_log'
+                      and column_name in (
+                          'request_id', 'event_source', 'http_method', 'http_path',
+                          'status_code', 'duration_ms', 'risk_level', 'event_category',
+                          'client_event_id', 'device_installation_id', 'device_name',
+                          'device_manufacturer', 'device_model', 'device_platform',
+                          'device_os_version', 'app_version', 'app_build',
+                          'device_form_factor', 'device_browser', 'device_locale',
+                          'device_time_zone', 'device_time_zone_offset_minutes',
+                          'device_is_physical', 'client_event_at',
+                          'device_capture_status', 'device_profile_hash'
+                      )
+                    """));
+            assertEquals(26, scalarLong(statement, """
+                    select count(*)
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'audit_log_archive'
+                      and column_name in (
+                          'request_id', 'event_source', 'http_method', 'http_path',
+                          'status_code', 'duration_ms', 'risk_level', 'event_category',
+                          'client_event_id', 'device_installation_id', 'device_name',
+                          'device_manufacturer', 'device_model', 'device_platform',
+                          'device_os_version', 'app_version', 'app_build',
+                          'device_form_factor', 'device_browser', 'device_locale',
+                          'device_time_zone', 'device_time_zone_offset_minutes',
+                          'device_is_physical', 'client_event_at',
+                          'device_capture_status', 'device_profile_hash'
+                      )
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*)
+                    from pg_class c
+                    join pg_namespace n on n.oid = c.relnamespace
+                    where n.nspname = 'public'
+                      and c.relkind in ('r', 'p')
+                      and not c.relispartition
+                      and c.relname not in (
+                          'audit_log', 'audit_log_archive', 'flyway_schema_history',
+                          'spatial_ref_sys', 'authorization_state', 'doc_number_sequences',
+                          'report_materialized_view_refresh_state', 'password_history',
+                          'refresh_tokens', 'visitor_refresh_tokens', 'visitor_sms_codes'
+                      )
+                      and c.relname not like 'legacy_migration_%'
+                      and not exists (
+                          select 1
+                          from pg_trigger t
+                          where t.tgrelid = c.oid
+                            and not t.tgisinternal
+                            and t.tgname like 'trg_audit%'
+                      )
+                    """),
+                    "Every public business table must have an audit trigger");
+            statement.execute("""
+                    insert into audit_log (
+                        action, target_type, target_id, http_method, http_path,
+                        result, event_source
+                    ) values
+                        ('http_get', 'api/admin/permissions', 'risk-rule-read',
+                         'GET', '/api/admin/permissions', 'success', 'request'),
+                        ('http_patch', 'api/admin/permissions', 'risk-rule-write',
+                         'PATCH', '/api/admin/permissions', 'success', 'request')
+                    """);
+            assertEquals("low", scalarString(statement, """
+                    select risk_level from audit_log
+                    where target_id = 'risk-rule-read'
+                    """));
+            assertEquals("high", scalarString(statement, """
+                    select risk_level from audit_log
+                    where target_id = 'risk-rule-write'
+                    """));
+            statement.execute("""
+                    insert into audit_log_archive
+                    select * from audit_log
+                    where target_id = 'risk-rule-read'
+                    on conflict (id) do nothing
+                    """);
+            assertEquals("low", scalarString(statement, """
+                    select risk_level from audit_log_archive
+                    where target_id = 'risk-rule-read'
+                    """));
+            assertEquals(4, scalarLong(statement, """
+                    select count(*)
                     from flyway_schema_history
-                    where success
-                    order by installed_rank desc
-                    limit 1
+                    where version in ('169', '171', '172', '173')
+                      and success
                     """));
             assertEquals(0, scalarLong(statement, """
                     select count(*)
@@ -271,6 +402,90 @@ class SecurityPermissionMigrationTest {
                     """));
             statement.execute("select refresh_sales_monthly_mv()");
         }
+    }
+
+    @Test
+    void databaseRejectsDepartmentWideAuditPermissions() throws Exception {
+        for (String permissionCode : List.of("audit_log:view", "audit_log:export")) {
+            SQLException insertFailure = assertThrows(
+                    SQLException.class,
+                    () -> executeDepartmentPermissionWrite(
+                            """
+                            insert into department_permissions (department_id, permission_id)
+                            select d.id, p.id
+                            from departments d
+                            cross join permissions p
+                            where d.code = 'DEPT_HR'
+                              and p.code = ?
+                            """,
+                            permissionCode));
+            assertTrue(insertFailure.getMessage()
+                    .contains("审计权限仅允许个人授权"));
+
+            SQLException updateFailure = assertThrows(
+                    SQLException.class,
+                    () -> executeDepartmentPermissionWrite(
+                            """
+                            update department_permissions
+                            set permission_id = (
+                                select id from permissions where code = ?
+                            )
+                            where (department_id, permission_id) = (
+                                select department_id, permission_id
+                                from department_permissions
+                                limit 1
+                            )
+                            """,
+                            permissionCode));
+            assertTrue(updateFailure.getMessage()
+                    .contains("审计权限仅允许个人授权"));
+        }
+    }
+
+    @Test
+    void nativeAuditTrendUsesEffectiveRiskAndInvestigationCategory() throws Exception {
+        try (Connection connection = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    insert into audit_log (
+                        action, target_type, target_id, result, event_source
+                    ) values
+                        ('view_audit_log_list', 'audit_log', 'trend-list',
+                         'success', 'business'),
+                        ('view_audit_log_detail', 'audit_log', 'trend-detail',
+                         'success', 'business')
+                    """);
+        }
+
+        PGSimpleDataSource dataSource = new PGSimpleDataSource();
+        dataSource.setUrl(POSTGRES.getJdbcUrl());
+        dataSource.setUser(POSTGRES.getUsername());
+        dataSource.setPassword(POSTGRES.getPassword());
+        NamedParameterJdbcTemplate jdbc = new NamedParameterJdbcTemplate(dataSource);
+        String sql = AuditLogRepository.class.getDeclaredMethod(
+                        "summarizeDaily",
+                        OffsetDateTime.class,
+                        OffsetDateTime.class,
+                        String.class,
+                        String.class,
+                        String.class)
+                .getAnnotation(Query.class)
+                .value();
+        MapSqlParameterSource parameters = new MapSqlParameterSource()
+                .addValue("fromInclusive", OffsetDateTime.now().minusHours(1))
+                .addValue("toExclusive", OffsetDateTime.now().plusHours(1))
+                .addValue("actionPrefix", "view_audit_log_")
+                .addValue("actorAccount", "")
+                .addValue("eventCategory", "security");
+
+        var rows = jdbc.queryForList(sql, parameters);
+
+        assertEquals(1, rows.size());
+        assertEquals(2L, ((Number) rows.getFirst().get("total_count")).longValue());
+        assertEquals(1L, ((Number) rows.getFirst().get("risk_count")).longValue());
     }
 
     @Test
@@ -318,6 +533,168 @@ class SecurityPermissionMigrationTest {
                     where conname in ('clients_status_chk', 'suppliers_status_chk')
                       and convalidated
                     """));
+        }
+    }
+
+    @Test
+    void scheduledRetentionArchivesHotRowsBeforeDeletionAndPurgesExpiredArchive()
+            throws Exception {
+        try (Connection connection = openConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    insert into audit_log (
+                        action, target_type, target_id, result, created_at,
+                        client_event_id, device_installation_id, device_name,
+                        device_model, device_platform, device_capture_status
+                    ) values
+                        ('update', 'retention_test', 'retention-current',
+                         'success', now() - interval '1 month',
+                         '123e4567-e89b-42d3-a456-426614174010',
+                         '123e4567-e89b-42d3-a456-426614174011',
+                         '车间平板', 'UT-PAD-1', 'android', 'present'),
+                        ('update', 'retention_test', 'retention-to-archive',
+                         'success', now() - interval '7 months',
+                         '123e4567-e89b-42d3-a456-426614174012',
+                         '123e4567-e89b-42d3-a456-426614174013',
+                         '车间平板', 'UT-PAD-1', 'android', 'present'),
+                        ('update', 'retention_test', 'retention-to-delete',
+                         'success', now() - interval '40 months',
+                         '123e4567-e89b-42d3-a456-426614174014',
+                         '123e4567-e89b-42d3-a456-426614174015',
+                         '旧设备', 'UT-OLD', 'windows', 'present');
+
+                    insert into audit_log_archive
+                    select * from audit_log
+                    where target_id = 'retention-to-delete'
+                    on conflict (id) do nothing;
+
+                    delete from audit_log
+                    where target_id = 'retention-to-delete';
+                    """);
+        }
+
+        PGSimpleDataSource dataSource = new PGSimpleDataSource();
+        dataSource.setURL(POSTGRES.getJdbcUrl());
+        dataSource.setUser(POSTGRES.getUsername());
+        dataSource.setPassword(POSTGRES.getPassword());
+        AuditRuntimeSettings settings = new AuditRuntimeSettings() {
+            @Override
+            public int exportMaxRows() {
+                return 100_000;
+            }
+
+            @Override
+            public int hotRetentionMonths() {
+                return 6;
+            }
+
+            @Override
+            public int archiveRetentionMonths() {
+                return 30;
+            }
+        };
+        AuditService audit = mock(AuditService.class);
+
+        new AuditRetentionScheduler(dataSource, settings, audit).runScheduled();
+
+        try (Connection connection = openConnection();
+             Statement statement = connection.createStatement()) {
+            assertEquals(1, scalarLong(statement, """
+                    select count(*) from audit_log
+                    where target_id = 'retention-current'
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from audit_log
+                    where target_id = 'retention-to-archive'
+                    """));
+            assertEquals(1, scalarLong(statement, """
+                    select count(*) from audit_log_archive
+                    where target_id = 'retention-to-archive'
+                      and device_name = '车间平板'
+                      and device_model = 'UT-PAD-1'
+                      and device_platform = 'android'
+                      and device_installation_id =
+                          '123e4567-e89b-42d3-a456-426614174013'::uuid
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from audit_log_archive
+                    where target_id = 'retention-to-delete'
+                    """));
+        }
+        verify(audit).logExplicit(
+                eq(null),
+                eq("system"),
+                eq("delete"),
+                eq("audit_retention"),
+                contains("onlineRemoved=1"),
+                eq("success"));
+    }
+
+    @Test
+    void databaseAuditTriggerCopiesSanitizedDeviceSessionContext()
+            throws Exception {
+        UUID requestId = UUID.randomUUID();
+        UUID clientEventId = UUID.randomUUID();
+        UUID installationId = UUID.randomUUID();
+        try (Connection connection = openConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                setLocalConfig(connection, "app.audit_request_id", requestId.toString());
+                setLocalConfig(connection, "app.audit_device_context", """
+                        {
+                          "clientEventId":"%s",
+                          "installationId":"%s",
+                          "deviceName":"迁移测试设备",
+                          "manufacturer":"Uten",
+                          "model":"QA-DB-1",
+                          "platform":"windows",
+                          "osVersion":"Windows Test",
+                          "appVersion":"2.1.0",
+                          "appBuild":"db-test",
+                          "formFactor":"desktop",
+                          "browserName":"edge",
+                          "locale":"zh_CN",
+                          "timeZone":"China Standard Time",
+                          "timeZoneOffsetMinutes":480,
+                          "physicalDevice":true,
+                          "clientEventAt":"2026-07-31T02:00:00Z",
+                          "captureStatus":"present",
+                          "profileHash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        }
+                        """.formatted(clientEventId, installationId));
+                try (Statement statement = connection.createStatement()) {
+                    statement.executeUpdate("""
+                            update system_settings
+                            set description = description
+                            where key = 'export_max_rows'
+                            """);
+                    assertTrue(scalarBoolean(statement, """
+                            select exists (
+                                select 1 from audit_log
+                                where request_id = '%s'::uuid
+                                  and client_event_id = '%s'::uuid
+                                  and device_installation_id = '%s'::uuid
+                                  and device_name = '迁移测试设备'
+                                  and device_manufacturer = 'Uten'
+                                  and device_model = 'QA-DB-1'
+                                  and device_platform = 'windows'
+                                  and device_time_zone_offset_minutes = 480
+                                  and device_is_physical
+                                  and client_event_at = '2026-07-31T02:00:00Z'::timestamptz
+                                  and device_capture_status = 'present'
+                            )
+                            """.formatted(requestId, clientEventId, installationId)));
+                }
+            } finally {
+                connection.rollback();
+            }
+            try (Statement statement = connection.createStatement()) {
+                assertEquals("", scalarString(statement, """
+                        select coalesce(
+                            current_setting('app.audit_device_context', true),
+                            '')
+                        """));
+            }
         }
     }
 
@@ -517,6 +894,26 @@ class SecurityPermissionMigrationTest {
                 POSTGRES.getJdbcUrl(),
                 POSTGRES.getUsername(),
                 POSTGRES.getPassword());
+    }
+
+    private void executeDepartmentPermissionWrite(
+            String sql,
+            String permissionCode) throws Exception {
+        try (Connection connection = openConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, permissionCode);
+            statement.executeUpdate();
+        }
+    }
+
+    private void setLocalConfig(Connection connection, String name, String value)
+            throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "select set_config(?, ?, true)")) {
+            statement.setString(1, name);
+            statement.setString(2, value);
+            statement.executeQuery().close();
+        }
     }
 
     private boolean toggleLike(

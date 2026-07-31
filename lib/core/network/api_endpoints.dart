@@ -7,10 +7,15 @@ abstract final class ApiEndpoints {
   static const authChangePassword = '/auth/change-password';
   static const authMe = '/auth/me';
 
+  // 工作台权限化聚合读模型
+  static const dashboardOverview = '/dashboard/overview';
+
   // 部门
   static const departmentsTree = '/org/departments/tree';
   static String departmentSubtree(String id) => '/org/departments/$id/subtree';
   static String department(String id) => '/org/departments/$id';
+  static String departmentWorkforceOverview(String id) =>
+      '/org/departments/$id/workforce-overview';
   static const departments = '/org/departments';
 
   // 货品资料分类（基础资料 / master-data）
@@ -113,6 +118,7 @@ abstract final class ApiEndpoints {
 
   // 库存查询（库存管理）：当前余额 + 出入库流水。
   static const stockBalances = '/stock/balances';
+  static const stockBalanceAdjust = '/stock/balances/adjust';
   static const stockMovements = '/stock/movements';
   // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
   static const stockInstantInventory = '/stock/instant-inventory';
@@ -152,6 +158,8 @@ abstract final class ApiEndpoints {
 
   // 账号管理（HR）
   static const adminUsers = '/admin/users';
+  static String adminUserByEmployee(String employeeId) =>
+      '/admin/users/by-employee/$employeeId';
   static String userLock(String id) => '/admin/users/$id/lock';
   static String userUnlock(String id) => '/admin/users/$id/unlock';
   static String userDisable(String id) => '/admin/users/$id/disable';
@@ -184,8 +192,12 @@ abstract final class ApiEndpoints {
   static String dataScopeOwners(String scope) =>
       '/admin/data-scope-owners?scope=$scope';
 
-  /// 审计日志（导出下载 / 登录 / 改密 等全员审计；超管只读）
+  /// 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const adminAuditLogs = '/admin/audit-logs';
+
+  /// 联网授权并审计一次本机操作回执核查。
+  static String adminAuditLocalReceiptVerification(String operationId) =>
+      '$adminAuditLogs/local-receipt-verifications/$operationId';
 
   /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
@@ -240,7 +252,9 @@ abstract final class ApiEndpoints {
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';
+  static const noticesTodos = '/notices/todos';
   static String noticeRead(String id) => '/notices/$id/read';
+  static String noticeComplete(String id) => '/notices/$id/complete';
 
   // 建议箱（广场/我的/提交/点赞/官方回复；后端 features/suggestion/SuggestionController）
   static const suggestions = '/suggestions';

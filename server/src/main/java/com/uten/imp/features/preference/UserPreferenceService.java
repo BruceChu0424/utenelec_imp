@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ public class UserPreferenceService {
     private final UserPreferenceRepository repo;
     private final SecurityContextCurrentUser currentUser;
     private final ObjectMapper objectMapper;
+    private final TxSessionVars tx;
 
     /** 当前用户全部偏好：key → 任意 JSON value。 */
     @Transactional(readOnly = true)
@@ -48,6 +50,7 @@ public class UserPreferenceService {
     @Transactional
     public void put(String key, JsonNode value) {
         UUID userId = requireStaffId();
+        tx.bind();
         if (key == null || key.isBlank() || key.length() > MAX_KEY_LENGTH) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "偏好键长度须为 1-" + MAX_KEY_LENGTH + " 字符");
         }

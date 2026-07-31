@@ -7,11 +7,13 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../audit/device_audit_store.dart';
 import '../security/secure_storage.dart';
 import 'api_base_url.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
 import 'interceptors/auth_interceptor.dart';
+import 'interceptors/device_audit_interceptor.dart';
 import 'interceptors/safe_request_retry_interceptor.dart';
 import 'network_policy.dart';
 
@@ -47,6 +49,40 @@ class ApiClient {
         return (data['data'] as List).cast<Map<String, dynamic>>();
       }
       return const [];
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
+  /// Reads endpoints that return a JSON string array, such as UUID/code lists.
+  ///
+  /// This stays separate from the object-array contract in [getList] so a
+  /// `List<String>` cannot be silently converted or unsafely cast by callers.
+  Future<List<String>> getStringList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    try {
+      final r = await _dio.get<dynamic>(path, queryParameters: query);
+      final data = r.data;
+      final raw = data is List
+          ? data
+          : data is Map && data['data'] is List
+          ? data['data'] as List<dynamic>
+          : null;
+      if (raw == null) {
+        throw const FormatException('Response is not a string array');
+      }
+      return raw
+          .map((item) {
+            if (item is! String) {
+              throw const FormatException(
+                'String array contains a non-string item',
+              );
+            }
+            return item;
+          })
+          .toList(growable: false);
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -197,8 +233,22 @@ class ApiClient {
 /// 全局 API 客户端 Provider。
 final apiClientProvider = Provider<ApiClient>((ref) {
   final storage = ref.watch(secureStorageProvider);
+  final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
+  Dio auditedDioFactory() {
+    final client = Dio(buildApiBaseOptions(apiBaseUrl));
+    client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
+    return client;
+  }
+
   final dio = Dio(buildApiBaseOptions(apiBaseUrl));
-  dio.interceptors.add(AuthInterceptor(storage: storage, baseUrl: apiBaseUrl));
+  dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
+  dio.interceptors.add(
+    AuthInterceptor(
+      storage: storage,
+      baseUrl: apiBaseUrl,
+      dioFactory: auditedDioFactory,
+    ),
+  );
   dio.interceptors.add(SafeRequestRetryInterceptor(dio));
   return ApiClient(dio);
 });

@@ -29,15 +29,31 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
   账号一旦存在，启动器严格跳过，不会把人工撤销的超级管理员权限重新授回。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V147；目标库实际版本以 `flyway_schema_history` 为准）。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V173；目标库实际版本以 `flyway_schema_history` 为准）。
 - 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统 → `V13` 访客权限拆分 → `V14` 车牌加密 → `V15` 访客通行码 → `V16` 超管 → `V17` 种子 admin 文档 → `V18` 个人信息修改申请 → `V19` 修改审批权限点 → `V20` 修改申请审计列 → `V21` 权限管理体系（部门默认角色 `department_roles` + 个人权限覆盖 `user_permission_overrides`，见 [ADR-007](../docs/99-决策记录-ADR/ADR-007-导航重构与三层权限模型.md)）→ `V22` 审计覆盖扩展（部门角色/权限覆盖/紧急联系人补触发器）→ `V23` 修复 V18 坏审计触发器（个人信息修改链路的部署级阻断 bug，见 [ADR-009](../docs/99-决策记录-ADR/ADR-009-后端安全加固与功能补全.md)）→ `V24` 岗位模板种子（ADR-010）→ `V25` 决策支持独立权限点 `analytics:view` → `V26` 工资条生成权限移交财务 → `V27` 部门直配权限点 `department_permissions` + 用户偏好 `user_preferences`（[ADR-011](../docs/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）→ `V28` 权限目录分组名中文化 → `V29` **角色体系下线**（存量角色权限沉淀为部门配置，PermissionResolver 不再读 user_roles/department_roles）→ `V30` 敏感字段脱敏按权限点化（新增 `employee:pii:view`）→ …（`V31`–`V63` 各业务模块迁移，详见 migration 目录）→ `V64` 下线决策支持模块，删除 `analytics:view` 权限点（前端 `/analytics/*` 路由与工作台卡片同步移除）→ …（`V65`–`V120` 销售/采购/委外/仓库/生产/钱流/通知/建议/归属隔离/业务链 V90–V100，详见 [docs/数据迁移/41 需求落地总路线图](../docs/数据迁移/41-需求落地总路线图.md)）→ `V121` 客户铺底额 → `V122` **总账子系统**（`gl_vouchers`/`gl_entries` + `account_style_id()` 函数，科目复用 payment_styles 树，docs 44）→ `V123` 固定资产折旧+长期待摊（`fixed_assets`/`deferred_expenses`/计提日志 + 科目种子 /152/ 累计折旧·折旧费·摊销费，docs 45）→ `V124` 出货财务审核（`sales_shipments.finance_audit`）+ 费用单总账状态（`finance_expenses.gl_status`，docs 46）。
-- `V125`–`V147`：人员 ID 回填、生产计划关联/看板、货品来源、数据完整性与长期索引、权限边界拆分、物化视图刷新状态、采购/销售/委外累计数量约束、工资/员工报销领域、迁移追溯、access JWT 授权版本、财税部报销付款权限、按 owner 聚合/索引的销售月报、工资/报销、访客、财务资产与建议长期分页索引、员工 PII/薪酬独立写权限，以及跨单据交易/上游订货分配不变量的数据库兜底。PostgreSQL 16.14 全新库已应用 128 个迁移到 V147。现有开发库（2,234,077,667 bytes / 2130.58 MiB）在本轮数据库实查时仍为 V144、失败 0；其 835 个约束中 834 validated，1,031 个索引全部 valid/ready，V142+V144 有 6 个完整性触发器，V142 三项和 V144 两项回滚式主动探针均被拒绝且未留测试数据。开发库及任何目标库仍须先备份并演练 V145–V147。V134 的表结构不代表增量 loader 或全模块自动对账已经实现；V135 的源码存在也不代表权限失效覆盖矩阵和逐请求查询性能已经验收；V137 重建物化视图，升级窗口须纳入耗时和并发刷新验证；V138–V143 的索引仍须以生产同构查询计划和 P95/P99 关闭性能风险；V141 的字段级写权限和 V142/V144 的跨单据兜底须做真实 HTTP/业务矩阵。
+- `V125`–`V147`：人员 ID 回填、生产计划关联/看板、货品来源、数据完整性与长期索引、权限边界拆分、物化视图刷新状态、采购/销售/委外累计数量约束、工资/员工报销领域、迁移追溯、access JWT 授权版本、财税部报销付款权限、按 owner 聚合/索引的销售月报、工资/报销、访客、财务资产与建议长期分页索引、员工 PII/薪酬独立写权限，以及跨单据交易/上游订货分配不变量的数据库兜底。2026-07-30 的 PostgreSQL 16.14 空库基线已应用 128 个迁移到 V147；其开发库探针和生产验收边界保留在当日[生产就绪审计报告](../docs/99-项目治理/2026-07-30-生产就绪审计报告.md)，不得误作当前最高版本。
 - `V145` 把货品价格从二进制浮点收敛为 `NUMERIC(18,4)` 并由 Java `BigDecimal` 对齐；
   `V146` 让后续通用审计在复制 before/after 前移除密文、HMAC、凭证与直接身份字段，不在
   Flyway 长事务内无界重写历史审计；`V147` 增加独立的高阈值鉴权 IP 粗桶设置。历史审计若需
   保留，应按主键范围分批脱敏并 `VACUUM`；V145–V147 均须在生产同构副本复跑迁移与回滚验收。
+- `V148`–`V168` 落地通知定向受众、生产物料履约/执行分段/供应转换/追加式台账与约束、Outbox、
+  工作台概览、特权库存调整及旧数据修复；`V169` 增加审计风险、分类与 API/公开业务表完整覆盖，
+  `V170` 增加人力概览索引，`V171` 增加独立导出权限和可配置两阶段留存，`V172` 增加设备证据与
+  本机关联，`V173` 增加独立查看权限并在服务层/数据库层禁止部门授予两个审计权限。当前目录共 154
+  个版本化 SQL；2026-07-31 定向 PostgreSQL 16 空库验证已完整应用到 V173。
+- `V167` 的余额调整使用独立 `stock:balance:adjust`，迁移不默认授予部门；
+  `POST /api/stock/balances/adjust` 在 Controller 与 Service 双层鉴权，以库存锁 + `expectedQty`
+  防止陈旧覆盖，以服务端保留前缀和部分唯一索引保证幂等，并在同一事务生成已审核 `CHECK`、
+  9/10 流水和余额变化。完整权限、API、成本及历史边界见
+  [仓库盘点修正与历史单据处理](../docs/数据迁移/50-仓库盘点修正与历史单据处理.md)。
 - 机密 PII（身份证/手机/银行卡/薪资/车牌）用 pgcrypto 字段级加密；主密钥走环境变量 `UTEN_PGP_MASTER_KEY`，每事务 `SET LOCAL app.pgp_key`。
-- 审计：`UserOperationAuditInterceptor` 为所有认证后的 `POST/PUT/PATCH/DELETE` 请求记录账号、方法、路径、结果/状态码、耗时、IP 与 UA，且刻意不保存请求正文以避免复制密码/PII；关键表再由 `AFTER` 触发器提供 before/after，显式安全/业务事件走 `AuditService`。通用请求审计不等于所有表都有 before/after，上线前仍须完成“写端点→业务事件→表触发器”矩阵验收。
+- 审计：`AuditRequestContextFilter` 与 MVC 拦截器共同覆盖进入应用的
+  `GET/POST/PUT/PATCH/DELETE/HEAD /api/**`，包括匿名认证、401、CORS 非法来源 403、404/405 和
+  MVC 前异常；有效 JWT 绑定 request 级 actor 快照，无效令牌不绑定身份。请求层记录方法、路径、
+  结果/状态码、耗时、IP、UA 与设备关联，但不保存 query 值或正文；显式安全/业务事件走
+  `AuditService`，V169 为公开业务表变化补脱敏 `AFTER` before/after。审计中心只允许超级管理员或获
+  个人 `audit_log:view` 授权的核查人员只读访问；导出还需 `audit_log:export`、文件密码与 Agile
+  AES-256。在线/归档记录没有人工编辑或删除 API，只能由 V171 留存任务先归档后按期删除。
 - 并发：员工档案写路径全量手动递增 `version`，修改申请审批时版本不符 → 409 防丢更新（ADR-009 §1）；V132 在数据库侧用 12 个触发器保护采购/销售/委外累计收、发、退数量，避免并发审批突破来源数量。V132 不改写历史异常，只允许其向合法方向减少。
 
 ## 包结构（模块化单体，见 [ADR-008](../docs/99-决策记录-ADR/ADR-008-后端代码结构重构.md) 与 [ADR-017](../docs/99-决策记录-ADR/ADR-017-模块化单体与异步旁路.md)）
@@ -51,7 +67,7 @@ com.uten.imp
 │  └─ web/                    ApiException · ErrorCode · PageResponse · Pageables · 全局异常处理
 ├─ security/               安全基础设施：JwtService · JwtAuthFilter · AuthUser · TxSessionVars
 │                             （事务会话变量+pgcrypto 加解密）· AdminGrantGuard · DataAccessPolicy
-├─ audit/                  审计写入（AuditService · AuditLog 实体/仓库）
+├─ audit/                  请求/显式事件/表变化审计 + 列表统计详情 + 风险解释 + 设备证据 + 加密导出 + 留存调度
 └─ features/               业务域
    ├─ auth/                   员工认证：AuthController · LoginService · PasswordService ·
    │  │                        TokenIssuer · PermissionResolver（全员基础 ∪ 部门配置含上级 ± 个人覆盖）· RefreshTokenService
@@ -117,6 +133,10 @@ com.uten.imp
 ## 安全要点（见顶层计划文档 §四、§十三）
 Argon2id 密码 · access JWT（源码默认 15 分钟，运行值可由系统设置覆盖；V133 只把未改过的旧默认 480 收敛到 15）+ 不透明轮换 refresh(7d, 哈希入库, 重用检测) · JWT 签发和解析都绑定非空 issuer（生产必须显式 `UTEN_JWT_ISSUER`，即使误用同一密钥也拒绝跨环境 token）· 登录采用账号/规范手机号低阈值 + IP 高阈值双桶并按员工/访客用途隔离 · 锁定 5/15min · 首登强制改密 · 密码历史最近 5 · DTO 按权限点脱敏（`employee:pii:view` / `employee:compensation:view`，V30 起不再按角色） · HTTPS 强制(prod) · 严格 CORS · 无堆栈泄露 · **每请求一次账号/授权版本投影复查**（锁定、停用或 V135 `auth_version`/授权 `epoch` 不匹配立即 401；拒绝响应序列化失败也不得继续过滤链）· **base/prod 关闭 swagger，dev 显式开放**（prod 为 404 + 白名单回落认证，ADR-009 §3）。未设置 `UTEN_PROFILE` 时按 prod fail-closed；默认配置不处理 `Forwarded/X-Forwarded-*`，prod 才使用 `native`，Tomcat 只信任 `UTEN_TRUSTED_PROXY_REGEX`，且部署必须保证后端 8080 仅受信反向代理可达。鉴权/导出桶仍是单实例内存态，多实例部署需改共享状态或由网关兜底；导出另有进程内全局并发闸门（源码默认 2）。开发库已应用 V135；仍须完成个人、角色、部门树、共享权限和超管变化的真实 HTTP 负向矩阵与性能测试，才能认定权限回收即时失效。
 
+审计证据采用独立权限：超级管理员因固有全权限可查；普通用户、访客和未被点名授权的管理员均不可查。
+非超管只能由超级管理员以个人覆盖授予 `audit_log:view`，导出还须个人 `audit_log:export`；部门权限
+服务和 V173 数据库触发器都禁止这两个权限进入部门配置或随部门树继承。
+
 JSON Controller 请求体由 `JsonRequestBodyLimitAdvice` 统一限制，默认
 `UTEN_MAX_JSON_BODY_BYTES=1048576`（1 MiB），同时覆盖无 `Content-Length` 的 chunked 请求；
 超限固定返回 413 `PAYLOAD_TOO_LARGE`，畸形 JSON/类型固定返回 400 `MALFORMED_REQUEST`。
@@ -170,10 +190,11 @@ Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地�
 中国大陆环境还须执行
 [中国大陆部署与兼容性](../docs/99-项目治理/中国大陆部署与兼容性.md)。
 
-本轮最终工作树已执行 `UTEN_RUN_DB_TESTS=true mvn verify`：81.369 秒、退出码 0，
-56 份 Surefire XML 精确汇总 178 tests、0 failures、0 errors、0 skipped；完整编译 842 个 main
-与 56 个 test 源文件，并在 PostgreSQL 16.14 空库完成 128 个迁移到 V147。该本地结果仍不替代远端受保护分支 CI、真实 HTTP 权限/E2E 与生产同构
-发布演练。
+2026-07-30 完整基线曾执行 `UTEN_RUN_DB_TESTS=true mvn verify`：178 tests、0 failures/errors/skipped，
+并在 PostgreSQL 16.14 空库完成 128 个迁移到 V147。2026-07-31 审计中心变更另完成 Flutter 定向
+28 tests、定向 analyze 无问题，后端核心 55 tests、安全链 17 tests、PostgreSQL 定向 8 tests，
+空库完整应用 154 个迁移到 V173。后者是审计功能的定向证据，不替代合并后全量远端 CI、真实 HTTP
+权限/E2E、生产同构迁移和发布演练。
 
 ## 依赖安全基线
 

@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -33,6 +34,7 @@ public class SystemSettingsService {
     private final AuditService audit;
     private final PasswordEncoder passwordEncoder;
     private final UserAccountRepository userRepo;
+    private final TxSessionVars tx;
 
     public int readInt(String key, int def) {
         return repo.findById(key).map(s -> parseInt(s.getValue(), def)).orElse(def);
@@ -51,6 +53,7 @@ public class SystemSettingsService {
     @Transactional
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public SystemSettingDto write(String key, String value, String password, UUID actorId, String actorAccount) {
+        tx.bindActor(actorId, actorAccount);
         // ① 二次密码确认：系统设置是安全/业务策略的高危配置，即使 access token 泄露，改设置还需账号密码。
         UserAccount user = userRepo.findById(actorId)
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED, "用户不存在"));
@@ -82,6 +85,23 @@ public class SystemSettingsService {
                 case "int" -> {
                     int v = Integer.parseInt(value);
                     if (v < 0) throw new ApiException(ErrorCode.VALIDATION_FAILED, label + " 不能为负数");
+                    if ("export_max_rows".equals(key) && (v < 1 || v > 100_000)) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_FAILED,
+                                label + " 必须在 1 至 100000 行之间");
+                    }
+                    if ("audit_hot_retention_months".equals(key)
+                            && (v < 1 || v > 120)) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_FAILED,
+                                label + " 必须在 1 至 120 个月之间");
+                    }
+                    if ("audit_archive_retention_months".equals(key)
+                            && v > 240) {
+                        throw new ApiException(
+                                ErrorCode.VALIDATION_FAILED,
+                                label + " 必须在 0 至 240 个月之间");
+                    }
                 }
                 case "long" -> {
                     long v = Long.parseLong(value);

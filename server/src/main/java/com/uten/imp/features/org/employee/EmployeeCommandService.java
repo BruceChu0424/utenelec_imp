@@ -62,6 +62,7 @@ public class EmployeeCommandService {
         tx.bind();
         Employee e = queryService.requireEmployee(id);
         assertSensitiveUpdateAllowed(id, r);
+        assertDepartmentChangeUsesTransfer(e, r.departmentId());
         if (nn(r.fullName())) e.setFullName(r.fullName());
         if (nn(r.gender())) e.setGender(r.gender());
         if (nn(r.birthDate())) e.setBirthDate(r.birthDate());
@@ -70,8 +71,6 @@ public class EmployeeCommandService {
         if (nn(r.maritalStatus())) e.setMaritalStatus(r.maritalStatus());
         if (nn(r.hujiAddress())) e.setHujiAddress(r.hujiAddress());
         if (nn(r.residenceAddress())) e.setResidenceAddress(r.residenceAddress());
-        if (r.departmentId() != null) e.setDepartment(deptRepo.findById(r.departmentId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在")));
         if (r.positionId() != null) e.setPosition(positionRepo.findById(r.positionId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "岗位不存在")));
         if (r.supervisorId() != null) e.setSupervisor(empRepo.findById(r.supervisorId())
@@ -223,14 +222,19 @@ public class EmployeeCommandService {
         if ("resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职，不可调岗");
         }
+        assertEffectiveDate(e, req.effectiveDate());
         Department to = deptRepo.findById(req.toDepartmentId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "目标部门不存在"));
         Position toPos = req.toPositionId() == null ? null : positionRepo.findById(req.toPositionId()).orElse(null);
 
+        UUID fromDepartmentId = e.getDepartment() == null
+                ? null
+                : e.getDepartment().getId();
+        boolean departmentChanged = !to.getId().equals(fromDepartmentId);
         EmploymentHistory h = new EmploymentHistory();
         h.setEmployee(e);
         h.setEventType("transfer");
-        h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
+        h.setFromDepartmentId(fromDepartmentId);
         h.setToDepartmentId(to.getId());
         h.setFromPositionId(e.getPosition() == null ? null : e.getPosition().getId());
         h.setToPositionId(toPos == null ? null : toPos.getId());
@@ -238,6 +242,7 @@ public class EmployeeCommandService {
         h.setRemark(req.remark());
         historyRepo.save(h);
 
+        if (departmentChanged) clearManagedDepartments(e);
         e.setDepartment(to);
         e.setPosition(toPos);
         if (req.supervisorId() != null) {
@@ -256,6 +261,7 @@ public class EmployeeCommandService {
         if ("resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职");
         }
+        assertEffectiveDate(e, req.effectiveDate());
         EmploymentHistory h = new EmploymentHistory();
         h.setEmployee(e);
         h.setEventType("resign");
@@ -264,6 +270,7 @@ public class EmployeeCommandService {
         h.setRemark(joinTypeAndReason(req.resignType(), req.reason()));
         historyRepo.save(h);
 
+        clearManagedDepartments(e);
         e.setStatus("resigned");
         e.setVersion(e.getVersion() + 1);   // 乐观锁：离职也是档案变更
         empRepo.save(e);
@@ -287,6 +294,23 @@ public class EmployeeCommandService {
             userRepo.save(u);
             refreshTokenRepo.revokeAllByUserId(u.getId());
         });
+    }
+
+    private void assertEffectiveDate(Employee employee, LocalDate effectiveDate) {
+        if (effectiveDate.isAfter(BusinessTime.today())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生效日期不能晚于今天");
+        }
+        if (employee.getHireDate() != null
+                && effectiveDate.isBefore(employee.getHireDate())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生效日期不能早于员工入职日期");
+        }
+        historyRepo.findFirstByEmployeeIdOrderByEventDateDescCreatedAtDesc(employee.getId())
+                .filter(latest -> latest.getEventDate().isAfter(effectiveDate))
+                .ifPresent(latest -> {
+                    throw new ApiException(
+                            ErrorCode.VALIDATION_FAILED,
+                            "生效日期不能早于最近一次任职事件日期 " + latest.getEventDate());
+                });
     }
 
     @PreAuthorize("hasAuthority('employee:edit')")
@@ -347,9 +371,11 @@ public class EmployeeCommandService {
         tx.bind();
         assertAccountOperationAllowed(id);
         Employee e = queryService.requireEmployee(id);
+        assertArchiveAllowed(e);
         e.setDeleted(true);
         e.setDeletedAt(OffsetDateTime.now());
         e.setVersion(e.getVersion() + 1);   // 乐观锁：软删也是档案变更
+        clearManagedDepartments(e);
         empRepo.save(e);
         // 连带停用登录账号并撤销令牌（H2）
         userRepo.findByEmployeeId(id).ifPresent(u -> {
@@ -357,6 +383,35 @@ public class EmployeeCommandService {
             userRepo.save(u);
             refreshTokenRepo.revokeAllByUserId(u.getId());
         });
+    }
+
+    private void clearManagedDepartments(Employee employee) {
+        List<Department> managed = deptRepo.findByManagerId(employee.getId());
+        if (managed.isEmpty()) return;
+        managed.forEach(department -> department.setManager(null));
+        deptRepo.saveAll(managed);
+    }
+
+    static void assertDepartmentChangeUsesTransfer(
+            Employee employee,
+            UUID requestedDepartmentId) {
+        if (requestedDepartmentId == null) return;
+        UUID currentDepartmentId = employee.getDepartment() == null
+                ? null
+                : employee.getDepartment().getId();
+        if (!requestedDepartmentId.equals(currentDepartmentId)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "调整员工部门请使用「调岗」功能，以保留完整任职记录");
+        }
+    }
+
+    static void assertArchiveAllowed(Employee employee) {
+        if (!"resigned".equals(employee.getStatus())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "在册员工不能直接删除档案，请先办理离职");
+        }
     }
 
     private static String joinTypeAndReason(String type, String reason) {

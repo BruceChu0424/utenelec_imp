@@ -154,8 +154,8 @@ class MasterDetailCard extends StatelessWidget {
         Expanded(child: titleColumn),
       ],
     );
-    if (!canEdit) return headerContent;
-    if (context.breakpoint.atLeastMedium) {
+    if (!canEdit && extraActions.isEmpty) return headerContent;
+    if (context.breakpoint.atLeastMedium && extraActions.length <= 1) {
       return Row(
         children: [
           Expanded(child: headerContent),
@@ -191,24 +191,26 @@ class MasterDetailCard extends StatelessWidget {
   /// 三按钮 + 额外操作，按顺序排列。
   List<Widget> _buildButtons() {
     return [
-      _action(
-        icon: Icons.add_rounded,
-        label: addChildLabel,
-        type: UtenButtonType.tonal,
-        onPressed: onAddChild,
-      ),
-      _action(
-        icon: Icons.edit_outlined,
-        label: '编辑', // TODO(l10n): 补 arb
-        type: UtenButtonType.tonal,
-        onPressed: onEdit,
-      ),
-      _action(
-        icon: Icons.delete_outline,
-        label: '删除', // TODO(l10n): 补 arb
-        type: UtenButtonType.danger,
-        onPressed: onDelete,
-      ),
+      if (canEdit) ...[
+        _action(
+          icon: Icons.add_rounded,
+          label: addChildLabel,
+          type: UtenButtonType.tonal,
+          onPressed: onAddChild,
+        ),
+        _action(
+          icon: Icons.edit_outlined,
+          label: '编辑', // TODO(l10n): 补 arb
+          type: UtenButtonType.tonal,
+          onPressed: onEdit,
+        ),
+        _action(
+          icon: Icons.delete_outline,
+          label: '删除', // TODO(l10n): 补 arb
+          type: UtenButtonType.danger,
+          onPressed: onDelete,
+        ),
+      ],
       for (final e in extraActions)
         _action(
           icon: e.icon,

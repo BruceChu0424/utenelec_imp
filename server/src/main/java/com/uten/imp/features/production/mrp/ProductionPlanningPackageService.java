@@ -13,6 +13,7 @@ import com.uten.imp.features.production.fulfillment.ProductionPlanningPackage;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
 import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -55,6 +56,7 @@ public class ProductionPlanningPackageService {
     private final com.uten.imp.features.stock.StockDocumentRepository stockDocumentRepo;
     private final com.uten.imp.features.stock.StockDocumentItemRepository stockDocumentItemRepo;
     private final com.uten.imp.common.docnumber.DocNumberService docNumberService;
+    private final TxSessionVars tx;
 
     @Transactional(readOnly = true)
     public PlanningPreviewResult preview(UUID planId, UUID warehouseId) {
@@ -84,6 +86,7 @@ public class ProductionPlanningPackageService {
     public PlanningPackageResult confirm(
             UUID planId,
             GeneratePlanningPackageRequest request) {
+        tx.bind();
         return executionCommand.confirm(planId, request);
     }
 
@@ -345,6 +348,7 @@ public class ProductionPlanningPackageService {
             UUID planId,
             UUID packageId,
             PlanningPackageLifecycleRequest request) {
+        tx.bind();
         return lifecycle(
                 planId,
                 packageId,
@@ -357,6 +361,7 @@ public class ProductionPlanningPackageService {
             UUID planId,
             UUID packageId,
             PlanningPackageLifecycleRequest request) {
+        tx.bind();
         return lifecycle(
                 planId,
                 packageId,

@@ -42,4 +42,43 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
               AND (s IS NULL OR (s.deletedAt IS NULL AND s.readAt IS NULL))
             """)
     long countVisibleUnread(@Param("userId") UUID userId);
+
+    @Query("""
+            SELECT n
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE n.kind = 'TODO'
+              AND (
+                    (n.audienceUserId IS NULL AND n.audienceScope = 'all')
+                    OR n.audienceUserId = :userId
+                    OR (n.audienceScope = 'selected' AND s IS NOT NULL)
+                  )
+              AND (s IS NULL OR (s.deletedAt IS NULL AND s.taskCompletedAt IS NULL))
+            ORDER BY
+              CASE WHEN n.dueAt IS NULL THEN 1 ELSE 0 END,
+              n.dueAt,
+              CASE n.priority
+                WHEN 'urgent' THEN 0
+                WHEN 'important' THEN 1
+                ELSE 2
+              END,
+              n.publishedAt DESC
+            """)
+    List<Notice> findPendingTodos(@Param("userId") UUID userId, Pageable pageable);
+
+    @Query("""
+            SELECT COUNT(n)
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE n.kind = 'TODO'
+              AND (
+                    (n.audienceUserId IS NULL AND n.audienceScope = 'all')
+                    OR n.audienceUserId = :userId
+                    OR (n.audienceScope = 'selected' AND s IS NOT NULL)
+                  )
+              AND (s IS NULL OR (s.deletedAt IS NULL AND s.taskCompletedAt IS NULL))
+            """)
+    long countPendingTodos(@Param("userId") UUID userId);
 }

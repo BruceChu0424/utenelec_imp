@@ -63,6 +63,16 @@ public class UserAccountAdminService {
         return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
     }
 
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    @Transactional(readOnly = true)
+    public UserSummary getByEmployeeId(UUID employeeId) {
+        UserAccount user = userRepo.findByEmployeeId(employeeId)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND, "该员工未开通可用账号，无法设置权限"));
+        return toSummary(user);
+    }
+
     private UserSummary toSummary(UserAccount u) {
         Employee e = empRepo.findById(u.getEmployeeId()).orElse(null);
         Department dept = e == null ? null : e.getDepartment();

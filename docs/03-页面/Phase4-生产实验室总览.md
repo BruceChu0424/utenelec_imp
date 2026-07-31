@@ -8,7 +8,7 @@
 >
 > 📍 **现状（2026-07-27）**：业务落地后**生产 / 仓库 / 库存查询已接真实后端**（老库 `F_`/库存/出入库全量迁移），其中：
 > - **生产管理**演化为独立业务模块（生产计划单 / 生产日报表 / BOM 成本展开只读 + 2 张生产报表），路由前缀 `/production`，见 [页面总览 §业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端)。
-> - **库存查询 + 出入库记录** 由新 `stock` 模块覆盖（`/stock`、`/stock/movement`，真实后端）。
+> - **即时库存 + 库存余额 + 出入库流水** 由 `stock` 模块覆盖（`/stock/instant-inventory`、`/stock/balance`、`/stock/movement`，真实后端）。
 > - **仓库管理**（9 类出入库单据 + 14 张报表）作为独立模块 `/warehouse` 上线。
 > - **实验室检测 / 空调控制** 当前仍为前端实现（设备/检测类，未在老库迁移范围），待后续接入真实后端。
 > - 原「流水线看板 / 产量录入 / 产量统计」只有产品草案；对应路由和页面源码均未注册。
@@ -32,8 +32,8 @@
 | 6 | 流水线看板 | `/production/line` | [流水线看板页.md](流水线看板页.md) | ⛔ 未实施提案；现有排程/进度页可能替代 |
 | 7 | 产量录入 | `/production/output/entry` | [产量录入页.md](产量录入页.md) | ⛔ 未实施提案；先确认与生产日报是否重复 |
 | 8 | 产量统计 | `/production/output` | [产量统计页.md](产量统计页.md) | ⛔ 未实施提案；优先扩展真实生产报表 |
-| 9 | 库存查询 | `/stock/balance` | 见 [§业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端) | ✅ 真实后端（新 `stock` 模块） |
-| 10 | 出入库记录 | `/stock/movement` | 见 [§业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端) | ✅ 真实后端（新 `stock` 模块） |
+| 9 | 库存余额 | `/stock/balance` | [库存余额页.md](库存列表页.md) | ✅ 真实后端；授权人员可生成审计 `CHECK` |
+| 10 | 出入库流水 | `/stock/movement` | [出入库记录页.md](出入库记录页.md) | ✅ 真实后端；9/10 流水可回查 `CHECK` |
 
 > ✅ **业务模块已落地**（不在原 10 页 UX 内，独立 hub 页）：生产管理 `/production`、仓库管理 `/warehouse`，详见 [页面总览 §业务单据与报表](页面总览.md#业务单据与报表2026-07-新增全真实后端)。
 
@@ -46,7 +46,7 @@
 | 流水线/产量* | ❌ | ✅ | ✅只读 | ✅ | ❌ |
 | 库存* | ❌ | ✅ | ✅只读 | ✅ | ❌ |
 
-权限点（现行，按部门/个人配置）：`lab:test:view/upload`、`production:view`、`stock:view`、`stock_report:view/export`、`production_report:view/export`、`production_where_used:view`、`warehouse:*`。
+权限点（现行，按部门/个人配置）：`lab:test:view/upload`、`production:view`、`stock:view`、`stock_report:view/export`、`production_report:view/export`、`production_where_used:view`、`warehouse:*`。`stock:balance:adjust` 是默认不授部门的独立高风险动作权限，不随 `stock:view` 自动获得。
 
 ## 四、共同特征
 - **平板优先**：多为数据录入/看板，桌面/平板用 `MasterDataTableView` + 看板，手机简化。
@@ -61,7 +61,7 @@
 `UtenForm`、`UtenStatCard`、`UtenSwitch`、`UtenSlider` 或 `UtenConfirmDialog`。
 
 ## 六、涉及实体
-`LabTest`/`LabSample`/`LabReport`/`LabEquipment`（实验室，待入库）；`HvacDevice`/`Building`/`Floor`（空调，待入库）；`production_plans`/`production_daily_reports`/`production_plan_cost_items`（生产，已落库）；`stock_documents`/`stock_movements`/`stock_balance`（库存/出入库，已落库）。
+`LabTest`/`LabSample`/`LabReport`/`LabEquipment`（实验室，待入库）；`HvacDevice`/`Building`/`Floor`（空调，待入库）；`production_plans`/`production_daily_reports`/`production_plan_cost_items`（生产，已落库）；`stock_documents` / `stock_document_items` / `stock_movements` / `stock_balances`（库存/出入库，已落库）。
 
 ## 七、推进顺序
 实验室（检测上传→列表→报告，待后端接入）→ 空调（总览→控制，待后端接入）。旧流水线/产量
@@ -70,5 +70,5 @@
 
 ---
 
-**最后更新**：2026-07-30 · **状态**：生产/仓库/库存已接真实后端；实验室/空调仍是前端演示；
+**最后更新**：2026-07-31 · **状态**：生产/仓库/库存已接真实后端，余额授权调整规则已同步；实验室/空调仍是前端演示；
 流水线/产量旧路由未实施，不能计入生产能力。

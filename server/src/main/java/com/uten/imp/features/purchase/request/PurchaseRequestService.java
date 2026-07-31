@@ -8,6 +8,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.request.dto.RequestDetail;
 import com.uten.imp.features.purchase.request.dto.RequestItemDto;
 import com.uten.imp.features.purchase.request.dto.RequestItemLine;
@@ -54,6 +55,7 @@ public class PurchaseRequestService {
     private final DocNumberService docNumberService;
     private final jakarta.persistence.EntityManager em;
     private final ProductionSupplySourceGuard productionSourceGuard;
+    private final PurchaseLineUnitPolicy lineUnitPolicy;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -130,8 +132,10 @@ public class PurchaseRequestService {
         PurchaseRequest r = requireRequestForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
-        if (itemRepo.findByRequestIdOrderByLineNoAsc(id).isEmpty())
+        List<PurchaseRequestItem> items = itemRepo.findByRequestIdOrderByLineNoAsc(id);
+        if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        normalizePersistedItemUnits(items);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         requestRepo.save(r);
@@ -171,15 +175,19 @@ public class PurchaseRequestService {
         List<RequestItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (RequestItemLine l : lines) {
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             PurchaseRequestItem it = new PurchaseRequestItem();
             it.setRequestId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
+            it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
-            it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            it.setUnitId(resolvedUnit.unitId());
+            it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
@@ -193,6 +201,20 @@ public class PurchaseRequestService {
             auto++;
         }
         return out;
+    }
+
+    private void normalizePersistedItemUnits(List<PurchaseRequestItem> items) {
+        int fallbackLineNo = 1;
+        for (PurchaseRequestItem item : items) {
+            int lineNo = item.getLineNo() != null ? item.getLineNo() : fallbackLineNo;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            item.getGoodsId(), item.getUnitId(), item.getUnitRate(), lineNo);
+            item.setUnitId(resolvedUnit.unitId());
+            item.setUnitRate(resolvedUnit.unitRate());
+            fallbackLineNo++;
+        }
+        itemRepo.saveAll(items);
     }
 
     private void applyTotals(PurchaseRequest r, List<RequestItemDto> items) {

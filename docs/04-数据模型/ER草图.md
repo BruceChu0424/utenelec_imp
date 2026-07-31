@@ -18,11 +18,12 @@ erDiagram
     Employee ||--o{ Notice : "发布(hr)"
     Employee ||--o{ Suggestion : "提交"
     Employee ||--o{ LabTest : "上传(lab)"
-    Employee ||--o{ ProductionOutput : "录入"
+    Employee ||--o{ ProductionExecutionSegment : "负责"
     PayrollSlip ||--|{ PayrollItem : "包含"
     ExpenseClaim ||--|{ ExpenseItem : "包含"
     ExpenseClaim ||--o{ ExpenseApproval : "经过"
-    Notice ||--o{ NoticeReadRecord : "被读"
+    Notice ||--o{ NoticeUserState : "接收快照/状态"
+    User ||--o{ NoticeUserState : "接收/已读/删除"
     Suggestion ||--o{ SuggestionReply : "回复"
     LabTest ||--|| LabSample : "测"
     LabTest ||--|| LabReport : "产出"
@@ -30,14 +31,16 @@ erDiagram
     HvacDevice }o--|| Floor : "在"
     Building ||--|{ Floor : "包含"
     HvacDevice ||--o{ HvacCommand : "被控"
-    ProductionLine ||--o{ ProductionOutput : "产出"
-    ProductionShift ||--o{ ProductionOutput : "班次"
-    ProductionOrder ||--o{ ProductionOutput : "工单"
-    Product ||--o{ ProductionOutput : "产品"
-    Material ||--o{ InventoryStock : "库存"
-    Warehouse ||--o{ InventoryStock : "在"
-    InventoryMovement }o--|| Material : "物料"
-    InventoryMovement }o--|| Warehouse : "仓库"
+    ProductionPlan ||--|{ ProductionPlanItem : "包含"
+    ProductionPlan ||--o{ ProductionPlanningPackage : "确认批次"
+    ProductionPlanningPackage ||--|{ ProductionExecutionSegment : "生成"
+    ProductionExecutionSegment ||--|{ ProductionMaterialDemand : "需要"
+    ProductionMaterialDemand ||--o{ ProductionMaterialSupplyPeg : "挂未来供给"
+    ProductionMaterialDemand ||--o{ StockReservation : "占现货"
+    ProductionExecutionSegment ||--o{ ExecutionSegmentSalesAllocation : "销售归属"
+    Warehouse ||--o{ StockBalance : "仓库余额"
+    Goods ||--o{ StockBalance : "货品余额"
+    StockDocument ||--|{ StockDocumentItem : "库存单据"
 ```
 
 > 当前是骨架图，字段暂略。字段在 [实体字典.md](实体字典.md) 中维护。
@@ -103,26 +106,51 @@ erDiagram
     HvacDevice ||--o{ HvacCommand : "指令历史"
 ```
 
-### 2.7 生产
+### 2.7 生产履约（当前 V150–V164）
+
+> 执行段是计划明细的执行批次，不是新的父生产计划；物料需求、现货占用和未来供给分别记录，不能用一个状态字段互相替代。
 
 ```mermaid
 erDiagram
-    ProductionLine ||--o{ ProductionOutput : "产出"
-    ProductionShift ||--o{ ProductionOutput : "班次"
-    ProductionOrder ||--o{ ProductionOutput : "工单"
-    Product ||--o{ ProductionOutput : "产品"
-    ProductionLine ||--o{ ProductionShift : "排班"
+    ProductionPlan ||--|{ ProductionPlanItem : "包含"
+    ProductionPlan ||--o{ ProductionPlanningPackage : "确认批次"
+    ProductionPlanningPackage ||--|{ ProductionExecutionSegment : "生成"
+    ProductionPlanItem ||--o{ ProductionExecutionSegment : "拆分"
+    ProductionExecutionSegment ||--|{ ProductionMaterialDemand : "逐料需求"
+    ProductionMaterialDemand ||--o{ ProductionMaterialSupplyPeg : "采购/委外供给"
+    ProductionMaterialDemand ||--o{ StockReservation : "现货占用"
+    ProductionExecutionSegment ||--o{ ProductionExecutionSegmentEvent : "执行事件"
+    ProductionExecutionSegment ||--o{ ExecutionSegmentSalesAllocation : "销售归属"
+    PlanOrderItemLink ||--o{ ExecutionSegmentSalesAllocation : "提供容量"
 ```
 
-### 2.8 库存
+### 2.8 库存与领退耗
 
 ```mermaid
 erDiagram
-    Material ||--o{ InventoryStock : "余量"
-    Warehouse ||--o{ InventoryStock : "存放"
-    InventoryMovement }o--|| Material : "物料"
-    InventoryMovement }o--|| Warehouse : "仓库"
+    Warehouse ||--o{ StockBalance : "仓库余额"
+    Goods ||--o{ StockBalance : "货品余额"
+    Warehouse ||--o{ StockMovement : "仓库流水"
+    Goods ||--o{ StockMovement : "货品流水"
+    StockDocument ||--|{ StockDocumentItem : "包含"
+    StockDocument ||--o{ StockMovement : "来源单据"
+    StockDocumentItem ||--o{ StockMovement : "来源明细"
+    Warehouse ||--o{ StockReservation : "仓库占用"
+    Goods ||--o{ StockReservation : "货品占用"
+    ProductionMaterialDemand ||--o{ StockReservation : "占用"
+    ProductionMaterialStockEvent ||--|{ ProductionMaterialStockPosting : "领退料分摊"
+    StockDocumentItem ||--o{ ProductionMaterialStockPosting : "来源单据行"
+    ProductionMaterialDemand ||--o{ ProductionMaterialStockPosting : "归属需求"
+    StockReservation ||--o{ ProductionMaterialStockPosting : "消费/恢复占用"
+    ProductionMaterialSettlementEvent ||--|{ ProductionMaterialSettlementPosting : "清料"
+    ProductionMaterialDemand ||--o{ ProductionMaterialSettlementPosting : "消耗/损耗/在制"
 ```
+
+普通盘点和授权余额调整都走 `StockDocument(CHECK) → StockDocumentItem → StockMovement(9/10) → StockBalance`；
+快捷调整不会建立第二套日志实体，也不会改写 `StockReservation`。库存物理结构与调整边界分别见
+[仓库设计](../数据迁移/17-仓库管理-新库与迁移.md)和
+[盘点修正文档](../数据迁移/50-仓库盘点修正与历史单据处理.md)。生产领退耗的完整表职责、数量守恒和
+写入顺序见[生产履约 V1 实体关系与数量权威](生产履约V1实体关系.md)。
 
 ### 2.9 审批流（未来目标，不是当前 ER）
 
@@ -167,4 +195,4 @@ erDiagram
 
 ---
 
-**最后更新**：2026-07-21 · **状态**：骨架已立，待随页面细化
+**最后更新**：2026-07-31 · **状态**：生产履约/通知关系已对齐 V165 发布基线，其余模块继续随实体字典校准

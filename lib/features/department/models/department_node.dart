@@ -21,6 +21,7 @@ class DepartmentNode {
     required this.level,
     required this.children,
     this.parentId,
+    this.managerId,
     this.managerName,
     this.sortOrder,
     this.headcount,
@@ -31,6 +32,7 @@ class DepartmentNode {
   final String name;
   final String level;
   final String? parentId;
+  final String? managerId;
   final String? managerName;
   final int? sortOrder;
   final int? headcount;
@@ -46,6 +48,7 @@ class DepartmentNode {
       name: json['name'] as String,
       level: json['level'] as String,
       parentId: json['parentId'] as String?,
+      managerId: json['managerId'] as String?,
       managerName: json['managerName'] as String?,
       sortOrder: json['sortOrder'] as int?,
       headcount: json['headcount'] as int?,
@@ -150,17 +153,19 @@ class DepartmentUpdateInput {
     this.parentId,
     this.managerId,
     this.sortOrder,
+    this.managerSpecified = false,
   });
 
   final String name;
   final String? parentId;
   final String? managerId;
   final int? sortOrder;
+  final bool managerSpecified;
 
   Map<String, dynamic> toJson() => {
     'name': name,
     if (parentId != null) 'parentId': parentId,
-    if (managerId != null) 'managerId': managerId,
+    if (managerSpecified) 'managerId': managerId,
     if (sortOrder != null) 'sortOrder': sortOrder,
   };
 }

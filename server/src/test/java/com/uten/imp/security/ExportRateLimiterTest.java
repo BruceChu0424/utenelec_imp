@@ -14,7 +14,8 @@ class ExportRateLimiterTest {
 
     // stub：readInt 返回指定每分钟上限（绕过 DB），其余方法本测试不触达。
     private ExportRateLimiter limiter(int perMinute) {
-        SystemSettingsService settings = new SystemSettingsService(null, null, null, null) {
+        SystemSettingsService settings =
+                new SystemSettingsService(null, null, null, null, null) {
             @Override public int readInt(String key, int def) { return perMinute; }
         };
         return new ExportRateLimiter(settings);

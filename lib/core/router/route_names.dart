@@ -8,6 +8,7 @@ abstract final class RouteName {
   static const String dashboard = '/dashboard';
   static const String profile = '/profile';
   static const String settings = '/settings';
+  static const String deviceAuditReceipts = '/settings/device-receipts';
   static const String changePassword = '/change-password';
   static const String department = '/department';
 
@@ -76,7 +77,7 @@ abstract final class RouteName {
 
   // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
-  // 审计日志（导出下载记录 / 登录 / 改密等全员审计；超管只读）
+  // 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const String adminAuditLogs = '/admin/audit-logs';
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';

@@ -11,6 +11,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_person_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -27,6 +28,7 @@ import '../../employee/widgets/employee_status_badge.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
 import '../widgets/department_edit_dialog.dart';
+import '../widgets/department_overview_pane.dart';
 import '../widgets/position_manager_sheet.dart';
 import '../widgets/uten_department_tree_view.dart';
 
@@ -63,7 +65,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       if (!mounted) return;
       setState(() {
         _tree = tree;
-        _selectedId = _selectedId ?? _firstLeaf(tree)?.id;
+        _selectedId = _selectedId ?? (tree.isEmpty ? null : tree.first.id);
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -79,15 +81,6 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         _loading = false;
       });
     }
-  }
-
-  DepartmentNode? _firstLeaf(List<DepartmentNode> nodes) {
-    for (final n in nodes) {
-      if (n.children.isEmpty) return n;
-      final leaf = _firstLeaf(n.children);
-      if (leaf != null) return leaf;
-    }
-    return null;
   }
 
   DepartmentNode? _findById(List<DepartmentNode> nodes, String id) {
@@ -191,11 +184,35 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     context.appSuccess(msg);
   }
 
+  Future<List<UtenEmployeePickerItem>> _loadManagerCandidates(
+    String departmentId,
+    String? keyword,
+  ) async {
+    final result = await ref
+        .read(employeeRepositoryProvider)
+        .list(
+          size: 100,
+          search: keyword,
+          statuses: const {'active', 'probation', 'onLeave'},
+          departmentId: departmentId,
+        );
+    return result.items
+        .map(
+          (employee) => UtenEmployeePickerItem(
+            id: employee.id,
+            name: employee.fullName,
+            departmentName: employee.departmentName,
+          ),
+        )
+        .toList();
+  }
+
   void _showEditDialog(DepartmentInfo detail) {
     if (!_hasPermission(Perm.departmentEdit)) return;
     showDialog<void>(
       context: context,
       builder: (ctx) => DepartmentEditDialog(
+        managerLoader: (keyword) => _loadManagerCandidates(detail.id, keyword),
         tree: _tree ?? const <DepartmentNode>[],
         editing: detail,
         onSubmit: (r) => _doUpdate(detail.id, r),
@@ -213,7 +230,12 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
           .read(departmentRepositoryProvider)
           .update(
             id,
-            DepartmentUpdateInput(name: r.name, parentId: r.parentId),
+            DepartmentUpdateInput(
+              name: r.name,
+              parentId: r.parentId,
+              managerId: r.managerId,
+              managerSpecified: true,
+            ),
           );
       if (!mounted) return false;
       _toastSuccess('已保存'); // TODO(l10n): 补 arb
@@ -247,21 +269,22 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (node.headcount != null && node.headcount! > 0)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Text(
-                '${node.headcount}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+          if (node.managerName != null && node.managerName!.isNotEmpty)
+            Tooltip(
+              message: '负责人：${node.managerName}',
+              child: Icon(
+                Icons.supervisor_account_outlined,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
           if (canEdit)
-            InkWell(
-              onTap: () => _delete(node),
-              child: const Padding(
-                padding: EdgeInsets.all(2),
-                child: Icon(Icons.delete_outline, size: 16, color: Colors.grey),
-              ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              tooltip: '删除 ${node.name}',
+              onPressed: () => _delete(node),
+              icon: const Icon(Icons.delete_outline, size: 18),
             ),
         ],
       ),
@@ -280,13 +303,16 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     required bool canViewEmployees,
     required bool canCreateEmployee,
   }) {
-    return _DetailPane(
-      ref: ref,
-      nodeId: selected.id,
+    return DepartmentOverviewPane(
       node: selected,
       canEdit: canEdit,
       canViewEmployees: canViewEmployees,
       canCreateEmployee: canCreateEmployee,
+      canManagePermissions:
+          ref.read(isSuperAdminProvider) &&
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.authorizationManage),
       onAddChild: () => _showCreateDialog(parent: selected),
       onEdit: (detail) => _showEditDialog(detail),
       onDelete: () => _delete(selected),
@@ -307,6 +333,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     final tree = _tree ?? const <DepartmentNode>[];
     final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
 
+    final useSplitLayout = bp.isExpanded;
     Widget body;
     if (_loading) {
       body = const Center(child: CircularProgressIndicator());
@@ -325,14 +352,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         actionLabel: canEdit ? '新建部门' : null, // TODO(l10n): 补 arb
         onAction: canEdit ? () => _showCreateDialog() : null,
       );
-    } else if (bp == UtenBreakpoint.compact) {
+    } else if (!useSplitLayout) {
       body = selected == null
           ? UtenEmpty(
               icon: Icons.account_tree_outlined,
               message: l10n.departmentEmpty,
               description: l10n.departmentEmptyHint,
             )
-          // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
+          // 非宽屏使用单列详情，组织树放入抽屉，避免 medium 宽度下双栏拥挤。
           : UtenContentContainer(
               child: _buildDetailPane(
                 selected,
@@ -377,7 +404,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             tooltip: l10n.departmentTooltipRefresh,
             onPressed: _load,
           ),
-          if (bp == UtenBreakpoint.compact)
+          if (!useSplitLayout)
             Builder(
               builder: (scaffoldCtx) => IconButton(
                 icon: const Icon(Icons.account_tree_rounded),
@@ -387,7 +414,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             ),
         ],
       ),
-      endDrawer: bp == UtenBreakpoint.compact
+      endDrawer: !useSplitLayout
           ? Drawer(
               child: SafeArea(
                 child: _buildTree(
@@ -407,6 +434,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 }
 
 /// 部门详情 + 该部门（含子部门）员工卡片。
+// ignore: unused_element
 class _DetailPane extends StatefulWidget {
   const _DetailPane({
     required this.ref,

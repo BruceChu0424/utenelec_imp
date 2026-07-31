@@ -32,6 +32,27 @@ class StockQueryRepository {
     return PagedResult.fromJson(json, BalanceRow.fromJson);
   }
 
+  Future<StockBalanceAdjustmentResult> adjustBalance({
+    required BalanceRow balance,
+    required String targetQty,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.stockBalanceAdjust,
+      body: {
+        'idempotencyKey': idempotencyKey,
+        'warehouseId': balance.warehouseId,
+        'goodsId': balance.goodsId,
+        'colorId': ?balance.colorId,
+        'expectedQty': balance.qty ?? 0,
+        'targetQty': targetQty,
+        'reason': reason.trim(),
+      },
+    );
+    return StockBalanceAdjustmentResult.fromJson(json);
+  }
+
   Future<PagedResult<MovementRow>> movements({
     int page = 1,
     int size = 20,

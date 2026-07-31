@@ -40,9 +40,10 @@ public class ProfileChangeReviewService {
     public ProfileChangeDto.BatchDetail review(UUID batchId, ProfileChangeDto.ReviewAction req) {
         AuthUser reviewer = access.requireHr();
         UUID reviewerId = reviewer.getId();
+        tx.bindActor(reviewerId, reviewer.getLoginAccount());
         // reviewed_by 的 FK 指向 employees(id)：必须写员工档案 id，不能写 users.id，
         // 否则审批保存时触发 profile_change_requests_reviewed_by_fkey 外键违反（500）。
-        // 纯管理账号（未绑定员工档案）时为 null，审计仍由 tx.bindActor(reviewerId) 记录 users.id。
+        // 纯管理账号（未绑定员工档案）时为 null，审计仍记录 users.id 与登录账号。
         UUID reviewerEmployeeId = reviewer.getEmployeeId();
 
         if (req == null || req.action() == null) {
@@ -92,7 +93,6 @@ public class ProfileChangeReviewService {
             r.setReviewedAt(now);
             r.setReviewComment(comment);
         }
-        tx.bindActor(reviewerId);
         repo.saveAll(rs);
         notifySubmitter(rs, action, comment, reviewerEmployeeId);
         return mapper.toBatchDetail(rs);

@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemDto;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine;
@@ -66,6 +67,7 @@ public class PurchaseReceiptService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final PurchaseLineUnitPolicy lineUnitPolicy;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -156,6 +158,7 @@ public class PurchaseReceiptService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        normalizePersistedItemUnits(items);
         sourceIntegrity.validatePurchaseReceipt(
                 r.getSupplierId(),
                 items.stream()
@@ -283,15 +286,19 @@ public class PurchaseReceiptService {
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
         int autoLine = 1;
         for (ReceiptItemLine l : lines) {
+            int lineNo = l.getLineNo() != null ? l.getLineNo() : autoLine;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             PurchaseReceiptItem it = new PurchaseReceiptItem();
             it.setReceiptId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
-            it.setLineNo(l.getLineNo() != null ? l.getLineNo() : autoLine);
+            it.setLineNo(lineNo);
             it.setGoodsId(l.getGoodsId());
             it.setColorId(l.getColorId());
-            it.setUnitId(l.getUnitId());
-            it.setUnitRate(l.getUnitRate());
+            it.setUnitId(resolvedUnit.unitId());
+            it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
@@ -306,6 +313,20 @@ public class PurchaseReceiptService {
             autoLine++;
         }
         return out;
+    }
+
+    private void normalizePersistedItemUnits(List<PurchaseReceiptItem> items) {
+        int fallbackLineNo = 1;
+        for (PurchaseReceiptItem item : items) {
+            int lineNo = item.getLineNo() != null ? item.getLineNo() : fallbackLineNo;
+            PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
+                    lineUnitPolicy.normalizeAndValidate(
+                            item.getGoodsId(), item.getUnitId(), item.getUnitRate(), lineNo);
+            item.setUnitId(resolvedUnit.unitId());
+            item.setUnitRate(resolvedUnit.unitRate());
+            fallbackLineNo++;
+        }
+        itemRepo.saveAll(items);
     }
 
     private void applyTotals(PurchaseReceipt r, List<ReceiptItemDto> items) {

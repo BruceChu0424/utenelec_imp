@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.asset;
 
+import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,7 @@ class FixedAssetPaginationTest {
         entityManager = mock(EntityManager.class);
         countQuery = mock(Query.class);
         dataQuery = mock(Query.class);
-        service = new FixedAssetService(entityManager);
+        service = new FixedAssetService(entityManager, mock(TxSessionVars.class));
 
         when(entityManager.createNativeQuery(argThat(
                 sql -> sql != null && sql.toUpperCase().contains("COUNT(*)"))))

@@ -4,6 +4,7 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,12 +32,14 @@ class LoginFailureRecorderTest {
     private SystemSettingsService settings;
     @Mock
     private AuditService audit;
+    @Mock
+    private TxSessionVars tx;
 
     private LoginFailureRecorder recorder;
 
     @BeforeEach
     void setUp() {
-        recorder = new LoginFailureRecorder(userRepo, settings, audit);
+        recorder = new LoginFailureRecorder(userRepo, settings, audit, tx);
     }
 
     @Test
@@ -59,6 +62,7 @@ class LoginFailureRecorderTest {
 
         recorder.record(account.getId(), account.getLoginAccount());
 
+        verify(tx).bindActor(account.getId(), account.getLoginAccount());
         assertEquals(3, account.getFailedAttempts());
         assertEquals("locked", account.getStatus());
         assertNotNull(account.getLockedUntil());

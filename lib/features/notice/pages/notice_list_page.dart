@@ -342,7 +342,10 @@ class _NoticeCard extends StatelessWidget {
                             _TypeBadge(notice: notice),
                             // 工作类通知（任务/审批/流程）附加「工作」标识——
                             // 这是工作平台，工作消息与公告广播要一眼可辨
-                            if (notice.type.isWork) ...[
+                            if (notice.kind == NoticeKind.todo) ...[
+                              const SizedBox(width: UtenSpacing.s8),
+                              _TodoTag(completed: notice.taskCompleted),
+                            ] else if (notice.type.isWork) ...[
                               const SizedBox(width: UtenSpacing.s8),
                               const _WorkTag(),
                             ],
@@ -508,6 +511,46 @@ class _TypeBadge extends StatelessWidget {
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: notice.type.color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodoTag extends StatelessWidget {
+  const _TodoTag({required this.completed});
+
+  final bool completed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = completed ? UtenColors.success : UtenColors.warning;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s4,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            completed ? Icons.task_alt_rounded : Icons.pending_actions_rounded,
+            size: 12,
+            color: color,
+          ),
+          const SizedBox(width: UtenSpacing.s4),
+          Text(
+            completed ? '已完成' : '待办',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
             ),
           ),
         ],

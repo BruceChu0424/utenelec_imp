@@ -21,6 +21,7 @@ import com.uten.imp.features.stock.StockDocumentItemRepository;
 import com.uten.imp.features.stock.StockDocumentRepository;
 import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -57,11 +58,13 @@ public class ProductionExecutionPackageCommandService {
     private final StockDocumentRepository stockDocumentRepo;
     private final StockDocumentItemRepository stockDocumentItemRepo;
     private final DocNumberService docNumberService;
+    private final TxSessionVars tx;
 
     @Transactional
     public PlanningPackageResult confirm(
             UUID planId,
             GeneratePlanningPackageRequest request) {
+        tx.bind();
         PlanHeader plan = lockPlan(planId);
         validateRequest(request);
         ProductionExecutionPlanningService.Snapshot initial =

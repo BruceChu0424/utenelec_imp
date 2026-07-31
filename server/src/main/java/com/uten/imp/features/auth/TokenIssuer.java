@@ -1,5 +1,6 @@
 package com.uten.imp.features.auth;
 
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -24,19 +25,22 @@ public class TokenIssuer {
     private final StaffRefreshTransaction refreshTransaction;
     private final StaffRefreshCompromiseService compromiseService;
     private final StaffTokenResponseFactory responseFactory;
+    private final AuditService audit;
 
     public TokenIssuer(UserAccountRepository userRepo,
                        RefreshTokenRepository refreshTokenRepo,
                        RefreshTokenService refreshTokenService,
                        StaffRefreshTransaction refreshTransaction,
                        StaffRefreshCompromiseService compromiseService,
-                       StaffTokenResponseFactory responseFactory) {
+                       StaffTokenResponseFactory responseFactory,
+                       AuditService audit) {
         this.userRepo = userRepo;
         this.refreshTokenRepo = refreshTokenRepo;
         this.refreshTokenService = refreshTokenService;
         this.refreshTransaction = refreshTransaction;
         this.compromiseService = compromiseService;
         this.responseFactory = responseFactory;
+        this.audit = audit;
     }
 
     /**
@@ -44,12 +48,22 @@ public class TokenIssuer {
      * another independent transaction before this facade throws UNAUTHORIZED.
      */
     public TokenResponse refresh(String rawRefresh) {
-        StaffRefreshTransaction.Outcome outcome = refreshTransaction.rotate(rawRefresh);
+        StaffRefreshTransaction.Outcome outcome;
+        try {
+            outcome = refreshTransaction.rotate(rawRefresh);
+        } catch (ApiException ex) {
+            audit.logExplicit(null, null, "refresh_failed", "refresh_tokens",
+                    null, ex.getCode().name().toLowerCase(java.util.Locale.ROOT));
+            throw ex;
+        }
         if (outcome.reuseDetected()) {
             compromiseService.revoke(outcome.subjectId(), outcome.tokenId());
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
-        return responseFactory.build(outcome.account(), outcome.newRefreshToken());
+        UserAccount user = outcome.account();
+        audit.logExplicit(user.getId(), user.getLoginAccount(), "refresh_token",
+                "refresh_tokens", outcome.tokenId().toString(), "success");
+        return responseFactory.build(user, outcome.newRefreshToken());
     }
 
     @Transactional

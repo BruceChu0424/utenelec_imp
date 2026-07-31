@@ -8,7 +8,7 @@ import java.time.OffsetDateTime;
  * @param key         设置键（如 lockout_minutes）
  * @param value       当前值（字符串，前端按 valueType 校验/转换）
  * @param valueType   值类型：int / long / string / bool
- * @param category    分组：security / token / sms / business
+ * @param category    分组：security / token / sms / business / audit
  * @param label       中文显示名
  * @param description 说明（UI 提示）
  * @param unit        单位（次/分、分钟、天、秒、行…）

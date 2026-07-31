@@ -1,5 +1,6 @@
 package com.uten.imp.common.export;
 
+import com.uten.imp.audit.AuditController;
 import com.uten.imp.features.finance.report.FinanceReportController;
 import com.uten.imp.features.master.account.AccountController;
 import com.uten.imp.features.master.client.ClientController;
@@ -42,6 +43,7 @@ class ExportPasswordRequestValidationTest {
     @Test
     void everyEncryptedExportEndpointActivatesBeanValidation() {
         List<Class<?>> controllers = List.of(
+                AuditController.class,
                 FinanceReportController.class,
                 AccountController.class,
                 ClientController.class,
@@ -68,6 +70,6 @@ class ExportPasswordRequestValidationTest {
                 }
             }
         }
-        assertEquals(12, endpoints);
+        assertEquals(13, endpoints);
     }
 }

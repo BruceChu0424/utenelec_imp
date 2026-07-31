@@ -16,12 +16,14 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
+import '../widgets/employee_leadership_badge.dart';
 import '../widgets/employee_transfer_dialog.dart';
 import '../widgets/profile_change_pending_section.dart';
 
@@ -78,12 +80,32 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final currentPermissions = ref.watch(currentPermissionsProvider);
+    final canManageAuthorization =
+        ref.watch(isSuperAdminProvider) &&
+        currentPermissions.contains(Perm.authorizationManage);
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.employeeDetailTitle,
         showBackButton: true,
         actions: [
-          if (ref.watch(currentPermissionsProvider).contains(Perm.employeeEdit))
+          if (canManageAuthorization && _profile != null)
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              tooltip: _profile!.accountStatus == null ? '该员工未开通账号' : '设置员工权限',
+              onPressed: () {
+                if (_profile!.accountStatus == null) {
+                  context.appError('该员工未开通登录账号，暂不能设置权限');
+                  return;
+                }
+                final target = Uri(
+                  path: RouteName.adminPermissions,
+                  queryParameters: {'employeeId': widget.employeeId},
+                );
+                context.push(target.toString());
+              },
+            ),
+          if (currentPermissions.contains(Perm.employeeEdit))
             IconButton(
               icon: const Icon(Icons.edit_outlined),
               tooltip: l10n.employeeEditTitle,
@@ -372,7 +394,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
         ),
       if (canEdit && resigned)
         PopupMenuItem(value: 'rehire', child: Text(l10n.employeeActionRehire)),
-      if (canDelete)
+      if (canDelete && resigned)
         PopupMenuItem(value: 'delete', child: Text(l10n.employeeActionDelete)),
     ];
     if (items.isEmpty) return const SizedBox.shrink();
@@ -504,6 +526,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
 
   Widget _header(ThemeData theme, AppLocalizations l10n) {
     final p = _p;
+    final leadershipLabel = employeeLeadershipLabel(
+      departmentManager: p.departmentManager,
+      positionLevel: p.positionLevel,
+      leaderRank: p.leaderRank,
+    );
     return UtenCard(
       child: Row(
         children: [
@@ -518,11 +545,24 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  p.fullName ?? '',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (leadershipLabel != null)
+                      EmployeeLeadershipBadge(
+                        departmentManager: p.departmentManager,
+                        positionLevel: p.positionLevel,
+                        leaderRank: p.leaderRank,
+                      ),
+                    Text(
+                      p.fullName ?? '',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
                 Text(
                   '${p.code} · ${p.departmentName ?? ''} · ${p.positionName ?? ''}',

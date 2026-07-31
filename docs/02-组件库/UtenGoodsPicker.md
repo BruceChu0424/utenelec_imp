@@ -24,10 +24,27 @@
 
 | 项 | 签名 | 说明 |
 |---|---|---|
-| 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref)` | 弹出选择器；确认返回所选货品，取消/关闭返回 `null` |
+| 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable})` | 弹出选择器；确认返回所选货品，取消/关闭返回 `null` |
 | 返回 | `GoodsListItem` | 完整模型：`id/code/name/spec/model/price/series/material/colorLegacyId(int?)/unitLegacyId(int?)/colorName/unitName`（见 `lib/features/basic_data/models/goods_node.dart`） |
 
 > 内部 `_GoodsPickerSheet` 为实现细节，调用方不直接使用。
+
+### scope 参数（按单据场景分流）
+
+默认 `sellable`（成品/可售卖类，排除原材料/辅料/未分类）——历史行为，未显式传参的调用点零回归。
+
+| scope | 显示 | 适用调用点 |
+|---|---|---|
+| `sellable`（默认） | 成品/可售卖：排除原材料 2113 / 辅料 2480 / 未分类 -1 | 销售（5 类）、生产计划、生产日报、委外进仓/退货/订货/申请/询价、仓库产成品进/出仓 |
+| `material` | 原材料/辅料：只保留原材料/辅料子树 | 采购（4 类）、**物料反查**、委外发料/材料退/损耗、仓库领料/退料 |
+| `all` | 全部：不过滤（未分类默认收起） | 仓库调拨/其它入库/其它出库/盘点 |
+
+- docType→scope 映射封装在各编辑页 `_pickerScope` getter，不泄漏到 picker。
+- 仅 `all` 允许「未选分类 + 关键词」全库搜；`sellable`/`material` 必须先选分类，否则会把不该显示的类目混搜出来（回归 ADR-015 老 bug）。
+- **滑窗默认隐藏已禁用货品 + 迁移兜底 stub**（内部 `list`/`search` 传 `excludeDisabled: true` + `excludeStub: true`，后者排除 `goods.auto_created=true` 的占位货品，V177）；货品资料管理页把这两类收拢到顶部集合行（见 [基础资料页](../03-页面/基础资料页.md)），不进滑窗。
+- **「按权限显示不一样」** 由后端 `GoodsService.list` 货品归属授权过滤（V85/V89）保障，滑窗同源，无需前端处理。
+- **懒载**（2026-07-31）：打开预选第一个根分类（树高亮，用户有定位感）但**不立即加载货品列表**，输关键词或点分类才加载（省资源，与各资料页统一）。
+- **搜索扩字段**（2026-07-31）：`keyword` 除名称/编号/型号/规格/系列外，新增**客户型号/材质/备注**模糊匹配（后端 `GoodsService.list` keyword OR 谓词）。
 
 ---
 

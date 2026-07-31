@@ -22,7 +22,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
-import '../widgets/execution_segment_planning_sheet.dart';
+import '../widgets/material_review_dialog.dart';
 import '../widgets/production_execution_segments_card.dart';
 import '../widgets/production_status_badge.dart';
 import '../widgets/progress_ring.dart';
@@ -131,6 +131,7 @@ class _ProductionPlanDetailPageState
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -194,7 +195,7 @@ class _ProductionPlanDetailPageState
     final names = ref.read(masterNameServiceProvider);
     final warehouses = names.warehouseEntries.entries.toList();
     if (warehouses.isEmpty) {
-      context.appError('仓库字典未加载，无法按目标发料仓计算齐套');
+      context.appError('仓库字典未加载，无法按目标发料仓计算齐套', force: true);
       return;
     }
     String warehouseId = warehouses.first.key;
@@ -236,6 +237,7 @@ class _ProductionPlanDetailPageState
               ],
             ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -249,7 +251,11 @@ class _ProductionPlanDetailPageState
         ),
       ),
     );
-    if (selected != true || !mounted) return;
+    if (!mounted) return;
+    if (selected != true) {
+      context.appInfo('已取消');
+      return;
+    }
 
     setState(() => _mrpBusy = true);
     try {
@@ -272,17 +278,21 @@ class _ProductionPlanDetailPageState
       if (!mounted) return;
       setState(() => _mrpBusy = false);
       if (preview.executionSegments.isEmpty) {
-        context.appWarning('当前没有剩余可排数量，或产品尚未维护有效 BOM');
+        if (!mounted) return;
+        await _showNoExecutableSegmentsDialog();
         return;
       }
-      final request = await showExecutionSegmentPlanningSheet(
+      final request = await showMaterialReviewDialog(
         context,
-        ref,
         preview: preview,
-        names: names,
         warehouseName: names.warehouse(warehouseId),
+        planBillNo: _detail?.billNo ?? widget.id,
       );
-      if (request == null || !mounted) return;
+      if (!mounted) return;
+      if (request == null) {
+        context.appInfo('已取消');
+        return;
+      }
       setState(() => _mrpBusy = true);
       final result = await ref
           .read(productionPlanRepositoryProvider)
@@ -299,6 +309,41 @@ class _ProductionPlanDetailPageState
     } finally {
       if (mounted) setState(() => _mrpBusy = false);
     }
+  }
+
+  /// 预览无可执行分段时（通常是成品未维护 BOM，或剩余可排量为 0），
+  /// 用对话框明确告知原因并引导去货品资料维护 BOM，而不是一闪而过的 toast。
+  Future<void> _showNoExecutableSegmentsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('暂无可排产的执行分段'),
+        content: SizedBox(
+          width: 440,
+          child: const Text(
+            '一键生成子计划需要每个成品在「货品资料」维护组成 BOM，'
+            '并且计划尚有未排数量。可能原因：\n\n'
+            '• 成品尚未维护 BOM（请在货品资料为成品添加组成组件）\n'
+            '• 所有计划行的剩余可排数量已为 0（已全部排产）\n'
+            '• 成品 BOM 中含自制/委外组件且路线尚未配置',
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go(RouteName.basicinfoGoods);
+            },
+            child: const Text('前往货品资料'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showPlanningPackageResult(
@@ -377,6 +422,7 @@ class _ProductionPlanDetailPageState
             ],
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(ctx),
@@ -609,6 +655,12 @@ class _ProductionPlanDetailPageState
                     onPressed: _mrpBusy || !canCreateStockDocs
                         ? null
                         : _generatePlanningPackage,
+                    onDisabledTap: () => context.appWarning(
+                      _mrpBusy
+                          ? '正在处理，请稍候…'
+                          : '仅已审核、未停止、未取消的生产计划可生成子计划',
+                      force: true,
+                    ),
                     child: const Text('一键生成子计划'),
                   ),
                   OutlinedButton.icon(
@@ -841,6 +893,7 @@ class _ProductionPlanDetailPageState
       builder: (ctx) => AlertDialog(
         title: const Text('删除计划单'),
         content: const Text('确定删除该草稿计划单吗？已审单据请走红冲。'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

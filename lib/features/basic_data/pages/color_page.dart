@@ -203,6 +203,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该颜色')}」吗？', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

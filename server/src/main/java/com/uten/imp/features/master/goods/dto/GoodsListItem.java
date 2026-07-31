@@ -38,4 +38,5 @@ public class GoodsListItem {
     private String unitName;      // 单位名（goods.unit_legacy_id → units.name 解析，无则 null）
     private String sourceType;    // 来源（自制/采购/委外；V128）
     private UUID categoryId;      // 所属分类 id（goods.category_id；货品资料页"搜货品定位分类"用）
+    private boolean autoCreated;  // 迁移兜底占位货品标记（V177；auto_created 列）
 }

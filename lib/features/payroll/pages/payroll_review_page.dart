@@ -211,6 +211,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
             '发布后，${batch.headcount} 名员工将可以查看 '
             '${batch.periodLabel} 的工资条。请确认审核结果与金额无误。',
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
@@ -275,6 +276,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
               errorText: validationError,
             ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),

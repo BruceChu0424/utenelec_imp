@@ -43,7 +43,15 @@ void main() {
       );
       await tester.pump();
 
+      // 默认收起：只显示「当前人员」一组指标。
       expect(find.text('公司人员概况'), findsOneWidget);
+      expect(find.text('当前人员'), findsOneWidget);
+      expect(find.text('离职率（估算）'), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      // 点击标题行展开后显示完整分组。
+      await tester.tap(find.text('公司人员概况'));
+      await tester.pump();
       expect(find.text('离职率（估算）'), findsOneWidget);
       expect(find.text('10.3%'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -71,6 +79,9 @@ void main() {
     );
 
     expect(find.text('部门人员概况'), findsOneWidget);
+    // 数据质量提示位于展开区域，先展开再断言。
+    await tester.tap(find.text('部门人员概况'));
+    await tester.pump();
     expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
     expect(find.textContaining('缺少离职事件日期'), findsOneWidget);
     expect(tester.takeException(), isNull);

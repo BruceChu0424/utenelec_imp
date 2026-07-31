@@ -66,3 +66,22 @@ class DioDepartmentRepository implements DepartmentRepository {
 final departmentRepositoryProvider = Provider<DepartmentRepository>(
   (ref) => DioDepartmentRepository(ref.watch(apiClientProvider)),
 );
+
+/// 部门 code → id 映射（员工选择器按职能部门收敛用：业务员→MKT_CENTER、生产工→DEPT_PROD、
+/// 经办人→DEPT_FIN、委外→DEPT_SALES 等）。首次读取加载整棵部门树并扁平化；失败/未就绪返回空
+/// map，picker 回退全公司。各编辑页 _employeePicker 关键字为空时用它收敛、有关键字时全公司搜。
+final departmentCodeIdMapProvider = FutureProvider<Map<String, String>>((
+  ref,
+) async {
+  final tree = await ref.read(departmentRepositoryProvider).tree();
+  final map = <String, String>{};
+  void walk(List<DepartmentNode> nodes) {
+    for (final n in nodes) {
+      map[n.code] = n.id;
+      walk(n.children);
+    }
+  }
+
+  walk(tree);
+  return map;
+});

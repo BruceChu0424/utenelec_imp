@@ -22,4 +22,5 @@ public class EmployeeListItem {
     private String positionLevel;
     private boolean departmentManager;
     private int leaderRank;
+    private UUID departmentId;   // 所属部门 id（部门管理页"搜员工定位部门"用）
 }

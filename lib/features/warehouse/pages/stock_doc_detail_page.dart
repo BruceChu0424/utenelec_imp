@@ -78,6 +78,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -159,6 +160,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             ],
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -232,6 +234,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除'),
         content: const Text('确定删除该草稿单据吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

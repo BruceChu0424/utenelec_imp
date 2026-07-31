@@ -54,6 +54,33 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     @Test
+    void countPendingCountsUnpeggedAndWaitingSupplyTasks() {
+        EntityManager em = mock(EntityManager.class);
+        Query countQuery = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(countQuery);
+        when(countQuery.getSingleResult()).thenReturn(7L);
+
+        long count = new FulfillmentWorkbenchQueryService(em).countPending("PURCHASE");
+
+        assertEquals(7L, count);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        String captured = sql.getValue();
+        assertTrue(captured.contains("v_fulfillment_workbench_actions"));
+        assertTrue(captured.contains("'UNPEGGED'"));
+        assertTrue(captured.contains("'WAITING_SUPPLY'"));
+        verify(countQuery).setParameter("department", "PURCHASE");
+    }
+
+    @Test
+    void purchaseCountEndpointGuardsPurchaseReadPermissions() throws Exception {
+        Method method = FulfillmentWorkbenchController.class.getDeclaredMethod("purchaseCount");
+        assertEquals(
+                "hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')",
+                method.getAnnotation(PreAuthorize.class).value());
+    }
+
+    @Test
     void controllerReadPermissionsMatchFlutterAnyPermissionGuards() throws Exception {
         assertPermission(
                 "warehouse",

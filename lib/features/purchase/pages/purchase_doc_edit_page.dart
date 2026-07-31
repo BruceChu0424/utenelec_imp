@@ -27,6 +27,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../department/models/department_node.dart';
+import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../config/purchase_doc_config.dart';
@@ -288,7 +290,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
 
   Future<void> _pickGoods(PurchaseGridRow row) async {
     if (row.sourceLocked) return;
-    final g = await showUtenGoodsPicker(context, ref);
+    final g = await showUtenGoodsPicker(
+      context,
+      ref,
+      scope: UtenGoodsPickerScope.material,
+    );
     if (g == null) return;
     final names = ref.read(masterNameServiceProvider);
     row
@@ -550,6 +556,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                     _employeePicker(
                                       label: '采购员',
                                       currentId: _purchaserId,
+                                      defaultDeptCode: kDeptCodePurchase,
                                       onChanged: (id) =>
                                           setState(() => _purchaserId = id),
                                     ),
@@ -692,20 +699,28 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     );
   }
 
-  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  /// 人员选择器：关键字为空且指定 [defaultDeptCode] 时收敛到该部门子树、否则全公司搜。
   Widget _employeePicker({
     required String label,
     required String? currentId,
     required ValueChanged<String?> onChanged,
+    String? defaultDeptCode,
   }) {
     return UtenEmployeePicker(
       key: ValueKey('${label}_$currentId'),
       label: label,
+      hint: '请选择$label',
+      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
+        final deptId =
+            (kw == null || kw.isEmpty) && defaultDeptCode != null
+            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+                  const {})[defaultDeptCode]
+            : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw);
+            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(

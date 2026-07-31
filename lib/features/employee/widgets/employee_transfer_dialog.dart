@@ -164,6 +164,7 @@ class _EmployeeTransferDialogState
           ],
         ),
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
           onPressed: _submitting

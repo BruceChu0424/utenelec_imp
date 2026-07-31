@@ -4,7 +4,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/workforce_overview.dart';
 
-class OrganizationWorkforceOverviewCard extends StatelessWidget {
+class OrganizationWorkforceOverviewCard extends StatefulWidget {
   const OrganizationWorkforceOverviewCard({
     super.key,
     required this.organizationName,
@@ -22,70 +22,120 @@ class OrganizationWorkforceOverviewCard extends StatelessWidget {
   final String? error;
   final VoidCallback? onRetry;
 
-  bool get _isCompany => organizationLevel == '公司';
+  @override
+  State<OrganizationWorkforceOverviewCard> createState() =>
+      _OrganizationWorkforceOverviewCardState();
+}
+
+class _OrganizationWorkforceOverviewCardState
+    extends State<OrganizationWorkforceOverviewCard> {
+  /// 默认收起：收起状态只显示「当前人员」一组指标。
+  bool _expanded = false;
+
+  bool get _isCompany => widget.organizationLevel == '公司';
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final overview = widget.overview;
     return UtenCard(
       margin: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.secondaryContainer,
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(
-                  _isCompany ? Icons.apartment_rounded : Icons.groups_rounded,
-                  color: theme.colorScheme.onSecondaryContainer,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _isCompany ? '公司人员概况' : '部门人员概况',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+          InkWell(
+            borderRadius: UtenRadius.mdAll,
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.secondaryContainer,
+                      borderRadius: UtenRadius.mdAll,
                     ),
-                    Text(
-                      overview == null
-                          ? organizationName
-                          : '$organizationName · 截至 ${overview!.asOf} · 含下级部门',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                    child: Icon(
+                      _isCompany ? Icons.apartment_rounded : Icons.groups_rounded,
+                      color: theme.colorScheme.onSecondaryContainer,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isCompany ? '公司人员概况' : '部门人员概况',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          overview == null
+                              ? widget.organizationName
+                              : '${widget.organizationName} · 截至 ${overview.asOf} · 含下级部门',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!widget.loading && widget.onRetry != null)
+                    IconButton(
+                      onPressed: widget.onRetry,
+                      tooltip: '刷新人员统计',
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12,
+                      vertical: UtenSpacing.s8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(UtenSpacing.s24),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _expanded ? '收起' : '点击查看详情',
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(width: UtenSpacing.s4),
+                        AnimatedRotation(
+                          turns: _expanded ? 0.5 : 0,
+                          duration: const Duration(milliseconds: 180),
+                          child: Icon(
+                            Icons.expand_more_rounded,
+                            size: 20,
+                            color: theme.colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              if (!loading && onRetry != null)
-                IconButton(
-                  onPressed: onRetry,
-                  tooltip: '刷新人员统计',
-                  icon: const Icon(Icons.refresh_rounded),
-                ),
-            ],
+            ),
           ),
           const SizedBox(height: UtenSpacing.s16),
-          if (loading)
+          if (widget.loading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),
               child: Center(child: CircularProgressIndicator()),
             )
-          else if (error != null)
-            _InlineError(message: error!, onRetry: onRetry)
+          else if (widget.error != null)
+            _InlineError(message: widget.error!, onRetry: widget.onRetry)
           else if (overview != null)
-            _OverviewBody(overview: overview!),
+            _OverviewBody(overview: overview, expanded: _expanded),
         ],
       ),
     );
@@ -93,27 +143,30 @@ class OrganizationWorkforceOverviewCard extends StatelessWidget {
 }
 
 class _OverviewBody extends StatelessWidget {
-  const _OverviewBody({required this.overview});
+  const _OverviewBody({required this.overview, required this.expanded});
 
   final WorkforceOverview overview;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
     final rate = overview.turnoverRatePct;
+    final currentSection = _MetricSection(
+      title: '当前人员',
+      metrics: [
+        _Metric('在册人数', '${overview.currentEmployees}', emphasized: true),
+        _Metric('正式在岗', '${overview.activeEmployees}'),
+        _Metric('试用期', '${overview.probationEmployees}'),
+        _Metric('休假中', '${overview.onLeaveEmployees}'),
+        _Metric('直属人数', '${overview.directCurrentEmployees}'),
+        _Metric('下级部门', '${overview.descendantDepartmentCount}'),
+      ],
+    );
+    if (!expanded) return currentSection;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _MetricSection(
-          title: '当前人员',
-          metrics: [
-            _Metric('在册人数', '${overview.currentEmployees}', emphasized: true),
-            _Metric('正式在岗', '${overview.activeEmployees}'),
-            _Metric('试用期', '${overview.probationEmployees}'),
-            _Metric('休假中', '${overview.onLeaveEmployees}'),
-            _Metric('直属人数', '${overview.directCurrentEmployees}'),
-            _Metric('下级部门', '${overview.descendantDepartmentCount}'),
-          ],
-        ),
+        currentSection,
         const SizedBox(height: UtenSpacing.s16),
         _MetricSection(
           title: '近 ${overview.periodMonths} 个月人员流动',

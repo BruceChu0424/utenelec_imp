@@ -79,7 +79,8 @@ public class ProductionPlanningPackageService {
                 targetWarehouseMaterials(rows, targetWarehouseAvailable),
                 isBalancedKitCoverage(rows, targetWarehouseAvailable),
                 true,
-                executionPlanning.toPreview(proposal));
+                executionPlanning.toPreview(proposal),
+                snapshot.noBomPlanItemIds());
     }
 
     @Transactional

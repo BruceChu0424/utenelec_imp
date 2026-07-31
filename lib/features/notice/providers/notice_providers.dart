@@ -1,5 +1,7 @@
 // 通知 Provider
 
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -54,36 +56,72 @@ final noticeDetailProvider = FutureProvider.autoDispose.family<Notice?, String>(
   },
 );
 
-/// 未读数（用于 Dashboard / 徽章）
-final unreadNoticeCountProvider = FutureProvider.autoDispose<int>((ref) async {
-  ref.watch(noticeListProvider);
-  return ref.watch(noticeRepositoryProvider).unreadCount();
-});
+const Duration _kUnreadPollInterval = Duration(seconds: 60);
+
+/// 通知未读数（Dashboard / 徽章用）：默认 60s 轮询一次；网络/服务异常时保留旧值，
+/// 避免徽章闪烁。范式同 lib/features/visitor_approval/providers/visitor_pending_count_provider.dart。
+/// 通知人人可见（employee 自带 notice:read），故不按权限短路。
+final unreadNoticeCountProvider =
+    StateNotifierProvider<UnreadNoticeCountNotifier, int>((ref) {
+      final notifier = UnreadNoticeCountNotifier(ref);
+      notifier.start();
+      ref.onDispose(notifier.stop);
+      return notifier;
+    });
+
+class UnreadNoticeCountNotifier extends StateNotifier<int> {
+  UnreadNoticeCountNotifier(this.ref) : super(0);
+
+  final Ref ref;
+  Timer? _timer;
+
+  void start() {
+    _tick();
+    _timer = Timer.periodic(_kUnreadPollInterval, (_) => _tick());
+  }
+
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  Future<void> _tick() async {
+    try {
+      final count = await ref.read(noticeRepositoryProvider).unreadCount();
+      state = count;
+    } catch (_) {
+      // 网络/服务异常时保留旧值，避免徽章闪烁
+    }
+  }
+
+  /// 立即刷新（标记已读 / 删除 / 发布 / 业务桥动作完成后调用）。
+  Future<void> refresh() => _tick();
+}
 
 Future<void> markNoticeRead(WidgetRef ref, String id) async {
   await ref.read(noticeRepositoryProvider).markRead(id);
   ref.invalidate(noticeDetailProvider(id));
   ref.invalidate(noticeListProvider);
-  ref.invalidate(unreadNoticeCountProvider);
+  ref.read(unreadNoticeCountProvider.notifier).refresh();
 }
 
 Future<void> completeNoticeTodo(WidgetRef ref, String id) async {
   await ref.read(noticeRepositoryProvider).completeTodo(id);
   ref.invalidate(noticeDetailProvider(id));
   ref.invalidate(noticeListProvider);
-  ref.invalidate(unreadNoticeCountProvider);
+  ref.read(unreadNoticeCountProvider.notifier).refresh();
 }
 
 Future<void> markAllNoticeRead(WidgetRef ref) async {
   await ref.read(noticeRepositoryProvider).markAllRead();
   ref.invalidate(noticeListProvider);
-  ref.invalidate(unreadNoticeCountProvider);
+  ref.read(unreadNoticeCountProvider.notifier).refresh();
 }
 
 /// 批量删除（从当前用户列表移除），返回实际删除条数
 Future<int> deleteNotices(WidgetRef ref, List<String> ids) async {
   final deleted = await ref.read(noticeRepositoryProvider).deleteMany(ids);
   ref.invalidate(noticeListProvider);
-  ref.invalidate(unreadNoticeCountProvider);
+  ref.read(unreadNoticeCountProvider.notifier).refresh();
   return deleted;
 }

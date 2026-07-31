@@ -109,6 +109,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -144,6 +145,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除单据'),
         content: const Text('确定删除该草稿单据吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

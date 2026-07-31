@@ -175,6 +175,7 @@ class _Content extends ConsumerWidget {
                         builder: (dialogContext) => AlertDialog(
                           title: const Text('删除报销草稿？'),
                           content: const Text('删除后无法恢复，请确认该草稿不再需要。'),
+                          actionsAlignment: MainAxisAlignment.center,
                           actions: [
                             TextButton(
                               onPressed: () =>

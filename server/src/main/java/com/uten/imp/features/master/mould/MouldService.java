@@ -226,7 +226,8 @@ public class MouldService {
     private MouldListItem toList(Mould m) {
         return new MouldListItem(
                 m.getId(), m.getCode(), m.getName(), m.getPlace(), m.getMstatus(),
-                m.getStatus(), m.getRemark(), m.getLegacyId());
+                m.getStatus(), m.getRemark(), m.getLegacyId(),
+                m.getCategory() == null ? null : m.getCategory().getId());
     }
 
     private MouldCategory requireCategory(UUID id) {

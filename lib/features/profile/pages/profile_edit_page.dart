@@ -264,6 +264,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
             ),
           ],
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           UtenButton(
             type: UtenButtonType.ghost,

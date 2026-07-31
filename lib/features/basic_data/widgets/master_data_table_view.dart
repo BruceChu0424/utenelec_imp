@@ -38,6 +38,46 @@ class MasterColumnDef<T> {
   final bool sortable;
 }
 
+/// 一个可折叠的「前导分组」：渲染在表头之下、主数据行之上（如货品页的「禁用货品」
+/// 「不明货品」集合）。折叠时是一整行（跨满表宽）的浅色标题行；展开后其 [items]
+/// 按主表同款列定义、列宽与列显隐逐行渲染——因此「表头设置」与列对齐天然对它生效。
+class MasterDataGroup<T> {
+  const MasterDataGroup({
+    required this.id,
+    required this.title,
+    required this.items,
+    this.subtitle,
+    this.tint,
+    this.icon,
+    this.total,
+    this.detailLabel = '下拉详情', // TODO(l10n): 补 arb
+  });
+
+  /// 分组唯一 id（折叠/展开态键）；同一表格内不应重复。
+  final String id;
+
+  /// 标题文案（如「禁用货品（31）」）。
+  final String title;
+
+  /// 副标题（标题行第二行小字说明），可空。
+  final String? subtitle;
+
+  /// 标题行底色（禁用=浅红、不明=浅琥珀）；null 用工具条同款 surfaceContainerHigh。
+  final Color? tint;
+
+  /// 标题行左侧图标。
+  final IconData? icon;
+
+  /// 该分组的条目（展开后按主表列逐行渲染）。可能为分页截断的前若干条。
+  final List<T> items;
+
+  /// 全集计数（[items] 可能被分页截断）；标题显示与「还有更多」提示用。null=用 items.length。
+  final int? total;
+
+  /// 标题行右侧的展开提示文案（默认「下拉详情」）。
+  final String detailLabel;
+}
+
 /// 主档通用表格视图：横排 autofilter 筛选 + 逐行数据（列对齐）+ 分页。
 /// 搜索框由调用方自行放在标题行（标题 | 搜索 | 添加）。
 class MasterDataTableView<T> extends StatefulWidget {
@@ -64,6 +104,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.toolbarActions,
     this.embedded = false,
     this.rowColor,
+    this.leadingGroups,
   });
 
   final List<MasterColumnDef<T>> columns;
@@ -85,6 +126,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
   /// 单击选中时组件自动把该色加深加亮（提高不透明度），无底色行维持原 primary 高亮。
   final Color? Function(T item)? rowColor;
+
+  /// 前导可折叠分组（表头下、主数据行上）：禁用货品/不明货品等集合行。
+  /// 折叠时是浅色标题行（跨满表宽）；展开后其 items 按主表同款列/列宽/列显隐逐行渲染，
+  /// 故「表头设置」与列对齐天然对它生效。N=0 的分组不渲染。
+  final List<MasterDataGroup<T>>? leadingGroups;
 
   /// 当前排序的列 key（与 MasterColumnDef.key 对齐）；null = 不排序（用后端默认顺序）。
   final String? sortColumn;
@@ -145,6 +191,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   /// [_fsTick] 驱动全屏内容重建（数据/列宽/显隐变化时 bump）。
   bool _fullscreen = false;
   final ValueNotifier<int> _fsTick = ValueNotifier<int>(0);
+
+  /// 当前展开的前导分组 id 集合（点击分组标题行切换）。默认全折叠。
+  final Set<String> _expandedGroups = {};
 
   // —— 列宽自动适配 / 手动拖拽 常量 ——
   /// 拖拽命中区半宽：以列右边界为中心、半溢出到相邻列，便于精准抓住边界。

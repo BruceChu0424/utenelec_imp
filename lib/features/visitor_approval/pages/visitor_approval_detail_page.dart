@@ -107,6 +107,7 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
             label: l10n.visitorApprovalRejectReasonHint,
             maxLines: 2,
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             UtenButton(
               type: UtenButtonType.ghost,

@@ -27,6 +27,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../department/models/department_node.dart';
+import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -51,10 +53,13 @@ class ProductionPlanEditPage extends ConsumerStatefulWidget {
 class _ProductionPlanEditPageState
     extends ConsumerState<ProductionPlanEditPage> {
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
-  final _sourceDocNo = TextEditingController(); // 来源单号（销售订单号字符串）
   final _remark = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
   DateTime? _deliveryDate;
+
+  // 来源单号：由明细行 salesOrderNo 派生（去重合并），与明细相互同步、支持多个来源订单。
+  // 点击来源单号字段弹销售订单选择器，可多次选择不同订单，各自带入明细行。
+  String _sourceDocDisplay = '';
 
   // 车间 = 部门
   String? _departmentId;
@@ -64,6 +69,14 @@ class _ProductionPlanEditPageState
   String? _sellerId;
   String? _workerId;
   final Map<String, UtenEmployeePickerItem> _empCache = {};
+
+  /// 跟单员是否由选订单自动回填（软联动）：true 时，明细中不再有该销售员的行才自动清除；
+  /// 用户手选跟单员后置 false，不会被自动清除。
+  bool _sellerAutoFilled = false;
+
+  /// 部门化 picker 默认范围 id（_init 预解析；解析前 picker 回退全公司）。
+  String? _marketingDeptId;
+  String? _productionDeptId;
 
   final _grid = UtenEditableGridController<ProductionGridRow>();
   final _scrollCtl = ScrollController();
@@ -76,14 +89,16 @@ class _ProductionPlanEditPageState
   @override
   void initState() {
     super.initState();
+    // 行增删（addRow/removeAt/replaceAll）时刷新来源单号派生显示。
+    _grid.addListener(_refreshSourceDoc);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
   @override
   void dispose() {
     _billNo.dispose();
-    _sourceDocNo.dispose();
     _remark.dispose();
+    _grid.removeListener(_refreshSourceDoc);
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
     super.dispose();
@@ -92,6 +107,7 @@ class _ProductionPlanEditPageState
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    await _resolveDeptIds();
     if (widget.id == null) {
       // 跟单员默认当前登录人（生产工是车间侧人员，不预填）。
       final meId = ref.read(sessionProvider).user?.employeeId;
@@ -113,7 +129,6 @@ class _ProductionPlanEditPageState
         await _preloadEmployees([d.sellerId, d.workerId]);
         if (!mounted) return;
         _billNo.text = d.billNo ?? '';
-        _sourceDocNo.text = d.sourceDocNo ?? '';
         _remark.text = d.remark ?? '';
         if (d.billDate != null) {
           _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
@@ -148,6 +163,9 @@ class _ProductionPlanEditPageState
           row.oqty.text = it.oqty?.toString() ?? '';
           rows.add(row);
         }
+        for (final r in rows) {
+          _wireRow(r);
+        }
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
         if (mounted) context.appError(e.message);
@@ -155,7 +173,11 @@ class _ProductionPlanEditPageState
         // 静默降级
       }
     }
-    if (_grid.isEmpty) _grid.addRow(ProductionGridRow());
+    if (_grid.isEmpty) {
+      final blank = ProductionGridRow();
+      _wireRow(blank);
+      _grid.addRow(blank);
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -164,6 +186,29 @@ class _ProductionPlanEditPageState
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 预解析跟单员（MKT_CENTER）/生产工（DEPT_PROD）默认部门 id，供 picker loader 收敛范围。
+  Future<void> _resolveDeptIds() async {
+    try {
+      final tree = await ref.read(departmentRepositoryProvider).tree();
+      _marketingDeptId = findDepartmentByCode(tree, kDeptCodeMarketing)?.id;
+      _productionDeptId = findDepartmentByCode(tree, kDeptCodeProduction)?.id;
+    } catch (_) {
+      // 解析失败：picker 回退全公司，不阻塞编辑。
+    }
+  }
+
+  /// 按 code 取已解析的部门 id（loader 关键字为空时用）。
+  String? _deptIdFor(String code) {
+    switch (code) {
+      case kDeptCodeMarketing:
+        return _marketingDeptId;
+      case kDeptCodeProduction:
+        return _productionDeptId;
+      default:
+        return null;
+    }
+  }
 
   /// 并发按 id 拉人员名字（picker 的 initial 显示用）。失败静默。
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
@@ -198,9 +243,14 @@ class _ProductionPlanEditPageState
   }
 
   Future<void> _pickSourceOrder() async {
-    final d = await showSalesOrderPicker(context, ref);
+    final d = await showSalesOrderPicker(
+      context,
+      ref,
+      initialSeller: _sellerId == null ? null : _empCache[_sellerId],
+    );
     if (d == null || !mounted) return;
-    setState(() => _sourceDocNo.text = d.billNo ?? '');
+    // 来源单号由明细行派生（见 _refreshSourceDoc），可多次选择不同订单，
+    // 各自带入明细行，来源单号自动累加并始终与明细同步。
     // 选订单后列出该订单货品（含缺口/零件清单），勾选行直接带入明细网格，
     // 行携 salesOrderItemId —— 审核时回写订单行 planned_qty，业务链闭合。
     final lines = await showPlanOrderImportSheet(
@@ -238,6 +288,8 @@ class _ProductionPlanEditPageState
           ..oqty.text = _numText(l.qty)
           ..salesOrderItemId = l.orderItemId
           ..clientName = l.clientName
+          ..sellerId = d.sellerId
+          ..sellerName = d.sellerName
           ..unitRate = l.unitRate
           ..outboundDate = l.deliverDate
           ..colorId = l.colorId
@@ -249,14 +301,81 @@ class _ProductionPlanEditPageState
                   code: l.goodsCode,
                   name: l.goodsName ?? l.goodsCode ?? '',
                 );
+        _wireRow(row);
         _grid.addRow(row);
       }
+    });
+    _autoFillSellerFromOrder(d.sellerId, d.sellerName);
+  }
+
+  /// 明细行「关联销售订单号」可点单元格：弹来源订单选择器，给本行挂订单+销售员（不引入新行）。
+  Future<void> _pickRowSalesOrder(ProductionGridRow row) async {
+    final d = await showSalesOrderPicker(
+      context,
+      ref,
+      initialSeller: _sellerId == null ? null : _empCache[_sellerId],
+    );
+    if (d == null || !mounted) return;
+    setState(() {
+      row.salesOrderNo.text = d.billNo ?? '';
+      row.sellerId = d.sellerId;
+      row.sellerName = d.sellerName;
+    });
+    _autoFillSellerFromOrder(d.sellerId, d.sellerName);
+  }
+
+  /// 软联动：跟单员为空时，用所选订单的销售员自动回填，并标记为「自动」（可被自动清除）。
+  void _autoFillSellerFromOrder(String? sellerId, String? sellerName) {
+    if (sellerId == null || sellerId.isEmpty) return;
+    if (_sellerId != null) return; // 已有跟单员（手选或先前自动）不覆盖
+    _empCache[sellerId] = UtenEmployeePickerItem(
+      id: sellerId,
+      name: sellerName ?? '',
+    );
+    setState(() {
+      _sellerId = sellerId;
+      _sellerAutoFilled = true;
     });
   }
 
   String _numText(double? v) => v == null
       ? ''
       : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+
+  /// 把明细行的 salesOrderNo 接入来源单号派生刷新：编辑该列即同步头表来源单号显示。
+  /// 控制器 dispose 时自动移除监听，无需手动解绑。
+  void _wireRow(ProductionGridRow r) {
+    r.salesOrderNo.removeListener(_refreshSourceDoc);
+    r.salesOrderNo.addListener(_refreshSourceDoc);
+  }
+
+  /// 来源单号 = 全部明细行 salesOrderNo 去重合并（排序后以「、」连接）。
+  /// 由明细派生 ⇒ 头表与明细相互同步、天然支持多个来源订单。
+  /// 同时联动清除：自动回填的跟单员，若明细中不再有该销售员的行则清空。
+  void _refreshSourceDoc() {
+    final nos = <String>{};
+    for (final r in _grid.rows) {
+      final s = r.salesOrderNo.text.trim();
+      if (s.isNotEmpty) nos.add(s);
+    }
+    final next = (nos.toList()..sort()).join('、');
+    final displayChanged = next != _sourceDocDisplay;
+    _sourceDocDisplay = next;
+    final sellerChanged = _reconcileSellerAutoClear();
+    if ((displayChanged || sellerChanged) && mounted) setState(() {});
+  }
+
+  /// 自动回填的跟单员：明细中无任何行 sellerId==跟单员 时清空（手动选的不动）。
+  bool _reconcileSellerAutoClear() {
+    if (!_sellerAutoFilled || _sellerId == null) return false;
+    final has = _grid.rows.any((r) => r.sellerId == _sellerId);
+    if (!has) {
+      _sellerId = null;
+      _sellerAutoFilled = false;
+      return true;
+    }
+    return false;
+  }
 
   Future<void> _save() async {
     final rows = _grid.rows;
@@ -307,8 +426,7 @@ class _ProductionPlanEditPageState
         'workshopName': _workshopName,
       if (_sellerId != null) 'sellerId': _sellerId,
       if (_workerId != null) 'workerId': _workerId,
-      if (_sourceDocNo.text.trim().isNotEmpty)
-        'sourceDocNo': _sourceDocNo.text.trim(),
+      if (_sourceDocDisplay.isNotEmpty) 'sourceDocNo': _sourceDocDisplay,
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
       'items': itemsBody,
     };
@@ -330,20 +448,25 @@ class _ProductionPlanEditPageState
     }
   }
 
-  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  /// 人员选择器：关键字为空时默认收敛到职能部门子树、有关键字时全公司搜（兼顾别部门下单人）。
   Widget _employeePicker({
     required String label,
     required String? currentId,
+    required String defaultDeptCode,
     required ValueChanged<String?> onChanged,
   }) {
     return UtenEmployeePicker(
       key: ValueKey('${label}_$currentId'),
       label: label,
+      hint: '请选择$label',
+      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
+        final deptId =
+            (kw == null || kw.isEmpty) ? _deptIdFor(defaultDeptCode) : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw);
+            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(
@@ -360,8 +483,10 @@ class _ProductionPlanEditPageState
     );
   }
 
-  /// 来源单号：只读 outlined 框 + 放大镜，点按弹销售订单选择器。
+  /// 来源单号：只读 outlined 框 + 放大镜，点按弹销售订单选择器（可多次选择不同订单）。
+  /// 显示内容由明细行 salesOrderNo 派生（_refreshSourceDoc），与明细相互同步。
   Widget _sourceDocField(ThemeData theme) {
+    final empty = _sourceDocDisplay.isEmpty;
     return InkWell(
       onTap: _pickSourceOrder,
       borderRadius: BorderRadius.circular(UtenSpacing.s8),
@@ -371,11 +496,11 @@ class _ProductionPlanEditPageState
           suffixIcon: Icon(Icons.search_rounded, size: 18),
         ),
         child: Text(
-          _sourceDocNo.text.isEmpty ? '点击选择销售订单' : _sourceDocNo.text,
+          empty ? '点击选择销售订单（可多选）' : _sourceDocDisplay,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: _sourceDocNo.text.isEmpty
-                ? theme.colorScheme.onSurfaceVariant
-                : null,
+            color: empty ? theme.colorScheme.onSurfaceVariant : null,
           ),
         ),
       ),
@@ -488,12 +613,16 @@ class _ProductionPlanEditPageState
                                   _employeePicker(
                                     label: '跟单员',
                                     currentId: _sellerId,
-                                    onChanged: (id) =>
-                                        setState(() => _sellerId = id),
+                                    defaultDeptCode: kDeptCodeMarketing,
+                                    onChanged: (id) => setState(() {
+                                      _sellerId = id;
+                                      _sellerAutoFilled = false; // 手选：不自动清除
+                                    }),
                                   ),
                                   _employeePicker(
                                     label: '生产工',
                                     currentId: _workerId,
+                                    defaultDeptCode: kDeptCodeProduction,
                                     onChanged: (id) =>
                                         setState(() => _workerId = id),
                                   ),
@@ -523,10 +652,15 @@ class _ProductionPlanEditPageState
                         controller: _grid,
                         columns: productionGridColumns(
                           onPickGoods: _pickGoods,
+                          onPickSalesOrder: _pickRowSalesOrder,
                           colorEntries: names.colorEntries,
                           unitEntries: names.unitEntries,
                         ),
-                        createBlankRow: () => ProductionGridRow(),
+                        createBlankRow: () {
+                          final r = ProductionGridRow();
+                          _wireRow(r);
+                          return r;
+                        },
                       ),
                     ],
                   ),

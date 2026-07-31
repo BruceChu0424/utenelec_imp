@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -12,14 +14,31 @@ import '../../notice/widgets/notice_detail_dialog.dart';
 import '../models/dashboard_overview.dart';
 import '../providers/dashboard_overview_provider.dart';
 
-class DashboardOverviewSections extends ConsumerWidget {
+class DashboardOverviewSections extends StatelessWidget {
   const DashboardOverviewSections({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // 延迟挂载：首帧只画骨架、不 watch dashboardOverviewProvider、不发那个重聚合
+    // 请求；首帧绘制完后再构建 _DashboardOverviewBody 并行加载，避免进工作台时卡顿。
+    // 范式同全项目 addPostFrameCallback「首帧让路」惯例。
+    return UtenLazyMount(
+      placeholder: (_) => const _DashboardOverviewSkeleton(),
+      builder: (_) => const _DashboardOverviewBody(),
+    );
+  }
+}
+
+/// 概览数据体（首帧后才挂载）：watch dashboardOverviewProvider；loading 时仍用骨架，
+/// 与 LazyMount 首帧占位视觉一致、无闪烁切换。
+class _DashboardOverviewBody extends ConsumerWidget {
+  const _DashboardOverviewBody();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final overview = ref.watch(dashboardOverviewProvider);
     return overview.when(
-      loading: () => const _LoadingSections(),
+      loading: () => const _DashboardOverviewSkeleton(),
       error: (error, _) =>
           _ErrorCard(onRetry: () => ref.invalidate(dashboardOverviewProvider)),
       data: (data) => Column(
@@ -52,18 +71,28 @@ class DashboardOverviewSections extends ConsumerWidget {
   }
 }
 
-class _MetricGrid extends StatelessWidget {
+class _MetricGrid extends StatefulWidget {
   const _MetricGrid({required this.metrics});
 
   final List<DashboardMetric> metrics;
 
   @override
+  State<_MetricGrid> createState() => _MetricGridState();
+}
+
+class _MetricGridState extends State<_MetricGrid> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final metrics = widget.metrics;
     if (metrics.isEmpty) {
       return const _EmptyCard(text: '当前权限下暂无概览指标');
     }
     return LayoutBuilder(
       builder: (context, constraints) {
+        // 列数随容器宽度实时变化，收起时只展示一行；
+        // 超出一行的指标通过末尾「加载更多」展开。
         final columns = constraints.maxWidth >= 1050
             ? 4
             : constraints.maxWidth >= 680
@@ -71,26 +100,51 @@ class _MetricGrid extends StatelessWidget {
             : constraints.maxWidth >= 420
             ? 2
             : 1;
+        final overflow = metrics.length > columns;
+        final visible = _expanded ? metrics : metrics.take(columns).toList();
+        final hiddenCount = metrics.length - visible.length;
         final width =
             (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
-        return Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s12,
+        return Column(
           children: [
-            for (final metric in metrics)
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s12,
+              children: [
+                for (final metric in visible)
+                  SizedBox(
+                    width: width,
+                    child: Semantics(
+                      button: metric.route != null,
+                      label:
+                          '${metric.title}，${metric.value}，${metric.subtitle}',
+                      child: UtenCard(
+                        onTap: metric.route == null
+                            ? null
+                            : () => goFrom(context, metric.route!),
+                        child: _MetricContent(metric: metric),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            if (overflow) ...[
+              const SizedBox(height: UtenSpacing.s8),
               SizedBox(
-                width: width,
-                child: Semantics(
-                  button: metric.route != null,
-                  label: '${metric.title}，${metric.value}，${metric.subtitle}',
-                  child: UtenCard(
-                    onTap: metric.route == null
-                        ? null
-                        : () => goFrom(context, metric.route!),
-                    child: _MetricContent(metric: metric),
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                  ),
+                  label: Text(
+                    _expanded ? '收起' : '加载更多（还有 $hiddenCount 项）',
                   ),
                 ),
               ),
+            ],
           ],
         );
       },
@@ -224,36 +278,70 @@ class _TodoCard extends StatelessWidget {
   }
 }
 
-class _PolicyList extends StatelessWidget {
+class _PolicyList extends StatefulWidget {
   const _PolicyList({required this.items});
 
   final List<PolicyBrief> items;
 
   @override
+  State<_PolicyList> createState() => _PolicyListState();
+}
+
+class _PolicyListState extends State<_PolicyList> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final items = widget.items;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final twoColumns = constraints.maxWidth >= 840;
-        if (!twoColumns) {
-          return Column(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                _PolicyCard(item: items[i]),
-                if (i != items.length - 1)
-                  const SizedBox(height: UtenSpacing.s8),
-              ],
-            ],
-          );
-        }
-        return Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s12,
+        // 列数随容器宽度实时变化（窗口拉宽/拉窄都会触发 LayoutBuilder 重建），
+        // 收起时只展示一行；超出一行的内容通过末尾「加载更多」展开。
+        final columns = constraints.maxWidth >= 840 ? 2 : 1;
+        final overflow = items.length > columns;
+        final visible = _expanded ? items : items.take(columns).toList();
+        final hiddenCount = items.length - visible.length;
+        return Column(
           children: [
-            for (final item in items)
-              SizedBox(
-                width: (constraints.maxWidth - UtenSpacing.s12) / 2,
-                child: _PolicyCard(item: item),
+            if (columns == 1)
+              Column(
+                children: [
+                  for (var i = 0; i < visible.length; i++) ...[
+                    _PolicyCard(item: visible[i]),
+                    if (i != visible.length - 1)
+                      const SizedBox(height: UtenSpacing.s8),
+                  ],
+                ],
+              )
+            else
+              Wrap(
+                spacing: UtenSpacing.s12,
+                runSpacing: UtenSpacing.s12,
+                children: [
+                  for (final item in visible)
+                    SizedBox(
+                      width: (constraints.maxWidth - UtenSpacing.s12) / 2,
+                      child: _PolicyCard(item: item),
+                    ),
+                ],
               ),
+            if (overflow) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                  ),
+                  label: Text(
+                    _expanded ? '收起' : '加载更多（还有 $hiddenCount 条）',
+                  ),
+                ),
+              ),
+            ],
           ],
         );
       },
@@ -355,8 +443,11 @@ class _CategoryBadge extends StatelessWidget {
   }
 }
 
-class _LoadingSections extends StatelessWidget {
-  const _LoadingSections();
+/// 概览骨架占位：今日概览（一行指标灰卡）+ 待办任务（两行灰条）。
+/// LazyMount 首帧占位 与 _DashboardOverviewBody 的 loading 分支共用，视觉连续无闪烁。
+/// 政策与监管动态段按真实数据非空才渲染，骨架省略其占位，避免无数据时「先显后隐」。
+class _DashboardOverviewSkeleton extends StatelessWidget {
+  const _DashboardOverviewSkeleton();
 
   @override
   Widget build(BuildContext context) {
@@ -365,11 +456,68 @@ class _LoadingSections extends StatelessWidget {
       children: [
         UtenSectionHeader(title: '今日概览'),
         SizedBox(height: UtenSpacing.s12),
-        LinearProgressIndicator(),
+        _MetricSkeleton(),
         SizedBox(height: UtenSpacing.s24),
         UtenSectionHeader(title: '待办任务'),
         SizedBox(height: UtenSpacing.s12),
-        _EmptyCard(text: '正在加载工作台数据…'),
+        _TodoSkeleton(),
+      ],
+    );
+  }
+}
+
+class _MetricSkeleton extends StatelessWidget {
+  const _MetricSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: UtenSpacing.s12,
+      runSpacing: UtenSpacing.s12,
+      children: [
+        for (var i = 0; i < 4; i++)
+          const SizedBox(
+            width: 220,
+            child: UtenCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UtenSkeleton(width: 80, height: 12),
+                  SizedBox(height: UtenSpacing.s12),
+                  UtenSkeleton(width: 120, height: 22),
+                  SizedBox(height: UtenSpacing.s4),
+                  UtenSkeleton(height: 12),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TodoSkeleton extends StatelessWidget {
+  const _TodoSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < 2; i++) ...[
+          const UtenCard(
+            padding: EdgeInsets.zero,
+            child: ListTile(
+              minTileHeight: 76,
+              leading: UtenSkeleton(width: 40, height: 40, borderRadius: 20),
+              title: UtenSkeleton(height: 14),
+              subtitle: Padding(
+                padding: EdgeInsets.only(top: UtenSpacing.s4),
+                child: UtenSkeleton(height: 12),
+              ),
+            ),
+          ),
+          if (i != 1) const SizedBox(height: UtenSpacing.s8),
+        ],
       ],
     );
   }

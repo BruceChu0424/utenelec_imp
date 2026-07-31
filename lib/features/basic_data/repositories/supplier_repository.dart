@@ -26,6 +26,13 @@ abstract interface class SupplierRepository {
     String? order,
   });
 
+  /// 全局搜供应商（供应商资料页"搜供应商定位分类"用；不限分类，按简称/全称/联系人/法人/地区/手机模糊）。
+  Future<PagedResult<SupplierListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+  });
+
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<SupplierFacets> facets(String categoryId);
 
@@ -74,6 +81,24 @@ class DioSupplierRepository implements SupplierRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = await api.get(ApiEndpoints.suppliers, query: query);
+    return PagedResult.fromJson(json, SupplierListItem.fromJson);
+  }
+
+  @override
+  Future<PagedResult<SupplierListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+  }) async {
+    // 后端 categoryId 可空：不传即全库搜索。
+    final json = await api.get(
+      ApiEndpoints.suppliers,
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+      },
+    );
     return PagedResult.fromJson(json, SupplierListItem.fromJson);
   }
 

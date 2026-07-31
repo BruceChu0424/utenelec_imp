@@ -34,6 +34,9 @@ class ProductionGridRow extends EditableGridRow {
   /// 计划审核时按 1:1 link 回写 sales_order_items.planned_qty）。
   String? salesOrderItemId;
   String? clientName;
+  /// 该行所属来源订单的销售员（跟单员联动用；选/导入订单时回填）。
+  String? sellerId;
+  String? sellerName;
   double? unitRate; // 单位换算率（订单行带出；MRP 毛需求按基本单位折算依赖它）
   String? orderDate; // yyyy-MM-dd（订单日期）
   String? outboundDate; // yyyy-MM-dd（交货日）
@@ -83,6 +86,7 @@ class ProductionGridRow extends EditableGridRow {
 /// [colorEntries]/[unitEntries] 由编辑页从 masterNameServiceProvider 注入（只读单元格显示名）。
 List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
   required Future<void> Function(ProductionGridRow row) onPickGoods,
+  required Future<void> Function(ProductionGridRow row) onPickSalesOrder,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
 }) {
@@ -167,9 +171,29 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'salesOrderNo',
       label: '关联销售订单号',
       width: 150,
-      cellBuilder: (context, row) => TextField(
-        controller: row.salesOrderNo,
-        decoration: const InputDecoration(isDense: true, hintText: '可选'),
+      cellBuilder: (context, row) => InkWell(
+        onTap: () => onPickSalesOrder(row),
+        child: InputDecorator(
+          decoration: const InputDecoration(isDense: true),
+          child: Row(
+            children: [
+              Expanded(
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: row.salesOrderNo,
+                  builder: (context, v, _) => Text(
+                    v.text.isEmpty ? '点击选择' : v.text,
+                    style: TextStyle(
+                      color: v.text.isEmpty
+                          ? Theme.of(context).colorScheme.onSurfaceVariant
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+              const Icon(Icons.search_rounded, size: 16),
+            ],
+          ),
+        ),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(

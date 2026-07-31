@@ -40,10 +40,10 @@ class UtenEmployeePicker extends StatefulWidget {
     this.initial,
     this.enabled = true,
     this.label,
-    this.hint = '请选择被访人',
+    this.hint = '请选择员工',
     this.validator,
     this.departmentName,
-    this.sheetTitle = '选择被访人',
+    this.sheetTitle = '选择员工',
     this.allowClear = false,
   });
 

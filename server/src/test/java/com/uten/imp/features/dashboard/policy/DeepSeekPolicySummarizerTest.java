@@ -39,6 +39,25 @@ class DeepSeekPolicySummarizerTest {
     }
 
     @Test
+    void inspectionCategoriesAreRestrictedToGmRegardlessOfModelTags() {
+        DeepSeekPolicySummarizer.Summary result = summarizer.parse("""
+                {
+                  "relevant": true,
+                  "title": "年度抽查工作计划",
+                  "summary": "总经办可核对抽查事项与时间安排。",
+                  "category": "INSPECTION",
+                  "audienceTags": ["QA", "HR", "PRODUCTION", "ALL"],
+                  "publishedOn": "2026-03-24",
+                  "validUntil": null
+                }
+                """);
+
+        assertThat(result.relevant()).isTrue();
+        assertThat(result.category()).isEqualTo("INSPECTION");
+        assertThat(result.audienceTags()).containsExactlyInAnyOrder("GM");
+    }
+
+    @Test
     void rejectsRelevantSummaryWithoutVerifiablePublicationDate() {
         assertThatThrownBy(() -> summarizer.parse("""
                 {

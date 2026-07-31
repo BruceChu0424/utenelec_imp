@@ -98,9 +98,9 @@ UPDATE item_stage SET doc_type='CHECK' WHERE doc_type IS NULL;
 \copy sg_stage FROM '/tmp/stock_goods.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 -- ======================== 自动补录缺失基础资料（此时 staging 满） ========================
--- 货品（盘点等可能引用已删货品；goods 无 NOT-NULL 无默认列，补最小存根：legacy_id+name）
-INSERT INTO goods (legacy_id, name)
-SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）'
+-- 货品 stub（盘点等可能引用已删货品）：legacy_id+name+auto_created=TRUE（配合 V177，UI 隔离用）
+INSERT INTO goods (legacy_id, name, auto_created)
+SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）', TRUE
 FROM (SELECT goods_legacy_id AS lid FROM item_stage
       WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0) t
 WHERE NOT EXISTS (SELECT 1 FROM goods g WHERE g.legacy_id = lid)

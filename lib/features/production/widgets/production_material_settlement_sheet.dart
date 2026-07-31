@@ -285,6 +285,7 @@ class _MaterialSettlementSheetState
             ],
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
@@ -353,6 +354,7 @@ class _MaterialSettlementSheetState
           '系统将再次检查成品完工数量和每种材料的消耗、退库、批准损耗或在制占用。'
           '两边全部平衡后才会关闭任务，确认继续？',
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),

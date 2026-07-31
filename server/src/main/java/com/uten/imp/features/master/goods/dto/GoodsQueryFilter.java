@@ -24,5 +24,10 @@ public record GoodsQueryFilter(
         Integer colorLegacyId,
         Integer unitLegacyId,
         String sourceType,
-        Boolean excludeDisabled) {
+        Boolean excludeDisabled,
+        // V177：stub/禁用隔离（货品资料页集合行 + 滑窗隐藏 stub）
+        Boolean excludeStub,    // 滑窗用：排除 auto_created=true 的兜底货品
+        Boolean disabledOnly,   // 货品页"禁用货品集合"用：只看 status='禁用'
+        Boolean stubOnly        // 货品页"不明货品集合"用：只看 auto_created=true
+) {
 }

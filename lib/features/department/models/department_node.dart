@@ -1,5 +1,7 @@
 // 部门树/详情模型（对应后端 DepartmentNode / DepartmentDetail）。
 
+import '../../basic_data/models/uten_tree_node.dart';
+
 /// 可选部门层级（一级部门/二级班组/三级科室）。
 const kSelectableDepartmentLevels = {'一级部门', '二级班组', '三级科室'};
 
@@ -12,8 +14,21 @@ const kCompanyDepartmentLevel = '公司';
 /// 生产部 code（V07 seed：DEPT_PROD，下挂 6 个车间 WS_*）。用于车间选择器裁剪到生产部子树。
 const kDeptCodeProduction = 'DEPT_PROD';
 
+/// 营销与新媒体管理中心 code（V07 seed：MKT_CENTER，下挂 综合营销部/新媒体/轨道事业部及销售组）。
+/// 用于跟单员（=销售员）选择器默认收敛到营销体系。
+const kDeptCodeMarketing = 'MKT_CENTER';
+
+/// 综合营销部 code（V07 seed：DEPT_SALES，下挂 销售1~4组）。委外（归营销）经办/采购员收敛用。
+const kDeptCodeSales = 'DEPT_SALES';
+
+/// 财税部 code（V07 seed：DEPT_FIN）。钱流经办人收敛用。
+const kDeptCodeFinance = 'DEPT_FIN';
+
+/// 采购部 code（V07 seed：SUB_PURCHASE，挂 DEPT_PMC 下）。采购员收敛用。
+const kDeptCodePurchase = 'SUB_PURCHASE';
+
 /// 部门树节点（递归 children）。
-class DepartmentNode {
+class DepartmentNode implements UtenTreeNode<DepartmentNode> {
   DepartmentNode({
     required this.id,
     required this.code,
@@ -27,8 +42,11 @@ class DepartmentNode {
     this.headcount,
   });
 
+  @override
   final String id;
+  @override
   final String code;
+  @override
   final String name;
   final String level;
   final String? parentId;
@@ -36,8 +54,10 @@ class DepartmentNode {
   final String? managerName;
   final int? sortOrder;
   final int? headcount;
+  @override
   final List<DepartmentNode> children;
 
+  @override
   bool get hasChildren => children.isNotEmpty;
 
   factory DepartmentNode.fromJson(Map<String, dynamic> json) {

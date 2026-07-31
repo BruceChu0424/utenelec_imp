@@ -254,6 +254,7 @@ class _EmployeeOnboardingPageState
               ],
             ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton.icon(
               onPressed: () async {

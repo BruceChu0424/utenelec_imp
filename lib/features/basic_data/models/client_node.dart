@@ -37,6 +37,7 @@ class ClientListItem {
     this.website,
     this.status,
     this.legacyId,
+    this.categoryId,
   });
 
   final String id;
@@ -63,6 +64,7 @@ class ClientListItem {
   final String? website; // 网址（Http）
   final String? status; // 状态（使用/禁用，详情用，不进表格列）
   final int? legacyId;
+  final String? categoryId; // 所属分类 id（客户资料页"搜客户定位分类"用）
 
   factory ClientListItem.fromJson(Map<String, dynamic> json) => ClientListItem(
     id: json['id'] as String,
@@ -90,6 +92,7 @@ class ClientListItem {
     website: json['website'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
   );
 }
 

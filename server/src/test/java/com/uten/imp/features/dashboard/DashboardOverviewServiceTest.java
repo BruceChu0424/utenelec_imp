@@ -1,6 +1,5 @@
 package com.uten.imp.features.dashboard;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
@@ -10,6 +9,7 @@ import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -57,7 +57,6 @@ class DashboardOverviewServiceTest {
         service = new DashboardOverviewService(
                 currentUser,
                 jdbc,
-                new ObjectMapper(),
                 mock(ProductionScheduleService.class),
                 mock(FulfillmentWorkbenchQueryService.class),
                 mock(VisitorHrApprovalService.class),
@@ -93,5 +92,86 @@ class DashboardOverviewServiceTest {
                     assertThat(metric.value()).isEqualTo("¥123,456.78");
                     assertThat(metric.sensitive()).isTrue();
                 });
+    }
+
+    @Test
+    void financeUserSeesFinanceCategoriesButNotInspectionActivities()
+            throws Exception {
+        when(user.getPermissions())
+                .thenReturn(Set.of("dashboard:finance-sensitive:view"));
+        stubPolicyRows(
+                policyRow("TAX"),
+                policyRow("EXPORT"),
+                policyRow("INSPECTION"),
+                policyRow("SAFETY"),
+                policyRow("QUALITY"));
+
+        DashboardOverviewDto result = service.overview();
+
+        assertThat(result.intelligence())
+                .extracting(DashboardOverviewDto.PolicyBrief::category)
+                .containsExactly("TAX", "EXPORT");
+    }
+
+    @Test
+    void gmLeaderSeesInspectionActivitiesAndFinanceCategories() throws Exception {
+        when(user.getPermissions()).thenReturn(Set.of());
+        when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
+                Map.of("code", "GM", "name", "总经办", "depth", 0)));
+        stubPolicyRows(
+                policyRow("TAX"),
+                policyRow("INSPECTION"),
+                policyRow("SAFETY"),
+                policyRow("QUALITY"));
+
+        DashboardOverviewDto result = service.overview();
+
+        assertThat(result.intelligence())
+                .extracting(DashboardOverviewDto.PolicyBrief::category)
+                .containsExactlyInAnyOrder("TAX", "INSPECTION", "SAFETY", "QUALITY");
+    }
+
+    @Test
+    void employeeInGmSubDepartmentDoesNotInheritGmAudience() throws Exception {
+        when(user.getPermissions()).thenReturn(Set.of());
+        // 直属部门是总经办的下级部门；祖先链 depth>0 的 GM 标签必须被剔除。
+        when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
+                Map.of("code", "SUB_WH", "name", "仓库组", "depth", 0),
+                Map.of("code", "GM", "name", "总经办", "depth", 1)));
+        stubPolicyRows(policyRow("SAFETY"), policyRow("TAX"));
+
+        DashboardOverviewDto result = service.overview();
+
+        assertThat(result.intelligence()).isEmpty();
+    }
+
+    private void stubPolicyRows(java.sql.ResultSet... rows) {
+        when(jdbc.query(
+                contains("official_policy_briefs"),
+                ArgumentMatchers.<RowMapper<Object>>any()))
+                .thenAnswer(invocation -> {
+                    RowMapper<Object> mapper = invocation.getArgument(1);
+                    List<Object> mapped = new java.util.ArrayList<>();
+                    for (int i = 0; i < rows.length; i++) {
+                        mapped.add(mapper.mapRow(rows[i], i));
+                    }
+                    return mapped;
+                });
+    }
+
+    private java.sql.ResultSet policyRow(String category) throws Exception {
+        java.sql.ResultSet rs = mock(java.sql.ResultSet.class);
+        when(rs.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
+        when(rs.getString("title")).thenReturn("标题-" + category);
+        when(rs.getString("summary")).thenReturn("摘要");
+        when(rs.getString("category")).thenReturn(category);
+        when(rs.getString("source_name")).thenReturn("官方来源");
+        when(rs.getString("source_url"))
+                .thenReturn("https://www.gov.cn/zhengce/" + category);
+        when(rs.getObject("published_on", java.time.LocalDate.class))
+                .thenReturn(java.time.LocalDate.of(2026, 4, 2));
+        when(rs.getTimestamp("captured_at"))
+                .thenReturn(new java.sql.Timestamp(0L));
+        return rs;
     }
 }

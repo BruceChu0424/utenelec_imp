@@ -43,8 +43,13 @@ void backTo(BuildContext context, {required String defaultPath}) {
 /// 比 backTo 多了 pop 分支，避免把 push 进来的页面也强行 go 跳走。
 void popOrBackTo(BuildContext context, {required String defaultPath}) {
   if (context.canPop()) {
-    context.pop();
-  } else {
-    backTo(context, defaultPath: defaultPath);
+    try {
+      context.pop();
+      return;
+    } catch (_) {
+      // canPop 为真但当前 navigator 取不到（过渡/加载未就绪、嵌套 navigator 场景）
+      // go_router 的 _findCurrentNavigator 会 null 崩；不抛，落到来源感知 go 兜底。
+    }
   }
+  backTo(context, defaultPath: defaultPath);
 }

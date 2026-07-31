@@ -343,6 +343,8 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                               ];
                             },
                             label: l10n.visitorApplyHost,
+                            hint: '请选择被访人',
+                            sheetTitle: '选择被访人',
                             departmentName: _deptName,
                             onChanged: (item) =>
                                 setState(() => _hostId = item?.id),

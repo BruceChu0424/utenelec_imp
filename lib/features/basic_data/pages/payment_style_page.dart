@@ -187,6 +187,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除类别'),
         content: Text('确定删除「${node.name}」吗？若存在子类别或被引用，删除可能失败。'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -681,6 +682,7 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
           ],
         ),
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         UtenButton(
           type: UtenButtonType.secondary,

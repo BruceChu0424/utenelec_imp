@@ -221,6 +221,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该币种')}」吗？',
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

@@ -1,12 +1,11 @@
 package com.uten.imp.features.dashboard;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.dashboard.DashboardOverviewDto.MetricCard;
 import com.uten.imp.features.dashboard.DashboardOverviewDto.PolicyBrief;
 import com.uten.imp.features.dashboard.DashboardOverviewDto.TodoCard;
+import com.uten.imp.features.dashboard.policy.PolicyAudiences;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.notice.dto.NoticeDto;
 import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPage;
@@ -43,7 +42,6 @@ public class DashboardOverviewService {
 
     private final SecurityContextCurrentUser currentUser;
     private final JdbcTemplate jdbc;
-    private final ObjectMapper objectMapper;
     private final ProductionScheduleService productionScheduleService;
     private final FulfillmentWorkbenchQueryService fulfillmentWorkbench;
     private final VisitorHrApprovalService visitorApprovalService;
@@ -287,16 +285,17 @@ public class DashboardOverviewService {
 
     private List<PolicyBrief> policyBriefs(
             AuthUser user, DepartmentContext department) {
+        // 可见性由分类权威映射决定（PolicyAudiences），不信任库存 audience_tags：
+        // 财税类（TAX/SUBSIDY/EXPORT）= 财税部（FINANCE）+ 总经办直属（GM）；
+        // 检查类（INSPECTION/SAFETY/QUALITY）与其他 = 仅总经办直属（GM）。
+        // GM 标签只来自直属部门（depth=0），总经办下级部门员工不会继承。
         Set<String> audienceTags = new LinkedHashSet<>(department.audienceTags());
         if (can(user, "dashboard:finance-sensitive:view")) {
-            audienceTags.add("FINANCE");
+            audienceTags.add(PolicyAudiences.FINANCE);
         }
-        if (can(user, "sales_order:view")) audienceTags.add("SALES");
-        if (can(user, "production_plan:view")) audienceTags.add("PRODUCTION");
-        if (user.isSuperAdmin()) audienceTags.add("ALL");
 
         return jdbc.query("""
-                SELECT id, title, summary, category, audience_tags,
+                SELECT id, title, summary, category,
                        source_name, source_url, published_on, captured_at
                 FROM official_policy_briefs
                 WHERE status = 'ACTIVE'
@@ -311,15 +310,14 @@ public class DashboardOverviewService {
                 rs.getString("title"),
                 rs.getString("summary"),
                 rs.getString("category"),
-                parseTags(rs.getString("audience_tags")),
                 rs.getString("source_name"),
                 rs.getString("source_url"),
                 rs.getObject("published_on", LocalDate.class),
                 rs.getTimestamp("captured_at")))
                 .stream()
                 .filter(row -> user.isSuperAdmin()
-                        || row.tags().contains("ALL")
-                        || row.tags().stream().anyMatch(audienceTags::contains))
+                        || PolicyAudiences.forCategory(row.category()).stream()
+                                .anyMatch(audienceTags::contains))
                 .limit(POLICY_LIMIT)
                 .map(PolicyRow::toDto)
                 .toList();
@@ -420,15 +418,6 @@ public class DashboardOverviewService {
         return "¥" + String.format(Locale.ROOT, "%,.2f", normalized);
     }
 
-    private Set<String> parseTags(String json) {
-        try {
-            return new LinkedHashSet<>(objectMapper.readValue(
-                    json, new TypeReference<List<String>>() { }));
-        } catch (Exception ignored) {
-            return Set.of();
-        }
-    }
-
     private static String compactText(String value, int maxLength) {
         if (value == null) return "";
         String compact = value.replaceAll("\\s+", " ").strip();
@@ -468,7 +457,6 @@ public class DashboardOverviewService {
             String title,
             String summary,
             String category,
-            Set<String> tags,
             String sourceName,
             String sourceUrl,
             LocalDate publishedOn,

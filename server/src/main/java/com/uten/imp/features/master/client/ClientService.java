@@ -433,7 +433,8 @@ public class ClientService {
                 m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
                 m.getLinkman(), m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(),
                 m.getPostcode(), m.getAddress(), m.getBank(), m.getBankAccount(), m.getTaxId(),
-                m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId());
+                m.getCredit(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
+                m.getCategory() == null ? null : m.getCategory().getId());
     }
 
     private ClientCategory requireCategory(UUID id) {

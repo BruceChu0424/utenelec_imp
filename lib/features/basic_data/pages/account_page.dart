@@ -280,6 +280,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该账户')}」吗？',
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

@@ -109,9 +109,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
   }
 
   String? _validate() {
-    if (!_isEdit && _codeCtl.text.trim().isEmpty) {
-      return '请输入分类编码'; // TODO(l10n): 补 arb
-    }
+    // 编码可留空（后端自动生成 FL 码），非必填。
     if (_nameCtl.text.trim().isEmpty) {
       return '请输入分类名称'; // TODO(l10n): 补 arb
     }
@@ -131,8 +129,10 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       return;
     }
     setState(() => _formError = null);
+    final codeText = _codeCtl.text.trim();
     final result = CategoryEditResult(
-      code: _isEdit ? null : _codeCtl.text.trim(),
+      // 新建：留空→后端自动生成；非空→提交后端查重。编辑：code 不可改（null 不上送）。
+      code: _isEdit ? null : (codeText.isEmpty ? null : codeText),
       name: _nameCtl.text.trim(),
       parentId: _parent?.id,
     );
@@ -206,7 +206,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
                 labelText: '编码', // TODO(l10n): 补 arb
                 hintText: _isEdit
                     ? null
-                    : '如 RAW-MAT（创建后不可修改）', // TODO(l10n): 补 arb
+                    : '留空自动生成（如 FL000123）；也可自定义，须唯一', // TODO(l10n): 补 arb
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),

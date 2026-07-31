@@ -27,9 +27,6 @@ public class DeepSeekPolicySummarizer {
     private static final Set<String> CATEGORIES = Set.of(
             "TAX", "SUBSIDY", "EXPORT", "INSPECTION",
             "SAFETY", "QUALITY", "OTHER");
-    private static final Set<String> AUDIENCES = Set.of(
-            "FINANCE", "GM", "SALES", "PRODUCTION",
-            "PMC", "QA", "HR", "SECURITY", "ALL");
 
     private final PolicyIntelligenceProperties properties;
     private final ObjectMapper objectMapper;
@@ -55,13 +52,12 @@ public class DeepSeekPolicySummarizer {
                       "title": "原文标题",
                       "summary": "不超过180字，说明企业需要关注什么，并提示资格需逐项核验",
                       "category": "TAX|SUBSIDY|EXPORT|INSPECTION|SAFETY|QUALITY|OTHER",
-                      "audienceTags": ["FINANCE","GM"],
                       "publishedOn": "YYYY-MM-DD",
                       "validUntil": null
                     }
                     日期原文没有明确给出时，publishedOn 必须为 null；不要猜日期。
-                    audienceTags 仅可使用 FINANCE、GM、SALES、PRODUCTION、PMC、QA、HR、
-                    SECURITY、ALL。若不相关，只返回 relevant=false，其余字段可为 null。
+                    展示受众由系统按 category 决定，模型无需输出 audienceTags。
+                    若不相关，只返回 relevant=false，其余字段可为 null。
 
                     官方原文地址：%s
                     官方原文：
@@ -121,12 +117,10 @@ public class DeepSeekPolicySummarizer {
             String category = node.path("category").asText("OTHER")
                     .toUpperCase(Locale.ROOT);
             if (!CATEGORIES.contains(category)) category = "OTHER";
-            Set<String> audiences = new LinkedHashSet<>();
-            for (JsonNode tagNode : node.path("audienceTags")) {
-                String tag = tagNode.asText().toUpperCase(Locale.ROOT);
-                if (AUDIENCES.contains(tag)) audiences.add(tag);
-            }
-            if (audiences.isEmpty()) audiences.add("GM");
+            // 受众不信任模型输出，由分类权威映射决定：
+            // 财税类 = FINANCE+GM；检查类及其他 = 仅 GM（总经办直属）。
+            Set<String> audiences =
+                    new LinkedHashSet<>(PolicyAudiences.forCategory(category));
             return new Summary(
                     true,
                     title,

@@ -89,6 +89,7 @@ class MrpRowTest {
                 new BigDecimal("100"), false, UUID.randomUUID(),
                 new BigDecimal(book), new BigDecimal(reserved), new BigDecimal(safety),
                 new BigDecimal(allOpenPo), new BigDecimal(onTimePo),
-                LocalDate.of(2026, 8, 10), LocalDate.of(2026, 8, 8));
+                LocalDate.of(2026, 8, 10), LocalDate.of(2026, 8, 8),
+                "采购");
     }
 }

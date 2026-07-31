@@ -138,7 +138,7 @@ Future<void> _publishAndDispatch(
           priority: priority,
         );
     ref.invalidate(noticeListProvider);
-    ref.invalidate(unreadNoticeCountProvider);
+    ref.read(unreadNoticeCountProvider.notifier).refresh();
   } catch (_) {
     // 无发布权限或网络异常：审批主流程已成功，通知落库失败可容忍
   }

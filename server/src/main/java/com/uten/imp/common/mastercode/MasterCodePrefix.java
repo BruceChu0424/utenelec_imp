@@ -23,7 +23,8 @@ public enum MasterCodePrefix {
     CURRENCY("BZ"),       // 币种
     WAREHOUSE("WH"),      // 仓库
     ACCOUNT("ZH"),        // 账户
-    PAYMENT_STYLE("SK");  // 收付款类别
+    PAYMENT_STYLE("SK"),  // 收付款类别
+    CATEGORY("FL");       // 货品/物料分类（material_categories）
 
     private final String code;
 

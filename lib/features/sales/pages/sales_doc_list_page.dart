@@ -130,6 +130,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
             },
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),

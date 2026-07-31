@@ -143,6 +143,7 @@ python server/legacy_migration/import_product_lists.py --data-dir "product lists
 | 前端 | 货品列表新增「来源」列（带 autofilter facet） | `product_category_page.dart` |
 | 前端 | 货品详情「基本信息」加「来源」行 | `product_category_page.dart` |
 | 前端 | 详情列表按状态着色：使用=浅蓝、禁用=浅红、其他=白；单击选中加深加亮 | `master_data_table_view.dart`（新增 `rowColor` 参数） |
+| 后端 | source_type 同时驱动生产排产路线判定（自制→MAKE 派生子计划、采购→BUY、委外→SUBCONTRACT） | `ProductionExecutionPlanningService.supportedSupplyRoute`，见 [37](37-业务联动-MRP与并发加固.md) |
 | 前端 | 大屏左树「未分类（历史孤儿）」默认收起 | `uten_category_tree_view.dart`（新增 `initiallyCollapsedNames`） |
 
 > 版本号注意：开发库 flyway_schema_history 已由更新的代码树推进到 V127，

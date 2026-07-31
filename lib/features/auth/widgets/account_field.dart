@@ -62,10 +62,11 @@ class _AccountFieldState extends ConsumerState<AccountField> {
   }
 
   void _onFocusChange() {
+    // 仅聚焦时展开。失焦不在这里关闭：点击弹层内的账号项会让 TextField 先失焦，
+    // 若立即 _hideDropdown 会把整个弹层（含 InkWell）一并移除，onTap 还没触发就被销毁 → 点账号无反应。
+    // 关闭交给：弹层内选中后 onPick/onClear → hide、点外部遮罩 → onClose、下拉箭头切换。
     if (_focus.hasFocus && _history.length > 1) {
       _showDropdown();
-    } else if (!_focus.hasFocus) {
-      _hideDropdown();
     }
   }
 

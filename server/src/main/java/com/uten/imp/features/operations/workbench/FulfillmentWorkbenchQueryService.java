@@ -134,6 +134,20 @@ public class FulfillmentWorkbenchQueryService {
                         exceptionCounts));
     }
 
+    @Transactional(readOnly = true)
+    public long countPending(String department) {
+        if (!DEPARTMENTS.contains(department)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
+        }
+        Query query = em.createNativeQuery("""
+                SELECT COUNT(*) FROM v_fulfillment_workbench_actions
+                WHERE department = :department
+                  AND task_status IN ('UNPEGGED', 'WAITING_SUPPLY')
+                """);
+        query.setParameter("department", department);
+        return ((Number) query.getSingleResult()).longValue();
+    }
+
     private static void bind(
             Query query, String department, String status, String keyword, String exception) {
         query.setParameter("department", department);

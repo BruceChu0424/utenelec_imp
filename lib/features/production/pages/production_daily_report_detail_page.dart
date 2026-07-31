@@ -104,6 +104,7 @@ class _ProductionDailyReportDetailPageState
       builder: (ctx) => AlertDialog(
         title: const Text('确认'),
         content: Text(confirm),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -139,6 +140,7 @@ class _ProductionDailyReportDetailPageState
       builder: (ctx) => AlertDialog(
         title: const Text('删除日报'),
         content: const Text('确定删除该草稿日报吗？'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

@@ -194,6 +194,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab> {
         content: Text(
           '确定把「${item.componentName ?? item.componentCode ?? '该组件'}」从组装清单中删除吗？', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

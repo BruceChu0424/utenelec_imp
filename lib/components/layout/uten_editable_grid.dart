@@ -475,6 +475,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
               suffixText: '行',
             ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),

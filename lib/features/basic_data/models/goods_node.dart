@@ -26,6 +26,8 @@ class GoodsListItem {
     this.colorName,
     this.unitName,
     this.sourceType,
+    this.categoryId,
+    this.autoCreated = false,
   });
 
   final String id;
@@ -46,6 +48,10 @@ class GoodsListItem {
   final String? unitName;
   final String? sourceType; // 来源（自制/采购/委外；V128）
 
+  final String? categoryId; // 所属分类 id（货品资料页"搜货品定位分类"用）
+
+  final bool autoCreated; // 迁移兜底占位货品标记（V177；auto_created 列）
+
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -65,6 +71,8 @@ class GoodsListItem {
     colorName: json['colorName'] as String?,
     unitName: json['unitName'] as String?,
     sourceType: json['sourceType'] as String?,
+    categoryId: json['categoryId'] as String?,
+    autoCreated: json['autoCreated'] as bool? ?? false,
   );
 }
 

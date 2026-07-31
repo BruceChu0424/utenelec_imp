@@ -332,7 +332,7 @@ public class ProductionMaterialStockLedgerService {
             MaterialLine line,
             UUID actorId,
             Set<UUID> touched) {
-        List<UUID> demandIds = em.createNativeQuery("""
+        List<UUID> demandIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT d.id
                         FROM production_planning_package_document_items mapping
                         JOIN production_planning_package_documents header
@@ -365,8 +365,7 @@ public class ProductionMaterialStockLedgerService {
                 .setParameter("documentItemId", line.documentItemId())
                 .setParameter("warehouseId", line.warehouseId())
                 .setParameter("goodsId", line.goodsId())
-                .setParameter("colorId", line.colorId())
-                .getResultList();
+                .setParameter("colorId", line.colorId()), UUID.class);
         if (demandIds.size() != 1) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -440,7 +439,7 @@ public class ProductionMaterialStockLedgerService {
             MaterialLine line,
             UUID actorId,
             Set<UUID> touched) {
-        List<UUID> demandIds = em.createNativeQuery("""
+        List<UUID> demandIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT id
                         FROM production_material_demands
                         WHERE package_id = :packageId
@@ -455,8 +454,7 @@ public class ProductionMaterialStockLedgerService {
                 .setParameter("packageId", packageId)
                 .setParameter("warehouseId", line.warehouseId())
                 .setParameter("goodsId", line.goodsId())
-                .setParameter("colorId", line.colorId())
-                .getResultList();
+                .setParameter("colorId", line.colorId()), UUID.class);
         if (demandIds.isEmpty()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,

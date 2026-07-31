@@ -102,9 +102,9 @@ CREATE TEMP TABLE dri_stage (
 BEGIN;
 SET session_replication_role = replica;
 
--- 货品（goods 无 NOT-NULL 业务列，仅 legacy_id UNIQUE；补最小存根）
-INSERT INTO goods (legacy_id, name)
-SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）'
+-- 货品 stub：legacy_id+name+auto_created=TRUE（配合 V177，UI 隔离用）
+INSERT INTO goods (legacy_id, name, auto_created)
+SELECT DISTINCT lid, '（迁移自动补录 legacy ' || lid || '）', TRUE
 FROM (SELECT goods_legacy_id AS lid FROM item_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL
       SELECT mgoods_legacy_id FROM item_stage WHERE mgoods_legacy_id IS NOT NULL AND mgoods_legacy_id <> 0 UNION ALL
       SELECT goods_legacy_id FROM cost_stage WHERE goods_legacy_id IS NOT NULL AND goods_legacy_id <> 0 UNION ALL

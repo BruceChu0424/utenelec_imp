@@ -86,6 +86,14 @@ public class MrpService {
                                  NULLIF(component.color_legacy_id, 0)) IS NOT NULL
                         AND (resolved_color.id IS NULL OR resolved_color.is_deleted)))
                        AS invalid_requirement,
+                   source.is_deleted AS src_deleted,
+                   component.is_deleted AS comp_deleted,
+                   (COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL) AS plan_unit_bad,
+                   (b.qty <= 0) AS bom_qty_bad,
+                   (COALESCE(i.qty,0) < 0) AS plan_qty_bad,
+                   (COALESCE(NULLIF(b.color_legacy_id, 0),
+                             NULLIF(component.color_legacy_id, 0)) IS NOT NULL
+                    AND (resolved_color.id IS NULL OR resolved_color.is_deleted)) AS color_bad,
                    1 AS lvl,
                    ARRAY[b.id]::uuid[] AS path
             FROM production_plan_items i
@@ -117,6 +125,14 @@ public class MrpService {
                                  NULLIF(component.color_legacy_id, 0)) IS NOT NULL
                         AND (resolved_color.id IS NULL OR resolved_color.is_deleted)))
                        AS invalid_requirement,
+                   source.is_deleted AS src_deleted,
+                   component.is_deleted AS comp_deleted,
+                   (COALESCE(i.unit_rate,1) <= 0 OR i.unit_id IS NULL) AS plan_unit_bad,
+                   (b.qty <= 0) AS bom_qty_bad,
+                   (COALESCE(i.qty,0) < 0) AS plan_qty_bad,
+                   (COALESCE(NULLIF(b.color_legacy_id, 0),
+                             NULLIF(component.color_legacy_id, 0)) IS NOT NULL
+                    AND (resolved_color.id IS NULL OR resolved_color.is_deleted)) AS color_bad,
                    1 AS lvl,
                    ARRAY[b.id]::uuid[] AS path
             FROM sales_order_items i
@@ -144,6 +160,14 @@ public class MrpService {
                         OR (COALESCE(NULLIF(b.color_legacy_id, 0),
                                      NULLIF(component.color_legacy_id, 0)) IS NOT NULL
                             AND (resolved_color.id IS NULL OR resolved_color.is_deleted))),
+                       e.src_deleted,
+                       (e.comp_deleted OR component.is_deleted),
+                       e.plan_unit_bad,
+                       (e.bom_qty_bad OR b.qty <= 0),
+                       e.plan_qty_bad,
+                       (e.color_bad OR (COALESCE(NULLIF(b.color_legacy_id, 0),
+                                                 NULLIF(component.color_legacy_id, 0)) IS NOT NULL
+                                        AND (resolved_color.id IS NULL OR resolved_color.is_deleted))),
                        e.lvl + 1,
                        e.path || b.id
                 FROM exp e
@@ -178,6 +202,12 @@ public class MrpService {
                             ELSE MIN(e.need_date)
                        END AS need_date,
                        bool_or(e.invalid_requirement) AS invalid_requirement,
+                       bool_or(e.src_deleted) AS src_deleted,
+                       bool_or(e.comp_deleted) AS comp_deleted,
+                       bool_or(e.plan_unit_bad) AS plan_unit_bad,
+                       bool_or(e.bom_qty_bad) AS bom_qty_bad,
+                       bool_or(e.plan_qty_bad) AS plan_qty_bad,
+                       bool_or(e.color_bad) AS color_bad,
                        bool_or(EXISTS (SELECT 1 FROM goods_bom_items c
                                        WHERE c.goods_id = e.goods_id AND c.is_deleted = false)) AS has_bom
                 FROM exp e
@@ -207,7 +237,15 @@ public class MrpService {
                    u.id AS unit_id,
                    (a.invalid_requirement OR g.is_deleted
                     OR u.id IS NULL OR COALESCE(u.is_deleted, true)) AS invalid_requirement,
-                   COALESCE(po.invalid_rate, false) AS invalid_po_rate
+                   COALESCE(po.invalid_rate, false) AS invalid_po_rate,
+                   a.src_deleted,
+                   (a.comp_deleted OR g.is_deleted) AS comp_deleted,
+                   a.plan_unit_bad,
+                   a.bom_qty_bad,
+                   a.plan_qty_bad,
+                   a.color_bad,
+                   (u.id IS NULL OR COALESCE(u.is_deleted, true)) AS unit_unresolved,
+                   g.source_type
             FROM agg a
             JOIN goods g ON g.id = a.goods_id
             LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
@@ -839,6 +877,106 @@ public class MrpService {
     }
 
     /**
+     * V1 执行分段确认事务内的自制件派生内核（干净入口）。
+     *
+     * <p>为父计划 BOM 中"本身有下层 BOM（has_bom）且净需求为正"的自制组件汇总生成一张
+     * 草稿子生产计划（父号-N），明细 qty=净需求、oqty=毛需求，写 subplan_links
+     * （source='EXECUTION_V1'，带 planning_package_id）。多层嵌套通过进入子计划再次
+     * 「一键生成子计划」逐级下钻（旧版既定语义，SAP 计划订单逐级转换惯例）。
+     *
+     * <p>与旧版 {@link #generateSubplan} 的区别：不调 requirePlanningWriteReady /
+     * assertLegacyDerivedWriteAllowed（避开硬开关与 V1 互斥锁自相矛盾）；按父计划幂等
+     * （已有 V1 子计划则跳过，需红冲子计划后才能重生成）；从 V1 confirm 事务内调用，
+     * 无净需求自制件时返回空列表（不抛错）。
+     */
+    @Transactional
+    public List<GenerateSubplansRequest.Created> generateSelfMadeSubplansForPackage(
+            UUID planId, UUID planningPackageId) {
+        tx.bind();
+        ProductionPlan plan = lockPlan(planId);
+        requireNotTerminal(plan, "自制件子计划");
+
+        // 幂等/防重复：父计划已有 V1 产生的有效子计划则跳过（红冲子计划后才能重生成）
+        Number existing = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM subplan_links l
+                JOIN production_plans p ON p.id = l.subplan_id
+                WHERE l.plan_id = :planId AND l.is_deleted = false
+                  AND l.source = 'EXECUTION_V1'
+                  AND p.is_deleted = false AND p.status <> -1
+                """).setParameter("planId", planId).getSingleResult();
+        if (existing.intValue() > 0) {
+            return List.of();
+        }
+
+        List<MrpRow> make = explode(planId).stream()
+                .filter(r -> r.selfMade() && r.net() != null && r.net().signum() > 0)
+                .toList();
+        if (make.isEmpty()) {
+            return List.of();
+        }
+
+        // 子计划交货日：父计划最早开工日（零件要先于成品投产），无开工日则取父计划交货日
+        Object begin = em.createNativeQuery("""
+                SELECT MIN(plan_begin_date) FROM production_plan_items
+                WHERE plan_id = :planId AND is_deleted = false
+                """).setParameter("planId", planId).getSingleResult();
+        LocalDate subDelivery = begin != null
+                ? ((java.sql.Date) begin).toLocalDate() : plan.getDeliveryDate();
+
+        LocalDate today = BusinessTime.today();
+        ProductionPlan sub = new ProductionPlan();
+        // 子计划编号 = 父计划号-N（编号体系内一眼看出归属，如 SJ26070078-1）
+        sub.setBillNo(plan.getBillNo() + "-" + nextSubSuffix(plan.getBillNo()));
+        sub.setBillDate(today);
+        sub.setDeliveryDate(subDelivery);
+        sub.setDepartmentId(plan.getDepartmentId());
+        sub.setWorkshopName(plan.getWorkshopName());
+        sub.setRemark("父计划 " + plan.getBillNo() + " 自制件按净需求自动生成（执行分段）");
+        sub.setSourceDocNo(plan.getBillNo());
+        sub.setMakerId(currentUser.requireEmployeeId());
+        sub.setStatus((short) 0);
+        planRepo.save(sub);
+
+        int line = 0;
+        for (MrpRow row : make) {
+            line++;
+            ProductionPlanItem it = new ProductionPlanItem();
+            it.setPlanId(sub.getId());
+            it.setBillNo(sub.getBillNo());
+            it.setBillDate(sub.getBillDate());
+            it.setLineNo(line);
+            it.setProductNo(sub.getBillNo() + "-" + line);
+            it.setGoodsId(row.goodsId());
+            it.setColorId(row.colorId());
+            it.setUnitId(row.unitId());
+            it.setUnitRate(BigDecimal.ONE); // MRP 展开行已是基本单位口径
+            it.setQty(row.net());
+            it.setOqty(row.gross());
+            it.setSourceDocNo(plan.getBillNo());
+            it.setRemark("毛需求 " + row.gross().stripTrailingZeros().toPlainString()
+                    + " − 库存 " + row.onhand().stripTrailingZeros().toPlainString()
+                    + " − 在途 " + row.openPo().stripTrailingZeros().toPlainString());
+            itemRepo.save(it);
+        }
+
+        em.createNativeQuery("""
+                INSERT INTO subplan_links (plan_id, subplan_id, created_by,
+                                           planning_package_id, source)
+                VALUES (:planId, :subplanId, :by, :packageId, 'EXECUTION_V1')
+                """)
+                .setParameter("planId", planId)
+                .setParameter("subplanId", sub.getId())
+                .setParameter("by", currentUser.requireId())
+                .setParameter("packageId", planningPackageId)
+                .executeUpdate();
+
+        // 返回子计划汇总（Created）：planId/billNo/lineCount 都现成，
+        // workshopName 取刚写入子计划的 sub.getWorkshopName()（=父计划车间，:933 已设）。
+        return List.of(new GenerateSubplansRequest.Created(
+                sub.getId(), sub.getBillNo(), line, sub.getWorkshopName()));
+    }
+
+    /**
      * 按车间拆分生成子计划（可定制化）：用户自选自制件行 + 各自数量 + 归属车间，
      * 按车间分组各生成一张草稿计划。允许多轮生成（如先开注塑车间、后开装配车间），
      * 防超产硬校验：每 货品+颜色 累计子计划量 ≤ MRP 净需求。
@@ -1171,30 +1309,68 @@ public class MrpService {
         List<Object[]> rs = NativeQueryResults.objectArrayRows(q);
         List<MrpRow> out = new ArrayList<>(rs.size());
         for (Object[] x : rs) {
-            String goodsCode = (String) x[1];
+            String goodsLabel = goodsLabel(x);
             if (Boolean.TRUE.equals(x[15])) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "货品 " + goodsCode + " 的 BOM 数量、颜色映射或需求单位无效，禁止计算齐套");
+                        "货品 " + goodsLabel + " 的" + invalidRequirementReasons(x)
+                                + "，禁止计算齐套");
             }
             if (Boolean.TRUE.equals(x[16])) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "货品 " + goodsCode + " 存在未完成采购行的单位或换算率无效，禁止计算齐套");
+                        "货品 " + goodsLabel + " 存在未完成采购行的单位或换算率无效，禁止计算齐套");
             }
             if (x[14] == null) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "货品 " + goodsCode + " 未维护可解析的基本单位，禁止生成采购或子计划");
+                        "货品 " + goodsLabel + " 未维护可解析的基本单位，禁止生成采购或子计划");
             }
             out.add(MrpRow.fromAvailability(
-                    (UUID) x[0], goodsCode, (String) x[2], (String) x[3],
+                    (UUID) x[0], (String) x[1], (String) x[2], (String) x[3],
                     (UUID) x[4], decimal(x[5]), Boolean.TRUE.equals(x[13]), (UUID) x[14],
                     decimal(x[6]), decimal(x[7]), decimal(x[8]),
                     decimal(x[9]), decimal(x[10]),
-                    localDate(x[11]), localDate(x[12])));
+                    localDate(x[11]), localDate(x[12]),
+                    (String) x[24]));
         }
         return out;
+    }
+
+    /**
+     * 货品编码缺失时用名称兜底，避免错误提示出现“货品 null”而无法定位。
+     * code/name 均空时回落到主键 id，保证至少可追溯。
+     */
+    private static String goodsLabel(Object[] x) {
+        String code = (String) x[1];
+        if (code != null && !code.isBlank()) {
+            return code;
+        }
+        String name = (String) x[2];
+        if (name != null && !name.isBlank()) {
+            return name + "（编码为空）";
+        }
+        return "id=" + x[0];
+    }
+
+    /**
+     * 把聚合后的 invalid_requirement 拆成具体命中项，便于运维直接定位是单位、
+     * 颜色、BOM 用量还是货品删除。各项来自 exp/agg 的分类 bool 与最终投影的
+     * 单位解析列；总开关语义（x[15]）保持不变。
+     */
+    private static String invalidRequirementReasons(Object[] x) {
+        List<String> reasons = new ArrayList<>();
+        if (Boolean.TRUE.equals(x[17])) reasons.add("计划产品货品已删除");
+        if (Boolean.TRUE.equals(x[18])) reasons.add("BOM 组件货品已删除");
+        if (Boolean.TRUE.equals(x[23])) reasons.add("组件基本单位未维护或已禁用");
+        if (Boolean.TRUE.equals(x[19])) reasons.add("计划明细行的单位或换算率无效");
+        if (Boolean.TRUE.equals(x[20])) reasons.add("BOM 用量非正");
+        if (Boolean.TRUE.equals(x[22])) reasons.add("颜色映射无效");
+        if (Boolean.TRUE.equals(x[21])) reasons.add("计划数量为负");
+        if (reasons.isEmpty()) {
+            reasons.add("BOM 数量、颜色映射或需求单位无效");
+        }
+        return String.join("；", reasons);
     }
 
     private void validateBomGraph(String sql, UUID sourceId) {

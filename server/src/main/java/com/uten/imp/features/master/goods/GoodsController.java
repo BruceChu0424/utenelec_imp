@@ -77,13 +77,17 @@ public class GoodsController {
             @RequestParam(required = false) Integer unitLegacyId,
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) Boolean excludeDisabled,
+            @RequestParam(required = false) Boolean excludeStub,
+            @RequestParam(required = false) Boolean disabledOnly,
+            @RequestParam(required = false) Boolean stubOnly,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(new GoodsQueryFilter(categoryId, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
-                colorLegacyId, unitLegacyId, sourceType, excludeDisabled), page, size, sort, order);
+                colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
+                excludeStub, disabledOnly, stubOnly), page, size, sort, order);
     }
 
     @GetMapping("/facets")
@@ -130,12 +134,16 @@ public class GoodsController {
             @RequestParam(required = false) Integer unitLegacyId,
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) Boolean excludeDisabled,
+            @RequestParam(required = false) Boolean excludeStub,
+            @RequestParam(required = false) Boolean disabledOnly,
+            @RequestParam(required = false) Boolean stubOnly,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
-                colorLegacyId, unitLegacyId, sourceType, excludeDisabled), sort, order);
+                colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
+                excludeStub, disabledOnly, stubOnly), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
         byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

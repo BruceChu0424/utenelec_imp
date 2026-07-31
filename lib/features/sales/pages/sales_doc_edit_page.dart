@@ -32,6 +32,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/repositories/client_repository.dart';
+import '../../department/models/department_node.dart';
+import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../config/sales_doc_config.dart';
@@ -736,6 +738,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     _employeePicker(
                                       label: '业务员',
                                       currentId: _sellerId,
+                                      defaultDeptCode: kDeptCodeMarketing,
                                       onChanged: (id) =>
                                           setState(() => _sellerId = id),
                                     ),
@@ -926,20 +929,28 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     );
   }
 
-  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  /// 人员选择器：关键字为空且指定 [defaultDeptCode] 时收敛到该部门子树、否则全公司搜。
   Widget _employeePicker({
     required String label,
     required String? currentId,
     required ValueChanged<String?> onChanged,
+    String? defaultDeptCode,
   }) {
     return UtenEmployeePicker(
       key: ValueKey('${label}_$currentId'),
       label: label,
+      hint: '请选择$label',
+      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
+        final deptId =
+            (kw == null || kw.isEmpty) && defaultDeptCode != null
+            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+                  const {})[defaultDeptCode]
+            : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw);
+            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(

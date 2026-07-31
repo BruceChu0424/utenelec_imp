@@ -1,4 +1,4 @@
-// UtenDialog - 确认对话框（UtenButton 动作 + 主题适配）
+// UtenDialog - 确认对话框（UtenButton 动作 + 主题适配 + 按钮居中）
 // 文档：docs/02-组件库/UtenDialog.md
 import 'package:flutter/material.dart';
 
@@ -20,6 +20,8 @@ abstract final class UtenDialog {
       builder: (ctx) => AlertDialog(
         title: Text(title),
         content: content,
+        // 按钮整体居中（全仓弹窗统一规范）
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           UtenButton(
             type: UtenButtonType.ghost,

@@ -126,7 +126,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
             dueAt: _dueAt,
           );
       ref.invalidate(noticeListProvider);
-      ref.invalidate(unreadNoticeCountProvider);
+      ref.read(unreadNoticeCountProvider.notifier).refresh();
       if (!mounted) return;
       final recipientCount = published.audienceCount;
       if (recipientCount == null) {
@@ -163,6 +163,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
         ),
         title: Text(l10n.noticePublishConfirmTitle),
         content: Text(summary),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),

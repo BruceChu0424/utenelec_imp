@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_collapsible_section.dart';
+import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -34,7 +35,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../hr_profile/widgets/hr_pending_badge.dart';
 import '../../production/widgets/production_pending_badge.dart';
-import '../../purchase/widgets/pmc_shortage_badge.dart';
+import '../../purchase/widgets/purchase_task_badge.dart';
 import '../../visitor_approval/widgets/visitor_pending_badge.dart';
 import '../providers/workbench_layout_provider.dart';
 
@@ -282,23 +283,12 @@ const _allGroups = <_ModuleGroup>[
     title: '财税部',
     color: UtenColors.success,
     items: [
-      // 采购管理已归 PMC 运营部（本组原占位入口移除，避免重复）。
-      // 客户/供应商资料已迁至「基础资料」hub（/basicinfo/client、/basicinfo/supplier）。
-      // 已落地（真实后端）排前面
-      _ModuleItem(
-        icon: Icons.account_balance_outlined,
-        label: '账户资料',
-        location: RouteName.basicinfoAccount,
-      ),
+      // 采购管理已归 PMC 运营部；客户/供应商/账户资料已迁至「基础资料」hub；
+      // 财务报表已并入「钱流管理」hub（钱流报表分区），本组只留钱流管理总入口，避免重复。
       _ModuleItem(
         icon: Icons.payments_outlined,
         label: '钱流管理',
         location: RouteName.finance,
-      ),
-      _ModuleItem(
-        icon: Icons.bar_chart_outlined,
-        label: '财务报表',
-        location: '/finance/report',
       ),
       // 以下仍为前端 Mock、未接后端：置灰放最后，名字追加「（功能规划接入中）」、暂不跳转
       _ModuleItem(
@@ -362,38 +352,20 @@ const _allGroups = <_ModuleGroup>[
     title: 'PMC运营部',
     color: UtenColors.teal600,
     items: [
-      _ModuleItem(
-        icon: Icons.inventory_2_outlined,
-        label: '库存查询',
-        location: RouteName.stockBalance,
-      ),
-      _ModuleItem(
-        icon: Icons.swap_vert_rounded,
-        label: '出入库流水',
-        location: RouteName.stockMovement,
-      ),
+      // 仓库管理 → hub：任务中心(生产领料) / 出入库单据 / 库存查询(即时库存·库存查询·出入库流水) / 仓库报表。
+      // 库存查询、出入库流水已并入仓库管理 hub；仓库任务 = hub 内「生产领料任务中心」，本组不再单列。
       _ModuleItem(
         icon: Icons.warehouse,
         label: '仓库管理',
         location: RouteName.warehouse,
       ),
-      _ModuleItem(
-        icon: Icons.assignment_outlined,
-        label: '仓库任务',
-        location: RouteName.operationsWarehouseWorkbench,
-      ),
-      // 采购管理 → hub（hub 内分「采购管理」4 单据卡片 + 「采购报表」卡片）
-      // 徽标 = 缺料待备料行数（生产计划已审但 BOM 净需求不足），提醒 PMC 主动备料。
+      // 采购管理 → hub：任务中心(采购任务) / 采购管理 4 单据 / 采购报表。采购任务 = hub 内入口，本组不再单列。
+      // 徽标 = 采购任务中心待办任务数（UNPEGGED + WAITING_SUPPLY），与任务中心同源。
       _ModuleItem(
         icon: Icons.shopping_cart_outlined,
         label: '采购管理',
         location: RouteName.purchase,
-        badge: PmcShortageBadge(),
-      ),
-      _ModuleItem(
-        icon: Icons.playlist_add_check_rounded,
-        label: '采购任务',
-        location: RouteName.operationsPurchaseWorkbench,
+        badge: PurchaseTaskBadge(),
       ),
     ],
   ),
@@ -422,15 +394,12 @@ const _allGroups = <_ModuleGroup>[
         label: '销售管理',
         location: RouteName.sales,
       ),
+      // 委外管理 → hub：任务中心(生产委外需求) / 委外管理 8 单据 / 委外报表。
+      // 委外任务 = hub 内「生产委外需求」，本组不再单列。
       _ModuleItem(
         icon: Icons.precision_manufacturing_outlined,
         label: '委外管理',
         location: RouteName.subcontract,
-      ),
-      _ModuleItem(
-        icon: Icons.factory_outlined,
-        label: '委外任务',
-        location: RouteName.operationsSubcontractWorkbench,
       ),
     ],
   ),
@@ -587,7 +556,9 @@ class _ModuleTile extends StatelessWidget {
               Positioned(
                 top: UtenSpacing.s4,
                 right: UtenSpacing.s4,
-                child: item.badge!,
+                // 延迟挂载角标：首帧不构建 badge → 不 watch 计数 provider →
+                // 不在首帧发起请求 / 启动 60s 轮询；首帧绘制后再并行拉取。
+                child: UtenLazyMount(builder: (_) => item.badge!),
               ),
           ],
         ),

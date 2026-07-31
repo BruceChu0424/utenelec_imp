@@ -410,6 +410,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
           ),
         ),
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),

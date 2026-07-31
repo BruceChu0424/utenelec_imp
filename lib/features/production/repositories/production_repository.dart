@@ -396,14 +396,6 @@ class ProductionPlanRepository {
     };
   }
 
-  /// 缺料待备料计数（PMC 采购管理徽标）：{'count': n}。
-  Future<Map<String, int>> scheduleShortageCount() async {
-    final json = await api.get(
-      '/production/schedule/shortage-count',
-    ); // ENDPOINT
-    return {'count': (json['count'] as num?)?.toInt() ?? 0};
-  }
-
   /// 已审订单明细 + 每行货品一层 BOM 零件（新建计划单「从订单带明细」用）。
   Future<List<ScheduleOrderLine>> scheduleOrderLines(String orderId) async {
     final list = await api.getList(

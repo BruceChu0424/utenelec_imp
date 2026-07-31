@@ -363,15 +363,14 @@ public class ProductionFulfillmentLedgerService {
                     "计划包当前状态不允许该操作");
         }
 
-        List<UUID> demandIds = em.createNativeQuery("""
+        List<UUID> demandIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT id
                         FROM production_material_demands
                         WHERE package_id = :packageId
                           AND is_deleted = FALSE
                         ORDER BY goods_id, color_id NULLS FIRST, id
                         """, UUID.class)
-                .setParameter("packageId", packageId)
-                .getResultList();
+                .setParameter("packageId", packageId), UUID.class);
         // releaseByDemands acquires advisory dimensions before it locks these
         // demand rows, matching allocation and DRAW-issue lock order.
         return new LifecycleHandle(

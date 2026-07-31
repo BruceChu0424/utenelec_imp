@@ -63,16 +63,20 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     return int.tryParse(first) ?? 0;
   }
 
-  void _show(AppNotification n) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    // 同 message + 同 kind 在 600ms 内合并去重，避免重复触发时的叠加。
-    final hasRecent = state.any(
-      (x) =>
-          x.kind == n.kind &&
-          x.message == n.message &&
-          now - _tsOf(x.id) < _dedupeMs,
-    );
-    if (hasRecent) return;
+  void _show(AppNotification n, {bool force = false}) {
+    // force=true 时跳过 600ms 去重，用于必须让用户看到的关键提示
+    // （如"请先审核"、"仓库未加载"等点击反馈，避免被前一条同文案吞掉）。
+    if (!force) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      // 同 message + 同 kind 在 600ms 内合并去重，避免重复触发时的叠加。
+      final hasRecent = state.any(
+        (x) =>
+            x.kind == n.kind &&
+            x.message == n.message &&
+            now - _tsOf(x.id) < _dedupeMs,
+      );
+      if (hasRecent) return;
+    }
 
     final fresh = AppNotification(
       id: _newId(),
@@ -100,7 +104,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     if (state.isNotEmpty) state = const <AppNotification>[];
   }
 
-  void showSuccess(String message, {String? title, Duration? duration}) =>
+  void showSuccess(String message, {String? title, Duration? duration, bool force = false}) =>
       _show(
         AppNotification(
           id: '',
@@ -109,6 +113,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
           message: message,
           durationMs: duration?.inMilliseconds ?? 3200,
         ),
+        force: force,
       );
 
   void showError(
@@ -116,6 +121,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     String? title,
     Duration? duration,
     List<ApiFieldError>? fieldErrors,
+    bool force = false,
   }) => _show(
     AppNotification(
       id: '',
@@ -125,9 +131,10 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       durationMs: duration?.inMilliseconds ?? 5000,
       fieldErrors: fieldErrors,
     ),
+    force: force,
   );
 
-  void showWarning(String message, {String? title, Duration? duration}) =>
+  void showWarning(String message, {String? title, Duration? duration, bool force = false}) =>
       _show(
         AppNotification(
           id: '',
@@ -136,9 +143,10 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
           message: message,
           durationMs: duration?.inMilliseconds ?? 3200,
         ),
+        force: force,
       );
 
-  void showInfo(String message, {String? title, Duration? duration}) => _show(
+  void showInfo(String message, {String? title, Duration? duration, bool force = false}) => _show(
     AppNotification(
       id: '',
       kind: AppNotificationKind.info,
@@ -146,6 +154,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       message: message,
       durationMs: duration?.inMilliseconds ?? 3200,
     ),
+    force: force,
   );
 
   /// 通用入口（统一门面 UtenNotify.banner 走这里）。
@@ -159,6 +168,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     Duration? duration,
     IconData? icon,
     VoidCallback? onTap,
+    bool force = false,
   }) => _show(
     AppNotification(
       id: '',
@@ -169,6 +179,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       icon: icon,
       onTap: onTap,
     ),
+    force: force,
   );
 }
 
@@ -186,23 +197,24 @@ extension AppNotificationContextX on BuildContext {
   ).read(appNotificationProvider.notifier);
 
   /// 显示顶部成功通知。
-  void appSuccess(String message, {String? title}) =>
-      _notifier.showSuccess(message, title: title);
+  void appSuccess(String message, {String? title, bool force = false}) =>
+      _notifier.showSuccess(message, title: title, force: force);
 
   /// 显示顶部错误通知。
   void appError(
     String message, {
     String? title,
     List<ApiFieldError>? fieldErrors,
-  }) => _notifier.showError(message, title: title, fieldErrors: fieldErrors);
+    bool force = false,
+  }) => _notifier.showError(message, title: title, fieldErrors: fieldErrors, force: force);
 
   /// 显示顶部警告通知。
-  void appWarning(String message, {String? title}) =>
-      _notifier.showWarning(message, title: title);
+  void appWarning(String message, {String? title, bool force = false}) =>
+      _notifier.showWarning(message, title: title, force: force);
 
   /// 显示顶部信息通知。
-  void appInfo(String message, {String? title}) =>
-      _notifier.showInfo(message, title: title);
+  void appInfo(String message, {String? title, bool force = false}) =>
+      _notifier.showInfo(message, title: title, force: force);
 
   /// 从 ApiException 自动提取 message + fieldErrors 显示为错误通知。
   void appApiError(Object error, {String? fallback = '操作失败，请稍后重试'}) {

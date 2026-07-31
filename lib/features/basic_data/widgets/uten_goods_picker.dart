@@ -28,6 +28,21 @@ import 'uten_category_tree_view.dart';
 /// 原材料=2113、辅料=2480、未分类=迁移虚拟孤儿根 -1。
 const _excludedLegacyIds = {2113, 2480, -1};
 
+/// 滑窗显示范围（按单据场景分流；默认 sellable 保持历史行为，零回归）。
+enum UtenGoodsPickerScope {
+  /// 成品/可售卖类：排除原材料/辅料/未分类（销售/生产/委外进仓等）。
+  sellable,
+  /// 原材料/辅料类：只保留原材料/辅料子树（采购/领料/物料反查等）。
+  material,
+  /// 全部：不过滤（调拨/其它出入库/盘点）。
+  all,
+}
+
+/// material 范围保留的根分类 legacyId（原材料/辅料）。
+/// 扩展点：若包装材料/五金配件是独立根且采购/领料需要，再加 legacyId 与下方关键字。
+const _materialRootLegacyIds = {2113, 2480};
+const _materialRootNameKeywords = {'原材料', '辅料'};
+
 /// 名称兜底判断（legacyId 缺失或新增同名分类时仍能排除）。
 bool _isExcludedCategory(ProductCategoryNode n) {
   if (n.legacyId != null && _excludedLegacyIds.contains(n.legacyId)) {
@@ -59,21 +74,65 @@ List<ProductCategoryNode> _filterExcludedTree(List<ProductCategoryNode> nodes) {
   return out;
 }
 
+/// 节点是否属于 material 范围根（原材料/辅料）。
+bool _isMaterialRoot(ProductCategoryNode n) {
+  if (n.legacyId != null && _materialRootLegacyIds.contains(n.legacyId)) {
+    return true;
+  }
+  final name = n.name;
+  return _materialRootNameKeywords.any(name.contains);
+}
+
+/// material 范围：只保留命中（原材料/辅料）的节点整子树。
+/// 命中节点的非命中祖先丢弃（命中节点升为新森林的根）。是 _filterExcludedTree 的逆操作。
+List<ProductCategoryNode> _keepMaterialTree(List<ProductCategoryNode> nodes) {
+  final out = <ProductCategoryNode>[];
+  for (final n in nodes) {
+    if (_isMaterialRoot(n)) {
+      // 命中：整子树保留（命中节点下所有子分类都算材料，不再过滤 children）。
+      out.add(_cloneSubtree(n));
+    } else {
+      // 未命中：递归往下找命中的后代（后代升为新森林根）。
+      out.addAll(_keepMaterialTree(n.children));
+    }
+  }
+  return out;
+}
+
+/// 深拷贝整子树（命中节点保留全部后代用）。
+ProductCategoryNode _cloneSubtree(ProductCategoryNode n) {
+  return ProductCategoryNode(
+    id: n.id,
+    code: n.code,
+    name: n.name,
+    level: n.level,
+    parentId: n.parentId,
+    sortOrder: n.sortOrder,
+    legacyId: n.legacyId,
+    children: [for (final c in n.children) _cloneSubtree(c)],
+  );
+}
+
 /// 弹出货品选择器，返回所选货品（完整 GoodsListItem）；取消返回 null。
 Future<GoodsListItem?> showUtenGoodsPicker(
   BuildContext context,
-  WidgetRef ref,
-) async {
+  WidgetRef ref, {
+  UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable,
+}) async {
   List<ProductCategoryNode> tree;
   try {
     final raw = await ref.read(productCategoryRepositoryProvider).tree();
-    tree = _filterExcludedTree(raw);
+    tree = switch (scope) {
+      UtenGoodsPickerScope.sellable => _filterExcludedTree(raw),
+      UtenGoodsPickerScope.material => _keepMaterialTree(raw),
+      UtenGoodsPickerScope.all => raw,
+    };
   } catch (_) {
     if (context.mounted) context.appError('货品分类加载失败，请稍后重试');
     return null;
   }
   if (!context.mounted) return null;
-  final sheet = _GoodsPickerSheet(tree: tree);
+  final sheet = _GoodsPickerSheet(tree: tree, scope: scope);
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<GoodsListItem>(
       context: context,
@@ -117,8 +176,9 @@ Future<GoodsListItem?> showUtenGoodsPicker(
 }
 
 class _GoodsPickerSheet extends ConsumerStatefulWidget {
-  const _GoodsPickerSheet({required this.tree});
+  const _GoodsPickerSheet({required this.tree, required this.scope});
   final List<ProductCategoryNode> tree;
+  final UtenGoodsPickerScope scope;
 
   @override
   ConsumerState<_GoodsPickerSheet> createState() => _GoodsPickerSheetState();
@@ -136,10 +196,10 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   @override
   void initState() {
     super.initState();
-    // 默认选中第一个根分类并加载其货品（避免打开时空白）。
+    // 懒载：预选第一个根分类（树高亮，用户有定位感），但不立即加载货品列表。
+    // 输关键词或点分类才加载（省资源）。
     if (widget.tree.isNotEmpty) {
       _selectedCategoryId = widget.tree.first.id;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _reloadGoods());
     }
   }
 
@@ -183,10 +243,15 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
               _selectedCategoryId!,
               page: _page,
               keyword: kw.isEmpty ? null : kw,
+              excludeDisabled: true,
+              excludeStub: true,
             );
-      } else if (kw.isNotEmpty) {
-        // 没选分类但有关键词：全库搜。
-        r = await ref.read(goodsRepositoryProvider).search(kw, page: _page);
+      } else if (kw.isNotEmpty && widget.scope == UtenGoodsPickerScope.all) {
+        // 仅 all 范围允许全库搜；sellable/material 必须先选分类，否则会把不该显示的
+        // 类目（原材料/成品）混搜出来，回归 ADR-015 当年要消除的老 bug。
+        r = await ref
+            .read(goodsRepositoryProvider)
+            .search(kw, page: _page, excludeDisabled: true, excludeStub: true);
       } else {
         // 既无分类又无关键词：不发请求，提示选择/输入。
         if (!mounted) return;
@@ -248,6 +313,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                       ? const <String>{}
                       : <String>{_selectedCategoryId!},
                   expandOnRowTap: true,
+                  initiallyCollapsedNames: const {'未分类'},
                   searchHint: '搜索分类',
                   onToggleSelect: _onCategoryTap,
                 ),
@@ -270,7 +336,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             controller: _keywordCtl,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search_rounded, size: 20),
-              hintText: '搜索货品编号/名称/型号/规格',
+              hintText: '搜索编号/名称/型号/规格/客户型号/材质/备注',
               isDense: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),

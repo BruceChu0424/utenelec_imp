@@ -33,6 +33,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../department/models/department_node.dart';
+import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../config/subcontract_doc_config.dart';
@@ -242,8 +244,17 @@ class _SubcontractDocEditPageState
     );
   }
 
+  /// 选货品范围：发料/材料退/损耗=材料；进仓/退货/订货/申请/询价=成品。
+  UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
+        SubcontractDocType.materialIssue ||
+        SubcontractDocType.materialReturn ||
+        SubcontractDocType.waste =>
+          UtenGoodsPickerScope.material,
+        _ => UtenGoodsPickerScope.sellable,
+      };
+
   Future<void> _pickGoods(SubcontractGridRow row) async {
-    final g = await showUtenGoodsPicker(context, ref);
+    final g = await showUtenGoodsPicker(context, ref, scope: _pickerScope);
     if (g == null) return;
     final names = ref.read(mn.masterNameServiceProvider);
     row
@@ -590,6 +601,7 @@ class _SubcontractDocEditPageState
                   _employeePicker(
                     label: '采购员',
                     currentId: _purchaserId,
+                    defaultDeptCode: kDeptCodeSales,
                     onChanged: (id) => setState(() => _purchaserId = id),
                   ),
                 if (_cfg.hasSender)
@@ -602,6 +614,7 @@ class _SubcontractDocEditPageState
                   _employeePicker(
                     label: '经办人',
                     currentId: _workerId,
+                    defaultDeptCode: kDeptCodeSales,
                     onChanged: (id) => setState(() => _workerId = id),
                   ),
                 // 日期字段（按 config 显隐，统一 UtenDateField）
@@ -669,20 +682,28 @@ class _SubcontractDocEditPageState
     );
   }
 
-  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  /// 人员选择器：关键字为空且指定 [defaultDeptCode] 时收敛到该部门子树、否则全公司搜。
   Widget _employeePicker({
     required String label,
     required String? currentId,
     required ValueChanged<String?> onChanged,
+    String? defaultDeptCode,
   }) {
     return UtenEmployeePicker(
       key: ValueKey('${label}_$currentId'),
       label: label,
+      hint: '请选择$label',
+      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
+        final deptId =
+            (kw == null || kw.isEmpty) && defaultDeptCode != null
+            ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
+                  const {})[defaultDeptCode]
+            : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw);
+            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(

@@ -59,6 +59,7 @@ public class ProductionExecutionPackageCommandService {
     private final StockDocumentItemRepository stockDocumentItemRepo;
     private final DocNumberService docNumberService;
     private final TxSessionVars tx;
+    private final MrpService mrpService;
 
     @Transactional
     public PlanningPackageResult confirm(
@@ -253,11 +254,16 @@ public class ProductionExecutionPackageCommandService {
                 segmentDrafts, demandsBySegment, allocatedByDemand, draws);
         List<MrpGenerateResult> drawResults =
                 List.copyOf(draws.values());
+        // 自制件派生：为 BOM 中本身有下层 BOM 且净需求为正的自制组件生成子生产计划
+        // （走 subplan_links，source='EXECUTION_V1'）。与领料/采购同事务，幂等不重复。
+        List<GenerateSubplansRequest.Created> subplanResults =
+                mrpService.generateSelfMadeSubplansForPackage(
+                        planId, begin.planningPackage().getId());
         return new PlanningPackageResult(
                 begin.planningPackage().getId(),
                 begin.planningPackage().getStatus(),
                 false,
-                List.of(),
+                subplanResults,
                 purchaseResult,
                 subcontractResult,
                 drawResults.isEmpty() ? null : drawResults.getFirst(),
@@ -1143,6 +1149,8 @@ public class ProductionExecutionPackageCommandService {
                                       AND link.is_deleted = FALSE
                                       AND subplan.is_deleted = FALSE
                                       AND subplan.status <> -1
+                                      AND (link.planning_package_id IS NULL
+                                           OR link.source IS DISTINCT FROM 'EXECUTION_V1')
                                   ),
                                   EXISTS (
                                     SELECT 1

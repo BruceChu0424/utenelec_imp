@@ -227,16 +227,17 @@ public class ProductionExecutionPlanningService {
                                          b.sort_order, b.id
                                 """ + lockClause)
                         .setParameter("planId", planId));
-        long sourceCount = ((Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
+        @SuppressWarnings("unchecked")
+        List<UUID> allSourceItemIds = ((List<UUID>) em.createNativeQuery("""
+                        SELECT id
                         FROM production_plan_items
                         WHERE plan_id = :planId
                           AND is_deleted = FALSE
                           AND COALESCE(qty, 0) > 0
                         """)
                 .setParameter("planId", planId)
-                .getSingleResult()).longValue();
-        if (sourceCount == 0 || rows.isEmpty()) {
+                .getResultList());
+        if (allSourceItemIds.isEmpty() || rows.isEmpty()) {
             throw conflict("生产计划没有可排产的成品行或有效 BOM");
         }
 
@@ -257,10 +258,8 @@ public class ProductionExecutionPlanningService {
             String componentSourceType =
                     normalizeSourceType((String) row[22]);
             String authoritativeRoute = supportedSupplyRoute(componentSourceType);
-            if (Boolean.TRUE.equals(row[19])) {
-                throw conflict(
-                        "执行分段暂不支持多层 BOM；请先建立独立半成品生产计划");
-            }
+            // 自制/多层 BOM 组件不再拒绝：route=MAKE 时参与齐套（消耗半成品现货），
+            // 缺口由自制件派生内核生成子生产计划供给。
             BigDecimal perProduct = productRate.multiply(bomQty)
                     .setScale(CompleteKitAllocator.USAGE_SCALE, RoundingMode.CEILING);
             CompleteKitAllocator.MaterialKey key =
@@ -269,9 +268,10 @@ public class ProductionExecutionPlanningService {
             String route = routes.getOrDefault(
                     key, authoritativeRoute);
             if (!ProductionMaterialDemand.ROUTE_BUY.equals(route)
-                    && !ProductionMaterialDemand.ROUTE_SUBCONTRACT.equals(route)) {
+                    && !ProductionMaterialDemand.ROUTE_SUBCONTRACT.equals(route)
+                    && !ProductionMaterialDemand.ROUTE_MAKE.equals(route)) {
                 throw conflict(
-                        "当前执行分段只支持可追溯采购路线；委外和自制路线尚未接通，禁止提交");
+                        "执行分段物料路线必须为采购、委外或自制");
             }
             LineAccumulator line = lines.computeIfAbsent(
                     sourceItemId,
@@ -292,9 +292,11 @@ public class ProductionExecutionPlanningService {
                             componentSourceType,
                             Objects.toString(row[21], "")));
         }
-        if (lines.size() != sourceCount) {
-            throw conflict("至少一个生产计划行没有有效 BOM，禁止部分生成执行分段");
-        }
+        // 部分成品行未维护 BOM：收集其 ID 供前端引导，不再整批拒绝。
+        // 有 BOM 的行照常生成执行分段，无 BOM 的行在前端提示去货品资料维护。
+        List<UUID> noBomPlanItemIds = allSourceItemIds.stream()
+                .filter(id -> !lines.containsKey(id))
+                .toList();
         List<CompleteKitAllocator.ProductLine> productLines = lines.values()
                 .stream()
                 .map(LineAccumulator::toProductLine)
@@ -330,7 +332,8 @@ public class ProductionExecutionPlanningService {
                 warehouseId,
                 PlanningPackageFingerprint.sha256(fingerprintParts),
                 List.copyOf(productLines),
-                Map.copyOf(availability));
+                Map.copyOf(availability),
+                List.copyOf(noBomPlanItemIds));
     }
 
     private Map<CompleteKitAllocator.MaterialKey, BigDecimal>
@@ -431,14 +434,15 @@ public class ProductionExecutionPlanningService {
             return ProductionMaterialDemand.ROUTE_BUY;
         }
         if (GOODS_SOURCE_SELF_MADE.equals(sourceType)) {
-            throw conflict(
-                    "Self-made material supply is not supported by execution planning");
+            // 自制件标记 MAKE 路线：参与齐套判定时可消耗半成品现货库存，
+            // 缺口不生成采购/委外，由自制件派生内核（子生产计划）供给。
+            return ProductionMaterialDemand.ROUTE_MAKE;
         }
         if (GOODS_SOURCE_SUBCONTRACT.equals(sourceType)) {
             return ProductionMaterialDemand.ROUTE_SUBCONTRACT;
         }
         throw conflict(
-                "Material source_type must explicitly be purchase or subcontract");
+                "Material source_type must explicitly be purchase, self-made or subcontract");
     }
 
     private static String normalizeSourceType(String rawSourceType) {
@@ -458,7 +462,8 @@ public class ProductionExecutionPlanningService {
             UUID warehouseId,
             String fingerprint,
             List<CompleteKitAllocator.ProductLine> productLines,
-            Map<CompleteKitAllocator.MaterialKey, BigDecimal> availability) {
+            Map<CompleteKitAllocator.MaterialKey, BigDecimal> availability,
+            List<UUID> noBomPlanItemIds) {
     }
 
     private static final class LineAccumulator {

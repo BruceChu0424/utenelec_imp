@@ -181,6 +181,18 @@ public class GoodsService {
             if (Boolean.TRUE.equals(f.excludeDisabled())) {
                 ps.add(cb.or(cb.isNull(root.get("status")), cb.notEqual(root.get("status"), "禁用")));
             }
+            // V177：stub（auto_created）隔离——滑窗默认隐藏兜底货品，集合行只看兜底货品。
+            // auto_created 是 NOT NULL BOOLEAN，用 isFalse/isTrue 安全（无 null 三态）。
+            if (Boolean.TRUE.equals(f.excludeStub())) {
+                ps.add(cb.isFalse(root.get("autoCreated")));
+            }
+            if (Boolean.TRUE.equals(f.stubOnly())) {
+                ps.add(cb.isTrue(root.get("autoCreated")));
+            }
+            // V177：只看禁用（货品页"禁用货品集合"用）；status 可空，equal 不命中 null（stub 不算禁用）。
+            if (Boolean.TRUE.equals(f.disabledOnly())) {
+                ps.add(cb.equal(root.get("status"), "禁用"));
+            }
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
@@ -524,7 +536,8 @@ public class GoodsService {
                 g.getColorLegacyId() == null ? null : colorNames.get(g.getColorLegacyId()),
                 g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()),
                 g.getSourceType(),
-                g.getCategory() == null ? null : g.getCategory().getId());
+                g.getCategory() == null ? null : g.getCategory().getId(),
+                g.isAutoCreated());
     }
 
     private MaterialCategory requireCategory(UUID id) {

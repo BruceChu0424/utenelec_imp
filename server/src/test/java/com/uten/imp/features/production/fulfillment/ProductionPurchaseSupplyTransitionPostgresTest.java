@@ -296,7 +296,7 @@ class ProductionPurchaseSupplyTransitionPostgresTest {
                                     'production_material_receipt_allocations'
                                 )
                                 """,
-                                null) > 0);
+                                (Object[]) null) > 0);
             }
         });
     }

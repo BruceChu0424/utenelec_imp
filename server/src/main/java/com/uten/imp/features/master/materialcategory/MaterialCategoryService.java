@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.materialcategory;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.materialcategory.dto.*;
@@ -24,6 +26,7 @@ public class MaterialCategoryService {
     private final MaterialCategoryRepository repo;
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final MasterCodeService masterCodeService;
 
     @Transactional(readOnly = true)
     public List<MaterialCategoryNode> tree() {
@@ -50,7 +53,19 @@ public class MaterialCategoryService {
     public MaterialCategoryDetail create(MaterialCategorySaveRequest req) {
         tx.bind();
         MaterialCategory c = new MaterialCategory();
-        c.setCode(req.getCode());
+        // 编码：留空 → FL 前缀原子取号自动生成（如 FL000123，多人并发不撞号）；
+        // 非空 → 去空白后查重，与现存 code 冲突抛 409「编码已存在」。
+        // 仅约束「今后新建」；历史大量重复码（V31）不在拦截范围（应用层校验，无 DB 唯一索引）。
+        String code = req.getCode();
+        if (code == null || code.isBlank()) {
+            code = masterCodeService.nextCode(MasterCodePrefix.CATEGORY);
+        } else {
+            code = code.trim();
+            if (repo.existsByCodeAndDeletedFalse(code)) {
+                throw new ApiException(ErrorCode.CONFLICT, "编码「" + code + "」已存在，请更换");
+            }
+        }
+        c.setCode(code);
         c.setName(req.getName());
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {

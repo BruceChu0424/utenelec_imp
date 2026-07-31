@@ -31,7 +31,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/product_category_node.dart';
+import '../../basic_data/repositories/goods_repository.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
+import '../../basic_data/widgets/category_tree_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_category_tree_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -65,12 +67,17 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   String? _sortKey;
   bool _sortAsc = false;
 
+  // 左树统一搜索（货品名 → 定位分类）：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
+  Set<String>? _visibleFilterIds;
+  String _globalQuery = '';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      await Future.wait([_loadTree(), _load(1)]);
+      await _loadTree();
+      // 懒载：不预拉全库库存，点分类或输搜索词才查（省资源）。
     });
   }
 
@@ -128,6 +135,73 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   void _onSelectCategory(String? id) {
     setState(() => _categoryId = id);
     _load(1);
+  }
+
+  // ---- 左树统一搜索（货品名 → 定位分类）--------------------------------------
+
+  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+
+  Future<void> _applyGlobalSearch(String q) async {
+    final tree = _tree;
+    if (tree == null || tree.isEmpty) return;
+    if (q.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null; // 清空：恢复全树
+      });
+      return;
+    }
+    _globalQuery = q;
+    final catHits = categoryHits(tree, q);
+    setState(() => _visibleFilterIds = catHits);
+    // 借货品搜索拿命中货品的 categoryId（即时库存行不带 categoryId），定位分类并加载该分类库存。
+    try {
+      final result = await ref.read(goodsRepositoryProvider).search(q, size: 50);
+      if (!mounted || _globalQuery != q) return;
+      final ids = <String>{};
+      String? first;
+      for (final g in result.items) {
+        final cid = g.categoryId;
+        if (cid == null || cid.isEmpty) continue;
+        ids.add(cid);
+        first ??= cid;
+      }
+      if (ids.isEmpty) {
+        final firstCat = shallowestHit(tree, q, catHits);
+        setState(() {
+          _visibleFilterIds = catHits;
+          if (firstCat != null && _categoryId != firstCat) {
+            _categoryId = firstCat;
+            _load(1);
+          }
+        });
+        return;
+      }
+      final merged = <String>{...catHits, ...ids};
+      for (final cid in ids) {
+        addAncestors(tree, cid, merged);
+      }
+      final target = first;
+      setState(() {
+        _visibleFilterIds = merged;
+        if (_categoryId != target) {
+          _categoryId = target;
+          _load(1);
+        }
+      });
+    } catch (_) {
+      // 搜索是辅助功能，失败静默（保留分类命中结果）。
+    }
+  }
+
+  Widget _buildGlobalSearchBox() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: UtenSearchBar(
+        hint: '搜索货品定位分类', // TODO(l10n): 补 arb
+        onChanged: _onGlobalSearch,
+      ),
+    );
   }
 
   void _onSortChange(String? column, bool ascending) {
@@ -339,6 +413,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             nodeEnabledPredicate: (_) => true,
             selectedIds: {?_categoryId},
             expandOnRowTap: true,
+            showSearch: false,
+            visibleFilterIds: _visibleFilterIds,
+            header: _buildGlobalSearchBox(),
             onNodeTap: (node) => onSelect(node.id),
           ),
         ),

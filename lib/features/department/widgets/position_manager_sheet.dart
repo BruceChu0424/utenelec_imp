@@ -138,6 +138,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
               ],
             ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -199,6 +200,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除岗位'),
         content: Text('确定删除岗位「${p.name}」吗？删除后不可恢复。'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

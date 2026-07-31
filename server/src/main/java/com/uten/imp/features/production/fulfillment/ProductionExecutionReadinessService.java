@@ -58,7 +58,7 @@ public class ProductionExecutionReadinessService {
     public void onPurchaseReceiptApproved(
             UUID triggeringReceiptId,
             UUID warehouseId) {
-        List<UUID> segmentIds = em.createNativeQuery("""
+        List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT d.execution_segment_id
                         FROM purchase_receipt_items receipt_item
                         JOIN production_material_supply_pegs peg
@@ -80,8 +80,7 @@ public class ProductionExecutionReadinessService {
                         ORDER BY d.execution_segment_id
                         """, UUID.class)
                 .setParameter("receiptId", triggeringReceiptId)
-                .setParameter("warehouseId", warehouseId)
-                .getResultList();
+                .setParameter("warehouseId", warehouseId), UUID.class);
         for (UUID segmentId : segmentIds) {
             tryPromote(
                     segmentId,
@@ -95,7 +94,7 @@ public class ProductionExecutionReadinessService {
     public void onSubcontractReceiptApproved(
             UUID triggeringReceiptId,
             UUID warehouseId) {
-        List<UUID> segmentIds = em.createNativeQuery("""
+        List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT demand.execution_segment_id
                         FROM subcontract_receipt_items receipt_item
                         JOIN production_material_supply_pegs peg
@@ -118,8 +117,7 @@ public class ProductionExecutionReadinessService {
                         ORDER BY demand.execution_segment_id
                         """, UUID.class)
                 .setParameter("receiptId", triggeringReceiptId)
-                .setParameter("warehouseId", warehouseId)
-                .getResultList();
+                .setParameter("warehouseId", warehouseId), UUID.class);
         for (UUID segmentId : segmentIds) {
             tryPromote(
                     segmentId,
@@ -137,7 +135,7 @@ public class ProductionExecutionReadinessService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforePurchaseReceiptReversed(UUID receiptId) {
-        List<UUID> segmentIds = em.createNativeQuery("""
+        List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT demand.execution_segment_id
                         FROM production_material_receipt_allocations allocation
                         JOIN production_material_demands demand
@@ -147,8 +145,7 @@ public class ProductionExecutionReadinessService {
                           AND demand.execution_segment_id IS NOT NULL
                         ORDER BY demand.execution_segment_id
                         """, UUID.class)
-                .setParameter("receiptId", receiptId)
-                .getResultList();
+                .setParameter("receiptId", receiptId), UUID.class);
         for (UUID segmentId : segmentIds) {
             unwindPromotedSegment(segmentId);
         }
@@ -156,7 +153,7 @@ public class ProductionExecutionReadinessService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeSubcontractReceiptReversed(UUID receiptId) {
-        List<UUID> segmentIds = em.createNativeQuery("""
+        List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT demand.execution_segment_id
                         FROM
                           production_material_subcontract_receipt_allocations
@@ -168,8 +165,7 @@ public class ProductionExecutionReadinessService {
                           AND demand.execution_segment_id IS NOT NULL
                         ORDER BY demand.execution_segment_id
                         """, UUID.class)
-                .setParameter("receiptId", receiptId)
-                .getResultList();
+                .setParameter("receiptId", receiptId), UUID.class);
         for (UUID segmentId : segmentIds) {
             unwindPromotedSegment(segmentId);
         }
@@ -199,7 +195,7 @@ public class ProductionExecutionReadinessService {
         UUID packageId = uuid(segmentRows.getFirst()[0]);
         UUID actorId = currentUser.requireId();
 
-        List<UUID> demandIds = em.createNativeQuery("""
+        List<UUID> demandIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT id
                         FROM production_material_demands
                         WHERE execution_segment_id = :segmentId
@@ -208,8 +204,7 @@ public class ProductionExecutionReadinessService {
                         ORDER BY goods_id, color_id NULLS FIRST, id
                         FOR UPDATE
                         """, UUID.class)
-                .setParameter("segmentId", segmentId)
-                .getResultList();
+                .setParameter("segmentId", segmentId), UUID.class);
         if (demandIds.isEmpty()) {
             throw conflict(
                     "Receipt-backed execution segment has no active demands");

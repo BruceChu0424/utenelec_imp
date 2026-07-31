@@ -222,6 +222,7 @@ class _HrProfileChangeDetailPageState
       builder: (ctx) => AlertDialog(
         title: Text(l10n.profileChangeApproveDialogTitle),
         content: Text(l10n.profileChangeApproveDialogBody),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           UtenButton(
             type: UtenButtonType.ghost,
@@ -288,6 +289,7 @@ class _HrProfileChangeDetailPageState
               ),
             ],
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             UtenButton(
               type: UtenButtonType.ghost,

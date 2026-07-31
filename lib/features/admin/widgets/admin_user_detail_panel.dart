@@ -1122,6 +1122,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             ),
           ],
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton.icon(
             onPressed: () async {

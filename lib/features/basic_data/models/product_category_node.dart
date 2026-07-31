@@ -101,22 +101,23 @@ class ProductCategoryDetail {
       );
 }
 
-/// 新建分类请求体：{code,name,parentId?,sortOrder?}。
+/// 新建分类请求体：{code?,name,parentId?,sortOrder?}。
+/// code 留空 → 后端 FL 前缀原子取号自动生成；非空 → 后端查重（须唯一）。
 class ProductCategorySaveInput {
   const ProductCategorySaveInput({
-    required this.code,
+    this.code,
     required this.name,
     this.parentId,
     this.sortOrder,
   });
 
-  final String code;
+  final String? code;
   final String name;
   final String? parentId;
   final int? sortOrder;
 
   Map<String, dynamic> toJson() => {
-    'code': code,
+    if (code != null && code!.isNotEmpty) 'code': code,
     'name': name,
     if (parentId != null) 'parentId': parentId,
     if (sortOrder != null) 'sortOrder': sortOrder,

@@ -30,6 +30,7 @@ import '../repositories/department_repository.dart';
 import '../widgets/department_edit_dialog.dart';
 import '../widgets/department_overview_pane.dart';
 import '../widgets/position_manager_sheet.dart';
+import '../../basic_data/widgets/category_tree_search.dart';
 import '../widgets/uten_department_tree_view.dart';
 
 class DepartmentPage extends ConsumerStatefulWidget {
@@ -44,6 +45,10 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   String? _selectedId;
   bool _loading = true;
   String? _error;
+
+  // 顶部统一搜索（部门名 + 员工姓名/工号）→ 定位部门：visibleFilterIds 驱动树只显示命中部门 + 祖先链。
+  Set<String>? _visibleFilterIds;
+  String _globalQuery = '';
 
   bool _hasPermission(String permission) =>
       ref.read(currentPermissionsProvider).contains(permission);
@@ -65,7 +70,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       if (!mounted) return;
       setState(() {
         _tree = tree;
-        _selectedId = _selectedId ?? (tree.isEmpty ? null : tree.first.id);
+        // 不预选部门：默认右侧空态，点了部门才加载（省资源）。
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -81,6 +86,72 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         _loading = false;
       });
     }
+  }
+
+  // ---- 顶部统一搜索（部门名 + 员工姓名/工号 → 定位部门）----------------------
+
+  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+
+  Future<void> _applyGlobalSearch(String q) async {
+    final tree = _tree;
+    if (tree == null || tree.isEmpty) return;
+    if (q.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null; // 清空：恢复全树
+      });
+      return;
+    }
+    _globalQuery = q;
+    // ① 同步：部门名命中（+祖先+子树），先渲染即时结果。
+    final catHits = categoryHits(tree, q);
+    setState(() => _visibleFilterIds = catHits);
+    // ② 异步：员工姓名/工号命中 → 取其 departmentId（+祖先），定位到第一个命中部门。
+    try {
+      final result = await ref
+          .read(employeeRepositoryProvider)
+          .list(search: q, size: 50);
+      if (!mounted || _globalQuery != q) return; // 过期结果丢弃
+      final ids = <String>{};
+      String? first;
+      for (final e in result.items) {
+        final did = e.departmentId;
+        if (did == null || did.isEmpty) continue;
+        ids.add(did);
+        first ??= did;
+      }
+      if (ids.isEmpty) {
+        final firstDept = shallowestHit(tree, q, catHits);
+        setState(() {
+          _visibleFilterIds = catHits;
+          if (firstDept != null && _selectedId != firstDept) {
+            _selectedId = firstDept;
+          }
+        });
+        return;
+      }
+      final merged = <String>{...catHits, ...ids};
+      for (final did in ids) {
+        addAncestors(tree, did, merged);
+      }
+      final target = first;
+      setState(() {
+        _visibleFilterIds = merged;
+        if (_selectedId != target) _selectedId = target;
+      });
+    } catch (_) {
+      // 搜索是辅助功能，失败静默（保留部门名命中结果）。
+    }
+  }
+
+  Widget _buildGlobalSearchBox() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: UtenSearchBar(
+        hint: '搜索部门/员工姓名/工号', // TODO(l10n): 补 arb
+        onChanged: _onGlobalSearch,
+      ),
+    );
   }
 
   DepartmentNode? _findById(List<DepartmentNode> nodes, String id) {
@@ -155,6 +226,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       builder: (ctx) => AlertDialog(
         title: Text(l10n.departmentDialogDeleteTitle),
         content: Text(l10n.departmentDeleteConfirm(node.name)),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -265,6 +337,9 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
       expandOnRowTap: true,
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,

@@ -134,6 +134,7 @@ class _FinanceAssetsPageState extends ConsumerState<FinanceAssetsPage>
             hintText: '2026-07',
           ),
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -270,6 +271,7 @@ class _FinanceAssetsPageState extends ConsumerState<FinanceAssetsPage>
               ],
             ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -331,6 +333,7 @@ class _FinanceAssetsPageState extends ConsumerState<FinanceAssetsPage>
       builder: (ctx) => AlertDialog(
         title: const Text('删除确认'),
         content: Text('删除 ${row['code']} ${row['name']}？（历史计提凭证保留）'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

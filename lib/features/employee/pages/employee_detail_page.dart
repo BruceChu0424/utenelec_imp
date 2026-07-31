@@ -435,6 +435,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
       builder: (ctx) => AlertDialog(
         title: Text(l10n.employeeConfirmTitle),
         content: Text(l10n.employeeConfirmBody),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -466,6 +467,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
       builder: (ctx) => AlertDialog(
         title: Text(l10n.employeeRehireTitle),
         content: Text(l10n.employeeRehireBody),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -497,6 +499,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
       builder: (ctx) => AlertDialog(
         title: Text(l10n.employeeDeleteTitle),
         content: Text(l10n.employeeDeleteBody),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

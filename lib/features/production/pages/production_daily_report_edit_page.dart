@@ -27,6 +27,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../department/models/department_node.dart';
+import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -63,6 +65,9 @@ class _ProductionDailyReportEditPageState
   String? _workerId;
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
+  /// 生产工 picker 默认范围：生产部（DEPT_PROD）子树 id；解析前 picker 回退全公司。
+  String? _productionDeptId;
+
   final _grid = UtenEditableGridController<DailyGridRow>();
   final _scrollCtl = ScrollController();
   bool _saving = false;
@@ -89,6 +94,7 @@ class _ProductionDailyReportEditPageState
   Future<void> _init() async {
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    await _resolveDeptIds();
     if (widget.id != null) {
       try {
         final d = await ref
@@ -376,20 +382,37 @@ class _ProductionDailyReportEditPageState
     }
   }
 
-  /// 人员选择器：用 EmployeeRepository.list 模糊搜索作为 loader，按 id 取缓存作为 initial。
+  /// 预解析生产部（DEPT_PROD）子树 id，供生产工 picker 默认收敛范围。
+  Future<void> _resolveDeptIds() async {
+    try {
+      final tree = await ref.read(departmentRepositoryProvider).tree();
+      _productionDeptId = findDepartmentByCode(tree, kDeptCodeProduction)?.id;
+    } catch (_) {
+      // 解析失败：picker 回退全公司，不阻塞编辑。
+    }
+  }
+
+  /// 人员选择器：关键字为空时默认收敛到职能部门子树、有关键字时全公司搜。
   Widget _employeePicker({
     required String label,
     required String? currentId,
+    required String defaultDeptCode,
     required ValueChanged<String?> onChanged,
   }) {
     return UtenEmployeePicker(
       key: ValueKey('${label}_$currentId'),
       label: label,
+      hint: '请选择$label',
+      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
+        final deptId =
+            (kw == null || kw.isEmpty) && defaultDeptCode == kDeptCodeProduction
+            ? _productionDeptId
+            : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw);
+            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(
@@ -531,6 +554,7 @@ class _ProductionDailyReportEditPageState
                                   _employeePicker(
                                     label: '生产工',
                                     currentId: _workerId,
+                                    defaultDeptCode: kDeptCodeProduction,
                                     onChanged: (id) =>
                                         setState(() => _workerId = id),
                                   ),

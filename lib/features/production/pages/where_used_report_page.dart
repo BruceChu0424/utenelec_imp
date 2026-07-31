@@ -60,7 +60,11 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   Future<void> _pickMaterial() async {
-    final g = await showUtenGoodsPicker(context, ref);
+    final g = await showUtenGoodsPicker(
+      context,
+      ref,
+      scope: UtenGoodsPickerScope.material,
+    );
     if (g != null) {
       setState(() {
         _material = g;

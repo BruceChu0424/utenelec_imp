@@ -54,7 +54,8 @@ class MainShellPage extends ConsumerStatefulWidget {
   ConsumerState<MainShellPage> createState() => _MainShellPageState();
 }
 
-class _MainShellPageState extends ConsumerState<MainShellPage> {
+class _MainShellPageState extends ConsumerState<MainShellPage>
+    with WidgetsBindingObserver {
   /// 主 Tab 路由（顺序 = PageView 页序 = 导航项序）
   static const _tabLocations = <String>[
     RouteName.dashboard,
@@ -72,13 +73,25 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _position = ValueNotifier<double>(0);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _position.dispose();
     super.dispose();
+  }
+
+  /// 切回前台（resumed）时立即刷新通知未读数 + 列表，弥补无推送通道时
+  /// 「后台收到新通知、回到前台看不到、要等下次 60s 轮询」的延迟。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(unreadNoticeCountProvider.notifier).refresh();
+      ref.invalidate(noticeListProvider);
+    }
   }
 
   /// location 恰好是某主 Tab 根路由 → 返回页码；否则 null（业务子页面）
@@ -145,7 +158,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
       l10n.navProfile,
       l10n.navSettings,
     ];
-    final unread = ref.watch(unreadNoticeCountProvider).valueOrNull ?? 0;
+    final unread = ref.watch(unreadNoticeCountProvider);
 
     final tabIndex = _exactTabIndex(location);
 

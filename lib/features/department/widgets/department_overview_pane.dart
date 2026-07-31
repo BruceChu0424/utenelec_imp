@@ -324,18 +324,6 @@ class _DepartmentOverviewPaneState
           padding: EdgeInsets.fromLTRB(hPad, UtenSpacing.s16, hPad, 0),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              if (widget.canViewEmployees)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                  child: OrganizationWorkforceOverviewCard(
-                    organizationName: info.name,
-                    organizationLevel: info.level,
-                    loading: _overviewLoading,
-                    overview: _overview,
-                    error: _overviewError,
-                    onRetry: _loadOverview,
-                  ),
-                ),
               Padding(
                 padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
                 child: MasterDetailCard(
@@ -385,6 +373,18 @@ class _DepartmentOverviewPaneState
                   ],
                 ),
               ),
+              if (widget.canViewEmployees)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                  child: OrganizationWorkforceOverviewCard(
+                    organizationName: info.name,
+                    organizationLevel: info.level,
+                    loading: _overviewLoading,
+                    overview: _overview,
+                    error: _overviewError,
+                    onRetry: _loadOverview,
+                  ),
+                ),
               if (widget.canViewEmployees) ...[
                 _employeeToolbar(info, selectable),
                 const SizedBox(height: UtenSpacing.s8),

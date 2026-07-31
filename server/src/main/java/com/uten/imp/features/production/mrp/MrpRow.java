@@ -22,7 +22,8 @@ public record MrpRow(
         BigDecimal purchaseNetShortage, BigDecimal timelyShortage,
         String materialStatus,
         boolean allocationBacked,
-        boolean planningWriteReady) {
+        boolean planningWriteReady,
+        String sourceType) {
 
     public static final String READY_NOW = "READY_NOW";
     public static final String READY_BY_DATE = "READY_BY_DATE";
@@ -44,7 +45,8 @@ public record MrpRow(
             UUID colorId, BigDecimal gross, boolean selfMade, UUID unitId,
             BigDecimal bookStock, BigDecimal salesReserved, BigDecimal safetyStock,
             BigDecimal openPoTotal, BigDecimal openPoOnTime,
-            LocalDate needDate, LocalDate earliestArrivalDate) {
+            LocalDate needDate, LocalDate earliestArrivalDate,
+            String sourceType) {
         BigDecimal normalizedGross = nonNegative(gross);
         BigDecimal normalizedBook = zeroIfNull(bookStock);
         BigDecimal normalizedReserved = nonNegative(salesReserved);
@@ -80,7 +82,7 @@ public record MrpRow(
                 normalizedBook, normalizedReserved, normalizedSafety, available,
                 totalPo, onTimePo, needDate, earliestArrivalDate,
                 purchaseShortage, timely, status,
-                false, false);
+                false, false, sourceType);
     }
 
     /** 兼容旧单元测试/内部调用；新代码应使用 {@link #fromAvailability}. */
@@ -97,7 +99,7 @@ public record MrpRow(
                 nonNegative(openPo), nonNegative(openPo),
                 null, null, nonNegative(net), nonNegative(net),
                 statusFor(nonNegative(gross), zeroIfNull(onhand), nonNegative(net)),
-                false, false);
+                false, false, null);
     }
 
     public MrpRow withCapabilities(boolean backed, boolean writeReady) {
@@ -107,7 +109,7 @@ public record MrpRow(
                 bookStock, salesReserved, safetyStock, availableNow,
                 openPoTotal, openPoOnTime, needDate, earliestArrivalDate,
                 purchaseNetShortage, timelyShortage, materialStatus,
-                backed, writeReady);
+                backed, writeReady, sourceType);
     }
 
     private static String statusFor(BigDecimal gross, BigDecimal covered, BigDecimal shortage) {

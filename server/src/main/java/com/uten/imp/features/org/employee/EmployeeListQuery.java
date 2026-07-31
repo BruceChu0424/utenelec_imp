@@ -24,6 +24,7 @@ public class EmployeeListQuery {
                 e.code,
                 e.full_name,
                 e.gender,
+                e.department_id,
                 d.name AS department_name,
                 p.name AS position_name,
                 e.status,
@@ -77,7 +78,9 @@ public class EmployeeListQuery {
         pageParameters.add(size);
         pageParameters.add((safePage - 1) * size);
         List<EmployeeListItem> items = jdbc.query(
-                SELECT + where + ORDER_BY + " LIMIT ? OFFSET ?",
+                // 文本块 ORDER_BY 开头的换行会被 Java 吃掉，where 结尾是 "false"，
+                // 必须在此显式补换行，否则拼成 "falseORDER BY" 触发 PG 语法错误。
+                SELECT + where + "\n" + ORDER_BY + " LIMIT ? OFFSET ?",
                 (rs, rowNum) -> new EmployeeListItem(
                         rs.getObject("id", UUID.class),
                         rs.getString("code"),
@@ -90,7 +93,8 @@ public class EmployeeListQuery {
                         rs.getObject("hire_date", java.time.LocalDate.class),
                         rs.getString("position_level"),
                         rs.getBoolean("department_manager"),
-                        rs.getInt("leader_rank")),
+                        rs.getInt("leader_rank"),
+                        rs.getObject("department_id", UUID.class)),
                 pageParameters.toArray());
         int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / size);
         return new Result(items, safePage, size, total, totalPages);

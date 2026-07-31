@@ -135,7 +135,7 @@ class WarehouseHubPage extends StatelessWidget {
                   bottom: UtenSpacing.s4,
                 ),
                 child: Text(
-                  '库存',
+                  '库存查询',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -147,24 +147,24 @@ class WarehouseHubPage extends StatelessWidget {
                   bottom: UtenSpacing.s8,
                 ),
                 child: Text(
-                  '按货品类型浏览当前库存（数量 / 重量 / 成本金额 / 多排数量）',
+                  '即时库存 / 库存查询 / 出入库流水',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
               UtenResponsiveGrid(
-                itemCount: 1,
+                itemCount: _stockQueryEntries.length,
                 spacing: UtenSpacing.s12,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
+                  final e = _stockQueryEntries[i];
                   return Material(
                     type: MaterialType.transparency,
                     borderRadius: UtenRadius.lgAll,
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
-                      onTap: () =>
-                          goFrom(context, RouteName.stockInstantInventory),
+                      onTap: () => goFrom(context, e.location),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
@@ -188,15 +188,11 @@ class WarehouseHubPage extends StatelessWidget {
                                 color: color.withValues(alpha: 0.1),
                                 borderRadius: UtenRadius.mdAll,
                               ),
-                              child: Icon(
-                                Icons.inventory_rounded,
-                                color: color,
-                                size: 22,
-                              ),
+                              child: Icon(e.icon, color: color, size: 22),
                             ),
                             const SizedBox(height: UtenSpacing.s12),
                             Text(
-                              '即时库存',
+                              e.label,
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.w600,
                               ),
@@ -351,3 +347,17 @@ class _WarehouseTaskCenterTile extends StatelessWidget {
     );
   }
 }
+
+/// 库存查询入口（仓库管理 hub「库存查询」分区）。
+class _StockQueryEntry {
+  const _StockQueryEntry(this.icon, this.label, this.location);
+  final IconData icon;
+  final String label;
+  final String location;
+}
+
+const _stockQueryEntries = <_StockQueryEntry>[
+  _StockQueryEntry(Icons.inventory_rounded, '即时库存', RouteName.stockInstantInventory),
+  _StockQueryEntry(Icons.inventory_2_outlined, '库存查询', RouteName.stockBalance),
+  _StockQueryEntry(Icons.swap_vert_rounded, '出入库流水', RouteName.stockMovement),
+];

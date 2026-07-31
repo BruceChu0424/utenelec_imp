@@ -24,6 +24,7 @@ class UtenButton extends StatefulWidget {
     this.isExpanded = false,
     this.icon,
     this.onLongPress,
+    this.onDisabledTap,
   });
 
   final VoidCallback? onPressed;
@@ -34,6 +35,13 @@ class UtenButton extends StatefulWidget {
   final bool isExpanded;
   final IconData? icon;
   final VoidCallback? onLongPress;
+
+  /// 禁用态（onPressed 为 null 或 loading）时点击的回调。
+  ///
+  /// 不传则保持原行为（禁用时点击无反馈）；传入后禁用态仍可点击，用于
+  /// 给用户解释“为什么按钮当前不可用”（如“请先审核”），避免点不动又无提示。
+  /// 视觉上仍是 disabled 样式（灰色），传达“当前不可用”语义。
+  final VoidCallback? onDisabledTap;
 
   @override
   State<UtenButton> createState() => _UtenButtonState();
@@ -111,7 +119,7 @@ class _UtenButtonState extends State<UtenButton> {
         onTapDown: (_) => _setPressed(true),
         onTapUp: (_) => _setPressed(false),
         onTapCancel: () => _setPressed(false),
-        onTap: _isEnabled ? widget.onPressed : null,
+        onTap: _isEnabled ? widget.onPressed : widget.onDisabledTap,
         onLongPress: _isEnabled ? widget.onLongPress : null,
         child: Container(
           constraints: widget.isExpanded

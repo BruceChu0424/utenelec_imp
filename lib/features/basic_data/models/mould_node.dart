@@ -21,6 +21,7 @@ class MouldListItem {
     this.status,
     this.remark,
     this.legacyId,
+    this.categoryId,
   });
 
   final String id;
@@ -31,6 +32,7 @@ class MouldListItem {
   final String? status; // 状态（生命周期：使用/禁用）
   final String? remark; // 备注
   final int? legacyId;
+  final String? categoryId; // 所属分类 id（模具资料页"搜模具定位分类"用）
 
   factory MouldListItem.fromJson(Map<String, dynamic> json) => MouldListItem(
     id: json['id'] as String,
@@ -41,6 +43,7 @@ class MouldListItem {
     status: json['status'] as String?,
     remark: json['remark'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
+    categoryId: json['categoryId'] as String?,
   );
 }
 

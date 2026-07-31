@@ -238,6 +238,7 @@ class _SplitSheetState extends ConsumerState<_SplitSheet> {
         builder: (ctx) => AlertDialog(
           title: const Text('放弃未保存的规划？'),
           content: const Text('你已修改子计划内容，关闭后本次调整不会保留。'),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),

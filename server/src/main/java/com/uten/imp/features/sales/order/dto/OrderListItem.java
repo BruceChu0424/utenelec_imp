@@ -28,4 +28,8 @@ public class OrderListItem {
     private boolean priceMasked;
     /** Current caller may mutate this document (functional permission + owner scope). */
     private boolean writable;
+    /** 销售员姓名（服务端按 seller_id 经 EmployeeNameResolver 解析；生产计划选单等场景展示）。 */
+    private String sellerName;
+    /** 销售员 id（供前端跟单员联动回填）。 */
+    private UUID sellerId;
 }

@@ -248,11 +248,9 @@ class _CenterAlertDialog extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              // 动作区：单确认 / 取消+确认
+              // 动作区：单确认 / 取消+确认（统一居中）
               Row(
-                mainAxisAlignment: cancelLabel == null
-                    ? MainAxisAlignment.center
-                    : MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   if (cancelLabel != null) ...[
                     UtenButton(

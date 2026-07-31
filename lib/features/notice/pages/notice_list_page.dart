@@ -67,6 +67,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('删除通知'),
         content: Text('确定删除选中的 $count 条通知吗？删除后将从你的通知列表移除。'),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

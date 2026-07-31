@@ -307,6 +307,7 @@ class _ExecutionPlanningSheetState
         builder: (ctx) => AlertDialog(
           title: const Text('放弃本次排产调整？'),
           content: const Text('已修改的数量、车间、班组或日期不会被保存。'),
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),

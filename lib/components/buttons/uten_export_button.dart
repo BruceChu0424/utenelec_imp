@@ -195,6 +195,7 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
           ],
         ],
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),

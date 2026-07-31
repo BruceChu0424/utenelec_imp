@@ -15,6 +15,7 @@ class EmployeeSummary {
     this.positionLevel,
     this.departmentManager = false,
     this.leaderRank = 3,
+    this.departmentId,
   });
 
   final String id;
@@ -29,6 +30,7 @@ class EmployeeSummary {
   final String? positionLevel;
   final bool departmentManager;
   final int leaderRank;
+  final String? departmentId; // 所属部门 id（部门管理页"搜员工定位部门"用）
 
   factory EmployeeSummary.fromJson(Map<String, dynamic> json) =>
       EmployeeSummary(
@@ -44,6 +46,7 @@ class EmployeeSummary {
         positionLevel: json['positionLevel'] as String?,
         departmentManager: json['departmentManager'] as bool? ?? false,
         leaderRank: (json['leaderRank'] as num?)?.toInt() ?? 3,
+        departmentId: json['departmentId'] as String?,
       );
 }
 

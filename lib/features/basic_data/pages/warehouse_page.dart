@@ -213,6 +213,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该仓库')}」吗？',
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

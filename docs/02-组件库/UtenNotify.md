@@ -76,7 +76,7 @@ context.notifyBanner('张经理 通过了你的请假申请', onTap: () => conte
 | `onTap` | `VoidCallback?` | null | 点击动作，执行后自动关闭；null 时点击仅关闭 |
 | `duration` | `Duration?` | 3.2s（error 5s） | 自动消失时长 |
 
-底层行为（AppNotificationService 提供）：队列上限 3 条 FIFO、600ms 同 kind+message 合并去重、跨路由切换不丢失、左/右滑可关闭。
+底层行为（AppNotificationService 提供）：队列上限 3 条 FIFO、600ms 同 kind+message 合并去重（`force: true` 可绕过，见 [AppNotification](AppNotification.md)）、跨路由切换不丢失、左/右滑可关闭。
 
 ### 2.2 通道二：居中弹窗
 

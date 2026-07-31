@@ -1,5 +1,6 @@
 package com.uten.imp.features.operations.workbench;
 
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,6 +35,12 @@ public class FulfillmentWorkbenchController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return queryService.query("PURCHASE", status, keyword, exception, page, size);
+    }
+
+    @GetMapping("/purchase/count")
+    @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
+    public Map<String, Long> purchaseCount() {
+        return Map.of("count", queryService.countPending("PURCHASE"));
     }
 
     @GetMapping("/subcontract")

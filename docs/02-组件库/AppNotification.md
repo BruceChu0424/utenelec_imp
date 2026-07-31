@@ -49,11 +49,13 @@ context.appApiError(e, fallback: '提交失败');
 
 | 方法 | 签名 |
 |---|---|
-| `context.appSuccess(message, {title?})` | 显示一条成功通知，3.2s 自动消失 |
-| `context.appError(message, {title?, fieldErrors?})` | 显示一条错误通知，5s 自动消失 |
-| `context.appWarning(message, {title?})` | 显示一条警告通知，3.2s 自动消失 |
-| `context.appInfo(message, {title?})` | 显示一条信息通知，3.2s 自动消失 |
+| `context.appSuccess(message, {title?, force?})` | 显示一条成功通知，3.2s 自动消失 |
+| `context.appError(message, {title?, fieldErrors?, force?})` | 显示一条错误通知，5s 自动消失 |
+| `context.appWarning(message, {title?, force?})` | 显示一条警告通知，3.2s 自动消失 |
+| `context.appInfo(message, {title?, force?})` | 显示一条信息通知，3.2s 自动消失 |
 | `context.appApiError(error, {fallback?})` | 自动从 `ApiException` 提信息 |
+
+> `force: true` 用于必须让用户看到的关键提示（如禁用按钮的点击反馈），跳过 600ms 去重。`showSuccess/showError/showWarning/showInfo/showMessage` 同样支持 `force`。
 
 ### 3.2 Provider（不常用）
 
@@ -89,7 +91,7 @@ class AppNotification {
 - **位置**：status bar 下方 8dp 居中靠左，全宽左右各留 16dp。
 - **动画**：滑入（easeOutCubic，220ms）+ 长按或左/右滑可关闭。
 - **队列上限 3 条**：超出自动 FIFO 出队最早的。
-- **去重**：600ms 内同 `kind + message` 合并显示一次（防止"先 success 再 fail"双显）。
+- **去重**：600ms 内同 `kind + message` 合并显示一次（防止“先 success 再 fail”双显）。`force: true` 时绕过去重，保证关键提示（如禁用态点击反馈）不被前一条同文案吞掉。
 
 ## 五、响应式 / 性能档
 
@@ -135,9 +137,9 @@ ref.read(appNotificationProvider.notifier).clear();
 - **不依赖具体页面**：`AppNotificationHost` 通过 `MaterialApp.builder` 挂到全局 `Stack` 顶层。
   路由 push / pop 不会丢失提示。`ScaffoldMessenger` 不行——它跟最近一个 Scaffold 绑。
 - **自管生命**：通知进入队列后由 host 渲染 `_AppNotificationBanner`，220ms 滑入 + `Future.delayed` 计时退出。
-- **去重策略**：比 `DateTime.now().millisecondsSinceEpoch` 简单判断；同 message 在 600ms 内合并。
+- **去重策略**：比 `DateTime.now().millisecondsSinceEpoch` 简单判断；同 message 在 600ms 内合并；`force: true` 跳过此判定。
 - **可手动关闭**：IconButton + Dismissible（左滑 / 右滑），保证无障碍可达性。
 
 ---
 
-**最后更新**：2026-07-23 · **位置**：`lib/core/ui/app_notification.dart`
+**最后更新**：2026-08-01（加 `force` 参数） · **位置**：`lib/core/ui/app_notification.dart`

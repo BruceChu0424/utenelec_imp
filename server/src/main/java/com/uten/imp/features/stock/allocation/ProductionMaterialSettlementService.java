@@ -194,7 +194,7 @@ public class ProductionMaterialSettlementService {
         }
 
         List<UUID> demandIds = lines.stream().map(Line::demandId).distinct().toList();
-        List<UUID> locked = em.createNativeQuery("""
+        List<UUID> locked = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT id
                         FROM production_material_demands
                         WHERE id IN (:ids)
@@ -205,8 +205,7 @@ public class ProductionMaterialSettlementService {
                         FOR UPDATE
                         """, UUID.class)
                 .setParameter("ids", demandIds)
-                .setParameter("planId", planId)
-                .getResultList();
+                .setParameter("planId", planId), UUID.class);
         if (locked.size() != demandIds.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,

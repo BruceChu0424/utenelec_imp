@@ -460,6 +460,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
           },
         ),
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),

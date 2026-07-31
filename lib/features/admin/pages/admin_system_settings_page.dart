@@ -542,6 +542,7 @@ class _ConfirmPasswordDialogState extends State<_ConfirmPasswordDialog> {
           ),
         ],
       ),
+      actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),

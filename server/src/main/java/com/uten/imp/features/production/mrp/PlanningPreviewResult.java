@@ -13,7 +13,8 @@ public record PlanningPreviewResult(
         List<TargetWarehouseMaterial> targetWarehouseMaterials,
         boolean balancedKitCoverage,
         boolean executionSegmentationReady,
-        List<ExecutionSegmentPreview> executionSegments) {
+        List<ExecutionSegmentPreview> executionSegments,
+        List<UUID> noBomPlanItemIds) {
 
     public record TargetWarehouseMaterial(
             UUID goodsId,

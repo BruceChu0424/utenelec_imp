@@ -216,6 +216,7 @@ class _EmployeeOffboardingPageState
       builder: (ctx) => AlertDialog(
         title: Text(l10n.employeeOffboardConfirmTitle),
         content: Text(l10n.employeeOffboardConfirmBody),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

@@ -89,15 +89,17 @@ class BomColorResolutionSqlContractTest {
                 .doesNotContain(
                         "COALESCE(b.color_legacy_id, component.color_legacy_id)");
         assertThat(occurrences(sql, NORMALIZED_EFFECTIVE_COLOR))
-                .as("seed and recursive join/validation must share one rule")
-                .isEqualTo(4);
+                .as("seed/recursive join, invalid_requirement and color_bad "
+                        + "diagnostic all share one rule")
+                .isEqualTo(6);
         assertThat(occurrences(
                 sql,
                 NORMALIZED_EFFECTIVE_COLOR
                         + " IS NOT NULL AND (resolved_color.id IS NULL"
                         + " OR resolved_color.is_deleted)"))
-                .as("non-zero orphan/deleted colors must fail closed")
-                .isEqualTo(2);
+                .as("non-zero orphan/deleted colors must fail closed "
+                        + "(invalid_requirement + color_bad diagnostic)")
+                .isEqualTo(4);
     }
 
     private static String staticSql(String fieldName) throws Exception {

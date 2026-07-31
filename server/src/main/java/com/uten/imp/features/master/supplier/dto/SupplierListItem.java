@@ -52,4 +52,5 @@ public class SupplierListItem {
     private String shipVia;         // 运输方式（Shipvia）
     @JsonProperty("shipAddress")
     private String shipAddress;     // 送货地址（Ship_Addr）
+    private UUID categoryId;        // 所属分类 id（供应商资料页"搜供应商定位分类"用）
 }

@@ -39,6 +39,7 @@ import '../widgets/category_edit_dialog.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
 
 class SupplierCategoryPage extends ConsumerStatefulWidget {
@@ -54,6 +55,10 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
   String? _selectedId;
   bool _loading = true;
   String? _error;
+
+  // 顶部统一搜索（分类名 + 供应商名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
+  Set<String>? _visibleFilterIds;
+  String _globalQuery = '';
 
   @override
   void initState() {
@@ -72,7 +77,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
       if (!mounted) return;
       setState(() {
         _tree = tree;
-        _selectedId = _selectedId ?? (tree.isNotEmpty ? tree.first.id : null);
+        // 不预选分类：默认右侧空态「请选择左侧分类」，点了分类才拉供应商（省资源）。
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -88,6 +93,68 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
         _loading = false;
       });
     }
+  }
+
+  // ---- 顶部统一搜索（分类名 + 供应商名 → 定位分类）----------------------------
+
+  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+
+  Future<void> _applyGlobalSearch(String q) async {
+    final tree = _tree;
+    if (tree == null || tree.isEmpty) return;
+    if (q.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null; // 清空：恢复全树
+      });
+      return;
+    }
+    _globalQuery = q;
+    final catHits = categoryHits(tree, q);
+    setState(() => _visibleFilterIds = catHits);
+    try {
+      final result = await ref.read(supplierRepositoryProvider).search(q, size: 50);
+      if (!mounted || _globalQuery != q) return;
+      final ids = <String>{};
+      String? first;
+      for (final s in result.items) {
+        final cid = s.categoryId;
+        if (cid == null || cid.isEmpty) continue;
+        ids.add(cid);
+        first ??= cid;
+      }
+      if (ids.isEmpty) {
+        final firstCat = shallowestHit(tree, q, catHits);
+        setState(() {
+          _visibleFilterIds = catHits;
+          if (firstCat != null && _selectedId != firstCat) {
+            _selectedId = firstCat;
+          }
+        });
+        return;
+      }
+      final merged = <String>{...catHits, ...ids};
+      for (final cid in ids) {
+        addAncestors(tree, cid, merged);
+      }
+      final target = first;
+      setState(() {
+        _visibleFilterIds = merged;
+        if (_selectedId != target) _selectedId = target;
+      });
+    } catch (_) {
+      // 搜索是辅助功能，失败静默（保留分类命中结果）。
+    }
+  }
+
+  Widget _buildGlobalSearchBox() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: UtenSearchBar(
+        hint: '搜索分类/供应商', // TODO(l10n): 补 arb
+        onChanged: _onGlobalSearch,
+      ),
+    );
   }
 
   ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
@@ -185,6 +252,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
         content: Text(
           '确定删除「${node.name}」吗？若存在子分类或供应商引用，删除可能失败。', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -222,6 +290,9 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
       expandOnRowTap: true,
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
@@ -713,6 +784,7 @@ class _DetailPaneState extends State<_DetailPane> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该供应商')}」吗？', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

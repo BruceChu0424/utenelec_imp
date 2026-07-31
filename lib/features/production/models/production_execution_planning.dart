@@ -13,6 +13,7 @@ class ProductionPlanningPreview {
     this.materials = const [],
     this.targetWarehouseMaterials = const [],
     this.executionSegments = const [],
+    this.noBomPlanItemIds = const [],
   });
 
   final String planId;
@@ -23,6 +24,7 @@ class ProductionPlanningPreview {
   final bool balancedKitCoverage;
   final bool executionSegmentationReady;
   final List<ProductionExecutionSegmentPreview> executionSegments;
+  final List<String> noBomPlanItemIds;
 
   factory ProductionPlanningPreview.fromJson(Map<String, dynamic> json) {
     return ProductionPlanningPreview(
@@ -42,6 +44,10 @@ class ProductionPlanningPreview {
       executionSegments: _decodeList(
         json['executionSegments'],
         ProductionExecutionSegmentPreview.fromJson,
+      ),
+      noBomPlanItemIds: _decodeList(
+        json['noBomPlanItemIds'],
+        (e) => e as String,
       ),
     );
   }
@@ -73,6 +79,7 @@ class ProductionPlanningMaterial {
     this.materialStatus,
     this.allocationBacked = false,
     this.planningWriteReady = false,
+    this.sourceType,
   });
 
   final String goodsId;
@@ -99,6 +106,7 @@ class ProductionPlanningMaterial {
   final String? materialStatus;
   final bool allocationBacked;
   final bool planningWriteReady;
+  final String? sourceType;
 
   factory ProductionPlanningMaterial.fromJson(Map<String, dynamic> json) {
     return ProductionPlanningMaterial(
@@ -126,6 +134,7 @@ class ProductionPlanningMaterial {
       materialStatus: json['materialStatus'] as String?,
       allocationBacked: json['allocationBacked'] == true,
       planningWriteReady: json['planningWriteReady'] == true,
+      sourceType: json['sourceType'] as String?,
     );
   }
 }

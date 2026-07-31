@@ -222,6 +222,7 @@ class _ProductionExecutionSegmentsCardState
                 ),
               ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -295,6 +296,7 @@ class _ProductionExecutionSegmentsCardState
               ? '派工后任务会进入班组待开工列表，物料占用保持不变。'
               : '开工后即可分批报工；每次报工必须关联这个执行子计划。',
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

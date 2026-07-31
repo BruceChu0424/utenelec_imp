@@ -29,7 +29,7 @@ BOM 用量 = goods_bom_items.qty；无独立单位字段，表示组件货品基
 合法在途基本量 = Σ（max(qty − received_qty, 0) × unit_rate）
 净需求 = 毛需求 − 即时库存（stock_balances 全仓合计）− 合法在途基本量
 聚合粒度 = 货品 + 颜色（空颜色单独成组；库存、预留和在途使用同一粒度）
-半成品（组件本身有 BOM）= 标记「自制」，只预览不进采购申请
+半成品（组件本身有 BOM）= 标记「自制」，只预览不进采购申请；其净需求缺口由 V1 排产确认事务内的派生内核（`generateSelfMadeSubplansForPackage`）生成子生产计划供给，写 `subplan_links(source='EXECUTION_V1')`
 ```
 
 合法在途只包含已审核、未停止、未结案、未删除且剩余量大于零的采购订单行。采购单位可以不是货品
@@ -117,6 +117,7 @@ BOM 用量 = goods_bom_items.qty；无独立单位字段，表示组件货品基
 - ~~生产完工成品入库~~ → 已于 2026-07-28 落地（generate-finished-in，plan_draw_links 按 doc_type 防重复）。
 - ~~成品入库审核后回写计划明细 iqty~~ → 已在业务链闭环实现；排产/报工共享资源锁仍须分别做
   真实 PostgreSQL 双连接并发回归。
+- ~~自制件子计划自动派生~~ → 已于 2026-08-01 落地（V1 confirm 调 `generateSelfMadeSubplansForPackage`，复用递归 explode，filter 自制件(has_bom) 且净需求>0，建子 production_plans 父号-N + 写 `subplan_links(source='EXECUTION_V1')`，按父计划幂等；V176 加归属列）。
 
 ### 2026-07-30 并发复核
 

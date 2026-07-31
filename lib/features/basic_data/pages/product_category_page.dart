@@ -7,6 +7,8 @@
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/03-页面/ 总览（基础资料）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -39,8 +41,10 @@ import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/goods_detail_dialog.dart';
 import '../widgets/master_data_table_view.dart';
+import '../widgets/special_goods_collections.dart';
 import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
 
 class ProductCategoryPage extends ConsumerStatefulWidget {
@@ -57,11 +61,17 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
   bool _loading = true;
   String? _error;
 
+  // 顶部统一搜索（分类名 + 货品名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
+  // 注意：UtenSearchBar 已内置 300ms 防抖，这里不再重复防抖。
+  Set<String>? _visibleFilterIds;
+  String _globalQuery = '';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
+
 
   Future<void> _load() async {
     if (!mounted) return;
@@ -74,7 +84,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       if (!mounted) return;
       setState(() {
         _tree = tree;
-        _selectedId = _selectedId ?? (tree.isNotEmpty ? tree.first.id : null);
+        // 不预选分类：默认右侧空态「请选择左侧分类」，点了分类才拉货品（省资源）。
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -92,6 +102,62 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     }
   }
 
+  // ---- 顶部统一搜索（分类名 + 货品名 → 定位分类）----------------------------
+
+  void _onGlobalSearch(String q) => _applyGlobalSearch(q.trim());
+
+  Future<void> _applyGlobalSearch(String q) async {
+    final tree = _tree;
+    if (tree == null || tree.isEmpty) return;
+    if (q.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null; // 清空：恢复全树
+      });
+      return;
+    }
+    _globalQuery = q;
+    // ① 同步：分类名命中（+祖先+子树），先渲染即时结果。
+    final catHits = categoryHits(tree, q);
+    setState(() => _visibleFilterIds = catHits);
+    // ② 异步：货品名命中 → 取其 categoryId（+祖先），合并并定位到第一个命中分类。
+    try {
+      final result = await ref
+          .read(goodsRepositoryProvider)
+          .search(q, size: 50, excludeStub: true);
+      if (!mounted || _globalQuery != q) return; // 过期结果丢弃
+      final goodsCatIds = <String>{};
+      String? firstGoodsCat;
+      for (final g in result.items) {
+        final cid = g.categoryId;
+        if (cid == null || cid.isEmpty) continue;
+        goodsCatIds.add(cid);
+        firstGoodsCat ??= cid;
+      }
+      if (goodsCatIds.isEmpty) {
+        final firstCat = shallowestHit(tree, q, catHits);
+        setState(() {
+          _visibleFilterIds = catHits;
+          if (firstCat != null && _selectedId != firstCat) {
+            _selectedId = firstCat;
+          }
+        });
+        return;
+      }
+      final merged = <String>{...catHits, ...goodsCatIds};
+      for (final cid in goodsCatIds) {
+        addAncestors(tree, cid, merged);
+      }
+      final target = firstGoodsCat;
+      setState(() {
+        _visibleFilterIds = merged;
+        if (_selectedId != target) _selectedId = target;
+      });
+    } catch (_) {
+      // 搜索是辅助功能，失败静默（保留 ① 的分类命中结果）。
+    }
+  }
+
   ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String id) {
     for (final n in nodes) {
       if (n.id == id) return n;
@@ -104,6 +170,17 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
   bool get _canEdit {
     final perms = ref.read(currentPermissionsProvider);
     return perms.contains(Perm.materialCategoryEdit);
+  }
+
+  /// 树顶部统一搜索框（搜分类名 + 搜货品定位分类；UtenSearchBar 已自带防抖与清除）。
+  Widget _buildGlobalSearchBox() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: UtenSearchBar(
+        hint: '搜索分类/货品', // TODO(l10n): 补 arb
+        onChanged: _onGlobalSearch,
+      ),
+    );
   }
 
   /// 新建分类时的常用名称建议（降低起名门槛；货品类常用维度）。
@@ -137,7 +214,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
             .read(productCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code!,
+                code: r.code,
                 name: r.name,
                 parentId: r.parentId,
               ),
@@ -188,6 +265,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
         content: Text(
           '确定删除「${node.name}」吗？若存在子分类或货品引用，删除可能失败。', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -227,6 +305,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       expandOnRowTap: true,
       // 「未分类（历史孤儿）」默认收起：里面堆着历史孤儿货品，展开会铺满导航栏。
       initiallyCollapsedNames: const {'未分类'},
+      // 关掉树内置搜索，由顶部 header 统一搜索框接管（搜分类名 + 搜货品定位分类）。
+      showSearch: false,
+      visibleFilterIds: _visibleFilterIds,
+      header: _buildGlobalSearchBox(),
       onNodeTap: (node) => onSelect(node.id),
       trailingBuilder: (node) => Row(
         mainAxisSize: MainAxisSize.min,
@@ -530,6 +612,8 @@ class _DetailPaneState extends State<_DetailPane> {
             filters: _filters,
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+            excludeDisabled: true, // 禁用货品归顶部「禁用货品」集合行，不混入主表
+            excludeStub: true, // stub(迁移兜底)归「未分类」节点集合行
           );
       if (!mounted) return;
       setState(() {
@@ -593,6 +677,8 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 导出查询参数（与 _loadGoods 一致，不含 page/size）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
     'categoryId': widget.nodeId,
+    'excludeDisabled': true,
+    'excludeStub': true,
     if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
     ...masterFilterQueryParams(_filters),
     if (_sortKey != null) 'sort': _sortKey,
@@ -610,6 +696,8 @@ class _DetailPaneState extends State<_DetailPane> {
           filters: _filters,
           sort: _sortKey,
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+          excludeDisabled: true,
+          excludeStub: true,
         );
     return UtenPrintTable(
       headers: [for (final c in _goodsColumns) c.label],
@@ -740,7 +828,8 @@ class _DetailPaneState extends State<_DetailPane> {
         'mWeight': d.mWeight?.toString() ?? '',
         'pack': d.pack ?? '',
         'pieces': d.pieces?.toString() ?? '',
-        'status': d.status ?? '',
+        // 空状态(历史31条)默认"使用"，否则必填下拉空值过不了校验导致保存失败。
+        'status': (d.status == null || d.status!.isEmpty) ? '使用' : d.status!,
         'sourceType': d.sourceType ?? '',
         'colorLegacyId': d.colorLegacyId?.toString() ?? '',
         'unitLegacyId': d.unitLegacyId?.toString() ?? '',
@@ -793,6 +882,7 @@ class _DetailPaneState extends State<_DetailPane> {
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该货品')}」吗？', // TODO(l10n): 补 arb
         ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -1005,6 +1095,12 @@ class _DetailPaneState extends State<_DetailPane> {
                 ],
               ],
             ),
+          ),
+          // 特殊货品集合区:禁用货品(当前分类子树) / 不明货品(仅未分类节点,stub 无分类)。
+          SpecialGoodsCollections(
+            categoryId: widget.nodeId,
+            isOrphanNode: _detail?.code == 'LEGACY_ORPHAN',
+            onItemTap: (id) => _showGoodsDetail(id),
           ),
           // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
           Expanded(

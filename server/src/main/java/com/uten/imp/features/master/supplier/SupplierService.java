@@ -368,7 +368,8 @@ public class SupplierService {
                 m.getEmpId(), m.getLegalPerson(), m.getLinkman(), m.getMobile(),
                 m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(), m.getAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getWebsite(),
-                m.getShipVia(), m.getShipAddress());
+                m.getShipVia(), m.getShipAddress(),
+                m.getCategory() == null ? null : m.getCategory().getId());
     }
 
     private SupplierCategory requireCategory(UUID id) {

@@ -1,0 +1,32 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<HTML>
+<HEAD>
+<TITLE>404</TITLE>
+<META HTTP-EQUIV="Content-Type" Content="text/html; charset=GB2312">
+<STYLE type="text/css">
+BODY {font: 9pt/12pt 宋体}
+H1 {font: 12pt/15pt 宋体}
+H2 {font: 9pt/12pt 宋体}
+A:link {color: red}
+A:visited {color: maroon}
+</STYLE>
+<script type="text/javascript" src="jquery-1.6.2.min.js"></script>
+</HEAD>
+<BODY style="background:url(404.gif) center center no-repeat; height:600px;">
+<p style="text-align:center; padding-top:500px; font-size:20px; font-family:'微软雅黑'; color:#060; line-height:30px;"><span id="sec">5</span>秒后自动返回网站首页<br>
+  <a href="/">立即返回</a></p>
+<script type="text/javascript">
+	$(function () {            
+	   setTimeout("lazyGo();", 1000);
+	});
+	function lazyGo() {
+		var sec = $("#sec").text();
+		$("#sec").text(--sec);
+		if (sec > 0)
+			setTimeout("lazyGo();", 1000);
+		else
+			window.location.href = "/";
+	}
+	</script>
+</BODY>
+</HTML>

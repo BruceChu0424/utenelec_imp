@@ -1,0 +1,25 @@
+# deps
+node_modules/
+
+# next
+.next/
+out/
+build/
+
+# env
+.env
+.env.local
+.env*.local
+
+# db (SQLite 运行时生成)
+*.db
+*.db-journal
+
+# misc
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# 爬虫临时输出可保留(素材), 但日志忽略
+.scrape/scrape.log

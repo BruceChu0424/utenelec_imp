@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== 优腾官网 · Cinema Dark 深色电影感设计系统 ===== */
+
+@layer base {
+  :root {
+    /* 浅色（兜底；默认深色由 .dark 控制） */
+    --background: 210 40% 99%;
+    --background-elevated: 210 40% 96%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 217 33% 17%;
+    --accent: 174 100% 30%;
+    --accent-foreground: 0 0% 100%;
+    --accent-hover: 174 100% 24%;
+    --accent-soft: 174 90% 38%;
+    --muted: 214 32% 93%;
+    --muted-foreground: 215 16% 47%;
+    --border: 214 32% 90%;
+    --input: 214 32% 90%;
+    --ring: 174 100% 30%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --radius: 0.875rem;
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --font-heading: 'Lexend', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-body: 'Source Sans 3', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  }
+  .dark {
+    /* Cinema Dark：深空 + 电光青 + 玻璃态 */
+    --background: 228 33% 4%;            /* #06080C 深空 */
+    --background-elevated: 224 26% 7%;   /* #0E1117 抬升层 */
+    --foreground: 210 40% 97%;           /* #FAFCFF 银白 */
+    --card: 224 30% 6%;                  /* #0B0E14 */
+    --card-foreground: 210 40% 97%;
+    --primary: 215 35% 13%;
+    --primary-foreground: 210 40% 97%;
+    --primary-hover: 215 35% 17%;
+    --accent: 174 100% 36%;               /* #009A8E 品牌青绿 */
+    --accent-foreground: 0 0% 100%;
+    --accent-hover: 174 100% 30%;
+    --accent-soft: 174 85% 60%;
+    --muted: 222 20% 11%;
+    --muted-foreground: 215 18% 62%;
+    --border: 220 16% 17%;               /* 发丝边框 */
+    --input: 220 16% 17%;
+    --ring: 174 90% 50%;
+    --destructive: 0 72% 58%;
+    --destructive-foreground: 0 0% 100%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { scroll-behavior: smooth; }
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+    font-feature-settings: 'tnum' 1;
+    overflow-x: hidden;
+  }
+  h1, h2, h3, h4, h5, h6 { @apply font-heading tracking-tight; }
+  ::selection { @apply bg-accent/30 text-foreground; }
+  :focus-visible { @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background; }
+
+  /* 深色滚动条 */
+  .dark { color-scheme: dark; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: hsl(var(--background)); }
+  ::-webkit-scrollbar-thumb { background: hsl(220 14% 22%); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(220 14% 30%); }
+}
+
+@layer components {
+  .container-uten { @apply mx-auto w-full max-w-7xl px-4 md:px-6; }
+  .section { @apply py-20 md:py-32; }
+  .eyebrow {
+    @apply inline-flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.28em] text-accent;
+  }
+  .eyebrow::before {
+    content: ''; @apply inline-block h-px w-8 bg-accent/60;
+  }
+
+  /* 玻璃态卡片 */
+  .card-uten {
+    @apply rounded-2xl border border-border bg-card transition-all duration-500;
+  }
+  .dark .card-uten {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* 按钮 */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold
+           transition-all duration-300 cursor-pointer select-none
+           focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
+           disabled:pointer-events-none disabled:opacity-50;
+    transition-timing-function: var(--ease-out-expo);
+  }
+  .btn-primary { @apply btn bg-foreground text-background px-6 py-3 hover:opacity-90; }
+  .btn-accent {
+    @apply btn bg-accent text-accent-foreground px-6 py-3 hover:bg-accent-hover;
+  }
+  .btn-accent:hover {
+    box-shadow: 0 10px 36px -8px hsl(var(--accent) / 0.55);
+    transform: translateY(-1px);
+  }
+  .btn-outline { @apply btn border border-border bg-transparent px-6 py-3 hover:border-foreground/30 hover:bg-foreground/5; }
+  .dark .btn-outline { border-color: rgba(255, 255, 255, 0.16); }
+  .btn-ghost { @apply btn px-4 py-2 text-foreground/70 hover:bg-foreground/5 hover:text-foreground; }
+  .btn-sm { @apply px-4 py-2 text-xs; }
+
+  .input-uten {
+    @apply w-full rounded-xl border border-input bg-background px-4 py-2.5 text-foreground
+           placeholder:text-muted-foreground/60
+           focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none transition;
+  }
+  .dark .input-uten { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.1); }
+  .label-uten { @apply mb-1.5 block text-sm font-medium text-foreground; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground; }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .text-gradient {
+    background: linear-gradient(180deg, hsl(var(--foreground)) 20%, hsl(var(--foreground) / 0.65));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .text-gradient-accent {
+    background: linear-gradient(135deg, hsl(var(--accent-soft)), hsl(var(--accent)));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.5) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+  .bg-dots {
+    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
+    background-size: 26px 26px;
+  }
+  .glow-accent { box-shadow: 0 0 48px -10px hsl(var(--accent) / 0.5); }
+  .ambient-blob {
+    position: absolute; border-radius: 9999px; filter: blur(70px);
+    opacity: 0.5; pointer-events: none; will-change: transform;
+  }
+  .hairline { border: 1px solid rgba(255, 255, 255, 0.08); }
+  .mask-fade-b { mask-image: linear-gradient(to bottom, black 55%, transparent 100%); }
+  .mask-fade-edges { mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent); }
+}
+
+/* 环境光斑漂移动画 */
+@keyframes blob-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -30px) scale(1.1); }
+  66% { transform: translate(-30px, 20px) scale(0.95); }
+}
+.animate-blob { animation: blob-drift 18s var(--ease-out-expo, ease-in-out) infinite; }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-blob { animation: none !important; }
+}

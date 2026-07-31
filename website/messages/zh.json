@@ -1,0 +1,126 @@
+{
+  "Locale": { "label": "中文", "switch": "语言" },
+  "Nav": {
+    "home": "首页",
+    "about": "走进优腾",
+    "products": "产品中心",
+    "news": "新闻资讯",
+    "cases": "样板工程",
+    "join": "招商加盟",
+    "careers": "人才招聘",
+    "contact": "联系我们"
+  },
+  "Common": {
+    "learnMore": "了解更多",
+    "viewAll": "查看全部",
+    "viewDetail": "查看详情",
+    "contactUs": "联系我们",
+    "back": "返回",
+    "backHome": "返回首页",
+    "loading": "加载中…",
+    "search": "搜索",
+    "searchPlaceholder": "搜索产品…",
+    "noData": "暂无内容",
+    "optional": "选填",
+    "required": "必填",
+    "submit": "提交",
+    "submitting": "提交中…",
+    "submitted": "提交成功，我们将尽快与您联系",
+    "error": "出错了，请稍后重试",
+    "menu": "菜单"
+  },
+  "Home": {
+    "seriesTitle": "产品系列",
+    "seriesSubtitle": "精工制造 · 安全可靠",
+    "craftTitle": "核心工艺",
+    "craftSubtitle": "自主研发，行业领先的四大面板工艺",
+    "casesTitle": "样板工程",
+    "casesSubtitle": "优腾产品应用于众多知名项目",
+    "newsTitle": "新闻资讯",
+    "newsSubtitle": "了解优腾最新动态",
+    "ctaTitle": "开启与优腾的合作",
+    "ctaSubtitle": "无论您是经销商、工程方还是海外采购商，我们都期待与您携手共赢",
+    "featured": "精选产品",
+    "allSeries": "全部系列"
+  },
+  "Products": {
+    "title": "产品中心",
+    "subtitle": "25年专注安全墙壁开关与插座",
+    "allSeries": "全部",
+    "count": "{count} 款",
+    "seriesIntro": "系列介绍",
+    "relatedProducts": "相关产品",
+    "specs": "规格参数",
+    "filter": "产品分类",
+    "empty": "该分类暂无产品",
+    "gallery": "产品图片"
+  },
+  "News": {
+    "title": "新闻资讯",
+    "subtitle": "公司动态与行业资讯",
+    "company": "公司动态",
+    "industry": "行业资讯",
+    "latest": "最新动态",
+    "related": "相关阅读",
+    "empty": "暂无文章"
+  },
+  "Cases": {
+    "title": "样板工程",
+    "subtitle": "优腾产品应用于众多知名项目"
+  },
+  "About": {
+    "title": "走进优腾",
+    "history": "发展历程",
+    "structure": "组织架构",
+    "honor": "资质荣誉",
+    "craft": "工艺实力",
+    "mission": "使命与愿景"
+  },
+  "Join": {
+    "title": "招商加盟",
+    "advantage": "核心优势",
+    "process": "加盟流程",
+    "formTitle": "加盟申请",
+    "formSubtitle": "填写以下信息，我们将尽快与您联系"
+  },
+  "Careers": {
+    "title": "人才招聘",
+    "location": "工作地点",
+    "department": "所属部门",
+    "requirements": "任职要求",
+    "desc": "岗位描述",
+    "empty": "暂无招聘职位"
+  },
+  "Contact": {
+    "title": "联系我们",
+    "phone": "电话",
+    "email": "邮箱",
+    "address": "地址",
+    "formTitle": "在线留言",
+    "name": "姓名",
+    "company": "公司",
+    "message": "留言内容"
+  },
+  "Footer": {
+    "products": "产品中心",
+    "about": "关于我们",
+    "contact": "联系方式",
+    "followUs": "关注我们",
+    "rights": "版权所有",
+    "quickLinks": "快速导航"
+  },
+  "NotFound": {
+    "title": "页面未找到",
+    "desc": "您访问的页面不存在或已被移除",
+    "cta": "返回首页"
+  },
+  "Theme": {
+    "toggle": "切换主题",
+    "light": "浅色",
+    "dark": "深色"
+  },
+  "Meta": {
+    "company": "中山市优腾电器有限公司",
+    "tagline": "安全墙壁开关与插座 | 高新技术企业 | 产品远销海外"
+  }
+}

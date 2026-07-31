@@ -1,0 +1,647 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3c.org/TR/1999/REC-html401-19991224/loose.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+
+
+<link rel="SHORTCUT ICON" href="favicon.ico">
+<link rel="BOOKMARK" href="favicon.ico">
+<head>
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>优腾电器的合作与分享_中山市优腾电器有限公司</title>
+<meta name="Keywords" content="墙壁开关,插座" />
+<meta name="Description" content="中山市优腾电器有限公司，多年专注于研发、生产安全墙壁开关，插座。是一家致力于为客户提供高品质通用面板产品，集研发、生产和销售于一体的高新技术企业。公司创建25年来，深耕面板研发领域，自主研发的金属不锈钢拉丝面板，PC拉丝面板，真空镀膜面板，高强度钢化玻璃面板，工艺和性能位居行业前列的水平" />
+
+
+</head>
+<link href="css/css.css" rel="stylesheet" type="text/css" />
+<body>
+<div class="head">
+	<div class="kd">
+    	<div class="logo"><img src="images/logo.png"></div>
+        <div class="headr">
+        	<div class="lan"><a href="index.asp">中文</a> | <a href="en/index.asp">ENGLISH</a></div>
+            <div class="sear">
+          <FORM onSubmit="return checkSearchInput()" method=get action="search.asp">
+                     <div class="sear1"><input name=Keyword id=txtWord onfocus=focusInput() onblur=blurInput()  value="搜索..."></div>
+                     <div style="float:left;"><input type="image" src="images/an.png" class="image" ></div></FORM>
+                     <SCRIPT language=javascript type=text/javascript>
+    function focusInput(){					
+					var keyword = document.getElementById("txtWord").value;
+					if(keyword==null||keyword=="搜索..."){document.getElementById("txtWord").value="";		
+								}				}			
+									function blurInput(){					var keyword = document.getElementById("txtWord").value;			
+											if(keyword==null||keyword==""){					
+												document.getElementById("txtWord").value="搜索...";		
+															}				}				function checkSearchInput(){
+																var keyword = document.getElementById("txtWord").value;			
+																		if(keyword==null||keyword=="搜索..."||keyword==""){
+																								document.getElementById("txtWord").focus();
+																								alert("关键字错误，请重新输入！");			
+																												return false;					}			
+																													}
+    </SCRIPT>
+    </div>
+        </div>
+    </div>
+</div>
+<div class="menu" id="nav">
+	<div class="kd" style="background:url(images/shu.jpg) no-repeat right; height:35px">
+        <a  href="contact.asp?id=11">联系我们</a>
+        <a  href="ln.asp?id=10">人才招聘</a>
+        <a  href="join.asp?id=7">招商加盟</a>
+        <a  href="case.asp?id=6">样板工程</a>
+        <a  href="Product.asp">产品中心</a>
+        <a class=cur href="news.asp">新闻资讯</a>
+        <a  href="about.asp?id=1">走进优腾</a>
+        <a  href="index.asp">优腾首页</a>
+    </div>
+</div>
+
+<script>
+/*公共函数*/
+
+/*
+获取元素到页面顶端的距离(出自jquery源码)
+原理：
+*/
+function getCoords(el){
+    
+  if(typeof el == 'string')
+  {
+    el = Fid(el);
+  }
+    
+  var box = el.getBoundingClientRect(),
+  doc = el.ownerDocument,
+  body = doc.body,
+  html = doc.documentElement,
+  clientTop = html.clientTop || body.clientTop || 0,
+  clientLeft = html.clientLeft || body.clientLeft || 0,
+  top  = box.top  + (self.pageYOffset || html.scrollTop  ||  body.scrollTop ) - clientTop,
+  left = box.left + (self.pageXOffset || html.scrollLeft ||  body.scrollLeft) - clientLeft
+  return { 'top': top, 'left': left };
+};
+
+    
+function Fid(id)
+{
+    return document.getElementById(id);    
+}
+
+/***********************************固定的元素************************************/
+
+/**
+ * 注意占位符的高度一定要和浮动层相同
+ 
+ * @param id string 元素id
+ * @param fixtop int 元素固定时距离顶端的距离
+ * @param zIndex int 层级
+ * @param string 占位符的id(请勿忘记哦)
+ */
+function fixeDiv(id, fixtop, zIndex, place)
+{
+    //获取scrolltop
+    function getScrollTop()
+    {
+        var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+        return  scrollTop;
+    }
+
+    var elementTop = getCoords(id).top;
+
+    //w3c
+    function navfixed()
+    {
+        //需要动态获取
+        var scrollTop = getScrollTop();
+       
+        if(scrollTop>elementTop-fixtop)
+        {
+            Fid(id).style.position = 'fixed';
+            Fid(id).style.zIndex = zIndex;
+            Fid(id).style.top = fixtop+'px';
+            
+            //占位符
+            if(place)
+            {
+                Fid(place).style.display = 'block';
+            }    
+        }else{
+            Fid(id).style.position = 'relative';
+            if(place)
+            {
+                Fid(place).style.display = 'none';
+            }    
+            Fid(id).style.top = '0px';
+        }
+    }
+
+    //nav 一直处于相对定位 状态
+    function navfixedie6()
+    {    
+        var scrollTop = getScrollTop();
+        if(scrollTop > elementTop - fixtop)
+        {
+            Fid(id).style.top = (scrollTop-elementTop + fixtop)+'px';
+            Fid(id).style.zIndex = zIndex;
+        }
+        else
+        {
+            Fid(id).style.top = '0px';
+        }
+    }
+
+    //非IE浏览器下
+    if (document.addEventListener) {
+        window.addEventListener("load",navfixed,true);
+        //window.addEventListener("resize",navfixed,true);
+        window.addEventListener("scroll",navfixed,true);
+    };
+
+    //ie8 ie7(支持fixed定位)
+    if (document.attachEvent&&window.ActiveXObject&&window.XMLHttpRequest) {
+        window.attachEvent("onload",navfixed);
+        //window.attachEvent("onresize",navfixed);
+        window.attachEvent("onscroll",navfixed);
+    };
+
+    //ie6
+    if (document.attachEvent&&window.ActiveXObject&&!window.XMLHttpRequest) {
+        //元素自始至终一定要是 relative
+        Fid(id).style.position = 'relative';
+        
+        window.attachEvent("onload",navfixedie6);
+        //window.attachEvent("onresize",navfixedie6);
+        window.attachEvent("onscroll",navfixedie6);
+    };
+}
+//顶部
+fixeDiv('nav', 0,  9999, 'place');
+
+//左侧
+var navHeight = Fid('nav').offsetHeight;
+fixeDiv('leftnav', navHeight, 10, 'leftplace');
+
+/***********************************固定的元素***********************/
+
+/******************************滑动定位 start **********************/
+
+//main    (面向过程式写法)
+/*function scroll_nav_pos(g_id_target_map)
+{    
+    //获取每个元素到页面顶端的距离
+    function getHeaderTop()
+    {
+        var header_top_map = {};
+        
+        for(var i in g_id_target_map)
+        {
+            if(Fid(g_id_target_map[i]))
+            {
+                header_top_map[i] = getCoords(g_id_target_map[i]).top;
+            }
+        }
+        return header_top_map;
+    }
+    
+    //获取每个元素距离顶端距离
+    var g_header_top_map = getHeaderTop();
+    
+    console.dir(g_header_top_map);
+    
+    //点击跳转跳指定位置
+    function goTo(id)
+    {
+        if(g_header_top_map[id] == undefined)
+        {
+            return ;
+        }
+        
+        var scrollTop = g_header_top_map[id];
+        var navHeight = Fid('nav').offsetHeight;
+    
+        document.documentElement.scrollTop = document.body.scrollTop = scrollTop-navHeight;
+    }
+    
+    //每个元素绑定单击事件
+    for(var i in g_id_target_map)
+    {
+        Fid(i).onclick = function(){
+            goTo(this.id);
+        }
+    }
+    
+    //设置元素样式
+    function setHeaderStyle(id)
+    {
+        for(var i in g_id_target_map)
+        {
+            if(Fid(i) && Fid(g_id_target_map[i]))
+            {
+                if(i == id)
+                {
+                    Fid(i).className = 'on';
+                }else{
+                    Fid(i).className = '';
+                }
+            }
+        }
+    }
+    
+    function dynamic_set_header(){
+
+        var scrollTop = document.body.scrollTop || document.documentElement.scrollTop;
+        var navheight = Fid('nav').offsetHeight;
+        
+        for(var i in g_id_target_map)
+        {
+            var top = g_header_top_map[i];
+            
+            if(scrollTop>=top-navheight)
+            {
+                setHeaderStyle(i);
+            }
+        } 
+    }
+    
+    //非IE浏览器下
+    if (document.addEventListener) {
+        
+        window.addEventListener("load",dynamic_set_header,true);
+        //window.addEventListener("resize",dynamic_set_header,true);
+        window.addEventListener("scroll",dynamic_set_header,true);
+    }
+    
+    if (document.attachEvent&&window.ActiveXObject) {
+        window.attachEvent("onload",dynamic_set_header);
+        //window.attachEvent("onresize",dynamic_set_header);
+        window.attachEvent("onscroll",dynamic_set_header);
+    };
+    
+}
+
+
+*/
+
+
+//滑动定位
+function scroll_nav_pos(g_id_target_map)
+{   
+    //id对应关系
+    this.id_target_map = g_id_target_map;
+    
+    //获取每个元素距离顶端距离
+    this.header_top_map = {};
+    
+    //初始化
+    this.init();
+}
+
+scroll_nav_pos.prototype = {
+    getHeaderTop:function () {//获取每个元素到页面顶端的距离
+            for(var i in this.id_target_map)
+            {
+                if(Fid(i) && Fid(this.id_target_map[i]))
+                {
+                    this.header_top_map[i] = getCoords(this.id_target_map[i]).top;
+                }
+            }
+    },
+    
+    refreshHeaderTop:function(){//刷新位置的对应关系
+        this.getHeaderTop();
+    },
+    
+    goTo:function (id)//点击跳转跳指定位置
+    {
+        if(this.header_top_map[id] == undefined)
+        {
+            return ;
+        }
+        
+        var scrollTop = this.header_top_map[id];
+        var navHeight = Fid('nav').offsetHeight;
+
+        document.documentElement.scrollTop = document.body.scrollTop = scrollTop-navHeight;
+    },
+    setHeaderStyle: function (id){//设置元素样式
+        for(var i in this.id_target_map)
+        {
+            if(Fid(i) && Fid(this.id_target_map[i]))
+            {
+                if(i == id)
+                {
+                    Fid(i).className = 'on';
+                }else{
+                    Fid(i).className = '';
+                }
+            }
+        }
+    },
+    clickBind:function(){ //每个元素绑定单击事件
+        var _this = this;
+
+        var counter = 0;
+        for(var i in this.id_target_map)
+        {
+            //两个id都存在才会绑定
+            if(Fid(i) && Fid(this.id_target_map[i]))
+            {
+                Fid(i).onclick = function(){
+                    _this.goTo(this.id);
+                }
+              
+                //为第一个元素添加样式
+                if(counter == 0)
+                {
+                    Fid(i).className = 'on';
+                }    
+                
+                counter++
+            }
+        }
+    },
+    scrollBind:function(){//绑定滚动事件
+        var _this = this;
+        function dynamic_set_header(){
+
+            var scrollTop = document.body.scrollTop || document.documentElement.scrollTop;
+            var navheight = Fid('nav').offsetHeight;
+            
+            for(var i in _this.id_target_map)
+            {
+                var top = _this.header_top_map[i];
+                
+                if(scrollTop>=top-navheight)
+                {
+                    _this.setHeaderStyle(i);
+                }
+            } 
+        }
+        
+        //非IE浏览器下
+        if (document.addEventListener) {
+            window.addEventListener("load",dynamic_set_header,true);
+            //window.addEventListener("resize",dynamic_set_header,true);
+            window.addEventListener("scroll",dynamic_set_header,true);
+        }
+        
+        if (document.attachEvent&&window.ActiveXObject) {
+            
+            window.attachEvent("onload",dynamic_set_header);
+            //window.attachEvent("onresize",dynamic_set_header);
+            window.attachEvent("onscroll",dynamic_set_header);
+        };
+    },
+    
+    init:function(){//初始化
+        this.getHeaderTop();
+        this.clickBind();
+        this.scrollBind();
+    }
+}
+
+//可以随意添加删除元素
+var g_id_target_map = {
+    'A':'_A',
+    'B':'_B',
+    'C':'_C',
+    'D':'_D',
+    'E':'_E'
+}
+var navScrollObj = new scroll_nav_pos(g_id_target_map);
+//当面元素位置发生变化时记得刷新哦
+//navScrollObj.refreshHeaderTop();
+//可以随意添加删除元素
+var g_id_target_map_2 = {
+    'F':'_A',
+    'G':'_B',
+    'H':'_C',
+    'I':'_D',
+    'J':'_E'
+}
+new scroll_nav_pos(g_id_target_map_2);
+//******************************滑动定位 end **********************
+</script>
+<div class="ban_6 banner"></div>
+<a name="here"></a>
+<div class="main kd">
+	<div class="left">
+    	<div class="nav">
+        	<a class=cur href="news.asp?Sortid=1#here"><font>公司动态</font>COMPANY NEWS</a>
+            <a  href="news.asp?Sortid=2#here"><font>行业资讯</font>INDUSTRY NEWS</a>
+        </div>
+         <div style="text-align:center"><img src="images/led.png" /></div>
+    </div>
+    
+<div class="right">
+    	<div class="rtop">首页&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;新闻资讯&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;公司动态</div>
+    <div class=" content">
+		
+       		
+<div class="news_view">
+   <div class="title">优腾电器的合作与分享</div>
+   <div class="info">编辑：优腾电器&nbsp;&nbsp;&nbsp;时间：7/26/2017 2:21:00 PM</div>
+   <div class="con">
+   <br />
+7月21日，优腾电器2017营销战略暨新品发布会在新品发布会在小榄皇冠大酒店三楼会议室顺利召开，优腾电器总经理朱德洪、营销总监易军、厂长徐保银，行业顾问专家盛斌子，大数据专家余步清，世界照明时报总经理陈小林以及来自全国各地的企业、经销商、员工及各方嘉宾参加了会议。<br />
+<div style="text-align:center;">
+	<br />
+</div>
+<div style="text-align:center;">
+	<img src="/Upload/PicFiles/image/20170911/20170911141920032003.jpg" alt="" /><br />
+</div>
+<div style="text-align:center;">
+	<span style="line-height:1.5;">优腾电器总经理朱德洪发言</span>
+</div>
+<br />
+优腾电器总经理朱德洪首先上台发言，并对各方嘉宾的到来表示了欢迎，对各经销商多年来的相伴共同成长表示了感恩。<br />
+<br />
+据他介绍，优腾电器拥有专业的现代化厂房，拥有素质优秀的员工队伍，并且建立了生产中心、设计研发中心、营销中心、企划中心及客户服务中心等完备的职能部门，使企业在科研、生产、物流、销售以及售后服务方面都保持国际一流水准。朱德洪的发言，展示了企业强大的实力，让与会经销商对做好市场充满了信心。<br />
+<div style="text-align:center;">
+	<br />
+</div>
+<div style="text-align:center;">
+	<img src="/Upload/PicFiles/image/20170911/2017091114190757757.jpg" alt="" /><br />
+</div>
+<div style="text-align:center;">
+	<span style="line-height:1.5;">行业顾问专家盛斌子发言</span>
+</div>
+<br />
+其后，照明行业顾问专家盛斌子走上讲台，作了九十分钟题为“合作、分享、一起成长——优腾电工代理商业务模式创新”的主题演讲，会议也随之进入第一个高潮——企业营销总监易军上台介绍企业的“2017年营销规划及战略”。易军的演讲，分为渠道、终端、战略三个部分。<br />
+<div style="text-align:center;">
+	<br />
+</div>
+<div style="text-align:center;">
+	<img src="/Upload/PicFiles/image/20170911/20170911142055835583.jpg" alt="" /><br />
+</div>
+<div style="text-align:center;">
+	<span style="line-height:1.5;">优腾电器营销总监易军发言</span>
+</div>
+<br />
+易军首先介绍了渠道的定义，并通过渠道从代理商到分销商再到消费者的纵向通路分析和五金店、灯具店、工程、装饰公司组成的横向多元化现状描述，告诉经销商如何从定位、政策、团队、营销思路几个方面出发，由易到难进行渠道建设。<br />
+<br />
+同时，他详细为与会嘉宾分析了终端的演变、定位及多种表现形式。接下来，易军以上面的理论为基础，深入浅出地介绍了优腾电工如何依靠企业的产品优势和渠道优势做好市场的各种战略。<br />
+<br />
+易军的介绍，抓住了经销商关注的热点，让现场嘉宾大呼过瘾。<br />
+<div style="text-align:center;">
+	<br />
+</div>
+<div style="text-align:center;">
+	<img src="/Upload/PicFiles/image/20170911/20170911142026572657.jpg" alt="" /><br />
+</div>
+<div style="text-align:center;">
+	<span style="line-height:1.5;">大数据专家余步清发言</span>
+</div>
+<div style="text-align:center;">
+	<br />
+</div>
+<div style="text-align:center;">
+	<img src="/Upload/PicFiles/image/20170911/20170911142055425542.jpg" alt="" /><br />
+</div>
+<div style="text-align:center;">
+	<span style="line-height:1.5;">优腾电器厂长徐保银发言</span>
+</div>
+<br />
+下午，会议继续开始，大数据专家余步清首先上台作了《移动互联网下的大数据系统与新零售》的主题演讲，厂长徐保银随后介绍了此次发布的新品情况。<br />
+<br />
+会议随之进入经销商最关注的环节——新品推广及促销方案。这个环节依然是易军主讲，他介绍了企业的Q3-K、Q3-A、Q7-K三类产品及其与新品Q9系列的区别，以及新品的定位、优势、市场推广策略、首批订货促销政策等等，让现场嘉宾充满了期盼，迫不及待地进入了现场订货环节，短短时间内订货近300万。<br />
+<br />
+现场订货之后，全体嘉宾上台合影，本次优腾新品发布会宣告圆满成功。<br />
+<div style="text-align:center;">
+	<br />
+</div>
+<div style="text-align:center;">
+	<img src="/Upload/PicFiles/image/20170911/20170911142029752975.jpg" alt="" /><br />
+</div>
+<div style="text-align:center;">
+	<span style="line-height:1.5;">全体合影</span>
+</div>
+<br /> </div>
+   <div class="clear"></div>
+ </div>
+	   
+<div align="left" style=" line-height:20px; padding-top:20px; font-size:12px" >『上一篇』<a href="newsshow.asp?ID=18&SortID=1#here">钢铁是怎样炼成的！---走进优腾“实验室”</a><BR>『下一篇』<a href="newsshow.asp?ID=16&SortID=1#here">【祝贺】优腾2017年度营销战略暨新品发布会圆满成功！</a><br>
+  <a href="index.asp">『首页』</a>　　<a href="javascript:history.go(-1);">『返回』</a></div>
+  
+  <div class="xgxx">
+		<font>相关<a href="#">新闻</a></font>
+	
+       <ul><a href='newsshow.asp?ID=16&SortID=1#here' title='【祝贺】优腾2017年度营销战略暨新品发布会圆满成功！'>【祝贺】优腾2017年度营销战略暨新品发布会…</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=10&SortID=1#here' title='优腾电工：V6.0铂金-铂银系列震撼上市'>优腾电工：V6.0铂金-铂银系列震撼上市</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=9&SortID=1#here' title='优腾首创钛铝合金拉丝面板开关'>优腾首创钛铝合金拉丝面板开关</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=1&SortID=1#here' title='优腾电工---我的选择，大家的选择'>优腾电工---我的选择，大家的选择</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=24&SortID=1#here' title='INVITATION LETTER FOR THE 122TH CHINA IMPORT & EXPORT FAIR'>INVITATION LETTER FOR THE 122TH CHINA IM…</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=5&SortID=1#here' title='龙腾环宇，优腾华夏--2012年优腾电工市场战略研讨会隆重召开'>龙腾环宇，优腾华夏--2012年优腾电工市场战略…</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=23&SortID=1#here' title='热烈祝贺 | &quot;优腾Q9新品上市暨电工孵化工程”泉州站圆满成功！'>热烈祝贺 | &quot;优腾Q9新品上市暨电工孵化工程…</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=8&SortID=1#here' title='“优”化终端，“腾”飞未来'>“优”化终端，“腾”飞未来</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=22&SortID=1#here' title='【祝贺】“2017优腾电工孵化工程”——重庆站 & 汕头站圆满成功！'>【祝贺】“2017优腾电工孵化工程”——重庆…</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=13&SortID=2#here' title='如何布置客厅开关插座？'>如何布置客厅开关插座？</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=21&SortID=1#here' title='优腾Q9系列 | 方块拼接技术，安装再也不烦心！'>优腾Q9系列 | 方块拼接技术，安装再也不烦心…</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=20&SortID=1#here' title='预告 | 优腾电工孵化工程'>预告 | 优腾电工孵化工程</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=4&SortID=1#here' title='选择UTEN优腾电工的8大理由'>选择UTEN优腾电工的8大理由</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=2&SortID=1#here' title='优腾电工：新品笑傲光亚展'>优腾电工：新品笑傲光亚展</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=19&SortID=1#here' title='【优腾福利】扫码 | 领双重好礼'>【优腾福利】扫码 | 领双重好礼</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=18&SortID=1#here' title='钢铁是怎样炼成的！---走进优腾“实验室”'>钢铁是怎样炼成的！---走进优腾“实验室”</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=11&SortID=2#here' title='优腾电工专利产品获青睐'>优腾电工专利产品获青睐</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=17&SortID=1#here' title='优腾电器的合作与分享'>优腾电器的合作与分享</a></ul>
+
+          
+	
+       <ul><a href='newsshow.asp?ID=3&SortID=1#here' title='优腾LED微点开关系列，开启电工产品“微”时代'>优腾LED微点开关系列，开启电工产品“微”时…</a></ul>
+
+          
+	
+    	<div class="clear"></div>
+    </div>
+    
+    </div>
+    </div>
+	<div class=" clear"></div>
+</div>
+<div class="dibu">
+	<div class="kd">
+  <div class="db db_2">
+        	<div class="db_1"><font>关于我们</font>ABOUT US</div>
+            <div class="db_1_1">优腾电器是Thomas.uten(托马斯&middot;优腾)先生在1918年创建于Stuttgart(斯图加特)的享誉世界的国际品牌。经过近90年的成功经营,<br>
+      UTEN(优腾)电器逐渐发展成为一个企业实力雄厚,市场网络强大的国际化集团.</div>
+        </div>
+        
+  <div class="db db_3">
+        	<div class="db_1"><font>联系我们</font>CONTACT US</div>
+            <div class="add">地址：<font>中山市小榄镇工业大道泰围路8号</font>
+            </div>
+            <div class="tell">电话：<font>0760-22125999/22125666</font></div>
+            <div class="email">邮箱：uten002@ch-uten.com / uten003@ch-uten.com<br />
+            </div>
+            <div class="QQ">电话：<font>Mr.ZHU 13026669123</font></div>
+        </div>
+        <iframe src="http://wljg.gdgs.gov.cn/lz.ashx?vie=41BEF320E537FBF5DEC5E2FB9F4D7274A7F54E74805906B8170C92FBD13620003DE8E16FFB2A93BE82410D5747E398AC" scrolling="no" style="overflow:hidden;width: 117px;height: 40px;position: absolute;right: 245px;top: 93px;" frameborder="0" allowtransparency="true"></iframe>
+        <div class="ewm"><img src="images/ewm.png"></div>
+    </div>
+</div>
+<div class="foot">
+	<div class="kd">
+    	<div class="dmenu">|<a href="index.asp">优腾首页</a>|<a href="about.asp?id=1">走进优腾</a>|<a href="news.asp">新闻资讯</a>|<a href="product.asp">产品中心</a>|<a href="case.asp?id=6">样板工程</a>|<a href="join.asp?id=7">招商加盟</a>|<a href="ln.asp?id=10">人才招聘</a>|<a href="contact.asp?id=11">联系我们</a>|</div>
+    Copyright 2014 中山市优腾电器有限公司 版权所有  电话：0760-22125999/22125666 <a href="http://beian.miit.gov.cn" target="_blank">粤ICP备2024341039号</a> 技术支持：<a href="http://www.ceall.net.cn/" target="_blank">佛山网站建设</a> &nbsp;市场有风险 投资需谨慎</div>
+</div>
+
+
+<script src="js1/jquery-1.7.2.min.js" type="text/javascript"></script>
+
+
+</body>
+</HTML>

@@ -1,0 +1,780 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3c.org/TR/1999/REC-html401-19991224/loose.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+
+
+<link rel="SHORTCUT ICON" href="favicon.ico">
+<link rel="BOOKMARK" href="favicon.ico">
+<head>
+
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>GK22-VD_中山市优腾电器有限公司</title>
+<meta name="Keywords" content="墙壁开关,插座" />
+<meta name="Description" content="中山市优腾电器有限公司，多年专注于研发、生产安全墙壁开关，插座。是一家致力于为客户提供高品质通用面板产品，集研发、生产和销售于一体的高新技术企业。公司创建25年来，深耕面板研发领域，自主研发的金属不锈钢拉丝面板，PC拉丝面板，真空镀膜面板，高强度钢化玻璃面板，工艺和性能位居行业前列的水平" />
+
+
+</head>
+<link href="css/css.css" rel="stylesheet" type="text/css" />
+<body>
+<div class="head">
+	<div class="kd">
+    	<div class="logo"><img src="images/logo.png"></div>
+        <div class="headr">
+        	<div class="lan"><a href="index.asp">中文</a> | <a href="en/index.asp">ENGLISH</a></div>
+            <div class="sear">
+          <FORM onSubmit="return checkSearchInput()" method=get action="search.asp">
+                     <div class="sear1"><input name=Keyword id=txtWord onfocus=focusInput() onblur=blurInput()  value="搜索..."></div>
+                     <div style="float:left;"><input type="image" src="images/an.png" class="image" ></div></FORM>
+                     <SCRIPT language=javascript type=text/javascript>
+    function focusInput(){					
+					var keyword = document.getElementById("txtWord").value;
+					if(keyword==null||keyword=="搜索..."){document.getElementById("txtWord").value="";		
+								}				}			
+									function blurInput(){					var keyword = document.getElementById("txtWord").value;			
+											if(keyword==null||keyword==""){					
+												document.getElementById("txtWord").value="搜索...";		
+															}				}				function checkSearchInput(){
+																var keyword = document.getElementById("txtWord").value;			
+																		if(keyword==null||keyword=="搜索..."||keyword==""){
+																								document.getElementById("txtWord").focus();
+																								alert("关键字错误，请重新输入！");			
+																												return false;					}			
+																													}
+    </SCRIPT>
+    </div>
+        </div>
+    </div>
+</div>
+<div class="menu" id="nav">
+	<div class="kd" style="background:url(images/shu.jpg) no-repeat right; height:35px">
+        <a  href="contact.asp?id=11">联系我们</a>
+        <a  href="ln.asp?id=10">人才招聘</a>
+        <a  href="join.asp?id=7">招商加盟</a>
+        <a  href="case.asp?id=6">样板工程</a>
+        <a class=cur href="Product.asp">产品中心</a>
+        <a  href="news.asp">新闻资讯</a>
+        <a  href="about.asp?id=1">走进优腾</a>
+        <a  href="index.asp">优腾首页</a>
+    </div>
+</div>
+
+<script>
+/*公共函数*/
+
+/*
+获取元素到页面顶端的距离(出自jquery源码)
+原理：
+*/
+function getCoords(el){
+    
+  if(typeof el == 'string')
+  {
+    el = Fid(el);
+  }
+    
+  var box = el.getBoundingClientRect(),
+  doc = el.ownerDocument,
+  body = doc.body,
+  html = doc.documentElement,
+  clientTop = html.clientTop || body.clientTop || 0,
+  clientLeft = html.clientLeft || body.clientLeft || 0,
+  top  = box.top  + (self.pageYOffset || html.scrollTop  ||  body.scrollTop ) - clientTop,
+  left = box.left + (self.pageXOffset || html.scrollLeft ||  body.scrollLeft) - clientLeft
+  return { 'top': top, 'left': left };
+};
+
+    
+function Fid(id)
+{
+    return document.getElementById(id);    
+}
+
+/***********************************固定的元素************************************/
+
+/**
+ * 注意占位符的高度一定要和浮动层相同
+ 
+ * @param id string 元素id
+ * @param fixtop int 元素固定时距离顶端的距离
+ * @param zIndex int 层级
+ * @param string 占位符的id(请勿忘记哦)
+ */
+function fixeDiv(id, fixtop, zIndex, place)
+{
+    //获取scrolltop
+    function getScrollTop()
+    {
+        var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
+        return  scrollTop;
+    }
+
+    var elementTop = getCoords(id).top;
+
+    //w3c
+    function navfixed()
+    {
+        //需要动态获取
+        var scrollTop = getScrollTop();
+       
+        if(scrollTop>elementTop-fixtop)
+        {
+            Fid(id).style.position = 'fixed';
+            Fid(id).style.zIndex = zIndex;
+            Fid(id).style.top = fixtop+'px';
+            
+            //占位符
+            if(place)
+            {
+                Fid(place).style.display = 'block';
+            }    
+        }else{
+            Fid(id).style.position = 'relative';
+            if(place)
+            {
+                Fid(place).style.display = 'none';
+            }    
+            Fid(id).style.top = '0px';
+        }
+    }
+
+    //nav 一直处于相对定位 状态
+    function navfixedie6()
+    {    
+        var scrollTop = getScrollTop();
+        if(scrollTop > elementTop - fixtop)
+        {
+            Fid(id).style.top = (scrollTop-elementTop + fixtop)+'px';
+            Fid(id).style.zIndex = zIndex;
+        }
+        else
+        {
+            Fid(id).style.top = '0px';
+        }
+    }
+
+    //非IE浏览器下
+    if (document.addEventListener) {
+        window.addEventListener("load",navfixed,true);
+        //window.addEventListener("resize",navfixed,true);
+        window.addEventListener("scroll",navfixed,true);
+    };
+
+    //ie8 ie7(支持fixed定位)
+    if (document.attachEvent&&window.ActiveXObject&&window.XMLHttpRequest) {
+        window.attachEvent("onload",navfixed);
+        //window.attachEvent("onresize",navfixed);
+        window.attachEvent("onscroll",navfixed);
+    };
+
+    //ie6
+    if (document.attachEvent&&window.ActiveXObject&&!window.XMLHttpRequest) {
+        //元素自始至终一定要是 relative
+        Fid(id).style.position = 'relative';
+        
+        window.attachEvent("onload",navfixedie6);
+        //window.attachEvent("onresize",navfixedie6);
+        window.attachEvent("onscroll",navfixedie6);
+    };
+}
+//顶部
+fixeDiv('nav', 0,  9999, 'place');
+
+//左侧
+var navHeight = Fid('nav').offsetHeight;
+fixeDiv('leftnav', navHeight, 10, 'leftplace');
+
+/***********************************固定的元素***********************/
+
+/******************************滑动定位 start **********************/
+
+//main    (面向过程式写法)
+/*function scroll_nav_pos(g_id_target_map)
+{    
+    //获取每个元素到页面顶端的距离
+    function getHeaderTop()
+    {
+        var header_top_map = {};
+        
+        for(var i in g_id_target_map)
+        {
+            if(Fid(g_id_target_map[i]))
+            {
+                header_top_map[i] = getCoords(g_id_target_map[i]).top;
+            }
+        }
+        return header_top_map;
+    }
+    
+    //获取每个元素距离顶端距离
+    var g_header_top_map = getHeaderTop();
+    
+    console.dir(g_header_top_map);
+    
+    //点击跳转跳指定位置
+    function goTo(id)
+    {
+        if(g_header_top_map[id] == undefined)
+        {
+            return ;
+        }
+        
+        var scrollTop = g_header_top_map[id];
+        var navHeight = Fid('nav').offsetHeight;
+    
+        document.documentElement.scrollTop = document.body.scrollTop = scrollTop-navHeight;
+    }
+    
+    //每个元素绑定单击事件
+    for(var i in g_id_target_map)
+    {
+        Fid(i).onclick = function(){
+            goTo(this.id);
+        }
+    }
+    
+    //设置元素样式
+    function setHeaderStyle(id)
+    {
+        for(var i in g_id_target_map)
+        {
+            if(Fid(i) && Fid(g_id_target_map[i]))
+            {
+                if(i == id)
+                {
+                    Fid(i).className = 'on';
+                }else{
+                    Fid(i).className = '';
+                }
+            }
+        }
+    }
+    
+    function dynamic_set_header(){
+
+        var scrollTop = document.body.scrollTop || document.documentElement.scrollTop;
+        var navheight = Fid('nav').offsetHeight;
+        
+        for(var i in g_id_target_map)
+        {
+            var top = g_header_top_map[i];
+            
+            if(scrollTop>=top-navheight)
+            {
+                setHeaderStyle(i);
+            }
+        } 
+    }
+    
+    //非IE浏览器下
+    if (document.addEventListener) {
+        
+        window.addEventListener("load",dynamic_set_header,true);
+        //window.addEventListener("resize",dynamic_set_header,true);
+        window.addEventListener("scroll",dynamic_set_header,true);
+    }
+    
+    if (document.attachEvent&&window.ActiveXObject) {
+        window.attachEvent("onload",dynamic_set_header);
+        //window.attachEvent("onresize",dynamic_set_header);
+        window.attachEvent("onscroll",dynamic_set_header);
+    };
+    
+}
+
+
+*/
+
+
+//滑动定位
+function scroll_nav_pos(g_id_target_map)
+{   
+    //id对应关系
+    this.id_target_map = g_id_target_map;
+    
+    //获取每个元素距离顶端距离
+    this.header_top_map = {};
+    
+    //初始化
+    this.init();
+}
+
+scroll_nav_pos.prototype = {
+    getHeaderTop:function () {//获取每个元素到页面顶端的距离
+            for(var i in this.id_target_map)
+            {
+                if(Fid(i) && Fid(this.id_target_map[i]))
+                {
+                    this.header_top_map[i] = getCoords(this.id_target_map[i]).top;
+                }
+            }
+    },
+    
+    refreshHeaderTop:function(){//刷新位置的对应关系
+        this.getHeaderTop();
+    },
+    
+    goTo:function (id)//点击跳转跳指定位置
+    {
+        if(this.header_top_map[id] == undefined)
+        {
+            return ;
+        }
+        
+        var scrollTop = this.header_top_map[id];
+        var navHeight = Fid('nav').offsetHeight;
+
+        document.documentElement.scrollTop = document.body.scrollTop = scrollTop-navHeight;
+    },
+    setHeaderStyle: function (id){//设置元素样式
+        for(var i in this.id_target_map)
+        {
+            if(Fid(i) && Fid(this.id_target_map[i]))
+            {
+                if(i == id)
+                {
+                    Fid(i).className = 'on';
+                }else{
+                    Fid(i).className = '';
+                }
+            }
+        }
+    },
+    clickBind:function(){ //每个元素绑定单击事件
+        var _this = this;
+
+        var counter = 0;
+        for(var i in this.id_target_map)
+        {
+            //两个id都存在才会绑定
+            if(Fid(i) && Fid(this.id_target_map[i]))
+            {
+                Fid(i).onclick = function(){
+                    _this.goTo(this.id);
+                }
+              
+                //为第一个元素添加样式
+                if(counter == 0)
+                {
+                    Fid(i).className = 'on';
+                }    
+                
+                counter++
+            }
+        }
+    },
+    scrollBind:function(){//绑定滚动事件
+        var _this = this;
+        function dynamic_set_header(){
+
+            var scrollTop = document.body.scrollTop || document.documentElement.scrollTop;
+            var navheight = Fid('nav').offsetHeight;
+            
+            for(var i in _this.id_target_map)
+            {
+                var top = _this.header_top_map[i];
+                
+                if(scrollTop>=top-navheight)
+                {
+                    _this.setHeaderStyle(i);
+                }
+            } 
+        }
+        
+        //非IE浏览器下
+        if (document.addEventListener) {
+            window.addEventListener("load",dynamic_set_header,true);
+            //window.addEventListener("resize",dynamic_set_header,true);
+            window.addEventListener("scroll",dynamic_set_header,true);
+        }
+        
+        if (document.attachEvent&&window.ActiveXObject) {
+            
+            window.attachEvent("onload",dynamic_set_header);
+            //window.attachEvent("onresize",dynamic_set_header);
+            window.attachEvent("onscroll",dynamic_set_header);
+        };
+    },
+    
+    init:function(){//初始化
+        this.getHeaderTop();
+        this.clickBind();
+        this.scrollBind();
+    }
+}
+
+//可以随意添加删除元素
+var g_id_target_map = {
+    'A':'_A',
+    'B':'_B',
+    'C':'_C',
+    'D':'_D',
+    'E':'_E'
+}
+var navScrollObj = new scroll_nav_pos(g_id_target_map);
+//当面元素位置发生变化时记得刷新哦
+//navScrollObj.refreshHeaderTop();
+//可以随意添加删除元素
+var g_id_target_map_2 = {
+    'F':'_A',
+    'G':'_B',
+    'H':'_C',
+    'I':'_D',
+    'J':'_E'
+}
+new scroll_nav_pos(g_id_target_map_2);
+//******************************滑动定位 end **********************
+</script><div class="focus" id="focus">
+	
+	<div id="focus_m" class="focus_m">
+		<ul>
+			<li class="li_1"><a href="#" hidefocus="true"></a></li>
+			<li class="li_2"><a href="#" hidefocus="true"></a></li>
+			<li class="li_3"><a href="#" hidefocus="true"></a></li>
+		</ul>
+	</div>
+	<a href="javascript:;" class="focus_l" id="focus_l" hidefocus="true" title="上一张"><b></b><span></span></a>
+	<a href="javascript:;" class="focus_r" id="focus_r" hidefocus="true" title="下一张"><b></b><span></span></a>
+</div>
+<script type="text/javascript" src="js1/jquery-1.7.2.min.js"></script>
+<script type="text/javascript" src="js1/index.js"></script>
+<a name="here"></a>
+<div class="main kd">
+	<div class="left">
+    	<div class="pnav">
+	
+	<ul>
+		<a  href="Product.asp?sortID=81&SortPath=0,81,">Z9</a>
+      	<li  style="display:none">
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=80&SortPath=0,80,">S300</a>
+      	<li  style="display:none">
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=70&SortPath=0,70,">Q7</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=71&SortPath=0,70,71," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=73&SortPath=0,70,73," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=75&SortPath=0,75,">Q9</a>
+      	<li  style="display:none">
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=76&SortPath=0,76,">Q3</a>
+      	<li  style="display:none">
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=77&SortPath=0,77,">V4&#30333;</a>
+      	<li  style="display:none">
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=78&SortPath=0,78,">A5</a>
+      	<li  style="display:none">
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=79&SortPath=0,79,">A8</a>
+      	<li  style="display:none">
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=1&SortPath=0,1,">V1.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=8&SortPath=0,1,8," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=13&SortPath=0,1,13," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=14&SortPath=0,1,14," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a class=cur href="Product.asp?sortID=2&SortPath=0,2,">V1.1</a>
+      	<li >
+
+  
+<ul><a  href="Product.asp?sortID=23&SortPath=0,2,23," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a class=cur href="Product.asp?sortID=24&SortPath=0,2,24," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=25&SortPath=0,2,25," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=54&SortPath=0,54,">V1.2</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=55&SortPath=0,54,55," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=56&SortPath=0,54,56," >&#36890;&#29992;&#30005;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=57&SortPath=0,54,57," >&#36890;&#29992;&#30005;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=58&SortPath=0,54,58," >&#24320;&#20851;&#21151;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=59&SortPath=0,54,59," >&#32431;&#24179;&#24320;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=3&SortPath=0,3,">V2.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=16&SortPath=0,3,16," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=15&SortPath=0,3,15," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=17&SortPath=0,3,17," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=4&SortPath=0,4,">V3.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=18&SortPath=0,4,18," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=19&SortPath=0,4,19," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=20&SortPath=0,4,20," >&#36890;&#29992;&#30005;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=21&SortPath=0,4,21," >&#36890;&#29992;&#30005;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=22&SortPath=0,4,22," >&#24320;&#20851;&#21151;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=5&SortPath=0,5,">V4.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=26&SortPath=0,5,26," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=27&SortPath=0,5,27," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=28&SortPath=0,5,28," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=6&SortPath=0,6,">V5.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=29&SortPath=0,6,29," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=30&SortPath=0,6,30," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=31&SortPath=0,6,31," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=7&SortPath=0,7,">V6.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=32&SortPath=0,7,32," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=33&SortPath=0,7,33," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=34&SortPath=0,7,34," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=9&SortPath=0,9,">V7.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=35&SortPath=0,9,35," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=36&SortPath=0,9,36," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=37&SortPath=0,9,37," >&#36890;&#29992;&#30005;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=38&SortPath=0,9,38," >&#24320;&#20851;&#21151;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=39&SortPath=0,9,39," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=10&SortPath=0,10,">V8.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=43&SortPath=0,10,43," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=44&SortPath=0,10,44," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=45&SortPath=0,10,45," >&#36890;&#29992;&#30005;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=46&SortPath=0,10,46," >&#24320;&#20851;&#21151;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=47&SortPath=0,10,47," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=11&SortPath=0,11,">V9.0</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=40&SortPath=0,11,40," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=41&SortPath=0,11,41," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=42&SortPath=0,11,42," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=12&SortPath=0,12,">V9.1</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=48&SortPath=0,12,48," >&#22823;&#36343;&#26495;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=49&SortPath=0,12,49," >LED&#24494;&#28857;&#2432…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=50&SortPath=0,12,50," >&#36890;&#29992;&#30005;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=51&SortPath=0,12,51," >&#24320;&#20851;&#21151;&…</a></ul>
+
+  
+<ul><a  href="Product.asp?sortID=52&SortPath=0,12,52," >&#36890;&#29992;&#30005;&…</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=60&SortPath=0,60,">&#20986;&#21475;&#20135;&…</a>
+      	<li  style="display:none">
+
+  
+<ul><a  href="Product.asp?sortID=61&SortPath=0,60,61," >A6.0</a></ul>
+</li></ul>
+	<ul>
+		<a  href="Product.asp?sortID=53&SortPath=0,53,">&#28082;&#21387;&#32531;&…</a>
+      	<li  style="display:none">
+</li></ul>
+</div>
+<div style="text-align:center"><img src="images/led.png" /></div>
+        
+        
+
+    </div>
+    
+<div class="right">
+    	<div class="rtop">首页&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;产品中心&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;V1.1&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;LED微点开关系列</div>
+    <div class=" content">
+		
+      
+<div class="products_detail">
+		<div align="center" style=" width:350px; border-right:1px #00A698 solid; float:left"><img src="Upload/PicFiles/2015.10.10_11.14.20_9975.jpg" width="297"/></div>         
+			  <div class="products_detail_con">
+			  	<DIV class=h2>产品说明</DIV>
+				<div class="con_box">
+					<span style="font-size:14px;line-height:2;">型号：GK22-VD&nbsp;</span><br />
+<span style="font-size:14px;line-height:2;">双联双控开关 &nbsp;</span><br />
+<span style="font-size:14px;line-height:2;">包装数量：&nbsp;</span><br />
+<span style="font-size:14px;line-height:2;">10只/盒子 100只/箱</span><br />
+                    
+                    
+				</div>
+                
+			  </div>
+             <div class="clear"></div>
+</div>
+      
+<div style=" line-height:20px; margin-top:20px; font-size:12px"><a href="productshow.asp?ID=140&SortID=24&Sequence=216&SortPath=0,2,24,#here" >『上一产品』GK12-VD</a><br>
+<a href="productshow.asp?ID=142&SortID=24&Sequence=218&SortPath=0,2,24,#here" >『下一产品』GK32-VD</a><br>
+  <a href="index.asp">『首页』</a>　　<a href="javascript:history.go(-1);">『返回』</a></div>
+  
+  <div class="xgxx">
+		<font>相关产品</font>
+    </div>
+               
+         <dl class="dl_1 ">
+               <dt><a href="productshow.asp?ID=634&SortID=50&Sequence=1120&SortPath=0,12,50,#here" ><img src="Upload/PicFiles/2015.10.12_16.24.56_7741.jpg" /></a></dt>
+               <dd><a href="productshow.asp?ID=634&SortID=50&Sequence=1120&SortPath=0,12,50,#here">型号：Z45W</a></dd>
+               <dd style="display:none"><a href="productshow.asp?ID=634&SortID=50&Sequence=1120&SortPath=0,12,50,#here">162447-410</a></dd>
+        </dl>
+                       
+         <dl class="dl_1 ">
+               <dt><a href="productshow.asp?ID=975&SortID=75&Sequence=62&SortPath=0,75,#here" ><img src="Upload/PicFiles/2017.8.16_14.49.0_7792.jpg" /></a></dt>
+               <dd><a href="productshow.asp?ID=975&SortID=75&Sequence=62&SortPath=0,75,#here">型号：红外线</a></dd>
+               <dd style="display:none"><a href="productshow.asp?ID=975&SortID=75&Sequence=62&SortPath=0,75,#here">144835-262</a></dd>
+        </dl>
+                       
+         <dl class="dl_1 ">
+               <dt><a href="productshow.asp?ID=1032&SortID=76&Sequence=1348&SortPath=0,76,#here" ><img src="Upload/PicFiles/2017.9.12_15.15.21_9236.jpg" /></a></dt>
+               <dd><a href="productshow.asp?ID=1032&SortID=76&Sequence=1348&SortPath=0,76,#here">型号：二位音响</a></dd>
+               <dd style="display:none"><a href="productshow.asp?ID=1032&SortID=76&Sequence=1348&SortPath=0,76,#here">151452-758</a></dd>
+        </dl>
+                       
+         <dl class="dl_1 lst">
+               <dt><a href="productshow.asp?ID=633&SortID=50&Sequence=1119&SortPath=0,12,50,#here" ><img src="Upload/PicFiles/2015.10.12_16.24.32_5814.jpg" /></a></dt>
+               <dd><a href="productshow.asp?ID=633&SortID=50&Sequence=1119&SortPath=0,12,50,#here">型号：Z35W</a></dd>
+               <dd style="display:none"><a href="productshow.asp?ID=633&SortID=50&Sequence=1119&SortPath=0,12,50,#here">162422-539</a></dd>
+        </dl>
+        
+  
+  
+    </div>
+    </div>
+	<div class=" clear"></div>
+</div>
+<div class="dibu">
+	<div class="kd">
+  <div class="db db_2">
+        	<div class="db_1"><font>关于我们</font>ABOUT US</div>
+            <div class="db_1_1">优腾电器是Thomas.uten(托马斯&middot;优腾)先生在1918年创建于Stuttgart(斯图加特)的享誉世界的国际品牌。经过近90年的成功经营,<br>
+      UTEN(优腾)电器逐渐发展成为一个企业实力雄厚,市场网络强大的国际化集团.</div>
+        </div>
+        
+  <div class="db db_3">
+        	<div class="db_1"><font>联系我们</font>CONTACT US</div>
+            <div class="add">地址：<font>中山市小榄镇工业大道泰围路8号</font>
+            </div>
+            <div class="tell">电话：<font>0760-22125999/22125666</font></div>
+            <div class="email">邮箱：uten002@ch-uten.com / uten003@ch-uten.com<br />
+            </div>
+            <div class="QQ">电话：<font>Mr.ZHU 13026669123</font></div>
+        </div>
+        <iframe src="http://wljg.gdgs.gov.cn/lz.ashx?vie=41BEF320E537FBF5DEC5E2FB9F4D7274A7F54E74805906B8170C92FBD13620003DE8E16FFB2A93BE82410D5747E398AC" scrolling="no" style="overflow:hidden;width: 117px;height: 40px;position: absolute;right: 245px;top: 93px;" frameborder="0" allowtransparency="true"></iframe>
+        <div class="ewm"><img src="images/ewm.png"></div>
+    </div>
+</div>
+<div class="foot">
+	<div class="kd">
+    	<div class="dmenu">|<a href="index.asp">优腾首页</a>|<a href="about.asp?id=1">走进优腾</a>|<a href="news.asp">新闻资讯</a>|<a href="product.asp">产品中心</a>|<a href="case.asp?id=6">样板工程</a>|<a href="join.asp?id=7">招商加盟</a>|<a href="ln.asp?id=10">人才招聘</a>|<a href="contact.asp?id=11">联系我们</a>|</div>
+    Copyright 2014 中山市优腾电器有限公司 版权所有  电话：0760-22125999/22125666 <a href="http://beian.miit.gov.cn" target="_blank">粤ICP备2024341039号</a> 技术支持：<a href="http://www.ceall.net.cn/" target="_blank">佛山网站建设</a> &nbsp;市场有风险 投资需谨慎</div>
+</div>
+
+
+<script src="js1/jquery-1.7.2.min.js" type="text/javascript"></script>
+
+
+</body>
+</HTML>

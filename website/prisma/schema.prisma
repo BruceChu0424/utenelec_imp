@@ -1,0 +1,119 @@
+// 优腾官网数据模型
+// 多语言策略: 每条内容一个 i18n JSON 字段, 结构 {zh:{...}, en:{...}, ...}
+// 扩展新语言只需往 i18n 加 key (如 es/pt/ar/fr/ru/de), 无需改表结构 — 适合外贸多语言
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// 产品系列 (Z9 / S300 / Q7 / Q9 / V系列 / 出口 / 地面插座 ...)
+model Series {
+  id         String    @id @default(cuid())
+  code       String    @unique // 短代号, 同时作 URL slug (z9, s300, q7...)
+  i18n       String      // {zh:{name,subtitle,description}, en:{...}}
+  coverImage String?
+  sortOrder  Int       @default(0)
+  published  Boolean   @default(true)
+  products   Product[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+/// 产品 (开关 / 插座 / 面板)
+model Product {
+  id         String   @id @default(cuid())
+  seriesId   String?
+  series     Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  slug       String   @unique
+  image      String?  // 主图路径 (/images/raw/xxx 或 /uploads/xxx)
+  gallery    String?    // 多图数组
+  specs      String?    // 规格表 [{label,value}] (可多语言)
+  i18n       String     // {zh:{name,description}, en:{...}}
+  featured   Boolean  @default(false) // 首页推荐
+  sortOrder  Int      @default(0)
+  published  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([seriesId])
+  @@index([featured])
+}
+
+/// 新闻资讯
+model News {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  category    String   @default("company") // company 公司动态 / industry 行业资讯
+  coverImage  String?
+  i18n        String     // {zh:{title,summary,content}, en:{...}}
+  publishedAt DateTime @default(now())
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([publishedAt])
+}
+
+/// 样板工程
+model CaseItem {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  coverImage String?
+  i18n       String     // {zh:{title,location,content}, en:{...}}
+  sortOrder  Int      @default(0)
+  published  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+/// 人才招聘岗位
+model Job {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  location   String?
+  department String?
+  i18n       String     // {zh:{title,requirements,description}, en:{...}}
+  sortOrder  Int      @default(0)
+  published  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+/// 站点设置 (键值对 + 多语言)
+/// key 例: hero, stats, about, milestones, honors, craft, contact, join, careers, footer
+model Setting {
+  id   String @id @default(cuid())
+  key  String @unique
+  i18n String
+}
+
+/// 管理员账号
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String // bcrypt hash
+  name      String?
+  createdAt DateTime @default(now())
+}
+
+/// 客户留言 / 招商留资
+model Inquiry {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  company   String?
+  message   String
+  source    String   @default("contact") // contact / join
+  handled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([handled])
+  @@index([createdAt])
+}

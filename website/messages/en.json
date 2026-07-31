@@ -1,0 +1,126 @@
+{
+  "Locale": { "label": "English", "switch": "Language" },
+  "Nav": {
+    "home": "Home",
+    "about": "About",
+    "products": "Products",
+    "news": "News",
+    "cases": "Projects",
+    "join": "Partners",
+    "careers": "Careers",
+    "contact": "Contact"
+  },
+  "Common": {
+    "learnMore": "Learn More",
+    "viewAll": "View All",
+    "viewDetail": "View Details",
+    "contactUs": "Contact Us",
+    "back": "Back",
+    "backHome": "Back Home",
+    "loading": "Loading…",
+    "search": "Search",
+    "searchPlaceholder": "Search products…",
+    "noData": "No content yet",
+    "optional": "optional",
+    "required": "required",
+    "submit": "Submit",
+    "submitting": "Submitting…",
+    "submitted": "Submitted successfully. We will contact you soon.",
+    "error": "Something went wrong, please try again",
+    "menu": "Menu"
+  },
+  "Home": {
+    "seriesTitle": "Product Series",
+    "seriesSubtitle": "Precision manufacturing · Safe and reliable",
+    "craftTitle": "Core Craftsmanship",
+    "craftSubtitle": "Self-developed, industry-leading panel technologies",
+    "casesTitle": "Featured Projects",
+    "casesSubtitle": "Uten products power numerous well-known projects",
+    "newsTitle": "News & Insights",
+    "newsSubtitle": "Stay up to date with Uten",
+    "ctaTitle": "Start Your Partnership with Uten",
+    "ctaSubtitle": "Whether you are a dealer, project developer or overseas buyer — we look forward to growing together.",
+    "featured": "Featured Products",
+    "allSeries": "All Series"
+  },
+  "Products": {
+    "title": "Products",
+    "subtitle": "25 years focused on safe wall switches and sockets",
+    "allSeries": "All",
+    "count": "{count} items",
+    "seriesIntro": "About this series",
+    "relatedProducts": "Related Products",
+    "specs": "Specifications",
+    "filter": "Categories",
+    "empty": "No products in this category yet",
+    "gallery": "Gallery"
+  },
+  "News": {
+    "title": "News & Insights",
+    "subtitle": "Company updates and industry insights",
+    "company": "Company",
+    "industry": "Industry",
+    "latest": "Latest",
+    "related": "Related",
+    "empty": "No articles yet"
+  },
+  "Cases": {
+    "title": "Featured Projects",
+    "subtitle": "Uten products power numerous well-known projects"
+  },
+  "About": {
+    "title": "About Uten",
+    "history": "Our History",
+    "structure": "Organization",
+    "honor": "Honors & Certifications",
+    "craft": "Craftsmanship",
+    "mission": "Mission & Vision"
+  },
+  "Join": {
+    "title": "Partners",
+    "advantage": "Core Advantages",
+    "process": "Process",
+    "formTitle": "Partnership Application",
+    "formSubtitle": "Fill in the form below and we will contact you soon."
+  },
+  "Careers": {
+    "title": "Careers",
+    "location": "Location",
+    "department": "Department",
+    "requirements": "Requirements",
+    "desc": "Description",
+    "empty": "No open positions right now"
+  },
+  "Contact": {
+    "title": "Contact Us",
+    "phone": "Phone",
+    "email": "Email",
+    "address": "Address",
+    "formTitle": "Send a Message",
+    "name": "Name",
+    "company": "Company",
+    "message": "Message"
+  },
+  "Footer": {
+    "products": "Products",
+    "about": "About",
+    "contact": "Contact",
+    "followUs": "Follow Us",
+    "rights": "All rights reserved",
+    "quickLinks": "Quick Links"
+  },
+  "NotFound": {
+    "title": "Page Not Found",
+    "desc": "The page you are looking for does not exist or has been removed.",
+    "cta": "Back to Home"
+  },
+  "Theme": {
+    "toggle": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "Meta": {
+    "company": "Zhongshan Uten Electrical Co., Ltd.",
+    "tagline": "Safe wall switches and sockets | Hi-tech enterprise | Exported worldwide"
+  }
+}

@@ -10,14 +10,18 @@
 **产品编号 = goods.code** 匹配灌入平台库：
 
 1. 「来源」属性（goods.source_type，V128）：产品角色 自制件→自制、外购件→采购、委外件→委外。
-2. 分类树：Excel「产品分类」路径（如 `86开关插座->原材料->塑胶类->塑胶件`）在
-   material_categories 中按 父+名 幂等建节点（挂在根「货品资料」下），并把匹配货品的
-   category_id 重指到叶子分类。
-3. 空值补齐（仅当库内字段为空才补，不覆盖已有值）：
+2. 空值补齐（仅当库内字段为空才补，不覆盖已有值）：
    系列 series、材质 material、型号 model、规格 spec、客户型号 c_number、
    备注 require_remark（←原ERP备注）、单重 m_weight（←单重（克））、
    主颜色 color_legacy_id（←颜色，按名称对 colors 字典，缺名自动建色）、
    单位 unit_legacy_id（←基本单位，按名称对 units 字典，千克→kg 别名）。
+
+【2026-07-31 决策修订】分类树只走老树，Excel 只读取内容：
+- 默认 **不再** 按 Excel「产品分类」路径建新分类、不再改 goods.category_id；
+  分类结构以老库迁移树为准（2026-07-30 的首次导入曾重指 21883 个货品分类，
+  已于 2026-07-31 全部回滚并删除新建的 493 个 XL 分类）。
+- 只有显式传 `--recategorize` 才恢复旧行为（按 `a->b->c` 路径幂等建节点挂在
+  根「货品资料」下，并把匹配货品的 category_id 重指到叶子分类）。
 4. 核对机制（“确定是这个产品”）：编号命中后再比对名称（去空白）。
    - 名称一致或互相包含 → 视为同一产品，执行导入；
    - 名称明显不同 → 不导入，写入复核清单 `import_report/name_mismatch.csv` 人工确认。
@@ -137,6 +141,9 @@ def load_rows(data_dir: Path, files: list[str]) -> list[dict]:
 def main() -> None:
     ap = argparse.ArgumentParser(description="产品列表 Excel 移植（干跑/导入）")
     ap.add_argument("--apply", action="store_true", help="正式写库（缺省只干跑出报告）")
+    ap.add_argument("--recategorize", action="store_true",
+                    help="【默认关闭】按 Excel 产品分类路径建新分类树并重指货品分类；"
+                         "2026-07-31 决策：分类结构只走老树，Excel 只补字段，勿随意开启")
     ap.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR), help="Excel 所在目录")
     ap.add_argument("--files", nargs="*", default=DEFAULT_FILES, help="文件名列表")
     args = ap.parse_args()
@@ -205,19 +212,20 @@ def main() -> None:
     print(f"匹配命中：{len(verified) + len(mismatch)}；名称核对通过：{len(verified)}；"
           f"名称不符（转人工复核）：{len(mismatch)}；编号未命中：{len(unmatched)}")
 
-    # ----- 分类树：按路径建节点 -----
-    cur.execute("SELECT id, parent_id, name, code, level, path FROM material_categories WHERE is_deleted = false")
-    cat_rows = cur.fetchall()
+    # ----- 分类树：按路径建节点（仅 --recategorize 显式开启时；默认不动分类结构） -----
     by_parent_name: dict[tuple, tuple] = {}  # (parent_id, name) -> (id, level, path)
     child_codes: dict[object, set] = {}
     root = None
-    for cid, pid, name, code, level, path in cat_rows:
-        by_parent_name[(pid, name)] = (cid, level, path)
-        child_codes.setdefault(pid, set()).add(code or "")
-        if pid is None and code == ROOT_CODE:
-            root = (cid, level, path)
-    if root is None:
-        raise SystemExit("找不到分类根「货品资料」(code=GOODS)，请先完成老库分类迁移")
+    if args.recategorize:
+        cur.execute("SELECT id, parent_id, name, code, level, path FROM material_categories WHERE is_deleted = false")
+        cat_rows = cur.fetchall()
+        for cid, pid, name, code, level, path in cat_rows:
+            by_parent_name[(pid, name)] = (cid, level, path)
+            child_codes.setdefault(pid, set()).add(code or "")
+            if pid is None and code == ROOT_CODE:
+                root = (cid, level, path)
+        if root is None:
+            raise SystemExit("找不到分类根「货品资料」(code=GOODS)，请先完成老库分类迁移")
 
     stats: Counter = Counter()
     now = datetime.now(timezone.utc)
@@ -317,9 +325,11 @@ def main() -> None:
         if role and g["source_type"] != role:
             sets["source_type"] = role
 
-        leaf = ensure_category(rec["category_path"]) if rec["category_path"] else None
-        if leaf and str(g["category_id"]) != str(leaf[0]):
-            sets["category_id"] = leaf[0]
+        # 分类重指：仅 --recategorize 时启用（默认分类结构只走老树，Excel 只补内容字段）
+        if args.recategorize:
+            leaf = ensure_category(rec["category_path"]) if rec["category_path"] else None
+            if leaf and str(g["category_id"]) != str(leaf[0]):
+                sets["category_id"] = leaf[0]
 
         fills = [
             ("series", "series", str), ("material", "material", str),

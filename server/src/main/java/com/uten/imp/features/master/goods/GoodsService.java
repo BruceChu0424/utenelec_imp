@@ -75,16 +75,16 @@ public class GoodsService {
             "series", "model", "material", "code", "name", "spec",
             "cNumber", "requireRemark", "colorLegacyId", "unitLegacyId", "sourceType");
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量/日期列；命中才排序，否则默认 id ASC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price");
+    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/编号等可排序列；命中才排序，否则默认 id ASC）。 */
+    private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price", "code", "code");
 
     /** facet 截断阈值（高基数列如 name 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
-    /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。 */
+    /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
+     *  注意：code（编号）不在此列——编号是唯一标识，值筛选无意义，改为表头排序（见 ALLOWED_SORT）。 */
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
-        FACET_COLUMNS.put("code", "code");
         FACET_COLUMNS.put("series", "series");
         FACET_COLUMNS.put("model", "model");
         FACET_COLUMNS.put("name", "name");

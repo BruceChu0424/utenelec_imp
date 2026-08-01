@@ -138,7 +138,10 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
     }
     final selfId = widget.editing?.id;
     if (_isEdit && selfId != null && _parent != null) {
-      if (_isSelfOrDescendant(_parent!, selfId)) {
+      // 新父级不能是自身或自身的后代（否则成环）。在「自身子树」里查新父级 id；
+      // 旧写法在父级子树里查自身→自身本就是父级子节点→恒 true，只改名字也误报。
+      final selfNode = _findById(widget.tree, selfId);
+      if (selfNode != null && _isSelfOrDescendant(selfNode, _parent!.id)) {
         return '不能将部门移动到自身或其子部门下'; // TODO(l10n): 补 arb
       }
     }
@@ -181,6 +184,8 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
 
   Future<void> _pickParent() async {
     final selfId = widget.editing?.id;
+    // 自身节点（编辑态）：在自身子树内判定候选父级，禁用自身及其后代（否则成环）。
+    final selfNode = selfId == null ? null : _findById(widget.tree, selfId);
     final result = await showUtenPickerSheet<DepartmentNode>(
       context: context,
       title: _isEdit ? '选择上级部门' : '选择添加位置', // TODO(l10n): 补 arb
@@ -190,10 +195,10 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
         nodes: widget.tree,
         mode: UtenDepartmentTreeMode.single,
         selectedIds: {_parent?.id ?? ''},
-        // 仅可选层级（一级/二级/三级）能被选为父级；编辑态排除自身及后代。
+        // 仅可选层级（一级/二级/三级）能被选为父级；编辑态排除自身及其后代。
         nodeEnabledPredicate: (n) =>
             kSelectableDepartmentLevels.contains(n.level) &&
-            (selfId == null || !_isSelfOrDescendant(n, selfId)),
+            (selfNode == null || !_isSelfOrDescendant(selfNode, n.id)),
         onToggleSelect: onSelect,
         initiallyExpandDepth: 2,
       ),

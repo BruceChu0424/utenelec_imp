@@ -169,9 +169,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
     return perms.contains(Perm.mouldCategoryEdit);
   }
 
-  /// 新建分类时的常用名称建议（降低起名门槛；模具类常用维度）。
-  static const _categorySuggestions = ['注塑模具', '冲压模具', '压铸模具', '锻压模具', '夹具工装'];
-
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -180,7 +177,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
-        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );

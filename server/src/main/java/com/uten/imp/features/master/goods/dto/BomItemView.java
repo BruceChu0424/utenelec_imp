@@ -29,4 +29,5 @@ public class BomItemView {
     private String summary;            // 备注
     private Integer legacyId;
     private boolean hasChildren;       // 组件自身有 BOM（可展开）
+    private String componentSourceType; // 组件来源（自制/采购/委外，组件信息只读展示 + 成本聚合区分用）
 }

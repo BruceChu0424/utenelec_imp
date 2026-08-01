@@ -75,7 +75,10 @@ public class MaterialCategoryService {
         } else {
             c.setLevel(0);
         }
-        repo.save(c);
+        // UUID 在构造时即赋值（BaseEntity.id=UUID.randomUUID()）→ Spring Data 判定 isNew=false
+        // → save 走 em.merge，返回新的托管副本、原 c 仍游离。必须用返回值，否则下面
+        // em.refresh(游离 c) 会抛 "Entity not managed"（此 bug 此前被 master_code_sequences 缺表挡住未暴露）。
+        c = repo.save(c);
         em.flush();
         em.refresh(c);   // 触发器算 path 后刷新
         return detail(c.getId());
@@ -109,16 +112,46 @@ public class MaterialCategoryService {
         return detail(id);
     }
 
+    @Transactional(readOnly = true)
+    public MaterialCategoryDeletePreview deletePreview(UUID id) {
+        requireCategory(id);
+        List<UUID> ids = subtreeIds(id);
+        int descendantCount = ids.size() - 1; // findSubtree 含自身，后代数减 1
+        long goodsCount = repo.countGoodsByCategoryIds(ids);
+        return new MaterialCategoryDeletePreview(id, descendantCount, goodsCount);
+    }
+
+    /**
+     * 级联软删：该分类及其全部后代分类 + 子树下货品，一并 is_deleted=true。
+     *
+     * <p>不再拦截「有子分类」——父分类可直接删，整棵子树随之软删；子树下的货品也一并软删
+     * （单据/报表 JOIN goods 仅按 id 关联、不过滤 is_deleted，故历史单据货品名仍可解析；
+     * 软删只是把它们从货品资料页/选择器隐藏）。
+     */
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        MaterialCategory c = requireCategory(id);
-        if (!repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).isEmpty()) {
-            throw new ApiException(ErrorCode.CONFLICT, "请先删除该分类的子分类");
+        requireCategory(id);
+        List<UUID> ids = subtreeIds(id);
+        OffsetDateTime now = OffsetDateTime.now();
+        // 软删整棵子树分类（含自身）。
+        List<MaterialCategory> nodes = repo.findSubtree(id);
+        for (MaterialCategory c : nodes) {
+            c.setDeleted(true);
+            c.setDeletedAt(now);
         }
-        c.setDeleted(true);
-        c.setDeletedAt(OffsetDateTime.now());
-        repo.save(c);
+        repo.saveAll(nodes);
+        // 软删子树下货品（若有）。bulk update 绕过持久上下文，但本事务内无后续读这些 goods，安全。
+        if (!ids.isEmpty()) {
+            repo.softDeleteGoodsByCategoryIds(ids, now);
+        }
+    }
+
+    /** 收集某分类子树（含自身）的全部 id（findSubtree 已含自身、按 path 先序）。 */
+    private List<UUID> subtreeIds(UUID rootId) {
+        return repo.findSubtree(rootId).stream()
+                .map(MaterialCategory::getId)
+                .toList();
     }
 
     /** 改父级后重算子树 level（findSubtree 按 path 排序，父先于子）。 */

@@ -22,6 +22,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
@@ -189,6 +190,11 @@ class _SubcontractDocListPageState
     final theme = Theme.of(context);
     final names = ref.watch(mn.masterNameServiceProvider);
     final total = _page?.total ?? 0;
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,

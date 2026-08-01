@@ -23,6 +23,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -148,6 +149,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     );
     if (order == null || !mounted) return;
     context.appSuccess('已生成订货草稿');
+    // 生成的订货草稿属另一单据类型：bump 订货列表 key，无论后续编辑是否保存，
+    // 订货列表（可能已挂在栈下）返回时都能看到这张新草稿。
+    bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
     context.push(
       SalesRoutePath.docEdit(SalesDocType.order.pathSegment, order.id),
     );
@@ -380,6 +384,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     final total = _page?.total ?? 0;
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,

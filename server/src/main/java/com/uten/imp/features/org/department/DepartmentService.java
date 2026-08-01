@@ -69,7 +69,7 @@ public class DepartmentService {
         if (req.getManagerId() != null) {
             d.setManager(requireCurrentEmployee(req.getManagerId()));
         }
-        deptRepo.save(d);
+        d = deptRepo.save(d); // UUID 构造时赋值→isNew=false→save 走 merge 返回托管副本；用返回值，否则 em.refresh(游离 d) 报 "Entity not managed"
         em.flush();
         em.refresh(d);   // 触发器计算 path 后刷新
         return detail(d.getId());

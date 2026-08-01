@@ -30,7 +30,8 @@ abstract interface class ColorRepository {
 
   Future<ColorDetail> detail(String id);
 
-  Future<void> create(Map<String, dynamic> body);
+  /// 新建颜色：后端 POST 返回 ColorDetail（含 legacy_id），供货品编辑内联新建后自动选中。
+  Future<ColorDetail> create(Map<String, dynamic> body);
 
   Future<void> update(String id, Map<String, dynamic> body);
 
@@ -88,8 +89,9 @@ class DioColorRepository implements ColorRepository {
   }
 
   @override
-  Future<void> create(Map<String, dynamic> body) async {
-    await api.post(ApiEndpoints.colors, body: body);
+  Future<ColorDetail> create(Map<String, dynamic> body) async {
+    final json = await api.post(ApiEndpoints.colors, body: body);
+    return ColorDetail.fromJson(json);
   }
 
   @override

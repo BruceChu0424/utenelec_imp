@@ -18,7 +18,10 @@ Future<void> showNoticeDetailDialog(
       showDragHandle: true,
       builder: (sheetContext) => FractionallySizedBox(
         heightFactor: 0.92,
-        child: NoticeDetailPage(noticeId: noticeId),
+        child: NoticeDetailPage(
+          noticeId: noticeId,
+          onBack: () => Navigator.of(sheetContext).pop(),
+        ),
       ),
     );
   }
@@ -32,7 +35,10 @@ Future<void> showNoticeDetailDialog(
         child: SizedBox(
           width: 760,
           height: height.clamp(480.0, 760.0).toDouble(),
-          child: NoticeDetailPage(noticeId: noticeId),
+          child: NoticeDetailPage(
+            noticeId: noticeId,
+            onBack: () => Navigator.of(dialogContext).pop(),
+          ),
         ),
       );
     },

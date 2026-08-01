@@ -33,6 +33,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -376,6 +377,7 @@ class _SubcontractDocEditPageState
           : await repo.update(widget.id!, body);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      bumpListRefresh(ref, _cfg.refreshKey);
       context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

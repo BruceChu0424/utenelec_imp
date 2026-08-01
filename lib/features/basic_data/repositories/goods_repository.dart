@@ -44,7 +44,9 @@ abstract interface class GoodsRepository {
 
   Future<GoodsDetail> detail(String id);
 
-  Future<void> create(Map<String, dynamic> body);
+  /// 新建货品：后端 POST /master/goods 返回新建的 GoodsDetail（含 id+自动生成 code），
+  /// 供新增弹窗 create→edit 同弹窗切换拿 id 用。
+  Future<GoodsDetail> create(Map<String, dynamic> body);
 
   Future<void> update(String id, Map<String, dynamic> body);
 
@@ -136,8 +138,9 @@ class DioGoodsRepository implements GoodsRepository {
   }
 
   @override
-  Future<void> create(Map<String, dynamic> body) async {
-    await api.post(ApiEndpoints.goods, body: body);
+  Future<GoodsDetail> create(Map<String, dynamic> body) async {
+    final json = await api.post(ApiEndpoints.goods, body: body);
+    return GoodsDetail.fromJson(json);
   }
 
   @override

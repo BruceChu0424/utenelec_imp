@@ -26,6 +26,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../stock/repositories/stock_query_repository.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
@@ -379,6 +380,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
           : await repo.update(widget.id!, body);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      bumpListRefresh(ref, widget.docType.refreshKey);
       context.replace(RoutePath.stockDocDetail(widget.docType.code, d.id));
     } catch (error) {
       if (mounted) context.appApiError(error, fallback: '保存失败');

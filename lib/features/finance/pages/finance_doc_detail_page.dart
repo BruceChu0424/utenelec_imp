@@ -20,6 +20,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -136,6 +137,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       await fn(ref.read(financeRepositoryProvider(widget.docType)));
       if (!mounted) return;
       context.appSuccess(ok);
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

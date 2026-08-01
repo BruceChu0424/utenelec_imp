@@ -24,6 +24,8 @@ abstract final class ApiEndpoints {
   static String materialCategorySubtree(String id) =>
       '$materialCategories/$id/subtree';
   static String materialCategory(String id) => '$materialCategories/$id';
+  static String materialCategoryDeletePreview(String id) =>
+      '$materialCategories/$id/delete-preview';
 
   // 货品主档（基础资料 / master-data）—— 分类下货品分页 + 详情 + 字段 facet
   static const goods = '/master/goods';

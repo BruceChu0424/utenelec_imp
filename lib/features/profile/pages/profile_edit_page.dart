@@ -135,7 +135,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
   }
 
   /// 找出当前 dirty 字段：值与初始值不同。
-  List<ProfileFieldChange> _collectDirty() {
+  List<ProfileFieldChange> _collectDirty(AppLocalizations l10n) {
     final dirty = <ProfileFieldChange>[];
     for (final def in ProfileFieldPolicy.selfEditableFields) {
       final ctrl = _ctrls[def.code];
@@ -146,7 +146,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
       dirty.add(
         ProfileFieldChange(
           fieldCode: def.code,
-          fieldLabel: _labelOf(def.code),
+          fieldLabel: ProfileFieldPolicy.labelOf(l10n, def.code),
           newValue: newValue,
         ),
       );
@@ -172,18 +172,13 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     };
   }
 
-  String _labelOf(String code) {
-    final def = ProfileFieldPolicy.findByCode(code);
-    return def?.labelKey ?? code;
-  }
-
   Future<void> _submit() async {
     // 防连续点击：重入直接返回；_saving 全程覆盖（提交按钮 loading + disabled）
     if (_saving) {
       return;
     }
     final l10n = AppLocalizations.of(context);
-    final dirty = _collectDirty();
+    final dirty = _collectDirty(l10n);
     if (dirty.isEmpty) {
       context.appInfo(l10n.profileChangeSubmitApplied);
       context.go(RouteName.profile);

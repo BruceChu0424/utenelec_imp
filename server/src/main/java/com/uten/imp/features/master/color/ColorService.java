@@ -148,8 +148,19 @@ public class ColorService {
         tx.bind();
         Color c = new Color();
         apply(req, c);
+        String name = c.getName();
+        if (name == null || name.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "颜色名称不能为空");
+        }
+        if (repo.existsByNameIgnoreCaseAndDeletedFalse(name)) {
+            throw new ApiException(ErrorCode.CONFLICT, "该颜色已存在：" + name);
+        }
         c.setCode(masterCodeService.nextCode(CODE_PREFIX));
         if (c.getStatus() == null) c.setStatus("使用");
+        // 手工新建分配合成 legacy_id：货品 goods.color_legacy_id 引用 legacy_id（老库 int），
+        // 新颜色必须有值才能进货品下拉、存进货品。取 max+1 保证不撞迁移来的老库 id。
+        Integer maxLegacy = repo.findMaxLegacyId();
+        c.setLegacyId((maxLegacy == null ? 0 : maxLegacy) + 1);
         repo.save(c);
         return toDetail(c);
     }
@@ -173,7 +184,7 @@ public class ColorService {
     }
 
     private void apply(ColorSaveRequest req, Color c) {
-        c.setName(req.getName());
+        c.setName(req.getName() == null ? null : req.getName().trim());
         c.setStatus(req.getStatus());
     }
 

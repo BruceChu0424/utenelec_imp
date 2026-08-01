@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/master_facet.dart';
 
@@ -50,7 +51,7 @@ class MasterDataGroup<T> {
     this.tint,
     this.icon,
     this.total,
-    this.detailLabel = '下拉详情', // TODO(l10n): 补 arb
+    this.detailLabel = '下拉查看详情', // TODO(l10n): 补 arb
   });
 
   /// 分组唯一 id（折叠/展开态键）；同一表格内不应重复。
@@ -74,7 +75,7 @@ class MasterDataGroup<T> {
   /// 全集计数（[items] 可能被分页截断）；标题显示与「还有更多」提示用。null=用 items.length。
   final int? total;
 
-  /// 标题行右侧的展开提示文案（默认「下拉详情」）。
+  /// 标题行右侧的展开提示文案（默认「下拉查看详情」）。渲染为加粗深红，老人易看清。
   final String detailLabel;
 }
 
@@ -90,6 +91,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     required this.filters,
     required this.onFilterChanged,
     required this.onRowTap,
+    this.onSelectionChanged,
+    this.isSelected,
     this.sortColumn,
     this.sortAscending = true,
     this.onSortChange,
@@ -114,6 +117,14 @@ class MasterDataTableView<T> extends StatefulWidget {
   final Map<String, String?> filters;
   final void Function(String key, String? value) onFilterChanged;
   final void Function(T item) onRowTap;
+
+  /// 单击选中行变化回调（与 onRowTap 同时触发，但语义是"当前选中项"）。
+  /// 供调用方拿选中行做后续操作（如 BOM Tab 据此决定"添加组件"默认父级）；不传则只内部高亮。
+  final void Function(T item)? onSelectionChanged;
+
+  /// 外部受控选中判定：非空时优先用它判定高亮（按业务键比较，不受 item 引用变化影响），
+  /// 供每次 build 重建 item 对象的场景（如 BOM 的 _BomRow）——否则默认内部 _selectedItem 走引用相等。
+  final bool Function(T item)? isSelected;
 
   /// 表头上方工具条的追加按钮（预览打印 / 下载表格等），排在「表头设置」右侧、
   /// 左对齐挨在一起。调用方通常传深绿大号款（UtenButtonType.primary + large）。
@@ -337,7 +348,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     // 保证展开/折叠分组时列宽不跳动；分组条目通常是禁用/不明货品，量小不影响性能）。
     final pool = <T>[
       ...widget.items,
-      for (final g in (widget.leadingGroups ?? const <MasterDataGroup<T>>[]))
+      for (final g in (widget.leadingGroups ?? <MasterDataGroup<T>>[]))
         ...g.items,
     ];
     final sampleCount = pool.length < _autoFitSampleSize
@@ -463,7 +474,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         ),
       );
     }
-    final groups = widget.leadingGroups ?? const <MasterDataGroup<T>>[];
+    final groups = widget.leadingGroups ?? <MasterDataGroup<T>>[];
     final hasGroupRows = groups.any(
       (g) => g.items.isNotEmpty || (g.total ?? 0) > 0,
     );
@@ -599,7 +610,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                           if (row.header) {
                             return _buildGroupHeader(theme, row.group!);
                           }
-                          return _buildDataRow(theme, row.item!);
+                          // 数据行：item 必非空（仅 header 行 item=null）；显式 null
+                          // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
+                          final item = row.item;
+                          if (item == null) return const SizedBox.shrink();
+                          return _buildDataRow(theme, item);
                         },
                       ),
                     ),
@@ -615,12 +630,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
 
   /// 前导分组标题行：跨满表宽（_totalWidth），与表头/数据行同处一个横向 ScrollView，
   /// 故横滚同步、列边界对齐。底色取 [MasterDataGroup.tint]（禁用=浅红等）；点击切换展开。
-  /// 右侧「下拉详情 ▾」文字 + 旋转箭头（展开后朝上、文案语义=可收起）。
+  /// 单行布局：图标 + 标题（加粗）+ 副标题（灰、可省略号）+ 「下拉查看详情」加粗深红 + 旋转箭头。
+  /// 「下拉查看详情」与箭头用深红强提示色，老人也能看清（禁用/不明分组一致）。
   Widget _buildGroupHeader(ThemeData theme, MasterDataGroup<T> group) {
     final expanded = _expandedGroups.contains(group.id);
     final tint = group.tint ?? theme.colorScheme.surfaceContainerHigh;
-    final moreLeft =
-        (group.total ?? group.items.length) > group.items.length;
+    final moreLeft = (group.total ?? group.items.length) > group.items.length;
+    final detailStyle = theme.textTheme.labelLarge?.copyWith(
+      fontWeight: FontWeight.bold,
+      color: UtenColors.error,
+    );
     return InkWell(
       onTap: () {
         setState(() {
@@ -655,36 +674,29 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 ),
                 const SizedBox(width: UtenSpacing.s8),
               ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      group.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    if (group.subtitle != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          group.subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+              Text(
+                group.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
               ),
+              if (group.subtitle != null) ...[
+                const SizedBox(width: UtenSpacing.s8),
+                Flexible(
+                  child: Text(
+                    group.subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
               if (moreLeft && expanded)
                 Padding(
-                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
+                  padding: const EdgeInsets.only(left: UtenSpacing.s8),
                   child: Text(
                     '仅前 ${group.items.length}/${group.total}', // TODO(l10n): 补 arb
                     style: theme.textTheme.labelSmall?.copyWith(
@@ -692,19 +704,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                     ),
                   ),
                 ),
-              Text(
-                group.detailLabel,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+              const SizedBox(width: UtenSpacing.s12),
+              Text(group.detailLabel, style: detailStyle),
               AnimatedRotation(
                 turns: expanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 150),
-                child: Icon(
+                child: const Icon(
                   Icons.keyboard_arrow_down_rounded,
-                  size: 20,
-                  color: theme.colorScheme.onSurfaceVariant,
+                  size: 22,
+                  color: UtenColors.error,
                 ),
               ),
             ],
@@ -779,7 +787,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   }
 
   Widget _buildDataRow(ThemeData theme, T item) {
-    final selected = identical(item, _selectedItem);
+    // 优先用外部 isSelected 谓词（按业务键比较）；否则内部 _selectedItem 引用相等。
+    final selected = widget.isSelected != null
+        ? widget.isSelected!(item)
+        : identical(item, _selectedItem);
     // 行底色：调用方可按行数据着色（货品按状态）；单击选中把当前色加深加亮。
     final base = widget.rowColor?.call(item);
     final Color rowBg;
@@ -797,6 +808,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         setState(() => _selectedItem = item);
         _fsTick.value++;
         widget.onRowTap(item);
+        widget.onSelectionChanged?.call(item);
       },
       child: DecoratedBox(
         // 行间横线：逐行分隔（与表头竖线同 outline 色，网格更深、单元格边界清晰）。

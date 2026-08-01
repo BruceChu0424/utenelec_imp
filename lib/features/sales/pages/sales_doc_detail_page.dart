@@ -24,6 +24,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../production/repositories/production_repository.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
@@ -117,6 +118,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .convertToOrder(widget.id);
       if (!mounted) return;
       context.appSuccess('已生成订货草稿 ${order.billNo ?? ''}');
+      // 跨单据类型：转单生成的是订货草稿，bump 订货列表 key（非本报价 key），
+      // 用户后续进入订货列表/取消编辑后返回订货列表都能看到这张新草稿。
+      bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
       context.push(
         SalesRoutePath.docEdit(SalesDocType.order.pathSegment, order.id),
       );
@@ -295,6 +299,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .changeQty(widget.id, changes);
       if (!mounted) return;
       context.appSuccess('已改量');
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -341,6 +346,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         '已财务审核发货'
         '${info['cashClient'] == true ? '（该客户未收余额 $outstanding）' : ''}',
       );
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -383,6 +389,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .financeAuditReverse(widget.id);
       if (!mounted) return;
       context.appSuccess('已财务反审');
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -432,6 +439,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .reject(widget.id, reason: reason);
       if (!mounted) return;
       context.appSuccess('已驳回，对应订单行已回退待处理');
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -490,6 +498,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .setLinePriority(itemId, p, reason: reason);
       if (!mounted) return;
       context.appSuccess('已设为 ${priorityLabel(p)}');
+      bumpListRefresh(ref, _cfg.refreshKey);
       setState(() => _detail = d);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -510,6 +519,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               qty: qty, reason: reason, yielderOrderNo: _detail?.billNo);
       if (!mounted) return;
       context.appSuccess('已让单 ${qty.toStringAsFixed(2)}，库存已回池，缺口将转生产补足');
+      bumpListRefresh(ref, _cfg.refreshKey);
       setState(() => _detail = d);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -554,6 +564,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       await fn(ref.read(salesRepositoryProvider(widget.docType)));
       if (!mounted) return;
       context.appSuccess(ok);
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

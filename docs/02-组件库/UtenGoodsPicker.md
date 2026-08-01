@@ -25,6 +25,7 @@
 | 项 | 签名 | 说明 |
 |---|---|---|
 | 入口 | `Future<GoodsListItem?> showUtenGoodsPicker(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable})` | 弹出选择器；确认返回所选货品，取消/关闭返回 `null` |
+| 多选入口 | `Future<List<GoodsListItem>> showUtenGoodsPickerMulti(BuildContext context, WidgetRef ref, {UtenGoodsPickerScope scope = UtenGoodsPickerScope.component})` | 多选款：点货品行勾选/取消（显 ✓），底部「确定(N)」返回所选列表；取消返回空列表。BOM 组装「一个层级添加多个组件」批量录入用 |
 | 返回 | `GoodsListItem` | 完整模型：`id/code/name/spec/model/price/series/material/colorLegacyId(int?)/unitLegacyId(int?)/colorName/unitName`（见 `lib/features/basic_data/models/goods_node.dart`） |
 
 > 内部 `_GoodsPickerSheet` 为实现细节，调用方不直接使用。
@@ -38,6 +39,7 @@
 | `sellable`（默认） | 成品/可售卖：排除原材料 2113 / 辅料 2480 / 未分类 -1 | 销售（5 类）、生产计划、生产日报、委外进仓/退货/订货/申请/询价、仓库产成品进/出仓 |
 | `material` | 原材料/辅料：只保留原材料/辅料子树 | 采购（4 类）、**物料反查**、委外发料/材料退/损耗、仓库领料/退料 |
 | `all` | 全部：不过滤（未分类默认收起） | 仓库调拨/其它入库/其它出库/盘点 |
+| `component` | 组件类：只保留原材料/半成品/辅料/OEM成品/OEM物料/OEM功能件子树（白名单 6 分类，仿 `material`） | **货品 BOM 组装信息「添加组件」**（`goods_bom_tab.dart`） |
 
 - docType→scope 映射封装在各编辑页 `_pickerScope` getter，不泄漏到 picker。
 - 仅 `all` 允许「未选分类 + 关键词」全库搜；`sellable`/`material` 必须先选分类，否则会把不该显示的类目混搜出来（回归 ADR-015 老 bug）。

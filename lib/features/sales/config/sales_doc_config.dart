@@ -108,6 +108,10 @@ class SalesDocConfig {
     SalesDocType.returnDoc => 'XT',
   };
 
+  /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
+  /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
+  String get refreshKey => 'sales:${type.name}';
+
   static const quote = SalesDocConfig(
     type: SalesDocType.quote,
     label: '销售报价单',

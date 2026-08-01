@@ -2,6 +2,7 @@ package com.uten.imp.features.master.color;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
@@ -21,4 +22,11 @@ public interface ColorRepository extends JpaRepository<Color, UUID>, JpaSpecific
 
     /** 批量按 legacy_id 取未软删记录（货品颜色名称解析用）。 */
     List<Color> findByLegacyIdInAndDeletedFalse(Collection<Integer> legacyIds);
+
+    /** 手工新建时分配合成 legacy_id（货品 color_legacy_id 引用 legacy_id，新颜色须有值才可选/可存）。 */
+    @Query("select max(c.legacyId) from Color c")
+    Integer findMaxLegacyId();
+
+    /** 名称查重（大小写不敏感，货品编辑内联新建颜色用）。 */
+    boolean existsByNameIgnoreCaseAndDeletedFalse(String name);
 }

@@ -34,6 +34,7 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
@@ -279,6 +280,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
           : await repo.update(widget.id!, body);
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      bumpListRefresh(ref, _cfg.refreshKey);
       context.replace('/finance/${_cfg.type.pathSegment}/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

@@ -33,16 +33,12 @@ import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
-import '../repositories/color_repository.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
-import '../repositories/unit_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/goods_detail_dialog.dart';
 import '../widgets/master_data_table_view.dart';
-import '../widgets/master_detail_sheet.dart';
-import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
 
@@ -182,16 +178,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     );
   }
 
-  /// 新建分类时的常用名称建议（降低起名门槛；货品类常用维度）。
-  static const _categorySuggestions = [
-    '原材料',
-    '半成品',
-    '成品',
-    '辅料',
-    '包装材料',
-    '五金配件',
-  ];
-
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -200,7 +186,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
-        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );
@@ -257,12 +242,63 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
-    final ok = await showDialog<bool>(
+    // 先拉子树规模预览（后代分类数 + 货品数），用于红色确认框提示级联影响。
+    ProductCategoryDeletePreview? preview;
+    try {
+      preview = await ref
+          .read(productCategoryRepositoryProvider)
+          .deletePreview(node.id);
+    } catch (_) {
+      preview = null; // 预览失败不阻塞：退回无计数的通用确认。
+    }
+    if (!mounted) return;
+
+    final hasCascade =
+        preview != null && (preview.descendantCount > 0 || preview.goodsCount > 0);
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除分类'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定删除「${node.name}」吗？若存在子分类或货品引用，删除可能失败。', // TODO(l10n): 补 arb
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: UtenColors.error),
+            SizedBox(width: UtenSpacing.s8),
+            Text('删除分类'), // TODO(l10n): 补 arb
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('确定删除分类「${node.name}」吗？'), // TODO(l10n): 补 arb
+            if (hasCascade) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: UtenColors.error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: UtenColors.error.withValues(alpha: 0.45),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (preview!.descendantCount > 0)
+                      Text('• ${preview.descendantCount} 个子分类'), // TODO(l10n): 补 arb
+                    if (preview.goodsCount > 0)
+                      Text('• ${preview.goodsCount} 个货品'), // TODO(l10n): 补 arb
+                    const SizedBox(height: UtenSpacing.s4),
+                    const Text(
+                      '以上将随该分类一并删除，且不可恢复。', // TODO(l10n): 补 arb
+                      style: TextStyle(color: UtenColors.error),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -278,18 +314,57 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (confirm != true) return;
     if (!mounted) return;
-    final deleted = await context.guardRun(
-      () async {
-        await ref.read(productCategoryRepositoryProvider).delete(node.id);
-      },
-      success: '分类已删除', // TODO(l10n): 补 arb
-      errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!deleted || !mounted) return;
+
+    // 级联删除：失败弹 AlertDialog 显示后端原因（不再静默/仅顶部 toast）。
+    try {
+      await ref.read(productCategoryRepositoryProvider).delete(node.id);
+    } on ApiException catch (e) {
+      if (mounted) {
+        await _showDeleteError(
+          e.message.isNotEmpty ? e.message : '删除失败，请稍后重试', // TODO(l10n): 补 arb
+        );
+      }
+      return;
+    } catch (_) {
+      if (mounted) {
+        await _showDeleteError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
+      }
+      return;
+    }
+    if (!mounted) return;
     if (_selectedId == node.id) _selectedId = null;
+    final msg = (preview != null &&
+            (preview.descendantCount > 0 || preview.goodsCount > 0))
+        ? '已删除分类（含 ${preview.descendantCount} 个子分类、${preview.goodsCount} 个货品）'
+        : '分类已删除';
+    if (mounted) context.appSuccess(msg); // TODO(l10n): 补 arb
     await _load();
+  }
+
+  /// 删除失败的错误对话框（显式弹窗，而非顶部 toast），展示后端返回的原因。
+  Future<void> _showDeleteError(String message) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline_rounded, color: UtenColors.error),
+            SizedBox(width: UtenSpacing.s8),
+            Text('删除失败'), // TODO(l10n): 补 arb
+          ],
+        ),
+        content: Text(message),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('知道了'), // TODO(l10n): 补 arb
+          ),
+        ],
+      ),
+    );
   }
 
   // ---- 树渲染 -------------------------------------------------------------
@@ -498,13 +573,9 @@ class _DetailPaneState extends State<_DetailPane> {
   String _keyword = '';
   GoodsFacets? _facets;
 
-  // 列排序态（金额/数量/日期列）：null = 默认顺序（id ASC）。
-  String? _sortKey;
+  // 列排序态：默认按编号(code)升序；用户点「取消排序」清空后 null = 后端默认 id ASC。
+  String? _sortKey = 'code';
   bool _sortAsc = true;
-
-  // 颜色/单位字典（货品编辑表单下拉选项）。全局，不随分类切换。
-  List<MasterSelectOption> _colorOptions = const [];
-  List<MasterSelectOption> _unitOptions = const [];
 
   /// 详情弹窗加载中（防并发）。
   /// 注意：与 [_goodsLoading]（货品分页列表的加载状态）是两回事，不可混用——
@@ -515,46 +586,12 @@ class _DetailPaneState extends State<_DetailPane> {
   void initState() {
     super.initState();
     _load();
-    _loadDicts();
   }
 
   @override
   void didUpdateWidget(_DetailPane old) {
     super.didUpdateWidget(old);
     if (old.nodeId != widget.nodeId) _load();
-  }
-
-  /// 加载颜色/单位字典（货品编辑表单下拉选项；全局，失败静默降级为空下拉）。
-  Future<void> _loadDicts() async {
-    try {
-      final colors = await widget.ref.read(colorRepositoryProvider).dict();
-      final units = await widget.ref.read(unitRepositoryProvider).dict();
-      if (!mounted) return;
-      setState(() {
-        _colorOptions = [
-          for (final c in colors)
-            if (c.legacyId != null)
-              MasterSelectOption(
-                value: c.legacyId.toString(),
-                label: (c.name != null && c.name!.isNotEmpty)
-                    ? c.name!
-                    : '#${c.legacyId}',
-              ),
-        ];
-        _unitOptions = [
-          for (final u in units)
-            if (u.legacyId != null)
-              MasterSelectOption(
-                value: u.legacyId.toString(),
-                label: (u.name != null && u.name!.isNotEmpty)
-                    ? u.name!
-                    : '#${u.legacyId}',
-              ),
-        ];
-      });
-    } catch (_) {
-      // Picker dictionaries are optional; the primary list remains usable.
-    }
   }
 
   Future<void> _load() async {
@@ -577,7 +614,7 @@ class _DetailPaneState extends State<_DetailPane> {
         _filters = {};
         _keyword = '';
         _facets = null;
-        _sortKey = null;
+        _sortKey = 'code';
         _sortAsc = true;
         _disabledGoods = null;
         _stubGoods = null;
@@ -658,6 +695,66 @@ class _DetailPaneState extends State<_DetailPane> {
     }
   }
 
+  /// 加载特殊货品集合（表头下前导分组）：禁用货品（当前分类子树 status='禁用'）/
+  /// 不明货品（仅未分类节点，stub 无分类 → 查询不带 categoryId）。失败静默（辅助视图）。
+  Future<void> _loadSpecialCollections() async {
+    final repo = widget.ref.read(goodsRepositoryProvider);
+    final isOrphan = _detail?.code == 'LEGACY_ORPHAN';
+    try {
+      final results = await Future.wait<
+        PagedResult<GoodsListItem>?
+      >([
+        repo.list(widget.nodeId, disabledOnly: true, size: 500),
+        isOrphan
+            ? repo.list(null, stubOnly: true, size: 500)
+            : Future<PagedResult<GoodsListItem>?>.value(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _disabledGoods = results[0];
+        _stubGoods = results[1];
+      });
+    } catch (_) {
+      // 集合区是辅助视图，失败静默（不影响主表）。
+    }
+  }
+
+  /// 构建表头下前导分组（禁用货品 / 不明货品）。N=0 的不加入。
+  List<MasterDataGroup<GoodsListItem>> get _leadingGroups {
+    final groups = <MasterDataGroup<GoodsListItem>>[];
+    final d = _disabledGoods;
+    if (d != null && d.total > 0) {
+      groups.add(
+        MasterDataGroup<GoodsListItem>(
+          id: 'disabled',
+          title: '禁用货品（${d.total}）',
+          subtitle: '当前分类子树内已停用的货品',
+          icon: Icons.block_rounded,
+          tint: Colors.red.withValues(alpha: 0.12),
+          items: d.items,
+          total: d.total,
+        ),
+      );
+    }
+    if (_detail?.code == 'LEGACY_ORPHAN') {
+      final s = _stubGoods;
+      if (s != null && s.total > 0) {
+        groups.add(
+          MasterDataGroup<GoodsListItem>(
+            id: 'stub',
+            title: '不明货品（${s.total}）',
+            subtitle: '迁移兜底占位（auto_created），无分类归属',
+            icon: Icons.help_outline_rounded,
+            tint: Colors.amber.withValues(alpha: 0.16),
+            items: s.items,
+            total: s.total,
+          ),
+        );
+      }
+    }
+    return groups;
+  }
+
   void _onFilterChanged(String key, String? value) {
     setState(() {
       final next = Map<String, String?>.from(_filters);
@@ -718,170 +815,18 @@ class _DetailPaneState extends State<_DetailPane> {
     );
   }
 
-  // 货品主档可编辑字段（与后端 GoodsSaveRequest 对齐；老库 78 字段里只维护核心）。
-  /// 货品可编辑字段（颜色/单位为下拉，选项来自字典；与后端 GoodsSaveRequest 对齐）。
-  List<MasterFieldDef> get _goodsFields => [
-    const MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    const MasterFieldDef(
-      key: 'code',
-      label: '编号',
-      group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
-    ),
-    const MasterFieldDef(key: 'shortName', label: '简称', group: '基础'),
-    const MasterFieldDef(
-      key: 'status',
-      label: '状态',
-      type: MasterFieldType.select,
-      options: kMasterStatusOptions,
-      required: true,
-      group: '基础',
-    ),
-    const MasterFieldDef(
-      key: 'sourceType',
-      label: '来源',
-      type: MasterFieldType.select,
-      options: kGoodsSourceTypeOptions,
-      hint: '自制 / 采购 / 委外',
-      group: '基础',
-    ),
-    const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
-    const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
-    const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
-    const MasterFieldDef(
-      key: 'thickness',
-      label: '厚度',
-      type: MasterFieldType.money,
-      group: '规格',
-    ),
-    const MasterFieldDef(
-      key: 'mWeight',
-      label: '单重',
-      type: MasterFieldType.money,
-      group: '规格',
-    ),
-    MasterFieldDef(
-      key: 'colorLegacyId',
-      label: '主颜色',
-      type: MasterFieldType.select,
-      options: _colorOptions,
-      selectInteger: true,
-      group: '规格',
-    ),
-    const MasterFieldDef(
-      key: 'price',
-      label: '价格',
-      type: MasterFieldType.money,
-      group: '商务',
-    ),
-    const MasterFieldDef(key: 'pack', label: '包装', group: '商务'),
-    MasterFieldDef(
-      key: 'unitLegacyId',
-      label: '单位',
-      type: MasterFieldType.select,
-      options: _unitOptions,
-      selectInteger: true,
-      group: '商务',
-    ),
-    const MasterFieldDef(
-      key: 'pieces',
-      label: '件数',
-      type: MasterFieldType.integer,
-      group: '商务',
-    ),
-  ];
-
   bool get _canEditMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.goodsEdit);
 
   // ---- 货品 新建/编辑/删除 ------------------------------------------------
 
   void _showGoodsCreate() {
-    showMasterEditDialog(
+    showGoodsDetailDialog(
       context: context,
-      title: '新增货品', // TODO(l10n): 补 arb
-      fields: _goodsFields,
-      initialValues: const {'status': '使用'},
-      fixedValues: {'categoryId': widget.nodeId},
-      onSubmit: _doCreateGoods,
+      categoryId: widget.nodeId,
+      canEdit: _canEditMaster,
+      onDataChanged: () => _loadGoods(_goodsPageNum),
     );
-  }
-
-  Future<bool> _doCreateGoods(Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await widget.ref.read(goodsRepositoryProvider).create(body);
-      },
-      success: '货品已创建', // TODO(l10n): 补 arb
-      errorFallback: '创建失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadGoods(_goodsPageNum);
-    return true;
-  }
-
-  void _showGoodsEdit(GoodsDetail d) {
-    showMasterEditDialog(
-      context: context,
-      title: '编辑货品', // TODO(l10n): 补 arb
-      fields: _goodsFields,
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'shortName': d.shortName ?? '',
-        'model': d.model ?? '',
-        'spec': d.spec ?? '',
-        'price': d.price?.toString() ?? '',
-        'material': d.material ?? '',
-        'thickness': d.thickness?.toString() ?? '',
-        'mWeight': d.mWeight?.toString() ?? '',
-        'pack': d.pack ?? '',
-        'pieces': d.pieces?.toString() ?? '',
-        // 空状态(历史31条)默认"使用"，否则必填下拉空值过不了校验导致保存失败。
-        'status': (d.status == null || d.status!.isEmpty) ? '使用' : d.status!,
-        'sourceType': d.sourceType ?? '',
-        'colorLegacyId': d.colorLegacyId?.toString() ?? '',
-        'unitLegacyId': d.unitLegacyId?.toString() ?? '',
-      },
-      // fixedValues：分类 + 成本预算字段原值回传（后端 apply 全量覆盖，
-      // 不带成本字段会把已维护的成本清成 null；成本本身在「成本预算」页签改）。
-      fixedValues: {
-        'categoryId': d.categoryId ?? widget.nodeId,
-        'sourceE': d.sourceE,
-        'machiningE': d.machiningE,
-        'incidentalE': d.incidentalE,
-        'lacquerE': d.lacquerE,
-        'platingE': d.platingE,
-        'casingE': d.casingE,
-        'polishE': d.polishE,
-        'total': d.total,
-        'workRate': d.workRate,
-        'workE': d.workE,
-        'lostRate': d.lostRate,
-        'lostE': d.lostE,
-        'rentRate': d.rentRate,
-        'rentE': d.rentE,
-        'makeRate': d.makeRate,
-        'makeE': d.makeE,
-        'cTotal': d.cTotal,
-        'gTotal': d.gTotal,
-      },
-      onSubmit: (body) => _doUpdateGoods(d.id, body),
-    );
-  }
-
-  Future<bool> _doUpdateGoods(String id, Map<String, dynamic> body) async {
-    final ok = await context.guardRun(
-      () async {
-        await widget.ref.read(goodsRepositoryProvider).update(id, body);
-      },
-      success: '货品已更新', // TODO(l10n): 补 arb
-      errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
-    );
-    if (!ok) return false;
-    await _loadGoods(_goodsPageNum);
-    return true;
   }
 
   Future<void> _deleteGoods(GoodsDetail d) async {
@@ -967,14 +912,12 @@ class _DetailPaneState extends State<_DetailPane> {
     }
     // 成功：开详情面板，关闭后再复位 flag（面板期间继续禁止并发）。
     // 用局部 detail 捕获 non-null：d 是 nullable，跨闭包边界不再提升，
-    // 直接在 onEdit/onDelete 里用 d 会报类型错。
+    // 直接在 onDelete 里用 d 会报类型错。
     final detail = d;
     await showGoodsDetailDialog(
       context: context,
       detail: detail,
-      basicRows: _goodsDetailRows(detail),
       canEdit: _canEditMaster,
-      onEdit: () => _showGoodsEdit(detail),
       onDelete: () => _deleteGoods(detail),
       // 详情弹窗「出入库流水」：跳流水页带本货品过滤（push 保活本页；弹窗先 pop）
       onViewMovements: () {
@@ -986,25 +929,6 @@ class _DetailPaneState extends State<_DetailPane> {
     );
     if (mounted) _detailLoading = false;
   }
-
-  List<MasterDetailRow> _goodsDetailRows(GoodsDetail d) => [
-    MasterDetailRow('编码', d.code), // TODO(l10n): 补 arb
-    MasterDetailRow('型号', d.model), // TODO(l10n): 补 arb
-    MasterDetailRow('规格', d.spec), // TODO(l10n): 补 arb
-    MasterDetailRow('简称', d.shortName), // TODO(l10n): 补 arb
-    MasterDetailRow('价格', d.price?.toStringAsFixed(2)), // TODO(l10n): 补 arb
-    MasterDetailRow('材质', d.material), // TODO(l10n): 补 arb
-    MasterDetailRow('厚度', d.thickness?.toStringAsFixed(2)), // TODO(l10n): 补 arb
-    MasterDetailRow('包装', d.pack), // TODO(l10n): 补 arb
-    MasterDetailRow('单重', d.mWeight?.toStringAsFixed(2)), // TODO(l10n): 补 arb
-    MasterDetailRow('件数', d.pieces?.toString()), // TODO(l10n): 补 arb
-    MasterDetailRow('主颜色', d.colorName), // TODO(l10n): 补 arb
-    MasterDetailRow('单位', d.unitName), // TODO(l10n): 补 arb
-    MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
-    MasterDetailRow('状态', d.status), // TODO(l10n): 补 arb
-    MasterDetailRow('来源', d.sourceType), // TODO(l10n): 补 arb
-    MasterDetailRow('旧编码', d.legacyId?.toString()), // TODO(l10n): 补 arb
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1106,17 +1030,14 @@ class _DetailPaneState extends State<_DetailPane> {
               ],
             ),
           ),
-          // 特殊货品集合区:禁用货品(当前分类子树) / 不明货品(仅未分类节点,stub 无分类)。
-          SpecialGoodsCollections(
-            categoryId: widget.nodeId,
-            isOrphanNode: _detail?.code == 'LEGACY_ORPHAN',
-            onItemTap: (id) => _showGoodsDetail(id),
-          ),
           // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
           Expanded(
             child: MasterDataTableView<GoodsListItem>(
               columns: _goodsColumns,
               items: _goodsPage?.items ?? const [],
+              // 表头下前导分组：禁用货品（浅红）/ 不明货品（仅未分类节点）；展开后按本表
+              // 同款列渲染，且「表头设置」列显隐对它同样生效。
+              leadingGroups: _leadingGroups,
               toolbarActions: [
                 UtenPrintPreviewButton(
                   title: '货品资料',
@@ -1176,7 +1097,13 @@ class _DetailPaneState extends State<_DetailPane> {
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
   /// 颜色/单位只有老库 legacy id → 单元格显 #id；价格作为末列。
   static final _goodsColumns = <MasterColumnDef<GoodsListItem>>[
-    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (g) => g.code),
+    MasterColumnDef(
+      key: 'code',
+      label: '编号',
+      width: 120,
+      sortable: true, // 编号唯一，值筛选无意义 → 表头只做排序（从小到大/从大到小）
+      value: (g) => g.code,
+    ),
     MasterColumnDef(
       key: 'series',
       label: '系列',

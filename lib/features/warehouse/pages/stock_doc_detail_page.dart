@@ -15,6 +15,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
@@ -97,6 +98,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       await fn();
       if (!mounted) return;
       context.appSuccess(ok);
+      bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } catch (_) {
       if (mounted) context.appError('操作失败');
@@ -217,6 +219,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       }
       if (!mounted) return;
       context.appSuccess(reverse ? '已反出库' : '已出库');
+      bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
@@ -256,6 +259,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           .delete(widget.id);
       if (!mounted) return;
       context.appSuccess('已删除');
+      bumpListRefresh(ref, widget.docType.refreshKey);
       context.go(RoutePath.stockDocList(widget.docType.code));
     } catch (_) {
       if (mounted) context.appError('删除失败');

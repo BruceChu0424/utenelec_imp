@@ -37,6 +37,8 @@ class UtenDropdownField extends StatefulWidget {
     this.hintText,
     this.searchable,
     this.errorText,
+    this.onAddNew,
+    this.addNewLabel,
   });
 
   /// 标签（表头字段用；grid 单元格可不传，由列头标识列）。
@@ -60,6 +62,13 @@ class UtenDropdownField extends StatefulWidget {
   /// 校验错误文案（非空时红框 + 下方红字，同 TextField errorText）。
   final String? errorText;
 
+  /// 浮层内"添加新项"回调（如颜色/单位内联新建）：非空时在搜索框下方渲染浅绿"添加"按钮，
+  /// 点击先关浮层再触发。null=不显示（默认，不影响其他调用方）。
+  final Future<void> Function()? onAddNew;
+
+  /// "添加"按钮文案（默认「+ 添加」）。
+  final String? addNewLabel;
+
   @override
   State<UtenDropdownField> createState() => _UtenDropdownFieldState();
 }
@@ -69,6 +78,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   OverlayEntry? _overlay;
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
+
+  /// 本次浮层向上还是向下展开（下方空间不够时向上）+ 适配后的最大高度。
+  bool _openAbove = false;
+  double _maxHeight = 320;
 
   /// 当前值的展示文本（孤儿值兜底显原值）。
   String get _display {
@@ -81,6 +94,21 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   void _open() {
     if (_overlay != null || !widget.enabled) return;
+    // 测量字段在屏幕的位置：下方空间不够（比上方小）则向上展开，并按可用空间收限高，
+    // 避免浮层在底部被裁/溢出屏外（颜色/单位等表单字段靠近底部时尤甚）。
+    final box = context.findRenderObject() as RenderBox?;
+    final screenH = MediaQuery.sizeOf(context).height;
+    if (box != null && box.hasSize) {
+      final top = box.localToGlobal(Offset.zero).dy;
+      final down = screenH - (top + box.size.height);
+      final up = top;
+      _openAbove = up > down;
+      final avail = (_openAbove ? up : down) - 8;
+      _maxHeight = avail.clamp(120.0, 320.0);
+    } else {
+      _openAbove = false;
+      _maxHeight = 320;
+    }
     _searchCtl = TextEditingController();
     _searchFocus = FocusNode();
     _overlay = OverlayEntry(builder: _buildOverlay);
@@ -152,8 +180,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         ),
         CompositedTransformFollower(
           link: _link,
-          targetAnchor: Alignment.bottomLeft,
-          offset: const Offset(0, 2),
+          targetAnchor: _openAbove ? Alignment.topLeft : Alignment.bottomLeft,
+          followerAnchor: _openAbove ? Alignment.bottomLeft : Alignment.topLeft,
+          offset: Offset(0, _openAbove ? -2 : 2),
           child: TapRegion(
             onTapOutside: (_) => _close(),
             child: Material(
@@ -162,8 +191,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                constraints: const BoxConstraints(
-                  maxHeight: 320,
+                constraints: BoxConstraints(
+                  maxHeight: _maxHeight,
                   maxWidth: 300,
                 ),
                 child: StatefulBuilder(
@@ -227,6 +256,53 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   _select(filtered.first.value);
                                 }
                               },
+                            ),
+                          ),
+                        if (widget.onAddNew != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                              UtenSpacing.s8,
+                              UtenSpacing.s4,
+                            ),
+                            child: InkWell(
+                              onTap: () {
+                                _close();
+                                widget.onAddNew!();
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: UtenSpacing.s12,
+                                  vertical: UtenSpacing.s8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE8F5E9),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(0xFFA5D6A7),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.add_rounded,
+                                      size: 18,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                    const SizedBox(width: UtenSpacing.s4),
+                                    Text(
+                                      widget.addNewLabel ?? '添加',
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
                         Flexible(

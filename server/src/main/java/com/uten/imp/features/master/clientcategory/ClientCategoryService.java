@@ -60,7 +60,7 @@ public class ClientCategoryService {
         } else {
             c.setLevel(0);
         }
-        repo.save(c);
+        c = repo.save(c); // UUID 构造时赋值→isNew=false→save 走 merge 返回托管副本；用返回值，否则 em.refresh(游离 c) 报 "Entity not managed"
         em.flush();
         em.refresh(c);   // 触发器算 path 后刷新
         return detail(c.getId());

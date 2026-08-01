@@ -4,8 +4,12 @@
 // 可用 [MasterFieldDef.group] 分段；固定值（如 categoryId）走 [fixedValues] 随提交
 // 带上、不渲染输入框。
 //
-// 容器自适应（参照 showUtenPickerSheet）：compact 底部抽屉 / medium+ 居中面板。
-// 字段双列分组（compact 退单列），底部按钮居中。提交回调返回是否成功，成功则自关。
+// 表单本体抽成公共 [MasterEditForm]（字段网格 + 校验 + buildBody），既给
+// [showMasterEditDialog]（自带 header/actions 的弹窗）用，也给货品详情弹窗的
+// 「基本信息」内联编辑 Tab 用（嵌入、由外层触发保存）。
+//
+// 容器自适应（参照 showMasterEditDialog）：compact 底部抽屉 / medium+ 居中面板。
+// 字段双列分组（compact 退单列），底部按钮居中。
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
@@ -54,6 +58,7 @@ class MasterFieldDef {
     this.options,
     this.selectInteger = false,
     this.readOnly = false,
+    this.onAddNew,
   });
 
   /// 与后端 SaveRequest 字段名对齐（如 name / colorLegacyId）。
@@ -81,79 +86,35 @@ class MasterFieldDef {
   /// 只读字段（如编号）：禁用展示、不参与提交。
   /// 编辑时显既有值；新建时值为空 → 显 [hint]（如「保存后自动生成」）。
   final bool readOnly;
+
+  /// select 字段的「添加新项」回调（颜色/单位内联新建）：非空时下拉浮层搜索下方显浅绿按钮，
+  /// 返回新建项的 value（如新颜色 legacy_id 字符串）则自动选中；返回 null 不改。
+  final Future<String?> Function()? onAddNew;
 }
 
 typedef MasterSubmit = Future<bool> Function(Map<String, dynamic> body);
 
-/// 自适应弹出主档编辑表单：compact 底部抽屉 / medium+ 居中面板。
+/// 主档编辑表单本体（字段网格 + 校验）。无 header / 无 actions——由调用方包裹。
 ///
-/// [onSubmit] 返回 true 关闭、false 保持打开（仿 CategoryEditDialog 范式）。
-Future<void> showMasterEditDialog({
-  required BuildContext context,
-  required String title,
-  required List<MasterFieldDef> fields,
-  required MasterSubmit onSubmit,
-  Map<String, String> initialValues = const <String, String>{},
-  Map<String, dynamic> fixedValues = const <String, dynamic>{},
-}) {
-  final body = _MasterEditBody(
-    title: title,
-    fields: fields,
-    initialValues: initialValues,
-    fixedValues: fixedValues,
-    onSubmit: onSubmit,
-  );
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.lg),
-        ),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: body,
-      ),
-    );
-  }
-  return showDialog<void>(
-    context: context,
-    builder: (ctx) => Dialog(
-      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 560,
-          maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
-        ),
-        child: body,
-      ),
-    ),
-  );
-}
-
-class _MasterEditBody extends StatefulWidget {
-  const _MasterEditBody({
-    required this.title,
+/// 调用方持 `GlobalKey<MasterEditFormState>`，保存时调 [buildBody] 取校验后的 body
+/// （校验失败返 null、内部已置错文案）。
+class MasterEditForm extends StatefulWidget {
+  const MasterEditForm({
+    super.key,
     required this.fields,
-    required this.initialValues,
-    required this.fixedValues,
-    required this.onSubmit,
+    this.initialValues = const <String, String>{},
+    this.fixedValues = const <String, dynamic>{},
   });
 
-  final String title;
   final List<MasterFieldDef> fields;
   final Map<String, String> initialValues;
   final Map<String, dynamic> fixedValues;
-  final MasterSubmit onSubmit;
 
   @override
-  State<_MasterEditBody> createState() => _MasterEditBodyState();
+  State<MasterEditForm> createState() => MasterEditFormState();
 }
 
-class _MasterEditBodyState extends State<_MasterEditBody> {
+class MasterEditFormState extends State<MasterEditForm> {
   late final Map<String, TextEditingController> _controllers;
 
   /// select 字段的当前选中值（key → 选项 value，未选为 null）。其他类型用 [_controllers]。
@@ -191,16 +152,16 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  /// 校验并构造提交 body（含 fixedValues）；校验失败返 null 并置 [_error]。
+  Map<String, dynamic>? buildBody() {
     final body = Map<String, dynamic>.from(widget.fixedValues);
     for (final f in widget.fields) {
       if (f.readOnly) continue; // 只读字段（编号）不上送：新建服务端生成、编辑保留
-      // select 类型：从 _selectValues 取，按 selectInteger 决定提交 int 还是 String。
       if (f.type == MasterFieldType.select) {
         final sv = _selectValues[f.key];
         if (f.required && (sv == null || sv.isEmpty)) {
           setState(() => _error = '请选择「${f.label}」'); // TODO(l10n): 补 arb
-          return;
+          return null;
         }
         if (sv == null || sv.isEmpty) {
           body[f.key] = null;
@@ -208,7 +169,7 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
           final v = int.tryParse(sv);
           if (v == null) {
             setState(() => _error = '「${f.label}」值非法'); // TODO(l10n): 补 arb
-            return;
+            return null;
           }
           body[f.key] = v;
         } else {
@@ -219,7 +180,7 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
       final raw = _controllers[f.key]!.text.trim();
       if (f.required && raw.isEmpty) {
         setState(() => _error = '请填写「${f.label}」'); // TODO(l10n): 补 arb
-        return;
+        return null;
       }
       if (raw.isEmpty) {
         body[f.key] = null; // 空串统一存 null，保持与老库 nullable 一致
@@ -230,35 +191,24 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
           final v = int.tryParse(raw);
           if (v == null) {
             setState(() => _error = '「${f.label}」需为整数'); // TODO(l10n): 补 arb
-            return;
+            return null;
           }
           body[f.key] = v;
         case MasterFieldType.money:
           final v = double.tryParse(raw);
           if (v == null) {
             setState(() => _error = '「${f.label}」需为数字'); // TODO(l10n): 补 arb
-            return;
+            return null;
           }
           body[f.key] = v;
         case MasterFieldType.text:
           body[f.key] = raw;
         case MasterFieldType.select:
-          // select 已在循环顶部处理，此处不可达（满足 switch 穷尽）。
-          break;
+          break; // 不可达（上方已处理）
       }
     }
     setState(() => _error = null);
-    // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
-    late final bool ok;
-    try {
-      ok = await widget.onSubmit(body);
-    } catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-      return;
-    }
-    if (!mounted) return;
-    if (ok) Navigator.of(context).pop();
+    return body;
   }
 
   @override
@@ -275,66 +225,26 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
       if (!groupOrder.contains(g)) groupOrder.add(g);
     }
 
-    return SafeArea(
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(UtenSpacing.s16),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _header(theme),
-          const Divider(height: 1),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < groupOrder.length; i++) ...[
-                    if (i > 0) const SizedBox(height: UtenSpacing.s20),
-                    UtenSectionHeader(title: groupOrder[i], subdued: true),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _fieldGrid(groups[groupOrder[i]]!, twoColumn),
-                  ],
-                  if (_error != null) ...[
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      _error!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.error,
-                      ),
-                    ),
-                  ],
-                ],
+          for (var i = 0; i < groupOrder.length; i++) ...[
+            if (i > 0) const SizedBox(height: UtenSpacing.s20),
+            UtenSectionHeader(title: groupOrder[i], subdued: true),
+            const SizedBox(height: UtenSpacing.s12),
+            _fieldGrid(groups[groupOrder[i]]!, twoColumn),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              _error!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
               ),
             ),
-          ),
-          const Divider(height: 1),
-          _actions(),
-        ],
-      ),
-    );
-  }
-
-  Widget _header(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              widget.title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
+          ],
         ],
       ),
     );
@@ -406,7 +316,7 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
 
   /// select 字段：UtenDropdownField（Overlay 弹层，对齐全站下拉；根治溢出）。
   /// required → 不显示「不选」（强制选）；非 required → allowClear 可清空回 null。
-  /// initialValue 已在 initState sanitize（不在选项里→null）。
+  /// onAddNew（颜色/单位内联新建）：返回新值则自动选中。
   Widget _selectField(MasterFieldDef f) {
     final options = f.options ?? const <MasterSelectOption>[];
     return UtenDropdownField(
@@ -415,30 +325,170 @@ class _MasterEditBodyState extends State<_MasterEditBody> {
       value: _selectValues[f.key],
       allowClear: !f.required,
       hintText: f.hint,
+      addNewLabel: f.onAddNew == null ? null : '添加${f.label}',
       items: [
         for (final o in options)
           UtenDropdownItem(value: o.value, label: o.label),
       ],
       onChanged: (v) => setState(() => _selectValues[f.key] = v),
+      onAddNew: f.onAddNew == null
+          ? null
+          : () async {
+              final v = await f.onAddNew!();
+              if (v != null) setState(() => _selectValues[f.key] = v);
+            },
     );
   }
+}
 
-  Widget _actions() {
-    return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+/// 自适应弹出主档编辑表单：compact 底部抽屉 / medium+ 居中面板（薄包装 MasterEditForm）。
+///
+/// [onSubmit] 返回 true 关闭、false 保持打开（仿 CategoryEditDialog 范式）。
+Future<void> showMasterEditDialog({
+  required BuildContext context,
+  required String title,
+  required List<MasterFieldDef> fields,
+  required MasterSubmit onSubmit,
+  Map<String, String> initialValues = const <String, String>{},
+  Map<String, dynamic> fixedValues = const <String, dynamic>{},
+}) {
+  final formKey = GlobalKey<MasterEditFormState>();
+  final body = _MasterEditDialog(
+    title: title,
+    formKey: formKey,
+    fields: fields,
+    initialValues: initialValues,
+    fixedValues: fixedValues,
+    onSubmit: onSubmit,
+  );
+  if (context.breakpoint.isCompact) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+        child: body,
+      ),
+    );
+  }
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => Dialog(
+      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 560,
+          maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
+        ),
+        child: body,
+      ),
+    ),
+  );
+}
+
+/// showMasterEditDialog 的壳：header + MasterEditForm + actions（保存触发 buildBody→onSubmit→pop）。
+class _MasterEditDialog extends StatefulWidget {
+  const _MasterEditDialog({
+    required this.title,
+    required this.formKey,
+    required this.fields,
+    required this.initialValues,
+    required this.fixedValues,
+    required this.onSubmit,
+  });
+
+  final String title;
+  final GlobalKey<MasterEditFormState> formKey;
+  final List<MasterFieldDef> fields;
+  final Map<String, String> initialValues;
+  final Map<String, dynamic> fixedValues;
+  final MasterSubmit onSubmit;
+
+  @override
+  State<_MasterEditDialog> createState() => _MasterEditDialogState();
+}
+
+class _MasterEditDialogState extends State<_MasterEditDialog> {
+  Future<void> _save() async {
+    final body = widget.formKey.currentState?.buildBody();
+    if (body == null) return; // 校验失败，错文案已在表单内
+    late final bool ok;
+    try {
+      ok = await widget.onSubmit(body);
+    } catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+      return;
+    }
+    if (!mounted) return;
+    if (ok) Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'), // TODO(l10n): 补 arb
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s16,
+              UtenSpacing.s12,
+              UtenSpacing.s8,
+              UtenSpacing.s12,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: UtenSpacing.s12),
-          UtenActionButton(
-            label: const Text('保存'), // TODO(l10n): 补 arb
-            onAction: _submit,
+          const Divider(height: 1),
+          Flexible(
+            child: MasterEditForm(
+              key: widget.formKey,
+              fields: widget.fields,
+              initialValues: widget.initialValues,
+              fixedValues: widget.fixedValues,
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UtenButton(
+                  type: UtenButtonType.secondary,
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'), // TODO(l10n): 补 arb
+                ),
+                const SizedBox(width: UtenSpacing.s12),
+                UtenActionButton(
+                  label: const Text('保存'), // TODO(l10n): 补 arb
+                  onAction: _save,
+                ),
+              ],
+            ),
           ),
         ],
       ),

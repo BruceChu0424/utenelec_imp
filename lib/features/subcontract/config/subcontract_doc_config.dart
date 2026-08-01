@@ -143,6 +143,10 @@ class SubcontractDocConfig {
   /// 路由路径段（与后端 @RequestMapping 对齐）。
   String get pathSegment => type.pathSegment;
 
+  /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
+  /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
+  String get refreshKey => 'subcontract:${type.name}';
+
   // ============ 8 单据配置 ============
 
   /// 委外询价单（老库 0 行，结构建立；灰显入口）。

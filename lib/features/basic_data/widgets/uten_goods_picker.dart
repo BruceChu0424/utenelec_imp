@@ -36,12 +36,20 @@ enum UtenGoodsPickerScope {
   material,
   /// 全部：不过滤（调拨/其它出入库/盘点）。
   all,
+  /// 组件选择（BOM 组装信息用）：只保留 原材料/半成品/辅料/OEM成品/OEM物料/OEM功能件 子树。
+  component,
 }
 
 /// material 范围保留的根分类 legacyId（原材料/辅料）。
 /// 扩展点：若包装材料/五金配件是独立根且采购/领料需要，再加 legacyId 与下方关键字。
 const _materialRootLegacyIds = {2113, 2480};
 const _materialRootNameKeywords = {'原材料', '辅料'};
+
+/// component 范围保留的根分类 legacyId（BOM 组件选择器）：
+/// 原材料 2113 / 半成品 2149 / 辅料 2480 / OEM成品 2304 / OEM物料 2305 / OEM功能件 2460。
+/// legacyId 源：docs/数据迁移/02-货品分类-老库溯源.md §3.1 九根节点。
+const _componentRootLegacyIds = {2113, 2149, 2480, 2304, 2305, 2460};
+const _componentRootNameKeywords = {'原材料', '半成品', '辅料', 'OEM'};
 
 /// 名称兜底判断（legacyId 缺失或新增同名分类时仍能排除）。
 bool _isExcludedCategory(ProductCategoryNode n) {
@@ -99,6 +107,28 @@ List<ProductCategoryNode> _keepMaterialTree(List<ProductCategoryNode> nodes) {
   return out;
 }
 
+/// 节点是否属于 component 范围根（原材料/半成品/辅料/OEM 系列）。
+bool _isComponentRoot(ProductCategoryNode n) {
+  if (n.legacyId != null && _componentRootLegacyIds.contains(n.legacyId)) {
+    return true;
+  }
+  final name = n.name;
+  return _componentRootNameKeywords.any(name.contains);
+}
+
+/// component 范围（BOM 组件选择器）：只保留命中的节点整子树，与 _keepMaterialTree 同构。
+List<ProductCategoryNode> _keepComponentTree(List<ProductCategoryNode> nodes) {
+  final out = <ProductCategoryNode>[];
+  for (final n in nodes) {
+    if (_isComponentRoot(n)) {
+      out.add(_cloneSubtree(n));
+    } else {
+      out.addAll(_keepComponentTree(n.children));
+    }
+  }
+  return out;
+}
+
 /// 深拷贝整子树（命中节点保留全部后代用）。
 ProductCategoryNode _cloneSubtree(ProductCategoryNode n) {
   return ProductCategoryNode(
@@ -118,6 +148,36 @@ Future<GoodsListItem?> showUtenGoodsPicker(
   BuildContext context,
   WidgetRef ref, {
   UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable,
+}) {
+  return _presentSheet<GoodsListItem>(
+    context,
+    ref,
+    scope,
+    multiSelect: false,
+  ).then((r) => r is GoodsListItem ? r : null);
+}
+
+/// 多选货品选择器：点货品行勾选/取消，底部「确定(N)」返回所选列表；取消返回空列表。
+/// 供 BOM 组装信息「一个层级添加多个组件」批量录入用。
+Future<List<GoodsListItem>> showUtenGoodsPickerMulti(
+  BuildContext context,
+  WidgetRef ref, {
+  UtenGoodsPickerScope scope = UtenGoodsPickerScope.component,
+}) async {
+  final r = await _presentSheet<List<GoodsListItem>>(
+    context,
+    ref,
+    scope,
+    multiSelect: true,
+  );
+  return r ?? const <GoodsListItem>[];
+}
+
+Future<T?> _presentSheet<T>(
+  BuildContext context,
+  WidgetRef ref,
+  UtenGoodsPickerScope scope, {
+  required bool multiSelect,
 }) async {
   List<ProductCategoryNode> tree;
   try {
@@ -126,15 +186,20 @@ Future<GoodsListItem?> showUtenGoodsPicker(
       UtenGoodsPickerScope.sellable => _filterExcludedTree(raw),
       UtenGoodsPickerScope.material => _keepMaterialTree(raw),
       UtenGoodsPickerScope.all => raw,
+      UtenGoodsPickerScope.component => _keepComponentTree(raw),
     };
   } catch (_) {
     if (context.mounted) context.appError('货品分类加载失败，请稍后重试');
     return null;
   }
   if (!context.mounted) return null;
-  final sheet = _GoodsPickerSheet(tree: tree, scope: scope);
+  final sheet = _GoodsPickerSheet(
+    tree: tree,
+    scope: scope,
+    multiSelect: multiSelect,
+  );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<GoodsListItem>(
+    return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -152,7 +217,7 @@ Future<GoodsListItem?> showUtenGoodsPicker(
       ),
     );
   }
-  return showGeneralDialog<GoodsListItem>(
+  return showGeneralDialog<T>(
     context: context,
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
@@ -176,9 +241,14 @@ Future<GoodsListItem?> showUtenGoodsPicker(
 }
 
 class _GoodsPickerSheet extends ConsumerStatefulWidget {
-  const _GoodsPickerSheet({required this.tree, required this.scope});
+  const _GoodsPickerSheet({
+    required this.tree,
+    required this.scope,
+    this.multiSelect = false,
+  });
   final List<ProductCategoryNode> tree;
   final UtenGoodsPickerScope scope;
+  final bool multiSelect;
 
   @override
   ConsumerState<_GoodsPickerSheet> createState() => _GoodsPickerSheetState();
@@ -192,6 +262,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   PagedResult<GoodsListItem>? _paged;
   bool _loading = false;
   String? _error;
+
+  /// 多选模式下已勾选的货品（id → 完整 item）。
+  final Map<String, GoodsListItem> _selected = {};
 
   @override
   void initState() {
@@ -323,6 +396,31 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             ],
           ),
         ),
+        if (widget.multiSelect) _buildConfirmBar(theme),
+      ],
+    );
+  }
+
+  Widget _buildConfirmBar(ThemeData theme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _selected.isEmpty
+                  ? null
+                  : () =>
+                      Navigator.of(context).pop(_selected.values.toList()),
+              child: Text(
+                _selected.isEmpty ? '确定' : '确定（${_selected.length}）',
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -394,7 +492,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           g.colorName,
           g.unitName,
         ].where((s) => s != null && s.isNotEmpty).join(' · ');
+        final picked = _selected.containsKey(g.id);
         return ListTile(
+          selected: widget.multiSelect && picked,
           title: Text(
             '${g.name ?? '—'}'
             '${g.code != null && g.code!.isNotEmpty ? '（${g.code}）' : ''}',
@@ -402,7 +502,23 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           subtitle: sub.isEmpty
               ? null
               : Text(sub, style: const TextStyle(fontSize: 12)),
-          onTap: () => Navigator.of(context).pop(g),
+          trailing: widget.multiSelect && picked
+              ? Icon(Icons.check_circle_rounded,
+                  color: theme.colorScheme.primary, size: 22)
+              : null,
+          onTap: () {
+            if (widget.multiSelect) {
+              setState(() {
+                if (_selected.containsKey(g.id)) {
+                  _selected.remove(g.id);
+                } else {
+                  _selected[g.id] = g;
+                }
+              });
+            } else {
+              Navigator.of(context).pop(g);
+            }
+          },
         );
       },
     );

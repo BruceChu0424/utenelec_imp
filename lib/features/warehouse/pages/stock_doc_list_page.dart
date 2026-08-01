@@ -22,6 +22,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/widgets/doc_kpi_bar.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
@@ -197,6 +198,11 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage> {
     final total = _page?.total ?? 0;
     // watch 一下以在 ensureLoaded 完成（虽 Provider 实例不变，但语义上声明依赖）
     ref.watch(masterNameServiceProvider);
+    // 操作后刷新：详情/编辑页保存/审核等成功会 bump 本 docType 的 tick，
+    // 本页（即便被详情页遮在栈下）收到即重拉，返回不再看到老数据。
+    ref.listen(listRefreshTickProvider(widget.docType.refreshKey), (_, _) {
+      _load(_pageNum);
+    });
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.docType.label,

@@ -17,6 +17,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
@@ -129,6 +130,7 @@ class _SubcontractDocDetailPageState
       await fn(ref.read(subcontractRepositoryProvider(widget.docType)));
       if (!mounted) return;
       context.appSuccess(ok);
+      bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);

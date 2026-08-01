@@ -168,9 +168,6 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
     return perms.contains(Perm.clientCategoryEdit);
   }
 
-  /// 新建分类时的常用名称建议（降低起名门槛；客户类常用维度）。
-  static const _categorySuggestions = ['战略合作客户', '重点客户', '普通客户', '潜在客户', '经销商'];
-
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -179,7 +176,6 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
-        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );

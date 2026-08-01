@@ -22,6 +22,7 @@ class GoodsBomItem {
     this.summary,
     this.legacyId,
     this.hasChildren = false,
+    this.componentSourceType,
   });
 
   final String id;
@@ -40,6 +41,7 @@ class GoodsBomItem {
   final String? summary; // 备注（外购/外加工...）
   final int? legacyId;
   final bool hasChildren;
+  final String? componentSourceType; // 组件来源（自制/采购/委外）
 
   factory GoodsBomItem.fromJson(Map<String, dynamic> json) => GoodsBomItem(
     id: json['id'] as String,
@@ -58,5 +60,6 @@ class GoodsBomItem {
     summary: json['summary'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     hasChildren: json['hasChildren'] as bool? ?? false,
+    componentSourceType: json['componentSourceType'] as String?,
   );
 }

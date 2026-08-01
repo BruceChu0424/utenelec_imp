@@ -18,8 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +83,8 @@ public class GoodsBomService {
                     colorId == null ? null : colorNames.get(colorId),
                     r.getColorLegacyId(), r.getQty(), r.getPrice(), r.getTotal(),
                     r.getSummary(), r.getLegacyId(),
-                    withChildren.contains(c.getId())));
+                    withChildren.contains(c.getId()),
+                    c.getSourceType()));
         }
         return views;
     }
@@ -93,11 +97,13 @@ public class GoodsBomService {
         Goods parent = requireGoods(goodsId);
         Goods component = requireComponent(req.getComponentGoodsId(), goodsId);
         ensureComponentUnique(goodsId, component.getId());
+        ensureNoCycle(goodsId, component.getId());
         GoodsBomItem r = new GoodsBomItem();
         r.setGoods(parent);
         apply(req, r, component);
         r.setSortOrder(nextSortOrder(goodsId));
         bomRepo.save(r);
+        recalcSourceE(parent);
         return toView(r, component);
     }
 
@@ -108,9 +114,11 @@ public class GoodsBomService {
         Goods component = requireComponent(req.getComponentGoodsId(), goodsId);
         if (!component.getId().equals(r.getComponent().getId())) {
             ensureComponentUnique(goodsId, component.getId());
+            ensureNoCycle(goodsId, component.getId());
         }
         apply(req, r, component);
         bomRepo.save(r);
+        recalcSourceE(r.getGoods());
         return toView(r, component);
     }
 
@@ -118,9 +126,11 @@ public class GoodsBomService {
     public void delete(UUID goodsId, UUID itemId) {
         tx.bind();
         GoodsBomItem r = requireItem(goodsId, itemId);
+        Goods parent = r.getGoods();
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         bomRepo.save(r);
+        recalcSourceE(parent);
     }
 
     // ===== 配件清单导出（产品配件清单，对照老系统 003.jpg 列） =====
@@ -206,7 +216,7 @@ public class GoodsBomService {
                 component.getModel(), component.getSpec(), component.getMaterial(),
                 unitNameOf(component.getUnitLegacyId()), colorNameOf(colorId),
                 r.getColorLegacyId(), r.getQty(), r.getPrice(), r.getTotal(),
-                r.getSummary(), r.getLegacyId(), hasChildren);
+                r.getSummary(), r.getLegacyId(), hasChildren, component.getSourceType());
     }
 
     private int nextSortOrder(UUID goodsId) {
@@ -219,6 +229,65 @@ public class GoodsBomService {
         if (bomRepo.findByGoods_IdAndComponent_IdAndDeletedFalse(goodsId, componentId).isPresent()) {
             throw new ApiException(ErrorCode.CONFLICT, "该组件已在组装清单中（组件编号必须唯一）");
         }
+    }
+
+    /**
+     * DAG 环检测：加边 parentGoodsId → componentId 会成环，当且仅当 componentId 的（传递）组件子树
+     * 里已包含 parentGoodsId。BFS 下溯组件子树（深度上限 MAX_DEPTH，防脏数据死循环），命中即 409。
+     */
+    private void ensureNoCycle(UUID parentGoodsId, UUID componentId) {
+        Set<UUID> visited = new HashSet<>();
+        Deque<UUID> queue = new ArrayDeque<>();
+        queue.add(componentId);
+        visited.add(componentId);
+        int depth = 0;
+        while (!queue.isEmpty() && depth <= MAX_DEPTH) {
+            for (int size = queue.size(); size > 0; size--) {
+                UUID cur = queue.poll();
+                if (cur.equals(parentGoodsId)) {
+                    throw new ApiException(ErrorCode.CONFLICT, "不能添加：该组件的子组件已包含本货品，会形成组装环路");
+                }
+                for (GoodsBomItem child : bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(cur)) {
+                    if (visited.add(child.getComponent().getId())) {
+                        queue.add(child.getComponent().getId());
+                    }
+                }
+            }
+            depth++;
+        }
+    }
+
+    /**
+     * BOM 增删改后重算父货品「材料合计」sourceE 并写回 goods：
+     * 直接组件中，来源=自制 或 自身有 BOM（半成品）的取其成本价 cTotal×qty（其下级成本已含），
+     * 其余（采购/委外/未设）取 price×qty。求和（两位小数）。
+     * 前端成本 Tab 的 sourceE 只读显示此值；下游成本（成品价/成本价/出厂价）由前端据此级联。
+     */
+    private void recalcSourceE(Goods parent) {
+        List<GoodsBomItem> rows = bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId());
+        Set<UUID> componentIds = rows.stream()
+                .map(r -> r.getComponent().getId())
+                .collect(Collectors.toSet());
+        Set<UUID> withChildren = componentIds.isEmpty() ? Set.of()
+                : bomRepo.findByGoods_IdInAndDeletedFalse(componentIds).stream()
+                        .map(r -> r.getGoods().getId())
+                        .collect(Collectors.toSet());
+        BigDecimal sum = BigDecimal.ZERO;
+        for (GoodsBomItem r : rows) {
+            Goods c = r.getComponent();
+            boolean selfMade = "自制".equals(c.getSourceType()) || withChildren.contains(c.getId());
+            BigDecimal unit;
+            if (selfMade && c.getCTotal() != null) {
+                unit = c.getCTotal();
+            } else {
+                unit = c.getPrice();
+            }
+            if (unit != null && r.getQty() != null) {
+                sum = sum.add(unit.multiply(r.getQty()));
+            }
+        }
+        parent.setSourceE(sum.setScale(2, RoundingMode.HALF_UP));
+        goodsRepo.save(parent);
     }
 
     private Goods requireGoods(UUID id) {

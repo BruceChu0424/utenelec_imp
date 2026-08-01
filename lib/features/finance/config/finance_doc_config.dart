@@ -82,6 +82,10 @@ class FinanceDocConfig {
     FinanceDocType.bankTransfer => 'YC',
   };
 
+  /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
+  /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
+  String get refreshKey => 'finance:${type.name}';
+
   static const receipt = FinanceDocConfig(
     type: FinanceDocType.receipt,
     label: '销售收款单',

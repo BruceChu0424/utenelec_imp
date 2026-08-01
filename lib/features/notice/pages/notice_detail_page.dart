@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -19,15 +20,27 @@ import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 
 class NoticeDetailPage extends ConsumerWidget {
-  const NoticeDetailPage({super.key, required this.noticeId});
+  const NoticeDetailPage({super.key, required this.noticeId, this.onBack});
+
   final String noticeId;
+
+  /// 返回键行为。为空时走 [UtenBackButton] 默认逻辑（go_router pop + 工作台兜底），
+  /// 适用于独立路由 `/notice/:id`。当本页被 [showNoticeDetailDialog] 以 Dialog /
+  /// BottomSheet 内嵌时，弹窗是 Navigator 的 Dialog/Sheet 路由，不在 go_router 栈内，
+  /// go_router 的 pop/go 关不掉弹窗（表现为「点返回没反应」），需由弹窗传入
+  /// `Navigator.pop` 来关闭自身。
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(noticeDetailProvider(noticeId));
 
     return Scaffold(
-      appBar: const UtenAppBar(title: '通知详情', showBackButton: true),
+      appBar: UtenAppBar(
+        title: '通知详情',
+        leading: onBack == null ? null : UtenBackButton(onPressed: onBack),
+        showBackButton: onBack == null,
+      ),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(

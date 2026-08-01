@@ -171,15 +171,6 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
     return perms.contains(Perm.supplierCategoryEdit);
   }
 
-  /// 新建分类时的常用名称建议（降低起名门槛）。
-  static const _categorySuggestions = [
-    '原材料供应商',
-    '辅料供应商',
-    '设备供应商',
-    '包材供应商',
-    '服务供应商',
-  ];
-
   // ---- 创建/编辑/删除 -----------------------------------------------------
 
   void _showCreateDialog({ProductCategoryNode? parent}) {
@@ -188,7 +179,6 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage> {
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
-        suggestions: _categorySuggestions,
         onSubmit: (r) => _doCreate(r),
       ),
     );

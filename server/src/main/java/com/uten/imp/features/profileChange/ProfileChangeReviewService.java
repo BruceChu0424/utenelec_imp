@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -108,7 +109,8 @@ public class ProfileChangeReviewService {
                     .orElse(null);
             if (submitterUserId == null) return;    // 无登录账号（离职账号已删）跳过
 
-            String fields = rs.stream().map(ProfileChangeRequest::getFieldLabel)
+            String fields = rs.stream()
+                    .map(r -> fieldLabelForNotice(r.getFieldCode(), r.getFieldLabel()))
                     .distinct().limit(5).collect(Collectors.joining("、"));
             String publisher = reviewerEmployeeId == null ? "系统"
                     : employeeRepo.findById(reviewerEmployeeId).map(Employee::getFullName).orElse("系统");
@@ -127,6 +129,40 @@ public class ProfileChangeReviewService {
         } catch (Exception e) {
             log.warn("审批结果通知发送失败（不影响审批本身）: {}", e.getMessage());
         }
+    }
+
+    /** 仅需审核字段（进审批通知）的 code→中文映射；直改字段不进表/通知，无需列。 */
+    private static final Map<String, String> FIELD_LABEL_ZH = Map.of(
+            "fullName", "姓名",
+            "hujiAddress", "户籍地址",
+            "phone", "手机号"
+    );
+
+    /**
+     * 通知正文里展示的字段名。优先按 fieldCode 映射中文——历史上 field_label 可能被
+     * 存成 i18n key（profileChangeFieldFullName）或裸机器码（emergencyContact.1.phone），
+     * 直接拼进通知会把系统字段结构暴露给用户；这里统一回落到中文，机器码绝不外泄。
+     */
+    private String fieldLabelForNotice(String code, String storedLabel) {
+        String zh = FIELD_LABEL_ZH.get(code);
+        if (zh != null) return zh;
+        if (code != null && code.startsWith("emergencyContact.")) {
+            String tail = code.substring("emergencyContact.".length());
+            int dot = tail.indexOf('.');
+            String sub = dot > 0 ? tail.substring(dot + 1) : tail;
+            return switch (sub) {
+                case "name" -> "紧急联系人姓名";
+                case "phone" -> "紧急联系人电话";
+                case "relationship" -> "紧急联系人关系";
+                default -> "紧急联系人";
+            };
+        }
+        // 存储的 label 若仍是机器码（英文 camelCase / 含 . _），不暴露给用户
+        if (storedLabel != null && !storedLabel.isBlank()
+                && !storedLabel.trim().matches("^[A-Za-z][A-Za-z0-9._]*$")) {
+            return storedLabel.trim();
+        }
+        return "个人信息";
     }
 
     /** 某员工的待审数（员工详情 Hero 后区块用）。 */

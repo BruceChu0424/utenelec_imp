@@ -2,6 +2,10 @@
 
 > 2026-07-28 落地。货品详情弹窗三页签（基本信息 / **组装信息** / **成本预算**）+ A4 产品配件清单预览（打印 / 加密 Excel），
 > 生产管理「BOM 成本展开」模块同期下线（UI 入口 + 前后端代码删除；`production_plan_costs` 历史数据表保留，物料反查报表仍以其为数据源）。
+>
+> **2026-08-01 增强（§七）**：「新增货品」并入三 Tab 弹窗（mode 感知 create/edit/view）+ 组件右滑窗选择（component scope）
+> + 组件层级添加（选中默认子组件 + DAG 环检测）+ 组件信息只读 + 成本自动汇总（后端聚合 sourceE + 前端级联）
+> + 颜色/单位内联新建（后端补合成 legacy_id 解鸿沟 + 名称查重）。
 
 ---
 
@@ -105,8 +109,19 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 
 成本预算：`GoodsDetail` / `GoodsSaveRequest` 扩 18 个成本字段（`cTotal`/`gTotal` 加 `@JsonProperty`
 防 Jackson 连续大写 quirk，同 `mWeight`）。**注意**：后端 `apply` 全量覆盖——前端任何货品保存
-都必须全量回传成本字段（基本信息编辑对话框以 `fixedValues` 原值回传；成本页签全量回传基础字段），
+都必须全量回传成本字段（基本信息编辑以 `fixedValues` 原值回传；成本页签全量回传基础字段），
 否则缺省字段会被清 null。
+
+**2026-08-01 增强（`GoodsBomService`）**：
+- **材料合计自动聚合**：BOM create/update/delete 后 `recalcSourceE(parent)` 重算父货品 `source_e` 并写回——
+  直接组件中 `source_type∈{采购,委外}` 取 `price×qty`，**自制 / 有 BOM（半成品）取其 `c_total×qty`**
+  （自制件 price 常 0，取其成本价才不失真；求和 `setScale(2)`）。前端成本页签 `sourceE` 只读显示此值，
+  不再手填。这是"组件价格→父货品材料合计"的唯一真源（前端 `Σ(qty×price)` 对自制件是错的，故由后端做）。
+- **DAG 环检测**：`ensureNoCycle(parentGoodsId, componentId)`——加边前 BFS 下溯组件子树（深度上限 10），
+  若已含 parentGoodsId 则 409「会形成组装环路」（"加为某组件的子组件"让环路更易人为构造，写入侧必须防护；
+  预览/导出侧早有路径去重 + 10 层上限）。
+- **`BomItemView` 加 `componentSourceType`**：`list` / `toView` 拼组件 `g.source_type`，前端组装表显「来源」列、
+  添加组件弹窗组件信息只读展示。
 
 ---
 
@@ -114,14 +129,20 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 
 | 文件 | 职责 |
 |---|---|
-| `widgets/goods_detail_dialog.dart` | 货品详情弹窗：三页签壳（基本/组装/成本）+ 头部「预览」按钮；compact 抽屉 / medium+ 920 宽面板 |
-| `widgets/goods_bom_tab.dart` | 组装信息：复用统一表格组件 `MasterDataTableView`（与货品列表同款 Excel 表头分隔线 + 拖拽列宽 + 底部横滑条）；BOM 树按可见节点平铺——首列 `▶/▼` 标识「含子类」（点行展开/收起）、名称列子类缩进一格（`└` 分支符逐级加深）；工具条 添加/编辑/删除（编辑/删除作用于选中行，添加走搜索选择器，编号唯一） |
-| `widgets/goods_cost_tab.dart` | 成本预算：18 字段可编辑表单（双列网格，goods:edit 可改） |
+| `widgets/goods_detail_dialog.dart` | 货品详情/编辑弹窗：**mode 感知（create / edit / view）**三页签壳（基本/组装/成本）+ 头部「预览」按钮（仅已保存货品）；compact 抽屉 / medium+ 920 宽面板。新增货品走本弹窗 create 态（见 §七） |
+| `widgets/goods_bom_tab.dart` | 组装信息：复用 `MasterDataTableView`（Excel 表头分隔线 + 拖拽列宽 + 底部横滑条 + 点行高亮 + `onSelectionChanged`）；BOM 树按可见节点平铺——首列 `▶/▼` 标识「含子类」（点行展开/收起）、名称列子类缩进（`└` 逐级加深）；**层级添加**（选中组件行→添加默认其子组件，弹窗内父级可选顶层/任一可见组件，仿部门 `initialParent`）+ 加子组件后 `_expandedIds` 保活 + `_restoreExpansion` 让新子件可见；工具条 添加/编辑/删除；`AutomaticKeepAliveClientMixin` 切页签不丢状态 |
+| `widgets/goods_cost_tab.dart` | 成本预算：18 字段表单。**sourceE 只读（后端聚合）**；6 项加工费 + 4 项比率手填；成品价/各项费/成本价/出厂价 `_recompute` 自动级联（见 §七）；`didUpdateWidget(materialTotal)` + `AutomaticKeepAliveClientMixin` |
 | `widgets/goods_bom_preview.dart` | A4 产品配件清单（003.jpg 版式）：**整树展开**（级联序号逐级缩进（1 / └ 3.1 / 　└ 3.1.1），编号前缀 `*`/`**` 标层级，名称列对齐不缩进，环路防护 + 10 层上限）；打印（`pdf`+`printing`，NotoSansSC 内置字体）+ 下载 Excel（`UtenExportButton`，与打印件同版式） |
-| `models/goods_bom_item.dart` / `repositories/goods_bom_repository.dart` | BOM 行模型 / CRUD 仓库 |
-| `repositories/goods_repository.dart` | 新增 `search(keyword)`（不限分类，组件选择器用；后端 `categoryId` 可空） |
+| `widgets/master_edit_dialog.dart` | **抽出公共 `MasterEditForm`**（字段网格 + 校验 + `buildBody()`，无 header/actions）；`showMasterEditDialog` 改薄包装（10 主档零回归）；货品基本页签内嵌它。`MasterFieldDef` 加 `onAddNew`（颜色/单位内联新建，返新值自动选中） |
+| `widgets/uten_goods_picker.dart` | 统一货品选择器加 scope `component`（白名单 6 分类，BOM 组件选择用，见 [UtenGoodsPicker](../02-组件库/UtenGoodsPicker.md)） |
+| `providers/color_unit_dict.dart` | 颜色/单位字典 provider（`colorDictProvider`/`unitDictProvider`）+ 内联新建 helper（`showColorAddSheet`/`showUnitAddSheet`：预查重→POST→invalidate→返新 legacy_id 自动选中） |
+| `models/goods_bom_item.dart` / `repositories/goods_bom_repository.dart` | BOM 行模型（加 `componentSourceType`）/ CRUD 仓库 |
+| `repositories/goods_repository.dart` | `search(keyword)`（不限分类）+ `create` 改返 `GoodsDetail`（create→edit 同弹窗切换拿 id） |
+| `repositories/color_repository.dart` / `unit_repository.dart` | `create` 改返 `ColorDetail`/`UnitDetail`（内联新建后取 legacy_id 自动选中） |
+| `components/inputs/uten_dropdown_field.dart` | 加可选 `onAddNew`/`addNewLabel`：浮层搜索框下方渲染浅绿「添加」按钮（null=不显示，默认行为不变） |
+| `widgets/master_data_table_view.dart` | 加可选 `onSelectionChanged(T?)`：单击选中行除 `onRowTap` 外上抛选中项（BOM 据此定「添加组件」默认父级） |
 
-- 货品行点击从通用 `showMasterDetailSheet` 改为 `showGoodsDetailDialog`（模具/客户/供应商不受影响）。
+- 货品行点击 / 新增 / 编辑三入口统一走 `showGoodsDetailDialog`（mode 感知）；模具/客户/供应商不受影响。
 - `pubspec.yaml` 新增 `pdf` / `printing` 依赖。
 
 ---
@@ -138,8 +159,56 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 
 ---
 
+## 七、2026-08-01 增强：新增货品 = 三 Tab 弹窗 + 组件层级 + 成本自动 + 颜色单位内联新建
+
+> 此前「新增/编辑货品」走通用扁平 `showMasterEditDialog`（无组装/成本），「查看」走只读 `showGoodsDetailDialog`——
+> 两套割裂。本次合并为 **mode 感知单弹窗**，并补齐四个缺口。方案 `plans/snazzy-petting-reddy.md`。
+
+### 1. mode 感知详情弹窗（`goods_detail_dialog.dart`）
+- `showGoodsDetailDialog({detail?, categoryId?, canEdit, ...})`：`detail==null`→create、非 null→view（编辑切 inline）。
+- **两阶段**：BOM API 要货品 id 已存在，故 create 态基本信息页签可编辑、组装/成本页签空态「请先保存基本信息」；
+  保存（`POST /master/goods` 返 `GoodsDetail`，前端仓库 `create` 改返实体）→ `_enterEdit` **同弹窗转 edit 态**，
+  组装/成本页签用 `ValueKey('bom/cost-$_goodsId')` 重建激活。
+- 全量覆盖契约下：任何变更后 `_refreshDetail`（GET 详情），各页签保存带**最新完整快照**（基本信息 PUT 带 18 成本字段防清空）。
+- `product_category_page.dart` 三入口（新增/编辑/查看）统一改接本弹窗；删除原 `_goodsFields`/`_showGoodsEdit`/`_goodsDetailRows`/`_loadDicts`（颜色/单位改走 provider）。
+
+### 2. 颜色/单位内联新建 + legacy_id 桥接
+- **鸿沟**：货品主档存 `color_legacy_id`（老库 int），新建颜色无 legacy_id → 被下拉 `if(legacyId!=null)` 过滤、存不进。
+- **解法**：`ColorService`/`UnitService.create` 分配合成 `legacy_id = max+1`（repo `findMaxLegacyId`）+ 名称查重
+  （`existsByNameIgnoreCaseAndDeletedFalse`→409）。颜色/单位仓库 `create` 改返 `ColorDetail`/`UnitDetail`。
+- 前端：`UtenDropdownField` 加 `onAddNew`（浮层搜索下浅绿「添加」按钮）；`MasterFieldDef.onAddNew` 返新值自动选中；
+  颜色/单位字典抽 `colorDictProvider`/`unitDictProvider`，新建后 `invalidate` 全局刷新（`providers/color_unit_dict.dart`）。
+
+### 3. 组件选择改右滑窗（`component` scope）
+- `showUtenGoodsPicker` 加 scope `component`（白名单 6 分类：原材料 2113 / 半成品 2149 / 辅料 2480 / OEM成品 2304 /
+  OEM物料 2305 / OEM功能件 2460，仿 `material` 的 `_keepMaterialTree`）。BOM `_BomItemEditDialog` 内联 search 换成
+  `showUtenGoodsPicker(scope: component)`。legacyId 源 [02](02-货品分类-老库溯源.md) §3.1。
+  > ⚠️ OEM 在老库是 3 个独立根（code 都叫 OEM）；6 类集合在常量 `_componentRootLegacyIds` 可调。
+
+### 4. 组件层级添加 + 多选批量 + 信息只读
+- `MasterDataTableView` 加 `onSelectionChanged(T?)` 上抛选中行。选中组件行→「添加组件」默认作其子组件
+  （`parentGoodsId = selected.componentGoodsId`），弹窗内父级可选顶层/任一可见组件（仿部门 `initialParent`）。
+  `POST /master/goods/{parentGoodsId}/bom`。加子组件后失效化选中节点 children + 重展开（`_expandedIds`）。
+- **一个层级一次添加多个组件**：`_BomItemAddDialog` 用 `showUtenGoodsPickerMulti`（多选右滑窗，点行勾选/取消 +
+  底部「确定(N)」）批量勾选，每个用量默认 1 可改、单价取自组件，一次 POST 多条到同一父级（重复/环路 409 逐条跳过并提示）。
+  单条编辑走 `_BomItemEditDialog`（组件/父级锁定，仅用量/备注可改）。
+- 选完组件从 `GoodsListItem`/`GoodsBomItem` 自动回填 编号/名称/型号/规格/单位/颜色/材质/单价/来源 → **只读**；用量 qty + 备注 可改。
+- **下拉浮层自动避让**：`UtenDropdownField`（颜色/单位等所有表单下拉共用）打开时测量上下空间，下方不够则向上展开
+  并按可用空间收限高，避免靠近底部被裁（表头筛选/表头设置从顶部向下展开到表体，无此问题）。
+
+### 5. 成本自动汇总
+- **材料合计 `sourceE` = 后端聚合**（§四 `recalcSourceE`），前端只读显示；BOM 变动后弹窗 `_refreshDetail` 取新值。
+- 下游前端 `_recompute` 级联（`goods_cost_tab.dart`）：成品价 = sourceE + 6 项加工费；人工/损耗/厂租费 = 成品价 × 对应比率%；
+  成本价 = 成品价 + 三费；生产利润 = 成本价 × 生产利率%；出厂价 = 成本价 + 生产利润。比率 + 加工费手填，其余只读自动。
+  内部 double 不舍入（仅显示 `toStringAsFixed(2)`），空比率按 0。
+  > 公式按字段语义推导（人工/损耗/厂租以成品价为基、利润以成本价为基）。若有老系统 002.jpg 实际公式可对齐。
+
+---
+
 ## ✅ 校验
 
-- 后端 `mvn compile` 通过；前端 `flutter analyze` 0 error。
+- 后端 `mvn compile` 通过；前端 `flutter analyze` 0 error（仅剩 1 个无关 info：`material_review_dialog.dart` use_decorated_box，分支既有）。
 - Flyway V79 已在本机 PG 应用；`migrate.sh --goods-bom` 首跑对账一致（见 §三）。
 - API 冒烟：`GET /api/master/goods/{id}/bom` 未带 token 返回 401（端点已注册，非 404）。
+- **运行验收待做**（须重启后端应用颜色/单位/BOM Java 改动 + 重建前端）：自签 token 测 color 同名 409 / goods POST 返 detail /
+  bom 加组件后 goods.sourceE 聚合更新 / 造环 409；profile web 测全流程。

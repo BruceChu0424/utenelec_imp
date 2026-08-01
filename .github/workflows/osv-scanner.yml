@@ -32,7 +32,7 @@ jobs:
 
       - name: Generate transitive Maven SBOM
         working-directory: server
-        run: mvn --batch-mode --no-transfer-progress -DskipTests package
+        run: mvn --batch-mode --no-transfer-progress -DskipTests verify
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

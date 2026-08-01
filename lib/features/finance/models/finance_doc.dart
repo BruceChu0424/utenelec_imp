@@ -23,10 +23,15 @@ enum FinanceDocType {
   const FinanceDocType(this.pathSegment);
   final String pathSegment;
 
-  static FinanceDocType byPath(String seg) => FinanceDocType.values.firstWhere(
-    (e) => e.pathSegment == seg,
-    orElse: () => FinanceDocType.receipt,
-  );
+  static FinanceDocType? tryByPath(String seg) {
+    for (final type in FinanceDocType.values) {
+      if (type.pathSegment == seg) return type;
+    }
+    return null;
+  }
+
+  static FinanceDocType byPath(String seg) =>
+      tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知钱流单据路由段'));
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲（与采购/库存对齐）。

@@ -23,6 +23,7 @@ class SalesReturnQualityRepository {
     required SalesReturnQualityAction action,
     required double baseQty,
     required String reason,
+    required String idempotencyKey,
   }) async {
     final rows = await api.postList(
       '/sales/returns/$returnId/quality/$returnItemId/dispose',
@@ -30,6 +31,7 @@ class SalesReturnQualityRepository {
         'action': action.code,
         'baseQty': baseQty,
         'reason': reason.trim(),
+        'idempotencyKey': idempotencyKey,
       },
     );
     return rows.map(SalesReturnQualityItem.fromJson).toList(growable: false);

@@ -7,6 +7,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
@@ -44,11 +45,11 @@ import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * 销售退货单服务：CRUD（主+明细）+ 审核状态机（库存入库 + 双挂回写 + 立红字应收 + 结案）。
+ * 销售退货单服务：CRUD（主+明细）+ V189 质检冻结审核状态机。
  *
  * <p>审核（status 0→1）同事务内：
  * <ol>
- *   <li>逐明细 {@link StockService#recordMovement} 入库（TYPE_SALES_RETURN / DIR_IN，退货入库）</li>
+ *   <li>逐明细创建质检冻结数量和追加式收货事件；审核本身不增加可售库存</li>
  *   <li>双挂回写：sales_shipment_items.returned_qty/returned_amount += qty/amt（out_item_id 非空时）
  *       + sales_order_items.returned_qty += qty（order_item_id 非空时）+ 订货结案重算</li>
  *   <li>{@link ArApLedgerService#postArAp} 立红字应收（AR, SALES_RETURN, BStyle=18, amountOriginalLocal=负数）</li>
@@ -56,8 +57,8 @@ import java.util.UUID;
  * </ol>
  *
  * <p>红冲（1→-1）同事务反向：先 {@link ArApLedgerService#reverseArAp}（钱流校验无收款核销，否则抛
- * "此单已经存在收/付款，请先反审"，对齐老库 RAISERROR）→ 反向库存（DIR_OUT 倒回）+ 回减 returned_qty
- * + 订货结案重算 + ar_posted=false。
+ * "此单已经存在收/付款，请先反审"），再反向未处置的 V189 冻结收货。已有质检处置时拒绝整单普通红冲；
+ * 无质检行的历史已审退货仍精确反向原库存流水。两条路径都回减 returned_qty、重算订货结案并清除 ar_posted。
  *
  * <p>取代老库 S_Withdraw 触发器 TRI_SWStockItem（库存段）+ 钱流立 M_in 红字段（design 20 §〇/§4.4）。
  *
@@ -208,8 +209,8 @@ public class SalesReturnService {
     }
 
     /**
-     * 审核：status 0→1，库存入库（type=4/dir=+1）+ 双挂回写（shipment_item 与 order_item 的 returned_qty）
-     * + 立红字应收（AR, SALES_RETURN, BStyle=18, 负数）+ 订货结案重算。
+     * 审核：status 0→1，创建 V189 质检冻结（不进可售库存），双挂回写 shipment/order
+     * 的 returned_qty，立红字应收，并重算订货结案。
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_return:edit')")
@@ -229,6 +230,7 @@ public class SalesReturnService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        requireNonNegativeStoredCommercial(r, items);
         lockStoredSourceGraph(items);
         assertStoredSources(r, items, true);
         validateReturnWritebackCapacity(items, +1);
@@ -265,8 +267,8 @@ public class SalesReturnService {
     }
 
     /**
-     * 红冲：status 1→-1，先校验收款核销 → 反向库存（DIR_OUT 倒回）+ 回减 returned_qty
-     * + 订货结案重算 + ar_posted=false。
+     * 红冲：status 1→-1。未处置的 V189 冻结收货受控反向；无质检行的历史单据反向原库存流水。
+     * 已有处置时拒绝整单红冲。随后回减 returned_qty、重算订货结案并清除 ar_posted。
      */
     @Transactional
     @PreAuthorize("hasAuthority('sales_return:edit')")
@@ -277,6 +279,7 @@ public class SalesReturnService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        requireNonNegativeStoredCommercial(r, items);
         lockStoredSourceGraph(items);
         assertStoredSources(r, items, false);
         validateReturnWritebackCapacity(items, -1);
@@ -298,8 +301,8 @@ public class SalesReturnService {
             r.setArPosted(false);
         }
 
-        // 2. 反向库存（type=4 dir=-1 倒回）+ 回减 returned_qty
-        // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
+        // 2. V189 新单只反向未处置冻结；无质检行的历史单才反向原库存流水。
+        // 历史反向只翻 direction；amountLocal 传正数，StockService 内部乘 direction。
         for (SalesReturnItem it : items) {
             if (!qualityManaged) {
                 applyMovement(r, it, StockService.DIR_OUT, now, null);
@@ -880,6 +883,9 @@ public class SalesReturnService {
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (ReturnItemLine l : lines) {
+            NonNegativeCommercialSignGuard.requireRequestLine(
+                    "销售退货", l.getQty(), l.getPrice(),
+                    l.getAmountOriginal(), l.getAmountLocal(), l.getCostAmount());
             SalesReturnItem it = new SalesReturnItem();
             it.setReturnId(r.getId());
             it.setBillNo(r.getBillNo());
@@ -909,6 +915,17 @@ public class SalesReturnService {
             auto++;
         }
         return out;
+    }
+
+    private static void requireNonNegativeStoredCommercial(
+            SalesReturn salesReturn, List<SalesReturnItem> items) {
+        NonNegativeCommercialSignGuard.requireStoredTotals(
+                "销售退货", salesReturn.getTotalOriginal(), salesReturn.getTotalLocal());
+        for (SalesReturnItem item : items) {
+            NonNegativeCommercialSignGuard.requireStoredLine(
+                    "销售退货", item.getQty(), item.getPrice(), item.getAmountOriginal(),
+                    item.getAmountLocal(), item.getCostAmount());
+        }
     }
 
     private void applyTotals(SalesReturn r, List<ReturnItemDto> items) {

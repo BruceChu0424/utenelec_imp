@@ -1,9 +1,7 @@
-// 路由 → 所需权限点映射（路由守卫用）。未列出的路径 = 登录即可访问。
+// 路由 → 所需权限点映射（路由守卫用）。仅未列出的已知自助路径按登录访问。
 // 文档：docs/05-架构/全局机制.md §1.4
 //
-// 单一权限点的路径直接用 requiredPermFor()；
-// "多级权限任一满足即可"的路径（如客户资料 self/department/all）
-// 用 requiredAnyPermFor() 返回列表，任一命中即放行。
+// 路由使用 requiredAnyPermFor() 表达任一权限，使用 requiredAllPermsFor() 表达全部权限。
 import '../../shared/auth/permissions.dart';
 import 'route_names.dart';
 
@@ -121,6 +119,19 @@ List<String>? requiredAnyPermFor(String location) {
     return const [Perm.stockReportView];
   }
   if (location.startsWith('/warehouse/')) {
+    final segments = location.split('/');
+    final code = segments.length > 2 ? segments[2] : '';
+    const knownCodes = {
+      'TRANSFER',
+      'OTHER_IN',
+      'OTHER_OUT',
+      'DRAW',
+      'WDRAW',
+      'FINISHED_IN',
+      'FINISHED_OUT',
+      'CHECK',
+    };
+    if (!knownCodes.contains(code)) return const [];
     final isEdit = location.endsWith('/new') || location.endsWith('/edit');
     return [isEdit ? Perm.stockDocEdit : Perm.stockDocView];
   }
@@ -138,12 +149,7 @@ List<String>? requiredAnyPermFor(String location) {
       case 'returns':
         return [isEdit ? Perm.purchaseReturnEdit : Perm.purchaseReturnView];
     }
-    return const [
-      Perm.purchaseRequestView,
-      Perm.purchaseOrderView,
-      Perm.purchaseReceiptView,
-      Perm.purchaseReturnView,
-    ];
+    return const [];
   }
   // 通知与建议箱：与后端 employee 基础权限包保持一致；仍允许管理员单独回收。
   if (location == '/notice/publish') return const [Perm.noticePublish];
@@ -202,7 +208,10 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.salesReturnView,
     ];
   }
-  if (location == RouteName.salesReport) return const [Perm.salesReportView];
+  if (location == RouteName.salesReport ||
+      location.startsWith('${RouteName.salesReport}/')) {
+    return const [Perm.salesReportView];
+  }
   if (location == RouteName.salesScarcity) {
     return const [Perm.salesOrderReallocate];
   }
@@ -224,7 +233,7 @@ List<String>? requiredAnyPermFor(String location) {
       case 'returns':
         return [isEdit ? Perm.salesReturnEdit : Perm.salesReturnView];
     }
-    return const [Perm.salesReportView];
+    return const [];
   }
 
   // ===== 委外管理（综合营销部；V53 seed：subcontract_<...>:view/edit）=====
@@ -240,7 +249,8 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.subcontractWasteView,
     ];
   }
-  if (location == RouteName.subcontractReport) {
+  if (location == RouteName.subcontractReport ||
+      location.startsWith('${RouteName.subcontractReport}/')) {
     return const [Perm.subcontractReportView];
   }
   if (location.startsWith('/subcontract/')) {
@@ -283,7 +293,7 @@ List<String>? requiredAnyPermFor(String location) {
       case 'wastes':
         return [isEdit ? Perm.subcontractWasteEdit : Perm.subcontractWasteView];
     }
-    return const [Perm.subcontractReportView];
+    return const [];
   }
 
   // ===== 生产管理（生产部；V55 seed 细粒度）=====
@@ -366,8 +376,8 @@ List<String>? requiredAnyPermFor(String location) {
           isEdit ? Perm.financeBankTransferEdit : Perm.financeBankTransferView,
         ];
     }
-    // 其它已由上面的字面量段处理；未知 finance 子路由在此不额外声明权限。
-    return null;
+    // 未知动态段不允许任何权限命中；合法静态段已在上方显式处理。
+    return const [];
   }
 
   // 生产辅助：空调（保留旧 broad 守卫；库存 Mock 页已删除，真库存走 /stock/*）
@@ -405,9 +415,3 @@ List<String> requiredAllPermsFor(String location) {
   }
   return const [];
 }
-
-/// 返回某路径所需权限点；不需要权限返回 null。
-///
-/// 兼容旧签名：对"任一满足"的多权限路径只返回第一个（最低门槛）。
-/// 新代码请直接用 [requiredAnyPermFor]。
-String? requiredPermFor(String location) => requiredAnyPermFor(location)?.first;

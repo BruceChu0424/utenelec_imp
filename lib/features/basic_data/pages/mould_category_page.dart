@@ -606,8 +606,13 @@ class _DetailPaneState extends State<_DetailPane> {
         .read(productionWorkshopTreeProvider)
         .valueOrNull;
     return [
-      MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-      MasterFieldDef(
+      const MasterFieldDef(
+        key: 'name',
+        label: '名称',
+        required: true,
+        group: '基础',
+      ),
+      const MasterFieldDef(
         key: 'code',
         label: '编号',
         group: '基础',
@@ -615,15 +620,15 @@ class _DetailPaneState extends State<_DetailPane> {
         hint: '保存后自动生成',
       ),
       // 分类：只读显示外面选中分类名（添加模具即在当前分类下）；categoryId 走 fixedValues。
-      MasterFieldDef(
+      const MasterFieldDef(
         key: 'categoryName',
         label: '分类',
         group: '基础',
         readOnly: true,
         hint: '当前分类',
       ),
-      MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
-      MasterFieldDef(
+      const MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
+      const MasterFieldDef(
         key: 'status',
         label: '状态',
         type: MasterFieldType.select,
@@ -631,8 +636,8 @@ class _DetailPaneState extends State<_DetailPane> {
         required: true,
         group: '基础',
       ),
-      MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
-      MasterFieldDef(
+      const MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
+      const MasterFieldDef(
         key: 'tqty',
         label: '总数量',
         type: MasterFieldType.money,
@@ -647,7 +652,7 @@ class _DetailPaneState extends State<_DetailPane> {
         customBuilder: (ctx) => UtenDateField(
           label: '制造年月',
           value: _parseMstatus(ctx.initialValue),
-          onChanged: (d) => ctx.onChanged(d == null ? null : _formatYmd(d)),
+          onChanged: (date) => ctx.onChanged(_formatYmd(date)),
         ),
       ),
       // 车间：部门选择滑窗（生产部子树）；落 departmentId，后端按 id 解析 place 文本。
@@ -711,7 +716,7 @@ class _DetailPaneState extends State<_DetailPane> {
           );
         },
       ),
-      MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+      const MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
     ];
   }
 

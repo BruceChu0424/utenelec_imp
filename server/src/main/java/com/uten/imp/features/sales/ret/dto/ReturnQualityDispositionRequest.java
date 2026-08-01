@@ -13,5 +13,6 @@ public record ReturnQualityDispositionRequest(
         @NotBlank String action,
         @NotNull @DecimalMin(value = "0", inclusive = false)
         @Digits(integer = 14, fraction = 4) BigDecimal baseQty,
-        @NotBlank @Size(max = 500) String reason) {
+        @NotBlank @Size(max = 500) String reason,
+        @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
 }

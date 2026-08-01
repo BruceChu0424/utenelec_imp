@@ -119,9 +119,7 @@ class DioSuggestionRepository implements SuggestionRepository {
           replier: r['replier'] as String? ?? '',
           replierRole: r['replierRole'] as String? ?? '',
           content: r['content'] as String? ?? '',
-          repliedAt:
-              ChinaDateTime.tryParse(r['repliedAt'] as String?) ??
-              ChinaDateTime.now(),
+          repliedAt: _requiredDate(r['repliedAt'], 'replies.repliedAt'),
         ),
     ];
     return Suggestion(
@@ -132,9 +130,7 @@ class DioSuggestionRepository implements SuggestionRepository {
       title: json['title'] as String? ?? '',
       content: json['content'] as String? ?? '',
       status: _statusFrom(json['status'] as String?),
-      submittedAt:
-          ChinaDateTime.tryParse(json['submittedAt'] as String?) ??
-          ChinaDateTime.now(),
+      submittedAt: _requiredDate(json['submittedAt'], 'submittedAt'),
       isAnonymous: json['isAnonymous'] as bool? ?? false,
       likes: (json['likes'] as num?)?.toInt() ?? 0,
       likedByMe: json['likedByMe'] as bool? ?? false,
@@ -143,19 +139,32 @@ class DioSuggestionRepository implements SuggestionRepository {
     );
   }
 
+  static DateTime _requiredDate(Object? value, String field) {
+    if (value is! String || value.isEmpty) {
+      throw FormatException('Missing required suggestion date: $field');
+    }
+    final parsed = ChinaDateTime.tryParse(value);
+    if (parsed == null) {
+      throw FormatException('Invalid suggestion date for $field: $value');
+    }
+    return parsed;
+  }
+
   static SuggestionCategory _categoryFrom(String? name) => switch (name) {
+    'product' => SuggestionCategory.product,
     'process' => SuggestionCategory.process,
     'welfare' => SuggestionCategory.welfare,
     'environment' => SuggestionCategory.environment,
     'equipment' => SuggestionCategory.equipment,
     'other' => SuggestionCategory.other,
-    _ => SuggestionCategory.product,
+    _ => throw FormatException('Unknown suggestion category: $name'),
   };
 
   static SuggestionStatus _statusFrom(String? name) => switch (name) {
+    'submitted' => SuggestionStatus.submitted,
     'reviewing' => SuggestionStatus.reviewing,
     'resolved' => SuggestionStatus.resolved,
     'rejected' => SuggestionStatus.rejected,
-    _ => SuggestionStatus.submitted,
+    _ => throw FormatException('Unknown suggestion status: $name'),
   };
 }

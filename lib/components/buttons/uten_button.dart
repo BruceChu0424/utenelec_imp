@@ -1,19 +1,10 @@
-// UtenButton - 主按钮（v2 - 大厂企业后台范）
-// 文档：docs/02-组件库/UtenButton.md
-//
-// 设计原则：
-// - 主按钮：实心深绿（主题色），无边框、无阴影、无渐变
-// - 次要按钮：实心浅色背景 + 中性文字（slate）
-// - 幽灵按钮：透明背景 + 细边框 + 中性文字
-// - 危险按钮：实心红
-// - 按下时：opacity 0.7（无 scale 变换，避免 layout shift）
-// - 触摸目标 ≥44pt
-
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
-
-class UtenButton extends StatefulWidget {
+/// The shared Uten action button.
+///
+/// Uses Material interaction primitives so pointer, keyboard, focus, ripple,
+/// and accessibility behavior stay consistent across supported platforms.
+class UtenButton extends StatelessWidget {
   const UtenButton({
     super.key,
     this.onPressed,
@@ -36,177 +27,190 @@ class UtenButton extends StatefulWidget {
   final IconData? icon;
   final VoidCallback? onLongPress;
 
-  /// 禁用态（onPressed 为 null 或 loading）时点击的回调。
+  /// Called when the visually disabled button is tapped.
   ///
-  /// 不传则保持原行为（禁用时点击无反馈）；传入后禁用态仍可点击，用于
-  /// 给用户解释“为什么按钮当前不可用”（如“请先审核”），避免点不动又无提示。
-  /// 视觉上仍是 disabled 样式（灰色），传达“当前不可用”语义。
+  /// This is useful for explaining why an action is unavailable. When omitted,
+  /// a disabled or loading button remains non-interactive.
   final VoidCallback? onDisabledTap;
 
-  @override
-  State<UtenButton> createState() => _UtenButtonState();
-}
-
-class _UtenButtonState extends State<UtenButton> {
-  bool _isHovered = false;
-  bool _isPressed = false;
-
-  bool get _isEnabled => widget.onPressed != null && !widget.isLoading;
-
-  void _setHovered(bool v) {
-    if (_isHovered != v) setState(() => _isHovered = v);
-  }
-
-  void _setPressed(bool v) {
-    if (_isPressed != v) setState(() => _isPressed = v);
-  }
-
-  EdgeInsetsGeometry get _padding => switch (widget.size) {
-    UtenButtonSize.small => const EdgeInsets.symmetric(
-      horizontal: 14,
-      vertical: 8,
-    ),
-    UtenButtonSize.medium => const EdgeInsets.symmetric(
-      horizontal: 18,
-      vertical: 12,
-    ),
-    UtenButtonSize.large => const EdgeInsets.symmetric(
-      horizontal: 22,
-      vertical: 16,
-    ),
+  double get _minimumExtent => switch (size) {
+    UtenButtonSize.small || UtenButtonSize.medium => 44,
+    UtenButtonSize.large => 52,
   };
 
-  double get _iconSize => widget.size == UtenButtonSize.small
-      ? 16
-      : (widget.size == UtenButtonSize.large ? 20 : 18);
+  EdgeInsetsGeometry get _padding => switch (size) {
+    UtenButtonSize.small => const EdgeInsets.symmetric(horizontal: 14),
+    UtenButtonSize.medium => const EdgeInsets.symmetric(horizontal: 18),
+    UtenButtonSize.large => const EdgeInsets.symmetric(horizontal: 22),
+  };
+
+  double get _iconSize => switch (size) {
+    UtenButtonSize.small => 16,
+    UtenButtonSize.medium => 18,
+    UtenButtonSize.large => 20,
+  };
 
   TextStyle get _textStyle => TextStyle(
-    fontSize: widget.size == UtenButtonSize.small
-        ? 13
-        : (widget.size == UtenButtonSize.large ? 16 : 14),
+    fontSize: switch (size) {
+      UtenButtonSize.small => 13,
+      UtenButtonSize.medium => 14,
+      UtenButtonSize.large => 16,
+    },
     fontWeight: FontWeight.w600,
     height: 1.2,
   );
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final enabled = onPressed != null && !isLoading;
+    final effectiveOnTap = enabled ? onPressed : onDisabledTap;
+    final (enabledBackground, enabledForeground, enabledBorder) =
+        _resolveColors(colorScheme);
 
-    final (bg, fg, borderColor) = _resolveColors(isDark);
-    final disabledBg = isDark
-        ? UtenColors.darkSurfaceHigh
-        : UtenColors.slate200;
-    final disabledFg = isDark
-        ? UtenColors.darkTextTertiary
-        : UtenColors.slate400;
+    final background = enabled
+        ? enabledBackground
+        : colorScheme.onSurface.withValues(alpha: 0.12);
+    final foreground = enabled
+        ? enabledForeground
+        : colorScheme.onSurface.withValues(alpha: 0.38);
+    final border = enabled
+        ? enabledBorder
+        : enabledBorder == null
+        ? null
+        : colorScheme.outlineVariant;
+    final radius = BorderRadius.circular(10);
+    final shape = RoundedRectangleBorder(
+      borderRadius: radius,
+      side: border == null ? BorderSide.none : BorderSide(color: border),
+    );
 
-    // 按下/悬停反馈：仅改透明度，无 layout 变换
-    double opacity = 1.0;
-    if (!_isEnabled) {
-      opacity = 1.0; // disabled 走 disabledBg/disabledFg
-    } else if (_isPressed) {
-      opacity = 0.7;
-    } else if (_isHovered && borderColor == null) {
-      // 实心按钮 hover 时用深一档色（仅主按钮/危险按钮）
-      opacity = 0.92;
-    }
-
-    return MouseRegion(
-      onEnter: (_) => _setHovered(true),
-      onExit: (_) => _setHovered(false),
-      child: GestureDetector(
-        onTapDown: (_) => _setPressed(true),
-        onTapUp: (_) => _setPressed(false),
-        onTapCancel: () => _setPressed(false),
-        onTap: _isEnabled ? widget.onPressed : widget.onDisabledTap,
-        onLongPress: _isEnabled ? widget.onLongPress : null,
-        child: Container(
-          constraints: widget.isExpanded
-              ? const BoxConstraints(minWidth: double.infinity)
-              : null,
-          padding: _padding,
-          decoration: BoxDecoration(
-            color: _isEnabled ? bg : disabledBg,
-            borderRadius: BorderRadius.circular(10),
-            border: borderColor != null ? Border.all(color: borderColor) : null,
-          ),
-          foregroundDecoration: _isEnabled
-              ? BoxDecoration(
-                  color: Colors.white.withValues(
-                    alpha: opacity - 1.0 + 0.0001 <= -0.001 ? 0 : 0,
-                  ),
-                )
-              : null,
-          child: Opacity(
-            opacity: _isEnabled ? opacity : 1.0,
-            child: DefaultTextStyle.merge(
-              style: _textStyle.copyWith(color: _isEnabled ? fg : disabledFg),
-              child: Row(
-                mainAxisSize: widget.isExpanded
-                    ? MainAxisSize.max
-                    : MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (widget.isLoading)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: SizedBox(
-                        width: _iconSize,
-                        height: _iconSize,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(
-                            _isEnabled ? fg : disabledFg,
+    Widget button = MergeSemantics(
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        onTap: effectiveOnTap,
+        onLongPress: enabled ? onLongPress : null,
+        child: Material(
+          color: background,
+          shape: shape,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: effectiveOnTap,
+            onLongPress: enabled
+                ? onLongPress
+                : effectiveOnTap == null
+                ? null
+                : _ignoreLongPress,
+            canRequestFocus: effectiveOnTap != null,
+            excludeFromSemantics: true,
+            customBorder: shape,
+            overlayColor: WidgetStateProperty.resolveWith(
+              (states) => _resolveStateLayer(
+                states: states,
+                foreground: foreground,
+                enabled: enabled,
+                interactive: effectiveOnTap != null,
+              ),
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minWidth: _minimumExtent,
+                minHeight: _minimumExtent,
+              ),
+              child: Padding(
+                padding: _padding,
+                child: DefaultTextStyle.merge(
+                  style: _textStyle.copyWith(color: foreground),
+                  child: Row(
+                    mainAxisSize: isExpanded
+                        ? MainAxisSize.max
+                        : MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isLoading)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ExcludeSemantics(
+                            child: SizedBox(
+                              width: _iconSize,
+                              height: _iconSize,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: foreground,
+                              ),
+                            ),
                           ),
+                        )
+                      else if (icon != null)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Icon(icon, size: _iconSize, color: foreground),
                         ),
-                      ),
-                    )
-                  else if (widget.icon != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Icon(
-                        widget.icon,
-                        size: _iconSize,
-                        color: _isEnabled ? fg : disabledFg,
-                      ),
-                    ),
-                  widget.child,
-                ],
+                      child,
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
     );
+
+    if (isExpanded) {
+      button = SizedBox(width: double.infinity, child: button);
+    }
+    return button;
   }
 
-  /// 返回 (背景色, 文字色, 边框色)
-  (Color, Color, Color?) _resolveColors(bool isDark) {
-    return switch (widget.type) {
-      // 主按钮：浅色 / 深色都用 teal500（青绿），统一品牌。
-      // 背景是品牌绿，文字/icon 统一用白色，保证品牌色背景下的视觉一致性。
-      UtenButtonType.primary => (UtenColors.teal500, Colors.white, null),
-      // 次要按钮：浅灰背景 + 深文字（类似 macOS / Linear 的次按钮）
-      UtenButtonType.secondary =>
-        isDark
-            ? (UtenColors.darkSurfaceLow, UtenColors.darkTextPrimary, null)
-            : (UtenColors.surfaceMid, UtenColors.textPrimary, null),
-      // 品牌色调实心按钮：深绿底（teal700）+ 白字。
-      // 原为浅青绿底深绿字，现场反馈"按钮看不见"，统一改为深绿实心白字（2026-07）。
-      UtenButtonType.tonal =>
-        isDark
-            ? (UtenColors.teal600, Colors.white, null)
-            : (UtenColors.teal700, Colors.white, null),
-      // 幽灵按钮：透明 + 细边框
+  (Color, Color, Color?) _resolveColors(ColorScheme colorScheme) {
+    return switch (type) {
+      UtenButtonType.primary => (
+        colorScheme.primary,
+        colorScheme.onPrimary,
+        null,
+      ),
+      UtenButtonType.secondary => (
+        colorScheme.surfaceContainerHigh,
+        colorScheme.onSurface,
+        null,
+      ),
+      UtenButtonType.tonal => (
+        colorScheme.primaryContainer,
+        colorScheme.onPrimaryContainer,
+        null,
+      ),
       UtenButtonType.ghost => (
         Colors.transparent,
-        isDark ? UtenColors.darkTextPrimary : UtenColors.textPrimary,
-        isDark ? UtenColors.darkBorderStrong : UtenColors.borderStrong,
+        colorScheme.onSurface,
+        colorScheme.outline,
       ),
-      // 危险按钮：实心红
-      UtenButtonType.danger => (UtenColors.error, Colors.white, null),
+      UtenButtonType.danger => (colorScheme.error, colorScheme.onError, null),
     };
+  }
+
+  void _ignoreLongPress() {}
+
+  Color? _resolveStateLayer({
+    required Set<WidgetState> states,
+    required Color foreground,
+    required bool enabled,
+    required bool interactive,
+  }) {
+    if (!interactive) return null;
+
+    final disabledFactor = enabled ? 1.0 : 0.67;
+    if (states.contains(WidgetState.pressed)) {
+      return foreground.withValues(alpha: 0.12 * disabledFactor);
+    }
+    if (states.contains(WidgetState.focused)) {
+      return foreground.withValues(alpha: 0.12 * disabledFactor);
+    }
+    if (states.contains(WidgetState.hovered)) {
+      return foreground.withValues(alpha: 0.08 * disabledFactor);
+    }
+    return null;
   }
 }
 

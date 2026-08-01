@@ -28,8 +28,24 @@ VisitorApplicationStatus visitorStatusFromCode(String? code) {
     case 'cancelled':
       return VisitorApplicationStatus.cancelled;
     default:
-      return VisitorApplicationStatus.pending;
+      throw FormatException('Unknown visitor application status: $code');
   }
+}
+
+DateTime _requiredVisitorDate(Object? value, String field) {
+  if (value is! String || value.isEmpty) {
+    throw FormatException('Missing required visitor date: $field');
+  }
+  final parsed = ChinaDateTime.tryParse(value);
+  if (parsed == null) {
+    throw FormatException('Invalid visitor date for $field: $value');
+  }
+  return parsed;
+}
+
+DateTime? _optionalVisitorDate(Object? value, String field) {
+  if (value == null) return null;
+  return _requiredVisitorDate(value, field);
 }
 
 class VisitorApplication {
@@ -70,23 +86,24 @@ class VisitorApplication {
   final String? passcode;
 
   factory VisitorApplication.fromJson(Map<String, dynamic> j) {
-    DateTime parse(Object? v) => v is String && v.isNotEmpty
-        ? ChinaDateTime.tryParse(v) ?? ChinaDateTime.now()
-        : ChinaDateTime.now();
     return VisitorApplication(
       id: (j['id'] ?? '').toString(),
       visitorName: (j['visitorName'] ?? '').toString(),
       visitPurpose: (j['visitPurpose'] ?? '').toString(),
       status: visitorStatusFromCode(j['status'] as String?),
-      plannedVisitAt: parse(j['plannedVisitAt']),
-      appliedAt: parse(j['appliedAt']),
+      plannedVisitAt: _requiredVisitorDate(
+        j['plannedVisitAt'],
+        'plannedVisitAt',
+      ),
+      appliedAt: _requiredVisitorDate(j['appliedAt'], 'appliedAt'),
       company: j['company'] as String?,
       hostName: j['hostName'] as String?,
       hostDepartment: j['hostDepartment'] as String?,
-      plannedLeaveAt: j['plannedLeaveAt'] == null
-          ? null
-          : parse(j['plannedLeaveAt']),
-      approvedAt: j['approvedAt'] == null ? null : parse(j['approvedAt']),
+      plannedLeaveAt: _optionalVisitorDate(
+        j['plannedLeaveAt'],
+        'plannedLeaveAt',
+      ),
+      approvedAt: _optionalVisitorDate(j['approvedAt'], 'approvedAt'),
       hasVehicle: j['hasVehicle'] == true,
       plateNo: j['plateNo'] as String?,
       rejectReason: j['rejectReason'] as String?,
@@ -116,10 +133,7 @@ class VisitorApprovalStep {
         action: (j['action'] ?? '').toString(),
         actorType: (j['actorType'] ?? '').toString(),
         actorName: (j['actorName'] ?? '').toString(),
-        actedAt: j['actedAt'] is String && (j['actedAt'] as String).isNotEmpty
-            ? ChinaDateTime.tryParse(j['actedAt'] as String) ??
-                  ChinaDateTime.now()
-            : ChinaDateTime.now(),
+        actedAt: _requiredVisitorDate(j['actedAt'], 'actedAt'),
         comment: j['comment'] as String?,
       );
 }

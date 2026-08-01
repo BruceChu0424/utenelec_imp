@@ -153,8 +153,9 @@ public class ProductionPlanService {
     /**
      * 审核（status 0→1）。
      *
-     * <p>本期：仅置 status=1 + 重算 is_closed（CheckFulfill4 派生）。
-     * <p>【本期后置】回写 sales_order_items / 设 step_legacy_id / 填 F_ProductingItem 归未来模块。
+     * <p>锁定并校验草稿计划及销售来源，建立或复核 {@code plan_order_item_links}，
+     * 回写销售订单行的 {@code planned_qty}/{@code chain_status}，重算 {@code is_closed}，
+     * 并将排产结果写入业务 Outbox。计划审核不直接过账库存或应收应付。
      */
     @Transactional
     public PlanDetail approve(UUID id) {

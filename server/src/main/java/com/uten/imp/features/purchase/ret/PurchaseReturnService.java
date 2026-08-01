@@ -8,6 +8,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
@@ -142,6 +143,7 @@ public class PurchaseReturnService {
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        requireNonNegativeStoredCommercial(r, items);
         normalizePersistedItemUnits(items);
         sourceIntegrity.validatePurchaseReturn(
                 r.getSupplierId(),
@@ -186,8 +188,9 @@ public class PurchaseReturnService {
         PurchaseReturn r = requireReturnForUpdate(id);
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        requireNonNegativeStoredCommercial(r, items);
+        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -260,6 +263,9 @@ public class PurchaseReturnService {
         List<ReturnItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (ReturnItemLine l : lines) {
+            NonNegativeCommercialSignGuard.requireRequestLine(
+                    "采购退货", l.getQty(), l.getPrice(),
+                    l.getAmountOriginal(), l.getAmountLocal());
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
@@ -301,6 +307,17 @@ public class PurchaseReturnService {
             fallbackLineNo++;
         }
         itemRepo.saveAll(items);
+    }
+
+    private static void requireNonNegativeStoredCommercial(
+            PurchaseReturn purchaseReturn, List<PurchaseReturnItem> items) {
+        NonNegativeCommercialSignGuard.requireStoredTotals(
+                "采购退货", purchaseReturn.getTotalOriginal(), purchaseReturn.getTotalLocal());
+        for (PurchaseReturnItem item : items) {
+            NonNegativeCommercialSignGuard.requireStoredLine(
+                    "采购退货", item.getQty(), item.getPrice(),
+                    item.getAmountOriginal(), item.getAmountLocal());
+        }
     }
 
     private void applyTotals(PurchaseReturn r, List<ReturnItemDto> items) {

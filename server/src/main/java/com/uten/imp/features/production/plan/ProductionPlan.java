@@ -14,15 +14,11 @@ import java.util.UUID;
 /**
  * 生产计划单头（生产管理 · 源 F_Plan，7,235 行）。
  *
- * <p>审核状态机（design §4.1）：status 0 草稿 / 1 已审 / -1 红冲。审核（0→1）：
- * <ul>
- *   <li>重算 {@link #isClosed}（CheckFulfill4 派生，所有明细 qty - iqty ≤ 0）</li>
- *   <li>【本期后置】回写 sales_order_items 的 PQTY/LQTY/PlanNo（销售模块上线后）</li>
- *   <li>【本期后置】设 plan_items.step_legacy_id 首工序（车间模块上线后）</li>
- *   <li>【本期后置】填充 F_ProductingItem 按日产能（排产模块上线后）</li>
- * </ul>
+ * <p>状态机：status 0 草稿 / 1 已审 / -1 红冲。审核由服务层校验并建立
+ * {@code plan_order_item_links}，回写销售订单行的计划数量与业务链状态，并重算
+ * {@code is_closed}。执行分段、物料需求、报工和成品入库由各自业务表与服务维护。
  *
- * <p><b>不调</b> {@code StockService}（计划不动库存）<b>不调</b> {@code ArApLedgerService}（计划不立帐）。
+ * <p>计划头本身不直接过账库存或应收应付；红冲会在下游门禁通过后回退销售来源联动。
  *
  * <p>车间字段：老库 WorkShop varchar(250) 装数字/名字（样本 "37"/"38"），新库 {@link #departmentId}
  * UUID 能对齐才填，{@link #workshopName} 原样文本留底（待 workshop_legacy_map 回填）。

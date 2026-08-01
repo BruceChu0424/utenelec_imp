@@ -33,8 +33,8 @@ import java.util.UUID;
  * - POST   /api/sales/returns               → 新建 sales_return:edit
  * - PUT    /api/sales/returns/{id}          → 编辑（仅草稿）
  * - DELETE /api/sales/returns/{id}          → 删除
- * - POST   /api/sales/returns/{id}/approve  → 审核（库存入库 + 双挂回写 + 立红字应收 + 结案）
- * - POST   /api/sales/returns/{id}/reverse  → 红冲（先校验收款核销 → 反向）
+ * - POST   /api/sales/returns/{id}/approve  → 审核（V189 质检冻结 + 双挂回写 + 立红字应收 + 结案）
+ * - POST   /api/sales/returns/{id}/reverse  → 红冲（未处置冻结可受控反向；已处置需走补偿流程）
  */
 @RestController
 @RequestMapping("/api/sales/returns")
@@ -106,7 +106,8 @@ public class SalesReturnController {
 
     /** Releases good stock or records a controlled scrap/rework disposition. */
     @PostMapping("/{id}/quality/{returnItemId}/dispose")
-    @PreAuthorize("hasAuthority('sales_return_quality:handle')")
+    @PreAuthorize("hasAuthority('sales_return_quality:view')"
+            + " and hasAuthority('sales_return_quality:handle')")
     public List<ReturnQualityItemDto> dispose(
             @PathVariable UUID id,
             @PathVariable UUID returnItemId,

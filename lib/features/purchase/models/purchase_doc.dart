@@ -16,11 +16,15 @@ enum PurchaseDocType {
   const PurchaseDocType(this.pathSegment);
   final String pathSegment;
 
+  static PurchaseDocType? tryByPath(String seg) {
+    for (final type in PurchaseDocType.values) {
+      if (type.pathSegment == seg) return type;
+    }
+    return null;
+  }
+
   static PurchaseDocType byPath(String seg) =>
-      PurchaseDocType.values.firstWhere(
-        (e) => e.pathSegment == seg,
-        orElse: () => PurchaseDocType.request,
-      );
+      tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知采购单据路由段'));
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲。

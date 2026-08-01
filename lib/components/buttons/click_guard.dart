@@ -125,6 +125,12 @@ class _UtenActionButtonState extends State<UtenActionButton> {
     ),
   };
 
+  double get _minimumHeight => switch (widget.size) {
+    UtenActionButtonSize.small => 44,
+    UtenActionButtonSize.medium => 44,
+    UtenActionButtonSize.large => 52,
+  };
+
   double get _iconSize => widget.size == UtenActionButtonSize.small
       ? 14
       : (widget.size == UtenActionButtonSize.large ? 18 : 16);
@@ -163,9 +169,10 @@ class _UtenActionButtonState extends State<UtenActionButton> {
           onTap: enabled ? _runAction : null,
           borderRadius: radius,
           child: Container(
-            constraints: widget.isExpanded
-                ? const BoxConstraints(minWidth: double.infinity)
-                : null,
+            constraints: BoxConstraints(
+              minWidth: widget.isExpanded ? double.infinity : _minimumHeight,
+              minHeight: _minimumHeight,
+            ),
             padding: _padding,
             child: Row(
               mainAxisSize: widget.isExpanded
@@ -212,10 +219,11 @@ class _UtenActionButtonState extends State<UtenActionButton> {
 
   (Color, Color, Color?) _resolveColors(ThemeData theme, bool isDark) {
     return switch (widget.type) {
-      UtenActionButtonType.primary =>
-        isDark
-            ? (UtenColors.teal500, UtenColors.slate900, null)
-            : (theme.colorScheme.primary, Colors.white, null),
+      UtenActionButtonType.primary => (
+        theme.colorScheme.primary,
+        theme.colorScheme.onPrimary,
+        null,
+      ),
       UtenActionButtonType.secondary =>
         isDark
             ? (UtenColors.darkSurfaceLow, UtenColors.slate200, null)
@@ -227,7 +235,7 @@ class _UtenActionButtonState extends State<UtenActionButton> {
       ),
       UtenActionButtonType.danger => (
         theme.colorScheme.error,
-        Colors.white,
+        theme.colorScheme.onError,
         null,
       ),
     };

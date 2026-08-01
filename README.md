@@ -23,13 +23,13 @@
 > [生产页面文档](docs/03-页面/生产执行分段与报工页.md)与定向 Widget 回归；该证据不等于登录态人工 UAT，
 > 也不改变 **NO-GO** 结论。
 > 下表“业务链设计”和“批量发货开单”保留 V90–V100 的历史实施快照，其中“出货红冲后回库”的旧回归只说明当时
-> 兼容链。当前权威规则以 V187–V189 行及最新 SOP 为准：所有 `SHIPPED` 禁止普通红冲，纠错走
+> 兼容链。当前权威规则以 V187–V190 行及最新 SOP 为准：所有 `SHIPPED` 禁止普通红冲，纠错走
 > 销售退货质量冻结；历史未激活订单不得直接新建新流程出货。
-> 当前候选已在隔离 Testcontainers PostgreSQL 16.14 从空库成功执行/校验 171 个 Flyway 迁移至 V190，
-> 18 组真实 PG 测试 54/54、定向 JVM 56/56、Java 默认套件 589 项（0 failure/error、54 skipped）和
-> Flutter 全量 278/278 通过。
-> 本次链路 Dart 定向分析为 0；全仓分析另有 10 条并行基础资料 warning/info、无 error。上述证据不是
-> 公司目标库升级，不包含历史全量对账、真实账号岗位 UAT、压测、备份恢复或发布签字，因此不改变 NO-GO。
+> 最终候选在隔离 Testcontainers PostgreSQL 16.14 从空库执行并校验 171 个 Flyway 迁移至 V190；
+> 19 个真实 PG 类 58/58、Java 默认套件 611 项（0 failure/error、58 skipped）、Flutter 全量 306/306
+> 和 analyze 0 issue。Web JavaScript、Windows x64 Release 及后端 JAR 均构建成功；Wasm 仍有
+> `flutter_secure_storage_web` 兼容提示。上述证据不是公司目标库升级，不包含历史全量对账、真实账号岗位 UAT、
+> 压测、备份恢复、制品签名或发布签字，因此不改变 NO-GO。
 > 主要用户位于中国大陆时，还必须执行
 > [中国大陆部署与兼容性](docs/99-项目治理/中国大陆部署与兼容性.md)中的同源资源、北京时间、
 > 三网/NAT、短信、备案、个人信息和数据地域门禁。
@@ -84,13 +84,13 @@
 | **业务联动 MRP-lite** | 生产计划一键生成三类下游单：①采购申请（BOM 展开扣库存/在途=净需求）②领料单（BOM 毛需求）③成品入库单（排产量−已入库量）；联动表防重复（mrp_generations V87 + plan_draw_links V88，按单据类型独立）；前端计划详情 MRP 面板；端到端验证（SJ25070094→CS26070029/SL26070263，SJ24030103→CR26070001，重复生成均 400）（[37](docs/数据迁移/37-业务联动-MRP与并发加固.md)） | ✅ 完成 |
 | **多账号并发加固** | 25 个单据 Service / 40 个审核入口用头行锁防同单重入；跨单共享资源补库存 goods+color、AR/AP ledger、销售排产行、生产报工行锁及 V142/V144 数据库兜底（[37 §三](docs/数据迁移/37-业务联动-MRP与并发加固.md)） | 🟡 PostgreSQL 16 空库 128 个迁移到 V147，库存真实双连接锁 2/2、银行转账 2/2、来源链 6/6；其余交易并发矩阵、手工无来源策略确认及历史异常治理仍见生产报告 P0-13 |
 | **审计中心与保留策略** | 指定核查人员以独立个人 `audit_log:view` 只读查看（超管固有全权限）；默认最近七天“用户操作 + 写操作”，支持关键字、对象类型/ID、来源、Request ID、操作类型和用户/系统范围，列表/统计/导出共享 `snapshotId` 高水位边界（不是跨请求 MVCC）。四个主档快捷对象同时覆盖数据库变化与失败/回滚 request 尝试；历史软删除按删除/高风险解释。系统/迁移记录不会因默认筛选而删除，仍受统一留存策略约束；Request ID 串联请求与 DB 变化。V183 最终已给 9 张资产/待摊新表显式触发器并自带 sweep；V184 独立后置强校验触发器完整契约，V185 加固软删除语义，并脱敏迁移列明的原因备注类敏感文本与大型嵌套快照，迁移生效前历史不补造。导出首次高水位取得前禁用，且再需 `audit_log:export` 与密码加密 Excel；在线期默认 6 月、冷归档追加 30 月，每天 03:17 先归档再按期删除（[页面](docs/03-页面/审计日志页.md) · [运维](docs/数据迁移/38-运维-审计与日志保留.md) · [2026-08-01 复核](docs/99-项目治理/2026-08-01-审计可见性修复与复核报告.md)） | 🟡 货品/分类真实操作已确认存在 request + database 记录，可见性、V184/V185 源码已加固；目标 PostgreSQL 迁移/触发器矩阵、全量回归、生产容量、边缘日志联查、备份恢复、连续失败/磁盘告警与六端真机证据待验收 |
-| **业务链设计** | 销售订货→生产→仓库发货全链路 SOP（6 纠正/9 补充，[SOP](docs/07-业务链路/01-销售订货到发货全链路-SOP.md)）+ V90 DDL：订单有效预留台账 `stock_reservations`、计划×订单多对多 `plan_order_item_links`、订单行链路四数量 + chain_status、`v_stock_available` 统一可用量视图、价格脱敏/全员视角权限点（[设计](docs/07-业务链路/02-数据库设计-V90-预留台账与计划订单联动.md)）；Service 四闭环：①订货审核=库存检查+订单有效预留（减少 ATP，不扣在手、不等于拣货）、红冲=对称释放+三挡拦截 ②出货审核=超发硬校验+FIFO 消耗预留+改绑出货仓、红冲=货回库重新挂预留 ③排产=links+planned_qty 回写+防超排+BOM 缺料标 3、计划红冲=links 软删+回退 ④成品入库=iqty 分摊回写（修复从未回写缺口）+入库即补预留+produced/reserved 回写、红冲=按源单释放（已发货拒绝）；列表 DTO 加 delayWarning 派生。编译 736 文件通过；V90 开发库实跑+事务内冒烟全绿（探针用后已删）；订单归属隔离（V91 owner_employee_id + sales:view:all + 变更守卫 assertOwnable + create 自动归属）+ 工作台统计接口 `/api/sales/orders/stats`（待生产/生产中/待发货/本月完成，同数据范围）+ chain 组筛选 + Flutter 订货工作台（4 统计卡点卡钻取、交货列 ⚠ 延期标红、详情行 可发/已排/已产+链路状态标签，analyze 零警告）；生产调度工作台（`/api/production/schedule/pending` 待排产交货升序+urgent 标红 + `/merge-plan` 同货合并行+预建 links+防超排校验 + Flutter `/production/schedule` 勾选改量/开工完工日期/车间负责人/生成草稿跳详情，排产审核分预建 links 与 1:1 建行两路，analyze 零问题）；报工段（日报审核=planNo+货品解析计划行+超报校验+fqty/links.produced 回写+行状态 3/4→5+有仓库自动生成成品入库单草稿接入库链、is_final 完结缺额=capped 封顶留痕 V95+自动生成补产计划 links source=1、红冲全对称含生成物草稿软删/已审拒绝，Flutter 日报编辑页「完结」勾选列；V90/V91/V95 开发库实跑）；出货驳回（V96 rejected+reject_reason+`sales_shipment:reject` 权限 PMC/销售：草稿出货单驳回→releaseForOrderItem FIFO 部分释放预留→订单行回退 7/4/2、缺口自动回调度待排产列表，驳回单草稿终态只可删除重开，Flutter 详情页驳回对话框+已驳回状态+驳回原因展示，V96 开发库实跑）；订单改量/取消（V100：改量=下限已发净量硬校验+增量重走预留+减量新→旧回退排产分摊、取消=全释放预留含已产成品回通用库存+断 links 留痕+chain=-1、已发货拒绝整单取消、涉及已排产需 `sales_order:change_planned`（仅生产部，权限点代替审批流）、中止位收口=已审中止即取消/恢复即重跑预留，Flutter 详情页改量对话框+取消订单按钮，V100 开发库实跑）；**8 类自动通知接入**（`ChainNoticeService`：afterCommit + REQUIRES_NEW 独立事务旁路发送，逐接收人异常隔离主事务零影响，接收人=订单归属销售 owner→seller→活跃账号、采购/调度按 buyer/planner 角色广播；排产/完工/部分完工/补产/发货/驳回/取消确认 + `DeliveryDueWarningScheduler` 每日 08:23 延期预警〔chain>0 过滤历史迁移单防刷屏 + notices 当日去重〕；6 类 API 实测落库，自检清单端到端复测通过：建单审核→出货→红冲出货→红冲订货预留零残留库存复原） | 🟡 既有销售成品主链源码已接通；生产原料 V1、历史数据、权限和生产验收以本表下一行及复核报告为准 |
+| **业务链设计** | V90–V100 历史销售订货→生产→仓库发货切片 SOP（6 纠正/9 补充，[SOP](docs/07-业务链路/01-销售订货到发货全链路-SOP.md)）+ V90 DDL：订单有效预留台账 `stock_reservations`、计划×订单多对多 `plan_order_item_links`、订单行链路四数量 + chain_status、`v_stock_available` 统一可用量视图、价格脱敏/全员视角权限点（[设计](docs/07-业务链路/02-数据库设计-V90-预留台账与计划订单联动.md)）；Service 四闭环：①订货审核=库存检查+订单有效预留（减少 ATP，不扣在手、不等于拣货）、红冲=对称释放+三挡拦截 ②[V90 历史]出货审核=超发硬校验+FIFO 消耗预留+改绑出货仓、旧红冲重挂；当前所有 SHIPPED 普通红冲拒绝 ③排产=links+planned_qty 回写+防超排+BOM 缺料标 3、计划红冲=links 软删+回退 ④成品入库=iqty 分摊回写（修复从未回写缺口）+入库即补预留+produced/reserved 回写、红冲=按源单释放（已发货拒绝）；列表 DTO 加 delayWarning 派生。编译 736 文件通过；V90 开发库实跑+事务内冒烟全绿（探针用后已删）；订单归属隔离（V91 owner_employee_id + sales:view:all + 变更守卫 assertOwnable + create 自动归属）+ 工作台统计接口 `/api/sales/orders/stats`（待生产/生产中/待发货/本月完成，同数据范围）+ chain 组筛选 + Flutter 订货工作台（4 统计卡点卡钻取、交货列 ⚠ 延期标红、详情行 可发/已排/已产+链路状态标签，analyze 零警告）；生产调度工作台（`/api/production/schedule/pending` 待排产交货升序+urgent 标红 + `/merge-plan` 同货合并行+预建 links+防超排校验 + Flutter `/production/schedule` 勾选改量/开工完工日期/车间负责人/生成草稿跳详情，排产审核分预建 links 与 1:1 建行两路，analyze 零问题）；报工段（日报审核=planNo+货品解析计划行+超报校验+fqty/links.produced 回写+行状态 3/4→5+有仓库自动生成成品入库单草稿接入库链、is_final 完结缺额=capped 封顶留痕 V95+自动生成补产计划 links source=1、红冲全对称含生成物草稿软删/已审拒绝，Flutter 日报编辑页「完结」勾选列；V90/V91/V95 开发库实跑）；出货驳回（V96 rejected+reject_reason+`sales_shipment:reject` 权限 PMC/销售：草稿出货单驳回→releaseForOrderItem FIFO 部分释放预留→订单行回退 7/4/2、缺口回计划需求池重新选路，驳回单草稿终态只可删除重开，Flutter 详情页驳回对话框+已驳回状态+驳回原因展示，V96 开发库实跑）；订单改量/取消（V100：改量=下限已发净量硬校验+增量重走预留+减量新→旧回退排产分摊；取消仅在无发货、无排产/在产/完工关联时释放预留并置中止，存在任一生产关联即 fail-closed 冲突，必须先从生产、领退料和成品预留链完成受控反向，`sales_order:change_planned` 不能越过该门禁；中止恢复才重跑预留；Flutter 详情页有改量与取消入口，最终动作仍服从服务端门禁）；**8 类自动通知接入**（`ChainNoticeService`：afterCommit + REQUIRES_NEW 独立事务旁路发送，逐接收人异常隔离主事务零影响，接收人=订单归属销售 owner→seller→活跃账号、采购/调度按 buyer/planner 角色广播；排产/完工/部分完工/补产/发货/驳回/取消确认 + `DeliveryDueWarningScheduler` 每日 08:23 延期预警〔chain>0 过滤历史迁移单防刷屏 + notices 当日去重〕；6 类 API 实测落库，[V90 历史]自检曾复测建单→出货→旧红冲；当前 SHIPPED 红冲必须拒绝） | 🟡 既有销售成品主链源码已接通；生产原料 V1、历史数据、权限和生产验收以本表下一行及复核报告为准 |
 | **生产履约 V1（V150–V164）** | 已落源码：统一 `stock_reservations` 订单有效预留口径（减 ATP、不扣在手）与 `production_material_demands`/`production_material_supply_pegs` 履约账、可靠 `business_outbox`、READY/WAITING 完整套料拆段、V157 `execution_segment_sales_allocations` 执行段→销售订单行精确分摊与销售进度、采购申请→订单→收货、委外申请→订单→回厂→整套唤醒、精确领料/良品退料/清料、执行段派工/开工/分批报工/成品入库/结案、完成红冲、仓库/采购/委外同源任务工作台，以及 V160 待料需求的临时自由库存覆盖；V161 将生产物料事件/posting 固化为 append-only 台账，V162 锁定采购/委外来源、需求、peg、转换与回厂来源一致性，V163 补齐采购收货→订单行→需求→占用→DRAW→执行段追溯，V164 禁止通用库存 CRUD 改写生产关联单据但保留专用审核/出库/反向；当前采购/委外收货回写可促成 WAITING→READY，但完整 IQC 待检隔离仍缺；发生 READY 状态迁移后，按“执行段+收货”去重写 Outbox，并按 `SUB_PLAN`/`DEPT_PROD` 部门权限树投递；排产页 BOM 默认展开，取消先选车间，右滑/底部面板可编辑执行分段；系统管理审计支持查看脱敏的 before/after 详情（[需求与现状](docs/07-业务链路/04-生产订单排产与执行全链路需求.md) · [实现复核](docs/99-项目治理/2026-07-31-生产全链路实现与复核报告.md)） | 🟡 历史组合回归：后端 343 tests、0 failure/error、48 skipped（PG 默认跳过）；真实 PostgreSQL 16 classes / 44 tests、0 failure/error/skip，空库 146 个迁移到 V165；Flutter 157/157、analyze no issues、Web Release 构建成功。MAKE 子计划已登记进父包生命周期并禁止通用入口越级删/红冲，但父需求↔子计划↔成品入库数量/反向台账仍缺。**仍为 NO-GO**：IQC、MAKE 父需求回供、V187 目标库迁移/岗位 UAT与完整 WMS、历史数据迁移/对账、人工 UAT、压测运维、有限产能、替代料、质量/返工补产、主动补货和委外清账等未过门禁 |
 | **报价单→订货单转入** | 已审报价一键转订货草稿（`POST /quotes/{id}/convert` + `SalesQuoteService.convertToOrder`：行带入货品/颜色/单位/数量/价格 + 主表与行 sourceDocNo=报价单号；订货详情回联 `sourceQuoteId` + 行级 `quotePrice` 价格留痕比对〔detail() fillQuoteTrace 按 lineNo 匹配〕；转入单为普通草稿可直接走审核→订单有效预留链；Flutter 报价详情「转订货单」按钮 + 订单列表「从报价引入」弹窗选已审报价 + 明细行报价单价对比偏离标橙；草稿报价转入拦截 400，E2E 实测通过，analyze 零新增） | ✅ 完成（SOP §三1） |
 | **订单价格脱敏** | `sales_order:price:view` 按权限点脱敏落地（`SalesPriceMasker`，V30 `employee:pii:view` 同型）：订单列表 totalLocal / 详情主表金额族+订金+明细价格族（数量族保留——生产/仓库看出欠不看钱）置 null + `priceMasked` 标记；订货明细报表+加密导出同口径（totalAmount/machiningPrice/price/discount/amount）+ 待交货 pending_amt；Flutter 列表合计/详情订金合计/明细单价金额渲染 ***；双账号（有/无权限点）实测列表/详情/报表三表面一致，analyze 零新增 | ✅ 完成（SOP §三8） |
 | **批量发货开单** | 可发行查询 + 同客户合并开单（`GET /api/sales/orders/shippable-lines`：已审在途单 reserved>0 行，归属隔离同订单列表口径；`POST /api/sales/shipments/batch`：按客户分组合并出货草稿，逐行校验可发≤预留/归属/在途态，行带 orderItemId+sourceDocNo+unitRate/price 带入，审核走既有超发硬校验+FIFO 消耗预留链；Flutter 订单列表「批量发货」右滑面板〔840，与引入面板同款〕勾选+改本次数量+全选+选仓，开单后跳出货列表；**顺带修复**：订货红冲/取消消耗守卫改净发货量判定〔Σ消耗−Σ出货红冲重挂行>0 才拒绝〕，修复"部分发货→红冲出货→红冲订货"被历史部分消耗行误拦，真实场景复现并验证；实测 3 单 2 客户合并 2 张出货单/超预留 400/审核回写 chain 8·9 正确，analyze 零新增） | ✅ 完成（SOP §一9） |
 | **订货工作台可发货置顶** | 订单列表 `sort=shippable` 专用排序（Criteria 子查询 Σ行预留>0 排前 + 交货日升序〔临近在前〕+ 开单日期倒序，此时忽略列排序；明细实体未映射 is_deleted 与 chain 钻取子查询同口径）+ Flutter 筛选区「可发货置顶」开关 Chip；三单对照实测（零库存早交 vs 两笔有预留晚交）权重>日期、组内交货日升序正确，analyze 零新增 | ✅ 完成（工作台小项） |
-| **销售现货预留·生命周期+稀缺仲裁（V178）** | 交期驱动持有提醒默认 notify-only、不自动释放；稀缺由有权限主管查看影响后手工让单，不按订单金额自动抢占。当前 `globalAvailableBase` 为 `Σ GREATEST(仓余额−安全库存,0)−生效预留`；部分交接拆出仓级消费、剩余继续全局（[设计](docs/07-业务链路/05-销售现货预留生命周期与稀缺仲裁.md)） | 🟡 当前候选已纳入隔离 PostgreSQL V190/真实 PG 54/54、Java 与 Flutter 全量回归；公司目标库迁移、历史对账和岗位 UAT仍未完成 |
+| **销售现货预留·生命周期+稀缺仲裁（V178）** | 交期驱动持有提醒默认 notify-only、不自动释放；稀缺由有权限主管查看影响后手工让单，不按订单金额自动抢占。当前 `globalAvailableBase` 为 `Σ GREATEST(仓余额−安全库存,0)−生效预留`；部分交接拆出仓级消费、剩余继续全局（[设计](docs/07-业务链路/05-销售现货预留生命周期与稀缺仲裁.md)） | 🟡 最终候选已纳入隔离 PostgreSQL V190/真实 PG 58/58、Java 611 项与 Flutter 306 项全量回归；公司目标库迁移、历史对账和岗位 UAT仍未完成 |
 | **销售发运、仓库事件与退货冻结（V187–V189）** | 三种发运策略；订单原币额=`qty×price`、本币额=原币额×汇率（4 位），出货按来源比例计额，客户端金额/成本非会计事实；财务已审先反审才可变。仓库状态写 V188 append-only 事件；所有 `SHIPPED` 禁普通红冲。V189 新退货审核只进冻结（[SOP](docs/07-业务链路/01-销售订货到发货全链路-SOP.md) · [退货](docs/07-业务链路/06-销售退货质检冻结与处置.md)） | 🟡 源码与当前候选空库/自动化证据已落；公司目标 PostgreSQL、历史对账和岗位 UAT未完成。客户退款/换货/补发/维修决策与处置级复核红冲/补偿命令、完整 WMS/RMA/QMS仍为 NO-GO |
 | **历史销售链激活门禁** | V90 `chain_status=0` 且无有效预留的旧未结订单不能新建 V187 出货；须逐订单行对账库存、历史已发和旧排产后显式激活。当前没有自动批量激活，禁止伪造历史预留；只有迁移前已存在的 `LEGACY_PENDING` 出货草稿保留兼容审核 | 🔴 目标库历史逐单对账、激活方案和岗位 UAT未完成 |
 | **履约工作台权限与可操作性** | 聚合行按 `department+actionDocType` 精确映射目标 view/edit；无权时服务端清空目标元数据；采购批量转单同时要求申请 view+订单 edit；无真实动作的仓库/委外行不再渲染假按钮；生产执行分段与真实子计划点击均打开正确对象，无权深链进入拒绝页 | 🟡 单元/Widget 定向证据已落；真实多账号 HTTP/浏览器对象范围 UAT未完成 |
@@ -241,12 +241,15 @@ dart format .
 ```
 
 > Flutter SDK 安装见 https://docs.flutter.dev/get-started/install
-> 本轮 Flutter 3.44.2 本地门禁已重跑：424 个 Dart 文件格式无变化、`flutter analyze --no-pub`
-> 0 issue、`flutter test --no-pub` 157/157；带 `--no-web-resources-cdn` 的 Web Release 用时
-> 92.766 秒成功。严格 CSP 下桌面与移动视口浏览器验证均无 console/CSP/font/API 错误，CanvasKit
-> 与 724 个版本钉死的字体 fallback 分片均从同源按需加载。Android Release 仍无通过证据：签名、
-> INTERNET、禁明文和禁备份策略已加固，但本机 Android Debug 构建在 SDK 自动安装
-> Build-Tools 36 时卡住且临时产物为 0 B，已安全终止，属于构建环境门禁。详见
+> 2026-08-01 最终候选工程门禁：Flutter 3.44.2 / Dart 3.12.2 的 `flutter analyze` 为 0 issue，
+> `flutter test` 306/306；Web JavaScript Release 与 Windows x64 Release 均成功。Web 的 Wasm dry-run
+> 因 `flutter_secure_storage_web` 使用 `dart:html/js_util` 给出兼容提示，不能据此宣称 Wasm 已支持。
+> 后端 Java 21.0.11 / Maven 3.9.16 默认套件 611 项（0 failure/error，58 skipped），另在
+> PostgreSQL 16.14 Testcontainers 中执行 19 类 58/58 项（0 failure/error/skip），Flyway 验证
+> 171 个迁移并到达 V190；后端 Release JAR 也已成功生成。这些均是工程证据，不替代真实账号 UAT、
+> 公司目标库 V181→V190 演练或生产放行。Android Release 仍无通过证据：签名、
+> INTERNET、禁明文和禁备份策略虽已加固，但本机 Android Debug 构建曾在 SDK 自动安装
+> Build-Tools 36 时卡住且临时产物为 0 B，已安全终止，仍属于构建环境门禁。详见
 > [多端发布与签名](docs/99-项目治理/多端发布与签名.md)。
 >
 > 本地工具链必须通过 `PATH` 或 `FLUTTER_HOME` 配置满足 Flutter 3.44.2 / Dart 3.12.2；

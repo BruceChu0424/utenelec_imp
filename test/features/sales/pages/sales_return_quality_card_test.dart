@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
@@ -157,11 +158,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('return-quality-submit')));
     await tester.pumpAndSettle();
 
-    expect(api.disposeBody, {
-      'action': 'GOOD_RELEASE',
-      'baseQty': 2.5,
-      'reason': 'IQC-20260801 合格',
-    });
+    expect(api.disposeBody, containsPair('action', 'GOOD_RELEASE'));
+    expect(api.disposeBody, containsPair('baseQty', 2.5));
+    expect(api.disposeBody, containsPair('reason', 'IQC-20260801 合格'));
+    expect(
+      api.disposeBody?['idempotencyKey'],
+      matches(
+        RegExp(
+          r'^sales-return-quality-dispose-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+        ),
+      ),
+    );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('quality-remaining-return-item-1')),
@@ -172,6 +179,103 @@ void main() {
     expect(find.text('部分处置（PARTIAL）'), findsOneWidget);
     expect(find.text('红冲'), findsNothing);
     expect(find.textContaining('已发生质检处置'), findsOneWidget);
+  });
+
+  testWidgets('one dialog reuses its nonce after an ambiguous response', (
+    tester,
+  ) async {
+    final api = _ReturnQualityApi(
+      qualityRows: [_qualityRow()],
+      disposeFailures: 1,
+    );
+
+    await _pumpReturnDetail(
+      tester,
+      api,
+      permissions: const {
+        Perm.salesReturnQualityView,
+        Perm.salesReturnQualityHandle,
+      },
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('quality-action-GOOD_RELEASE-return-item-1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('return-quality-qty')),
+      '1',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('return-quality-reason')),
+      'inspection-pass',
+    );
+    await tester.tap(find.byKey(const ValueKey('return-quality-submit')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('return-quality-submit-error')),
+      findsOneWidget,
+    );
+    expect(api.disposeBodies, hasLength(1));
+    final firstKey = api.disposeBodies.single['idempotencyKey'];
+
+    await tester.enterText(
+      find.byKey(const ValueKey('return-quality-qty')),
+      '2',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('return-quality-reason')),
+      'inspection-pass-updated',
+    );
+    await tester.tap(find.byKey(const ValueKey('return-quality-submit')));
+    await tester.pumpAndSettle();
+
+    expect(api.disposeBodies, hasLength(2));
+    expect(api.disposeBodies.last['idempotencyKey'], firstKey);
+    expect(api.disposeBodies.first['baseQty'], 1);
+    expect(api.disposeBodies.last['baseQty'], 2);
+  });
+
+  testWidgets('separate dialogs receive distinct command nonces', (
+    tester,
+  ) async {
+    final api = _ReturnQualityApi(qualityRows: [_qualityRow()]);
+
+    await _pumpReturnDetail(
+      tester,
+      api,
+      permissions: const {
+        Perm.salesReturnQualityView,
+        Perm.salesReturnQualityHandle,
+      },
+    );
+
+    Future<void> submit(String reason) async {
+      await tester.tap(
+        find.byKey(const ValueKey('quality-action-SCRAP-return-item-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('return-quality-qty')),
+        '1',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('return-quality-reason')),
+        reason,
+      );
+      await tester.tap(find.byKey(const ValueKey('return-quality-submit')));
+      await tester.pumpAndSettle();
+    }
+
+    await submit('scrap-same-payload');
+    await submit('scrap-same-payload');
+
+    expect(api.disposeBodies, hasLength(2));
+    expect(
+      api.disposeBodies.first['idempotencyKey'],
+      isNot(api.disposeBodies.last['idempotencyKey']),
+    );
   });
 }
 
@@ -211,12 +315,16 @@ class _ReturnQualityApi extends ApiClient {
   _ReturnQualityApi({
     required this.qualityRows,
     List<Map<String, dynamic>>? disposedRows,
+    int disposeFailures = 0,
   }) : disposedRows = disposedRows ?? qualityRows,
+       remainingDisposeFailures = disposeFailures,
        super(Dio());
 
   final List<Map<String, dynamic>> qualityRows;
   final List<Map<String, dynamic>> disposedRows;
   int qualityReads = 0;
+  int remainingDisposeFailures;
+  final List<Map<String, dynamic>> disposeBodies = [];
   Map<String, dynamic>? disposeBody;
 
   @override
@@ -279,7 +387,13 @@ class _ReturnQualityApi extends ApiClient {
     Object? body,
   }) async {
     expect(path, '/sales/returns/return-1/quality/return-item-1/dispose');
-    disposeBody = Map<String, dynamic>.from(body! as Map);
+    final requestBody = Map<String, dynamic>.from(body! as Map);
+    disposeBody = requestBody;
+    disposeBodies.add(requestBody);
+    if (remainingDisposeFailures > 0) {
+      remainingDisposeFailures--;
+      throw NetworkTimeoutException();
+    }
     return disposedRows;
   }
 }

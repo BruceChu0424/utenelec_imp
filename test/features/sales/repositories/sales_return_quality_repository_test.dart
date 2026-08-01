@@ -42,6 +42,7 @@ void main() {
       action: SalesReturnQualityAction.goodRelease,
       baseQty: 2.5,
       reason: '  IQC-20260801 合格  ',
+      idempotencyKey: 'quality-dispose-001',
     );
 
     expect(captured.method, 'POST');
@@ -53,6 +54,7 @@ void main() {
       'action': 'GOOD_RELEASE',
       'baseQty': 2.5,
       'reason': 'IQC-20260801 合格',
+      'idempotencyKey': 'quality-dispose-001',
     });
     expect(rows.single.status, 'PARTIAL');
     expect(rows.single.releasedBaseQty, 2.5);

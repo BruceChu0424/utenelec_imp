@@ -20,11 +20,15 @@ enum SubcontractDocType {
   const SubcontractDocType(this.pathSegment);
   final String pathSegment;
 
+  static SubcontractDocType? tryByPath(String seg) {
+    for (final type in SubcontractDocType.values) {
+      if (type.pathSegment == seg) return type;
+    }
+    return null;
+  }
+
   static SubcontractDocType byPath(String seg) =>
-      SubcontractDocType.values.firstWhere(
-        (e) => e.pathSegment == seg,
-        orElse: () => SubcontractDocType.receipt,
-      );
+      tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知委外单据路由段'));
 }
 
 /// 单据状态：0草稿 / 1已审 / -1红冲（后端 Short）。

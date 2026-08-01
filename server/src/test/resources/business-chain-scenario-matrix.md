@@ -16,7 +16,7 @@
 
 | 业务事实 | 唯一权威来源 | 禁止做法 |
 |---|---|---|
-| 销售需求与未排数量 | 销售订单明细、有效 `plan_order_item_links` 与 V157 `execution_segment_sales_allocations`；精确分摊已纳入最终组合回归 | 从页面缓存、通知或计划表头反推 |
+| 销售需求与未排数量 | 销售订单明细、有效 `plan_order_item_links` 与 V157 `execution_segment_sales_allocations`；精确分摊已有候选回归证据 | 从页面缓存、通知或计划表头反推 |
 | 销售订单商业事实 | 已审核来源订单头/行；订单原币额=数量×单价、本币额=原币额×汇率（4 位），出货重取来源原/本币事实并按发货量比例计算 | 接受客户端金额/成本/商业条款，或把不同商业条件的订单合并成一张出货 |
 | 销售订单有效预留 | 审核后 `stock_reservations`；减少 ATP，不扣在手，`warehouse_id=NULL` 可表示尚未定发货仓；实际从某仓交接时只把本次消耗段拆出并绑定该仓，剩余承诺继续全局有效 | 草稿/提交未审占库存、把有效预留说成已拣货，或把部分发货后的全部剩余预留错误绑定首个仓 |
 | 销售仓库作业事件 | V188 `sales_shipment_warehouse_events` 追加式事件账 + V187 出货当前状态投影 | 只改当前状态不留原因，或 UPDATE/DELETE 已接受事件 |
@@ -48,6 +48,7 @@
 12. 财务已审核的出货在财务反审前不得编辑、删除或驳回；价格无权用户的列表/详情/导出不得泄露商业字段。
 13. 新销售退货审核只进入质量冻结；仅 `GOOD_RELEASE` 可增加可售库存，`SCRAP`/`REWORK` 只记处置事实。
 14. V90 `chain_status=0` 且没有有效预留的旧未结订单不得新建 V187 出货；先逐行对账后显式激活，禁止自动批量伪造预留。
+15. 普通退货质检查看受销售 owner/委派范围约束；现有单退货质检 GET/POST 已复用 PMC 操作旁路，但尚无独立跨 owner 任务发现入口，不能宣称 PMC 已可端到端领取任务。直接接口仍须验证 view/handle 组合、已知 UUID 和返回投影的最小权限。
 
 ## 3. 统一锁序与失败语义
 
@@ -87,7 +88,7 @@
 | SC-28 | 余料退库与清账 | 良品余料、多次退料、消耗/审批损耗/合法在制后结案 | 最大可退实时计算；验收后回库存；领用=消耗+退回+审批损耗+合法在制；红冲对称且原事实不可篡改 | V152 round-trip/并发 PG 与 V161 append-only 覆盖消耗、良退、审批损耗和合法在制；不良品实物处置与成本仍缺 | `[PARTIAL][MANUAL]` |
 | SC-29 | 销售进度/通知 | 排产、开工、部分完成、完工、缺料、延期 | 主事务和 `business_outbox` 同提交；同事件一次；READY 按部门范围投递；销售订单行只显示自身执行段及公开数量 | V151/V157、`ChainNoticeReadyEventTest` publishOnce/dedupe、PG 状态迁移、部门映射源码和销售进度 UI；对象范围黑盒和部署 SLO 未验收 | `[PARTIAL][RED][MANUAL]` |
 | SC-30 | 发货交接与受控反向 | 新旧销售出货进入 `SHIPPED` 后尝试普通红冲；完成成品入库再红冲 | 所有 `SHIPPED` 均拒绝普通红冲，即使历史缺交接时间；完成生产段须先显式重开，失败全回滚 | `SalesShipmentReverseGuardTest`、`SalesShipmentWarehouseTransitionPolicyTest`、`ProductionCompletionReversePostgresTest`；退货入库另见 SC-40 | `[GREEN][MANUAL]` |
-| SC-31 | 权限、对象范围、审计 | 六部门越权读写、批量部分越权、查数量变化 | 最小权限；对象范围；批量全有或全无；审计可看脱敏 before/after 和幂等来源 | 工作台权限、审计详情已有单元/Widget 证据；真实 API 权限矩阵和语义覆盖率未验收 | `[PARTIAL][RED][MANUAL]` |
+| SC-31 | 权限、对象范围、审计 | 六部门越权读写、批量部分越权、退货质检普通查看/PMC 跨 owner 任务发现与处置、handle-only、已知 UUID 直调、查数量变化 | 最小权限；普通查看按 owner/委派过滤；跨 owner 任务须有独立最小投影入口并验证 view/handle 组合，不能靠已知 UUID 绕过发现与查看权限；批量全有或全无；审计可看脱敏 before/after 和幂等来源 | `SalesReturnQualityOwnerBoundaryTest` 只覆盖 Service 调用对象策略的结构契约；独立任务入口、真实 API 多账号权限矩阵、handle-only 负向、Widget 深链和语义覆盖率均未验收 | `[PARTIAL][RED][MANUAL]` |
 | SC-32 | 历史迁移、对账、死锁恢复 | V90/旧 MRP/V150–V164 升级，构造中断和反锁序 | 历史先隔离再补链；升级前后零差异；死锁整事务回滚并幂等重试 | 空库 146 个迁移回放到 V165、V148 已部署 checksum 锁定测试和 V147→V165 升级测试通过、真实 PG 16 类/44 项全通过；历史全量快照、恢复、压力和回滚演练未完成 | `[PARTIAL][RED][MANUAL]` |
 | SC-33 | 生产/销售多入口子计划导航 | 点击执行分段、生成结果、销售进度、生产看板真实子计划 | 执行段通过 parentPlanId + `executionSegmentId` 在父计划内开一次详情；真实子计划进 childPlanId；权限/无效链接有反馈；计划切换无旧状态 | 三份新增 Widget 测试与相关 33 项回归通过；登录态浏览器 UAT 未执行 | `[GREEN][MANUAL]` |
 | SC-34 | 现货预留与整单发运策略 | 多品项一项现货、其余长周期；两仓各有余额；部分从 A 仓交接；尝试给 V90 未激活旧单新建出货 | 全局 ATP 为各有货仓分别扣安全库存后的可售容量之和再扣有效预留；按 `ALLOW_PARTIAL/REQUIRE_COMPLETE/CUSTOMER_CONFIRM` 决定；只把本次消耗段绑定 A 仓，剩余仍可由 B 仓履约；旧单在逐行对账并显式激活前提前 fail-closed；不自动抢占/造预留 | V90/V178/V187、`StockReservationWarehouseSplitTest` 与销售安全库存/历史激活守卫测试已有；自动调拨、完整 WMS、目标 PG/历史对账/岗位 UAT仍缺 | `[PARTIAL][RED][MANUAL]` |
@@ -114,7 +115,7 @@
 cd server
 mvn.cmd -q -Dtest=BusinessChainScenarioMatrixTest,ArchitectureBoundaryTest,CompleteKitAllocatorTest,ProductionPlanningPackageServiceTest,DailyReportExecutionSegmentGuardTest,AuditQueryServiceTest,ProductionMaterialAppendOnlyLedgerMigrationTest,ProductionSupplySourceGuardMigrationTest,ProductionSupplySourceGuardTest,ProductionPurchaseReceiptProvenanceMigrationTest,ProductionLinkedStockDocumentGuardMigrationTest,ProductionLinkedStockDocumentServiceContractTest,ChainNoticeReadyEventTest test
 mvn.cmd -q -Dtest=ProductionExecutionPlanningServiceSupplyRouteTest,ProductionSubcontractSupplyTransitionContractTest,ProductionSubcontractSupplyTransitionMigrationTest test
-mvn.cmd -q -Dtest=SalesOrderCommercialAuthorityTest,SalesShipmentOwnerBoundaryTest,SalesShipmentWarehouseTransitionPolicyTest,SalesShipmentReverseGuardTest,StockReservationWarehouseSplitTest,SalesShipmentWarehouseEventMigrationContractTest,SalesReturnQualityServiceTest,SalesReturnQualityQuarantineMigrationContractTest,FulfillmentWorkbenchAccessPolicyTest,ProductionMakeSubplanLifecycleContractTest,AuditTriggerCoverageMigrationContractTest test
+mvn.cmd -q -Dtest=SalesOrderCommercialAuthorityTest,SalesShipmentOwnerBoundaryTest,SalesShipmentWarehouseTransitionPolicyTest,SalesShipmentReverseGuardTest,StockReservationWarehouseSplitTest,SalesShipmentWarehouseEventMigrationContractTest,SalesReturnQualityServiceTest,SalesReturnQualityOwnerBoundaryTest,SalesReturnQualityQuarantineMigrationContractTest,FulfillmentWorkbenchAccessPolicyTest,ProductionMakeSubplanLifecycleContractTest,AuditTriggerCoverageMigrationContractTest test
 ```
 
 真实 PostgreSQL 核心链：
@@ -138,4 +139,8 @@ git diff --check
 
 2026-07-31 历史组合结果：后端 343 tests、0 failure/error、48 skipped（PG 默认跳过）；真实 PostgreSQL 16 classes / 44 tests、0 failure/error/skip，空库 146 个迁移到 V165；Flutter 157/157，`flutter analyze --no-pub` 无问题，Web Release 构建成功。
 
-2026-08-01 当前候选证据：隔离 Testcontainers PostgreSQL 16.14 从空库成功迁移并 Flyway validate 171 个迁移至 V190；18 组真实 PG 测试 54/54、定向 JVM 56/56、Java 默认套件 589 项（0 failure/error、54 skipped）、Flutter 全量 278/278 通过。本次链路 Dart 定向分析为 0；全仓分析另有 10 条并行基础资料 warning/info、无 error。该证据仍不是公司目标库升级、历史全量对账、真实账号岗位 UAT、压测、备份恢复或生产放行。
+2026-08-01 中间候选证据：隔离 Testcontainers PostgreSQL 16.14 从空库成功迁移并 Flyway validate 171 个迁移至 V190；18 组真实 PG 测试 54/54、定向 JVM 56/56、Java 默认套件 589 项（0 failure/error、54 skipped）、Flutter 全量 278/278 通过。本次链路 Dart 定向分析为 0；全仓分析另有 10 条并行基础资料 warning/info、无 error。该证据只保留为中间历史，不是最终候选或 UAT 结果。
+
+文档收口后又在隔离构建目录补跑退货质检 Service 与 owner 边界测试 5/5，以及场景矩阵契约 2/2。前者只证明 Service 会调用带操作旁路的对象策略及三项处置纯函数契约，不证明独立跨 owner 任务发现、真实方法鉴权或多账号端到端已经完成；后者覆盖 40 个场景编号和核心门禁完整性。这是聚焦增量证据，不把前述 589 项历史全量数字擅自改写成新的全量结果。
+
+2026-08-01 最终候选工程证据：Flutter analyze 0 issue、全量 306/306，Web JavaScript 与 Windows x64 Release 构建成功；Java 默认套件 611 项（0 failure/error、58 skipped），PostgreSQL 16.14 / Docker 29.5.3 专项 19 类 58/58（0 failure/error/skip），Flyway validate 171 个迁移并到 V190，后端 JAR 打包成功。新增的退货质检 PG 链覆盖首次处置/精确重放、同键异载荷冲突、并发只过账一次，以及库存流水、余额、投影写入后末端事件失败的整事务回滚。Web Wasm、公司目标库升级、历史全量对账、真实账号岗位 UAT、压测、备份恢复、签名与生产放行仍未通过。

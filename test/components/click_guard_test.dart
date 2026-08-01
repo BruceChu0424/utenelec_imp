@@ -75,4 +75,24 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('提交'), findsOneWidget);
   });
+
+  testWidgets('UtenActionButton keeps a 44dp square touch target', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UtenActionButton(
+            size: UtenActionButtonSize.small,
+            label: const Text('I'),
+            onAction: () async {},
+          ),
+        ),
+      ),
+    );
+
+    final size = tester.getSize(find.byType(UtenActionButton));
+    expect(size.width, greaterThanOrEqualTo(44));
+    expect(size.height, greaterThanOrEqualTo(44));
+  });
 }

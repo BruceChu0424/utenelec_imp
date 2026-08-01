@@ -4,8 +4,7 @@
 //
 // 点卡片进对应列表/查询/报表页。卡片网格布局对齐采购 hub（UtenResponsiveGrid）。
 //
-// 路径目前写死（与 app_router 待注册的 /production/* 对齐；用户后续把路径常量搬到
-// route_names.dart 的 RouteName.production* 段，与本页 _Entry.location 同步即可）。
+// 路由统一使用 RouteName 常量；查看权限进入列表，新增动作由列表页按编辑权限控制。
 //
 // 注：原「BOM 成本展开」入口已下线（组装/BOM 数据并入 基础资料-货品资料「组装信息」页签）。
 import 'package:flutter/material.dart';
@@ -54,13 +53,13 @@ class ProductionHubPage extends ConsumerWidget {
                   icon: Icons.assignment_outlined,
                   label: '生产计划单',
                   description: '计划单 · 明细 · 审核',
-                  location: '/production/plans/new',
+                  location: RouteName.productionPlanList,
                 ),
                 _Entry(
                   icon: Icons.edit_calendar_outlined,
                   label: '生产日报表',
-                  description: '完工日报 · 留位',
-                  location: '/production/daily-reports/new',
+                  description: '完工日报 · 审核 · 红冲',
+                  location: RouteName.productionDailyReportList,
                 ),
               ], permissions),
               const SizedBox(height: UtenSpacing.s16),

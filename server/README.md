@@ -51,16 +51,22 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
   `V186` 增加生产物料反查读索引，`V187` 增加销售出货策略与仓库作业结构，`V188` 增加不可变仓库状态事件账，`V189` 增加销售退货质量冻结和追加式处置证据；`V190` 在新增业务表之后重跑“每张公开业务表恰有一个有效、启用、AFTER ROW、覆盖 I/U/D 且调用批准脱敏函数”的 fail-closed 审计 sweep，只覆盖以后操作、不补历史。V182–V190 仍须在目标 PostgreSQL 完整迁移与复核。V188/V189 不回填历史状态时间线或质检结论。资产范围、默认门禁和 NO-GO 见
   [51 · 资产与待摊专业化全链路](../docs/数据迁移/51-资产与待摊专业化全链路.md)及
   [2026-08-01 验收报告](../docs/99-项目治理/2026-08-01-资产与待摊全链路实现与验收报告.md)。
-- 2026-08-01 当前候选在隔离 Testcontainers PostgreSQL 16.14 从空库成功迁移并 Flyway validate
-  171 个迁移至 V190；18 组真实 PG 测试 54/54（含 `SecurityPermissionMigrationTest` 8 项和
-  库存/生产/采购/Outbox 链）、定向 JVM 56/56、Java 默认套件 589 项（0 failure/error、54 skipped）
-  和 Flutter 全量 278/278 通过。
-  本次链路 Dart 定向分析为 0；全仓另有 10 条并行基础资料 warning/info、无 error。它不是公司目标
-  数据库的升级/历史对账证据，也不替代真实账号岗位 UAT、压测、备份恢复和发布签字。
+- 2026-08-01 最终候选在隔离 Testcontainers PostgreSQL 16.14 从空库成功迁移并 Flyway validate
+  171 个迁移至 V190；19 个真实 PG 类 58/58（含 `SecurityPermissionMigrationTest` 8 项、退货质检幂等/回滚和
+  库存/生产/采购/Outbox 链），Java 默认套件 611 项（0 failure/error、58 skipped），Flutter 全量
+  306/306、analyze 0 issue，Web JavaScript/Windows x64 Release 与后端 JAR 均构建成功。
+  这些结果不是公司目标数据库的升级/历史对账证据，也不替代真实账号岗位 UAT、压测、备份恢复、
+  制品签名和发布签字；Web Wasm 仍受 `flutter_secure_storage_web` 兼容性限制。
+  销售—仓库—计划—生产/采购/委外的证据范围、风险和 NO-GO 见
+  [2026-08-01 全链路安全复核报告](../docs/99-项目治理/2026-08-01-销售仓库生产采购委外全链路安全复核报告.md)。
 - 销售履约当前安全边界：出货商业事实由服务端从来源订单重建，财务已审先反审才可修改；所有
   `SHIPPED` 禁止普通红冲，缺 `handed_over_at` 的历史行也不例外；新退货审核只进 V189 冻结，
   仅 `GOOD_RELEASE` 入可售库存。V90 `chain_status=0` 且无预留的旧未结订单不能新建 V187 出货，
   必须逐行对账后显式激活，当前没有自动批量激活。
+  退货质检普通 view 继续按销售 owner/委派过滤；现有单退货质检 GET/POST 在对象策略调用层使用 PMC 操作旁路，
+  但目前没有独立跨 owner 任务列表或工作台，PMC 也不能据此打开受普通 owner 范围保护的完整退货详情。
+  质检处置 Widget 7/7 和真实 PG 4/4 已证明同弹窗重试复用、跨弹窗独立键、精确重放、冲突、并发与事务回滚；
+  owner 契约仍只锁定 Service 对象策略调用，不证明 view/handle 方法鉴权、handle-only 负向、任务发现或真实账号端到端完成。
 - `V167` 的余额调整使用独立 `stock:balance:adjust`，迁移不默认授予部门；
   `POST /api/stock/balances/adjust` 在 Controller 与 Service 双层鉴权，以库存锁 + `expectedQty`
   防止陈旧覆盖，以服务端保留前缀和部分唯一索引保证幂等，并在同一事务生成已审核 `CHECK`、
@@ -224,6 +230,13 @@ Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地�
 28 tests、定向 analyze 无问题，后端核心 55 tests、安全链 17 tests、PostgreSQL 定向 8 tests，
 空库完整应用 154 个迁移到 V173。后者是审计功能的定向历史证据，不覆盖 V174–V190，也不替代合并后
 全量远端 CI、真实 HTTP 权限/E2E、生产同构迁移和发布演练。
+
+2026-08-01 最终候选代码树：Java 21.0.11 / Maven 3.9.16 默认套件 611 项，0 failure、0 error、
+58 skipped；`UTEN_RUN_DB_TESTS=true` 的 19 个 PostgreSQL 16.14 Testcontainers 类共 58/58，
+0 failure/error/skip，并由 Flyway 校验 171 个迁移到 V190。销售退货质检专项真实覆盖精确重放、
+同键异载荷冲突、并发串行化和库存写入后末端失败的整事务回滚。`mvn.cmd -q -DskipTests package`
+成功生成 `target/uten-imp-server-0.1.0.jar`。这些结果仍不替代公司目标库 V181→V190、历史全量对账、
+真实多账号 HTTP/UAT、容量、恢复与生产配置验收。
 
 ## 依赖安全基线
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -82,6 +83,9 @@ class _SalesReturnQualityCardState
     SalesReturnQualityItem item,
     SalesReturnQualityAction action,
   ) async {
+    // One dialog represents one logical command. Reuse this nonce for every
+    // retry from the dialog, regardless of editable payload fields.
+    final idempotencyKey = 'sales-return-quality-dispose-${const Uuid().v4()}';
     final updated = await showDialog<List<SalesReturnQualityItem>>(
       context: context,
       barrierDismissible: false,
@@ -96,6 +100,7 @@ class _SalesReturnQualityCardState
               action: action,
               baseQty: baseQty,
               reason: reason,
+              idempotencyKey: idempotencyKey,
             ),
       ),
     );

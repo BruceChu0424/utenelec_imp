@@ -9,6 +9,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
+import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
@@ -158,6 +159,7 @@ public class PurchaseReceiptService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        requireNonNegativeStoredCommercial(r, items);
         normalizePersistedItemUnits(items);
         sourceIntegrity.validatePurchaseReceipt(
                 r.getSupplierId(),
@@ -214,6 +216,7 @@ public class PurchaseReceiptService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        requireNonNegativeStoredCommercial(r, items);
         if (items.stream().anyMatch(it ->
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
@@ -287,6 +290,9 @@ public class PurchaseReceiptService {
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
         int autoLine = 1;
         for (ReceiptItemLine l : lines) {
+            NonNegativeCommercialSignGuard.requireRequestLine(
+                    "采购收货", l.getQty(), l.getPrice(),
+                    l.getAmountOriginal(), l.getAmountLocal());
             int lineNo = l.getLineNo() != null ? l.getLineNo() : autoLine;
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
@@ -328,6 +334,17 @@ public class PurchaseReceiptService {
             fallbackLineNo++;
         }
         itemRepo.saveAll(items);
+    }
+
+    private static void requireNonNegativeStoredCommercial(
+            PurchaseReceipt receipt, List<PurchaseReceiptItem> items) {
+        NonNegativeCommercialSignGuard.requireStoredTotals(
+                "采购收货", receipt.getTotalOriginal(), receipt.getTotalLocal());
+        for (PurchaseReceiptItem item : items) {
+            NonNegativeCommercialSignGuard.requireStoredLine(
+                    "采购收货", item.getQty(), item.getPrice(),
+                    item.getAmountOriginal(), item.getAmountLocal());
+        }
     }
 
     private void applyTotals(PurchaseReceipt r, List<ReceiptItemDto> items) {

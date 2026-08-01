@@ -14,9 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
@@ -92,7 +95,7 @@ public class ProductionMaterialSettlementService {
                         (UUID) row[5], (String) row[6], (String) row[7],
                         (UUID) row[8], (String) row[9], (String) row[10],
                         decimal(row[11]), decimal(row[12]), decimal(row[13]),
-                        (String) row[14], (OffsetDateTime) row[15],
+                        (String) row[14], offsetDateTime(row[15]),
                         (UUID) row[16]))
                 .toList();
     }
@@ -365,6 +368,18 @@ public class ProductionMaterialSettlementService {
         } catch (NoSuchAlgorithmException impossible) {
             throw new IllegalStateException(impossible);
         }
+    }
+
+    static OffsetDateTime offsetDateTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof OffsetDateTime dateTime) return dateTime;
+        if (value instanceof Instant instant) return instant.atOffset(ZoneOffset.UTC);
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
+        }
+        throw new ApiException(
+                ErrorCode.CONFLICT,
+                "物料清账事件时间字段类型异常");
     }
 
     private static BigDecimal decimal(Object value) {

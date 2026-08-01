@@ -76,6 +76,51 @@ void main() {
       );
     });
 
+    test('unknown dynamic document segments are 404 even for super admin', () {
+      const employee = AppUser(
+        id: 'employee-404',
+        code: 'E404',
+        name: 'Employee',
+        roles: [Role.employee],
+      );
+      const superAdmin = AppUser(
+        id: 'super-404',
+        code: 'S404',
+        name: 'Super admin',
+        roles: [Role.admin],
+        superAdmin: true,
+      );
+      const unknownLocations = [
+        '/purchase/assets/new',
+        '/warehouse/UNKNOWN/new',
+        '/sales/assets/new',
+        '/subcontract/unknown/new',
+        '/finance/unknown/new',
+      ];
+
+      for (final location in unknownLocations) {
+        expect(requiredAnyPermFor(location), isEmpty, reason: location);
+        expect(
+          employeePermissionRedirect(employee, location),
+          RouteName.notFound,
+          reason: location,
+        );
+        expect(
+          employeePermissionRedirect(superAdmin, location),
+          RouteName.notFound,
+          reason: location,
+        );
+      }
+
+      expect(
+        employeePermissionRedirect(employee, '/purchase/orders/order-1'),
+        RouteName.accessDenied,
+      );
+      expect(
+        employeePermissionRedirect(superAdmin, '/purchase/orders/order-1'),
+        isNull,
+      );
+    });
     test('finance report descendants use finance report permission', () {
       for (final location in [
         RouteName.financeReport,
@@ -90,6 +135,26 @@ void main() {
       ]) {
         expect(requiredAnyPermFor(location), const [
           Perm.financeReportView,
+        ], reason: location);
+      }
+    });
+
+    test('sales and subcontract report descendants use report permissions', () {
+      for (final location in [
+        RouteName.salesReport,
+        RouteName.salesReportDetail,
+        RouteName.salesReportSummary,
+      ]) {
+        expect(requiredAnyPermFor(location), const [
+          Perm.salesReportView,
+        ], reason: location);
+      }
+      for (final location in [
+        RouteName.subcontractReport,
+        '${RouteName.subcontractReport}/summary',
+      ]) {
+        expect(requiredAnyPermFor(location), const [
+          Perm.subcontractReportView,
         ], reason: location);
       }
     });
@@ -138,14 +203,17 @@ void main() {
       },
     );
 
-    test('purchase order creation deep link requires order edit permission', () {
-      expect(requiredAnyPermFor('/purchase/orders/new'), const [
-        Perm.purchaseOrderEdit,
-      ]);
-      expect(requiredAnyPermFor('/purchase/orders/order-1'), const [
-        Perm.purchaseOrderView,
-      ]);
-    });
+    test(
+      'purchase order creation deep link requires order edit permission',
+      () {
+        expect(requiredAnyPermFor('/purchase/orders/new'), const [
+          Perm.purchaseOrderEdit,
+        ]);
+        expect(requiredAnyPermFor('/purchase/orders/order-1'), const [
+          Perm.purchaseOrderView,
+        ]);
+      },
+    );
 
     test('production progress and lab upload match backend permissions', () {
       expect(requiredAnyPermFor(RouteName.productionProgress), const [

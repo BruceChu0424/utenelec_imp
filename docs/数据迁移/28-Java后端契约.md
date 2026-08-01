@@ -1,7 +1,9 @@
-# 28 - 业务四模块 Java 后端契约（Entity/Service/Controller 单一事实源）
+# 28 - 业务四模块 Java 后端契约（普通业务单据通用基线）
 
 > 本档是销售/委外/生产/钱流四模块 **Spring Boot Java 后端** 的跨模块一致性约束，配合 [27-DDL一致性契约]（表结构）+ 各 design doc（业务规则）。Java agent 写每模块前必读本文 + 自己的 DDL(V50-V59) + design doc + **采购模块 Java（`features/purchase/`，最接近的范本）**。
 > 现有库存契约：`features/stock/StockService.recordMovement(MovementRequest)`（已扩 movement_type 15-20 常量）。
+>
+> **2026-08-01 现行覆盖规则**：本文是 V50–V68 普通业务单据的通用实现基线，不再是所有状态机的单一事实源。销售出货和销售退货必须服从 V187–V189 专用生命周期；V190 负责新增业务表后的审计覆盖。专用状态机与通用模板冲突时，以后置迁移、当前 Service、最新 SOP 和契约测试为准。
 
 ---
 
@@ -68,13 +70,13 @@ stockService.recordMovement(new StockService.MovementRequest(
     amountLocal,
     remark));
 ```
-红冲 1→-1：反方向再调一次（direction 取反 / 或 type 用退货型）。
+只有单据专用状态机明确允许时，红冲 1→-1 才反方向追加流水；所有 `SHIPPED` 销售出货均禁止普通红冲。
 
 **type/dir 速查**：
 | 单据审核 | type | dir |
 |---|---|---|
 | 销售出货 S_Out | TYPE_SALES_OUT(3) | DIR_OUT |
-| 销售退 S_Withdraw | TYPE_SALES_RETURN(4) | DIR_IN |
+| 销售退 S_Withdraw | TYPE_SALES_RETURN(4) | 仅 V189 `GOOD_RELEASE` 或迁移前历史兼容使用 DIR_IN；新退货审核不直接入可售库存 |
 | 销售其它出 S_OtherOut | TYPE_SALES_OTHER_OUT(20) | DIR_OUT（不回写订单/不立应收） |
 | 委外材料出 E_SOut | TYPE_SUBCONTRACT_MATERIAL_ISSUE(15) | DIR_OUT |
 | 委外材料退 E_SWithDraw | TYPE_SUBCONTRACT_MATERIAL_RETURN(16) | DIR_IN |
@@ -140,6 +142,14 @@ reverse/approveToDraft(id)（红冲 1→-1）:
   按稳定 UUID 顺序锁上游来源明细，再反向回写累计量
   doc.status = -1; doc.arPosted = false
 ```
+
+专用例外：
+
+- 销售出货进入 `SHIPPED` 后普通 reverse 一律拒绝，包括缺少历史交接时间的行；
+- 新销售退货 approve 只建立质量冻结；`GOOD_RELEASE` 才写可售库存；
+- 退货发生任一质量处置后，整单 reverse 拒绝；
+- 财务已审出货必须先走财务反审，但进入 `SHIPPED` 后财务反审同样不可用。
+
 - `TxSessionVars tx` 审计绑定（照采购：`tx.bind()`）。
 - 金额双口径：amount_local = amount_original × exchange_rate（录单时算）。
 - **并发（2026-07-28 全量加固）**：所有单据 approve/reverse 入口先 `em.lock(doc, PESSIMISTIC_WRITE)`
@@ -188,7 +198,7 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 ---
 
-**最后更新**：2026-08-01 · Java 后端单一事实源。资产子账使用独立的 application/api/domain/infrastructure 契约，续作必须先读 ADR-018/51；其它业务单据续作先读本文 + [27] + 各 design doc + 对应 DDL + 采购 Java 范本。钱流 22 报表已重写为 `ReportTableResponse` 范式（`features/finance/report/`，含 `execute`/`WhereBuilder`/`FacetSpec`，镜像销售/采购；详见 [26] §十一·财务口径校准）。§九登记 `common/docnumber` 包。
+**最后更新**：2026-08-01 · 普通业务单据 Java 通用基线。资产子账使用独立的 application/api/domain/infrastructure 契约；销售发运/退货使用 V187–V189 专用状态机。续作必须同时读取对应后置迁移、当前 Service、最新 SOP 和契约测试，不能仅套本文模板。钱流 22 报表已重写为 `ReportTableResponse` 范式（`features/finance/report/`，含 `execute`/`WhereBuilder`/`FacetSpec`，镜像销售/采购；详见 [26] §十一·财务口径校准）。§九登记 `common/docnumber` 包。
 
 ---
 

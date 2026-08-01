@@ -1,7 +1,12 @@
-# 27 - 业务四模块 DDL 一致性契约（V50–V59 落地单一事实源）
+# 27 - 业务四模块 DDL 一致性契约（V50–V59 历史分工快照）
 
 > 本档是销售/委外/生产/钱流四模块 Flyway DDL 的**跨模块一致性约束**。各模块具体表设计见 [20][22][24][26]；本档只规定**所有模块必须共同遵守的约定 + 跨模块共享对象**。DDL agent 写每个 .sql 前必读本文 + 自己的 design doc + `V44__purchase_documents.sql`/`V48__stock_documents.sql` 范本。
 > 调研见 [18]；老库溯源见 [19][21][23][25]。
+>
+> 本文编号表是早期 DDL 分工快照，不是当前迁移目录上限。当前源码最高为 V190；
+> 已应用迁移保持不可变，V187–V190 的现行语义以迁移文件、[迁移 README](README.md)、
+> [最新销售 SOP](../07-业务链路/01-销售订货到发货全链路-SOP.md)和
+> [全链路安全复核报告](../99-项目治理/2026-08-01-销售仓库生产采购委外全链路安全复核报告.md)为准。
 
 ---
 
@@ -180,15 +185,12 @@ CREATE TABLE ar_ap_ledger (
 
 **已应用的迁移文件不能再改**。Flyway 启动 `validate`：对每个已 applied 版本重算 .sql 的 CRC32 checksum 与 `flyway_schema_history.checksum` 比对，不一致即报 `Migration checksum mismatch for version V??`，后端启动失败。
 
-- **dev 常踩**：开发中直接改已 applied 的 .sql（调列/调 seed），下次启动即 mismatch。典型：V77 master_code 开发中反复改 `V77__master_code_sequences.sql`，resolved checksum 一日数变，任何重启都撞。
-- **修复（等价 `flyway repair`）**：日志会打印 `Applied to database : <旧值>` / `Resolved locally : <新值>`，对齐即可：
-  ```sql
-  UPDATE flyway_schema_history SET checksum=<Resolved locally 值> WHERE version='??';
-  ```
-  或 `mvn flyway:repair`（若配了 plugin）。
-- **临时绕过（不改库）**：启动加 `--spring.flyway.validate-on-migrate=false`（dev 容忍；prod 必校验）。
-- **正确做法**：已 applied 的迁移要改 → 写**新迁移**（V??+1）`ALTER`/补 seed，不回头改旧文件。只有"该版本尚未在任何环境 applied"时才可直接改 .sql。
+- 发现 checksum mismatch 必须立即停止部署，先确认数据库环境、已应用版本和发布制品。
+- 对任何共享开发库、测试库、公司目标库或生产库，恢复迁移文件为该库实际应用时的精确原字节；需要改变结构时只能新增更高版本迁移。
+- 禁止直接 `UPDATE flyway_schema_history`，禁止用 `flyway repair` 掩盖源码漂移，也禁止关闭 `validate-on-migrate` 绕过校验。
+- 只有明确可销毁、无须保留任何数据的个人临时库，才能在核对准确目标后重建数据库并从头回放迁移；不得推广到共享环境。
+- 如确有 Flyway 元数据损坏，必须走独立运维事故流程：备份、比对实际 schema 与发布制品、审批、留证后处理，不能在通用开发文档中给出“改 checksum 即可”的捷径。
 
 ---
 
-**最后更新**：2026-07-28 · DDL 阶段单一事实源。各 agent 读本文 + 自己的 design doc 落 Flyway。V76 `doc_number_sequences`（单据号系统生成）；V77 `master_code_sequences`（主档编号）/ V78 `production_where_used` 权限（物料反查产成品报表，§一末段）；新增 §九「Flyway checksum 维护」。
+**最后更新**：2026-08-01 · 早期跨模块通用约束。V76 `doc_number_sequences`（单据号系统生成）；V77 `master_code_sequences`（主档编号）/ V78 `production_where_used` 权限（物料反查产成品报表，§一末段）；§九已收紧为已应用迁移不可变和事故化处理。

@@ -37,8 +37,8 @@ class FloatingCapsuleNavBar extends StatelessWidget {
   static const double _gap = 6.0;
 
   /// 外壳高度与圆角（胶囊形：圆角 = 高度 / 2）
-  static const double navHeight = 56;
-  static const double navRadius = 28;
+  static const double navHeight = 60;
+  static const double navRadius = 30;
 
   /// 外壳水平 padding（6×2）与描边（1×2），宽度计算必须计入，
   /// 否则内部 Row 会比可用宽度多出 2px 导致溢出。
@@ -93,7 +93,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
         : Colors.white.withValues(alpha: 0.85);
     final shadowColor = isDark
         ? Colors.black.withValues(alpha: 0.5)
-        : UtenColors.teal500.withValues(alpha: 0.15);
+        : theme.colorScheme.primary.withValues(alpha: 0.15);
 
     return Center(
       child: AnimatedBuilder(
@@ -129,7 +129,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
                   ),
                 ),
                 child: SizedBox(
-                  height: 42,
+                  height: 46,
                   width: innerWidth,
                   child: Stack(
                     clipBehavior: Clip.none,
@@ -142,7 +142,7 @@ class FloatingCapsuleNavBar extends StatelessWidget {
                         width: itemWidth,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: UtenColors.teal500,
+                            color: theme.colorScheme.primary,
                             borderRadius: BorderRadius.circular(22),
                           ),
                         ),
@@ -196,7 +196,11 @@ class _CapsuleTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unselected = theme.colorScheme.onSurfaceVariant;
-    final color = Color.lerp(unselected, Colors.white, closeness)!;
+    final color = Color.lerp(
+      unselected,
+      theme.colorScheme.onPrimary,
+      closeness,
+    )!;
     final weight = FontWeight.lerp(
       FontWeight.w500,
       FontWeight.w700,
@@ -216,20 +220,17 @@ class _CapsuleTab extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               Center(
-                // 极端情况（小屏 + 超大字号，单格宽被 maxItemW 钳住）：
-                // FittedBox 让文字等比缩小塞进格子，而不是溢出。
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: weight,
-                        color: color,
-                      ),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: weight,
+                      color: color,
                     ),
                   ),
                 ),

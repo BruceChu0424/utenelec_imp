@@ -30,7 +30,9 @@ import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.returnTo});
+
+  final String? returnTo;
 
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
@@ -88,8 +90,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
       await ref.read(accountHistoryProvider).add(account);
 
       if (mounted) {
-        // 路由守卫会自动重定向到 dashboard（首登强制改密则重定向到改密页）
-        context.go(RouteName.dashboard);
+        // 恢复经校验的员工目标；首登状态会先由路由守卫转入强制改密。
+        context.go(widget.returnTo ?? RouteName.dashboard);
       }
     } on ApiException catch (e) {
       if (mounted) {

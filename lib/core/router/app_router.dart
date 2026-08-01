@@ -121,6 +121,31 @@ import '../../features/auth/pages/change_password_page.dart';
 import 'route_access_policy.dart';
 import 'route_names.dart';
 
+String? _rejectUnknownPurchaseDoc(BuildContext _, GoRouterState state) =>
+    PurchaseDocType.tryByPath(state.pathParameters['doc']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownStockDoc(BuildContext _, GoRouterState state) =>
+    StockDocType.tryByCode(state.pathParameters['code']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownSalesDoc(BuildContext _, GoRouterState state) =>
+    SalesDocType.tryByPath(state.pathParameters['seg']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownSubcontractDoc(BuildContext _, GoRouterState state) =>
+    SubcontractDocType.tryByPath(state.pathParameters['seg']!) == null
+    ? RouteName.notFound
+    : null;
+
+String? _rejectUnknownFinanceDoc(BuildContext _, GoRouterState state) =>
+    FinanceDocType.tryByPath(state.pathParameters['seg']!) == null
+    ? RouteName.notFound
+    : null;
+
 /// App 路由 Provider
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
@@ -129,45 +154,70 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final session = ref.read(sessionProvider);
       final vSession = ref.read(visitorSessionProvider);
       final loc = state.matchedLocation;
+      final requestedLocation = state.uri.toString();
       final isEntry = loc == RouteName.entry;
       final isLogin = loc == RouteName.login;
       final isChangePw = loc == RouteName.changePassword;
       final isVisitorPath = isVisitorPortalLocation(loc);
+      final employeeReturnTo = returnToFromUri(
+        state.uri,
+        scope: ReturnToScope.employee,
+      );
+      final visitorReturnTo = returnToFromUri(
+        state.uri,
+        scope: ReturnToScope.visitor,
+      );
+      final employeeIntent = intendedReturnTo(
+        state.uri,
+        scope: ReturnToScope.employee,
+      );
 
-      // 1) 员工首登强制改密（最高优先）
+      // Forced password changes retain the original employee route.
       if (session.status == AuthStatus.mustChangePassword) {
-        return isChangePw ? null : '${RouteName.changePassword}?forced=true';
+        return isChangePw
+            ? null
+            : RoutePath.changePassword(forced: true, returnTo: employeeIntent);
       }
 
-      // 2) 访客自助流程（/visitor/*）：员工不进，由访客 session 守卫
+      // Visitor pages use the visitor session and never accept employee paths.
       if (isVisitorPath) {
         if (session.status == AuthStatus.authenticated) {
           return RouteName.dashboard;
         }
-        if (vSession.isLoggedIn) return null;
-        return loc == RouteName.visitorLogin ? null : RouteName.visitorLogin;
+        if (vSession.isLoggedIn) {
+          return loc == RouteName.visitorLogin
+              ? visitorReturnTo ?? RouteName.visitorHome
+              : null;
+        }
+        if (loc == RouteName.visitorLogin) return null;
+        return RoutePath.entry(returnTo: requestedLocation);
       }
 
-      // 3) 入口选择页：两端都未登录才显示
+      // The entry page preserves the deep link until a portal is selected.
       if (isEntry) {
         if (session.status == AuthStatus.authenticated) {
-          return RouteName.dashboard;
+          return employeeReturnTo ?? RouteName.dashboard;
         }
-        if (vSession.isLoggedIn) return RouteName.visitorHome;
+        if (vSession.isLoggedIn) {
+          return visitorReturnTo ?? RouteName.visitorHome;
+        }
         return null;
       }
 
-      // 4) 员工区（login + ShellRoute 业务页）
       switch (session.status) {
         case AuthStatus.unauthenticated:
           if (vSession.isLoggedIn) return RouteName.visitorHome;
-          return isLogin ? null : RouteName.entry;
+          if (isLogin) return null;
+          return RoutePath.entry(returnTo: requestedLocation);
         case AuthStatus.mustChangePassword:
-          return isChangePw ? null : '${RouteName.changePassword}?forced=true';
+          return isChangePw
+              ? null
+              : RoutePath.changePassword(
+                  forced: true,
+                  returnTo: employeeIntent,
+                );
         case AuthStatus.authenticated:
-          // 注意：isChangePw 不在此重定向——"我的→修改密码"是已登录用户的合法入口。
-          // 强制改密（mustChangePassword）由前两个分支独立处理。
-          if (isLogin) return RouteName.dashboard;
+          if (isLogin) return employeeReturnTo ?? RouteName.dashboard;
           return employeePermissionRedirect(session.user, loc);
       }
     },
@@ -175,13 +225,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RouteName.login,
         name: 'login',
-        builder: (context, state) => const LoginPage(),
+        builder: (context, state) => LoginPage(
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.employee),
+        ),
       ),
       GoRoute(
         path: RouteName.changePassword,
         name: 'change-password',
         builder: (context, state) => ChangePasswordPage(
           forced: state.uri.queryParameters['forced'] == 'true',
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.employee),
         ),
       ),
       GoRoute(
@@ -189,19 +242,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'access-denied',
         builder: (_, _) => const _AccessDeniedPage(),
       ),
+      GoRoute(
+        path: RouteName.notFound,
+        name: 'not-found',
+        builder: (_, _) => const _ErrorPage(),
+      ),
 
       // —— 入口选择（登录前）——
       GoRoute(
         path: RouteName.entry,
         name: 'entry',
-        builder: (_, _) => const EntrySelectionPage(),
+        builder: (_, state) => EntrySelectionPage(
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.any),
+        ),
       ),
 
       // —— 访客自助流程（不进 ShellRoute）——
       GoRoute(
         path: RouteName.visitorLogin,
         name: 'visitor-login',
-        builder: (_, _) => const VisitorLoginPage(),
+        builder: (_, state) => VisitorLoginPage(
+          returnTo: returnToFromUri(state.uri, scope: ReturnToScope.visitor),
+        ),
       ),
       GoRoute(
         path: RouteName.visitorHome,
@@ -528,6 +590,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/purchase/:doc/new',
             name: 'purchase-doc-new',
+            redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocEditPage(
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               sourceRequestId: s.uri.queryParameters['requestId'],
@@ -542,6 +605,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/purchase/:doc/:id/edit',
             name: 'purchase-doc-edit',
+            redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocEditPage(
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               id: s.pathParameters['id'],
@@ -550,6 +614,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/purchase/:doc/:id',
             name: 'purchase-doc-detail',
+            redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocDetailPage(
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               id: s.pathParameters['id']!,
@@ -616,6 +681,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code/new',
             name: 'stock-doc-new',
+            redirect: _rejectUnknownStockDoc,
             builder: (_, s) => StockDocEditPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               sourceDrawId: s.uri.queryParameters['drawId'],
@@ -624,6 +690,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code/:id/edit',
             name: 'stock-doc-edit',
+            redirect: _rejectUnknownStockDoc,
             builder: (_, s) => StockDocEditPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               id: s.pathParameters['id'],
@@ -632,6 +699,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code/:id',
             name: 'stock-doc-detail',
+            redirect: _rejectUnknownStockDoc,
             builder: (_, s) => StockDocDetailPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
               id: s.pathParameters['id']!,
@@ -640,6 +708,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/warehouse/:code',
             name: 'stock-doc-list',
+            redirect: _rejectUnknownStockDoc,
             builder: (_, s) => StockDocListPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
             ),
@@ -716,6 +785,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/sales/:seg/new',
             name: 'sales-doc-new',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -723,6 +793,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/sales/:seg/:id/edit',
             name: 'sales-doc-edit',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
@@ -731,6 +802,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/sales/:seg/:id',
             name: 'sales-doc-detail',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocDetailPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id']!,
@@ -739,6 +811,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/sales/:seg',
             name: 'sales-doc-list',
+            redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocListPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -768,6 +841,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/subcontract/:seg/new',
             name: 'subcontract-doc-new',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocEditPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -775,6 +849,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/subcontract/:seg/:id/edit',
             name: 'subcontract-doc-edit',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocEditPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
@@ -783,6 +858,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/subcontract/:seg/:id',
             name: 'subcontract-doc-detail',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocDetailPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id']!,
@@ -791,6 +867,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/subcontract/:seg',
             name: 'subcontract-doc-list',
+            redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocListPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -875,6 +952,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg/new',
             name: 'finance-doc-new',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocEditPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -882,6 +960,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg/:id/edit',
             name: 'finance-doc-edit',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocEditPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
@@ -890,6 +969,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg/:id',
             name: 'finance-doc-detail',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocDetailPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id']!,
@@ -898,6 +978,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/finance/:seg',
             name: 'finance-doc-list',
+            redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocListPage(
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
             ),
@@ -974,7 +1055,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
     ],
-    errorBuilder: (context, state) => _ErrorPage(error: state.error),
+    errorBuilder: (_, _) => const _ErrorPage(),
   );
 
   ref.listen(sessionProvider, (_, _) {
@@ -990,8 +1071,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 });
 
 class _ErrorPage extends StatelessWidget {
-  const _ErrorPage({required this.error});
-  final Exception? error;
+  const _ErrorPage();
 
   @override
   Widget build(BuildContext context) {

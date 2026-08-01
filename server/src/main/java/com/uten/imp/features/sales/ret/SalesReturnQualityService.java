@@ -18,6 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -39,6 +43,7 @@ public class SalesReturnQualityService {
     private static final String PARTIAL = "PARTIAL";
     private static final String DISPOSED = "DISPOSED";
     private static final String REVERSED = "REVERSED";
+    private static final String HANDLE_AUTHORITY = "sales_return_quality:handle";
 
     private final EntityManager em;
     private final StockService stockService;
@@ -136,15 +141,33 @@ public class SalesReturnQualityService {
         SalesReturn salesReturn = returnRepo.findById(returnId)
                 .filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售退货单不存在"));
-        accessPolicy.requireReadable(salesReturn.getOwnerEmployeeId(), "销售退货单不存在");
+        // Sales users with view-only authority remain owner-scoped. Quality
+        // handlers are a cross-owner warehouse/PMC operation and must be able
+        // to read the same quarantine rows they are authorized to dispose.
+        accessPolicy.requireReadable(
+                salesReturn.getOwnerEmployeeId(),
+                "销售退货单不存在",
+                HANDLE_AUTHORITY);
         return loadProjection(returnId);
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('sales_return_quality:handle')")
+    @PreAuthorize("hasAuthority('sales_return_quality:view')"
+            + " and hasAuthority('sales_return_quality:handle')")
     public List<ReturnQualityItemDto> dispose(
             UUID returnId, UUID returnItemId, ReturnQualityDispositionRequest request) {
         tx.bind();
+        SalesReturn salesReturn = returnRepo.findById(returnId)
+                .filter(r -> !r.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "销售退货单不存在"));
+        // Keep object scope identical to list(): the dedicated handler
+        // authority is the only cross-owner bypass.
+        accessPolicy.requireWritable(
+                salesReturn.getOwnerEmployeeId(),
+                "无权处置该销售退货质检冻结",
+                HANDLE_AUTHORITY);
         if (request == null || request.reason() == null
                 || request.reason().isBlank()) {
             throw new ApiException(
@@ -159,6 +182,7 @@ public class SalesReturnQualityService {
         String action = normalizeAction(request.action());
         String reason = request.reason().trim();
         BigDecimal requested = normalizeDispositionQty(request.baseQty());
+        String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
@@ -185,6 +209,12 @@ public class SalesReturnQualityService {
         if (((Number) row[12]).shortValue() != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "仅已审核退货单可执行质检处置");
         }
+        UUID qualityItemId = (UUID) row[0];
+        UUID eventId = dispositionEventId(qualityItemId, idempotencyKey);
+        if (isDispositionReplay(
+                eventId, qualityItemId, action, requested, reason)) {
+            return loadProjection(returnId);
+        }
         String currentStatus = (String) row[10];
         if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
             throw new ApiException(ErrorCode.CONFLICT, "该退货质检冻结明细已全部处置或已撤销");
@@ -201,13 +231,11 @@ public class SalesReturnQualityService {
                             + remaining.stripTrailingZeros().toPlainString());
         }
 
-        UUID qualityItemId = (UUID) row[0];
         UUID warehouseId = (UUID) row[1];
         UUID goodsId = (UUID) row[2];
         UUID colorId = (UUID) row[3];
         UUID unitId = (UUID) row[4];
         BigDecimal unitRate = decimal(row[5]);
-        UUID eventId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.now();
         UUID actor = currentUser.requireEmployeeId();
 
@@ -254,6 +282,31 @@ public class SalesReturnQualityService {
         return loadProjection(returnId);
     }
 
+    private boolean isDispositionReplay(
+            UUID eventId, UUID qualityItemId, String action,
+            BigDecimal requested, String reason) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> events = em.createNativeQuery("""
+                        SELECT quality_item_id, action, base_qty, reason
+                        FROM sales_return_quality_events
+                        WHERE id = :eventId
+                        """)
+                .setParameter("eventId", eventId)
+                .getResultList();
+        if (events.isEmpty()) {
+            return false;
+        }
+        Object[] existing = events.getFirst();
+        if (sameDispositionCommand(
+                (UUID) existing[0], (String) existing[1], decimal(existing[2]),
+                (String) existing[3], qualityItemId, action, requested, reason)) {
+            return true;
+        }
+        throw new ApiException(
+                ErrorCode.CONFLICT,
+                "该退货质检幂等键已用于不同处置内容，请刷新后重新操作");
+    }
+
     private List<ReturnQualityItemDto> loadProjection(UUID returnId) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
@@ -278,7 +331,7 @@ public class SalesReturnQualityService {
                     (UUID) row[4], (UUID) row[5], (UUID) row[6], decimal(row[7]),
                     received, released, scrapped, rework,
                     received.subtract(released).subtract(scrapped).subtract(rework),
-                    (String) row[12], (OffsetDateTime) row[13], (OffsetDateTime) row[14]);
+                    (String) row[12], offsetDateTime(row[13]), offsetDateTime(row[14]));
         }).toList();
     }
 
@@ -302,6 +355,34 @@ public class SalesReturnQualityService {
                 .setParameter("actor", actor)
                 .setParameter("occurredAt", occurredAt)
                 .executeUpdate();
+    }
+
+    static String normalizeIdempotencyKey(String key) {
+        String normalized = key == null ? "" : key.strip();
+        if (normalized.length() < 8 || normalized.length() > 128
+                || !normalized.matches("[A-Za-z0-9._:-]+")) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "退货质检幂等键必须为 8 到 128 位字母、数字或 ._:-");
+        }
+        return normalized;
+    }
+
+    static UUID dispositionEventId(UUID qualityItemId, String idempotencyKey) {
+        String canonical = "SALES_RETURN_QUALITY_DISPOSITION|"
+                + qualityItemId + "|" + normalizeIdempotencyKey(idempotencyKey);
+        return UUID.nameUUIDFromBytes(canonical.getBytes(StandardCharsets.UTF_8));
+    }
+
+    static boolean sameDispositionCommand(
+            UUID storedQualityItemId, String storedAction,
+            BigDecimal storedQuantity, String storedReason,
+            UUID expectedQualityItemId, String expectedAction,
+            BigDecimal expectedQuantity, String expectedReason) {
+        return Objects.equals(storedQualityItemId, expectedQualityItemId)
+                && Objects.equals(storedAction, expectedAction)
+                && storedQuantity.compareTo(expectedQuantity) == 0
+                && Objects.equals(storedReason, expectedReason);
     }
 
     static String normalizeAction(String action) {
@@ -359,6 +440,18 @@ public class SalesReturnQualityService {
             throw new ApiException(ErrorCode.CONFLICT, "退货明细单位换算率必须大于 0");
         }
         return normalized;
+    }
+
+    static OffsetDateTime offsetDateTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof OffsetDateTime dateTime) return dateTime;
+        if (value instanceof Instant instant) return instant.atOffset(ZoneOffset.UTC);
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
+        }
+        throw new ApiException(
+                ErrorCode.CONFLICT,
+                "退货质检时间字段类型异常");
     }
 
     private static BigDecimal decimal(Object value) {

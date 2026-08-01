@@ -1,19 +1,77 @@
 // 路由名称常量
 // 文档：docs/05-架构/路由设计.md
 
+/// Defines which portal may consume a preserved post-authentication route.
+enum ReturnToScope { any, employee, visitor }
+
+/// Validates and canonicalizes an in-app post-authentication route.
+///
+/// Only absolute paths inside this application are accepted. Authentication
+/// and entry routes are rejected to prevent redirect loops.
+String? sanitizeReturnTo(String? candidate, {required ReturnToScope scope}) {
+  if (candidate == null ||
+      candidate.isEmpty ||
+      candidate != candidate.trim() ||
+      !candidate.startsWith('/') ||
+      candidate.startsWith('//') ||
+      candidate.contains(r'\')) {
+    return null;
+  }
+
+  final uri = Uri.tryParse(candidate);
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.hasAuthority ||
+      !uri.path.startsWith('/') ||
+      uri.path.startsWith('//') ||
+      _isAuthenticationLoop(uri.path)) {
+    return null;
+  }
+
+  final visitorPath =
+      uri.path == '/visitor' || uri.path.startsWith('/visitor/');
+  if (scope == ReturnToScope.employee && visitorPath) return null;
+  if (scope == ReturnToScope.visitor && !visitorPath) return null;
+  return uri.toString();
+}
+
+/// Reads a validated `returnTo` value from [uri].
+String? returnToFromUri(Uri uri, {required ReturnToScope scope}) {
+  return sanitizeReturnTo(uri.queryParameters['returnTo'], scope: scope);
+}
+
+/// Returns a carried `returnTo`, or the current route when no value is carried.
+String? intendedReturnTo(Uri uri, {required ReturnToScope scope}) {
+  if (uri.queryParameters.containsKey('returnTo')) {
+    return returnToFromUri(uri, scope: scope);
+  }
+  return sanitizeReturnTo(uri.toString(), scope: scope);
+}
+
+bool _isAuthenticationLoop(String path) {
+  return _isRouteOrDescendant(path, RouteName.entry) ||
+      _isRouteOrDescendant(path, RouteName.login) ||
+      _isRouteOrDescendant(path, RouteName.changePassword) ||
+      _isRouteOrDescendant(path, RouteName.visitorLogin);
+}
+
+bool _isRouteOrDescendant(String path, String route) =>
+    path == route || path.startsWith('$route/');
+
 /// 路由路径常量
 abstract final class RouteName {
   static const String login = '/login';
   static const String home = '/';
   static const String dashboard = '/dashboard';
   static const String accessDenied = '/access-denied';
+  static const String notFound = '/not-found';
   static const String profile = '/profile';
   static const String settings = '/settings';
   static const String deviceAuditReceipts = '/settings/device-receipts';
   static const String changePassword = '/change-password';
   static const String department = '/department';
 
-  // 基础资料（登录即可访问，不设路由守卫）
+  // 基础资料（hub 与详情均按对应主档查看权限守卫）
   // /basicinfo       = 资料入口 hub（货品资料 / 模具资料 / ...）
   // /basicinfo/goods = 货品资料（分类树 + 货品）
   // /basicinfo/mould = 模具资料（分类树 + 模具）
@@ -74,7 +132,6 @@ abstract final class RouteName {
   static const String visitorApprovalDetail = '/visitor-approval/:id';
   static const String myVisitors = '/my-visitors';
   static const String securityScan = '/security/scan';
-  static const String securityCheck = '/security/check/:id';
 
   // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
@@ -163,10 +220,51 @@ abstract final class RouteName {
 
 /// 路径拼接工具（带参数的路由）
 abstract final class RoutePath {
-  /// 登录页（可带 returnTo）
-  static String login({String? returnTo}) {
-    if (returnTo == null) return RouteName.login;
-    return '${RouteName.login}?returnTo=$returnTo';
+  /// Entry page with an optional route preserved for portal selection.
+  static String entry({String? returnTo}) => _withReturnTo(
+    RouteName.entry,
+    returnTo: returnTo,
+    scope: ReturnToScope.any,
+  );
+
+  /// Employee login page with an optional post-login route.
+  static String login({String? returnTo}) => _withReturnTo(
+    RouteName.login,
+    returnTo: returnTo,
+    scope: ReturnToScope.employee,
+  );
+
+  /// Visitor login page with an optional post-login route.
+  static String visitorLogin({String? returnTo}) => _withReturnTo(
+    RouteName.visitorLogin,
+    returnTo: returnTo,
+    scope: ReturnToScope.visitor,
+  );
+
+  /// Password-change page, preserving the employee route through forced mode.
+  static String changePassword({bool forced = false, String? returnTo}) {
+    final safe = sanitizeReturnTo(returnTo, scope: ReturnToScope.employee);
+    final query = <String, String>{
+      if (forced) 'forced': 'true',
+      'returnTo': ?safe,
+    };
+    return query.isEmpty
+        ? RouteName.changePassword
+        : Uri(
+            path: RouteName.changePassword,
+            queryParameters: query,
+          ).toString();
+  }
+
+  static String _withReturnTo(
+    String path, {
+    required String? returnTo,
+    required ReturnToScope scope,
+  }) {
+    final safe = sanitizeReturnTo(returnTo, scope: scope);
+    return safe == null
+        ? path
+        : Uri(path: path, queryParameters: {'returnTo': safe}).toString();
   }
 
   static String payrollSlipDetail(String id) => '/payroll/slip/$id';

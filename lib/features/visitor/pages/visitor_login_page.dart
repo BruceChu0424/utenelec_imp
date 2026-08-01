@@ -25,7 +25,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../providers/visitor_session_provider.dart';
 
 class VisitorLoginPage extends ConsumerStatefulWidget {
-  const VisitorLoginPage({super.key});
+  const VisitorLoginPage({super.key, this.returnTo});
+
+  final String? returnTo;
 
   @override
   ConsumerState<VisitorLoginPage> createState() => _VisitorLoginPageState();
@@ -108,7 +110,7 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
     try {
       await ref.read(visitorSessionProvider.notifier).login(phone, code);
       if (!mounted) return;
-      context.go(RouteName.visitorHome);
+      context.go(widget.returnTo ?? RouteName.visitorHome);
     } on ApiException catch (e) {
       if (mounted) {
         setState(

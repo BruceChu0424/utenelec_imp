@@ -50,8 +50,24 @@ ProfileChangeStatus _parseStatus(String? s) {
     case 'cancelled':
       return ProfileChangeStatus.cancelled;
     default:
-      return ProfileChangeStatus.pending;
+      throw FormatException('Unknown profile change status: $s');
   }
+}
+
+DateTime _requiredProfileDate(Object? value, String field) {
+  if (value is! String || value.isEmpty) {
+    throw FormatException('Missing required profile change date: $field');
+  }
+  final parsed = ChinaDateTime.tryParse(value);
+  if (parsed == null) {
+    throw FormatException('Invalid profile change date for $field: $value');
+  }
+  return parsed;
+}
+
+DateTime? _optionalProfileDate(Object? value, String field) {
+  if (value == null) return null;
+  return _requiredProfileDate(value, field);
 }
 
 /// 单条申请记录（HR 详情 + 员工自查 共用）。
@@ -104,12 +120,10 @@ class ProfileChangeItem {
       status: _parseStatus(json['status'] as String?),
       submittedBy: json['submittedBy'] as String,
       submittedByName: json['submittedByName'] as String?,
-      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
+      submittedAt: _requiredProfileDate(json['submittedAt'], 'submittedAt'),
       reviewedBy: json['reviewedBy'] as String?,
       reviewedByName: json['reviewedByName'] as String?,
-      reviewedAt: json['reviewedAt'] == null
-          ? null
-          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
+      reviewedAt: _optionalProfileDate(json['reviewedAt'], 'reviewedAt'),
       reviewComment: json['reviewComment'] as String?,
       employeeVersion: json['employeeVersion'] as int?,
     );
@@ -158,11 +172,9 @@ class ProfileChangeBatch {
       status: _parseStatus(json['status'] as String?),
       itemCount: (json['itemCount'] as int?) ?? list.length,
       items: list,
-      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
+      submittedAt: _requiredProfileDate(json['submittedAt'], 'submittedAt'),
       submittedByName: json['submittedByName'] as String?,
-      reviewedAt: json['reviewedAt'] == null
-          ? null
-          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
+      reviewedAt: _optionalProfileDate(json['reviewedAt'], 'reviewedAt'),
       reviewedByName: json['reviewedByName'] as String?,
       reviewComment: json['reviewComment'] as String?,
     );
@@ -196,10 +208,8 @@ class MyProfileChangeListItem {
       batchId: json['batchId'] as String,
       status: _parseStatus(json['status'] as String?),
       itemCount: (json['itemCount'] as int?) ?? 0,
-      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
-      reviewedAt: json['reviewedAt'] == null
-          ? null
-          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
+      submittedAt: _requiredProfileDate(json['submittedAt'], 'submittedAt'),
+      reviewedAt: _optionalProfileDate(json['reviewedAt'], 'reviewedAt'),
       reviewComment: json['reviewComment'] as String?,
       fieldCodes: (json['fieldCodes'] as List<dynamic>? ?? const [])
           .cast<String>(),
@@ -248,10 +258,8 @@ class HrProfileChangeListItem {
       itemCount: (json['itemCount'] as int?) ?? 0,
       fieldCodes: (json['fieldCodes'] as List<dynamic>? ?? const [])
           .cast<String>(),
-      submittedAt: ChinaDateTime.tryParse(json['submittedAt'] as String)!,
-      reviewedAt: json['reviewedAt'] == null
-          ? null
-          : ChinaDateTime.tryParse(json['reviewedAt'] as String),
+      submittedAt: _requiredProfileDate(json['submittedAt'], 'submittedAt'),
+      reviewedAt: _optionalProfileDate(json['reviewedAt'], 'reviewedAt'),
       reviewedByName: json['reviewedByName'] as String?,
     );
   }

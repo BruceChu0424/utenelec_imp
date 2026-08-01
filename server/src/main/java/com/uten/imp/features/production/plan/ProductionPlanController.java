@@ -26,8 +26,9 @@ import java.util.UUID;
 /**
  * 生产计划 API（生产管理）。
  *
- * <p>CRUD + 审核 + 红冲。审核仅置 status=1 + 重算 is_closed；
- * <b>不</b>调库存 / 立帐 / 回写销售订单（design §4.1 本期后置清单）。
+ * <p>负责计划草稿、审核、红冲及进度查询。审核会校验并落地销售订单分摊，
+ * 回写计划数量和业务链状态，重算 {@code is_closed}，并通过业务 Outbox 发布排产通知。
+ * 计划单本身不直接过账库存或应收应付；领料、成品入库和报工由各自单据处理。
  *
  * <ul>
  *   <li>GET    /api/production/plans            列表分页（关键词/部门/状态/结案/日期）</li>
@@ -35,7 +36,7 @@ import java.util.UUID;
  *   <li>POST   /api/production/plans            新建（草稿）</li>
  *   <li>PUT    /api/production/plans/{id}       编辑（仅草稿）</li>
  *   <li>DELETE /api/production/plans/{id}       软删（仅草稿/红冲）</li>
- *   <li>POST   /api/production/plans/{id}/approve  审核（0→1 + 派生 is_closed）</li>
+ *   <li>POST   /api/production/plans/{id}/approve  审核（0→1 + 销售来源联动）</li>
  *   <li>POST   /api/production/plans/{id}/reverse  红冲（1→-1）</li>
  * </ul>
  */

@@ -34,10 +34,15 @@ enum StockDocType {
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
   String get refreshKey => 'stock:$name';
 
-  static StockDocType byCode(String c) => StockDocType.values.firstWhere(
-    (e) => e.code == c,
-    orElse: () => StockDocType.otherIn,
-  );
+  static StockDocType? tryByCode(String code) {
+    for (final type in StockDocType.values) {
+      if (type.code == code) return type;
+    }
+    return null;
+  }
+
+  static StockDocType byCode(String code) =>
+      tryByCode(code) ?? (throw ArgumentError.value(code, 'code', '未知仓库单据路由段'));
 }
 
 class StockDocListItem {

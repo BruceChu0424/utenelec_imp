@@ -24,10 +24,15 @@ enum SalesDocType {
   const SalesDocType(this.pathSegment);
   final String pathSegment;
 
-  static SalesDocType byPath(String seg) => SalesDocType.values.firstWhere(
-    (e) => e.pathSegment == seg,
-    orElse: () => SalesDocType.quote,
-  );
+  static SalesDocType? tryByPath(String seg) {
+    for (final type in SalesDocType.values) {
+      if (type.pathSegment == seg) return type;
+    }
+    return null;
+  }
+
+  static SalesDocType byPath(String seg) =>
+      tryByPath(seg) ?? (throw ArgumentError.value(seg, 'seg', '未知销售单据路由段'));
 }
 
 /// 报表 docType 参数（对应 GET /api/sales/reports/{docType}/detail 的 path 取值）。

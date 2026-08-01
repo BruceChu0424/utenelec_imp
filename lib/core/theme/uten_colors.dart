@@ -16,11 +16,11 @@ import 'uten_tokens.dart';
 /// Uten 品牌色板常量
 abstract final class UtenColors {
   // ===== 品牌主色 =====
-  /// 交互主色：teal500（青绿），浅色 / 深色模式共用
+  /// 跨明暗主题使用的兼容交互色；浅色实心按钮由 ColorScheme 单独定义
   static const Color primary = teal500;
 
-  /// 品牌深绿（兼容旧引用，现等同于 teal500）
-  static const Color deepGreen = teal500;
+  /// 品牌深绿（兼容旧引用）
+  static const Color deepGreen = teal800;
 
   // ===== 青绿色阶（交互态统一用 teal 系）=====
   static const Color teal50 = Color(0xFFF0FDFA);

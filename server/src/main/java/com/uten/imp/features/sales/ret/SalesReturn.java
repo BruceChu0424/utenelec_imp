@@ -16,9 +16,10 @@ import java.util.UUID;
 /**
  * 销售退货单主表（销售管理）。源 S_Withdraw（单号前缀 XT）。
  *
- * <p>审核（status 0→1）：库存入库（type=4/dir=+1）+ 双挂回写 sales_shipment_items.returned_qty/amount
- * 与 sales_order_items.returned_qty + 立红字应收（AR, SALES_RETURN, BStyle=18, 负应收）+ 结案重算。
- * ar_posted 立帐标志。红冲（1→-1）：先 reverseArAp 校验无收款核销 → 反向库存 + 回减 returned_qty。
+ * <p>V51/V90 历史审核（status 0→1）曾直接库存入库；V189 之后的新退货审核改为质量冻结，
+ * 只有 GOOD_RELEASE 处置进入可售库存。审核仍双挂回写 sales_shipment_items.returned_qty/amount
+ * 与 sales_order_items.returned_qty，并立红字应收（AR, SALES_RETURN, BStyle=18, 负应收）及重算结案。
+ * ar_posted 为立帐标志。未处置的 V189 冻结可随原单受控反向；已发生处置时禁止整单普通红冲。
  *
  * <p>明细 amount 与主表 total 均为正数（design 20 §6.1/§7.3），红字负数仅在 ar_ap_ledger 立帐时取负。
  */

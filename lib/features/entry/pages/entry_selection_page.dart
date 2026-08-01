@@ -15,7 +15,9 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 
 class EntrySelectionPage extends StatelessWidget {
-  const EntrySelectionPage({super.key});
+  const EntrySelectionPage({super.key, this.returnTo});
+
+  final String? returnTo;
 
   @override
   Widget build(BuildContext context) {
@@ -63,13 +65,15 @@ class EntrySelectionPage extends StatelessWidget {
                                   icon: Icons.badge_rounded,
                                   title: l10n.entryStaff,
                                   subtitle: '员工工号登录，进入工作台',
-                                  location: RouteName.login,
+                                  location: RoutePath.login(returnTo: returnTo),
                                 ),
                                 (
                                   icon: Icons.qr_code_2_rounded,
                                   title: l10n.entryVisitor,
                                   subtitle: '访客扫码登记，快速通行',
-                                  location: RouteName.visitorLogin,
+                                  location: RoutePath.visitorLogin(
+                                    returnTo: returnTo,
+                                  ),
                                 ),
                               ];
                               final e = entries[i];

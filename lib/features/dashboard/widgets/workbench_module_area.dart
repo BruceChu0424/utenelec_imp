@@ -12,7 +12,7 @@
 //   每个模块的可见性 = 用户是否拥有「目标路由所需权限点」，
 //   权限点查 core/router/permission_by_path.dart 的 requiredAnyPermFor() ——
 //   与路由守卫同一份映射；客户资料的数据范围由后端 owner/授权策略裁剪。
-//   映射为 null 的（如工资条/报销/意见箱/基础资料）= 登录即可见。
+//   映射为 null 的公开入口才按登录可见；其余入口统一由路由权限映射控制。
 //   普通用户：整组无可见卡片则整组不渲染；
 //   超级管理员：显示全部分组（含空分组），空分组内显示「功能规划接入中」占位，
 //   方便超管预先排列布局。
@@ -213,24 +213,22 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.myVisitors,
         badge: VisitorHostPendingBadge(),
       ),
-      // 基础资料 = 货品资料分类树等（/basicinfo，登录即可访问）
+      // 基础资料 hub 按各主档查看权限过滤，与路由守卫共用权限映射。
       _ModuleItem(
         icon: Icons.category_outlined,
         label: '基础资料',
         location: RouteName.basicinfo,
       ),
-      // 工资条与报销仍待完整生产验收；意见箱已接真实后端并开放入口。
+      // 工资条、报销与意见箱均已接真实后端；生产验收状态由验收手册单独记录。
       _ModuleItem(
         icon: Icons.account_balance_wallet_outlined,
         label: '工资条',
         location: RouteName.payrollSlipList,
-        comingSoon: true,
       ),
       _ModuleItem(
         icon: Icons.receipt_long_outlined,
         label: '我的报销',
         location: RouteName.expense,
-        comingSoon: true,
       ),
       _ModuleItem(
         icon: Icons.lightbulb_outline_rounded,
@@ -290,25 +288,22 @@ const _allGroups = <_ModuleGroup>[
         label: '钱流管理',
         location: RouteName.finance,
       ),
-      // 以下仍为前端 Mock、未接后端：置灰放最后，名字追加「（功能规划接入中）」、暂不跳转
+      // 工资与报销审批均为真实后端入口，是否显示由对应权限控制。
       _ModuleItem(
         icon: Icons.fact_check_outlined,
         label: '报销审批',
         location: '/expense/approval',
-        comingSoon: true,
       ),
       // 工资条生成归属财务（payroll:generate 仅 finance/admin 持有）
       _ModuleItem(
         icon: Icons.request_quote_outlined,
         label: '工资条生成',
         location: '/payroll/generate',
-        comingSoon: true,
       ),
       _ModuleItem(
         icon: Icons.rate_review_outlined,
         label: '工资条审核',
         location: '/payroll/review',
-        comingSoon: true,
       ),
     ],
   ),

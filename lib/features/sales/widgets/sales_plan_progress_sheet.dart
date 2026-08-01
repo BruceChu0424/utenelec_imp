@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
@@ -78,7 +79,7 @@ class _ProgressList extends ConsumerWidget {
         ),
         const SizedBox(height: UtenSpacing.s4),
         Text(
-          '已排 = 已进生产计划量；已产 = 完工入库量。点计划单号可看生产计划详情。',
+          '已排 = 已进生产计划量；已产 = 完工入库量。点击计划单号或执行子计划可查看生产详情。',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -191,55 +192,63 @@ class _ProgressList extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: canViewPlan
-                  ? () {
-                      Navigator.of(context).pop();
-                      context.push(RoutePath.productionPlanDetail(p.planId));
-                    }
-                  : null,
-              child: Text(
-                p.planNo ?? '—',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: canViewPlan ? theme.colorScheme.primary : null,
-                  decoration: canViewPlan ? TextDecoration.underline : null,
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => _openProductionPlan(
+                    context,
+                    planId: p.planId,
+                    canViewPlan: canViewPlan,
+                  ),
+                  child: Text(
+                    p.planNo ?? '—',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: canViewPlan ? theme.colorScheme.primary : null,
+                      decoration: canViewPlan ? TextDecoration.underline : null,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          Text(
-            statusText,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: statusColor,
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Text(
-            '排 ${_fmt(p.allocatedQty)} · 产 ${_fmt(p.producedQty)} · 入 ${_fmt(p.inboundQty)}',
-            style: TextStyle(
-              fontSize: 11,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
+              Text(
+                statusText,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: statusColor,
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s12),
+              Text(
+                '排 ${_fmt(p.allocatedQty)} · 产 ${_fmt(p.producedQty)} · 入 ${_fmt(p.inboundQty)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ),
           for (final segment in p.executionSegments)
-            _executionSegmentRow(theme, segment),
+            _executionSegmentRow(
+              context,
+              theme,
+              segment,
+              planId: p.planId,
+              canViewPlan: canViewPlan,
+            ),
         ],
       ),
     );
   }
 
   Widget _executionSegmentRow(
+    BuildContext context,
     ThemeData theme,
-    OrderExecutionSegmentProgress segment,
-  ) {
+    OrderExecutionSegmentProgress segment, {
+    required String planId,
+    required bool canViewPlan,
+  }) {
     final statusLabel = switch (segment.status) {
       'READY' => '待派工',
       'WAITING' => '待料',
@@ -266,79 +275,137 @@ class _ProgressList extends ConsumerWidget {
     ].where((value) => value?.isNotEmpty == true).join(' → ');
 
     return Semantics(
+      button: true,
+      enabled: canViewPlan,
       label:
           '${segment.segmentCode ?? '执行子计划'}，$statusLabel，'
           '分摊 ${_fmt(segment.allocatedQty)}，'
           '报工 ${_fmt(segment.reportedQty)}，'
           '入库 ${_fmt(segment.inboundQty)}',
-      child: Container(
-        margin: const EdgeInsets.only(top: UtenSpacing.s8),
-        padding: const EdgeInsets.all(UtenSpacing.s8),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.only(top: UtenSpacing.s8),
+        child: InkWell(
           borderRadius: BorderRadius.circular(UtenRadius.sm),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+          onTap: () => _openProductionPlan(
+            context,
+            planId: planId,
+            canViewPlan: canViewPlan,
+            executionSegmentId: segment.executionSegmentId,
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(UtenSpacing.s8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(UtenRadius.sm),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    segment.segmentCode ?? '执行子计划',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Text(
-                  statusLabel,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: statusColor,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '分摊 ${_fmt(segment.allocatedQty)} · '
-              '报工 ${_fmt(segment.reportedQty)} · '
-              '入库 ${_fmt(segment.inboundQty)}',
-              style: theme.textTheme.bodySmall,
-            ),
-            if (assignment.isNotEmpty || dates.isNotEmpty)
-              Text(
-                [assignment, dates].where((value) => value.isNotEmpty).join(' · '),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            if (segment.delayed)
-              Row(
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    size: 16,
-                    color: theme.colorScheme.error,
-                  ),
-                  const SizedBox(width: UtenSpacing.s4),
-                  Expanded(
-                    child: Text(
-                      segment.delayReason ?? '已超过计划完工日期',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.error,
-                        fontWeight: FontWeight.w600,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        segment.segmentCode ?? '执行子计划',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
+                    Text(
+                      statusLabel,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                    Icon(
+                      canViewPlan
+                          ? Icons.chevron_right_rounded
+                          : Icons.lock_outline_rounded,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  '分摊 ${_fmt(segment.allocatedQty)} · '
+                  '报工 ${_fmt(segment.reportedQty)} · '
+                  '入库 ${_fmt(segment.inboundQty)}',
+                  style: theme.textTheme.bodySmall,
+                ),
+                if (assignment.isNotEmpty || dates.isNotEmpty)
+                  Text(
+                    [
+                      assignment,
+                      dates,
+                    ].where((value) => value.isNotEmpty).join(' · '),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ],
-              ),
-          ],
+                if (segment.delayed)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: 16,
+                        color: theme.colorScheme.error,
+                      ),
+                      const SizedBox(width: UtenSpacing.s4),
+                      Expanded(
+                        child: Text(
+                          segment.delayReason ?? '已超过计划完工日期',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _openProductionPlan(
+    BuildContext context, {
+    required String planId,
+    required bool canViewPlan,
+    String? executionSegmentId,
+  }) async {
+    if (!canViewPlan) {
+      context.appWarning('当前账号没有生产计划查看权限', force: true);
+      return;
+    }
+    final normalizedPlanId = planId.trim();
+    if (normalizedPlanId.isEmpty) {
+      context.appWarning('未找到可打开的生产计划', force: true);
+      return;
+    }
+    final router = GoRouter.of(context);
+    final navigator = Navigator.of(context);
+    final feedbackContext = navigator.context;
+    final location = Uri(
+      path: RoutePath.productionPlanDetail(normalizedPlanId),
+      queryParameters: executionSegmentId == null
+          ? null
+          : {'executionSegmentId': executionSegmentId},
+    ).toString();
+    navigator.pop();
+    try {
+      await router.push(location);
+    } catch (_) {
+      if (feedbackContext.mounted) {
+        feedbackContext.appError('生产计划打开失败，请稍后重试', force: true);
+      }
+    }
   }
 
   Widget _num(

@@ -21,12 +21,17 @@ import '../repositories/goods_repository.dart';
 
 /// 成本字段定义（key 与后端 GoodsSaveRequest 对齐）。
 class _CostField {
-  const _CostField(this.key, this.label, {this.percent = false, this.derived = false});
+  const _CostField(
+    this.key,
+    this.label, {
+    this.percent = false,
+    this.derived = false,
+  });
 
   final String key;
   final String label;
   final bool percent; // 比率字段（%）
-  final bool derived;  // 派生（自动算，只读）
+  final bool derived; // 派生（自动算，只读）
 }
 
 const _costFields = [
@@ -52,8 +57,16 @@ const _costFields = [
 
 /// 手填（可编辑）字段：6 项加工费 + 4 项比率。
 const _inputKeys = {
-  'machiningE', 'incidentalE', 'lacquerE', 'platingE', 'casingE', 'polishE',
-  'workRate', 'lostRate', 'rentRate', 'makeRate',
+  'machiningE',
+  'incidentalE',
+  'lacquerE',
+  'platingE',
+  'casingE',
+  'polishE',
+  'workRate',
+  'lostRate',
+  'rentRate',
+  'makeRate',
 };
 
 class GoodsCostTab extends ConsumerStatefulWidget {
@@ -67,6 +80,7 @@ class GoodsCostTab extends ConsumerStatefulWidget {
 
   final GoodsDetail detail;
   final bool canEdit;
+
   /// BOM 聚合的「材料合计」(sourceE)——由父弹窗传入（= 最新 goods.sourceE）。
   /// 变化时只读刷新 sourceE 并重算下游；null 时回退 detail.sourceE。
   final double? materialTotal;
@@ -125,8 +139,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     super.didUpdateWidget(old);
     // BOM 变动后父弹窗刷新 _detail → materialTotal(=sourceE) 变化 → 刷新 sourceE + 重算。
     if (widget.materialTotal != old.materialTotal) {
-      _controllers['sourceE']!.text =
-          (widget.materialTotal ?? 0).toStringAsFixed(2);
+      _controllers['sourceE']!.text = (widget.materialTotal ?? 0)
+          .toStringAsFixed(2);
       _recompute();
     }
   }
@@ -154,7 +168,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     _computing = true;
     try {
       final src = _num('sourceE');
-      final total = src +
+      final total =
+          src +
           _num('machiningE') +
           _num('incidentalE') +
           _num('lacquerE') +

@@ -41,6 +41,12 @@ public class OrderSaveRequest {
     /** 来源单据号（报价转入时=报价单号，订货详情据此回联来源报价做价格比对）。 */
     private String sourceDocNo;
 
+    /**
+     * ALLOW_PARTIAL / REQUIRE_COMPLETE / CUSTOMER_CONFIRM.
+     * Null is normalized by the server to CUSTOMER_CONFIRM for new orders.
+     */
+    private String shipmentPolicy;
+
     @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)

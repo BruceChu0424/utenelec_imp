@@ -357,7 +357,11 @@ class _StockQueryEntry {
 }
 
 const _stockQueryEntries = <_StockQueryEntry>[
-  _StockQueryEntry(Icons.inventory_rounded, '即时库存', RouteName.stockInstantInventory),
+  _StockQueryEntry(
+    Icons.inventory_rounded,
+    '即时库存',
+    RouteName.stockInstantInventory,
+  ),
   _StockQueryEntry(Icons.inventory_2_outlined, '库存查询', RouteName.stockBalance),
   _StockQueryEntry(Icons.swap_vert_rounded, '出入库流水', RouteName.stockMovement),
 ];

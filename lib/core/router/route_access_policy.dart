@@ -18,12 +18,12 @@ String? employeePermissionRedirect(AppUser? user, String location) {
 
   final requiredAny = requiredAnyPermFor(location);
   if (requiredAny != null && !user.canAny(requiredAny)) {
-    return RouteName.dashboard;
+    return RouteName.accessDenied;
   }
 
   final requiredAll = requiredAllPermsFor(location);
   if (requiredAll.isNotEmpty && !requiredAll.every(user.can)) {
-    return RouteName.dashboard;
+    return RouteName.accessDenied;
   }
   return null;
 }

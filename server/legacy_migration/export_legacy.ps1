@@ -339,8 +339,9 @@ switch ($Target) {
         Export-Query -Sql $whCheckMain        -OutPath (Join-Path $dataDir 'stock_check_m.csv')
         Export-Query -Sql $whCheckItem        -OutPath (Join-Path $dataDir 'stock_check_i.csv')
         Export-Query -Sql $whStockGoods       -OutPath (Join-Path $dataDir 'stock_goods.csv')
-        # 人员：B_Worker 完整（建 employees stub）+ schema 发现（确认子类列）
+        # 人员：B_Worker 建 employees stub；Sys_Operator 冻结制单/审核姓名；另导 schema 发现
         Export-Query -Sql $legacyWorkersSql   -OutPath (Join-Path $dataDir 'legacy_workers.csv')
+        Export-Query -Sql $legacyOperatorRefSql -OutPath (Join-Path $dataDir 'legacy_operators_ref.csv')
         Export-Query -Sql $bWorkerSchemaSql   -OutPath (Join-Path $dataDir 'b_worker_columns.csv')
     }
     'SalesQuote' {

@@ -38,15 +38,12 @@ import java.util.UUID;
 /**
  * 委外材料出仓单服务：CRUD（主+明细）+ 审核状态机。
  *
- * <p>审核（status 0→1，同事务内，对每条明细）：
- * <ol>
- *   <li>{@link StockService#recordMovement} {@code TYPE_SUBCONTRACT_MATERIAL_ISSUE=15, DIR_OUT=-1}</li>
- *   <li>回写订货明细 {@code subcontract_order_items.issued_qty += qty}</li>
- *   <li>重算订货单 is_closed</li>
- * </ol>
+ * <p>新单审核当前 fail-closed：在委外订货冻结 BOM 版本和子件发料权威台账
+ * 落地前，不允许产生新的库存出库。禁止把不同子件数量累计到成品订货行。
  * <b>不立应付</b>（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。无 Price（amount 可空）。
  *
- * <p>红冲（1→-1）：反向 DIR_IN + 回减 issued_qty + 重算 is_closed + 置 status=-1。
+ * <p>红冲（1→-1）：反向 DIR_IN + 置 status=-1；成品订货行上的历史
+ * issued_qty 不再作为权威口径，也不继续改写。
  *
  * <p>取代老库 E_SOut 触发器（其写 StockGoods 按月台账 + CheckChange_E 维护 SQTY 累计）。
  */
@@ -142,7 +139,8 @@ public class SubcontractMaterialIssueService {
     }
 
     /**
-     * 审核：0→1。库存出库（DIR_OUT）+ 回写订货 issued_qty + 重算订货 is_closed。<b>不立应付</b>。
+     * 审核：0→1。当前 fail-closed：订货单尚未冻结 BOM 版本，也没有
+     * 子件级发料权威台账，不能把子件量累计到成品订货行。
      */
     @Transactional
     public MaterialIssueDetail approve(UUID id) {
@@ -154,35 +152,14 @@ public class SubcontractMaterialIssueService {
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
         }
-        List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
-        if (items.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
-        }
-        OffsetDateTime now = OffsetDateTime.now();
-        for (SubcontractMaterialIssueItem it : items) {
-            // ① 出库（DIR_OUT=-1）
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
-            // ② 回写订货明细 issued_qty + 重算 is_closed
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET issued_qty = COALESCE(issued_qty,0) + :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
-                        .executeUpdate();
-                recalcOrderClosed(it.getOrderItemId());
-            }
-        }
-        // 不立应付：材料发出不是加工费（加工费走进仓单 BOM 成本）
-        r.setStatus(STATUS_APPROVED);
-        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
-        issueRepo.save(r);
-        return detail(id);
+        throw new ApiException(
+                ErrorCode.CONFLICT,
+                "委外订货尚未冻结 BOM 版本及子件发料台账；为避免错料、超发和"
+                        + "子件量混入成品订货量，当前禁止审核新发料单。"
+                        + "历史已审核发料仍可红冲、退料或登记损耗");
     }
 
-    /** 红冲：1→-1。反向 DIR_IN + 回减 issued_qty + 重算 is_closed（无 ArAp）。 */
+    /** 红冲：1→-1。反向 DIR_IN；不再改写成品行 legacy issued_qty（无 ArAp）。 */
     @Transactional
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
@@ -201,14 +178,6 @@ public class SubcontractMaterialIssueService {
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET issued_qty = COALESCE(issued_qty,0) - :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
-                        .executeUpdate();
-                recalcOrderClosed(it.getOrderItemId());
-            }
         }
         r.setStatus(STATUS_REVERSED);
         issueRepo.save(r);
@@ -230,19 +199,6 @@ public class SubcontractMaterialIssueService {
                 r.getId(), it.getId(), it.getGoodsId(), it.getColorId(), r.getWarehouseId(),
                 direction, baseQty, it.getUnitId(), it.getUnitRate(), amt,
                 direction < 0 ? null : "红冲"));
-    }
-
-    /** 重算订货单结案：所有明细 qty - received_qty + returned_qty ≤ 0 → is_closed=true。 */
-    private void recalcOrderClosed(UUID orderItemId) {
-        em.createNativeQuery("""
-                UPDATE subcontract_orders o SET is_closed = (
-                    SELECT COALESCE(bool_and(
-                        COALESCE(i.qty,0) - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0) <= 0
-                    ), true)
-                    FROM subcontract_order_items i
-                    WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
-                ) WHERE o.id = (SELECT order_id FROM subcontract_order_items WHERE id = :iid)
-                """).setParameter("iid", orderItemId).executeUpdate();
     }
 
     private void applyHeader(MaterialIssueSaveRequest req, SubcontractMaterialIssue r) {

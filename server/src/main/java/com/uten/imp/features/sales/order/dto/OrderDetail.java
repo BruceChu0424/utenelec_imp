@@ -36,6 +36,10 @@ public class OrderDetail {
     private Short status;
     private boolean closed;
     private boolean stopped;
+    private String shipmentPolicy;
+    private java.time.OffsetDateTime partialShipmentConfirmedAt;
+    private UUID partialShipmentConfirmedBy;
+    private String partialShipmentConfirmationReason;
     @lombok.Setter
     private String sourceDocNo;
     /** 来源报价单 ID（sourceDocNo 命中报价单号时由详情接口回联填充，前端跳报价详情/比价用）。 */

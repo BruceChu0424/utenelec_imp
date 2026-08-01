@@ -36,5 +36,8 @@ public record FulfillmentTaskRow(
         UUID actionDocId,
         String actionDocNo,
         UUID actionItemId,
-        String actionDocStatus) {
+        String actionDocStatus,
+        boolean actionDocCanView,
+        boolean actionDocCanEdit,
+        boolean actionDocRestricted) {
 }

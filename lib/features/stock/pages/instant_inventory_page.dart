@@ -156,7 +156,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     setState(() => _visibleFilterIds = catHits);
     // 借货品搜索拿命中货品的 categoryId（即时库存行不带 categoryId），定位分类并加载该分类库存。
     try {
-      final result = await ref.read(goodsRepositoryProvider).search(q, size: 50);
+      final result = await ref
+          .read(goodsRepositoryProvider)
+          .search(q, size: 50);
       if (!mounted || _globalQuery != q) return;
       final ids = <String>{};
       String? first;

@@ -67,6 +67,10 @@ class MouldDetail {
     this.tqty,
     this.mstatus,
     this.remark,
+    this.departmentId,
+    this.departmentName,
+    this.keeperId,
+    this.keeperName,
   });
 
   final String id;
@@ -83,6 +87,10 @@ class MouldDetail {
   final double? tqty; // 总数量
   final String? mstatus; // 制造年月（如 2018年7月）
   final String? remark; // 备注
+  final String? departmentId; // 车间部门 id（对齐生产计划单）
+  final String? departmentName; // 车间部门名（picker 回显）
+  final String? keeperId; // 保管人员工 id（对齐生产计划单）
+  final String? keeperName; // 保管人名（picker 回显）
 
   factory MouldDetail.fromJson(Map<String, dynamic> json) => MouldDetail(
     id: json['id'] as String,
@@ -99,6 +107,10 @@ class MouldDetail {
     tqty: (json['tqty'] as num?)?.toDouble(),
     mstatus: json['mstatus'] as String?,
     remark: json['remark'] as String?,
+    departmentId: json['departmentId'] as String?,
+    departmentName: json['departmentName'] as String?,
+    keeperId: json['keeperId'] as String?,
+    keeperName: json['keeperName'] as String?,
   );
 }
 

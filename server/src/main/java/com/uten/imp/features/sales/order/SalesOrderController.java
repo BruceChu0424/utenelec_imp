@@ -131,6 +131,15 @@ public class SalesOrderController {
         return service.cancel(id);
     }
 
+    @PostMapping("/{id}/partial-shipment-confirmation")
+    @PreAuthorize("hasAuthority('sales_order:confirm_partial_shipment')")
+    public OrderDetail setPartialShipmentConfirmation(
+            @PathVariable UUID id,
+            @Valid @RequestBody
+            com.uten.imp.features.sales.order.dto.PartialShipmentConfirmationRequest req) {
+        return service.setPartialShipmentConfirmation(id, req);
+    }
+
     // ======================= V178：预留生命周期 + 稀缺仲裁 =======================
 
     /** 设置订单行优先级（V178）：1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。 */

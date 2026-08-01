@@ -140,6 +140,167 @@ Color chainStatusColor(int? code, ThemeData theme) {
   }
 }
 
+/// 订单发运策略（V187）。历史值只用于保留旧单，不允许在新单中选择。
+abstract final class SalesShipmentPolicy {
+  static const legacyUnspecified = 'LEGACY_UNSPECIFIED';
+  static const allowPartial = 'ALLOW_PARTIAL';
+  static const requireComplete = 'REQUIRE_COMPLETE';
+  static const customerConfirm = 'CUSTOMER_CONFIRM';
+
+  static const selectable = <String>[
+    customerConfirm,
+    allowPartial,
+    requireComplete,
+  ];
+}
+
+String salesShipmentPolicyLabel(String? code) => switch (code) {
+  SalesShipmentPolicy.allowPartial => '允许分批发货',
+  SalesShipmentPolicy.requireComplete => '整单齐套后发货',
+  SalesShipmentPolicy.customerConfirm => '客户确认后分批',
+  SalesShipmentPolicy.legacyUnspecified => '历史订单（未指定）',
+  null || '' => '未返回',
+  _ => '未知策略（$code）',
+};
+
+String salesShipmentPolicyDescription(String? code) => switch (code) {
+  SalesShipmentPolicy.allowPartial => '有货的订单行可先建立出货任务，其余数量继续等待生产或入库。',
+  SalesShipmentPolicy.requireComplete => '整张订单全部齐套前不允许建立部分出货任务。',
+  SalesShipmentPolicy.customerConfirm => '需要先在订单详情登记客户同意及依据，才能建立部分出货任务。',
+  SalesShipmentPolicy.legacyUnspecified => '迁移前订单沿用原业务规则；编辑其它字段时系统会保留该历史值。',
+  null || '' => '服务端未返回发运策略；为避免误改，当前只读保留。',
+  _ => '服务端返回了客户端尚未识别的策略；为避免误改，当前只读保留。',
+};
+
+/// 仓库出货作业状态（V187）。
+abstract final class SalesWarehouseWorkStatus {
+  static const legacyPending = 'LEGACY_PENDING';
+  static const pendingPick = 'PENDING_PICK';
+  static const picking = 'PICKING';
+  static const picked = 'PICKED';
+  static const exception = 'EXCEPTION';
+  static const shipped = 'SHIPPED';
+  static const cancelled = 'CANCELLED';
+  static const reversed = 'REVERSED';
+}
+
+String salesWarehouseWorkStatusLabel(String? code) => switch (code) {
+  SalesWarehouseWorkStatus.legacyPending => '历史待审核',
+  SalesWarehouseWorkStatus.pendingPick => '待拣货',
+  SalesWarehouseWorkStatus.picking => '拣货中',
+  SalesWarehouseWorkStatus.picked => '已拣货，待交接',
+  SalesWarehouseWorkStatus.exception => '仓库异常',
+  SalesWarehouseWorkStatus.shipped => '已交接出库',
+  SalesWarehouseWorkStatus.cancelled => '已取消',
+  SalesWarehouseWorkStatus.reversed => '已红冲',
+  null || '' => '未返回',
+  _ => '未知状态（$code）',
+};
+
+String salesWarehouseWorkStatusHint(String? code) => switch (code) {
+  SalesWarehouseWorkStatus.legacyPending => '历史出货单沿用原“审核”流程。',
+  SalesWarehouseWorkStatus.pendingPick => '待仓库开始拣货；开始后销售将不能直接编辑或删除。',
+  SalesWarehouseWorkStatus.picking => '仓库正在拣货，可登记异常或确认拣货完成。',
+  SalesWarehouseWorkStatus.picked => '货物已拣齐；交接出库会正式扣减库存并驱动下游。',
+  SalesWarehouseWorkStatus.exception => '异常处理中；处理完成后需填写说明并恢复到待拣货。',
+  SalesWarehouseWorkStatus.shipped => '仓库已完成交接并正式过账出库。',
+  SalesWarehouseWorkStatus.cancelled => '该仓库任务已取消。',
+  SalesWarehouseWorkStatus.reversed => '该出货已红冲。',
+  _ => '当前没有可执行的仓库作业。',
+};
+
+bool salesShipmentUsesLegacyApproval(String? warehouseWorkStatus) =>
+    warehouseWorkStatus == SalesWarehouseWorkStatus.legacyPending;
+
+bool salesShipmentAllowsFinanceAudit(String? warehouseWorkStatus) =>
+    warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick ||
+    warehouseWorkStatus == SalesWarehouseWorkStatus.legacyPending;
+
+bool salesShipmentRequiresOrderLinks({
+  required bool isNew,
+  required String? warehouseWorkStatus,
+}) => isNew || warehouseWorkStatus != SalesWarehouseWorkStatus.legacyPending;
+
+/// 返回第一个未关联订货行的 1-based 行号；全部已关联时返回 0。
+int salesShipmentFirstUnlinkedLine(Iterable<String?> orderItemIds) {
+  var line = 0;
+  for (final orderItemId in orderItemIds) {
+    line++;
+    if (orderItemId == null || orderItemId.isEmpty) return line;
+  }
+  return 0;
+}
+
+bool salesShipmentAllowsDirectReverse({
+  required String? warehouseWorkStatus,
+  required String? handedOverAt,
+}) =>
+    warehouseWorkStatus != SalesWarehouseWorkStatus.shipped &&
+    (handedOverAt == null || handedOverAt.isEmpty);
+
+bool salesShipmentLocksDraftEdit({
+  required int? documentStatus,
+  required int? financeAudit,
+  required String? warehouseWorkStatus,
+}) =>
+    documentStatus == kSalesStatusDraft &&
+    financeAudit == 1 &&
+    warehouseWorkStatus == SalesWarehouseWorkStatus.pendingPick;
+
+enum SalesWarehouseWorkAction {
+  startPicking(SalesWarehouseWorkStatus.picking),
+  finishPicking(SalesWarehouseWorkStatus.picked),
+  reportException(SalesWarehouseWorkStatus.exception),
+  restorePending(SalesWarehouseWorkStatus.pendingPick),
+  handOver(SalesWarehouseWorkStatus.shipped);
+
+  const SalesWarehouseWorkAction(this.targetStatus);
+  final String targetStatus;
+
+  String get label => switch (this) {
+    SalesWarehouseWorkAction.startPicking => '开始拣货',
+    SalesWarehouseWorkAction.finishPicking => '拣货完成',
+    SalesWarehouseWorkAction.reportException => '登记异常',
+    SalesWarehouseWorkAction.restorePending => '恢复待拣货',
+    SalesWarehouseWorkAction.handOver => '交接出库',
+  };
+
+  bool get requiresReason =>
+      this == SalesWarehouseWorkAction.reportException ||
+      this == SalesWarehouseWorkAction.restorePending;
+}
+
+List<SalesWarehouseWorkAction> salesWarehouseWorkActionsFor(String? status) =>
+    switch (status) {
+      SalesWarehouseWorkStatus.pendingPick => const [
+        SalesWarehouseWorkAction.startPicking,
+        SalesWarehouseWorkAction.reportException,
+      ],
+      SalesWarehouseWorkStatus.picking => const [
+        SalesWarehouseWorkAction.finishPicking,
+        SalesWarehouseWorkAction.reportException,
+      ],
+      SalesWarehouseWorkStatus.picked => const [
+        SalesWarehouseWorkAction.handOver,
+        SalesWarehouseWorkAction.reportException,
+      ],
+      SalesWarehouseWorkStatus.exception => const [
+        SalesWarehouseWorkAction.restorePending,
+      ],
+      _ => const [],
+    };
+
+bool salesOrderHasProductionAssociation(Iterable<SalesDocItem> items) =>
+    items.any(
+      (item) =>
+          (item.plannedQty ?? 0) > 0 ||
+          (item.producedQty ?? 0) > 0 ||
+          const {4, 5, 6}.contains(item.chainStatus),
+    );
+
+bool salesOrderHasShippedQuantity(Iterable<SalesDocItem> items) =>
+    items.any((item) => (item.shippedQty ?? 0) > 0);
+
 /// 订货工作台统计卡（GET /api/sales/orders/stats）。
 class SalesOrderStats {
   const SalesOrderStats({
@@ -236,6 +397,17 @@ class SalesDocListItem {
     this.priceMasked = false,
     this.writable = false,
     this.canReject = false,
+    this.shipmentPolicy,
+    this.partialShipmentConfirmedAt,
+    this.partialShipmentConfirmedBy,
+    this.partialShipmentConfirmationReason,
+    this.warehouseWorkStatus,
+    this.warehouseWorkUpdatedAt,
+    this.pickingStartedAt,
+    this.pickedAt,
+    this.handedOverAt,
+    this.warehouseExceptionReason,
+    this.canManageWarehouseWork = false,
     this.sellerName,
     this.sellerId,
   });
@@ -259,6 +431,17 @@ class SalesDocListItem {
   final bool priceMasked; // 价格脱敏（SOP §三8）：无 sales_order:price:view 时合计渲染 ***
   final bool writable; // 服务端权威：功能权限 + 负责人范围均允许普通写操作
   final bool canReject; // 服务端权威：仅出货草稿且具备特殊驳回权限
+  final String? shipmentPolicy;
+  final String? partialShipmentConfirmedAt;
+  final String? partialShipmentConfirmedBy;
+  final String? partialShipmentConfirmationReason;
+  final String? warehouseWorkStatus;
+  final String? warehouseWorkUpdatedAt;
+  final String? pickingStartedAt;
+  final String? pickedAt;
+  final String? handedOverAt;
+  final String? warehouseExceptionReason;
+  final bool canManageWarehouseWork;
 
   /// 销售员姓名（服务端按 seller_id 解析；仅销售订单列表下发，生产计划选单展示）。
   /// 其它单据类型列表不下发，保持 null。
@@ -267,30 +450,43 @@ class SalesDocListItem {
   /// 销售员 id（仅销售订单列表下发；前端跟单员联动回填用）。
   final String? sellerId;
 
-  factory SalesDocListItem.fromJson(Map<String, dynamic> json) =>
-      SalesDocListItem(
-        id: json['id'] as String,
-        billNo: json['billNo'] as String?,
-        billDate: json['billDate'] as String?,
-        clientId: json['clientId'] as String?,
-        warehouseId: json['warehouseId'] as String?,
-        currencyId: json['currencyId'] as String?,
-        outType: json['outType'] as String?,
-        totalLocal: (json['totalLocal'] as num?)?.toDouble(),
-        status: (json['status'] as num?)?.toInt(),
-        closed: (json['closed'] as bool?) ?? false,
-        stopped: (json['stopped'] as bool?) ?? false,
-        arPosted: (json['arPosted'] as bool?) ?? false,
-        legacyId: (json['legacyId'] as num?)?.toInt(),
-        deliverDate: json['deliverDate'] as String?,
-        delayWarning: (json['delayWarning'] as bool?) ?? false,
-        rejected: (json['rejected'] as bool?) ?? false,
-        priceMasked: (json['priceMasked'] as bool?) ?? false,
-        writable: (json['writable'] as bool?) ?? false,
-        canReject: (json['canReject'] as bool?) ?? false,
-        sellerName: json['sellerName'] as String?,
-        sellerId: json['sellerId'] as String?,
-      );
+  factory SalesDocListItem.fromJson(
+    Map<String, dynamic> json,
+  ) => SalesDocListItem(
+    id: json['id'] as String,
+    billNo: json['billNo'] as String?,
+    billDate: json['billDate'] as String?,
+    clientId: json['clientId'] as String?,
+    warehouseId: json['warehouseId'] as String?,
+    currencyId: json['currencyId'] as String?,
+    outType: json['outType'] as String?,
+    totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+    status: (json['status'] as num?)?.toInt(),
+    closed: (json['closed'] as bool?) ?? false,
+    stopped: (json['stopped'] as bool?) ?? false,
+    arPosted: (json['arPosted'] as bool?) ?? false,
+    legacyId: (json['legacyId'] as num?)?.toInt(),
+    deliverDate: json['deliverDate'] as String?,
+    delayWarning: (json['delayWarning'] as bool?) ?? false,
+    rejected: (json['rejected'] as bool?) ?? false,
+    priceMasked: (json['priceMasked'] as bool?) ?? false,
+    writable: (json['writable'] as bool?) ?? false,
+    canReject: (json['canReject'] as bool?) ?? false,
+    shipmentPolicy: json['shipmentPolicy'] as String?,
+    partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,
+    partialShipmentConfirmedBy: json['partialShipmentConfirmedBy'] as String?,
+    partialShipmentConfirmationReason:
+        json['partialShipmentConfirmationReason'] as String?,
+    warehouseWorkStatus: json['warehouseWorkStatus'] as String?,
+    warehouseWorkUpdatedAt: json['warehouseWorkUpdatedAt'] as String?,
+    pickingStartedAt: json['pickingStartedAt'] as String?,
+    pickedAt: json['pickedAt'] as String?,
+    handedOverAt: json['handedOverAt'] as String?,
+    warehouseExceptionReason: json['warehouseExceptionReason'] as String?,
+    canManageWarehouseWork: (json['canManageWarehouseWork'] as bool?) ?? false,
+    sellerName: json['sellerName'] as String?,
+    sellerId: json['sellerId'] as String?,
+  );
 }
 
 class SalesDocItem {
@@ -466,13 +662,17 @@ class ScarceReservation {
   final String? goodsCode;
   final String? clientId;
   final String? clientName;
+
   /// 1急单/2普通/3现货。
   final int? priority;
   final String? deliverDate;
+
   /// 生效预留量（行单位）。
   final double? reservedQty;
+
   /// 持有截止（可空，null=用默认交货日+宽限）。
   final String? holdUntil;
+
   /// 持有已逾期天数（截止已过且未发完；未逾期/不适用为 null）。
   final int? overdueDays;
 
@@ -539,6 +739,17 @@ class SalesDocDetail {
     this.priceMasked = false,
     this.writable = false,
     this.canReject = false,
+    this.shipmentPolicy,
+    this.partialShipmentConfirmedAt,
+    this.partialShipmentConfirmedBy,
+    this.partialShipmentConfirmationReason,
+    this.warehouseWorkStatus,
+    this.warehouseWorkUpdatedAt,
+    this.pickingStartedAt,
+    this.pickedAt,
+    this.handedOverAt,
+    this.warehouseExceptionReason,
+    this.canManageWarehouseWork = false,
   });
 
   final String id;
@@ -597,6 +808,21 @@ class SalesDocDetail {
   /// 服务端能力字段；前端权限常量只能控制入口，不能替代对象负责人范围。
   final bool writable;
   final bool canReject;
+  final String? shipmentPolicy;
+  final String? partialShipmentConfirmedAt;
+  final String? partialShipmentConfirmedBy;
+  final String? partialShipmentConfirmationReason;
+  final String? warehouseWorkStatus;
+  final String? warehouseWorkUpdatedAt;
+  final String? pickingStartedAt;
+  final String? pickedAt;
+  final String? handedOverAt;
+  final String? warehouseExceptionReason;
+  final bool canManageWarehouseWork;
+
+  bool get partialShipmentConfirmed =>
+      partialShipmentConfirmedAt != null &&
+      partialShipmentConfirmedAt!.isNotEmpty;
 
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
     id: json['id'] as String,
@@ -647,6 +873,18 @@ class SalesDocDetail {
     priceMasked: (json['priceMasked'] as bool?) ?? false,
     writable: (json['writable'] as bool?) ?? false,
     canReject: (json['canReject'] as bool?) ?? false,
+    shipmentPolicy: json['shipmentPolicy'] as String?,
+    partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,
+    partialShipmentConfirmedBy: json['partialShipmentConfirmedBy'] as String?,
+    partialShipmentConfirmationReason:
+        json['partialShipmentConfirmationReason'] as String?,
+    warehouseWorkStatus: json['warehouseWorkStatus'] as String?,
+    warehouseWorkUpdatedAt: json['warehouseWorkUpdatedAt'] as String?,
+    pickingStartedAt: json['pickingStartedAt'] as String?,
+    pickedAt: json['pickedAt'] as String?,
+    handedOverAt: json['handedOverAt'] as String?,
+    warehouseExceptionReason: json['warehouseExceptionReason'] as String?,
+    canManageWarehouseWork: (json['canManageWarehouseWork'] as bool?) ?? false,
   );
 }
 
@@ -740,9 +978,7 @@ class OrderPlanLink {
     inboundQty: (j['inboundQty'] as num?)?.toDouble(),
     executionSegments: [
       for (final segment in (j['executionSegments'] as List? ?? const []))
-        OrderExecutionSegmentProgress.fromJson(
-          segment as Map<String, dynamic>,
-        ),
+        OrderExecutionSegmentProgress.fromJson(segment as Map<String, dynamic>),
     ],
   );
 }

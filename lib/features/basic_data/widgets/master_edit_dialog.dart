@@ -21,7 +21,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 
 /// 主档字段值类型：文本 / 整数 / 金额（double）/ 下拉选择。
-enum MasterFieldType { text, integer, money, select }
+enum MasterFieldType { text, integer, money, select, custom }
 
 /// 下拉选项（select 类型用）：[value] 提交值、[label] 展示文案。
 /// 颜色/单位选择器：value = legacy_id 字符串、label = 名称。
@@ -46,6 +46,17 @@ const List<MasterSelectOption> kGoodsSourceTypeOptions = [
   MasterSelectOption(value: '委外', label: '委外'),
 ];
 
+/// 自定义字段上下文：[MasterEditForm] ↔ 自定义 widget（[MasterFieldDef.customBuilder]）的值通道。
+/// 初值来自 [MasterEditForm.initialValues]（字符串形式：日期=yyyy-MM-dd、picker=id）；
+/// widget 内部自行转成所需类型（DateTime / UtenEmployeePickerItem 等），通过 [onChanged] 回写提交值。
+class MasterFieldContext {
+  const MasterFieldContext({this.initialValue, required this.onChanged});
+
+  final String? initialValue;
+
+  final void Function(dynamic value) onChanged;
+}
+
 /// 主档字段定义。
 class MasterFieldDef {
   const MasterFieldDef({
@@ -59,6 +70,7 @@ class MasterFieldDef {
     this.selectInteger = false,
     this.readOnly = false,
     this.onAddNew,
+    this.customBuilder,
   });
 
   /// 与后端 SaveRequest 字段名对齐（如 name / colorLegacyId）。
@@ -90,6 +102,12 @@ class MasterFieldDef {
   /// select 字段的「添加新项」回调（颜色/单位内联新建）：非空时下拉浮层搜索下方显浅绿按钮，
   /// 返回新建项的 value（如新颜色 legacy_id 字符串）则自动选中；返回 null 不改。
   final Future<String?> Function()? onAddNew;
+
+  /// 自定义字段 widget（date / 滑窗选择器等通用类型无法覆盖时）。
+  /// 设了此项时 [type] 应为 [MasterFieldType.custom]，忽略 [options] 等；
+  /// [required] 仍参与 buildBody 非空校验。widget 经 [MasterFieldContext.onChanged] 回写提交值。
+  /// 闭包不可 const，故含此字段的字段表须从 `static const` 改 `static` 或实例 getter。
+  final Widget Function(MasterFieldContext ctx)? customBuilder;
 }
 
 typedef MasterSubmit = Future<bool> Function(Map<String, dynamic> body);
@@ -119,6 +137,9 @@ class MasterEditFormState extends State<MasterEditForm> {
 
   /// select 字段的当前选中值（key → 选项 value，未选为 null）。其他类型用 [_controllers]。
   final Map<String, String?> _selectValues = {};
+
+  /// custom 字段的当前值（key → 提交值，未填为 null）。date/picker 等经 customBuilder 回写。
+  final Map<String, dynamic> _customValues = {};
   String? _error;
 
   @override
@@ -126,7 +147,8 @@ class MasterEditFormState extends State<MasterEditForm> {
     super.initState();
     _controllers = {
       for (final f in widget.fields)
-        if (f.type != MasterFieldType.select)
+        if (f.type != MasterFieldType.select &&
+            f.type != MasterFieldType.custom)
           f.key: TextEditingController(text: widget.initialValues[f.key] ?? ''),
     };
     for (final f in widget.fields) {
@@ -140,6 +162,10 @@ class MasterEditFormState extends State<MasterEditForm> {
             (init != null && init.isNotEmpty && vals.contains(init))
             ? init
             : null;
+      } else if (f.type == MasterFieldType.custom) {
+        // custom 字段初值（字符串：日期/picker id）；空串统一记 null。
+        final init = widget.initialValues[f.key];
+        _customValues[f.key] = (init == null || init.isEmpty) ? null : init;
       }
     }
   }
@@ -177,6 +203,15 @@ class MasterEditFormState extends State<MasterEditForm> {
         }
         continue;
       }
+      if (f.type == MasterFieldType.custom) {
+        final v = _customValues[f.key];
+        if (f.required && (v == null || (v is String && v.isEmpty))) {
+          setState(() => _error = '请选择「${f.label}」'); // TODO(l10n): 补 arb
+          return null;
+        }
+        body[f.key] = v;
+        continue;
+      }
       final raw = _controllers[f.key]!.text.trim();
       if (f.required && raw.isEmpty) {
         setState(() => _error = '请填写「${f.label}」'); // TODO(l10n): 补 arb
@@ -204,6 +239,8 @@ class MasterEditFormState extends State<MasterEditForm> {
         case MasterFieldType.text:
           body[f.key] = raw;
         case MasterFieldType.select:
+          break; // 不可达（上方已处理）
+        case MasterFieldType.custom:
           break; // 不可达（上方已处理）
       }
     }
@@ -288,6 +325,14 @@ class MasterEditFormState extends State<MasterEditForm> {
   Widget _field(MasterFieldDef f) {
     if (f.readOnly) return _readOnlyField(f);
     if (f.type == MasterFieldType.select) return _selectField(f);
+    if (f.type == MasterFieldType.custom) {
+      return f.customBuilder!(
+        MasterFieldContext(
+          initialValue: widget.initialValues[f.key],
+          onChanged: (v) => setState(() => _customValues[f.key] = v),
+        ),
+      );
+    }
     return TextField(
       controller: _controllers[f.key],
       keyboardType: f.type == MasterFieldType.text

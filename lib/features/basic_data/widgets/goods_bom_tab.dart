@@ -41,11 +41,14 @@ class _BomNode {
 
 /// 表格行：可见节点的平铺（含深度与级联序号，供 MasterDataTableView 渲染）。
 class _BomRow {
-  const _BomRow(this.node, this.depth, this.seq);
+  const _BomRow(this.node, this.depth, this.seq, this.parentGoodsId);
 
   final _BomNode node;
   final int depth;
   final String seq;
+
+  /// 该 BOM 行真正所属的父货品；嵌套行不能误用页面根货品 id。
+  final String parentGoodsId;
 }
 
 /// 添加组件时的父级候选项（顶层本货品 或 任一可见组件）。
@@ -78,7 +81,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   String? _error;
 
   /// 当前点选行（工具条 编辑/删除 的作用对象；表格内同步高亮）。
-  GoodsBomItem? _selected;
+  _BomRow? _selected;
 
   /// 当前展开的组件 goodsId 集合：CRUD 重载后据此恢复展开，让新加的子组件可见。
   final Set<String> _expandedIds = {};
@@ -148,18 +151,23 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 可见节点平铺：根 → （展开的）子级递归，级联序号 1 / 1.1 / 1.1.2。
   List<_BomRow> get _visibleRows {
     final rows = <_BomRow>[];
-    void walk(List<_BomNode> nodes, int depth, String prefix) {
+    void walk(
+      List<_BomNode> nodes,
+      int depth,
+      String prefix,
+      String parentGoodsId,
+    ) {
       for (var i = 0; i < nodes.length; i++) {
         final seq = prefix.isEmpty ? '${i + 1}' : '$prefix.${i + 1}';
         final n = nodes[i];
-        rows.add(_BomRow(n, depth, seq));
+        rows.add(_BomRow(n, depth, seq, parentGoodsId));
         if (n.expanded && n.children != null) {
-          walk(n.children!, depth + 1, seq);
+          walk(n.children!, depth + 1, seq, n.item.componentGoodsId);
         }
       }
     }
 
-    walk(_roots ?? const <_BomNode>[], 0, '');
+    walk(_roots ?? const <_BomNode>[], 0, '', widget.goodsId);
     return rows;
   }
 
@@ -182,9 +190,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
     setState(() => node.loading = true);
     try {
-      final items = await ref
-          .read(goodsBomRepositoryProvider)
-          .list(id);
+      final items = await ref.read(goodsBomRepositoryProvider).list(id);
       if (!mounted) return;
       setState(() {
         node.children = items.map(_BomNode.new).toList();
@@ -201,7 +207,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   /// 行点击：选中（工具条 编辑/删除 生效）；有子级的行同时展开/收起。
   void _onRowTap(_BomRow row) {
-    setState(() => _selected = row.node.item);
+    setState(() => _selected = row);
     if (row.node.item.hasChildren) _toggle(row.node);
   }
 
@@ -221,7 +227,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         ),
     ];
     final defaultParent =
-        _selected?.componentGoodsId ?? widget.goodsId;
+        _selected?.node.item.componentGoodsId ?? widget.goodsId;
     final result = await showDialog<_AddResult>(
       context: context,
       builder: (_) => _BomItemAddDialog(
@@ -240,13 +246,13 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   }
 
   Future<void> _editSelected() async {
-    final item = _selected;
-    if (item == null) return;
+    final row = _selected;
+    if (row == null) return;
     final saved = await showDialog<bool>(
       context: context,
       builder: (_) => _BomItemEditDialog(
-        rootGoodsId: widget.goodsId,
-        editing: item,
+        parentGoodsId: row.parentGoodsId,
+        editing: row.node.item,
       ),
     );
     if (saved == true) {
@@ -256,8 +262,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   }
 
   Future<void> _deleteSelected() async {
-    final item = _selected;
-    if (item == null) return;
+    final row = _selected;
+    if (row == null) return;
+    final item = row.node.item;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -283,7 +290,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     try {
       await ref
           .read(goodsBomRepositoryProvider)
-          .delete(widget.goodsId, item.id);
+          .delete(row.parentGoodsId, item.id);
       if (!mounted) return;
       context.appSuccess('组件已删除'); // TODO(l10n): 补 arb
       widget.onDataChanged?.call();
@@ -460,7 +467,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             onRowTap: _onRowTap,
             // _BomRow 每次 build 重建（引用变），故按组件行 id 比较而非引用相等。
             isSelected: (row) =>
-                _selected != null && row.node.item.id == _selected!.id,
+                _selected != null &&
+                row.node.item.id == _selected!.node.item.id,
             isLoading: _loading && _roots == null,
             error: _error,
             onRetry: _load,
@@ -547,8 +555,9 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       final raw = p.qtyCtl.text.trim();
       final qty = raw.isEmpty ? 1.0 : double.tryParse(raw);
       if (qty == null) {
-        setState(() =>
-            _error = '「${p.goods.name ?? p.goods.code}」数量需为数字'); // TODO(l10n)
+        setState(
+          () => _error = '「${p.goods.name ?? p.goods.code}」数量需为数字',
+        ); // TODO(l10n)
         return;
       }
       bodies.add({
@@ -576,9 +585,11 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       if (!mounted) return;
       if (ok > 0) {
         context.appSuccess(
-            '已添加 $ok 个组件${errors.isNotEmpty ? '，${errors.length} 个跳过' : ''}');
-        Navigator.of(context)
-            .pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
+          '已添加 $ok 个组件${errors.isNotEmpty ? '，${errors.length} 个跳过' : ''}',
+        );
+        Navigator.of(
+          context,
+        ).pop(_AddResult(saved: true, parentGoodsId: _parentGoodsId));
       } else {
         setState(() {
           _saving = false;
@@ -672,7 +683,9 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                       else
                         for (final p in _picked)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s8,
+                            ),
                             child: Row(
                               children: [
                                 Expanded(
@@ -684,23 +697,25 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                                         '${p.goods.code ?? ''}  ${p.goods.name ?? ''}',
                                         style: theme.textTheme.bodyMedium
                                             ?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                       ),
                                       Text(
                                         [
-                                          p.goods.spec,
-                                          p.goods.material,
-                                          p.goods.sourceType,
-                                        ]
-                                            .where((s) =>
-                                                s != null && s.isNotEmpty)
+                                              p.goods.spec,
+                                              p.goods.material,
+                                              p.goods.sourceType,
+                                            ]
+                                            .where(
+                                              (s) => s != null && s.isNotEmpty,
+                                            )
                                             .join(' · '),
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
-                                          color: theme
-                                              .colorScheme.onSurfaceVariant,
-                                        ),
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
                                       ),
                                     ],
                                   ),
@@ -711,8 +726,8 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                                     controller: p.qtyCtl,
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
+                                          decimal: true,
+                                        ),
                                     decoration: const InputDecoration(
                                       labelText: '数量',
                                       border: OutlineInputBorder(),
@@ -721,8 +736,10 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.close_rounded,
-                                      size: 18),
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    size: 18,
+                                  ),
                                   onPressed: () => setState(() {
                                     p.qtyCtl.dispose();
                                     _picked.remove(p);
@@ -761,9 +778,12 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
 
 /// 编辑组件对话框（单条）：组件与父级锁定（换组件/换父级走删除+新增），仅用量/备注可改。
 class _BomItemEditDialog extends ConsumerStatefulWidget {
-  const _BomItemEditDialog({required this.rootGoodsId, required this.editing});
+  const _BomItemEditDialog({
+    required this.parentGoodsId,
+    required this.editing,
+  });
 
-  final String rootGoodsId;
+  final String parentGoodsId;
   final GoodsBomItem editing;
 
   @override
@@ -802,8 +822,11 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       'componentGoodsId': e.componentGoodsId,
       'qty': qty ?? 1,
       'price': e.price,
-      'summary':
-          _summaryCtl.text.trim().isEmpty ? null : _summaryCtl.text.trim(),
+      // 编辑数量/备注时必须保留迁移来的行级颜色覆盖。
+      'colorLegacyId': e.colorLegacyId,
+      'summary': _summaryCtl.text.trim().isEmpty
+          ? null
+          : _summaryCtl.text.trim(),
     };
     setState(() {
       _saving = true;
@@ -812,7 +835,7 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
     try {
       await ref
           .read(goodsBomRepositoryProvider)
-          .update(widget.rootGoodsId, e.id, body);
+          .update(widget.parentGoodsId, e.id, body);
       if (!mounted) return;
       context.appSuccess('组件已更新'); // TODO(l10n): 补 arb
       Navigator.of(context).pop(true);
@@ -892,8 +915,8 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                               controller: _qtyCtl,
                               keyboardType:
                                   const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
+                                    decimal: true,
+                                  ),
                               decoration: const InputDecoration(
                                 labelText: '数量',
                                 border: OutlineInputBorder(),

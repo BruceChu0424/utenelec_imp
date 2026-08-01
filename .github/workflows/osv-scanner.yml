@@ -11,7 +11,6 @@ on:
 permissions:
   actions: read
   contents: read
-  security-events: write
 
 jobs:
   prepare:
@@ -48,6 +47,8 @@ jobs:
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
     with:
       download-artifact: osv-inputs
+      upload-sarif: false
+      fail-on-vuln: true
       scan-args: |-
         --sbom
         ./server/target/classes/META-INF/sbom/application.cdx.json
@@ -56,4 +57,3 @@ jobs:
     permissions:
       actions: read
       contents: read
-      security-events: write

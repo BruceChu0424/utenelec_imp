@@ -25,20 +25,27 @@ public interface StockReservationRepository extends JpaRepository<StockReservati
     List<StockReservation> findAllByOrderItemIds(@Param("ids") List<UUID> orderItemIds);
 
     /**
-     * 销售可预留的全局可用量（基本单位）= 全仓账面合计 − 全部生效预留 − 货品安全库存，最小 0。
+     * 销售可预留的全局可用量（基本单位）= 各有货仓扣安全库存后的可动量合计
+     * − 全部生效预留，最小 0。
      *
      * <p>下单审核时的占用判定口径：货够不够用看全局；具体从哪个仓出，出货开单时再定。
      *
-     * <p>V178 缺口 C：扣减 {@code goods.min_qty}（安全库存），对齐生产侧
-     * {@code MrpService}「当前可用 = 账面 − 生效销售预留 − 货品安全库存，最小 0」。
-     * 安全库存仅货品级字段（无颜色维度），对每个颜色分别应用是保守口径（与生产侧一致）。
+     * <p>当前主数据没有“仓库×货品”安全库存表，故将 {@code goods.min_qty}
+     * 作为每个有该货品余额仓的保守下限，与实际仓库拣货闸门一致，避免全局承诺
+     * 只扣一次、实际每仓都扣而形成无法履约的硬预留。
      * min_qty 为 NULL/负（脏数据）时按 0 处理；整体结果 GREATEST(...,0) 防负数预留。
      * 仅销售下单校验走此口径；生产排产读 {@code v_stock_available} 自行另扣（见 doc04 §5.3），
      * 两侧互不干扰、不重复扣减。
      */
     @Query(value = """
             SELECT GREATEST(
-              (SELECT COALESCE(SUM(b.qty), 0) FROM stock_balances b
+              (SELECT COALESCE(SUM(GREATEST(
+                          COALESCE(b.qty, 0)
+                          - GREATEST(
+                              COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0),
+                          0)), 0)
+                 FROM stock_balances b
+                 JOIN goods g ON g.id = b.goods_id
                  WHERE b.goods_id = :gid
                    AND (b.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)))
               - (SELECT COALESCE(SUM(r.qty - r.consumed_qty - r.released_qty), 0)
@@ -46,8 +53,6 @@ public interface StockReservationRepository extends JpaRepository<StockReservati
                    WHERE r.is_deleted = FALSE AND r.status = 0
                      AND r.goods_id = :gid
                      AND (r.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)))
-              - (SELECT GREATEST(COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0)
-                   FROM goods g WHERE g.id = :gid)
             , 0)
             """, nativeQuery = true)
     BigDecimal globalAvailableBase(@Param("gid") UUID goodsId, @Param("cid") UUID colorId);

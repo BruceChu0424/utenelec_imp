@@ -143,6 +143,7 @@ public class ProductionPlanService {
     public void delete(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+        rejectDirectLifecycleOfExecutionV1Subplan(id, "删除");
         if (p.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         p.setDeleted(true);
         p.setDeletedAt(OffsetDateTime.now());
@@ -719,6 +720,7 @@ public class ProductionPlanService {
     public PlanDetail reverse(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+        rejectDirectLifecycleOfExecutionV1Subplan(id, "红冲");
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<UUID> itemIds = lockAndValidatePlanItemsForReverse(id);
@@ -727,6 +729,33 @@ public class ProductionPlanService {
         p.setStatus(STATUS_REVERSED);
         planRepo.save(p);
         return detail(id);
+    }
+
+    /**
+     * V1 自制件子计划属于父计划包的原子生命周期，不能从通用计划入口单独删除或红冲。
+     * 父计划包服务会按父包→子计划的稳定锁序校验并关闭子计划、关联与物料需求；
+     * 在这里直接改终态会留下仍为 CONFIRMED 的父包和失去供给来源的父需求。
+     */
+    private void rejectDirectLifecycleOfExecutionV1Subplan(
+            UUID planId, String action) {
+        List<?> links = em.createNativeQuery("""
+                        SELECT link.id
+                        FROM subplan_links link
+                        WHERE link.subplan_id = :planId
+                          AND link.is_deleted = FALSE
+                          AND link.source = 'EXECUTION_V1'
+                        ORDER BY link.id
+                        FOR UPDATE OF link
+                        """)
+                .setParameter("planId", planId)
+                .setMaxResults(1)
+                .getResultList();
+        if (!links.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "执行 V1 派生的自制件子计划不能单独" + action
+                            + "，请从父计划的计划包执行取消或红冲");
+        }
     }
 
     // ====================== 生产进度看板聚合 ======================

@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.mrp;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -39,12 +40,13 @@ class BomColorResolutionSqlContractTest {
     @Test
     void executionSnapshotKeepsZeroAsTheNullMaterialDimension() {
         EntityManager em = mock(EntityManager.class);
+        Object[] execution = executionRow(null, null);
         Query rows = resultQuery(Collections.singletonList(
-                executionRow(null, null)));
-        Query sourceCount = scalarQuery(1L);
+                execution));
+        Query sourceItems = resultQuery(List.of((UUID) execution[0]));
         Query availability = resultQuery(List.of());
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, sourceCount, availability);
+                .thenReturn(rows, sourceItems, availability);
 
         ProductionExecutionPlanningService.Snapshot snapshot =
                 new ProductionExecutionPlanningService(em)
@@ -71,16 +73,20 @@ class BomColorResolutionSqlContractTest {
     @Test
     void executionSnapshotStillRejectsANonZeroOrphanColor() {
         EntityManager em = mock(EntityManager.class);
+        Object[] execution = executionRow(null, 777);
         Query rows = resultQuery(Collections.singletonList(
-                executionRow(null, 777)));
-        Query sourceCount = scalarQuery(1L);
+                execution));
+        Query sourceItems = resultQuery(List.of((UUID) execution[0]));
         when(em.createNativeQuery(anyString()))
-                .thenReturn(rows, sourceCount);
+                .thenReturn(rows, sourceItems);
 
         assertThatThrownBy(() ->
                 new ProductionExecutionPlanningService(em)
                         .preview(UUID.randomUUID(), UUID.randomUUID()))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(ApiException.class)
+                .hasMessage("BOM、颜色或基本单位数据不完整，禁止生成执行分段")
+                .satisfies(error -> assertThat(((ApiException) error).getCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
     }
 
     private static void assertMrpColorContract(String rawSql) {
@@ -112,13 +118,6 @@ class BomColorResolutionSqlContractTest {
         Query query = mock(Query.class);
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(result);
-        return query;
-    }
-
-    private static Query scalarQuery(Object result) {
-        Query query = mock(Query.class);
-        when(query.setParameter(anyString(), any())).thenReturn(query);
-        when(query.getSingleResult()).thenReturn(result);
         return query;
     }
 

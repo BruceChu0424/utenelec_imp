@@ -8,7 +8,8 @@
 // 确认返回 [LinkedItem] 列表，编辑页据此外推明细行并回填对应 *ItemId。
 //
 // 委外 8 单据链路更复杂（4 个上游方向，见 upstreamTypeOf）：
-//   订货 → 申请；进仓 → 订货；退货 → 进仓优先/订货；发料 → 订货；
+//   订货 → 申请；进仓 → 订货；退货 → 进仓优先/订货；
+//   新增发料在冻结 BOM 快照与子件台账落地前禁止从订货引入；
 //   材料退 → 发料优先/订货；损耗 → 发料。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -70,7 +71,29 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   WidgetRef ref,
   SubcontractDocConfig cfg, {
   String? initialSupplierId,
-}) {
+}) async {
+  if (cfg.type == SubcontractDocType.materialIssue && !cfg.approvalEnabled) {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.lock_outline_rounded),
+        title: const Text('新增发料审核暂不可用'),
+        content: Text(
+          '${cfg.approvalBlockedReason}\n\n'
+          '$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+    return null;
+  }
+
   final sheet = _UpstreamImportSheet(
     cfg: cfg,
     upstream: upstreamTypeOf(cfg),
@@ -307,7 +330,7 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
   }
 
   /// 上游明细剩余可引量（也是"本次数量"默认值）：
-  /// 进仓←订货 = 订货数 − 已收；发料←订货 = 订货数 − 已发料；
+  /// 进仓←订货 = 订货数 − 已收；新增发料不从订货历史累计量推导；
   /// 退货←进仓/订货 = 原单数 − 已退；材料退/损耗←发料 = 发出数 − 已退 − 已损耗；
   /// 其它（订货←申请）= 全额。
   double _remainQty(SubcontractDocItem it) {
@@ -318,7 +341,8 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
           return q - (it.receivedQty ?? 0);
         }
         if (widget.cfg.type == SubcontractDocType.materialIssue) {
-          return q - (it.issuedQty ?? 0);
+          // 防御性关闭：入口已被安全门禁拦截；即使未来误绕过，也不暴露可选量。
+          return 0;
         }
         return q - (it.returnedQty ?? 0);
       case SubcontractDocType.receipt:

@@ -137,15 +137,20 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
           seg.bomFingerprint,
         ].join('|'),
     ].join('::');
-    Navigator.of(context).pop(ProductionPlanningConfirmRequest(
-      warehouseId: preview.warehouseId,
-      idempotencyKey: businessIdempotencyKey('production-planning', canonical),
-      previewFingerprint: preview.fingerprint,
-      generatePurchaseRequest:
-          _buckets.buyShortage.isNotEmpty && _generatePurchaseRequest,
-      routes: routeMap.values.toList(),
-      segments: segments,
-    ));
+    Navigator.of(context).pop(
+      ProductionPlanningConfirmRequest(
+        warehouseId: preview.warehouseId,
+        idempotencyKey: businessIdempotencyKey(
+          'production-planning',
+          canonical,
+        ),
+        previewFingerprint: preview.fingerprint,
+        generatePurchaseRequest:
+            _buckets.buyShortage.isNotEmpty && _generatePurchaseRequest,
+        routes: routeMap.values.toList(),
+        segments: segments,
+      ),
+    );
   }
 
   @override
@@ -198,17 +203,15 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   title: '采购缺料',
                   count: _buckets.buyShortage.length,
                   materials: _buckets.buyShortage,
-                  hint: (m) =>
-                      '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
+                  hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
                   trailing: CheckboxListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
                     value: _generatePurchaseRequest,
-                    onChanged: (v) => setState(
-                        () => _generatePurchaseRequest = v ?? false),
-                    title: Text('生成采购申请',
-                        style: theme.textTheme.bodyMedium),
+                    onChanged: (v) =>
+                        setState(() => _generatePurchaseRequest = v ?? false),
+                    title: Text('生成采购申请', style: theme.textTheme.bodyMedium),
                   ),
                 ),
               if (_buckets.makeShortage.isNotEmpty)
@@ -219,8 +222,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   title: '自制缺料（将派生子生产计划）',
                   count: _buckets.makeShortage.length,
                   materials: _buckets.makeShortage,
-                  hint: (m) =>
-                      '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
+                  hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
                   note: '确认后系统自动生成自制件子计划，进入子计划可继续展开下层。',
                 ),
               if (_buckets.subcontractShortage.isNotEmpty)
@@ -231,8 +233,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   title: '委外缺料（将生成委外申请）',
                   count: _buckets.subcontractShortage.length,
                   materials: _buckets.subcontractShortage,
-                  hint: (m) =>
-                      '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
+                  hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
                 ),
               if (_buckets.makeNoBom.isNotEmpty)
                 _category(
@@ -252,7 +253,8 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                     theme,
                     color: theme.colorScheme.error,
                     icon: Icons.report_problem_outlined,
-                    text: '另有 $noBomCount 个成品未维护 BOM，未参与本次排产，'
+                    text:
+                        '另有 $noBomCount 个成品未维护 BOM，未参与本次排产，'
                         '请到货品资料为它们维护组成 BOM 后再生成。',
                   ),
                 ),
@@ -276,12 +278,13 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
   }
 
   Widget _infoBanner(ThemeData theme) {
-    final hasShortage = _buckets.buyShortage.isNotEmpty ||
+    final hasShortage =
+        _buckets.buyShortage.isNotEmpty ||
         _buckets.makeShortage.isNotEmpty ||
         _buckets.subcontractShortage.isNotEmpty;
     final text = hasShortage
         ? '系统已按目标仓库存、在途与 BOM 计算缺口。勾选要生成的供给单据后点击「确认生成」，'
-            '执行分段、锁料、领料单将在同一事务内提交。'
+              '执行分段、锁料、领料单将在同一事务内提交。'
         : '所有物料库存充足，可直接生产。点击「确认生成」即可建立执行子计划。';
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
@@ -307,7 +310,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-      child: Container(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           border: Border.all(color: color.withValues(alpha: 0.4)),
           borderRadius: BorderRadius.circular(8),
@@ -321,18 +324,23 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                 children: [
                   Icon(icon, color: color, size: 18),
                   const SizedBox(width: 6),
-                  Text('$title（$count）',
-                      style: theme.textTheme.titleSmall
-                          ?.copyWith(color: color, fontWeight: FontWeight.w600)),
+                  Text(
+                    '$title（$count）',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
             ),
             if (note != null)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text(note,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: color)),
+                child: Text(
+                  note,
+                  style: theme.textTheme.bodySmall?.copyWith(color: color),
+                ),
               ),
             if (trailing != null)
               Padding(
@@ -356,10 +364,15 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
   }
 
   Widget _materialChip(
-      ThemeData theme, ProductionPlanningMaterial m, String hint) {
-    final label = [m.goodsCode, m.goodsName, m.spec]
-        .where((s) => s != null && s.isNotEmpty)
-        .join(' ');
+    ThemeData theme,
+    ProductionPlanningMaterial m,
+    String hint,
+  ) {
+    final label = [
+      m.goodsCode,
+      m.goodsName,
+      m.spec,
+    ].where((s) => s != null && s.isNotEmpty).join(' ');
     return Chip(
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
@@ -369,8 +382,9 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
           style: theme.textTheme.bodySmall,
           children: [
             TextSpan(
-                text: label.isEmpty ? m.goodsId : label,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+              text: label.isEmpty ? m.goodsId : label,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             TextSpan(text: '  $hint', style: theme.textTheme.bodySmall),
           ],
         ),
@@ -378,8 +392,12 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
     );
   }
 
-  Widget _notice(ThemeData theme,
-      {required Color color, required IconData icon, required String text}) {
+  Widget _notice(
+    ThemeData theme, {
+    required Color color,
+    required IconData icon,
+    required String text,
+  }) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -391,9 +409,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
         children: [
           Icon(icon, color: color, size: 18),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(text, style: theme.textTheme.bodySmall),
-          ),
+          Expanded(child: Text(text, style: theme.textTheme.bodySmall)),
         ],
       ),
     );
@@ -413,6 +429,11 @@ class _Buckets {
   final List<ProductionPlanningMaterial> subcontractShortage;
   final List<ProductionPlanningMaterial> makeNoBom;
 
-  _Buckets(this.sufficient, this.buyShortage, this.makeShortage,
-      this.subcontractShortage, this.makeNoBom);
+  _Buckets(
+    this.sufficient,
+    this.buyShortage,
+    this.makeShortage,
+    this.subcontractShortage,
+    this.makeNoBom,
+  );
 }

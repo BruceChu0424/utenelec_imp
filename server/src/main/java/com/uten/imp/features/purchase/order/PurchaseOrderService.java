@@ -150,6 +150,7 @@ public class PurchaseOrderService {
                         it.getGoodsId(),
                         it.getColorId(),
                         it.getUnitId(),
+                        it.getUnitRate(),
                         it.getQty()))
                 .toList());
         productionSupply.onPurchaseOrderApproved(id);

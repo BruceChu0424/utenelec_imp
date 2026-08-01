@@ -22,8 +22,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// ```
 /// bumpListRefresh(ref, myKey);
 /// ```
-final listRefreshTickProvider =
-    StateProvider.family<int, String>((ref, key) => 0);
+final listRefreshTickProvider = StateProvider.family<int, String>(
+  (ref, key) => 0,
+);
 
 /// 操作成功后调用：bump 对应列表 key 的 tick，触发监听该 key 的列表页重拉。
 void bumpListRefresh(WidgetRef ref, String key) {

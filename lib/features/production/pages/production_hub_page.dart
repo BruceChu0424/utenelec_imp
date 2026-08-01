@@ -1,6 +1,6 @@
 // 生产管理入口页（hub）—— 两个分组卡片（与 basic_data / purchase / warehouse hub 对齐）：
 //  ① 生产管理（操作类 · 单据）：生产计划单 + 生产日报表
-//  ② 生产报表（分析类）：计划明细 / 计划汇总 / 日报明细 / 日报汇总（4 参数化入口）
+//  ② 生产报表（分析类）：计划明细 / 计划汇总 / 物料反查产成品
 //
 // 点卡片进对应列表/查询/报表页。卡片网格布局对齐采购 hub（UtenResponsiveGrid）。
 //
@@ -9,22 +9,26 @@
 //
 // 注：原「BOM 成本展开」入口已下线（组装/BOM 数据并入 基础资料-货品资料「组装信息」页签）。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../widgets/production_pending_badge.dart';
 
-class ProductionHubPage extends StatelessWidget {
+class ProductionHubPage extends ConsumerWidget {
   const ProductionHubPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
     return Scaffold(
       appBar: UtenAppBar(
         title: '生产管理',
@@ -58,7 +62,7 @@ class ProductionHubPage extends StatelessWidget {
                   description: '完工日报 · 留位',
                   location: '/production/daily-reports/new',
                 ),
-              ]),
+              ], permissions),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '生产报表', const [
                 _Entry(
@@ -79,7 +83,7 @@ class ProductionHubPage extends StatelessWidget {
                   description: '查材料用在哪些产品',
                   location: '/production/where-used',
                 ),
-              ]),
+              ], permissions),
             ],
           ),
         ),
@@ -93,7 +97,16 @@ class ProductionHubPage extends StatelessWidget {
     ThemeData theme,
     String title,
     List<_Entry> entries,
+    Set<String> permissions,
   ) {
+    final visibleEntries = entries
+        .where((entry) {
+          final required = requiredAnyPermFor(entry.location);
+          return required == null || required.any(permissions.contains);
+        })
+        .toList(growable: false);
+    if (visibleEntries.isEmpty) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(
@@ -112,10 +125,11 @@ class ProductionHubPage extends StatelessWidget {
             ),
           ),
           UtenResponsiveGrid(
-            itemCount: entries.length,
+            itemCount: visibleEntries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
-            itemBuilder: (context, i, _) => _EntryTile(entry: entries[i]),
+            itemBuilder: (context, i, _) =>
+                _EntryTile(entry: visibleEntries[i]),
           ),
         ],
       ),

@@ -166,7 +166,8 @@ public class PurchaseReceiptService {
                                 it.getOrderItemId(),
                                 it.getGoodsId(),
                                 it.getColorId(),
-                                it.getUnitId()))
+                                it.getUnitId(),
+                                it.getUnitRate()))
                         .toList());
         productionSupply.lockReceiptProductionDemands(
                 id, r.getWarehouseId());

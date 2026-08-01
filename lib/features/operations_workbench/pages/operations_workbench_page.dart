@@ -115,7 +115,7 @@ class _OperationsWorkbenchPageState
 
   void _openAction(OperationsWorkbenchTask task) {
     final document = task.actionDocument;
-    if (document == null) return;
+    if (document == null || !document.canView) return;
     goFrom(context, document.path);
   }
 
@@ -209,6 +209,7 @@ class _OperationsWorkbenchPageState
             department: widget.department,
             selected: _selectedTasks,
             pageItems: data.items,
+            canCreatePurchaseOrder: data.capabilities.canCreatePurchaseOrder,
             onSelectPage: () => setState(
               () => _selectedIds.addAll(
                 data.items
@@ -219,7 +220,7 @@ class _OperationsWorkbenchPageState
             onClear: () => setState(_selectedIds.clear),
             onOpen:
                 _selectedTasks.length == 1 &&
-                    _selectedTasks.single.actionDocument != null
+                    (_selectedTasks.single.actionDocument?.canView ?? false)
                 ? () => _openAction(_selectedTasks.single)
                 : null,
           ),
@@ -268,7 +269,7 @@ class _OperationsWorkbenchPageState
                   task: task,
                   selected: _selectedIds.contains(task.id),
                   onSelected: () => _toggleSelected(task),
-                  onOpen: task.actionDocument == null
+                  onOpen: !(task.actionDocument?.canView ?? false)
                       ? null
                       : () => _openAction(task),
                 ),
@@ -565,6 +566,7 @@ class _SelectionBar extends StatelessWidget {
     required this.department,
     required this.selected,
     required this.pageItems,
+    required this.canCreatePurchaseOrder,
     required this.onSelectPage,
     required this.onClear,
     required this.onOpen,
@@ -573,6 +575,7 @@ class _SelectionBar extends StatelessWidget {
   final OperationsWorkbenchDepartment department;
   final List<OperationsWorkbenchTask> selected;
   final List<OperationsWorkbenchTask> pageItems;
+  final bool canCreatePurchaseOrder;
   final VoidCallback onSelectPage;
   final VoidCallback onClear;
   final VoidCallback? onOpen;
@@ -666,14 +669,16 @@ class _SelectionBar extends StatelessWidget {
             onPressed: selected.isEmpty ? null : onClear,
             child: const Text('清空'),
           ),
-          UtenButton(
-            key: const Key('operations-workbench-open-selected'),
-            size: UtenButtonSize.small,
-            icon: Icons.open_in_new_rounded,
-            onPressed: onOpen,
-            child: const Text('打开所选单据'),
-          ),
-          if (department == OperationsWorkbenchDepartment.purchase)
+          if (onOpen != null)
+            UtenButton(
+              key: const Key('operations-workbench-open-selected'),
+              size: UtenButtonSize.small,
+              icon: Icons.open_in_new_rounded,
+              onPressed: onOpen,
+              child: const Text('打开所选单据'),
+            ),
+          if (department == OperationsWorkbenchDepartment.purchase &&
+              canCreatePurchaseOrder)
             Tooltip(
               message: _purchaseBatchReady
                   ? '把所选采购申请明细带入采购单'
@@ -687,23 +692,9 @@ class _SelectionBar extends StatelessWidget {
                     : null,
                 child: const Text('批量生成采购单'),
               ),
-            )
-          else
-            Tooltip(
-              message: department == OperationsWorkbenchDepartment.warehouse
-                  ? '仓库任务只允许进入真实领料单处理，不在工作台直接改状态'
-                  : '后端尚未提供可靠的委外批量履约写接口',
-              child: UtenButton(
-                size: UtenButtonSize.small,
-                type: UtenButtonType.secondary,
-                child: Text(
-                  department == OperationsWorkbenchDepartment.warehouse
-                      ? '批量状态变更（未开放）'
-                      : '批量处理（未开放）',
-                ),
-              ),
             ),
           if (department == OperationsWorkbenchDepartment.purchase &&
+              canCreatePurchaseOrder &&
               selected.isNotEmpty &&
               !_purchaseBatchReady)
             Text(
@@ -846,7 +837,9 @@ class _DesktopTaskTable extends StatelessWidget {
           key: 'action',
           label: '执行入口',
           width: 160,
-          value: (item) => item.actionDocument?.label ?? '待生成/待挂接',
+          value: (item) => item.actionDocumentRestricted
+              ? '无权查看关联单据'
+              : item.actionDocument?.label ?? '待生成/待挂接',
         ),
       ],
       items: items,
@@ -964,18 +957,37 @@ class _TaskCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: UtenSpacing.s16),
-              UtenButton(
-                key: Key('operations-task-action-${task.id}'),
-                onPressed: onOpen,
-                type: onOpen == null
-                    ? UtenButtonType.secondary
-                    : UtenButtonType.primary,
-                icon: onOpen == null
-                    ? Icons.link_off_rounded
-                    : Icons.open_in_new_rounded,
-                isExpanded: true,
-                child: Text(task.actionDocument?.label ?? '待生成/待挂接'),
-              ),
+              if (onOpen != null)
+                UtenButton(
+                  key: Key('operations-task-action-${task.id}'),
+                  onPressed: onOpen,
+                  icon: Icons.open_in_new_rounded,
+                  isExpanded: true,
+                  child: Text(task.actionDocument!.label),
+                )
+              else
+                Row(
+                  children: [
+                    Icon(
+                      task.actionDocumentRestricted
+                          ? Icons.lock_outline_rounded
+                          : Icons.link_off_rounded,
+                      size: UtenSpacing.s20,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        task.actionDocumentRestricted
+                            ? '无权查看关联单据'
+                            : '待生成/待挂接执行单据',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),

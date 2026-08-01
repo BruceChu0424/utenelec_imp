@@ -32,8 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -41,14 +43,15 @@ import java.util.UUID;
  *
  * <p>审核（status 0→1，同事务内，对每条明细）：
  * <ol>
- *   <li>{@link StockService#recordMovement} {@code TYPE_SUBCONTRACT_WASTE=19, DIR_OUT=-1}</li>
- *   <li><b>★回写 {@code subcontract_material_issue_items.wasted_qty += qty}</b>
- *       —— 新库补全老库 E_SWaste 触发器缺失的"损耗→冲减发料已发量"链路
+ *   <li><b>回写 {@code subcontract_material_issue_items.wasted_qty += qty}</b>
+ *       —— 新库补全老库 E_SWaste 触发器缺失的“损耗→冲减发料已发量”链路
  *       （design doc 22 §一决策6 / §六；老库仅写库存台账，未回写发料累计，新库 Service 闭环）</li>
  * </ol>
+ * 发料审核已经把材料移出公司仓；供应商处损耗不得再次扣公司仓库存。
  * <b>不立应付</b>（损耗是加工过程损耗，不是加工费结算）。
  *
- * <p>红冲（1→-1）：反向 DIR_IN + 回减 wasted_qty（无 ArAp）。
+ * <p>红冲（1→-1）：回减 wasted_qty；仅对旧版本实际写过的公司仓
+ * DIR_OUT 流水逐行补 DIR_IN（无 ArAp）。
  *
  * <p>注：wasted_qty 是子件维度的累计量（在发料明细上），不直接影响订货单 is_closed
  * （订货结案由 received/returned 决定，损耗仅是发料后的状态记录）。
@@ -146,7 +149,8 @@ public class SubcontractWasteService {
     }
 
     /**
-     * 审核：0→1。库存出库（DIR_OUT）+ <b>★回写 material_issue_items.wasted_qty</b>（新库补全链路）。
+     * 审核：0→1。<b>只回写 material_issue_items.wasted_qty</b>。
+     * 发料时公司仓库存已扣减，供应商处损耗不得再次扣公司仓。
      * 不立应付（损耗不是加工费）。不影响订货 is_closed（损耗是发料后状态，非成品维度）。
      */
     @Transactional
@@ -172,17 +176,12 @@ public class SubcontractWasteService {
                                 it.getGoodsId(),
                                 it.getColorId(),
                                 it.getUnitId(),
+                                it.getUnitRate(),
                                 null,
                                 null))
                         .toList());
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
-        OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractWasteItem it : items) {
-            // ① 出库（DIR_OUT=-1）
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
-            // ② ★回写发料明细 wasted_qty（新库补全老库缺失链路）
+            // 发料审核已经 DIR_OUT；损耗发生在供应商处，只核销在外料。
             if (it.getMaterialIssueItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE subcontract_material_issue_items SET wasted_qty = COALESCE(wasted_qty,0) + :q WHERE id = :id")
@@ -198,7 +197,10 @@ public class SubcontractWasteService {
         return detail(id);
     }
 
-    /** 红冲：1→-1。反向 DIR_IN + 回减 wasted_qty（无 ArAp）。 */
+    /**
+     * 红冲：1→-1。新单仅回减 wasted_qty；历史版本若确实写过公司仓
+     * DIR_OUT 流水，则逐行补一笔 DIR_IN，兼容历史且避免凭状态猜测。
+     */
     @Transactional
     public WasteDetail reverse(UUID id) {
         tx.bind();
@@ -207,12 +209,18 @@ public class SubcontractWasteService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SubcontractWasteItem> items = itemRepo.findByWasteIdOrderByLineNoAsc(id);
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
+        Set<UUID> historicalWarehouseOutItems = historicalWarehouseOutItems(id);
+        if (!historicalWarehouseOutItems.isEmpty()) {
+            stockService.lockInventory(items.stream()
+                    .filter(it -> historicalWarehouseOutItems.contains(it.getId()))
+                    .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                    .toList());
+        }
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractWasteItem it : items) {
-            applyMovement(r, it, StockService.DIR_IN, now, null);
+            if (historicalWarehouseOutItems.contains(it.getId())) {
+                applyMovement(r, it, StockService.DIR_IN, now, null);
+            }
             if (it.getMaterialIssueItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE subcontract_material_issue_items SET wasted_qty = COALESCE(wasted_qty,0) - :q WHERE id = :id")
@@ -224,6 +232,28 @@ public class SubcontractWasteService {
         r.setStatus(STATUS_REVERSED);
         wasteRepo.save(r);
         return detail(id);
+    }
+
+    private Set<UUID> historicalWarehouseOutItems(UUID wasteId) {
+        List<?> rows = em.createNativeQuery("""
+                        SELECT DISTINCT source_item_id
+                        FROM stock_movements
+                        WHERE source_doc_type = :sourceDocType
+                          AND source_doc_id = :sourceDocId
+                          AND movement_type = :movementType
+                          AND direction = :direction
+                          AND source_item_id IS NOT NULL
+                        """)
+                .setParameter("sourceDocType", StockService.SRC_SUBCONTRACT_WASTE)
+                .setParameter("sourceDocId", wasteId)
+                .setParameter("movementType", StockService.TYPE_SUBCONTRACT_WASTE)
+                .setParameter("direction", StockService.DIR_OUT)
+                .getResultList();
+        Set<UUID> ids = new HashSet<>();
+        for (Object row : rows) {
+            ids.add((UUID) row);
+        }
+        return ids;
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */

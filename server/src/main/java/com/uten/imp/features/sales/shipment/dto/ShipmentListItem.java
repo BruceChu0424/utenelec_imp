@@ -26,4 +26,6 @@ public class ShipmentListItem {
     private boolean writable;
     /** Current caller may reject this draft, including explicit reject-authority bypass. */
     private boolean canReject;
+    private String warehouseWorkStatus;
+    private boolean canManageWarehouseWork;
 }

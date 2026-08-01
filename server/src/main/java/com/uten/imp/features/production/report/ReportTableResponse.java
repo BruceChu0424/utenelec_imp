@@ -23,7 +23,14 @@ public record ReportTableResponse(
         int page,
         int size,
         long total,
-        int totalPages) {
+        int totalPages,
+        Map<String, Object> meta) {
+
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String, Object>> rows,
+                               Map<String, List<ReportFacet>> facets, int page, int size,
+                               long total, int totalPages) {
+        this(columns, rows, facets, page, size, total, totalPages, Map.of());
+    }
 
     /** facet 空值档 sentinel（与前端 kMasterFilterNullValue 对齐）。 */
     public static final String NULL_FACET = "__null__";

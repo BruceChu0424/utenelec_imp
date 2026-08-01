@@ -114,6 +114,7 @@ public class GoodsService {
 
     // ===== 归属可见性（外贸系列按员工授权，V85；判定逻辑统一在 OwnerVisibility） =====
 
+    private final GoodsMasterRelationshipResolver relationships;
     /** 货品归属可见性判定唯一入口：开关关闭时直接放行（seeAll），开启时走 OwnerVisibility 三态。 */
     private com.uten.imp.security.OwnerVisibility.OwnerScope goodsScope() {
         if (!goodsOwnerScopeEnabled) {
@@ -424,7 +425,7 @@ public class GoodsService {
     public GoodsDetail detail(UUID id) {
         Goods g = requireGoods(id);
         requireVisible(g);
-        return toDetail(g, colorNameOf(g.getColorLegacyId()), unitNameOf(g.getUnitLegacyId()));
+        return toDetail(g, colorNameOf(g), unitNameOf(g));
     }
 
     @Transactional
@@ -435,7 +436,7 @@ public class GoodsService {
         g.setCode(masterCodeService.nextCode(CODE_PREFIX));
         if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
-        return toDetail(g, null, null);
+        return toDetail(g, colorNameOf(g), unitNameOf(g));
     }
 
     @Transactional
@@ -445,7 +446,7 @@ public class GoodsService {
         requireVisible(g);
         apply(req, g);
         repo.save(g);
-        return toDetail(g, colorNameOf(g.getColorLegacyId()), unitNameOf(g.getUnitLegacyId()));
+        return toDetail(g, colorNameOf(g), unitNameOf(g));
     }
 
     @Transactional
@@ -474,6 +475,36 @@ public class GoodsService {
                 .orElse(null);
     }
 
+    private String colorNameOf(Goods goods) {
+        if (goods.getColor() != null) {
+            return goods.getColor().isDeleted() ? null : goods.getColor().getName();
+        }
+        return colorNameOf(goods.getColorLegacyId());
+    }
+
+    private String unitNameOf(Goods goods) {
+        if (goods.getUnit() != null) {
+            return goods.getUnit().isDeleted() ? null : goods.getUnit().getName();
+        }
+        return unitNameOf(goods.getUnitLegacyId());
+    }
+
+    private static boolean clearsReference(UUID id, Integer legacyId) {
+        return id == null && (legacyId == null || legacyId == 0);
+    }
+
+    private void applyColorReference(GoodsSaveRequest req, Goods goods) {
+        if (!req.hasColorReference()) return;
+        if (clearsReference(req.getColorId(), req.getColorLegacyId())) {
+            goods.setColor(null);
+            goods.setColorLegacyId(null);
+            return;
+        }
+        Color target = relationships.color(req.getColorId(), req.getColorLegacyId());
+        goods.setColor(target);
+        goods.setColorLegacyId(target.getLegacyId());
+    }
+
     private void apply(GoodsSaveRequest req, Goods g) {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
@@ -487,8 +518,57 @@ public class GoodsService {
         g.setPack(req.getPack());
         g.setPieces(req.getPieces());
         g.setStatus(req.getStatus());
-        g.setColorLegacyId(req.getColorLegacyId());
-        g.setUnitLegacyId(req.getUnitLegacyId());
+        applyColorReference(req, g);
+        if (req.hasUnitReference()) {
+            if (clearsReference(req.getUnitId(), req.getUnitLegacyId())) {
+                g.setUnit(null);
+                g.setUnitLegacyId(null);
+            } else {
+                Unit target = relationships.unit(req.getUnitId(), req.getUnitLegacyId());
+                g.setUnit(target);
+                g.setUnitLegacyId(target.getLegacyId());
+            }
+        }
+        if (req.hasMouldReference()) {
+            if (clearsReference(req.getMouldId(), req.getMouldLegacyId())) {
+                g.setMould(null);
+                g.setMouldLegacyId(null);
+            } else {
+                var target = relationships.mould(req.getMouldId(), req.getMouldLegacyId());
+                g.setMould(target);
+                g.setMouldLegacyId(target.getLegacyId());
+            }
+        }
+        if (req.hasClientReference()) {
+            if (clearsReference(req.getClientId(), req.getClientLegacyId())) {
+                g.setClient(null);
+                g.setClientLegacyId(null);
+            } else {
+                var target = relationships.client(req.getClientId(), req.getClientLegacyId());
+                g.setClient(target);
+                g.setClientLegacyId(target.getLegacyId());
+            }
+        }
+        if (req.hasDefaultSupplierReference()) {
+            if (clearsReference(req.getDefaultSupplierId(), req.getVendLegacyId())) {
+                g.setDefaultSupplier(null);
+                g.setVendLegacyId(null);
+            } else {
+                var target = relationships.supplier(req.getDefaultSupplierId(), req.getVendLegacyId());
+                g.setDefaultSupplier(target);
+                g.setVendLegacyId(target.getLegacyId());
+            }
+        }
+        if (req.hasSecondarySupplierReference()) {
+            if (clearsReference(req.getSecondarySupplierId(), req.getVend2LegacyId())) {
+                g.setSecondarySupplier(null);
+                g.setVend2LegacyId(null);
+            } else {
+                var target = relationships.supplier(req.getSecondarySupplierId(), req.getVend2LegacyId());
+                g.setSecondarySupplier(target);
+                g.setVend2LegacyId(target.getLegacyId());
+            }
+        }
         g.setSourceType(req.getSourceType());
         // 成本预算（「成本预算」页签字段；前端表单全量回传，null 即清空）
         g.setSourceE(req.getSourceE());
@@ -518,8 +598,20 @@ public class GoodsService {
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 g.getPrice(), g.getStatus(), g.getLegacyId(),
                 g.getShortName(), categoryId, categoryName, g.getPack(),
-                g.getMaterial(), g.getThickness(), g.getUnitLegacyId(),
-                g.getMWeight(), g.getPieces(), colorName, unitName, g.getColorLegacyId(),
+                g.getMaterial(), g.getThickness(),
+                g.getUnit() == null ? null : g.getUnit().getId(),
+                g.getUnit() == null ? g.getUnitLegacyId() : g.getUnit().getLegacyId(),
+                g.getMWeight(), g.getPieces(), colorName, unitName,
+                g.getColor() == null ? null : g.getColor().getId(),
+                g.getColor() == null ? g.getColorLegacyId() : g.getColor().getLegacyId(),
+                g.getMould() == null ? null : g.getMould().getId(),
+                g.getMould() == null ? g.getMouldLegacyId() : g.getMould().getLegacyId(),
+                g.getClient() == null ? null : g.getClient().getId(),
+                g.getClient() == null ? g.getClientLegacyId() : g.getClient().getLegacyId(),
+                g.getDefaultSupplier() == null ? null : g.getDefaultSupplier().getId(),
+                g.getDefaultSupplier() == null ? g.getVendLegacyId() : g.getDefaultSupplier().getLegacyId(),
+                g.getSecondarySupplier() == null ? null : g.getSecondarySupplier().getId(),
+                g.getSecondarySupplier() == null ? g.getVend2LegacyId() : g.getSecondarySupplier().getLegacyId(),
                 g.getSourceE(), g.getMachiningE(), g.getIncidentalE(), g.getLacquerE(),
                 g.getPlatingE(), g.getCasingE(), g.getPolishE(), g.getTotal(),
                 g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
@@ -532,9 +624,14 @@ public class GoodsService {
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
                 g.getPrice(), g.getStatus(), g.getLegacyId(),
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
-                g.getColorLegacyId(), g.getUnitLegacyId(),
-                g.getColorLegacyId() == null ? null : colorNames.get(g.getColorLegacyId()),
-                g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()),
+                g.getColor() == null ? g.getColorLegacyId() : g.getColor().getLegacyId(),
+                g.getUnit() == null ? g.getUnitLegacyId() : g.getUnit().getLegacyId(),
+                g.getColor() == null
+                        ? colorNames.get(g.getColorLegacyId())
+                        : (g.getColor().isDeleted() ? null : g.getColor().getName()),
+                g.getUnit() == null
+                        ? unitNames.get(g.getUnitLegacyId())
+                        : (g.getUnit().isDeleted() ? null : g.getUnit().getName()),
                 g.getSourceType(),
                 g.getCategory() == null ? null : g.getCategory().getId(),
                 g.isAutoCreated());

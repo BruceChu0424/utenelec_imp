@@ -59,8 +59,7 @@ Future<SalesDocListItem?> showSalesOrderPicker(
     pageBuilder: (ctx, _, _) {
       // 浮动留边：面板与屏幕上/右/下边各留 16px，圆角 + 阴影，不再贴边。
       final viewportWidth = MediaQuery.sizeOf(ctx).width;
-      final panelWidth =
-          viewportWidth < 920 ? viewportWidth * 0.92 : 840.0;
+      final panelWidth = viewportWidth < 920 ? viewportWidth * 0.92 : 840.0;
       return Align(
         alignment: Alignment.centerRight,
         child: Padding(
@@ -264,8 +263,7 @@ class _SalesOrderPickerSheetState
                           .list(
                             size: 30,
                             search: kw,
-                            departmentId:
-                                (kw == null || kw.isEmpty)
+                            departmentId: (kw == null || kw.isEmpty)
                                 ? _marketingDeptId
                                 : null,
                             includeSubtree: true,
@@ -347,8 +345,7 @@ class _SalesOrderPickerSheetState
       key: 'seller',
       label: '销售员',
       width: 130,
-      value: (d) =>
-          (d.sellerName != null && d.sellerName!.isNotEmpty)
+      value: (d) => (d.sellerName != null && d.sellerName!.isNotEmpty)
           ? d.sellerName!
           : '—',
     ),

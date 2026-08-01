@@ -15,7 +15,7 @@ import java.util.UUID;
 /**
  * 销售出货明细。源 S_OutItem。
  *
- * <p>order_item_id 关联订货明细（真 FK 骨干，可空=不挂订单的直销行），审核时回写 shipped_qty。
+ * <p>order_item_id 关联订货明细（新流程必填；历史行可空），审核时回写 shipped_qty。
  * returned_qty/returned_amount 由退货审核回写。
  */
 @Getter
@@ -36,7 +36,7 @@ public class SalesShipmentItem extends BaseEntity {
     @Column(name = "shipment_id", nullable = false)
     private UUID shipmentId;
 
-    /** 关联订货明细（OrderID），审核时回写 sales_order_items.shipped_qty；可空=直销行。 */
+    /** 关联订货明细（OrderID）；新流程必填，历史迁移行可空。 */
     @Column(name = "order_item_id")
     private UUID orderItemId;
 

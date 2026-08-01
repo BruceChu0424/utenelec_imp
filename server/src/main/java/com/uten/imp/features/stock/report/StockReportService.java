@@ -33,8 +33,9 @@ import java.util.stream.Collectors;
  * <p>明细表：一行=单里一样货品（同单号重复），{@code FROM stock_document_items i JOIN stock_documents o}；
  * 汇总表：一行=一整张单（单号唯一），{@code FROM stock_documents o}。
  *
- * <p>人员名：worker/maker/approver 走 {@code LEFT JOIN employees ON legacy_id = *_legacy_id OR id = *_id}，
- * 名字后附「（子类）」标记（legacy_category 非空时）；employees 由迁移自动补录 B_Worker stub，未补录前暂显空。
+ * <p>人员名：worker 按 current UUID 优先、UUID 为空才回退 B_Worker legacy_id；
+ * maker/approver 只按 current UUID 关联 employees，历史 UUID 为空时回退 Sys_Operator 姓名快照，
+ * 绝不把 Sys_Operator.ID 当作 employees.legacy_id。员工名可附「（子类）」标记。
  * worker 列标签随 doc_type 不同：TRANSFER/OTHER_IN=经办人、DRAW=领料人、WDRAW=退料人、产成品进/出仓及盘点=跟单员。
  *
  * <p>_null 参数类型坑_：可选过滤用 {@code CAST(:param AS 类型) IS NULL OR ...}（见 MEMORY），本类主过滤走
@@ -55,10 +56,11 @@ public class StockReportService {
     private static final java.util.Set<String> DOC_TYPES = java.util.Set.of(
             DOC_TRANSFER, DOC_OTHER_IN, DOC_DRAW, DOC_WDRAW, DOC_FINISHED_IN, DOC_FINISHED_OUT, DOC_CHECK);
 
-    /** 人员名 + 「（子类）」标记（legacy_category 非空时；无匹配员工则 NULL）。 */
+    /** B_Worker 当前/legacy 员工名 + 「（子类）」标记。 */
     private static final String WK = "em_wk.full_name || COALESCE('（' || em_wk.legacy_category || '）','')";
-    private static final String MK = "em_mk.full_name || COALESCE('（' || em_mk.legacy_category || '）','')";
-    private static final String AP = "em_ap.full_name || COALESCE('（' || em_ap.legacy_category || '）','')";
+    /** 新系统当前员工名优先；历史单据回退 Sys_Operator 姓名快照。 */
+    private static final String MK = "COALESCE(em_mk.full_name || COALESCE('（' || em_mk.legacy_category || '）',''), o.maker_name_snapshot)";
+    private static final String AP = "COALESCE(em_ap.full_name || COALESCE('（' || em_ap.legacy_category || '）',''), o.approver_name_snapshot)";
 
     private final EntityManager em;
     private final SystemSettingsService settings;
@@ -265,9 +267,10 @@ public class StockReportService {
             LEFT JOIN warehouses wh2 ON wh2.id = o.to_warehouse_id
             LEFT JOIN clients cl ON cl.id = o.client_id
             LEFT JOIN departments dp ON dp.id = o.department_id
-            LEFT JOIN employees em_wk ON em_wk.legacy_id = o.worker_legacy_id OR em_wk.id = o.worker_id
-            LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
-            LEFT JOIN employees em_ap ON em_ap.legacy_id = o.approver_legacy_id OR em_ap.id = o.approver_id
+            LEFT JOIN employees em_wk ON em_wk.id = o.worker_id
+                OR (o.worker_id IS NULL AND em_wk.legacy_id = o.worker_legacy_id)
+            LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+            LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
             LEFT JOIN goods g ON g.id = i.goods_id
             LEFT JOIN colors col ON col.id = i.color_id
             LEFT JOIN units un ON un.id = i.unit_id
@@ -279,9 +282,10 @@ public class StockReportService {
             LEFT JOIN warehouses wh2 ON wh2.id = o.to_warehouse_id
             LEFT JOIN clients cl ON cl.id = o.client_id
             LEFT JOIN departments dp ON dp.id = o.department_id
-            LEFT JOIN employees em_wk ON em_wk.legacy_id = o.worker_legacy_id OR em_wk.id = o.worker_id
-            LEFT JOIN employees em_mk ON em_mk.legacy_id = o.maker_legacy_id OR em_mk.id = o.maker_id
-            LEFT JOIN employees em_ap ON em_ap.legacy_id = o.approver_legacy_id OR em_ap.id = o.approver_id
+            LEFT JOIN employees em_wk ON em_wk.id = o.worker_id
+                OR (o.worker_id IS NULL AND em_wk.legacy_id = o.worker_legacy_id)
+            LEFT JOIN employees em_mk ON em_mk.id = o.maker_id
+            LEFT JOIN employees em_ap ON em_ap.id = o.approver_id
             """;
 
     // ======================== 主过滤（公共） ========================

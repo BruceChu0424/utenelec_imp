@@ -90,7 +90,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     required this.nullCounts,
     required this.filters,
     required this.onFilterChanged,
-    required this.onRowTap,
+    this.onRowTap,
     this.onSelectionChanged,
     this.isSelected,
     this.sortColumn,
@@ -116,7 +116,9 @@ class MasterDataTableView<T> extends StatefulWidget {
   final Map<String, int> nullCounts;
   final Map<String, String?> filters;
   final void Function(String key, String? value) onFilterChanged;
-  final void Function(T item) onRowTap;
+  /// 行的主操作。为空时该行是纯展示内容，不创建 [InkWell]，也不会暴露
+  /// 鼠标可点击状态或无障碍 tap 语义。
+  final void Function(T item)? onRowTap;
 
   /// 单击选中行变化回调（与 onRowTap 同时触发，但语义是"当前选中项"）。
   /// 供调用方拿选中行做后续操作（如 BOM Tab 据此决定"添加组件"默认父级）；不传则只内部高亮。
@@ -678,8 +680,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 group.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               if (group.subtitle != null) ...[
                 const SizedBox(width: UtenSpacing.s8),
@@ -801,55 +804,58 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     } else {
       rowBg = base ?? Colors.transparent;
     }
+    final row = DecoratedBox(
+      // 行间横线：逐行分隔（与表头竖线同 outline 色，网格更深、单元格边界清晰）。
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+        ),
+      ),
+      child: ColoredBox(
+        color: rowBg,
+        child: Row(
+          children: [
+            for (final i in _visibleIndices)
+              Container(
+                width: _widths[i],
+                // 列间竖线：与表头竖线同位置同色，逐格勾勒单元格右边界。
+                decoration: BoxDecoration(
+                  border: Border(
+                    right: BorderSide(
+                      color: theme.colorScheme.outline,
+                      width: 0.5,
+                    ),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s12,
+                    vertical: UtenSpacing.s8,
+                  ),
+                  child: Text(
+                    widget.columns[i].value(item) ?? '',
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    final onRowTap = widget.onRowTap;
+    if (onRowTap == null) return row;
     return InkWell(
       onTap: () {
         // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。
         // 同时照常触发调用方 onRowTap（详情/跳源头单据等），不抢占既有交互。
         setState(() => _selectedItem = item);
         _fsTick.value++;
-        widget.onRowTap(item);
+        onRowTap(item);
         widget.onSelectionChanged?.call(item);
       },
-      child: DecoratedBox(
-        // 行间横线：逐行分隔（与表头竖线同 outline 色，网格更深、单元格边界清晰）。
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: theme.colorScheme.outline, width: 0.5),
-          ),
-        ),
-        child: ColoredBox(
-          color: rowBg,
-          child: Row(
-            children: [
-              for (final i in _visibleIndices)
-                Container(
-                  width: _widths[i],
-                  // 列间竖线：与表头竖线同位置同色，逐格勾勒单元格右边界。
-                  decoration: BoxDecoration(
-                    border: Border(
-                      right: BorderSide(
-                        color: theme.colorScheme.outline,
-                        width: 0.5,
-                      ),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12,
-                      vertical: UtenSpacing.s8,
-                    ),
-                    child: Text(
-                      widget.columns[i].value(item) ?? '',
-                      style: theme.textTheme.bodySmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+      child: row,
     );
   }
 

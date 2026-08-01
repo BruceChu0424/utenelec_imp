@@ -67,7 +67,6 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-
   Future<void> _load() async {
     if (!mounted) return;
     setState(() {
@@ -254,7 +253,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     if (!mounted) return;
 
     final hasCascade =
-        preview != null && (preview.descendantCount > 0 || preview.goodsCount > 0);
+        preview != null &&
+        (preview.descendantCount > 0 || preview.goodsCount > 0);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -286,7 +286,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (preview!.descendantCount > 0)
-                      Text('• ${preview.descendantCount} 个子分类'), // TODO(l10n): 补 arb
+                      Text(
+                        '• ${preview.descendantCount} 个子分类',
+                      ), // TODO(l10n): 补 arb
                     if (preview.goodsCount > 0)
                       Text('• ${preview.goodsCount} 个货品'), // TODO(l10n): 补 arb
                     const SizedBox(height: UtenSpacing.s4),
@@ -335,7 +337,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     }
     if (!mounted) return;
     if (_selectedId == node.id) _selectedId = null;
-    final msg = (preview != null &&
+    final msg =
+        (preview != null &&
             (preview.descendantCount > 0 || preview.goodsCount > 0))
         ? '已删除分类（含 ${preview.descendantCount} 个子分类、${preview.goodsCount} 个货品）'
         : '分类已删除';
@@ -424,7 +427,59 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
     final canEdit = _canEdit;
 
     Widget body;
-    if (_loading) {
+    if (tree.isNotEmpty) {
+      // 已有分类树时，增删改 / 手动刷新都保持树挂载（不切全屏 spinner），
+      // 否则 UtenCategoryTreeView 会被卸载、重挂载后展开状态丢失。
+      // 树组件自身的 didUpdateWidget（保留已展开节点）只在组件常驻时才生效。
+      if (bp == UtenBreakpoint.compact) {
+        body = selected == null
+            ? const UtenEmpty(
+                icon: Icons.category_outlined,
+                message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
+              )
+            : UtenContentContainer(
+                child: _DetailPane(
+                  ref: ref,
+                  nodeId: selected.id,
+                  canEdit: canEdit,
+                  onAddChild: () => _showCreateDialog(parent: selected),
+                  onEdit: (detail) => _showEditDialog(detail),
+                  onDelete: () => _delete(selected),
+                ),
+              );
+      } else {
+        body = Row(
+          children: [
+            SizedBox(
+              width: 300,
+              child: _buildTree(
+                onSelect: (id) => setState(() => _selectedId = id),
+              ),
+            ),
+            Container(width: 1, color: theme.colorScheme.outlineVariant),
+            Expanded(
+              child: selected == null
+                  ? Center(
+                      child: Text(
+                        '请选择左侧分类查看详情', // TODO(l10n): 补 arb
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : _DetailPane(
+                      ref: ref,
+                      nodeId: selected.id,
+                      canEdit: canEdit,
+                      onAddChild: () => _showCreateDialog(parent: selected),
+                      onEdit: (detail) => _showEditDialog(detail),
+                      onDelete: () => _delete(selected),
+                    ),
+            ),
+          ],
+        );
+      }
+    } else if (_loading) {
       body = const Center(child: CircularProgressIndicator());
     } else if (_error != null) {
       body = UtenEmpty.error(
@@ -432,60 +487,13 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
         actionLabel: '重试', // TODO(l10n): 补 arb
         onAction: _load,
       );
-    } else if (tree.isEmpty) {
+    } else {
       body = UtenEmpty(
         icon: Icons.category_outlined,
         message: '暂无货品分类', // TODO(l10n): 补 arb
         description: canEdit ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
         actionLabel: canEdit ? '新建分类' : null, // TODO(l10n): 补 arb
         onAction: canEdit ? () => _showCreateDialog() : null,
-      );
-    } else if (bp == UtenBreakpoint.compact) {
-      body = selected == null
-          ? const UtenEmpty(
-              icon: Icons.category_outlined,
-              message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-            )
-          : UtenContentContainer(
-              child: _DetailPane(
-                ref: ref,
-                nodeId: selected.id,
-                canEdit: canEdit,
-                onAddChild: () => _showCreateDialog(parent: selected),
-                onEdit: (detail) => _showEditDialog(detail),
-                onDelete: () => _delete(selected),
-              ),
-            );
-    } else {
-      body = Row(
-        children: [
-          SizedBox(
-            width: 300,
-            child: _buildTree(
-              onSelect: (id) => setState(() => _selectedId = id),
-            ),
-          ),
-          Container(width: 1, color: theme.colorScheme.outlineVariant),
-          Expanded(
-            child: selected == null
-                ? Center(
-                    child: Text(
-                      '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  )
-                : _DetailPane(
-                    ref: ref,
-                    nodeId: selected.id,
-                    canEdit: canEdit,
-                    onAddChild: () => _showCreateDialog(parent: selected),
-                    onEdit: (detail) => _showEditDialog(detail),
-                    onDelete: () => _delete(selected),
-                  ),
-          ),
-        ],
       );
     }
 
@@ -701,9 +709,7 @@ class _DetailPaneState extends State<_DetailPane> {
     final repo = widget.ref.read(goodsRepositoryProvider);
     final isOrphan = _detail?.code == 'LEGACY_ORPHAN';
     try {
-      final results = await Future.wait<
-        PagedResult<GoodsListItem>?
-      >([
+      final results = await Future.wait<PagedResult<GoodsListItem>?>([
         repo.list(widget.nodeId, disabledOnly: true, size: 500),
         isOrphan
             ? repo.list(null, stubOnly: true, size: 500)

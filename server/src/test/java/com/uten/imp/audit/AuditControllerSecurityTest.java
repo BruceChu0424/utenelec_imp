@@ -3,7 +3,6 @@ package com.uten.imp.audit;
 import com.uten.imp.common.export.EncryptedWorkbookService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.XlsxExportService;
-import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.config.WebMvcConfig;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.ExportRateLimitInterceptor;
@@ -11,6 +10,7 @@ import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -38,7 +38,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -94,31 +93,14 @@ class AuditControllerSecurityTest {
     @BeforeEach
     void setUp() {
         when(auditQuery.query(
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(LocalDate.class),
-                nullable(LocalDate.class),
+                any(AuditSearchCriteria.class),
                 anyInt(),
                 anyInt()))
-                .thenReturn(new PageResponse<>(List.of(), 1, 20, 0, 0));
-        when(auditQuery.summary(
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(LocalDate.class),
-                nullable(LocalDate.class)))
+                .thenReturn(new AuditPageResponse(List.of(), 1, 20, 0, 0, 0));
+        when(auditQuery.summary(any(AuditSearchCriteria.class)))
                 .thenReturn(new AuditSummary(0, 0, 0, 0, 0, List.of()));
         when(auditQuery.export(
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(LocalDate.class),
-                nullable(LocalDate.class),
+                any(AuditSearchCriteria.class),
                 anyInt()))
                 .thenReturn(new ExportPayload(List.of(), List.of(), 0));
         when(runtimeSettings.exportMaxRows()).thenReturn(1_000);
@@ -169,6 +151,92 @@ class AuditControllerSecurityTest {
     }
 
     @Test
+    void listPassesEveryForensicFilterToTheQueryService() throws Exception {
+        String requestId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        mvc.perform(get("/api/admin/audit-logs")
+                        .with(viewUser())
+                        .param("action", "update")
+                        .param("actorAccount", "alice")
+                        .param("actorScope", "user")
+                        .param("riskLevel", "high")
+                        .param("eventCategory", "data_change")
+                        .param("outcome", "success")
+                        .param("keyword", "HP0001")
+                        .param("targetType", "goods")
+                        .param("targetId", "HP0001")
+                        .param("eventSource", "database")
+                        .param("requestId", requestId)
+                        .param("operationKind", "write")
+                        .param("snapshotId", "123")
+                        .param("dateFrom", "2026-07-01")
+                        .param("dateTo", "2026-07-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.snapshotId").value(0));
+
+        ArgumentCaptor<AuditSearchCriteria> captor =
+                ArgumentCaptor.forClass(AuditSearchCriteria.class);
+        verify(auditQuery).query(captor.capture(), eq(1), eq(20));
+        AuditSearchCriteria filters = captor.getValue();
+        assertEquals("update", filters.action());
+        assertEquals("alice", filters.actorAccount());
+        assertEquals("user", filters.actorScope());
+        assertEquals("high", filters.riskLevel());
+        assertEquals("data_change", filters.eventCategory());
+        assertEquals("success", filters.outcome());
+        assertEquals("HP0001", filters.keyword());
+        assertEquals("goods", filters.targetType());
+        assertEquals("HP0001", filters.targetId());
+        assertEquals("database", filters.eventSource());
+        assertEquals(requestId, filters.requestId());
+        assertEquals("write", filters.operationKind());
+        assertEquals(123L, filters.snapshotId());
+        assertEquals(LocalDate.parse("2026-07-01"), filters.dateFrom());
+        assertEquals(LocalDate.parse("2026-07-31"), filters.dateTo());
+    }
+
+    @Test
+    void summaryAndExportPassTheSharedSnapshotScope() throws Exception {
+        mvc.perform(get("/api/admin/audit-logs/summary")
+                        .with(viewUser())
+                        .param("actorScope", "system")
+                        .param("keyword", "goods")
+                        .param("operationKind", "write")
+                        .param("snapshotId", "321"))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<AuditSearchCriteria> summaryCaptor =
+                ArgumentCaptor.forClass(AuditSearchCriteria.class);
+        verify(auditQuery).summary(summaryCaptor.capture());
+        assertEquals("system", summaryCaptor.getValue().actorScope());
+        assertEquals("goods", summaryCaptor.getValue().keyword());
+        assertEquals("write", summaryCaptor.getValue().operationKind());
+        assertEquals(321L, summaryCaptor.getValue().snapshotId());
+        assertEquals(null, summaryCaptor.getValue().riskLevel());
+        assertEquals(null, summaryCaptor.getValue().outcome());
+
+        clearInvocations(auditQuery);
+        mvc.perform(post("/api/admin/audit-logs/export")
+                        .with(viewAndExportUser())
+                        .with(csrf())
+                        .param("actorScope", "user")
+                        .param("targetType", "goods")
+                        .param("eventSource", "database")
+                        .param("snapshotId", "321")
+                        .contentType(APPLICATION_JSON)
+                        .content("{'password':'secret12'}"
+                                .replace((char) 39, (char) 34)))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<AuditSearchCriteria> exportCaptor =
+                ArgumentCaptor.forClass(AuditSearchCriteria.class);
+        verify(auditQuery).export(exportCaptor.capture(), eq(1_000));
+        assertEquals("user", exportCaptor.getValue().actorScope());
+        assertEquals("goods", exportCaptor.getValue().targetType());
+        assertEquals("database", exportCaptor.getValue().eventSource());
+        assertEquals(321L, exportCaptor.getValue().snapshotId());
+    }
+
+    @Test
     void viewAndExportPermissionsCanExport() throws Exception {
         mvc.perform(post("/api/admin/audit-logs/export")
                         .with(viewAndExportUser())
@@ -181,13 +249,7 @@ class AuditControllerSecurityTest {
                 .andExpect(content().bytes(new byte[]{9}));
 
         verify(auditQuery).export(
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(String.class),
-                nullable(LocalDate.class),
-                nullable(LocalDate.class),
+                any(AuditSearchCriteria.class),
                 eq(1_000));
         verify(audit).logExplicit(
                 ACTOR_ID,

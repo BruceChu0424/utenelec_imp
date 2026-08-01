@@ -210,7 +210,8 @@ class _UtenCategoryTreeViewState<T extends UtenTreeNode<T>>
     // 外部可见集合（搜索定位用）：命中节点的祖先链也展开，否则深层命中不可见。
     // 用原始 widget.visibleFilterIds 判展开（非 effective 交集），内部搜索不误展开外部节点。
     final externalFilter = widget.visibleFilterIds;
-    final expanded = _searching ||
+    final expanded =
+        _searching ||
         _expanded.contains(node.id) ||
         (externalFilter != null && externalFilter.contains(node.id));
     final isSelected = widget.selectedIds.contains(node.id);

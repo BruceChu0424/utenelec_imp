@@ -10,7 +10,8 @@ public record FulfillmentWorkbenchPage(
         int size,
         long total,
         int totalPages,
-        Summary summary) {
+        Summary summary,
+        Capabilities capabilities) {
 
     public record Summary(
             long totalTasks,
@@ -19,5 +20,8 @@ public record FulfillmentWorkbenchPage(
             BigDecimal openQty,
             Map<String, Long> statusCounts,
             Map<String, Long> exceptionCounts) {
+    }
+
+    public record Capabilities(boolean canCreatePurchaseOrder) {
     }
 }

@@ -184,6 +184,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           forced: state.uri.queryParameters['forced'] == 'true',
         ),
       ),
+      GoRoute(
+        path: RouteName.accessDenied,
+        name: 'access-denied',
+        builder: (_, _) => const _AccessDeniedPage(),
+      ),
 
       // —— 入口选择（登录前）——
       GoRoute(
@@ -994,6 +999,52 @@ class _ErrorPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('页面不存在')),
       body: Center(child: Text(l10n.commonError)),
+    );
+  }
+}
+
+class _AccessDeniedPage extends StatelessWidget {
+  const _AccessDeniedPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: const Text('无权访问')),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 56,
+                  color: theme.colorScheme.error,
+                ),
+                const SizedBox(height: 16),
+                Text('当前账号没有访问此页面的权限', style: theme.textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  '如需处理这项业务，请联系权限管理员授权。系统未打开目标页面，也未执行任何操作。',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => context.go(RouteName.dashboard),
+                  icon: const Icon(Icons.dashboard_outlined),
+                  label: const Text('返回工作台'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

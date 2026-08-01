@@ -5,6 +5,8 @@ import com.uten.imp.features.sales.ret.dto.ReturnDetail;
 import com.uten.imp.features.sales.ret.dto.ReturnListItem;
 import com.uten.imp.features.sales.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.sales.ret.dto.ReturnSaveRequest;
+import com.uten.imp.features.sales.ret.dto.ReturnQualityDispositionRequest;
+import com.uten.imp.features.sales.ret.dto.ReturnQualityItemDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -39,6 +42,7 @@ import java.util.UUID;
 public class SalesReturnController {
 
     private final SalesReturnService service;
+    private final SalesReturnQualityService qualityService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales_return:view')")
@@ -91,5 +95,22 @@ public class SalesReturnController {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    /** Quality-frozen quantities are physically received but are not saleable ATP. */
+    @GetMapping("/{id}/quality")
+    @PreAuthorize("hasAuthority('sales_return_quality:view')")
+    public List<ReturnQualityItemDto> quality(@PathVariable UUID id) {
+        return qualityService.list(id);
+    }
+
+    /** Releases good stock or records a controlled scrap/rework disposition. */
+    @PostMapping("/{id}/quality/{returnItemId}/dispose")
+    @PreAuthorize("hasAuthority('sales_return_quality:handle')")
+    public List<ReturnQualityItemDto> dispose(
+            @PathVariable UUID id,
+            @PathVariable UUID returnItemId,
+            @Valid @RequestBody ReturnQualityDispositionRequest request) {
+        return qualityService.dispose(id, returnItemId, request);
     }
 }

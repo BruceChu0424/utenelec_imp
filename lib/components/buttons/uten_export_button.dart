@@ -31,6 +31,7 @@ class UtenExportButton extends ConsumerStatefulWidget {
     required this.queryParams,
     this.filename,
     this.requiredPermission,
+    this.enabled = true,
     this.label = '下载表格',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
@@ -43,6 +44,9 @@ class UtenExportButton extends ConsumerStatefulWidget {
 
   /// 导出所需权限；未持有时不渲染按钮。后端仍是最终授权边界。
   final String? requiredPermission;
+
+  /// Whether the current result set is ready to be exported.
+  final bool enabled;
 
   /// 按钮文字（公司年长用户多，文字比纯图标易懂；默认"下载表格"，调用方可覆盖如"下载货品表"）。
   final String label;
@@ -60,7 +64,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   bool _loading = false;
 
   Future<void> _onTap() async {
-    if (_loading) return; // 防连点
+    if (!widget.enabled || _loading) return; // 防连点 / 等待查询高水位边界
     final pwd = await showDialog<String>(
       context: context,
       builder: (_) => const _ExportPasswordDialog(),
@@ -108,7 +112,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       size: widget.size,
       icon: Icons.download_rounded,
       isLoading: _loading,
-      onPressed: _onTap,
+      onPressed: widget.enabled ? _onTap : null,
       child: Text(widget.label),
     );
   }

@@ -6,6 +6,7 @@ abstract final class RouteName {
   static const String login = '/login';
   static const String home = '/';
   static const String dashboard = '/dashboard';
+  static const String accessDenied = '/access-denied';
   static const String profile = '/profile';
   static const String settings = '/settings';
   static const String deviceAuditReceipts = '/settings/device-receipts';
@@ -156,7 +157,7 @@ abstract final class RouteName {
   static const String financeReportCost = '/finance/report/cost';
   // C3 总账报表（科目余额表+附 9~16 共 8 chip）。
   static const String financeReportGl = '/finance/report/gl';
-  // C5 资产与待摊管理（固定资产/长期待摊 CRUD+计提）。
+  // C5 资产与待摊专业工作台（台账/审批/不可变月度批次；核心落账默认门禁关闭）。
   static const String financeAssets = '/finance/assets';
 }
 

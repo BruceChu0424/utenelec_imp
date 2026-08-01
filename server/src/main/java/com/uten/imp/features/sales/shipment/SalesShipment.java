@@ -27,6 +27,15 @@ import java.util.UUID;
 @Table(name = "sales_shipments")
 public class SalesShipment extends SoftDeletableEntity {
 
+    public static final String WORK_LEGACY_PENDING = "LEGACY_PENDING";
+    public static final String WORK_PENDING_PICK = "PENDING_PICK";
+    public static final String WORK_PICKING = "PICKING";
+    public static final String WORK_PICKED = "PICKED";
+    public static final String WORK_EXCEPTION = "EXCEPTION";
+    public static final String WORK_SHIPPED = "SHIPPED";
+    public static final String WORK_CANCELLED = "CANCELLED";
+    public static final String WORK_REVERSED = "REVERSED";
+
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
 
@@ -124,4 +133,34 @@ public class SalesShipment extends SoftDeletableEntity {
 
     @Column(name = "finance_audited_at")
     private java.time.OffsetDateTime financeAuditedAt;
+
+    @Column(name = "warehouse_work_status", nullable = false)
+    private String warehouseWorkStatus = WORK_PENDING_PICK;
+
+    @Column(name = "warehouse_work_updated_at")
+    private OffsetDateTime warehouseWorkUpdatedAt;
+
+    @Column(name = "warehouse_work_updated_by")
+    private UUID warehouseWorkUpdatedBy;
+
+    @Column(name = "picking_started_at")
+    private OffsetDateTime pickingStartedAt;
+
+    @Column(name = "picking_started_by")
+    private UUID pickingStartedBy;
+
+    @Column(name = "picked_at")
+    private OffsetDateTime pickedAt;
+
+    @Column(name = "picked_by")
+    private UUID pickedBy;
+
+    @Column(name = "handed_over_at")
+    private OffsetDateTime handedOverAt;
+
+    @Column(name = "handed_over_by")
+    private UUID handedOverBy;
+
+    @Column(name = "warehouse_exception_reason")
+    private String warehouseExceptionReason;
 }

@@ -47,6 +47,10 @@ import static org.mockito.Mockito.when;
 
 @WebMvcTest(
         controllers = CorsAuditProbeController.class,
+        properties = {
+                "uten.security.cors-allowed-origins=https://trusted.example.test",
+                "uten.security.require-https=false"
+        },
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.ASSIGNABLE_TYPE,
                 classes = {

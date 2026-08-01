@@ -293,10 +293,10 @@ public class ProductionReportService {
         return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no", specs, facets, page, size, sort, order);
     }
 
-    // ======================== ③ 物料反查产成品（BOM where-used，按产成品汇总） ========================
+    // ======================== 旧版 PPC-only 反查快照（仅保留迁移核对） ========================
 
     /**
-     * 物料反查产成品：输入一个原材料（materialGoodsId），查出它被用在了哪些顶层产成品上。
+     * 旧版单来源快照：输入一个原材料（materialGoodsId），查出旧快照中出现过的顶层产成品。
      *
      * <p>数据源 production_plan_costs（源 F_PlanCostItem，136 万行 BOM 展开快照），每行带 goods_id（材料节点）
      * 与 master_goods_id（顶层产成品）。按 master_goods_id 汇总：涉及计划数 = COUNT(DISTINCT bill_item_id)、
@@ -306,12 +306,14 @@ public class ProductionReportService {
      * 不走 {@link #execute}（其 SQL 拼装顺序无 GROUP BY 位），此处自建聚合查询 + 分页/count/排序白名单。
      *
      * @param materialGoodsId 必填：被反查的材料货品 ID
+     * @deprecated 仅供迁移核对；在线接口必须使用 {@link ProductionWhereUsedQueryService}。
      */
+    @Deprecated(forRemoval = true)
     @Transactional(readOnly = true)
-    public ReportTableResponse whereUsed(UUID materialGoodsId, LocalDate dateFrom, LocalDate dateTo,
-                                         int page, int size, String sort, String order) {
+    ReportTableResponse legacyWhereUsedSnapshot(UUID materialGoodsId, LocalDate dateFrom, LocalDate dateTo,
+                                           int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
-                ReportColumn.text("__srcId", ""),  // 隐藏：行点击跳该产成品生产计划明细（= SELECT 首列 mg.id）
+                ReportColumn.text("__srcId", ""),  // 隐藏：结果行关联的产成品货品 UUID（= SELECT 首列 mg.id）
                 ReportColumn.text("goodsCode", "产成品编号", 130),
                 ReportColumn.text("goodsName", "产成品名称", 200),
                 ReportColumn.text("spec", "规格", 140),

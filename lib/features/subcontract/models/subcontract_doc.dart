@@ -105,7 +105,7 @@ class SubcontractDocItem {
     this.checkQty,
     this.orderQty,
     this.receivedQty,
-    this.issuedQty,
+    this.legacyIssuedQty,
     this.returnedQty,
     this.wastedQty,
     this.endingQty,
@@ -140,8 +140,11 @@ class SubcontractDocItem {
   final double? orderQty;
   final double? receivedQty;
 
-  /// 已发料（订货明细；后端 subcontract_order_items.issued_qty，发料审核回写）。
-  final double? issuedQty;
+  /// 历史订货明细累计发料量。
+  ///
+  /// 仅兼容旧接口字段 `issuedQty` 的只读展示，不能作为当前“剩余可发量”、
+  /// 新发料审核或库存扣减的权威依据；新业务不再回写该累计字段。
+  final double? legacyIssuedQty;
   final double? returnedQty;
   final double? wastedQty;
   // 损耗特有
@@ -179,7 +182,7 @@ class SubcontractDocItem {
         checkQty: (json['checkQty'] as num?)?.toDouble(),
         orderQty: (json['orderQty'] as num?)?.toDouble(),
         receivedQty: (json['receivedQty'] as num?)?.toDouble(),
-        issuedQty: (json['issuedQty'] as num?)?.toDouble(),
+        legacyIssuedQty: (json['issuedQty'] as num?)?.toDouble(),
         returnedQty: (json['returnedQty'] as num?)?.toDouble(),
         wastedQty: (json['wastedQty'] as num?)?.toDouble(),
         endingQty: (json['endingQty'] as num?)?.toDouble(),

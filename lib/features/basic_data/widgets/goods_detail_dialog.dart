@@ -32,19 +32,23 @@ enum _GoodsDialogMode { create, edit, view }
 ///
 /// [detail] 为 null = 新建态（需传 [categoryId]）；非 null = 查看/编辑既有货品。
 /// [onDataChanged] 在基本信息保存 / 组装成本数据变动后触发（调用方刷新列表）。
+/// [initialTab]：0=基本信息，1=组装信息，2=成本预算。
 Future<void> showGoodsDetailDialog({
   required BuildContext context,
   GoodsDetail? detail,
   String? categoryId,
+  int initialTab = 0,
   bool canEdit = false,
   VoidCallback? onDelete,
   VoidCallback? onViewMovements,
   VoidCallback? onDataChanged,
 }) {
+  assert(initialTab >= 0 && initialTab < 3);
   final mode = detail == null ? _GoodsDialogMode.create : _GoodsDialogMode.view;
   final body = _GoodsDetailBody(
     initialDetail: detail,
     initialCategoryId: categoryId,
+    initialTab: initialTab,
     initialMode: mode,
     canEdit: canEdit,
     onDelete: onDelete,
@@ -86,6 +90,7 @@ class _GoodsDetailBody extends ConsumerStatefulWidget {
   const _GoodsDetailBody({
     required this.initialDetail,
     required this.initialCategoryId,
+    required this.initialTab,
     required this.initialMode,
     required this.canEdit,
     required this.onDelete,
@@ -95,6 +100,7 @@ class _GoodsDetailBody extends ConsumerStatefulWidget {
 
   final GoodsDetail? initialDetail;
   final String? initialCategoryId;
+  final int initialTab;
   final _GoodsDialogMode initialMode;
   final bool canEdit;
   final VoidCallback? onDelete;
@@ -344,6 +350,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     return SafeArea(
       child: DefaultTabController(
         length: 3,
+        initialIndex: widget.initialTab,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

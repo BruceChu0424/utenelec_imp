@@ -24,11 +24,17 @@ import java.util.UUID;
  * 费用 借费用科目(行)/贷账户(单头合计=行合计)；其它收入 借账户/贷收入科目(行)；
  * 销售成本结转 借041/贷123（出货行 Σqty×goods.c_total，单号+“-CB”）。</p>
  *
- * <p>幂等：generate(period) 先删该期间全部 AUTO 凭证（级联分录）再重建；generateAll 逐期间重放。</p>
+ * <p>幂等：generate(period) 只重建本服务明确拥有的七类 AUTO 凭证；资产子账、工资等其它模块
+ * 的自动凭证不属于本服务，禁止在这里删除。generateAll 逐期间重放。</p>
  */
 @Service
 @RequiredArgsConstructor
 public class GlPostingService {
+
+    /** Source types exclusively owned and rebuilt by this legacy regeneration job. */
+    static final List<String> REGENERATED_SOURCE_TYPES = List.of(
+            "AR_POST", "AP_POST", "RECEIPT", "PAYMENT",
+            "EXPENSE", "INCOME", "COST_CARRY");
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -42,8 +48,10 @@ public class GlPostingService {
     }
 
     private int generatePeriod(String period) {
-        em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period = :p")
-                .setParameter("p", period).executeUpdate();
+        em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
+                .setParameter("p", period)
+                .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
+                .executeUpdate();
 
         postAr(period);
         postAp(period);
@@ -54,8 +62,10 @@ public class GlPostingService {
         postCostCarry(period);
 
         return ((Number) em.createNativeQuery(
-                "SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND period = :p")
-                .setParameter("p", period).getSingleResult()).intValue();
+                "SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
+                .setParameter("p", period)
+                .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
+                .getSingleResult()).intValue();
     }
 
     /** 重放全部历史期间（ar_ap_ledger 出现过的所有月份）。返回期间数。 */

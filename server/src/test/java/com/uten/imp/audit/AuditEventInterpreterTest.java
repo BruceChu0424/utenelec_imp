@@ -2,6 +2,7 @@ package com.uten.imp.audit;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -81,6 +82,84 @@ class AuditEventInterpreterTest {
         assertEquals("medium", event.riskLevel());
         assertEquals("工资条 PDF 被下载到系统外部，需关注使用范围", event.riskReason());
         assertEquals("export", event.category());
+    }
+
+    @Test
+    void labelsCoreDatabaseTargetsInChinese() {
+        Map<String, String> expected = Map.ofEntries(
+                Map.entry("goods", "货品"),
+                Map.entry("material_categories", "货品分类"),
+                Map.entry("mould_categories", "模具分类"),
+                Map.entry("client_categories", "客户分类"),
+                Map.entry("supplier_categories", "供应商分类"),
+                Map.entry("clients", "客户"),
+                Map.entry("suppliers", "供应商"),
+                Map.entry("stock_balances", "即时库存"),
+                Map.entry("sales_orders", "销售订单"),
+                Map.entry("user_permission_overrides", "个人权限"),
+                Map.entry("finance_asset_categories", "资产/待摊分类"),
+                Map.entry("finance_asset_books", "固定资产账簿"),
+                Map.entry("finance_deferral_schedule_versions", "待摊计划版本"),
+                Map.entry("finance_deferral_schedule_lines", "待摊计划明细"),
+                Map.entry("finance_asset_approval_steps", "资产审批步骤"),
+                Map.entry("finance_asset_events", "资产业务事件"),
+                Map.entry("finance_asset_accounting_periods", "资产会计期间"),
+                Map.entry("finance_asset_posting_runs", "折旧摊销过账批次"),
+                Map.entry("finance_asset_posting_lines", "折旧摊销过账明细"),
+                Map.entry("deferred_expenses", "待摊费用"));
+
+        expected.forEach((targetType, label) -> {
+            AuditLog log = new AuditLog();
+            log.setAction("insert");
+            log.setTargetType(targetType);
+            log.setTargetId("target-id");
+            log.setResult("success");
+
+            AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+            assertEquals(label, event.objectLabel(), targetType);
+            assertEquals("新增/发起 · " + label, event.summary(), targetType);
+        });
+    }
+
+    @Test
+    void labelsMasterDataRoutesInChinese() {
+        Map<String, String> expected = Map.of(
+                "/api/master/goods", "货品",
+                "/api/master/material-categories", "货品分类",
+                "/api/master/mould-categories", "模具分类",
+                "/api/master/client-categories", "客户分类",
+                "/api/master/supplier-categories", "供应商分类");
+
+        expected.forEach((path, label) -> {
+            AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(
+                    request("http_post", path));
+            assertEquals(label, event.objectLabel(), path);
+            assertEquals("新增/发起 · " + label, event.summary(), path);
+        });
+    }
+
+    @Test
+    void labelsHistoricalSoftDeleteUpdatesAsDeletes() {
+        AuditLog log = new AuditLog();
+        log.setAction("update");
+        log.setTargetType("goods");
+        log.setTargetId(UUID.randomUUID().toString());
+        log.setBefore("""
+                {"is_deleted":false,"deleted_at":null}
+                """);
+        log.setAfter("""
+                {"is_deleted":true,"deleted_at":"2026-08-01T06:00:00Z"}
+                """);
+        log.setResult("success");
+        // V169 stored historical UPDATE transitions as low risk.
+        log.setRiskLevel("low");
+
+        AuditEventInterpreter.InterpretedEvent event = interpreter.interpret(log);
+
+        assertEquals("删除", event.actionLabel());
+        assertEquals("删除 · 货品", event.summary());
+        assertEquals("high", event.riskLevel());
+        assertEquals("data_change", event.category());
     }
 
     private void assertAuditInvestigation(

@@ -23,6 +23,43 @@ public interface StockBalanceRepository
     Optional<StockBalance> findByWarehouseIdAndGoodsIdAndColorId(UUID warehouseId, UUID goodsId, UUID colorId);
 
     /**
+     * Operationally movable quantity in one warehouse, in base units.
+     *
+     * <p>Global reservations are conservatively protected in every warehouse;
+     * warehouse-bound reservations are protected only in their warehouse.
+     * Safety stock is a goods-level policy and is therefore applied to each
+     * warehouse, matching the existing ATP/readiness convention.
+     */
+    @Query(value = """
+            SELECT GREATEST(
+                COALESCE((
+                    SELECT b.qty
+                    FROM stock_balances b
+                    WHERE b.warehouse_id = :wid
+                      AND b.goods_id = :gid
+                      AND b.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
+                ), 0)
+                - COALESCE((
+                    SELECT SUM(r.qty - r.consumed_qty - r.released_qty)
+                    FROM stock_reservations r
+                    WHERE r.is_deleted = FALSE
+                      AND r.status = 0
+                      AND r.goods_id = :gid
+                      AND r.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
+                      AND (r.warehouse_id IS NULL OR r.warehouse_id = :wid)
+                ), 0)
+                - COALESCE((
+                    SELECT GREATEST(COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0)
+                    FROM goods g
+                    WHERE g.id = :gid
+                ), 0),
+                0)
+            """, nativeQuery = true)
+    BigDecimal warehouseAvailableBase(@Param("wid") UUID warehouseId,
+                                      @Param("gid") UUID goodsId,
+                                      @Param("cid") UUID colorId);
+
+    /**
      * 增量 upsert 余额：不存在则插入，存在则 qty/amount_local/weight 累加已带方向符号的增量。
      *
      * @param delta 已乘 direction(+1/-1) 的数量增量

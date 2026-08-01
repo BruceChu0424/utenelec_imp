@@ -109,6 +109,15 @@ public class SalesShipmentController {
         return service.reject(id, reason);
     }
 
+    @PostMapping("/{id}/warehouse-work")
+    @PreAuthorize("hasAuthority('sales_shipment:warehouse-work')")
+    public ShipmentDetail transitionWarehouseWork(
+            @PathVariable UUID id,
+            @Valid @RequestBody
+            com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest req) {
+        return service.transitionWarehouseWork(id, req);
+    }
+
     /** C6 财务审核发货：现金结算客户须审后仓库才可审核出货；返回结算方式+未收余额辅助核对。 */
     @PostMapping("/{id}/finance-audit")
     @PreAuthorize("hasAuthority('finance_shipment_audit')")

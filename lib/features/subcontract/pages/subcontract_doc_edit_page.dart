@@ -247,12 +247,11 @@ class _SubcontractDocEditPageState
 
   /// 选货品范围：发料/材料退/损耗=材料；进仓/退货/订货/申请/询价=成品。
   UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
-        SubcontractDocType.materialIssue ||
-        SubcontractDocType.materialReturn ||
-        SubcontractDocType.waste =>
-          UtenGoodsPickerScope.material,
-        _ => UtenGoodsPickerScope.sellable,
-      };
+    SubcontractDocType.materialIssue ||
+    SubcontractDocType.materialReturn ||
+    SubcontractDocType.waste => UtenGoodsPickerScope.material,
+    _ => UtenGoodsPickerScope.sellable,
+  };
 
   Future<void> _pickGoods(SubcontractGridRow row) async {
     final g = await showUtenGoodsPicker(context, ref, scope: _pickerScope);
@@ -438,6 +437,10 @@ class _SubcontractDocEditPageState
                     controller: _scrollCtl,
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     children: [
+                      if (_cfg.approvalBlockedReason != null) ...[
+                        _materialIssueSafetyBanner(theme),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
                       _headerCard(theme),
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
@@ -517,6 +520,52 @@ class _SubcontractDocEditPageState
                 icon: Icons.save_outlined,
                 onPressed: _saving ? null : _save,
                 child: const Text('保存'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _materialIssueSafetyBanner(ThemeData theme) {
+    final reason = _cfg.approvalBlockedReason!;
+    return Semantics(
+      container: true,
+      label: '新增发料审核暂不可用。$reason 可保存草稿，但不能作为已发料事实。',
+      child: Card(
+        color: theme.colorScheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '新增发料审核暂不可用',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      '$reason\n可保存草稿，但不能作为已发料事实。'
+                      '\n$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -698,14 +747,18 @@ class _SubcontractDocEditPageState
       sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
-        final deptId =
-            (kw == null || kw.isEmpty) && defaultDeptCode != null
+        final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
             ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
+            .list(
+              size: 30,
+              search: kw,
+              departmentId: deptId,
+              includeSubtree: true,
+            );
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(

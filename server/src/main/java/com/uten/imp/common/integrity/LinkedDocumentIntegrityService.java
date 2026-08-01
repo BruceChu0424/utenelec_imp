@@ -45,13 +45,25 @@ public class LinkedDocumentIntegrityService {
             UUID goodsId,
             UUID colorId,
             UUID unitId,
+            BigDecimal unitRate,
             UUID parentGoodsId,
             UUID parentColorId) {
 
         public static LinkedLine orderSource(
-                UUID orderItemId, UUID goodsId, UUID colorId, UUID unitId) {
+                UUID orderItemId,
+                UUID goodsId,
+                UUID colorId,
+                UUID unitId,
+                BigDecimal unitRate) {
             return new LinkedLine(
-                    orderItemId, orderItemId, goodsId, colorId, unitId, null, null);
+                    orderItemId,
+                    orderItemId,
+                    goodsId,
+                    colorId,
+                    unitId,
+                    unitRate,
+                    null,
+                    null);
         }
 
         public static LinkedLine receiptSource(
@@ -59,9 +71,17 @@ public class LinkedDocumentIntegrityService {
                 UUID orderItemId,
                 UUID goodsId,
                 UUID colorId,
-                UUID unitId) {
+                UUID unitId,
+                BigDecimal unitRate) {
             return new LinkedLine(
-                    receiptItemId, orderItemId, goodsId, colorId, unitId, null, null);
+                    receiptItemId,
+                    orderItemId,
+                    goodsId,
+                    colorId,
+                    unitId,
+                    unitRate,
+                    null,
+                    null);
         }
 
         public static LinkedLine materialIssueSource(
@@ -70,6 +90,7 @@ public class LinkedDocumentIntegrityService {
                 UUID goodsId,
                 UUID colorId,
                 UUID unitId,
+                BigDecimal unitRate,
                 UUID parentGoodsId,
                 UUID parentColorId) {
             return new LinkedLine(
@@ -78,9 +99,11 @@ public class LinkedDocumentIntegrityService {
                     goodsId,
                     colorId,
                     unitId,
+                    unitRate,
                     parentGoodsId,
                     parentColorId);
         }
+
     }
 
     /** Upstream request/application allocation made by an order line. */
@@ -89,6 +112,7 @@ public class LinkedDocumentIntegrityService {
             UUID goodsId,
             UUID colorId,
             UUID unitId,
+            BigDecimal unitRate,
             BigDecimal qty) {}
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -96,6 +120,7 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> rows = lockRows(
                 lines, QuantityLinkedLine::sourceItemId, """
                         SELECT ri.id, ri.goods_id, ri.color_id, ri.unit_id,
+                               COALESCE(ri.unit_rate, 1),
                                ri.qty, COALESCE(ri.ordered_qty, 0), r.status,
                                COALESCE(r.is_stopped, FALSE)
                         FROM purchase_request_items ri
@@ -147,8 +172,8 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> rows = lockRows(
                 lines, QuantityLinkedLine::sourceItemId, """
                         SELECT ai.id, a.supplier_id, ai.goods_id, ai.color_id,
-                               ai.unit_id, ai.qty, COALESCE(ai.ordered_qty, 0),
-                               a.status
+                               ai.unit_id, COALESCE(ai.unit_rate, 1),
+                               ai.qty, COALESCE(ai.ordered_qty, 0), a.status
                         FROM subcontract_application_items ai
                         JOIN subcontract_applications a ON a.id = ai.application_id
                         WHERE ai.id IN (:ids)
@@ -163,11 +188,11 @@ public class LinkedDocumentIntegrityService {
             }
             Object[] source = requireSource(
                     rows, line.sourceItemId(), "委外来源申请明细不存在或已删除");
-            requireApproved(source[7], "委外订货只能关联已审核申请单");
+            requireApproved(source[8], "委外订货只能关联已审核申请单");
             requireSame(supplierId, uuid(source[1]), "委外商与来源申请单不一致");
             requireQuantityDimensions(line, source, 2, "委外订货明细与来源申请明细不一致");
         }
-        validateAllocationCapacity(lines, rows, 5, 6, "委外订货量超过申请剩余量");
+        validateAllocationCapacity(lines, rows, 6, 7, "委外订货量超过申请剩余量");
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -182,7 +207,8 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> receiptRows = lockRows(
                 lines, LinkedLine::sourceItemId, """
                         SELECT ri.id, r.supplier_id, ri.goods_id, ri.color_id,
-                               ri.unit_id, ri.order_item_id, r.status
+                               ri.unit_id, COALESCE(ri.unit_rate, 1),
+                               ri.order_item_id, r.status
                         FROM purchase_receipt_items ri
                         JOIN purchase_receipts r ON r.id = ri.receipt_id
                         WHERE ri.id IN (:ids)
@@ -197,12 +223,12 @@ public class LinkedDocumentIntegrityService {
             }
             Object[] source = requireSource(
                     receiptRows, line.sourceItemId(), "采购退货关联的收货明细不存在或已删除");
-            requireApproved(source[6], "采购退货只能关联已审核收货单");
+            requireApproved(source[7], "采购退货只能关联已审核收货单");
             requireSame(supplierId, uuid(source[1]), "采购退货供应商与来源收货单不一致");
             requireDimensions(line, source, 2, "采购退货明细与来源收货明细不一致");
             requireSame(
                     line.orderItemId(),
-                    uuid(source[5]),
+                    uuid(source[6]),
                     "采购退货的订货来源与收货来源链不一致");
         }
         validatePurchaseOrderSources(supplierId, lines, LinkedLine::orderItemId);
@@ -221,7 +247,8 @@ public class LinkedDocumentIntegrityService {
         Map<UUID, Object[]> receiptRows = lockRows(
                 lines, LinkedLine::sourceItemId, """
                         SELECT ri.id, r.supplier_id, ri.goods_id, ri.color_id,
-                               ri.unit_id, ri.order_item_id, r.status
+                               ri.unit_id, COALESCE(ri.unit_rate, 1),
+                               ri.order_item_id, r.status
                         FROM subcontract_receipt_items ri
                         JOIN subcontract_receipts r ON r.id = ri.receipt_id
                         WHERE ri.id IN (:ids)
@@ -236,12 +263,12 @@ public class LinkedDocumentIntegrityService {
             }
             Object[] source = requireSource(
                     receiptRows, line.sourceItemId(), "委外退货来源进仓明细不存在或已删除");
-            requireApproved(source[6], "委外退货只能关联已审核进仓单");
+            requireApproved(source[7], "委外退货只能关联已审核进仓单");
             requireSame(supplierId, uuid(source[1]), "委外退货的委外商与来源进仓单不一致");
             requireDimensions(line, source, 2, "委外退货明细与来源进仓明细不一致");
             requireSame(
                     line.orderItemId(),
-                    uuid(source[5]),
+                    uuid(source[6]),
                     "委外退货的订货来源与进仓来源链不一致");
         }
         validateSubcontractOrderSources(
@@ -265,10 +292,16 @@ public class LinkedDocumentIntegrityService {
             List<LinkedLine> lines,
             boolean requireReturnChainFields) {
         requireParty(supplierId, "委外材料单需指定委外商");
+        for (LinkedLine line : lines) {
+            if (line.sourceItemId() == null) {
+                throw business("委外退料/损耗明细必须关联已审核发料明细");
+            }
+        }
         Map<UUID, Object[]> issueRows = lockRows(
                 lines, LinkedLine::sourceItemId, """
                         SELECT ii.id, i.supplier_id, ii.goods_id, ii.color_id,
-                               ii.unit_id, ii.order_item_id, ii.parent_goods_id,
+                               ii.unit_id, COALESCE(ii.unit_rate, 1),
+                               ii.order_item_id, ii.parent_goods_id,
                                ii.parent_color_id, i.status
                         FROM subcontract_material_issue_items ii
                         JOIN subcontract_material_issues i ON i.id = ii.issue_id
@@ -279,26 +312,23 @@ public class LinkedDocumentIntegrityService {
                         FOR UPDATE OF ii, i
                         """);
         for (LinkedLine line : lines) {
-            if (line.sourceItemId() == null) {
-                continue;
-            }
             Object[] source = requireSource(
                     issueRows, line.sourceItemId(), "委外材料来源发料明细不存在或已删除");
-            requireApproved(source[8], "委外退料/损耗只能关联已审核发料单");
+            requireApproved(source[9], "委外退料/损耗只能关联已审核发料单");
             requireSame(supplierId, uuid(source[1]), "委外商与来源发料单不一致");
             requireDimensions(line, source, 2, "委外材料明细与来源发料明细不一致");
             if (requireReturnChainFields) {
                 requireSame(
                         line.orderItemId(),
-                        uuid(source[5]),
+                        uuid(source[6]),
                         "委外材料明细的订货来源与发料来源链不一致");
                 requireSame(
                         line.parentGoodsId(),
-                        uuid(source[6]),
+                        uuid(source[7]),
                         "委外材料明细的父件货品与来源发料明细不一致");
                 requireSame(
                         line.parentColorId(),
-                        uuid(source[7]),
+                        uuid(source[8]),
                         "委外材料明细的父件颜色与来源发料明细不一致");
             }
         }
@@ -312,12 +342,13 @@ public class LinkedDocumentIntegrityService {
                         return line;
                     }
                     Object[] source = issueRows.get(line.sourceItemId());
-                    UUID orderItemId = source == null ? null : uuid(source[5]);
+                    UUID orderItemId = source == null ? null : uuid(source[6]);
                     return new LinkedLine(
                             line.sourceItemId(),
                             orderItemId,
-                            uuid(source == null ? null : source[6]),
                             uuid(source == null ? null : source[7]),
+                            uuid(source == null ? null : source[8]),
+                            null,
                             null,
                             null,
                             null);
@@ -333,7 +364,8 @@ public class LinkedDocumentIntegrityService {
             Function<LinkedLine, UUID> sourceId) {
         Map<UUID, Object[]> rows = lockRows(lines, sourceId, """
                 SELECT oi.id, o.supplier_id, oi.goods_id, oi.color_id,
-                       oi.unit_id, o.status, COALESCE(o.is_stopped, FALSE)
+                       oi.unit_id, COALESCE(oi.unit_rate, 1),
+                       o.status, COALESCE(o.is_stopped, FALSE)
                 FROM purchase_order_items oi
                 JOIN purchase_orders o ON o.id = oi.order_id
                 WHERE oi.id IN (:ids)
@@ -349,8 +381,8 @@ public class LinkedDocumentIntegrityService {
             }
             Object[] source = requireSource(
                     rows, id, "采购来源订货明细不存在或已删除");
-            requireApproved(source[5], "采购收货/退货只能关联已审核订货单");
-            if (Boolean.TRUE.equals(source[6])) {
+            requireApproved(source[6], "采购收货/退货只能关联已审核订货单");
+            if (Boolean.TRUE.equals(source[7])) {
                 throw business("采购来源订货单已中止");
             }
             requireSame(supplierId, uuid(source[1]), "供应商与来源订货单不一致");
@@ -368,13 +400,13 @@ public class LinkedDocumentIntegrityService {
             }
             Object[] source = requireSource(
                     rows, line.sourceItemId(), "采购来源申请明细不存在或已删除");
-            requireApproved(source[6], "采购订货只能关联已审核申请单");
-            if (Boolean.TRUE.equals(source[7])) {
+            requireApproved(source[7], "采购订货只能关联已审核申请单");
+            if (Boolean.TRUE.equals(source[8])) {
                 throw business("采购来源申请单已中止");
             }
             requireQuantityDimensions(line, source, 1, "采购订货明细与来源申请明细不一致");
         }
-        validateAllocationCapacity(lines, rows, 4, 5, "采购订货量超过申请剩余量");
+        validateAllocationCapacity(lines, rows, 5, 6, "采购订货量超过申请剩余量");
     }
 
     private void validateAllocationCapacity(
@@ -407,7 +439,7 @@ public class LinkedDocumentIntegrityService {
             boolean compareUnit) {
         Map<UUID, Object[]> rows = lockRows(lines, sourceId, """
                 SELECT oi.id, o.supplier_id, oi.goods_id, oi.color_id,
-                       oi.unit_id, o.status
+                       oi.unit_id, COALESCE(oi.unit_rate, 1), o.status
                 FROM subcontract_order_items oi
                 JOIN subcontract_orders o ON o.id = oi.order_id
                 WHERE oi.id IN (:ids)
@@ -423,12 +455,13 @@ public class LinkedDocumentIntegrityService {
             }
             Object[] source = requireSource(
                     rows, id, "委外来源订货明细不存在或已删除");
-            requireApproved(source[5], "委外业务只能关联已审核订货单");
+            requireApproved(source[6], "委外业务只能关联已审核订货单");
             requireSame(supplierId, uuid(source[1]), "委外商与来源订货单不一致");
             if (!Objects.equals(line.goodsId(), uuid(source[2]))
                     || !Objects.equals(line.colorId(), uuid(source[3]))
                     || (compareUnit
-                        && !Objects.equals(line.unitId(), uuid(source[4])))) {
+                        && (!Objects.equals(line.unitId(), uuid(source[4]))
+                            || !sameRate(line.unitRate(), source[5])))) {
                 throw business("委外成品与来源订货明细不一致");
             }
         }
@@ -496,7 +529,8 @@ public class LinkedDocumentIntegrityService {
             LinkedLine line, Object[] source, int firstDimension, String message) {
         if (!Objects.equals(line.goodsId(), uuid(source[firstDimension]))
                 || !Objects.equals(line.colorId(), uuid(source[firstDimension + 1]))
-                || !Objects.equals(line.unitId(), uuid(source[firstDimension + 2]))) {
+                || !Objects.equals(line.unitId(), uuid(source[firstDimension + 2]))
+                || !sameRate(line.unitRate(), source[firstDimension + 3])) {
             throw business(message);
         }
     }
@@ -508,7 +542,8 @@ public class LinkedDocumentIntegrityService {
             String message) {
         if (!Objects.equals(line.goodsId(), uuid(source[firstDimension]))
                 || !Objects.equals(line.colorId(), uuid(source[firstDimension + 1]))
-                || !Objects.equals(line.unitId(), uuid(source[firstDimension + 2]))) {
+                || !Objects.equals(line.unitId(), uuid(source[firstDimension + 2]))
+                || !sameRate(line.unitRate(), source[firstDimension + 3])) {
             throw business(message);
         }
     }
@@ -537,6 +572,13 @@ public class LinkedDocumentIntegrityService {
 
     private static BigDecimal decimal(Object value) {
         return value == null ? BigDecimal.ZERO : (BigDecimal) value;
+    }
+
+    private static boolean sameRate(BigDecimal actual, Object rawExpected) {
+        BigDecimal normalizedActual = actual == null ? BigDecimal.ONE : actual;
+        BigDecimal normalizedExpected =
+                rawExpected == null ? BigDecimal.ONE : (BigDecimal) rawExpected;
+        return normalizedActual.compareTo(normalizedExpected) == 0;
     }
 
     private static ApiException business(String message) {

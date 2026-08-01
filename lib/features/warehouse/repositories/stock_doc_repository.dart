@@ -110,10 +110,7 @@ class StockDocRepository {
     }
     final list = await api.getList(
       ApiEndpoints.productionMaterialReturnableSources,
-      query: {
-        'planId': ?planId,
-        'drawId': ?drawId,
-      },
+      query: {'planId': ?planId, 'drawId': ?drawId},
     );
     return list.map(ReturnableMaterialSource.fromJson).toList();
   }

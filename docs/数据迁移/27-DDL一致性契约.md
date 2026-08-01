@@ -155,6 +155,8 @@ CREATE TABLE ar_ap_ledger (
 1. 开头 `TRUNCATE <本模块表> RESTART IDENTITY CASCADE;` + 清本模块 `stock_movements WHERE source_doc_type LIKE '<MODULE>_%'` + 清本模块 `ar_ap_ledger WHERE source_doc_type LIKE '<MODULE>_%'`（钱流）。
 2. staging（真实类型）→ `\copy` → INSERT JOIN 主档 `legacy_id` 映射出 UUID。
 3. 缺失基础资料自动补录（goods/colors/units/warehouses/currencies/clients/suppliers + 本批 accounts/payment_styles）。
+   其中 goods 仅可为非零历史业务引用建立 `auto_created=true` FK 身份锚；锚不得进入当前选择器、活动
+   `goods_bom_items` 或 MRP。V181 以数据库守卫阻止复发，迁移/对账按标志位识别，禁止按名称猜测。
 4. 多值 varchar → 前缀化 `source_doc_no`。
 5. 结尾校验段：主/明细数、链路挂接、孤儿数、（生产）分区分布、（钱流）ar_ap_ledger direction 对账 M_in/M_out 总额。
 

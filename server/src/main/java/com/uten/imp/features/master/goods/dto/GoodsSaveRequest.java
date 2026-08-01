@@ -1,6 +1,8 @@
 package com.uten.imp.features.master.goods.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -42,8 +44,110 @@ public class GoodsSaveRequest {
     private String pack;         // Pack 包装
     private Integer pieces;      // Pieces 件数
     private String status;       // Status（使用/禁用）
+    private UUID colorId;
     private Integer colorLegacyId;  // MColorID（→ colors.legacy_id；编辑表单颜色下拉选）
+    private UUID unitId;
     private Integer unitLegacyId;   // UnitID（→ units.legacy_id；编辑表单单位下拉选）
+    private UUID mouldId;
+    private Integer mouldLegacyId;
+    private UUID clientId;
+    private Integer clientLegacyId;
+    private UUID defaultSupplierId;
+    private Integer vendLegacyId;
+    private UUID secondarySupplierId;
+    private Integer vend2LegacyId;
+
+    @JsonIgnore
+    private boolean colorReferencePresent;
+    @JsonIgnore
+    private boolean unitReferencePresent;
+    @JsonIgnore
+    private boolean mouldReferencePresent;
+    @JsonIgnore
+    private boolean clientReferencePresent;
+    @JsonIgnore
+    private boolean defaultSupplierReferencePresent;
+    @JsonIgnore
+    private boolean secondarySupplierReferencePresent;
+
+    @JsonSetter("colorId")
+    public void setColorId(UUID value) {
+        colorId = value;
+        colorReferencePresent = true;
+    }
+
+    @JsonSetter("colorLegacyId")
+    public void setColorLegacyId(Integer value) {
+        colorLegacyId = value;
+        colorReferencePresent = true;
+    }
+
+    @JsonSetter("unitId")
+    public void setUnitId(UUID value) {
+        unitId = value;
+        unitReferencePresent = true;
+    }
+
+    @JsonSetter("unitLegacyId")
+    public void setUnitLegacyId(Integer value) {
+        unitLegacyId = value;
+        unitReferencePresent = true;
+    }
+
+    @JsonSetter("mouldId")
+    public void setMouldId(UUID value) {
+        mouldId = value;
+        mouldReferencePresent = true;
+    }
+
+    @JsonSetter("mouldLegacyId")
+    public void setMouldLegacyId(Integer value) {
+        mouldLegacyId = value;
+        mouldReferencePresent = true;
+    }
+
+    @JsonSetter("clientId")
+    public void setClientId(UUID value) {
+        clientId = value;
+        clientReferencePresent = true;
+    }
+
+    @JsonSetter("clientLegacyId")
+    public void setClientLegacyId(Integer value) {
+        clientLegacyId = value;
+        clientReferencePresent = true;
+    }
+
+    @JsonSetter("defaultSupplierId")
+    public void setDefaultSupplierId(UUID value) {
+        defaultSupplierId = value;
+        defaultSupplierReferencePresent = true;
+    }
+
+    @JsonSetter("vendLegacyId")
+    public void setVendLegacyId(Integer value) {
+        vendLegacyId = value;
+        defaultSupplierReferencePresent = true;
+    }
+
+    @JsonSetter("secondarySupplierId")
+    public void setSecondarySupplierId(UUID value) {
+        secondarySupplierId = value;
+        secondarySupplierReferencePresent = true;
+    }
+
+    @JsonSetter("vend2LegacyId")
+    public void setVend2LegacyId(Integer value) {
+        vend2LegacyId = value;
+        secondarySupplierReferencePresent = true;
+    }
+
+    public boolean hasColorReference() { return colorReferencePresent; }
+    public boolean hasUnitReference() { return unitReferencePresent; }
+    public boolean hasMouldReference() { return mouldReferencePresent; }
+    public boolean hasClientReference() { return clientReferencePresent; }
+    public boolean hasDefaultSupplierReference() { return defaultSupplierReferencePresent; }
+    public boolean hasSecondarySupplierReference() { return secondarySupplierReferencePresent; }
 
     // ===== 成本预算（「成本预算」页签；可空，留空不清已有值时传 null 即覆盖为 null，前端表单始终全量回传） =====
     private BigDecimal sourceE;      // SourceE 材料合计

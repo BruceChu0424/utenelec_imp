@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
+import 'session_provider.dart';
 
 /// 货品搜索/选择用的轻量项。
 class GoodsOption {
@@ -228,6 +229,28 @@ class MasterNameService extends MasterDictionaryService {
   }
 }
 
-final masterNameServiceProvider = Provider<MasterNameService>(
-  (ref) => MasterNameService(ref.watch(apiClientProvider)),
+/// 主档缓存必须绑定当前账号和权限快照，避免 A 登出后 B 继续看到 A 的 UUID/名称。
+String masterDataSessionCacheKey(SessionState session) {
+  final user = session.user;
+  final permissions = [...?user?.permissions]..sort();
+  final roles = user?.roles.map((role) => role.name).toList() ?? <String>[];
+  roles.sort();
+  return <Object?>[
+    session.status.name,
+    user?.id,
+    user?.employeeId,
+    user?.name,
+    user?.superAdmin,
+    roles.join(','),
+    permissions.join(','),
+  ].join('|');
+}
+
+final masterDataSessionKeyProvider = Provider<String>(
+  (ref) => masterDataSessionCacheKey(ref.watch(sessionProvider)),
 );
+
+final masterNameServiceProvider = Provider<MasterNameService>((ref) {
+  ref.watch(masterDataSessionKeyProvider);
+  return MasterNameService(ref.watch(apiClientProvider));
+});

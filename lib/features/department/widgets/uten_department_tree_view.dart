@@ -260,7 +260,8 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
     final enabled = _enabled(node);
     // 外部可见集合（搜索定位用）：命中节点的祖先链也展开，否则深层命中不可见。
     final externalFilter = widget.visibleFilterIds;
-    final expanded = _searching ||
+    final expanded =
+        _searching ||
         _expanded.contains(node.id) ||
         (externalFilter != null && externalFilter.contains(node.id));
     final isSelected = widget.selectedIds.contains(node.id);

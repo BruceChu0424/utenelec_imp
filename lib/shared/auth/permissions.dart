@@ -156,17 +156,24 @@ abstract final class Perm {
   static const salesOrderEdit = 'sales_order:edit';
   static const salesOrderPriceView = 'sales_order:price:view';
   static const salesOrderChangePlanned = 'sales_order:change_planned';
+  static const salesOrderConfirmPartialShipment =
+      'sales_order:confirm_partial_shipment';
+
   /// V178 订单行设优先级（急单/普通/现货）：稀缺让单决策用。
   static const salesOrderPriority = 'sales_order:priority';
+
   /// V178 稀缺库存让单（释放低优先级订单行的现货预留）：主管仲裁用。
   static const salesOrderReallocate = 'sales_order:reallocate';
   static const salesShipmentView = 'sales_shipment:view';
   static const salesShipmentEdit = 'sales_shipment:edit';
   static const salesShipmentReject = 'sales_shipment:reject';
+  static const salesShipmentWarehouseWork = 'sales_shipment:warehouse-work';
   static const salesOtherShipmentView = 'sales_other_shipment:view';
   static const salesOtherShipmentEdit = 'sales_other_shipment:edit';
   static const salesReturnView = 'sales_return:view';
   static const salesReturnEdit = 'sales_return:edit';
+  static const salesReturnQualityView = 'sales_return_quality:view';
+  static const salesReturnQualityHandle = 'sales_return_quality:handle';
   static const salesReportView = 'sales_report:view';
   static const salesReportExport = 'sales_report:export';
   static const salesViewAll = 'sales:view:all';
@@ -215,7 +222,13 @@ abstract final class Perm {
   static const financeBankTransferEdit = 'finance_bank_transfer:edit';
   static const financeReportView = 'finance_report:view';
   static const financeReportExport = 'finance_report:export';
+  static const financeAssetView = 'finance_asset:view';
   static const financeAssetEdit = 'finance_asset:edit';
+  static const financeAssetApprove = 'finance_asset:approve';
+  static const financeAssetPost = 'finance_asset:post';
+  static const financeAssetDispose = 'finance_asset:dispose';
+  static const financeAssetExport = 'finance_asset:export';
+  static const financeAssetPeriodManage = 'finance_asset_period:manage';
   static const financePostExecute = 'finance_post:execute';
   static const financeShipmentAudit = 'finance_shipment_audit';
   static const arApLedgerView = 'ar_ap_ledger:view';
@@ -336,11 +349,13 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.salesQuoteView, Perm.salesQuoteEdit,
       Perm.salesOrderView, Perm.salesOrderEdit,
       Perm.salesOrderPriceView, Perm.salesOrderChangePlanned,
+      Perm.salesOrderConfirmPartialShipment,
       Perm.salesOrderPriority, Perm.salesOrderReallocate,
       Perm.salesShipmentView, Perm.salesShipmentEdit,
-      Perm.salesShipmentReject,
+      Perm.salesShipmentReject, Perm.salesShipmentWarehouseWork,
       Perm.salesOtherShipmentView, Perm.salesOtherShipmentEdit,
       Perm.salesReturnView, Perm.salesReturnEdit,
+      Perm.salesReturnQualityView, Perm.salesReturnQualityHandle,
       Perm.salesReportView, Perm.salesReportExport,
       Perm.salesViewAll,
       // 委外管理（V53）
@@ -365,7 +380,13 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.financeOtherIncomeView, Perm.financeOtherIncomeEdit,
       Perm.financeBankTransferView, Perm.financeBankTransferEdit,
       Perm.financeReportView, Perm.financeReportExport,
+      Perm.financeAssetView,
       Perm.financeAssetEdit,
+      Perm.financeAssetApprove,
+      Perm.financeAssetPost,
+      Perm.financeAssetDispose,
+      Perm.financeAssetExport,
+      Perm.financeAssetPeriodManage,
       Perm.financePostExecute,
       Perm.financeShipmentAudit,
       Perm.arApLedgerView,

@@ -1,6 +1,8 @@
 package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.domain.SoftDeletableEntity;
+import com.uten.imp.features.master.color.Color;
+import com.uten.imp.features.master.supplier.Supplier;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -43,6 +45,10 @@ public class GoodsBomItem extends SoftDeletableEntity {
     @JoinColumn(name = "component_goods_id", nullable = false)
     private Goods component;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "color_id")
+    private Color color;
+
     @Column(name = "color_legacy_id")
     private Integer colorLegacyId;      // ColorID（组件颜色，老库主键）
 
@@ -51,6 +57,10 @@ public class GoodsBomItem extends SoftDeletableEntity {
 
     private BigDecimal price;           // Price 单价
     private BigDecimal total;           // Total 金额（= qty*price，service 兜底重算）
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "default_supplier_id")
+    private Supplier defaultSupplier;
 
     @Column(name = "vend_legacy_id")
     private Integer vendLegacyId;       // VendID（默认供应商，老库主键）

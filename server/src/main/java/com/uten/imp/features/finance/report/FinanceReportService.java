@@ -38,7 +38,7 @@ import java.util.function.BiFunction;
  *
  * <p>人员名：maker/approver（Sys_Operator 冻结 *_name，不入 employees）→ {@code COALESCE(em.full_name, t.*_name)}；
  * operator/work（B_Worker stub）→ {@code COALESCE(em_op.full_name, t.operator_name)} + 子类括注（legacy_category）。
- * JOIN 范式 {@code em.legacy_id=t.*_legacy_id OR em.id=t.*_id}（四模块共用融合键）。
+ * JOIN 范式以 {@code em.id=t.*_id} 为准，仅 current UUID 为空时回退 legacy_id。
  *
  * <p>_null 参数类型坑_：可选过滤一律 {@code CAST(:param AS 类型) IS NULL OR ...}（见 MEMORY）。
  *
@@ -580,7 +580,8 @@ public class FinanceReportService {
                 LEFT JOIN suppliers s ON s.id=t.supplier_id
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=t.counterpart_account_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
         addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
@@ -627,9 +628,12 @@ public class FinanceReportService {
                 LEFT JOIN currencies cur ON cur.id=t.currency_id
                 LEFT JOIN accounts ca ON ca.id=t.counterpart_account_id
                 LEFT JOIN ar_ap_ledger ap ON ap.source_doc_id=t.id AND ap.source_doc_type='DIRECT_PAYMENT' AND ap.is_deleted=false
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id=t.maker_legacy_id OR em_mk.id=t.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id=t.approver_legacy_id OR em_ap.id=t.approver_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
+                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
+                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
         addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
@@ -672,7 +676,8 @@ public class FinanceReportService {
                 LEFT JOIN currencies cur ON cur.id=t.currency_id
                 LEFT JOIN payment_styles ps ON ps.id=i.expense_style_id
                 LEFT JOIN departments d ON d.id=i.department_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -708,9 +713,12 @@ public class FinanceReportService {
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=i.counterpart_account_id
                 LEFT JOIN payment_styles ps ON ps.id=i.expense_style_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id=t.maker_legacy_id OR em_mk.id=t.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id=t.approver_legacy_id OR em_ap.id=t.approver_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
+                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
+                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -744,7 +752,8 @@ public class FinanceReportService {
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=i.counterpart_account_id
                 LEFT JOIN payment_styles ps ON ps.id=i.income_style_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -780,9 +789,12 @@ public class FinanceReportService {
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN accounts ca ON ca.id=i.counterpart_account_id
                 LEFT JOIN payment_styles ps ON ps.id=i.income_style_id
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
-                LEFT JOIN employees em_mk ON em_mk.legacy_id=t.maker_legacy_id OR em_mk.id=t.maker_id
-                LEFT JOIN employees em_ap ON em_ap.legacy_id=t.approver_legacy_id OR em_ap.id=t.approver_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
+                LEFT JOIN employees em_mk ON em_mk.id=t.maker_id
+                    OR (t.maker_id IS NULL AND em_mk.legacy_id=t.maker_legacy_id)
+                LEFT JOIN employees em_ap ON em_ap.id=t.approver_id
+                    OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false");
         addFinanceItemFilters(w, billNo, null, departmentId, status, dateFrom, dateTo, keyword, "t.bill_no", "i.bill_date");
@@ -817,7 +829,8 @@ public class FinanceReportService {
                 LEFT JOIN clients c ON c.id=t.client_id
                 LEFT JOIN client_director_v d ON d.client_id=t.client_id
                 LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
-                LEFT JOIN employees em_op ON em_op.legacy_id=t.operator_legacy_id OR em_op.id=t.operator_id
+                LEFT JOIN employees em_op ON em_op.id=t.operator_id
+                    OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger WHERE direction='AR' AND is_deleted=false AND status=1 GROUP BY client_id) ar ON ar.client_id=t.client_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");

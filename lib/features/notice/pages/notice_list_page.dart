@@ -216,7 +216,10 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                         if (!notice.isRead) {
                           markNoticeRead(ref, notice.id);
                         }
-                        await showNoticeDetailDialog(context, noticeId: notice.id);
+                        await showNoticeDetailDialog(
+                          context,
+                          noticeId: notice.id,
+                        );
                         // 详情弹窗关闭后刷新列表：用户可能在详情里标记完成/已读，
                         // 列表与未读角标需同步，避免停留在旧状态。
                         ref.invalidate(noticeListProvider);

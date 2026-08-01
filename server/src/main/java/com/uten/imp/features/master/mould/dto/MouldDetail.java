@@ -30,4 +30,10 @@ public class MouldDetail {
     private BigDecimal tqty;    // 总数量
     private String mstatus;     // 制造年月
     private String remark;      // 备注
+
+    // ===== 车间/保管人 id 关联（对齐生产计划单；前端 picker 回显用）=====
+    private UUID departmentId;
+    private String departmentName;
+    private UUID keeperId;
+    private String keeperName;
 }

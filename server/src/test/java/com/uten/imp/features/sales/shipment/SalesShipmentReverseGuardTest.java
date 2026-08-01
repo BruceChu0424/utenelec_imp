@@ -59,4 +59,20 @@ class SalesShipmentReverseGuardTest {
                 goodsId, colorId, unitId, BigDecimal.ONE, "出货"))
                 .isInstanceOf(ApiException.class);
     }
+
+    @Test
+    void partialShipmentAmountComesFromAuthoritativeOrderTotal() {
+        assertThat(SalesShipmentService.authoritativeShipmentAmount(
+                new BigDecimal("123.45"),
+                new BigDecimal("10"),
+                new BigDecimal("3")))
+                .isEqualByComparingTo("37.0350");
+
+        assertThatThrownBy(() ->
+                SalesShipmentService.authoritativeShipmentAmount(
+                        new BigDecimal("-1"),
+                        BigDecimal.TEN,
+                        BigDecimal.ONE))
+                .isInstanceOf(ApiException.class);
+    }
 }

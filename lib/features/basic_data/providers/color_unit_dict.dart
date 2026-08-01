@@ -13,8 +13,7 @@ import '../repositories/color_repository.dart';
 import '../repositories/unit_repository.dart';
 
 /// 颜色字典（货品编辑颜色下拉 + 单据颜色名解析共用）。新建颜色后 invalidate 全局刷新。
-final colorDictProvider =
-    FutureProvider<List<ColorListItem>>((ref) async {
+final colorDictProvider = FutureProvider<List<ColorListItem>>((ref) async {
   return ref.watch(colorRepositoryProvider).dict();
 });
 
@@ -30,15 +29,17 @@ Future<String?> showColorAddSheet(BuildContext context, WidgetRef ref) {
     context: context,
     title: '添加颜色',
     dict: ref.read(colorDictProvider).valueOrNull ?? const <ColorListItem>[],
-    exists: (name) => ref
-        .read(colorDictProvider)
-        .valueOrNull
-        ?.any((c) => (c.name ?? '').toLowerCase() == name.toLowerCase()) ??
+    exists: (name) =>
+        ref
+            .read(colorDictProvider)
+            .valueOrNull
+            ?.any((c) => (c.name ?? '').toLowerCase() == name.toLowerCase()) ??
         false,
     create: (name) async {
-      final d = await ref
-          .read(colorRepositoryProvider)
-          .create({'name': name, 'status': '使用'});
+      final d = await ref.read(colorRepositoryProvider).create({
+        'name': name,
+        'status': '使用',
+      });
       ref.invalidate(colorDictProvider);
       return d.legacyId?.toString();
     },
@@ -51,15 +52,17 @@ Future<String?> showUnitAddSheet(BuildContext context, WidgetRef ref) {
     context: context,
     title: '添加单位',
     dict: ref.read(unitDictProvider).valueOrNull ?? const <UnitListItem>[],
-    exists: (name) => ref
-        .read(unitDictProvider)
-        .valueOrNull
-        ?.any((u) => (u.name ?? '').toLowerCase() == name.toLowerCase()) ??
+    exists: (name) =>
+        ref
+            .read(unitDictProvider)
+            .valueOrNull
+            ?.any((u) => (u.name ?? '').toLowerCase() == name.toLowerCase()) ??
         false,
     create: (name) async {
-      final d = await ref
-          .read(unitRepositoryProvider)
-          .create({'name': name, 'status': '使用'});
+      final d = await ref.read(unitRepositoryProvider).create({
+        'name': name,
+        'status': '使用',
+      });
       ref.invalidate(unitDictProvider);
       return d.legacyId?.toString();
     },
@@ -102,8 +105,9 @@ Future<String?> _showAddSheet({
           }
 
           return Dialog(
-            shape:
-                const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
+            shape: const RoundedRectangleBorder(
+              borderRadius: UtenRadius.xxlAll,
+            ),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 360),
               child: SafeArea(
@@ -122,9 +126,7 @@ Future<String?> _showAddSheet({
                           Expanded(
                             child: Text(
                               title,
-                              style: Theme.of(ctx)
-                                  .textTheme
-                                  .titleMedium
+                              style: Theme.of(ctx).textTheme.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.w700),
                             ),
                           ),
@@ -156,10 +158,8 @@ Future<String?> _showAddSheet({
                           Text(
                             '编号保存后自动生成，状态默认「使用」',
                             style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(ctx)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
+                              color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),

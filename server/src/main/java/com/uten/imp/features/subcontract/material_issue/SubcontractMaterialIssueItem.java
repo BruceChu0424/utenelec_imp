@@ -20,8 +20,9 @@ import java.util.UUID;
  *   <li>{@code returned_qty} ← 材料退货单审核（E_SWithDraw 回写）</li>
  *   <li>{@code wasted_qty} ← 损耗单审核（E_SWaste 回写，<b>新库补全老库缺失链路</b>，design doc 22 §六）</li>
  * </ul>
- * {@code order_item_id} 真FK 挂订货明细，审核时回写订货 issued_qty；
- * {@code parent_goods_id/parent_color_id} 反查父件成品（BOM 视图）。
+ * {@code order_item_id} 真FK 挂历史来源订货明细，但不再把子件数量回写到
+ * 成品行 {@code issued_qty}；{@code parent_goods_id/parent_color_id}
+ * 仅用于历史来源追溯，不能替代冻结的 BOM 版本。
  */
 @Getter
 @Setter
@@ -41,7 +42,7 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "issue_id", nullable = false)
     private UUID issueId;
 
-    /** 关联订货明细（E_SOutItem.EOrderID）。审核时回写 subcontract_order_items.issued_qty。 */
+    /** 关联订货明细（E_SOutItem.EOrderID）；仅用于来源追溯，不回写成品行累计量。 */
     @Column(name = "order_item_id")
     private UUID orderItemId;
 

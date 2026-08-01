@@ -28,7 +28,7 @@ public class DepartmentService {
 
     @Transactional(readOnly = true)
     public List<DepartmentNode> tree() {
-        return buildTree(deptRepo.findByDeletedFalseOrderById(), null);
+        return buildTree(deptRepo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
     }
 
     @Transactional(readOnly = true)

@@ -1,7 +1,12 @@
 package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.domain.SoftDeletableEntity;
+import com.uten.imp.features.master.client.Client;
+import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
+import com.uten.imp.features.master.mould.Mould;
+import com.uten.imp.features.master.supplier.Supplier;
+import com.uten.imp.features.master.unit.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -52,6 +57,25 @@ public class Goods extends SoftDeletableEntity {
     private String spec;            // Standard 规格
 
     // ===== 关联（老库主键，暂不 FK） =====
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unit_id")
+    private Unit unit;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "color_id")
+    private Color color;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mould_id")
+    private Mould mould;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "default_supplier_id")
+    private Supplier defaultSupplier;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "secondary_supplier_id")
+    private Supplier secondarySupplier;
+
     @Column(name = "unit_legacy_id")
     private Integer unitLegacyId;       // UnitID
     @Column(name = "color_legacy_id")

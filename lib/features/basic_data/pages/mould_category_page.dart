@@ -14,6 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -37,6 +39,9 @@ import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
+import '../../department/widgets/uten_department_picker.dart';
+import '../../employee/repositories/employee_repository.dart';
+import '../../production/providers/production_department_provider.dart';
 
 class MouldCategoryPage extends ConsumerStatefulWidget {
   const MouldCategoryPage({super.key});
@@ -110,7 +115,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
     setState(() => _visibleFilterIds = catHits);
     // ② 异步：模具名命中 → 取其 categoryId（+祖先），合并并定位到第一个命中分类。
     try {
-      final result = await ref.read(mouldRepositoryProvider).search(q, size: 50);
+      final result = await ref
+          .read(mouldRepositoryProvider)
+          .search(q, size: 50);
       if (!mounted || _globalQuery != q) return; // 过期结果丢弃
       final ids = <String>{};
       String? first;
@@ -189,7 +196,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
             .read(mouldCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code!,
+                code: r.code,
                 name: r.name,
                 parentId: r.parentId,
               ),
@@ -589,37 +596,148 @@ class _DetailPaneState extends State<_DetailPane> {
     _loadMoulds(1);
   }
 
-  // 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
-  static const _mouldFields = [
-    MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    MasterFieldDef(
-      key: 'code',
-      label: '编号',
-      group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
-    ),
-    MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
-    MasterFieldDef(
-      key: 'status',
-      label: '状态',
-      type: MasterFieldType.select,
-      options: kMasterStatusOptions,
-      required: true,
-      group: '基础',
-    ),
-    MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
-    MasterFieldDef(
-      key: 'tqty',
-      label: '总数量',
-      type: MasterFieldType.money,
-      group: '制造',
-    ),
-    MasterFieldDef(key: 'mstatus', label: '制造年月', group: '制造'),
-    MasterFieldDef(key: 'place', label: '车间', group: '制造'),
-    MasterFieldDef(key: 'keeper', label: '保管人', group: '制造'),
-    MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
-  ];
+  /// 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
+  ///
+  /// custom 字段（制造年月/车间/保管人）经 [MasterFieldDef.customBuilder] 嵌入
+  /// UtenDateField / UtenDepartmentPicker / UtenEmployeePicker（右滑入滑窗，对齐生产计划页）。
+  /// 闭包捕获 [iv]（初值 map）与 [widget.ref]，故为实例方法而非 static const。
+  List<MasterFieldDef> _buildMouldFields(Map<String, String> iv) {
+    final workshopTree = widget.ref
+        .read(productionWorkshopTreeProvider)
+        .valueOrNull;
+    return [
+      MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
+      MasterFieldDef(
+        key: 'code',
+        label: '编号',
+        group: '基础',
+        readOnly: true,
+        hint: '保存后自动生成',
+      ),
+      // 分类：只读显示外面选中分类名（添加模具即在当前分类下）；categoryId 走 fixedValues。
+      MasterFieldDef(
+        key: 'categoryName',
+        label: '分类',
+        group: '基础',
+        readOnly: true,
+        hint: '当前分类',
+      ),
+      MasterFieldDef(key: 'mnumber', label: '备用编号', group: '基础'),
+      MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础',
+      ),
+      MasterFieldDef(key: 'qty', label: '数量', group: '制造'),
+      MasterFieldDef(
+        key: 'tqty',
+        label: '总数量',
+        type: MasterFieldType.money,
+        group: '制造',
+      ),
+      // 制造年月：日期选择窗（UtenDateField）；存 yyyy-MM-dd，兼容老库「2018年7月」初值。
+      MasterFieldDef(
+        key: 'mstatus',
+        label: '制造年月',
+        type: MasterFieldType.custom,
+        group: '制造',
+        customBuilder: (ctx) => UtenDateField(
+          label: '制造年月',
+          value: _parseMstatus(ctx.initialValue),
+          onChanged: (d) => ctx.onChanged(d == null ? null : _formatYmd(d)),
+        ),
+      ),
+      // 车间：部门选择滑窗（生产部子树）；落 departmentId，后端按 id 解析 place 文本。
+      MasterFieldDef(
+        key: 'departmentId',
+        label: '车间',
+        type: MasterFieldType.custom,
+        group: '制造',
+        customBuilder: (ctx) {
+          final id = ctx.initialValue;
+          return UtenDepartmentPicker(
+            mode: UtenDepartmentPickerMode.single,
+            label: '车间',
+            hint: '选择生产车间',
+            treeOverride: workshopTree,
+            initialSelection: (id == null || id.isEmpty)
+                ? const []
+                : [
+                    DeptSelection(
+                      id: id,
+                      name: iv['departmentName'] ?? '',
+                      fullPath: '',
+                      level: '',
+                    ),
+                  ],
+            onChanged: (sel) =>
+                ctx.onChanged(sel.isEmpty ? null : sel.first.id),
+          );
+        },
+      ),
+      // 保管人：员工选择滑窗（全公司搜）；落 keeperId，后端按 id 解析 keeper 文本。
+      MasterFieldDef(
+        key: 'keeperId',
+        label: '保管人',
+        type: MasterFieldType.custom,
+        group: '制造',
+        customBuilder: (ctx) {
+          final id = ctx.initialValue;
+          return UtenEmployeePicker(
+            label: '保管人',
+            hint: '请选择保管人',
+            sheetTitle: '选择保管人',
+            allowClear: true,
+            initial: (id == null || id.isEmpty)
+                ? null
+                : UtenEmployeePickerItem(id: id, name: iv['keeperName'] ?? ''),
+            loader: (kw) async {
+              final res = await widget.ref
+                  .read(employeeRepositoryProvider)
+                  .list(size: 30, search: kw);
+              return [
+                for (final e in res.items)
+                  UtenEmployeePickerItem(
+                    id: e.id,
+                    name: e.fullName,
+                    departmentName: e.departmentName,
+                  ),
+              ];
+            },
+            onChanged: (item) => ctx.onChanged(item?.id),
+          );
+        },
+      ),
+      MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+    ];
+  }
+
+  /// 解析制造年月初值：「2018-07-01」(ISO) / 「2018年7月」(老库中文) → DateTime；失败 null。
+  DateTime? _parseMstatus(String? s) {
+    if (s == null || s.isEmpty) return null;
+    final iso = RegExp(r'^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$').firstMatch(s);
+    if (iso != null) {
+      return DateTime(
+        int.parse(iso.group(1)!),
+        int.parse(iso.group(2)!),
+        int.parse(iso.group(3) ?? '1'),
+      );
+    }
+    final cn = RegExp(r'(\d{4})\s*年\s*(\d{1,2})\s*月?').firstMatch(s);
+    if (cn != null) {
+      return DateTime(int.parse(cn.group(1)!), int.parse(cn.group(2)!));
+    }
+    return null;
+  }
+
+  /// DateTime → yyyy-MM-dd（提交/存储格式）。
+  String _formatYmd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   bool get _canEditMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.mouldEdit);
@@ -627,11 +745,12 @@ class _DetailPaneState extends State<_DetailPane> {
   // ---- 模具 新建/编辑/删除 ------------------------------------------------
 
   void _showMouldCreate() {
+    final iv = {'status': '使用', 'categoryName': _detail?.name ?? ''};
     showMasterEditDialog(
       context: context,
       title: '新增模具', // TODO(l10n): 补 arb
-      fields: _mouldFields,
-      initialValues: const {'status': '使用'},
+      fields: _buildMouldFields(iv),
+      initialValues: iv,
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateMould,
     );
@@ -651,22 +770,26 @@ class _DetailPaneState extends State<_DetailPane> {
   }
 
   void _showMouldEdit(MouldDetail d) {
+    final iv = {
+      'name': d.name ?? '',
+      'code': d.code ?? '',
+      'categoryName': d.categoryName ?? '',
+      'mnumber': d.mnumber ?? '',
+      'qty': d.qty ?? '',
+      'tqty': d.tqty?.toString() ?? '',
+      'mstatus': d.mstatus ?? '',
+      'status': d.status ?? '',
+      'departmentId': d.departmentId ?? '',
+      'departmentName': d.departmentName ?? '',
+      'keeperId': d.keeperId ?? '',
+      'keeperName': d.keeperName ?? '',
+      'remark': d.remark ?? '',
+    };
     showMasterEditDialog(
       context: context,
       title: '编辑模具', // TODO(l10n): 补 arb
-      fields: _mouldFields,
-      initialValues: {
-        'name': d.name ?? '',
-        'code': d.code ?? '',
-        'mnumber': d.mnumber ?? '',
-        'qty': d.qty ?? '',
-        'tqty': d.tqty?.toString() ?? '',
-        'mstatus': d.mstatus ?? '',
-        'status': d.status ?? '',
-        'place': d.place ?? '',
-        'keeper': d.keeper ?? '',
-        'remark': d.remark ?? '',
-      },
+      fields: _buildMouldFields(iv),
+      initialValues: iv,
       fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
       onSubmit: (body) => _doUpdateMould(d.id, body),
     );

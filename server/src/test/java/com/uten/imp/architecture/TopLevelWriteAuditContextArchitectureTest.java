@@ -102,10 +102,21 @@ class TopLevelWriteAuditContextArchitectureTest {
                 "public void deleteAsset(",
                 "public UUID createDeferred(",
                 "public void updateDeferred(",
-                "public void deleteDeferred(",
+                "public void deleteDeferred(")) {
+            assertBefore(ASSET, signature, "tx.bind();", "em.createNativeQuery(");
+        }
+        for (String signature : List.of(
                 "public int depreciate(",
                 "public int amortize(")) {
-            assertBefore(ASSET, signature, "tx.bind();", "em.createNativeQuery(");
+            String body = methodBody(source(ASSET), signature);
+            int bindingAt = body.indexOf("tx.bind();");
+            int disabledAt = body.indexOf("Legacy destructive posting is disabled");
+            assertTrue(bindingAt >= 0, () -> signature + " must call tx.bind();");
+            assertTrue(disabledAt >= 0, () -> signature + " must remain fail-closed");
+            assertTrue(bindingAt < disabledAt,
+                    () -> signature + " must bind audit context before rejecting the legacy write");
+            assertFalse(body.contains("em.createNativeQuery("),
+                    () -> signature + " must not restore delete-and-rebuild posting");
         }
 
         assertBefore(GL, "public int generate(String period)",

@@ -295,10 +295,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                     const SizedBox(width: UtenSpacing.s4),
                                     Text(
                                       widget.addNewLabel ?? '添加',
-                                      style: theme.textTheme.bodyMedium?.copyWith(
-                                        color: theme.colorScheme.primary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            color: theme.colorScheme.primary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                     ),
                                   ],
                                 ),

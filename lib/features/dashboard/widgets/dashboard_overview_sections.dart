@@ -139,9 +139,7 @@ class _MetricGridState extends State<_MetricGrid> {
                         ? Icons.expand_less_rounded
                         : Icons.expand_more_rounded,
                   ),
-                  label: Text(
-                    _expanded ? '收起' : '加载更多（还有 $hiddenCount 项）',
-                  ),
+                  label: Text(_expanded ? '收起' : '加载更多（还有 $hiddenCount 项）'),
                 ),
               ),
             ],
@@ -336,9 +334,7 @@ class _PolicyListState extends State<_PolicyList> {
                         ? Icons.expand_less_rounded
                         : Icons.expand_more_rounded,
                   ),
-                  label: Text(
-                    _expanded ? '收起' : '加载更多（还有 $hiddenCount 条）',
-                  ),
+                  label: Text(_expanded ? '收起' : '加载更多（还有 $hiddenCount 条）'),
                 ),
               ),
             ],

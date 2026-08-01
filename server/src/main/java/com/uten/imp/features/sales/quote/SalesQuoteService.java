@@ -9,6 +9,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.SalesMasterReferenceValidator;
 import com.uten.imp.features.sales.quote.dto.QuoteDetail;
 import com.uten.imp.features.sales.quote.dto.QuoteItemDto;
 import com.uten.imp.features.sales.quote.dto.QuoteItemLine;
@@ -62,6 +63,7 @@ public class SalesQuoteService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final com.uten.imp.features.sales.order.SalesOrderService salesOrderService;
     private final SalesDocumentAccessPolicy accessPolicy;
+    private final SalesMasterReferenceValidator referenceValidator;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
@@ -113,6 +115,7 @@ public class SalesQuoteService {
     @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail create(QuoteSaveRequest req) {
         tx.bind();
+        referenceValidator.validate(req);
         SalesQuote q = new SalesQuote();
         applyHeader(req, q);
         q.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -131,6 +134,7 @@ public class SalesQuoteService {
         if (q.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
+        referenceValidator.validate(req);
         applyHeader(req, q);
         itemRepo.deleteByQuoteId(id);
         itemRepo.flush();
@@ -162,9 +166,11 @@ public class SalesQuoteService {
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
-        if (itemRepo.findByQuoteIdOrderByLineNoAsc(id).isEmpty()) {
+        List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        referenceValidator.validateStoredQuote(q.getClientId(), items);
         q.setStatus(STATUS_APPROVED);
         q.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         quoteRepo.save(q);

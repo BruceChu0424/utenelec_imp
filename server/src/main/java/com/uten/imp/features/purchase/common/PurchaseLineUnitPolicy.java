@@ -41,7 +41,7 @@ public class PurchaseLineUnitPolicy {
                 em.createNativeQuery("""
                                 SELECT g.is_deleted, u.id, COALESCE(u.is_deleted, TRUE)
                                 FROM goods g
-                                LEFT JOIN units u ON u.legacy_id = g.unit_legacy_id
+                                LEFT JOIN units u ON u.id = g.unit_id
                                 WHERE g.id = :goodsId
                                 """)
                         .setParameter("goodsId", goodsId));

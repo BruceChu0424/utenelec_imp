@@ -26,6 +26,7 @@ public class FulfillmentWorkbenchQueryService {
             Set.of("WAREHOUSE", "PURCHASE", "SUBCONTRACT");
 
     private final EntityManager em;
+    private final FulfillmentWorkbenchAccessPolicy accessPolicy;
 
     @Transactional(readOnly = true)
     public FulfillmentWorkbenchPage query(
@@ -75,6 +76,7 @@ public class FulfillmentWorkbenchQueryService {
         List<FulfillmentTaskRow> items =
                 NativeQueryResults.objectArrayRows(rowsQuery).stream()
                         .map(FulfillmentWorkbenchQueryService::mapRow)
+                        .map(this::applyActionAccess)
                         .toList();
 
         Query summaryQuery = em.createNativeQuery("""
@@ -131,7 +133,10 @@ public class FulfillmentWorkbenchQueryService {
                         ((Number) summary[2]).longValue(),
                         decimal(summary[3]),
                         statusCounts,
-                        exceptionCounts));
+                        exceptionCounts),
+                new FulfillmentWorkbenchPage.Capabilities(
+                        "PURCHASE".equals(department)
+                                && accessPolicy.canCreatePurchaseOrder()));
     }
 
     @Transactional(readOnly = true)
@@ -189,7 +194,53 @@ public class FulfillmentWorkbenchQueryService {
                 (UUID) row[27],
                 (String) row[28],
                 (UUID) row[29],
-                (String) row[30]);
+                (String) row[30],
+                false,
+                false,
+                false);
+    }
+
+    private FulfillmentTaskRow applyActionAccess(FulfillmentTaskRow row) {
+        if (row.actionDocId() == null || row.actionDocType() == null) return row;
+        FulfillmentWorkbenchAccessPolicy.DocumentAccess access =
+                accessPolicy.documentAccess(row.department(), row.actionDocType());
+        if (!access.canView()) {
+            // Retain only the fact that an action exists. IDs, numbers, item IDs,
+            // status and type are business-document metadata and must not leak.
+            return copyAction(row, null, null, null, null, null,
+                    false, false, true);
+        }
+        return copyAction(
+                row,
+                row.actionDocType(),
+                row.actionDocId(),
+                row.actionDocNo(),
+                row.actionItemId(),
+                row.actionDocStatus(),
+                true,
+                access.canEdit(),
+                false);
+    }
+
+    private static FulfillmentTaskRow copyAction(
+            FulfillmentTaskRow row,
+            String actionDocType,
+            UUID actionDocId,
+            String actionDocNo,
+            UUID actionItemId,
+            String actionDocStatus,
+            boolean canView,
+            boolean canEdit,
+            boolean restricted) {
+        return new FulfillmentTaskRow(
+                row.department(), row.taskId(), row.packageId(), row.planId(), row.planNo(),
+                row.warehouseId(), row.warehouseName(), row.goodsId(), row.goodsCode(),
+                row.goodsName(), row.spec(), row.colorId(), row.colorName(), row.unitId(),
+                row.unitName(), row.supplyRoute(), row.requiredQty(), row.allocatedQty(),
+                row.fulfilledQty(), row.supplyPeggedQty(), row.openQty(), row.taskStatus(),
+                row.needDate(), row.expectedDate(), row.exceptionCode(), row.updatedAt(),
+                actionDocType, actionDocId, actionDocNo, actionItemId, actionDocStatus,
+                canView, canEdit, restricted);
     }
 
     private static BigDecimal decimal(Object value) {

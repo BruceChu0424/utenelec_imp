@@ -40,13 +40,14 @@ class LinkedDocumentIntegrityServiceTest {
         UUID color = UUID.randomUUID();
         UUID unit = UUID.randomUUID();
         when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[] {
-                sourceItem, sourceSupplier, goods, color, unit, (short) 1, false
+                sourceItem, sourceSupplier, goods, color, unit,
+                BigDecimal.ONE, (short) 1, false
         }));
 
         assertThrows(ApiException.class, () -> service.validatePurchaseReceipt(
                 requestedSupplier,
                 List.of(LinkedDocumentIntegrityService.LinkedLine.orderSource(
-                        sourceItem, goods, color, unit))));
+                        sourceItem, goods, color, unit, BigDecimal.ONE))));
     }
 
     @Test
@@ -59,6 +60,7 @@ class LinkedDocumentIntegrityServiceTest {
                 goods,
                 null,
                 unit,
+                BigDecimal.ONE,
                 new BigDecimal("100"),
                 new BigDecimal("80"),
                 (short) 1,
@@ -71,6 +73,7 @@ class LinkedDocumentIntegrityServiceTest {
                         goods,
                         null,
                         unit,
+                        BigDecimal.ONE,
                         new BigDecimal("30")))));
     }
 
@@ -88,6 +91,7 @@ class LinkedDocumentIntegrityServiceTest {
                 goods,
                 null,
                 unit,
+                BigDecimal.ONE,
                 actualOrderItem,
                 (short) 1
         }));
@@ -95,7 +99,12 @@ class LinkedDocumentIntegrityServiceTest {
         assertThrows(ApiException.class, () -> service.validatePurchaseReturn(
                 supplier,
                 List.of(LinkedDocumentIntegrityService.LinkedLine.receiptSource(
-                        receiptItem, forgedOrderItem, goods, null, unit))));
+                        receiptItem,
+                        forgedOrderItem,
+                        goods,
+                        null,
+                        unit,
+                        BigDecimal.ONE))));
     }
 
     @Test
@@ -111,6 +120,7 @@ class LinkedDocumentIntegrityServiceTest {
                 goods,
                 null,
                 unit,
+                BigDecimal.ONE,
                 new BigDecimal("100"),
                 BigDecimal.ZERO,
                 (short) 1
@@ -123,6 +133,7 @@ class LinkedDocumentIntegrityServiceTest {
                         goods,
                         null,
                         unit,
+                        BigDecimal.ONE,
                         BigDecimal.ONE))));
     }
 
@@ -140,6 +151,7 @@ class LinkedDocumentIntegrityServiceTest {
                 goods,
                 null,
                 unit,
+                BigDecimal.ONE,
                 actualOrderItem,
                 (short) 1
         }));
@@ -147,7 +159,12 @@ class LinkedDocumentIntegrityServiceTest {
         assertThrows(ApiException.class, () -> service.validateSubcontractReturn(
                 supplier,
                 List.of(LinkedDocumentIntegrityService.LinkedLine.receiptSource(
-                        receiptItem, forgedOrderItem, goods, null, unit))));
+                        receiptItem,
+                        forgedOrderItem,
+                        goods,
+                        null,
+                        unit,
+                        BigDecimal.ONE))));
     }
 
     @Test
@@ -163,6 +180,7 @@ class LinkedDocumentIntegrityServiceTest {
                 actualGoods,
                 null,
                 unit,
+                BigDecimal.ONE,
                 null,
                 null,
                 null,
@@ -178,6 +196,79 @@ class LinkedDocumentIntegrityServiceTest {
                                 forgedGoods,
                                 null,
                                 unit,
+                                BigDecimal.ONE,
+                                null,
+                                null))));
+    }
+
+    @Test
+    void purchaseReceiptRejectsChangedUnitRate() {
+        UUID sourceItem = UUID.randomUUID();
+        UUID supplier = UUID.randomUUID();
+        UUID goods = UUID.randomUUID();
+        UUID unit = UUID.randomUUID();
+        when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[] {
+                sourceItem,
+                supplier,
+                goods,
+                null,
+                unit,
+                new BigDecimal("12"),
+                (short) 1,
+                false
+        }));
+
+        assertThrows(ApiException.class, () -> service.validatePurchaseReceipt(
+                supplier,
+                List.of(LinkedDocumentIntegrityService.LinkedLine.orderSource(
+                        sourceItem,
+                        goods,
+                        null,
+                        unit,
+                        BigDecimal.ONE))));
+    }
+
+    @Test
+    void subcontractOrderRejectsChangedUnitRate() {
+        UUID applicationItem = UUID.randomUUID();
+        UUID supplier = UUID.randomUUID();
+        UUID goods = UUID.randomUUID();
+        UUID unit = UUID.randomUUID();
+        when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[] {
+                applicationItem,
+                supplier,
+                goods,
+                null,
+                unit,
+                new BigDecimal("10"),
+                new BigDecimal("100"),
+                BigDecimal.ZERO,
+                (short) 1
+        }));
+
+        assertThrows(ApiException.class, () -> service.validateSubcontractOrder(
+                supplier,
+                List.of(new LinkedDocumentIntegrityService.QuantityLinkedLine(
+                        applicationItem,
+                        goods,
+                        null,
+                        unit,
+                        BigDecimal.ONE,
+                        BigDecimal.TEN))));
+    }
+
+    @Test
+    void subcontractWasteRequiresAnApprovedMaterialIssueSource() {
+        assertThrows(ApiException.class, () ->
+                service.validateSubcontractWaste(
+                        UUID.randomUUID(),
+                        List.of(LinkedDocumentIntegrityService.LinkedLine.materialIssueSource(
+                                null,
+                                null,
+                                UUID.randomUUID(),
+                                null,
+                                UUID.randomUUID(),
+                                BigDecimal.ONE,
                                 null,
                                 null))));
     }

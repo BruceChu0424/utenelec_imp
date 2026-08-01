@@ -642,6 +642,11 @@ public class ProductionPlanningPackageService {
                                AND l.is_deleted = FALSE
                                AND p.is_deleted = FALSE
                                AND p.status <> -1)
+                          + (SELECT COUNT(*)
+                             FROM production_planning_packages package
+                             WHERE package.plan_id = :id
+                               AND package.is_deleted = FALSE
+                               AND package.status = 'CONFIRMED')
                         """)
                 .setParameter("id", subplanId)
                 .getSingleResult();

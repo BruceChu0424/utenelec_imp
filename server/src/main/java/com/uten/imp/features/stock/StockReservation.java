@@ -20,7 +20,8 @@ import java.util.UUID;
  * 订货审核建行 / 出货审核消耗 / 改量·取消·驳回释放。
  *
  * <p>数量一律基本单位（创建时 行量×unit_rate 换算），与 stock_balances.qty 同口径直接相减。
- * warehouse_id NULL = 全局预留（下单时未定出货仓，占全局可用量；出货开单后改绑具体仓）。
+ * warehouse_id NULL = 全局预留（下单时未定出货仓，占全局可用量）；部分出货会拆分，
+ * 已消费部分绑定实际仓，未消费部分继续保持全局，避免剩余量被首仓锁死。
  * order_item_id → sales_order_items.id 为跨模块逻辑 FK（契约 §一，不建 REFERENCES）。
  */
 @Getter

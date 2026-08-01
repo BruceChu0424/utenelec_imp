@@ -22,6 +22,7 @@ public class QuoteSaveRequest {
     @NotNull
     private LocalDate billDate;
 
+    @NotNull
     private UUID clientId;
     private LocalDate validUntil;
     private String remark;

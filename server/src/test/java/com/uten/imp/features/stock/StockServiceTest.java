@@ -82,11 +82,73 @@ class StockServiceTest {
                 org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
     }
 
+    @Test
+    void normalOutboundCannotConsumeReservedOrSafetyStock() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("10"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        when(balanceRepo.warehouseAvailableBase(warehouseId, goodsId, null))
+                .thenReturn(new BigDecimal("2"));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.recordMovement(request(
+                        warehouseId, goodsId, StockService.DIR_OUT, "3")));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void countLossCanRecordPhysicalRealityBelowProtectedQuantity() {
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("10"));
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        service.recordMovement(request(
+                warehouseId, goodsId, StockService.DIR_OUT, "3",
+                StockService.TYPE_CHECK_LOSS));
+
+        verify(balanceRepo, never()).warehouseAvailableBase(
+                warehouseId, goodsId, null);
+        verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
+        verify(balanceRepo).upsertBalance(
+                org.mockito.ArgumentMatchers.eq(warehouseId),
+                org.mockito.ArgumentMatchers.eq(goodsId),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.eq(new BigDecimal("-3")),
+                org.mockito.ArgumentMatchers.eq(BigDecimal.ZERO),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any(OffsetDateTime.class));
+    }
+
     private static StockService.MovementRequest request(
             UUID warehouseId, UUID goodsId, short direction, String qty) {
+        return request(
+                warehouseId, goodsId, direction, qty,
+                StockService.TYPE_PURCHASE_RECEIPT);
+    }
+
+    private static StockService.MovementRequest request(
+            UUID warehouseId, UUID goodsId, short direction, String qty,
+            short movementType) {
         return new StockService.MovementRequest(
                 OffsetDateTime.now(),
-                StockService.TYPE_PURCHASE_RECEIPT,
+                movementType,
                 "TEST",
                 UUID.randomUUID(),
                 UUID.randomUUID(),

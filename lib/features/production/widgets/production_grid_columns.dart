@@ -34,6 +34,7 @@ class ProductionGridRow extends EditableGridRow {
   /// 计划审核时按 1:1 link 回写 sales_order_items.planned_qty）。
   String? salesOrderItemId;
   String? clientName;
+
   /// 该行所属来源订单的销售员（跟单员联动用；选/导入订单时回填）。
   String? sellerId;
   String? sellerName;

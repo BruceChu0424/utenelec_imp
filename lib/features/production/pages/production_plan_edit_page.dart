@@ -462,11 +462,17 @@ class _ProductionPlanEditPageState
       sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
-        final deptId =
-            (kw == null || kw.isEmpty) ? _deptIdFor(defaultDeptCode) : null;
+        final deptId = (kw == null || kw.isEmpty)
+            ? _deptIdFor(defaultDeptCode)
+            : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
+            .list(
+              size: 30,
+              search: kw,
+              departmentId: deptId,
+              includeSubtree: true,
+            );
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(

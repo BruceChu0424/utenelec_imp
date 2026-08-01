@@ -163,6 +163,37 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
+  /// 登记或撤销客户对分批发货的确认（仅 CUSTOMER_CONFIRM 的履约中订单）。
+  Future<SalesDocDetail> setPartialShipmentConfirmation(
+    String id, {
+    required bool confirmed,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/partial-shipment-confirmation',
+      body: {'confirmed': confirmed, 'reason': reason.trim()},
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
+  /// 推进仓库拣货状态机。新流程的正式出库只能通过 PICKED -> SHIPPED 完成。
+  Future<SalesDocDetail> transitionWarehouseWork(
+    String id, {
+    required String targetStatus,
+    String? reason,
+  }) async {
+    final normalizedReason = reason?.trim();
+    final json = await api.post(
+      '${_doc(id)}/warehouse-work',
+      body: {
+        'targetStatus': targetStatus,
+        if (normalizedReason != null && normalizedReason.isNotEmpty)
+          'reason': normalizedReason,
+      },
+    );
+    return SalesDocDetail.fromJson(json);
+  }
+
   /// 设置订单行优先级（POST /items/{id}/priority；V178，仅 order 类型可用）。
   /// 1急单/2普通/3现货；急单须填原因。仅稀缺让单决策用，不自动抢占。
   Future<SalesDocDetail> setLinePriority(
@@ -187,11 +218,7 @@ class SalesRepository {
   }) async {
     final json = await api.post(
       '/sales/orders/items/$orderItemId/yield-reservation',
-      body: {
-        'qty': qty,
-        'reason': reason,
-        'yielderOrderNo': ?yielderOrderNo,
-      },
+      body: {'qty': qty, 'reason': reason, 'yielderOrderNo': ?yielderOrderNo},
     );
     return SalesDocDetail.fromJson(json);
   }
@@ -201,10 +228,10 @@ class SalesRepository {
     String goodsId, {
     String? colorId,
   }) async {
-    final json = await api.get('/sales/orders/reservations/scarce', query: {
-      'goodsId': goodsId,
-      'colorId': ?colorId,
-    });
+    final json = await api.get(
+      '/sales/orders/reservations/scarce',
+      query: {'goodsId': goodsId, 'colorId': ?colorId},
+    );
     return (json as List?)
             ?.map((e) => ScarceReservation.fromJson(e as Map<String, dynamic>))
             .toList() ??

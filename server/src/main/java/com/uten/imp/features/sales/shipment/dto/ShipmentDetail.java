@@ -43,6 +43,12 @@ public class ShipmentDetail {
     /** C6 财务发货审核：0 未审 / 1 已审发货。 */
     private Short financeAudit;
     private java.time.OffsetDateTime financeAuditedAt;
+    private String warehouseWorkStatus;
+    private java.time.OffsetDateTime warehouseWorkUpdatedAt;
+    private java.time.OffsetDateTime pickingStartedAt;
+    private java.time.OffsetDateTime pickedAt;
+    private java.time.OffsetDateTime handedOverAt;
+    private String warehouseExceptionReason;
     private List<ShipmentItemDto> items;
     /** 制单员姓名（服务端按 maker_id 解析：employees 直查 + users 历史数据兼容）。 */
     private String makerName;
@@ -52,4 +58,6 @@ public class ShipmentDetail {
     private boolean writable;
     /** Current caller may reject this draft, including explicit reject-authority bypass. */
     private boolean canReject;
+    /** Current caller can execute warehouse work independent of sales owner scope. */
+    private boolean canManageWarehouseWork;
 }

@@ -11,6 +11,9 @@ import java.util.List;
 public interface AuditLogRepository
         extends JpaRepository<AuditLog, Long>, JpaSpecificationExecutor<AuditLog> {
 
+    @Query("select coalesce(max(a.id), 0) from AuditLog a")
+    long findMaxId();
+
     @Query(value = """
             SELECT (created_at AT TIME ZONE 'Asia/Shanghai')::date AS business_date,
                    count(*) AS total_count,

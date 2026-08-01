@@ -53,6 +53,7 @@ class ProductionPlanServiceTest {
     private Query stockDownstream;
     private Query purchaseDownstream;
     private Query subplanDownstream;
+    private Query executionV1ParentLink;
     private Query unlinkOrderLock;
     private Query plannedDecrement;
 
@@ -79,6 +80,7 @@ class ProductionPlanServiceTest {
         stockDownstream = query();
         purchaseDownstream = query();
         subplanDownstream = query();
+        executionV1ParentLink = query();
         unlinkOrderLock = query();
         plannedDecrement = query();
 
@@ -89,6 +91,7 @@ class ProductionPlanServiceTest {
         when(stockDownstream.getResultList()).thenReturn(List.of());
         when(purchaseDownstream.getResultList()).thenReturn(List.of());
         when(subplanDownstream.getResultList()).thenReturn(List.of());
+        when(executionV1ParentLink.getResultList()).thenReturn(List.of());
         when(mrpService.isPlanningWriteReady()).thenReturn(false);
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
@@ -113,6 +116,10 @@ class ProductionPlanServiceTest {
             }
             if (sql.contains("FROM mrp_generations g")) {
                 return purchaseDownstream;
+            }
+            if (sql.contains("FROM subplan_links link")
+                    && sql.contains("link.source = 'EXECUTION_V1'")) {
+                return executionV1ParentLink;
             }
             if (sql.contains("FROM subplan_links l")) {
                 return subplanDownstream;
@@ -290,6 +297,27 @@ class ProductionPlanServiceTest {
 
         assertTrue(error.getMessage().contains("子计划"));
         verify(linkRepo, never()).findActiveByPlanItemIds(any());
+    }
+
+    @Test
+    void genericDeleteAndReverseRejectExecutionV1SubplanBeforeMutation() {
+        ProductionPlan draft = plan((short) 0);
+        ProductionPlan approved = plan((short) 1);
+        arrangePlan(draft, List.of());
+        arrangePlan(approved, List.of());
+        when(executionV1ParentLink.getResultList()).thenReturn(
+                java.util.Collections.singletonList(UUID.randomUUID()));
+
+        ApiException deleteError = assertThrows(
+                ApiException.class, () -> service.delete(draft.getId()));
+        ApiException reverseError = assertThrows(
+                ApiException.class, () -> service.reverse(approved.getId()));
+
+        assertTrue(deleteError.getMessage().contains("父计划的计划包"));
+        assertTrue(reverseError.getMessage().contains("父计划的计划包"));
+        verify(planRepo, never()).save(draft);
+        verify(planRepo, never()).save(approved);
+        verify(planItemLock, never()).getResultList();
     }
 
     @Test

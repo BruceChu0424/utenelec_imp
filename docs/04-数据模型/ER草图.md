@@ -32,15 +32,27 @@ erDiagram
     Building ||--|{ Floor : "包含"
     HvacDevice ||--o{ HvacCommand : "被控"
     ProductionPlan ||--|{ ProductionPlanItem : "包含"
+    ProductionPlan ||--o{ SubplanLink : "父计划谱系"
+    SubplanLink }o--|| ProductionPlan : "指向子计划"
     ProductionPlan ||--o{ ProductionPlanningPackage : "确认批次"
     ProductionPlanningPackage ||--|{ ProductionExecutionSegment : "生成"
     ProductionExecutionSegment ||--|{ ProductionMaterialDemand : "需要"
     ProductionMaterialDemand ||--o{ ProductionMaterialSupplyPeg : "挂未来供给"
     ProductionMaterialDemand ||--o{ StockReservation : "占现货"
+    SalesOrderItem ||--o{ StockReservation : "审核后订单预留"
     ProductionExecutionSegment ||--o{ ExecutionSegmentSalesAllocation : "销售归属"
     Warehouse ||--o{ StockBalance : "仓库余额"
     Goods ||--o{ StockBalance : "货品余额"
+    Goods ||--o{ GoodsBomItem : "作为父件"
+    Goods ||--o{ GoodsBomItem : "作为组件"
     StockDocument ||--|{ StockDocumentItem : "库存单据"
+    FinanceAssetCategory ||--o{ FixedAsset : "固定资产分类"
+    FinanceAssetCategory ||--o{ DeferredExpense : "待摊分类"
+    FixedAsset ||--o{ FinanceAssetBook : "账簿"
+    DeferredExpense ||--o{ FinanceDeferralScheduleVersion : "计划版本"
+    FinanceAssetAccountingPeriod ||--o{ FinanceAssetPostingRun : "月度运行"
+    FinanceAssetPostingRun ||--|{ FinanceAssetPostingLine : "逐项快照"
+    FinanceAssetPostingRun }o--o| GlVoucher : "正式或反向凭证"
 ```
 
 > 当前是骨架图，字段暂略。字段在 [实体字典.md](实体字典.md) 中维护。
@@ -108,11 +120,13 @@ erDiagram
 
 ### 2.7 生产履约（当前 V150–V164）
 
-> 执行段是计划明细的执行批次，不是新的父生产计划；物料需求、现货占用和未来供给分别记录，不能用一个状态字段互相替代。
+> 执行段是计划明细的执行批次，不是新的父生产计划；`subplan_links` 才指向另一张真实自制件生产计划。物料需求、现货占用和未来供给分别记录，不能用一个状态字段互相替代。
 
 ```mermaid
 erDiagram
     ProductionPlan ||--|{ ProductionPlanItem : "包含"
+    ProductionPlan ||--o{ SubplanLink : "父计划谱系"
+    SubplanLink }o--|| ProductionPlan : "真实子计划"
     ProductionPlan ||--o{ ProductionPlanningPackage : "确认批次"
     ProductionPlanningPackage ||--|{ ProductionExecutionSegment : "生成"
     ProductionPlanItem ||--o{ ProductionExecutionSegment : "拆分"
@@ -137,6 +151,7 @@ erDiagram
     StockDocumentItem ||--o{ StockMovement : "来源明细"
     Warehouse ||--o{ StockReservation : "仓库占用"
     Goods ||--o{ StockReservation : "货品占用"
+    SalesOrderItem ||--o{ StockReservation : "订单有效预留"
     ProductionMaterialDemand ||--o{ StockReservation : "占用"
     ProductionMaterialStockEvent ||--|{ ProductionMaterialStockPosting : "领退料分摊"
     StockDocumentItem ||--o{ ProductionMaterialStockPosting : "来源单据行"
@@ -152,7 +167,66 @@ erDiagram
 [盘点修正文档](../数据迁移/50-仓库盘点修正与历史单据处理.md)。生产领退耗的完整表职责、数量守恒和
 写入顺序见[生产履约 V1 实体关系与数量权威](生产履约V1实体关系.md)。
 
-### 2.9 审批流（未来目标，不是当前 ER）
+`StockReservation` 只表示订单承诺或生产现货占用：减少 ATP/自由库存但不改变在手，不等于未来供给、仓库拣货或实际出库。销售审核时可以 `warehouse_id=NULL`，发运窗口再绑定具体仓库；DRAW 审核只确认领料需求，分轮 `issue` 才扣物理库存。
+
+### 2.8.1 目标模型：仓库作业、质量与委外供应商库存（未落地）
+
+```mermaid
+erDiagram
+    SalesOrderItem ||--o{ WarehouseWork : "生成发运作业"
+    Warehouse ||--o{ WarehouseWork : "执行分配拣货"
+    StockDocumentItem ||--o{ QualityDisposition : "到货/回厂检验"
+    Supplier ||--o{ SupplierHeldStock : "保管我方物料"
+    Goods ||--o{ SupplierHeldStock : "供应商处结存"
+    ProductionMaterialDemand ||--o{ SupplierHeldStock : "来源需求"
+    SupplierHeldStock ||--o{ SubcontractWip : "耗用形成在制"
+```
+
+> 本图块是明确的**目标模型**，当前没有同名物理表。采购/委外到货待检必须在合格结论后才可进入可分配池；委外必须满足“累计发出 = 合格产出对应耗用 + 良/不良退回 + 审批损耗 + 供应商期末结存”。不得因 supply peg 已覆盖就在当前模型中假画成完整闭环。
+
+### 2.9 当前货品 BOM 与历史快照
+
+```mermaid
+erDiagram
+    Goods ||--o{ GoodsBomItem : "父货品"
+    Goods ||--o{ GoodsBomItem : "组件货品"
+    ProductionPlanItem ||--o{ ProductionPlanCost : "历史展开快照"
+    Goods ||--o{ ProductionPlanCost : "历史身份引用"
+```
+
+`GoodsBomItem` 是当前理论关系，活动边两端都必须是未删除且 `auto_created=false` 的正常货品；V181
+已隔离 81 条历史 stub 误接边并用数据库触发器阻止复发。`ProductionPlanCost` 是历史计划展开快照，
+可继续引用 31 个历史货品锚，不能因当前货品改名、BOM 调整或 stub 隔离而回溯重算。源端 20,798 条
+BOM reject 仍须单独治理。
+
+### 2.10 资产与待摊专业子账（V183）
+
+```mermaid
+erDiagram
+    FinanceAssetCategory ||--o{ FixedAsset : "固定资产类别"
+    FinanceAssetCategory ||--o{ DeferredExpense : "待摊类别"
+    FinanceAssetCategory }o--|| PaymentStyle : "四类科目映射"
+    FixedAsset ||--o{ FinanceAssetBook : "CORPORATE或TAX账簿"
+    DeferredExpense ||--o{ FinanceDeferralScheduleVersion : "版本化计划"
+    FinanceDeferralScheduleVersion ||--|{ FinanceDeferralScheduleLine : "逐期计划"
+    FixedAsset ||--o{ FinanceAssetApprovalStep : "专用审批证据"
+    DeferredExpense ||--o{ FinanceAssetApprovalStep : "专用审批证据"
+    FixedAsset ||--o{ FinanceAssetEvent : "追加事件"
+    DeferredExpense ||--o{ FinanceAssetEvent : "追加事件"
+    FinanceAssetAccountingPeriod ||--o{ FinanceAssetPostingRun : "控制月度运行"
+    FinanceAssetPostingRun ||--|{ FinanceAssetPostingLine : "冻结计算输入"
+    FinanceAssetPostingLine }o--o| FinanceAssetBook : "折旧对象"
+    FinanceAssetPostingLine }o--o| FinanceDeferralScheduleLine : "摊销对象"
+    FinanceAssetPostingRun }o--o| GlVoucher : "正式或反向凭证"
+```
+
+`FinanceAssetApprovalStep` 是资产领域的只追加轨迹，不等于下节仍未落地的通用
+`ApprovalRecord`。TAX 账簿当前只是结构隔离预留；对外 API、计提/反冲、总账和税会差异报表均
+未交付。已过账运行及其明细、日志和凭证不能修改/删除，月度错误写反向运行；资本化、处置和终止
+事件的专用反冲/状态恢复尚未交付，因此完整生产仍为 NO-GO。详见
+[51 · 资产与待摊专业化全链路](../数据迁移/51-资产与待摊专业化全链路.md)。
+
+### 2.11 审批流（未来目标，不是当前 ER）
 
 > 当前 V133 没有 `ApprovalNode` 或 `ApprovalRecord` 表：报销与工资分别把固定流程的状态、
 > 操作人和时间戳保存在 `expense_claims`、`payroll_batches`。下图仅是业务决定采用可配置多级
@@ -195,4 +269,4 @@ erDiagram
 
 ---
 
-**最后更新**：2026-07-31 · **状态**：生产履约/通知关系已对齐 V165 发布基线，其余模块继续随实体字典校准
+**最后更新**：2026-08-01 · **状态**：生产履约关系已区分真实子计划、执行分段、订单预留、未来供给和实物移动；仓库作业、质量与供应商库存仅标为未落地目标，生产发布仍为 **NO-GO**

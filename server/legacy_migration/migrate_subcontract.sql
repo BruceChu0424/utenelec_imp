@@ -225,7 +225,7 @@ WHERE w.legacy_id IS NOT NULL AND w.legacy_id <> 0
 -- (Same convention as migrate_stock_docs.sql / migrate_purchase.sql.)
 -- Legacy 0 / NULL means "no reference" and is NOT stubbed.
 
--- Goods stub: legacy_id+name+auto_created=TRUE（配合 V177，UI 隔离用）
+-- Goods historical FK anchor: legacy_id+name+auto_created=TRUE; V177/V181 keep it out of pickers/current BOM/MRP.
 INSERT INTO goods (legacy_id, name, auto_created)
 SELECT DISTINCT lid, '(migration auto-stub legacy ' || lid || ')', TRUE
 FROM (SELECT goods_legacy_id AS lid FROM inquiry_item_stage UNION ALL

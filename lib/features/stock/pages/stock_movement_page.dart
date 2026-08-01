@@ -165,7 +165,8 @@ class _StockMovementPageState extends ConsumerState<StockMovementPage> {
       appBar: UtenAppBar(
         title: '出入库流水', // TODO(l10n): 补 arb
         leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.purchase),
+          onPressed: () =>
+              popOrBackTo(context, defaultPath: RouteName.purchase),
         ),
       ),
       body: SafeArea(

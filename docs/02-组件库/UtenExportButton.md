@@ -26,12 +26,15 @@ UtenExportButton(
   },
   filename: '采购订货明细报表',             // 下载文件名（不含 .xlsx，自动追加）
   label: '下载表格',                       // 按钮文字，默认"下载表格"，可覆盖如"下载货品表"
+  enabled: true,                           // 默认 true；false 时按钮禁用
 )
 ```
 
 点击流程：弹密码对话框（密码 ≥6 位 + 确认一致）→ `apiClient.downloadBytes(endpoint, body:{password}, query:{report,...queryParams})` → `file_saver.saveBytes(bytes, filename.xlsx)` → 成功 toast（Web"已开始下载"/IO"已保存：路径"）。
 
-内置：防连点、loading（按钮自带转圈并禁用）、`context.mounted` 守卫、`ApiException`/兜底错误 toast。
+`enabled` 默认 `true`。传 `false` 时按钮保持禁用，点击不会弹出密码框、不会调用导出 API；适合审计页等
+必须先取得查询高水位边界才能导出的页面。内置：防连点、loading（按钮自带转圈并禁用）、
+`context.mounted` 守卫、`ApiException`/兜底错误 toast。
 
 ---
 
@@ -42,7 +45,7 @@ UtenExportButton(
 - Excel 单元格 `setCellValue` 写**文本**，防 `=CMD()` 公式注入。
 - 每次导出**过审计**：`audit.logExplicit(uid, account, "export_<module>_report", "<module>_reports", "<report>/<行数>rows", "success")`——工作台/系统管理可查。
 - **行数上限 10 万**：超限后端拒绝并提示收窄筛选/分批（防 OOM + 防批量拖库）。
-- 权限：`@PreAuthorize('..._report:export')` 独立权限点（V71 迁移新增 6 个 `*_report:export` + 回填给所有有 `:view` 的部门；「能查看」≠「能导出」）。权限在 JWT claim，**改后用户须重登**新 token 才带 `:export`（超管恒有）。
+- 权限：`@PreAuthorize('..._report:export')` 独立权限点（V71 迁移新增 6 个 `*_report:export` + 回填给所有有 `:view` 的部门；「能查看」≠「能导出」）。权限在 JWT claim；V135 授权版本变化会使旧 access token 失效，客户端须通过刷新/重新认证取得新 claim，不能假设旧 token 继续有效（超管恒有）。
 
 ---
 
@@ -62,4 +65,5 @@ UtenExportButton(
 
 ---
 
-**最后更新**：2026-07-30 · 组件统一为强制密码（6–128 字符）加密导出，不保留明文降级路径；采购报表端到端验证通过，其余报表族 + 主档导出推广中。
+**最后更新**：2026-08-01 · 组件统一为强制密码（6–128 字符）加密导出，不保留明文降级路径；新增
+`enabled`（默认 `true`）供调用页在查询高水位边界尚未建立时安全禁用；采购报表端到端验证通过，其余报表族 + 主档导出推广中。

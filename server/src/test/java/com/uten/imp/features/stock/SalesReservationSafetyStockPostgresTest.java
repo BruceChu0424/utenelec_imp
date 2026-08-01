@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
  * <p>覆盖 V178 的两个核心数据口径：
  * <ol>
  *   <li><b>缺口 C · 安全库存进销售 ATP</b>：镜像 {@code StockReservationRepository.globalAvailableBase}
- *       的原生 SQL（扣 goods.min_qty + GREATEST 钳位），验证「账面 − 生效预留 − 安全库存，最小 0」。
+ *       的原生 SQL（每个有货仓分别扣 goods.min_qty + GREATEST 钳位），
+ *       验证全局承诺与仓库可拣口径一致。
  *   <li><b>缺口 B · 让单(yield) chain_status 回退</b>：逐字复制 {@code SalesOrderService.yieldReservation}
  *       里那段 chain_status 回退 UPDATE，验证 reserved_qty 回减与行状态机回退（7→1→2）。
  * </ol>
@@ -93,6 +94,19 @@ class SalesReservationSafetyStockPostgresTest {
                 insertBalance(connection, warehouseC, goodsC, 150.0);
                 assertAvailable(connection, goodsC, null, 0.0,
                         "min_qty(200)>余额(150) 时安全库存全锁，可用必须为 0");
+
+                // 场景 d：两仓各 50、每仓安全 10 → 可承诺 40+40=80，
+                // 不能按旧口径只全局扣一次得到 90。
+                UUID goodsD = UUID.randomUUID();
+                UUID warehouseD1 = UUID.randomUUID();
+                UUID warehouseD2 = UUID.randomUUID();
+                insertGoods(connection, goodsD, "GOODS-D-" + goodsD, 10.0);
+                insertWarehouse(connection, warehouseD1, "WH-D1-" + warehouseD1);
+                insertWarehouse(connection, warehouseD2, "WH-D2-" + warehouseD2);
+                insertBalance(connection, warehouseD1, goodsD, 50.0);
+                insertBalance(connection, warehouseD2, goodsD, 50.0);
+                assertAvailable(connection, goodsD, null, 80.0,
+                        "两仓必须分别保护安全库存，硬承诺不得超过 80");
             }
         });
     }
@@ -150,7 +164,13 @@ class SalesReservationSafetyStockPostgresTest {
     private static BigDecimal globalAvailableBase(Connection c, UUID goodsId, UUID colorId) throws Exception {
         String sql = """
                 SELECT GREATEST(
-                  (SELECT COALESCE(SUM(b.qty), 0) FROM stock_balances b
+                  (SELECT COALESCE(SUM(GREATEST(
+                              COALESCE(b.qty, 0)
+                              - GREATEST(
+                                  COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0),
+                              0)), 0)
+                     FROM stock_balances b
+                     JOIN goods g ON g.id = b.goods_id
                      WHERE b.goods_id = ?
                        AND (b.color_id IS NOT DISTINCT FROM CAST(? AS uuid)))
                   - (SELECT COALESCE(SUM(r.qty - r.consumed_qty - r.released_qty), 0)
@@ -158,8 +178,6 @@ class SalesReservationSafetyStockPostgresTest {
                        WHERE r.is_deleted = FALSE AND r.status = 0
                          AND r.goods_id = ?
                          AND (r.color_id IS NOT DISTINCT FROM CAST(? AS uuid)))
-                  - (SELECT GREATEST(COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0)
-                       FROM goods g WHERE g.id = ?)
                 , 0)
                 """;
         try (PreparedStatement ps = c.prepareStatement(sql)) {
@@ -167,7 +185,6 @@ class SalesReservationSafetyStockPostgresTest {
             setNullableUuid(ps, 2, colorId);
             ps.setObject(3, goodsId);
             setNullableUuid(ps, 4, colorId);
-            ps.setObject(5, goodsId);
             try (ResultSet rs = ps.executeQuery()) {
                 assertTrue(rs.next());
                 return rs.getBigDecimal(1);

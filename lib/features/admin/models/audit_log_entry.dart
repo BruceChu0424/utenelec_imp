@@ -1,3 +1,5 @@
+import '../../../shared/models/paged_result.dart';
+
 // 审计日志列表项（GET /admin/audit-logs 的 items[]）。
 //
 // 对应后端 com.uten.imp.audit.AuditLogRow（只读 DTO，不含 before/after/user_agent）。
@@ -92,6 +94,37 @@ class AuditLogEntry {
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v);
     return null;
+  }
+}
+
+/// A high-water-bounded page of audit rows.
+///
+/// [snapshotId] is the upper audit-log id captured by the server for this
+/// result set. Reusing it for summary, paging, and export excludes events that
+/// are normally allocated a higher id; it is not a cross-request MVCC snapshot
+/// and does not freeze late commits with an older id or retention deletions.
+class AuditLogPage extends PagedResult<AuditLogEntry> {
+  const AuditLogPage({
+    required super.items,
+    required super.page,
+    required super.size,
+    required super.total,
+    required super.totalPages,
+    required this.snapshotId,
+  });
+
+  final int snapshotId;
+
+  factory AuditLogPage.fromJson(Map<String, dynamic> json) {
+    final page = PagedResult.fromJson(json, AuditLogEntry.fromJson);
+    return AuditLogPage(
+      items: page.items,
+      page: page.page,
+      size: page.size,
+      total: page.total,
+      totalPages: page.totalPages,
+      snapshotId: AuditLogEntry._parseInt(json['snapshotId']) ?? 0,
+    );
   }
 }
 

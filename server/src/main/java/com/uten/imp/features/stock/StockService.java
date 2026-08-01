@@ -30,6 +30,7 @@ public class StockService {
     public static final short TYPE_PURCHASE_RETURN = 2;
     public static final short TYPE_SALES_OUT = 3;
     public static final short TYPE_SALES_RETURN = 4;
+    public static final short TYPE_CHECK_LOSS = 10;
     // 5–14 生产领退料/调拨/盘点/其它/产成品（仓库模块用，见 V45 注释）
     public static final short TYPE_SUBCONTRACT_MATERIAL_ISSUE = 15;  // 委外材料出仓 E_SOut
     public static final short TYPE_SUBCONTRACT_MATERIAL_RETURN = 16; // 委外材料退回 E_SWithDraw
@@ -141,6 +142,23 @@ public class StockService {
                         ErrorCode.CONFLICT,
                         "目标仓库存不足：当前 " + available.stripTrailingZeros().toPlainString()
                                 + "，本次出库 " + req.qty().stripTrailingZeros().toPlainString());
+            }
+            // A physical count loss records reality and must not be blocked by
+            // an operational reservation policy. Every normal outbound path,
+            // including returns, transfers and subcontract issues, may only
+            // consume stock left after active reservations and safety stock.
+            if (req.movementType() != TYPE_CHECK_LOSS) {
+                BigDecimal movable = balanceRepo.warehouseAvailableBase(
+                        req.warehouseId(), req.goodsId(), req.colorId());
+                if (movable == null) movable = BigDecimal.ZERO;
+                if (movable.compareTo(req.qty()) < 0) {
+                    throw new ApiException(
+                            ErrorCode.CONFLICT,
+                            "可动用库存不足（已扣硬预留和安全库存）：当前 "
+                                    + movable.stripTrailingZeros().toPlainString()
+                                    + "，本次出库 "
+                                    + req.qty().stripTrailingZeros().toPlainString());
+                }
             }
         }
         OffsetDateTime ts = req.transactionDate() != null ? req.transactionDate() : OffsetDateTime.now();

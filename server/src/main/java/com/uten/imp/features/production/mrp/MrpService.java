@@ -437,8 +437,8 @@ public class MrpService {
                     (UUID) r[0], (String) r[1],
                     r[2] == null ? null : ((Number) r[2]).shortValue(),
                     Boolean.TRUE.equals(r[3]),
-                    r[4] == null ? null : ((java.sql.Date) r[4]).toLocalDate(),
-                    r[5] == null ? null : ((java.sql.Date) r[5]).toLocalDate(),
+                    localDate(r[4]),
+                    localDate(r[5]),
                     total, inbound, pct));
         }
         return out;

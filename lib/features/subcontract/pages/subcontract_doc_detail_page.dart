@@ -2,7 +2,7 @@
 //
 // 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。操作按 edit 权限。
 // 名称解析：委外商(supplier)/仓库/币种/颜色/单位复用采购 MasterNameService；货品按明细 id 批量 lookup。
-// 审核仅调 approve：后端联动（发料出库 / 进仓入库+立应付 / 损耗出库+回写 等）由后端承担。
+// 审核仅调 approve，库存/应付/累计联动由后端承担；新增发料缺冻结 BOM/子件台账时前后端共同禁审。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -92,11 +92,23 @@ class _SubcontractDocDetailPageState
     }
   }
 
-  Future<void> _approve() async => _doAction(
-    '${_cfg.approveEffect}\n\n确认审核？',
-    (repo) => repo.approve(widget.id),
-    '已审核',
-  );
+  Future<void> _approve() async {
+    final blockedReason = _cfg.approvalBlockedReason;
+    if (blockedReason != null) {
+      context.appWarning(
+        '$blockedReason\n$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+        title: '审核暂不可用',
+        force: true,
+      );
+      return;
+    }
+    await _doAction(
+      '${_cfg.approveEffect}\n\n确认审核？',
+      (repo) => repo.approve(widget.id),
+      '已审核',
+    );
+  }
+
   Future<void> _reverse() async =>
       _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
 
@@ -211,6 +223,10 @@ class _SubcontractDocDetailPageState
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   children: [
                     _headerCard(theme),
+                    if (_cfg.approvalBlockedReason != null) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      _materialIssueSafetyBanner(theme),
+                    ],
                     if (_detail!.productionLinked) ...[
                       const SizedBox(height: UtenSpacing.s12),
                       _productionSourceBanner(theme),
@@ -385,7 +401,6 @@ class _SubcontractDocDetailPageState
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          onRowTap: (_) {},
           emptyMessage: '（无明细）',
         ),
       ],
@@ -415,6 +430,52 @@ class _SubcontractDocDetailPageState
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _materialIssueSafetyBanner(ThemeData theme) {
+    final reason = _cfg.approvalBlockedReason!;
+    return Semantics(
+      container: true,
+      label:
+          '新增发料审核暂不可用。$reason $kSubcontractMaterialIssueHistoricalCompatibilityNote',
+      child: Card(
+        color: theme.colorScheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '新增发料审核暂不可用',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      '$reason\n$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -455,9 +516,19 @@ class _SubcontractDocDetailPageState
       }
       children.add(
         UtenButton(
-          icon: Icons.check_circle_outline,
-          onPressed: _approve,
-          child: const Text('审核'),
+          icon: _cfg.approvalEnabled
+              ? Icons.check_circle_outline
+              : Icons.lock_outline_rounded,
+          onPressed: _cfg.approvalEnabled ? _approve : null,
+          onDisabledTap: _cfg.approvalEnabled
+              ? null
+              : () => context.appWarning(
+                  '${_cfg.approvalBlockedReason}\n'
+                  '$kSubcontractMaterialIssueHistoricalCompatibilityNote',
+                  title: '审核暂不可用',
+                  force: true,
+                ),
+          child: Text(_cfg.approvalEnabled ? '审核' : '审核暂不可用'),
         ),
       );
     } else if (s == kSubcontractStatusApproved &&

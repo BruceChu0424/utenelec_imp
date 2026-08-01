@@ -13,8 +13,8 @@ import java.util.UUID;
 
 public interface MaterialCategoryRepository extends JpaRepository<MaterialCategory, UUID> {
 
-    /** 全树（未软删），按 id 升序保证父先于子（id 由老库迁移时已拓扑序写入）。 */
-    List<MaterialCategory> findByDeletedFalseOrderById();
+    /** 全树（未软删）；按 sort_order、name 升序决定同级显示顺序（buildTree 两段式装配，不依赖此处顺序保证父子关系）。 */
+    List<MaterialCategory> findByDeletedFalseOrderBySortOrderAscNameAsc();
 
     /** 直接子分类（详情面板 childCount / 删除前置校验用）。 */
     List<MaterialCategory> findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(UUID parentId);

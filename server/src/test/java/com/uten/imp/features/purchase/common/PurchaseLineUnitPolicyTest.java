@@ -6,6 +6,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -13,8 +14,10 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PurchaseLineUnitPolicyTest {
@@ -51,6 +54,10 @@ class PurchaseLineUnitPolicyTest {
 
         assertEquals(baseUnitId, resolved.unitId());
         assertEquals(0, BigDecimal.ONE.compareTo(resolved.unitRate()));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertTrue(sql.getValue().contains("u.id = g.unit_id"));
+        assertTrue(!sql.getValue().contains("u.legacy_id = g.unit_legacy_id"));
     }
 
     @Test

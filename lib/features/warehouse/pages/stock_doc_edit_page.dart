@@ -213,11 +213,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
 
   /// 选货品范围：领料/退料=材料；产成品进/出仓=成品；调拨/其它出入库/盘点=全部。
   UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
-        StockDocType.draw || StockDocType.wdraw => UtenGoodsPickerScope.material,
-        StockDocType.finishedIn || StockDocType.finishedOut =>
-          UtenGoodsPickerScope.sellable,
-        _ => UtenGoodsPickerScope.all,
-      };
+    StockDocType.draw || StockDocType.wdraw => UtenGoodsPickerScope.material,
+    StockDocType.finishedIn ||
+    StockDocType.finishedOut => UtenGoodsPickerScope.sellable,
+    _ => UtenGoodsPickerScope.all,
+  };
 
   Future<void> _pickGoods(StockGridRow row) async {
     if (_isCheck && _warehouseId == null) {

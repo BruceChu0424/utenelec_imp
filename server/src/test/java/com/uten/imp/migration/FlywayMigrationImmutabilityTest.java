@@ -25,4 +25,19 @@ class FlywayMigrationImmutabilityTest {
                 ChecksumCalculator.calculate(migration),
                 "Applied Flyway migrations are immutable; add a new migration instead");
     }
+
+    @Test
+    void v169RetainsTheChecksumOfTheFullAuditCoverageSweep() {
+        LoadableResource migration = new ClassPathResource(
+                new Location("classpath:db/migration"),
+                "db/migration/V169__audit_center_risk_and_full_operation_coverage.sql",
+                getClass().getClassLoader(),
+                StandardCharsets.UTF_8);
+
+        assertEquals(
+                1098302988,
+                ChecksumCalculator.calculate(migration),
+                "V169 is the trusted full-table audit sweep; keep its applied bytes immutable "
+                        + "and add a later migration for changes");
+    }
 }

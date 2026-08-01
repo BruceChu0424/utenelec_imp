@@ -86,6 +86,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   // 日期字段
   DateTime? _validUntil; // 报价有效期
   DateTime? _deliverDate; // 订货交货日
+  String? _shipmentPolicy = SalesShipmentPolicy.customerConfirm;
+  String? _warehouseWorkStatus;
 
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
@@ -194,6 +196,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _senderId = d.senderId;
         _validUntil = _parseDate(d.validUntil);
         _deliverDate = _parseDate(d.deliverDate);
+        if (widget.docType == SalesDocType.order) {
+          _shipmentPolicy = d.shipmentPolicy;
+        }
+        if (widget.docType == SalesDocType.shipment) {
+          _warehouseWorkStatus = d.warehouseWorkStatus;
+        }
         _contractNo.text = d.contractNo ?? '';
         _linkPhone.text = d.linkPhone ?? '';
         _signAddr.text = d.signAddr ?? '';
@@ -256,6 +264,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
 
   DateTime? _parseDate(String? s) =>
       (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
+
+  bool get _requiresLinkedSalesShipment =>
+      widget.docType == SalesDocType.shipment &&
+      salesShipmentRequiresOrderLinks(
+        isNew: widget.id == null,
+        warehouseWorkStatus: _warehouseWorkStatus,
+      );
 
   /// 并发按 id 拉人员字段的名字（picker 的 initial 显示用）。失败静默。
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
@@ -461,6 +476,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         fail('items', '第 $badRow 行明细：数量须大于 0${priceRequired ? '，单价必填' : ''}');
       }
     }
+    if (_requiresLinkedSalesShipment && rows.isNotEmpty) {
+      final firstUnlinked = salesShipmentFirstUnlinkedLine(
+        rows.map((row) => row.orderItemId),
+      );
+      if (firstUnlinked > 0) {
+        for (final row in rows.where(
+          (row) => row.orderItemId == null || row.orderItemId!.isEmpty,
+        )) {
+          row.invalidNotifier.value = true;
+        }
+        fail('items', '销售出货必须从订货单引入，零星无订单出库请用其它出货');
+      }
+    }
     setState(() {
       _errors
         ..clear()
@@ -554,6 +582,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         'validUntil': _fmt(_validUntil!),
       if (_cfg.hasDeliverDate && _deliverDate != null)
         'deliverDate': _fmt(_deliverDate!),
+      if (widget.docType == SalesDocType.order &&
+          _shipmentPolicy != null &&
+          SalesShipmentPolicy.selectable.contains(_shipmentPolicy))
+        'shipmentPolicy': _shipmentPolicy,
       if (_cfg.hasContractInfo) ...{
         if (_contractNo.text.trim().isNotEmpty)
           'contractNo': _contractNo.text.trim(),
@@ -772,6 +804,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                         _clearError('deliverDate');
                                       },
                                     ),
+                                  if (widget.docType == SalesDocType.order)
+                                    _shipmentPolicyField(theme),
                                   if (_cfg.hasContractInfo) ...[
                                     TextField(
                                       controller: _contractNo,
@@ -874,6 +908,36 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             ),
                         ],
                       ),
+                      if (_requiresLinkedSalesShipment)
+                        Container(
+                          key: const ValueKey(
+                            'sales-shipment-order-link-guidance',
+                          ),
+                          margin: const EdgeInsets.only(
+                            top: UtenSpacing.s8,
+                            bottom: UtenSpacing.s4,
+                          ),
+                          padding: const EdgeInsets.all(UtenSpacing.s8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer
+                                .withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.link_outlined,
+                                size: 18,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: UtenSpacing.s8),
+                              const Expanded(
+                                child: Text('销售出货必须从订货单引入；零星无订单出库请使用“其它出货”。'),
+                              ),
+                            ],
+                          ),
+                        ),
                       UtenEditableGrid<SalesGridRow>(
                         controller: _grid,
                         columns: salesGridColumns(
@@ -931,6 +995,58 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     );
   }
 
+  Widget _shipmentPolicyField(ThemeData theme) {
+    final value = _shipmentPolicy;
+    final editable =
+        widget.id == null ||
+        (value != null && SalesShipmentPolicy.selectable.contains(value));
+    final description = salesShipmentPolicyDescription(value);
+    return Column(
+      key: const ValueKey('sales-order-shipment-policy-field'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (editable)
+          UtenDropdownField(
+            key: const ValueKey('sales-order-shipment-policy'),
+            label: '发运策略',
+            value: value,
+            items: [
+              for (final policy in SalesShipmentPolicy.selectable)
+                UtenDropdownItem(
+                  value: policy,
+                  label: salesShipmentPolicyLabel(policy),
+                ),
+            ],
+            allowClear: false,
+            searchable: false,
+            onChanged: (next) {
+              if (next == null) return;
+              setState(() => _shipmentPolicy = next);
+            },
+          )
+        else
+          InputDecorator(
+            key: const ValueKey('sales-order-shipment-policy-readonly'),
+            decoration: const InputDecoration(
+              labelText: '发运策略',
+              filled: true,
+              suffixIcon: Icon(Icons.lock_outline, size: 18),
+            ),
+            child: Text(salesShipmentPolicyLabel(value)),
+          ),
+        const SizedBox(height: UtenSpacing.s4),
+        Text(
+          description,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: editable
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.tertiary,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// 人员选择器：关键字为空且指定 [defaultDeptCode] 时收敛到该部门子树、否则全公司搜。
   Widget _employeePicker({
     required String label,
@@ -945,14 +1061,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
       loader: (kw) async {
-        final deptId =
-            (kw == null || kw.isEmpty) && defaultDeptCode != null
+        final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
             ? (ref.read(departmentCodeIdMapProvider).valueOrNull ??
                   const {})[defaultDeptCode]
             : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
+            .list(
+              size: 30,
+              search: kw,
+              departmentId: deptId,
+              includeSubtree: true,
+            );
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(

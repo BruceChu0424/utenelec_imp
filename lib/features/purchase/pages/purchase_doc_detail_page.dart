@@ -352,7 +352,6 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          onRowTap: (_) {},
           emptyMessage: '暂无明细',
         ),
       ],

@@ -1362,14 +1362,14 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             )
           : null,
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        borderRadius: UtenRadius.lgAll,
-        onTap: () => context.push(RoutePath.productionPlanDetail(r.planId)),
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Column(
-            children: [
-              Row(
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Column(
+          children: [
+            InkWell(
+              borderRadius: UtenRadius.mdAll,
+              onTap: () => _openPlanDetail(r.planId),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ProgressRing(value: pct, done: done),
@@ -1520,44 +1520,42 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                     ),
                 ],
               ),
-              if (r.subplans.isNotEmpty) ...[
-                const Divider(height: UtenSpacing.s16),
-                InkWell(
-                  borderRadius: UtenRadius.mdAll,
-                  onTap: () => setState(
-                    () => expanded
-                        ? _expanded.remove(r.planId)
-                        : _expanded.add(r.planId),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s4,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          expanded
-                              ? Icons.expand_less_rounded
-                              : Icons.expand_more_rounded,
-                          size: 18,
+            ),
+            if (r.subplans.isNotEmpty) ...[
+              const Divider(height: UtenSpacing.s16),
+              InkWell(
+                borderRadius: UtenRadius.mdAll,
+                onTap: () => setState(
+                  () => expanded
+                      ? _expanded.remove(r.planId)
+                      : _expanded.add(r.planId),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        expanded
+                            ? Icons.expand_less_rounded
+                            : Icons.expand_more_rounded,
+                        size: 18,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '子计划 ${r.subplans.length} 张（点开展示进度）',
+                        style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '子计划 ${r.subplans.length} 张（点开展示进度）',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-                if (expanded)
-                  for (final s in r.subplans) _subplanRow(theme, s),
-              ],
+              ),
+              if (expanded)
+                for (final s in r.subplans) _subplanRow(theme, s),
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -1568,7 +1566,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final done = s.closed || pct >= 1.0;
     return InkWell(
       borderRadius: UtenRadius.mdAll,
-      onTap: () => context.push(RoutePath.productionPlanDetail(s.planId)),
+      onTap: () => _openPlanDetail(s.planId),
       child: Padding(
         padding: const EdgeInsets.symmetric(
           vertical: UtenSpacing.s4,
@@ -1613,10 +1611,29 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             ),
             const SizedBox(width: UtenSpacing.s8),
             _miniStatus(theme, s, done),
+            const SizedBox(width: UtenSpacing.s4),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _openPlanDetail(String rawPlanId) async {
+    final planId = rawPlanId.trim();
+    if (planId.isEmpty) {
+      context.appError('生产计划链接异常，请刷新后重试', force: true);
+      return;
+    }
+    try {
+      await context.push(RoutePath.productionPlanDetail(planId));
+    } catch (_) {
+      if (mounted) context.appError('无法打开生产计划，请刷新后重试', force: true);
+    }
   }
 
   Widget _statusChip(

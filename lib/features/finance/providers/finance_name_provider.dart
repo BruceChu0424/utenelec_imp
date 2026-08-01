@@ -9,6 +9,8 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/repositories/account_repository.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import '../../basic_data/repositories/payment_style_repository.dart';
 
 /// 分摊项目选项（费用/收入）。
@@ -109,9 +111,10 @@ class FinanceNameService {
       : '—';
 }
 
-final financeNameServiceProvider = Provider<FinanceNameService>(
-  (ref) => FinanceNameService(
+final financeNameServiceProvider = Provider<FinanceNameService>((ref) {
+  ref.watch(masterDataSessionKeyProvider);
+  return FinanceNameService(
     ref.watch(apiClientProvider),
     ref.watch(paymentStyleRepositoryProvider),
-  ),
-);
+  );
+});

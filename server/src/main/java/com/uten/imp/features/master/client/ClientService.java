@@ -186,8 +186,12 @@ public class ClientService {
     /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
     @Transactional(readOnly = true)
     public List<ClientDictItem> dict() {
+        var scope = ownerVisibility.evaluate("client", "client:view:all");
         Specification<Client> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
         return repo.findAll(spec, Sort.by(Sort.Direction.ASC, "name")).stream()
+                .filter(client -> scope.seeAll()
+                        || client.getOwnerEmployeeId() == null
+                        || scope.visibleOwners().contains(client.getOwnerEmployeeId()))
                 .map(client -> new ClientDictItem(
                         client.getId(),
                         client.getCode(),

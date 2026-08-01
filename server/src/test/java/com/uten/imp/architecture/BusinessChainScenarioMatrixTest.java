@@ -19,7 +19,7 @@ class BusinessChainScenarioMatrixTest {
     void matrixKeepsEveryRequiredEndToEndScenarioUnique() throws IOException {
         String matrix = Files.readString(MATRIX);
 
-        for (int number = 1; number <= 32; number++) {
+        for (int number = 1; number <= 40; number++) {
             String id = "SC-%02d".formatted(number);
             assertEquals(1, occurrences(matrix, "| " + id + " |"),
                     id + " must appear exactly once as a scenario row");
@@ -47,6 +47,15 @@ class BusinessChainScenarioMatrixTest {
                 "采购请求卡片",
                 "委外发料卡片",
                 "仓库生产领料卡片",
+                "ALLOW_PARTIAL/REQUIRE_COMPLETE/CUSTOMER_CONFIRM",
+                "sales_shipment_warehouse_events",
+                "V190",
+                "GOOD_RELEASE",
+                "SHIPPED",
+                "finance_audit",
+                "FINISHED_IN",
+                "供应商期末结存",
+                "executionSegmentId",
                 "[GREEN]",
                 "[PARTIAL]",
                 "[RED]",

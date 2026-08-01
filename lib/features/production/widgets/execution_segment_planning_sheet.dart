@@ -893,7 +893,6 @@ class _ExecutionPlanningSheetState
               nullCounts: const <String, int>{},
               filters: const <String, String?>{},
               onFilterChanged: (_, _) {},
-              onRowTap: (_) {},
               rowColor: (row) => row.shortageQty > _epsilon
                   ? theme.colorScheme.error.withValues(alpha: 0.06)
                   : Colors.green.withValues(alpha: 0.04),

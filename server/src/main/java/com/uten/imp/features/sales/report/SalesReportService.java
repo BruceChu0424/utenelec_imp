@@ -38,7 +38,7 @@ import java.util.function.BiFunction;
  * <p>明细表：一行=单里一样货品（同单号重复）；汇总表：一行=一整张单（单号唯一）。
  *
  * <p>人员名：历史单据 {@code *_legacy_id} 保留（V66），但 {@code employees.legacy_id}（V65 建）尚未录入 → 暂显空；
- * 员工档案录入 legacy_id 后自动出人名（{@code LEFT JOIN employees ON legacy_id = *_legacy_id OR id = *_id}）。
+ * current UUID 优先关联员工；仅 UUID 为空时按 legacy_id 回退，避免双命中重复报表行。
  *
  * <p>总监：LEFT JOIN {@code client_director_v}（V66 视图，client_categories 上溯 level=0 根 name）。
  *
@@ -345,7 +345,8 @@ public class SalesReportService {
                 JOIN sales_returns o ON o.id = i.return_id
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN client_director_v d ON d.client_id = o.client_id
-                LEFT JOIN employees em_sel ON em_sel.legacy_id = o.seller_legacy_id OR em_sel.id = o.seller_id
+                LEFT JOIN employees em_sel ON em_sel.id = o.seller_id
+                    OR (o.seller_id IS NULL AND em_sel.legacy_id = o.seller_legacy_id)
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
@@ -407,7 +408,8 @@ public class SalesReportService {
                 LEFT JOIN client_director_v d ON d.client_id = o.client_id
                 LEFT JOIN client_categories cc ON cc.id = c.category_id
                 LEFT JOIN warehouses wh ON wh.id = o.warehouse_id
-                LEFT JOIN employees em_snd ON em_snd.legacy_id = o.sender_legacy_id OR em_snd.id = o.sender_id
+                LEFT JOIN employees em_snd ON em_snd.id = o.sender_id
+                    OR (o.sender_id IS NULL AND em_snd.legacy_id = o.sender_legacy_id)
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;

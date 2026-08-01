@@ -14,7 +14,10 @@ public class ShipmentItemLine {
 
     private Integer lineNo;
 
-    /** 关联订货明细（可选；有则审核回写 shipped_qty），空=直销行。 */
+    /**
+     * 新流程必须关联已审订货明细；货品/单位/换算率及商业金额均由服务端按来源覆盖。
+     * NULL 仅用于历史兼容，零星无订单出库应走其它出货单。
+     */
     private UUID orderItemId;
 
     @NotNull

@@ -31,6 +31,13 @@ features/<module>/<doctype>/
 | 委外 | `features/subcontract/` | inquiry/application/order(order+cost_item)/receipt/material_issue/return/material_return/waste/report |
 | 生产 | `features/production/` | plan(plan+item+cost)/daily_report/report |
 | 钱流 | `features/finance/` | ar_ap_ledger(共享 Service)/receipt(+line)/payment(+line)/expense(+item)/other_income(+item)/bank_transfer/reconciliation/report + `features/master/account/`、`paymentstyle/`（主档） |
+| 资产与待摊 | `features/finance/asset/` | application/api/domain/infrastructure 分层：类别、工作流、查询、月度批次、期间、总账端口；现行契约见 [51](51-资产与待摊专业化全链路.md) |
+
+资产子账不是普通“Entity + CRUD + approve/reverse”单据模板：金额内部使用 `BigDecimal`、响应以
+decimal string 交付；更新/删除/动作带 `expectedVersion`；页面动作只消费服务端
+`allowedActions`；月度批次使用输入指纹、期间锁和正常反向批次。核心落账另受默认 false 的
+Feature Gate 保护。当前没有客户端幂等键、行级数据范围、计划修订、资产导出或完整终态事件反冲，
+不得从通用模板擅自补成“已实现”。
 
 ---
 
@@ -162,6 +169,8 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 4. 金额 BigDecimal，禁 double/float。
 5. 命名/包结构与采购一致，便于前端统一调用。
 6. **原生 SQL 可空参数必须 CAST**：`em.createNativeQuery` 写 `WHERE (:param IS NULL OR col = :param)` 时，当 `:param` 绑定为 null，Hibernate `ObjectNullResolvingJdbcType` 会调 `getParameterMetaData()`，PG 对「裸 `? IS NULL`（无类型上下文）」报 `could not determine data type of parameter $N` → 500。**所有可空 param 的 IS NULL 侧一律 `CAST(:param AS <type>) IS NULL`**（type 取 `text`/`uuid`/`date`/`timestamptz`/`smallint`/`boolean`；CAST 只服务于 null 判定，真实比较仍用原 param，类型安全）。排查：后端堆栈见 `PSQLException: could not determine data type` + `ObjectNullResolvingJdbcType.doBindNull` 即此坑。
+7. 资产已过账批次、日志、审批、事件和正式凭证不得原地更新/删除；通用总账生成不得拥有资产来源，
+   月度错误走正常反向批次，资本化/处置/终止必须等待各自专用事件反冲。
 
 ---
 
@@ -169,7 +178,7 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 | agent | 拥有的包 | 可改的共享文件 |
 |---|---|---|
-| 钱流 | features/finance/* + features/master/account + paymentstyle | **定义 ArApLedgerService 接口与实现** |
+| 钱流 | features/finance/* + features/master/account + paymentstyle | **定义 ArApLedgerService 接口与实现**；改 asset 子包前先读 ADR-018/51，不能套旧 CRUD/删除重建范式 |
 | 销售 | features/sales/* | 只注入 ArApLedgerService/StockService，不改它们 |
 | 委外 | features/subcontract/* | 同上 |
 | 生产 | features/production/* | 不涉 AR/AP（计划单不立帐）；只注入 StockService（日报/工序未来） |
@@ -179,7 +188,7 @@ reverse/approveToDraft(id)（红冲 1→-1）:
 
 ---
 
-**最后更新**：2026-07-27 · Java 后端单一事实源。续作先读本文 + [27] + 各 design doc + DDL(V50-V76) + 采购 Java 范本。钱流 22 报表已重写为 `ReportTableResponse` 范式（`features/finance/report/`，含 `execute`/`WhereBuilder`/`FacetSpec`，镜像销售/采购；详见 [26] §十一·财务口径校准）。本期新增 §九 `common/docnumber` 包（DocNumberService + DocNumberPrefix + DocNumberController，V76 单据号系统生成）。
+**最后更新**：2026-08-01 · Java 后端单一事实源。资产子账使用独立的 application/api/domain/infrastructure 契约，续作必须先读 ADR-018/51；其它业务单据续作先读本文 + [27] + 各 design doc + 对应 DDL + 采购 Java 范本。钱流 22 报表已重写为 `ReportTableResponse` 范式（`features/finance/report/`，含 `execute`/`WhereBuilder`/`FacetSpec`，镜像销售/采购；详见 [26] §十一·财务口径校准）。§九登记 `common/docnumber` 包。
 
 ---
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_names.dart';
@@ -46,8 +47,15 @@ final List<RouteBase> productionRoutes = [
   GoRoute(
     path: '/production/plans/:id',
     name: 'production-plan-detail',
-    builder: (_, state) =>
-        ProductionPlanDetailPage(id: state.pathParameters['id']!),
+    builder: (_, state) {
+      final id = state.pathParameters['id']!;
+      return ProductionPlanDetailPage(
+        key: ValueKey(id),
+        id: id,
+        initialExecutionSegmentId:
+            state.uri.queryParameters['executionSegmentId'],
+      );
+    },
   ),
   GoRoute(
     path: RouteName.productionPlanList,

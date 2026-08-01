@@ -5,9 +5,11 @@
 //  - 订货：供应商+币种+采购员+交货日；明细链到申请；带 BOM 成本子表（只读，本期不展开）。
 //  - 进仓(收回成品)：供应商+币种+交货人+lastDate；明细链到订货；审核正向入库+立应付(ap_posted)。
 //  - 退货(成品退)：供应商+仓库(必)+币种+lastDate；明细链到进仓&订货；审核出库+反向立应付(ap_posted)。
-//  - 发料(材料出仓)：仓库(必)+经办人+交货日；无币种/单价(材料按成本)；明细链到订货；审核出库。
-//  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；明细链到发料&订货；审核入库。
-//  - 损耗：仓库(必)+经办人+总重；无币种/单价；明细含 ending/standard/waste_rate/cause；链到发料；审核出库+回写损耗。
+//  - 发料(材料出仓)：仓库(必)+经办人+交货日；无币种/单价(材料按成本)。新单缺冻结 BOM 快照
+//    与子件台账时禁止审核；历史已审单据保留只读/红冲兼容。
+//  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；必须链到已审发料，审核入库并回写发料子件已退量。
+//  - 损耗：仓库(必)+经办人+总重；无币种/单价；明细含 ending/standard/waste_rate/cause；必须链到已审发料；
+//    审核只登记供应商处材料损耗，不重复扣公司库存。
 //
 // 路由路径（路由表在共享 app_router 注册；此处仅约定字符串，不依赖 route_names.dart）：
 //   /subcontract                          hub
@@ -20,6 +22,12 @@ import 'package:flutter/material.dart';
 
 import '../../../shared/auth/permissions.dart';
 import '../models/subcontract_doc.dart';
+
+const kSubcontractMaterialIssueApprovalBlockedReason =
+    '缺冻结 BOM 快照与子件台账，新增发料审核暂不可用（服务端 409）。';
+
+const kSubcontractMaterialIssueHistoricalCompatibilityNote =
+    '历史已审核发料保留只读查看与红冲兼容，并可继续作为材料退、损耗单的来源。';
 
 class SubcontractDocConfig {
   const SubcontractDocConfig({
@@ -64,6 +72,7 @@ class SubcontractDocConfig {
     this.showWasted = false,
     // 审核效果文案（确认对话框用）
     this.approveEffect = '',
+    this.approvalBlockedReason,
     // 管理卡片点进直达新增页（true=跳过列表）
     this.skipListOnCreate = false,
   });
@@ -114,6 +123,11 @@ class SubcontractDocConfig {
 
   /// 审核联动效果说明（确认对话框 + 详情页提示）。
   final String approveEffect;
+
+  /// 非空时前端必须禁用审核，并把原因明确展示给用户；服务端仍需独立兜底。
+  final String? approvalBlockedReason;
+
+  bool get approvalEnabled => approvalBlockedReason == null;
 
   /// 管理卡片点进是否直达新增页（跳过列表）。
   final bool skipListOnCreate;
@@ -219,7 +233,7 @@ class SubcontractDocConfig {
     skipListOnCreate: true,
   );
 
-  /// 委外发料单（材料出仓；10627 行；链到订货；审核出库）。
+  /// 委外发料单（材料出仓；历史链到订货；新单缺冻结 BOM/子件台账时禁止审核）。
   static const materialIssue = SubcontractDocConfig(
     type: SubcontractDocType.materialIssue,
     label: '委外发料单',
@@ -238,7 +252,8 @@ class SubcontractDocConfig {
     linkToOrderItem: true,
     showReturned: true,
     showWasted: true,
-    approveEffect: '审核将出库（材料）+ 回写订货已发料。',
+    approveEffect: '新增委外发料尚不具备冻结 BOM 快照与子件级台账，服务端拒绝审核。',
+    approvalBlockedReason: kSubcontractMaterialIssueApprovalBlockedReason,
     skipListOnCreate: true,
   );
 
@@ -285,11 +300,11 @@ class SubcontractDocConfig {
     linkToMaterialIssueItem: true,
     linkToOrderItem: true,
     showReturned: true,
-    approveEffect: '审核将入库（材料退）+ 回写发料已退 / 订货已材料退。',
+    approveEffect: '审核将入库（材料退）并回写来源发料子件已退量，不再回写订货历史累计量。',
     skipListOnCreate: true,
   );
 
-  /// 委外材料损耗单（3 行；链到发料；审核出库+回写损耗）。
+  /// 委外材料损耗单（3 行；链到发料；审核登记供应商处损耗，不重复扣公司库存）。
   static const waste = SubcontractDocConfig(
     type: SubcontractDocType.waste,
     label: '委外材料损耗单',
@@ -305,7 +320,7 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
-    approveEffect: '审核将出库 + 回写发料明细已损耗。',
+    approveEffect: '审核只登记来源发料子件已损耗量；发料时已转出公司仓，不会再次扣公司库存。',
     skipListOnCreate: true,
   );
 

@@ -58,7 +58,9 @@ class _OrganizationWorkforceOverviewCardState
                       borderRadius: UtenRadius.mdAll,
                     ),
                     child: Icon(
-                      _isCompany ? Icons.apartment_rounded : Icons.groups_rounded,
+                      _isCompany
+                          ? Icons.apartment_rounded
+                          : Icons.groups_rounded,
                       color: theme.colorScheme.onSecondaryContainer,
                     ),
                   ),

@@ -1,12 +1,14 @@
 package com.uten.imp.features.master.client;
 
 import com.uten.imp.features.master.client.dto.ClientDictItem;
+import com.uten.imp.security.OwnerVisibility;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,7 +26,11 @@ class ClientDictionaryTest {
                         ArgumentMatchers.<Specification<Client>>any(),
                         any(Sort.class)))
                 .thenReturn(List.of(active, disabled));
-        ClientService service = new ClientService(repo, null, null, null, null, null);
+        OwnerVisibility visibility = mock(OwnerVisibility.class);
+        when(visibility.evaluate("client", "client:view:all"))
+                .thenReturn(new OwnerVisibility.OwnerScope(true, Set.of()));
+        ClientService service = new ClientService(
+                repo, null, null, null, null, visibility);
 
         List<ClientDictItem> items = service.dict();
 

@@ -110,7 +110,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
     final catHits = categoryHits(tree, q);
     setState(() => _visibleFilterIds = catHits);
     try {
-      final result = await ref.read(clientRepositoryProvider).search(q, size: 50);
+      final result = await ref
+          .read(clientRepositoryProvider)
+          .search(q, size: 50);
       if (!mounted || _globalQuery != q) return;
       final ids = <String>{};
       String? first;
@@ -188,7 +190,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
             .read(clientCategoryRepositoryProvider)
             .create(
               ProductCategorySaveInput(
-                code: r.code!,
+                code: r.code,
                 name: r.name,
                 parentId: r.parentId,
               ),

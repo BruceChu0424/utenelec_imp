@@ -27,7 +27,6 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/audit_log_entry.dart';
 import '../repositories/audit_log_repository.dart';
@@ -44,21 +43,29 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   /// chip 顺序与 [_actionChips] 对齐。
   String? _actionFilter;
 
-  /// 操作人账号搜索词（后端 LIKE）。
-  String _search = '';
+  /// 通用检索：操作人、对象、对象 ID、API 路径或 Request ID。
+  String _keyword = '';
+
+  String? _targetTypeFilter;
+  String? _eventSourceFilter;
+  String _requestId = '';
+  String? _operationKindFilter = 'write';
+  String? _actorScopeFilter = 'user';
+  int? _snapshotId;
 
   String? _riskFilter;
   String? _categoryFilter;
   String? _outcomeFilter;
   DateTimeRange? _dateRange;
 
-  PagedResult<AuditLogEntry>? _page;
+  AuditLogPage? _page;
   AuditSummary? _summary;
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
   final _loadRequests = LatestRequestGuard();
   final _searchController = TextEditingController();
+  final _requestIdController = TextEditingController();
 
   /// 动作 chip 定义：(label, 前缀|null)。null 表示"全部"。
   static const _actionChips = <(String, String?)>[
@@ -69,6 +76,41 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     ('请求操作', 'http_'),
   ];
 
+  static const _operationChips = <(String, String?)>[
+    ('全部操作', null),
+    ('写入', 'write'),
+    ('新增', 'create'),
+    ('修改', 'update'),
+    ('删除', 'delete'),
+    ('读取', 'read'),
+  ];
+
+  static const _actorScopeChips = <(String, String?)>[
+    ('用户操作', 'user'),
+    ('全部记录', null),
+    ('系统/迁移', 'system'),
+  ];
+
+  static const _targetTypeChips = <(String, String?)>[
+    ('全部对象', null),
+    ('货品', 'goods'),
+    ('货品分类', 'material_categories'),
+    ('客户', 'clients'),
+    ('供应商', 'suppliers'),
+  ];
+
+  static const _eventSourceOptions = <(String, String?)>[
+    ('全部来源', null),
+    ('请求', 'request'),
+    ('数据库变更', 'database'),
+    ('业务事件', 'business'),
+    ('安全拦截', 'security'),
+  ];
+
+  static final _requestIdPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
   static const _categoryChips = <(String, String?)>[
     ('全部类型', null),
     ('安全事件', 'security'),
@@ -77,6 +119,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     ('数据导出', 'export'),
     ('数据变更', 'data_change'),
     ('业务操作', 'business'),
+    ('系统设置', 'system'),
   ];
 
   @override
@@ -92,6 +135,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   Future<void> _load(int page) async {
     final generation = _loadRequests.begin();
+    final requestedSnapshotId = _snapshotId;
     setState(() {
       _loading = true;
       _error = null;
@@ -99,37 +143,49 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     });
     try {
       final repository = ref.read(auditLogRepositoryProvider);
-      final values = await Future.wait<Object>([
-        repository.list(
-          page: page,
-          action: _actionFilter,
-          actorAccount: _search.trim().isEmpty ? null : _search.trim(),
-          riskLevel: _riskFilter,
-          eventCategory: _categoryFilter,
-          outcome: _outcomeFilter,
-          dateFrom: _dateRange == null
-              ? null
-              : ChinaDateTime.formatDate(_dateRange!.start),
-          dateTo: _dateRange == null
-              ? null
-              : ChinaDateTime.formatDate(_dateRange!.end),
-        ),
-        repository.summary(
-          action: _actionFilter,
-          actorAccount: _search.trim().isEmpty ? null : _search.trim(),
-          eventCategory: _categoryFilter,
-          dateFrom: _dateRange == null
-              ? null
-              : ChinaDateTime.formatDate(_dateRange!.start),
-          dateTo: _dateRange == null
-              ? null
-              : ChinaDateTime.formatDate(_dateRange!.end),
-        ),
-      ]);
+      final pageResult = await repository.list(
+        page: page,
+        action: _actionFilter,
+        keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+        targetType: _targetTypeFilter,
+        eventSource: _eventSourceFilter,
+        requestId: _requestId.trim().isEmpty ? null : _requestId.trim(),
+        operationKind: _operationKindFilter,
+        actorScope: _actorScopeFilter,
+        snapshotId: requestedSnapshotId,
+        riskLevel: _riskFilter,
+        eventCategory: _categoryFilter,
+        outcome: _outcomeFilter,
+        dateFrom: _dateRange == null
+            ? null
+            : ChinaDateTime.formatDate(_dateRange!.start),
+        dateTo: _dateRange == null
+            ? null
+            : ChinaDateTime.formatDate(_dateRange!.end),
+      );
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      final summary = await repository.summary(
+        action: _actionFilter,
+        keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+        targetType: _targetTypeFilter,
+        eventSource: _eventSourceFilter,
+        requestId: _requestId.trim().isEmpty ? null : _requestId.trim(),
+        operationKind: _operationKindFilter,
+        actorScope: _actorScopeFilter,
+        snapshotId: pageResult.snapshotId,
+        eventCategory: _categoryFilter,
+        dateFrom: _dateRange == null
+            ? null
+            : ChinaDateTime.formatDate(_dateRange!.start),
+        dateTo: _dateRange == null
+            ? null
+            : ChinaDateTime.formatDate(_dateRange!.end),
+      );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
-        _page = values[0] as PagedResult<AuditLogEntry>;
-        _summary = values[1] as AuditSummary;
+        _page = pageResult;
+        _summary = summary;
+        _snapshotId = pageResult.snapshotId;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -149,20 +205,136 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   void _onSearchChanged(String v) {
     final t = v.trim();
-    if (t == _search) return;
-    _search = t;
+    if (t == _keyword) return;
+    _keyword = t;
+    _reloadFromFirstPage();
+  }
+
+  void _onRequestIdDraftChanged(String v) {
+    final t = v.trim();
+    if (_requestId.isEmpty || t == _requestId) return;
+    _requestId = '';
+    _reloadFromFirstPage();
+  }
+
+  void _onRequestIdSubmitted(String v) {
+    final t = v.trim();
+    if (t.isEmpty) {
+      if (_requestId.isEmpty) return;
+      _requestId = '';
+      _reloadFromFirstPage();
+      return;
+    }
+    if (!_requestIdPattern.hasMatch(t)) {
+      context.appWarning('请输入完整的 Request ID；部分内容请使用左侧通用搜索。');
+      return;
+    }
+    if (t == _requestId) return;
+    _requestId = t;
+    _reloadFromFirstPage();
+  }
+
+  void _locateRequest(String requestId) {
+    if (!_requestIdPattern.hasMatch(requestId)) return;
+    setState(() {
+      _requestId = requestId;
+      _requestIdController.text = requestId;
+      _keyword = '';
+      _searchController.clear();
+      _actionFilter = null;
+      _operationKindFilter = null;
+      _actorScopeFilter = null;
+      _targetTypeFilter = null;
+      _eventSourceFilter = null;
+      _categoryFilter = null;
+      _riskFilter = null;
+      _outcomeFilter = null;
+      _snapshotId = null;
+    });
     _load(1);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _requestIdController.dispose();
     super.dispose();
+  }
+
+  void _reloadFromFirstPage() {
+    setState(() => _snapshotId = null);
+    _load(1);
   }
 
   void _onChipTap(String? prefix) {
     if (_actionFilter == prefix) return;
-    _actionFilter = prefix;
+    setState(() {
+      _actionFilter = prefix;
+      if (prefix != null) {
+        _operationKindFilter = null;
+      }
+      if (prefix == 'login') {
+        _actorScopeFilter = null;
+      }
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _onOperationKindChanged(String? value) {
+    if (_operationKindFilter == value) return;
+    setState(() {
+      _operationKindFilter = value;
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _onActorScopeChanged(String? value) {
+    if (_actorScopeFilter == value) return;
+    setState(() {
+      _actorScopeFilter = value;
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _onTargetTypeChanged(String? value) {
+    if (_targetTypeFilter == value) return;
+    setState(() {
+      _targetTypeFilter = value;
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _onEventSourceChanged(String? value) {
+    if (_eventSourceFilter == value) return;
+    setState(() {
+      _eventSourceFilter = value;
+      if (value != null && value != 'database') {
+        _operationKindFilter = null;
+      }
+      if (value == 'security') {
+        _actorScopeFilter = null;
+      }
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _onCategoryChanged(String? value) {
+    if (_categoryFilter == value) return;
+    setState(() {
+      _categoryFilter = value;
+      if (value != null && value != 'data_change') {
+        _operationKindFilter = null;
+      }
+      if (value == 'security' || value == 'authentication') {
+        _actorScopeFilter = null;
+      }
+      _snapshotId = null;
+    });
     _load(1);
   }
 
@@ -182,6 +354,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         _outcomeFilter = outcome;
         _categoryFilter = category;
       }
+      _snapshotId = null;
     });
     _load(1);
   }
@@ -197,7 +370,34 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       saveText: '应用',
     );
     if (picked == null || !mounted) return;
-    setState(() => _dateRange = picked);
+    setState(() {
+      _dateRange = picked;
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _resetFilters({bool showAll = false}) {
+    final today = ChinaDateTime.today();
+    setState(() {
+      _actionFilter = null;
+      _keyword = '';
+      _searchController.clear();
+      _targetTypeFilter = null;
+      _eventSourceFilter = null;
+      _requestId = '';
+      _requestIdController.clear();
+      _operationKindFilter = showAll ? null : 'write';
+      _actorScopeFilter = showAll ? null : 'user';
+      _categoryFilter = null;
+      _riskFilter = null;
+      _outcomeFilter = null;
+      _dateRange = DateTimeRange(
+        start: today.subtract(const Duration(days: 6)),
+        end: today,
+      );
+      _snapshotId = null;
+    });
     _load(1);
   }
 
@@ -249,11 +449,20 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     };
   }
 
-  Future<void> _refresh() => _load(1);
+  Future<void> _refresh() async {
+    setState(() => _snapshotId = null);
+    await _load(1);
+  }
 
   Map<String, dynamic> get _exportQueryParams => <String, dynamic>{
     if (_actionFilter != null) 'action': _actionFilter,
-    if (_search.trim().isNotEmpty) 'actorAccount': _search.trim(),
+    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
+    if (_targetTypeFilter != null) 'targetType': _targetTypeFilter,
+    if (_eventSourceFilter != null) 'eventSource': _eventSourceFilter,
+    if (_requestId.trim().isNotEmpty) 'requestId': _requestId.trim(),
+    if (_operationKindFilter != null) 'operationKind': _operationKindFilter,
+    if (_actorScopeFilter != null) 'actorScope': _actorScopeFilter,
+    if (_snapshotId != null) 'snapshotId': _snapshotId,
     if (_riskFilter != null) 'riskLevel': _riskFilter,
     if (_categoryFilter != null) 'eventCategory': _categoryFilter,
     if (_outcomeFilter != null) 'outcome': _outcomeFilter,
@@ -282,6 +491,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
           child: _AuditDetailPanel(
             future: future,
             onClose: () => Navigator.pop(sheetContext),
+            onLocateRequest: (requestId) {
+              Navigator.pop(sheetContext);
+              _locateRequest(requestId);
+            },
           ),
         ),
       );
@@ -304,6 +517,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             child: _AuditDetailPanel(
               future: future,
               onClose: () => Navigator.pop(dialogContext),
+              onLocateRequest: (requestId) {
+                Navigator.pop(dialogContext);
+                _locateRequest(requestId);
+              },
             ),
           ),
         ),
@@ -338,6 +555,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
             queryParams: _exportQueryParams,
             filename: _exportFilename,
             requiredPermission: Perm.auditLogExport,
+            enabled: _snapshotId != null,
             label: '导出当前结果',
           ),
           IconButton(
@@ -382,44 +600,47 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     padding: const EdgeInsets.only(top: UtenSpacing.s16),
                     child: _AuditFilterPanel(
                       searchController: _searchController,
+                      requestIdController: _requestIdController,
                       actionFilter: _actionFilter,
+                      operationKindFilter: _operationKindFilter,
+                      actorScopeFilter: _actorScopeFilter,
+                      targetTypeFilter: _targetTypeFilter,
+                      eventSourceFilter: _eventSourceFilter,
                       categoryFilter: _categoryFilter,
                       riskFilter: _riskFilter,
                       outcomeFilter: _outcomeFilter,
                       dateRange: _dateRange,
                       actionChips: _actionChips,
+                      operationChips: _operationChips,
+                      actorScopeChips: _actorScopeChips,
+                      targetTypeChips: _targetTypeChips,
+                      eventSourceOptions: _eventSourceOptions,
                       categoryChips: _categoryChips,
                       onSearchChanged: _onSearchChanged,
+                      onRequestIdChanged: _onRequestIdDraftChanged,
+                      onRequestIdSubmitted: _onRequestIdSubmitted,
                       onActionChanged: _onChipTap,
-                      onCategoryChanged: (value) {
-                        setState(() => _categoryFilter = value);
-                        _load(1);
-                      },
+                      onOperationKindChanged: _onOperationKindChanged,
+                      onActorScopeChanged: _onActorScopeChanged,
+                      onTargetTypeChanged: _onTargetTypeChanged,
+                      onEventSourceChanged: _onEventSourceChanged,
+                      onCategoryChanged: _onCategoryChanged,
                       onRiskChanged: (value) {
-                        setState(() => _riskFilter = value);
-                        _load(1);
-                      },
-                      onOutcomeChanged: (value) {
-                        setState(() => _outcomeFilter = value);
-                        _load(1);
-                      },
-                      onPickDate: _pickDateRange,
-                      onClear: () {
-                        final today = ChinaDateTime.today();
                         setState(() {
-                          _actionFilter = null;
-                          _search = '';
-                          _searchController.clear();
-                          _categoryFilter = null;
-                          _riskFilter = null;
-                          _outcomeFilter = null;
-                          _dateRange = DateTimeRange(
-                            start: today.subtract(const Duration(days: 6)),
-                            end: today,
-                          );
+                          _riskFilter = value;
+                          _snapshotId = null;
                         });
                         _load(1);
                       },
+                      onOutcomeChanged: (value) {
+                        setState(() {
+                          _outcomeFilter = value;
+                          _snapshotId = null;
+                        });
+                        _load(1);
+                      },
+                      onPickDate: _pickDateRange,
+                      onClear: _resetFilters,
                     ),
                   ),
                 ),
@@ -453,7 +674,11 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     ),
                   )
                 else if (!_loading && items.isEmpty)
-                  const SliverToBoxAdapter(child: _AuditEmptyCard())
+                  SliverToBoxAdapter(
+                    child: _AuditEmptyCard(
+                      onShowAll: () => _resetFilters(showAll: true),
+                    ),
+                  )
                 else
                   SliverList.separated(
                     itemCount: items.length,
@@ -765,15 +990,30 @@ class _MetricSpec {
 class _AuditFilterPanel extends StatelessWidget {
   const _AuditFilterPanel({
     required this.searchController,
+    required this.requestIdController,
     required this.actionFilter,
+    required this.operationKindFilter,
+    required this.actorScopeFilter,
+    required this.targetTypeFilter,
+    required this.eventSourceFilter,
     required this.categoryFilter,
     required this.riskFilter,
     required this.outcomeFilter,
     required this.dateRange,
     required this.actionChips,
+    required this.operationChips,
+    required this.actorScopeChips,
+    required this.targetTypeChips,
+    required this.eventSourceOptions,
     required this.categoryChips,
     required this.onSearchChanged,
+    required this.onRequestIdChanged,
+    required this.onRequestIdSubmitted,
     required this.onActionChanged,
+    required this.onOperationKindChanged,
+    required this.onActorScopeChanged,
+    required this.onTargetTypeChanged,
+    required this.onEventSourceChanged,
     required this.onCategoryChanged,
     required this.onRiskChanged,
     required this.onOutcomeChanged,
@@ -782,15 +1022,30 @@ class _AuditFilterPanel extends StatelessWidget {
   });
 
   final TextEditingController searchController;
+  final TextEditingController requestIdController;
   final String? actionFilter;
+  final String? operationKindFilter;
+  final String? actorScopeFilter;
+  final String? targetTypeFilter;
+  final String? eventSourceFilter;
   final String? categoryFilter;
   final String? riskFilter;
   final String? outcomeFilter;
   final DateTimeRange? dateRange;
   final List<(String, String?)> actionChips;
+  final List<(String, String?)> operationChips;
+  final List<(String, String?)> actorScopeChips;
+  final List<(String, String?)> targetTypeChips;
+  final List<(String, String?)> eventSourceOptions;
   final List<(String, String?)> categoryChips;
   final ValueChanged<String> onSearchChanged;
+  final ValueChanged<String> onRequestIdChanged;
+  final ValueChanged<String> onRequestIdSubmitted;
   final ValueChanged<String?> onActionChanged;
+  final ValueChanged<String?> onOperationKindChanged;
+  final ValueChanged<String?> onActorScopeChanged;
+  final ValueChanged<String?> onTargetTypeChanged;
+  final ValueChanged<String?> onEventSourceChanged;
   final ValueChanged<String?> onCategoryChanged;
   final ValueChanged<String?> onRiskChanged;
   final ValueChanged<String?> onOutcomeChanged;
@@ -829,10 +1084,26 @@ class _AuditFilterPanel extends StatelessWidget {
           const SizedBox(height: UtenSpacing.s12),
           LayoutBuilder(
             builder: (context, constraints) {
-              final searchField = UtenSearchBar(
-                hint: '搜索操作人账号，例如 admin',
-                controller: searchController,
-                onChanged: onSearchChanged,
+              final searchField = Semantics(
+                key: const ValueKey('audit-keyword-field'),
+                textField: true,
+                label: '审计通用搜索',
+                child: UtenSearchBar(
+                  hint: '搜索操作人、对象、对象 ID 或 API',
+                  controller: searchController,
+                  onChanged: onSearchChanged,
+                ),
+              );
+              final requestField = Semantics(
+                key: const ValueKey('audit-request-id-field'),
+                textField: true,
+                label: '按 Request ID 定位',
+                child: UtenSearchBar(
+                  hint: '精确定位 Request ID',
+                  controller: requestIdController,
+                  onChanged: onRequestIdChanged,
+                  onSubmitted: onRequestIdSubmitted,
+                ),
               );
               final dateButton = OutlinedButton.icon(
                 onPressed: onPickDate,
@@ -845,33 +1116,72 @@ class _AuditFilterPanel extends StatelessWidget {
                   children: [
                     searchField,
                     const SizedBox(height: UtenSpacing.s8),
+                    requestField,
+                    const SizedBox(height: UtenSpacing.s8),
                     dateButton,
                   ],
                 );
               }
               return Row(
                 children: [
-                  Expanded(child: searchField),
+                  Expanded(flex: 2, child: searchField),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(child: requestField),
                   const SizedBox(width: UtenSpacing.s12),
                   dateButton,
                 ],
               );
             },
           ),
-          const SizedBox(height: UtenSpacing.s16),
-          Text('事件类型', style: theme.textTheme.labelLarge),
           const SizedBox(height: UtenSpacing.s8),
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              for (final (label, value) in categoryChips)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: categoryFilter == value,
-                  onSelected: (_) => onCategoryChanged(value),
-                ),
-            ],
+          Text(
+            '可搜索操作人、对象、对象 ID、API 或 Request ID；货品名称不在搜索范围。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          _AuditFilterChoiceGroup(
+            title: '操作类型',
+            semanticPrefix: '操作类型',
+            keyPrefix: 'audit-operation',
+            value: operationKindFilter,
+            options: operationChips,
+            onChanged: onOperationKindChanged,
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          _AuditFilterChoiceGroup(
+            title: '记录范围',
+            semanticPrefix: '记录范围',
+            keyPrefix: 'audit-scope',
+            value: actorScopeFilter,
+            options: actorScopeChips,
+            onChanged: onActorScopeChanged,
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          _AuditFilterChoiceGroup(
+            title: '业务对象',
+            semanticPrefix: '业务对象',
+            keyPrefix: 'audit-target',
+            value: targetTypeFilter,
+            options: targetTypeChips,
+            onChanged: onTargetTypeChanged,
+          ),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            '查货品或分类记录时，先选业务对象，再选新增、修改或删除。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          _AuditFilterChoiceGroup(
+            title: '事件类型',
+            semanticPrefix: '事件类型',
+            keyPrefix: 'audit-category',
+            value: categoryFilter,
+            options: categoryChips,
+            onChanged: onCategoryChanged,
           ),
           const SizedBox(height: UtenSpacing.s16),
           Wrap(
@@ -880,7 +1190,13 @@ class _AuditFilterPanel extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _AuditFilterMenu(
-                label: '动作范围',
+                label: '事件来源',
+                value: eventSourceFilter,
+                options: eventSourceOptions,
+                onChanged: onEventSourceChanged,
+              ),
+              _AuditFilterMenu(
+                label: '原始动作',
                 value: actionFilter,
                 options: actionChips,
                 onChanged: onActionChanged,
@@ -912,6 +1228,53 @@ class _AuditFilterPanel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AuditFilterChoiceGroup extends StatelessWidget {
+  const _AuditFilterChoiceGroup({
+    required this.title,
+    required this.semanticPrefix,
+    required this.keyPrefix,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String semanticPrefix;
+  final String keyPrefix;
+  final String? value;
+  final List<(String, String?)> options;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: UtenSpacing.s8),
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          children: [
+            for (final (label, optionValue) in options)
+              Semantics(
+                button: true,
+                selected: value == optionValue,
+                label: '$semanticPrefix：$label',
+                child: ChoiceChip(
+                  key: ValueKey('$keyPrefix-${optionValue ?? 'all'}'),
+                  label: Text(label),
+                  selected: value == optionValue,
+                  onSelected: (_) => onChanged(optionValue),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -1376,7 +1739,9 @@ class _AuditErrorCard extends StatelessWidget {
 }
 
 class _AuditEmptyCard extends StatelessWidget {
-  const _AuditEmptyCard();
+  const _AuditEmptyCard({required this.onShowAll});
+
+  final VoidCallback onShowAll;
 
   @override
   Widget build(BuildContext context) {
@@ -1395,10 +1760,17 @@ class _AuditEmptyCard extends StatelessWidget {
           Text('没有符合条件的操作记录', style: theme.textTheme.titleMedium),
           const SizedBox(height: UtenSpacing.s4),
           Text(
-            '请调整时间、风险等级或事件类型后重试。',
+            '可清除操作类型、记录范围或业务对象；如需更早记录，请调整日期。',
+            textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          OutlinedButton.icon(
+            onPressed: onShowAll,
+            icon: const Icon(Icons.filter_alt_off_outlined),
+            label: const Text('清除业务筛选（保留最近 7 天）'),
           ),
         ],
       ),
@@ -1406,7 +1778,7 @@ class _AuditEmptyCard extends StatelessWidget {
   }
 }
 
-class _AuditPagination extends StatelessWidget {
+class _AuditPagination extends StatefulWidget {
   const _AuditPagination({
     required this.currentPage,
     required this.totalPages,
@@ -1420,25 +1792,90 @@ class _AuditPagination extends StatelessWidget {
   final ValueChanged<int> onPageChanged;
 
   @override
+  State<_AuditPagination> createState() => _AuditPaginationState();
+}
+
+class _AuditPaginationState extends State<_AuditPagination> {
+  late final TextEditingController _controller;
+
+  int get _lastPage => math.max(widget.totalPages, 1);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: '${widget.currentPage}');
+  }
+
+  @override
+  void didUpdateWidget(covariant _AuditPagination oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentPage != widget.currentPage &&
+        _controller.text != '${widget.currentPage}') {
+      _controller.text = '${widget.currentPage}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _jump() {
+    final parsed = int.tryParse(_controller.text.trim());
+    if (parsed == null) {
+      _controller.text = '${widget.currentPage}';
+      return;
+    }
+    final page = parsed.clamp(1, _lastPage).toInt();
+    _controller.text = '$page';
+    if (!widget.loading && page != widget.currentPage) {
+      widget.onPageChanged(page);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
       children: [
         IconButton(
           tooltip: '上一页',
-          onPressed: !loading && currentPage > 1
-              ? () => onPageChanged(currentPage - 1)
+          onPressed: !widget.loading && widget.currentPage > 1
+              ? () => widget.onPageChanged(widget.currentPage - 1)
               : null,
           icon: const Icon(Icons.chevron_left_rounded),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-          child: Text('第 $currentPage / ${math.max(totalPages, 1)} 页'),
+        Text('第 ${widget.currentPage} / $_lastPage 页'),
+        SizedBox(
+          width: 88,
+          child: Semantics(
+            textField: true,
+            label: '跳转页码，范围 1 到 $_lastPage',
+            child: TextField(
+              key: const ValueKey('audit-page-jump-field'),
+              controller: _controller,
+              enabled: !widget.loading,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              textInputAction: TextInputAction.go,
+              onSubmitted: (_) => _jump(),
+              decoration: const InputDecoration(labelText: '页码', isDense: true),
+            ),
+          ),
+        ),
+        FilledButton.tonal(
+          key: const ValueKey('audit-page-jump-button'),
+          onPressed: widget.loading ? null : _jump,
+          child: const Text('跳转'),
         ),
         IconButton(
           tooltip: '下一页',
-          onPressed: !loading && currentPage < totalPages
-              ? () => onPageChanged(currentPage + 1)
+          onPressed: !widget.loading && widget.currentPage < widget.totalPages
+              ? () => widget.onPageChanged(widget.currentPage + 1)
               : null,
           icon: const Icon(Icons.chevron_right_rounded),
         ),
@@ -1448,10 +1885,15 @@ class _AuditPagination extends StatelessWidget {
 }
 
 class _AuditDetailPanel extends StatelessWidget {
-  const _AuditDetailPanel({required this.future, required this.onClose});
+  const _AuditDetailPanel({
+    required this.future,
+    required this.onClose,
+    required this.onLocateRequest,
+  });
 
   final Future<AuditLogDetail> future;
   final VoidCallback onClose;
+  final ValueChanged<String> onLocateRequest;
 
   @override
   Widget build(BuildContext context) {
@@ -1483,17 +1925,26 @@ class _AuditDetailPanel extends StatelessWidget {
             ],
           );
         }
-        return _AuditDetailContent(detail: snapshot.data!, onClose: onClose);
+        return _AuditDetailContent(
+          detail: snapshot.data!,
+          onClose: onClose,
+          onLocateRequest: onLocateRequest,
+        );
       },
     );
   }
 }
 
 class _AuditDetailContent extends StatelessWidget {
-  const _AuditDetailContent({required this.detail, required this.onClose});
+  const _AuditDetailContent({
+    required this.detail,
+    required this.onClose,
+    required this.onLocateRequest,
+  });
 
   final AuditLogDetail detail;
   final VoidCallback onClose;
+  final ValueChanged<String> onLocateRequest;
 
   @override
   Widget build(BuildContext context) {
@@ -1510,6 +1961,9 @@ class _AuditDetailContent extends StatelessWidget {
                 subtitle:
                     detail.summary ??
                     _AdminAuditLogPageState._actionLabel(detail.action),
+                onLocateRequest: detail.requestId?.trim().isNotEmpty == true
+                    ? () => onLocateRequest(detail.requestId!)
+                    : null,
                 onClose: onClose,
               ),
               const TabBar(
@@ -2947,43 +3401,62 @@ class _AuditDetailHeader extends StatelessWidget {
     required this.title,
     required this.onClose,
     this.subtitle,
+    this.onLocateRequest,
   });
 
   final String title;
   final String? subtitle;
   final VoidCallback onClose;
+  final VoidCallback? onLocateRequest;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                if (subtitle != null)
-                  Text(
-                    subtitle!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-              ],
+                    if (subtitle != null)
+                      Text(
+                        subtitle!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: '关闭',
+                onPressed: onClose,
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          if (onLocateRequest != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const ValueKey('audit-locate-same-request'),
+                onPressed: onLocateRequest,
+                icon: const Icon(Icons.account_tree_outlined, size: 18),
+                label: const Text('查看同一操作'),
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: onClose,
-            icon: const Icon(Icons.close_rounded),
-          ),
+          ],
         ],
       ),
     );

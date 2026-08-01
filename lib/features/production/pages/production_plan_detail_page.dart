@@ -32,8 +32,13 @@ import '../../../core/router/nav_helpers.dart';
 import 'production_plan_list_page.dart' show ProductionPerm;
 
 class ProductionPlanDetailPage extends ConsumerStatefulWidget {
-  const ProductionPlanDetailPage({super.key, required this.id});
+  const ProductionPlanDetailPage({
+    super.key,
+    required this.id,
+    this.initialExecutionSegmentId,
+  });
   final String id;
+  final String? initialExecutionSegmentId;
 
   @override
   ConsumerState<ProductionPlanDetailPage> createState() =>
@@ -51,11 +56,38 @@ class _ProductionPlanDetailPageState
   bool _mrpLoading = false;
   bool _mrpBusy = false;
   String? _mrpError;
+  String? _subplanError;
+  String? _focusedExecutionSegmentId;
+  int _executionSegmentsRevision = 0;
 
   @override
   void initState() {
     super.initState();
+    _focusedExecutionSegmentId = widget.initialExecutionSegmentId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductionPlanDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id) {
+      _detail = null;
+      _error = null;
+      _mrpRows = null;
+      _subplans = null;
+      _mrpError = null;
+      _subplanError = null;
+      _focusedExecutionSegmentId = widget.initialExecutionSegmentId;
+      _executionSegmentsRevision = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+      return;
+    }
+    if (oldWidget.initialExecutionSegmentId !=
+        widget.initialExecutionSegmentId) {
+      setState(
+        () => _focusedExecutionSegmentId = widget.initialExecutionSegmentId,
+      );
+    }
   }
 
   bool get _canEdit =>
@@ -69,15 +101,15 @@ class _ProductionPlanDetailPageState
       .contains(ProductionPerm.dailyReportEdit);
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final planId = widget.id;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      final d = await ref
-          .read(productionPlanRepositoryProvider)
-          .detail(widget.id);
+      final d = await ref.read(productionPlanRepositoryProvider).detail(planId);
       final goodsIds = d.items
           .map((e) => e.goodsId)
           .whereType<String>()
@@ -87,20 +119,20 @@ class _ProductionPlanDetailPageState
         d.sellerId,
         d.workerId,
       ]);
-      if (!mounted) return;
+      if (!mounted || widget.id != planId) return;
       setState(() {
         _detail = d;
         _loading = false;
       });
       _loadMrp();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || widget.id != planId) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || widget.id != planId) return;
       setState(() {
         _error = '加载详情失败';
         _loading = false;
@@ -163,27 +195,48 @@ class _ProductionPlanDetailPageState
   // ───────────────────────── MRP-lite 面板 ─────────────────────────
   Future<void> _loadMrp() async {
     if (!mounted) return;
+    final planId = widget.id;
     setState(() {
       _mrpLoading = true;
       _mrpError = null;
+      _subplanError = null;
     });
+    final subplansFuture = _loadSubplans(planId: planId);
     try {
       final repo = ref.read(productionPlanRepositoryProvider);
-      final results = await Future.wait([
-        repo.mrpPreview(widget.id),
-        repo.mrpSubplans(widget.id).catchError((_) => <MrpSubplanRef>[]),
-      ]);
-      if (!mounted) return;
+      final rows = await repo.mrpPreview(planId);
+      if (!mounted || widget.id != planId) return;
       setState(() {
-        _mrpRows = results[0] as List<MrpRow>;
-        _subplans = results[1] as List<MrpSubplanRef>;
+        _mrpRows = rows;
         _mrpLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || widget.id != planId) return;
       setState(() {
         _mrpLoading = false;
         _mrpError = productionErrorMessage(error, fallback: '物料需求加载失败');
+      });
+    }
+    await subplansFuture;
+  }
+
+  Future<void> _loadSubplans({String? planId}) async {
+    if (!mounted) return;
+    final requestedPlanId = planId ?? widget.id;
+    try {
+      final subplans = await ref
+          .read(productionPlanRepositoryProvider)
+          .mrpSubplans(requestedPlanId);
+      if (!mounted || widget.id != requestedPlanId) return;
+      setState(() {
+        _subplans = subplans;
+        _subplanError = null;
+      });
+    } catch (error) {
+      if (!mounted || widget.id != requestedPlanId) return;
+      setState(() {
+        _subplans = null;
+        _subplanError = productionErrorMessage(error, fallback: '子计划列表加载失败');
       });
     }
   }
@@ -299,8 +352,12 @@ class _ProductionPlanDetailPageState
           .confirmExecutionPlanning(widget.id, request);
       if (!mounted) return;
       setState(() => _mrpBusy = false);
-      await _showPlanningPackageResult(result);
+      final selectedSegmentId = await _showPlanningPackageResult(result);
       if (!mounted) return;
+      setState(() {
+        _focusedExecutionSegmentId = selectedSegmentId;
+        _executionSegmentsRevision++;
+      });
       await _loadMrp();
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -318,9 +375,9 @@ class _ProductionPlanDetailPageState
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('暂无可排产的执行分段'),
-        content: SizedBox(
+        content: const SizedBox(
           width: 440,
-          child: const Text(
+          child: Text(
             '一键生成子计划需要每个成品在「货品资料」维护组成 BOM，'
             '并且计划尚有未排数量。可能原因：\n\n'
             '• 成品尚未维护 BOM（请在货品资料为成品添加组成组件）\n'
@@ -346,10 +403,10 @@ class _ProductionPlanDetailPageState
     );
   }
 
-  Future<void> _showPlanningPackageResult(
+  Future<String?> _showPlanningPackageResult(
     ProductionPlanningConfirmResult result,
   ) {
-    return showDialog<void>(
+    return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('已生成 ${result.executionSegments.length} 个执行子计划'),
@@ -401,6 +458,7 @@ class _ProductionPlanDetailPageState
               for (final segment in result.executionSegments)
                 ListTile(
                   dense: true,
+                  onTap: () => Navigator.pop(ctx, segment.segmentId),
                   leading: Icon(
                     segment.status == 'READY'
                         ? Icons.play_circle_outline
@@ -415,9 +473,10 @@ class _ProductionPlanDetailPageState
                   ),
                   subtitle: Text(
                     segment.status == 'READY'
-                        ? '可开工 · 已按该执行段锁料'
-                        : '待料 · 当前零锁料，齐套后自动回补',
+                        ? '可开工 · 已按该执行段锁料 · 点击查看详情'
+                        : '待料 · 当前零锁料，齐套后自动回补 · 点击查看详情',
                   ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
                 ),
             ],
           ),
@@ -469,6 +528,33 @@ class _ProductionPlanDetailPageState
     );
   }
 
+  Widget _subplanErrorCard(ThemeData theme) {
+    final message = _subplanError;
+    if (message == null) return const SizedBox.shrink();
+    return Card(
+      color: theme.colorScheme.errorContainer.withValues(alpha: 0.35),
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        child: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: theme.colorScheme.onErrorContainer,
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '子计划列表加载失败：$message',
+                style: TextStyle(color: theme.colorScheme.onErrorContainer),
+              ),
+            ),
+            TextButton(onPressed: _loadSubplans, child: const Text('重试')),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _subplanProgressRow(ThemeData theme, MrpSubplanRef sp) {
     final pct = sp.percent.clamp(0.0, 1.0);
     final reversed = sp.status == -1;
@@ -494,7 +580,7 @@ class _ProductionPlanDetailPageState
               : v.toStringAsFixed(2));
     return InkWell(
       borderRadius: UtenRadius.mdAll,
-      onTap: () => context.push(RoutePath.productionPlanDetail(sp.planId)),
+      onTap: () => _openChildPlan(sp),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
         child: Row(
@@ -548,10 +634,29 @@ class _ProductionPlanDetailPageState
                 ),
               ),
             ),
+            const SizedBox(width: UtenSpacing.s4),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _openChildPlan(MrpSubplanRef subplan) async {
+    final childPlanId = subplan.planId.trim();
+    if (childPlanId.isEmpty || childPlanId == widget.id) {
+      context.appError('子计划链接异常，请刷新后重试', force: true);
+      return;
+    }
+    try {
+      await context.push(RoutePath.productionPlanDetail(childPlanId));
+    } catch (_) {
+      if (mounted) context.appError('无法打开子计划，请刷新后重试', force: true);
+    }
   }
 
   Widget _mrpCard(ThemeData theme, MasterNameService names) {
@@ -656,9 +761,7 @@ class _ProductionPlanDetailPageState
                         ? null
                         : _generatePlanningPackage,
                     onDisabledTap: () => context.appWarning(
-                      _mrpBusy
-                          ? '正在处理，请稍候…'
-                          : '仅已审核、未停止、未取消的生产计划可生成子计划',
+                      _mrpBusy ? '正在处理，请稍候…' : '仅已审核、未停止、未取消的生产计划可生成子计划',
                       force: true,
                     ),
                     child: const Text('一键生成子计划'),
@@ -828,7 +931,6 @@ class _ProductionPlanDetailPageState
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
-      onRowTap: (_) {},
       rowColor: (row) => _mrpRowColor(theme, row),
       emptyMessage: '暂无物料需求',
     );
@@ -961,11 +1063,16 @@ class _ProductionPlanDetailPageState
                     _mrpCard(theme, names),
                     const SizedBox(height: UtenSpacing.s12),
                     ProductionExecutionSegmentsCard(
+                      key: ValueKey('${widget.id}|$_executionSegmentsRevision'),
                       planId: widget.id,
                       canEdit: _canEdit,
                       canReport: _canReport,
+                      initialSegmentId: _focusedExecutionSegmentId,
                       onChanged: _loadMrp,
                     ),
+                    if (_subplanError != null)
+                      const SizedBox(height: UtenSpacing.s12),
+                    _subplanErrorCard(theme),
                     if (_subplans != null && _subplans!.isNotEmpty)
                       const SizedBox(height: UtenSpacing.s12),
                     _subplansCard(theme),
@@ -1115,7 +1222,6 @@ class _ProductionPlanDetailPageState
           nullCounts: const {},
           filters: const {},
           onFilterChanged: (_, _) {},
-          onRowTap: (_) {},
           emptyMessage: '暂无明细',
         ),
       ],

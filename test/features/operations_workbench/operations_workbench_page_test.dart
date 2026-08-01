@@ -64,6 +64,9 @@ void main() {
                   size: 20,
                   total: 5,
                   totalPages: 1,
+                  capabilities: const OperationsWorkbenchCapabilities(
+                    canCreatePurchaseOrder: true,
+                  ),
                 ),
               ),
             ),
@@ -137,6 +140,9 @@ void main() {
         size: 20,
         total: 1,
         totalPages: 1,
+        capabilities: const OperationsWorkbenchCapabilities(
+          canCreatePurchaseOrder: true,
+        ),
       ),
     );
     await tester.pumpWidget(
@@ -162,6 +168,68 @@ void main() {
     );
     expect(find.text('全部逾期'), findsOneWidget);
   });
+
+  testWidgets(
+    'restricted document metadata and purchase create action stay hidden',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final restrictedTask = _task(
+        id: 'task-restricted',
+        goodsName: '受限采购任务',
+        actionDocumentRestricted: true,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: _FakeGateway(
+                OperationsWorkbenchData(
+                  department: OperationsWorkbenchDepartment.purchase,
+                  summary: const OperationsWorkbenchSummary(
+                    totalTasks: 1,
+                    overdueTasks: 0,
+                    openTasks: 1,
+                    openQty: 8,
+                    statusCounts: {'WAITING_SUPPLY': 1},
+                  ),
+                  items: [restrictedTask],
+                  page: 1,
+                  size: 20,
+                  total: 1,
+                  totalPages: 1,
+                  capabilities: const OperationsWorkbenchCapabilities(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('无权查看关联单据'), findsOneWidget);
+      expect(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operations-workbench-open-selected')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('operations-task-action-task-restricted')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      expect(
+        find.byKey(const Key('operations-workbench-open-selected')),
+        findsNothing,
+      );
+    },
+  );
 
   final zeroStatusScenarios =
       <
@@ -340,6 +408,7 @@ OperationsWorkbenchData _emptyData({
     size: 20,
     total: 0,
     totalPages: 0,
+    capabilities: const OperationsWorkbenchCapabilities(),
   );
 }
 
@@ -349,6 +418,7 @@ OperationsWorkbenchTask _task({
   String actionDocId = 'request-1',
   String? actionDocItemId,
   String actionDocStatus = '1',
+  bool actionDocumentRestricted = false,
 }) {
   return OperationsWorkbenchTask(
     taskId: id,
@@ -379,8 +449,11 @@ OperationsWorkbenchTask _task({
             docType: 'PURCHASE_REQUEST',
             number: 'PR-$actionDocId',
             path: '/purchase/requests/$actionDocId',
+            canView: true,
+            canEdit: false,
             status: actionDocStatus,
           ),
     actionDocItemId: actionDocItemId,
+    actionDocumentRestricted: actionDocumentRestricted,
   );
 }

@@ -88,6 +88,7 @@ public class SalesReturnService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final SalesDocumentAccessPolicy accessPolicy;
+    private final SalesReturnQualityService qualityService;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_return:view')")
@@ -231,13 +232,12 @@ public class SalesReturnService {
         lockStoredSourceGraph(items);
         assertStoredSources(r, items, true);
         validateReturnWritebackCapacity(items, +1);
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
-
         OffsetDateTime now = OffsetDateTime.now();
+        // V189: receipt is physically acknowledged into a separate quality
+        // quarantine. It is intentionally absent from stock_balances/ATP until
+        // an authorized GOOD_RELEASE disposition.
+        qualityService.receive(r, items, now);
         for (SalesReturnItem it : items) {
-            applyMovement(r, it, StockService.DIR_IN, now, null);
             writeback(it, +1);
         }
 
@@ -280,9 +280,17 @@ public class SalesReturnService {
         lockStoredSourceGraph(items);
         assertStoredSources(r, items, false);
         validateReturnWritebackCapacity(items, -1);
-        stockService.lockInventory(items.stream()
-                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
-                .toList());
+        OffsetDateTime now = OffsetDateTime.now();
+        // New V189 receipts never entered saleable stock. Historical approved
+        // returns have no quality rows and retain the original stock reversal
+        // behavior; we do not backfill invented inspection evidence.
+        boolean qualityManaged = qualityService.reverseUntouchedReceipt(
+                r.getId(), items.size(), now);
+        if (!qualityManaged) {
+            stockService.lockInventory(items.stream()
+                    .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                    .toList());
+        }
 
         // 1. 钱流先校验：若已有收款核销 → reverseArAp 抛 IllegalStateException（阻止红冲）
         if (r.isArPosted()) {
@@ -292,9 +300,10 @@ public class SalesReturnService {
 
         // 2. 反向库存（type=4 dir=-1 倒回）+ 回减 returned_qty
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
-        OffsetDateTime now = OffsetDateTime.now();
         for (SalesReturnItem it : items) {
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
+            if (!qualityManaged) {
+                applyMovement(r, it, StockService.DIR_OUT, now, null);
+            }
             writeback(it, -1);
         }
 
@@ -339,7 +348,34 @@ public class SalesReturnService {
                     .setParameter("id", it.getOrderItemId()).executeUpdate();
             recomputeOrderItemChain(it.getOrderItemId());
             recalcOrderClosed(it.getOrderItemId());
+            if (sign > 0) {
+                clearStalePartialShipmentConfirmation(
+                        it.getOrderItemId());
+            }
         }
+    }
+
+    /**
+     * A customer confirmation describes the fulfilment picture that existed
+     * when it was captured. An approved return reopens demand, so reusing that
+     * old confirmation for replacement delivery would be a false business
+     * fact. Return reversal does not restore it; sales must confirm again.
+     */
+    private void clearStalePartialShipmentConfirmation(UUID orderItemId) {
+        em.createNativeQuery("""
+                UPDATE sales_orders o
+                SET partial_shipment_confirmed_at = NULL,
+                    partial_shipment_confirmed_by = NULL,
+                    partial_shipment_confirmation_reason = NULL
+                WHERE o.id = (
+                    SELECT i.order_id
+                    FROM sales_order_items i
+                    WHERE i.id = :orderItemId
+                )
+                  AND o.shipment_policy = 'CUSTOMER_CONFIRM'
+                """)
+                .setParameter("orderItemId", orderItemId)
+                .executeUpdate();
     }
 
     /**

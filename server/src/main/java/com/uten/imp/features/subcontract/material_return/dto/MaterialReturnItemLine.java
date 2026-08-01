@@ -31,7 +31,7 @@ public class MaterialReturnItemLine {
     /** 关联发料明细（可选；审核回写 material_issue_items.returned_qty）。 */
     private UUID materialIssueItemId;
 
-    /** 关联订货明细（可选；审核回写 order_items.material_returned_qty）。 */
+    /** 关联订货明细（用于核验发料来源链；不回写成品行累计量）。 */
     private UUID orderItemId;
 
     private UUID parentGoodsId;

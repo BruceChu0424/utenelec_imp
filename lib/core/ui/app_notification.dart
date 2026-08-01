@@ -104,17 +104,21 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     if (state.isNotEmpty) state = const <AppNotification>[];
   }
 
-  void showSuccess(String message, {String? title, Duration? duration, bool force = false}) =>
-      _show(
-        AppNotification(
-          id: '',
-          kind: AppNotificationKind.success,
-          title: title,
-          message: message,
-          durationMs: duration?.inMilliseconds ?? 3200,
-        ),
-        force: force,
-      );
+  void showSuccess(
+    String message, {
+    String? title,
+    Duration? duration,
+    bool force = false,
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.success,
+      title: title,
+      message: message,
+      durationMs: duration?.inMilliseconds ?? 3200,
+    ),
+    force: force,
+  );
 
   void showError(
     String message, {
@@ -134,19 +138,28 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     force: force,
   );
 
-  void showWarning(String message, {String? title, Duration? duration, bool force = false}) =>
-      _show(
-        AppNotification(
-          id: '',
-          kind: AppNotificationKind.warning,
-          title: title,
-          message: message,
-          durationMs: duration?.inMilliseconds ?? 3200,
-        ),
-        force: force,
-      );
+  void showWarning(
+    String message, {
+    String? title,
+    Duration? duration,
+    bool force = false,
+  }) => _show(
+    AppNotification(
+      id: '',
+      kind: AppNotificationKind.warning,
+      title: title,
+      message: message,
+      durationMs: duration?.inMilliseconds ?? 3200,
+    ),
+    force: force,
+  );
 
-  void showInfo(String message, {String? title, Duration? duration, bool force = false}) => _show(
+  void showInfo(
+    String message, {
+    String? title,
+    Duration? duration,
+    bool force = false,
+  }) => _show(
     AppNotification(
       id: '',
       kind: AppNotificationKind.info,
@@ -206,7 +219,12 @@ extension AppNotificationContextX on BuildContext {
     String? title,
     List<ApiFieldError>? fieldErrors,
     bool force = false,
-  }) => _notifier.showError(message, title: title, fieldErrors: fieldErrors, force: force);
+  }) => _notifier.showError(
+    message,
+    title: title,
+    fieldErrors: fieldErrors,
+    force: force,
+  );
 
   /// 显示顶部警告通知。
   void appWarning(String message, {String? title, bool force = false}) =>

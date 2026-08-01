@@ -3,12 +3,15 @@ package com.uten.imp.audit;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.time.BusinessTime;
-import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.Pageables;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Root;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.query.criteria.JpaExpression;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,11 +25,11 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 审计日志查询（管理端读侧）。
@@ -54,6 +57,20 @@ public class AuditQueryService {
             "verify_local_audit_receipt");
     private static final List<String> DATA_EXPORT_ACTIONS = List.of(
             "download_payroll_slip");
+    private static final Map<String, List<String>> OPERATION_ACTIONS = Map.of(
+            "create", List.of("insert", "http_post"),
+            "update", List.of("update", "http_put", "http_patch"),
+            "delete", List.of("delete", "http_delete"),
+            "write", List.of(
+                    "insert", "update", "delete",
+                    "http_post", "http_put", "http_patch", "http_delete"),
+            "read", List.of("http_get"));
+    private static final Map<String, List<String>> TARGET_TYPE_ALIASES = Map.of(
+            "goods", List.of("goods", "api/master/goods"),
+            "material_categories", List.of(
+                    "material_categories", "api/master/material-categories"),
+            "clients", List.of("clients", "api/master/clients"),
+            "suppliers", List.of("suppliers", "api/master/suppliers"));
     private static final DateTimeFormatter EXPORT_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final List<ExportColumn> EXPORT_COLUMNS = List.of(
@@ -100,40 +117,30 @@ public class AuditQueryService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('audit_log:view')")
-    public PageResponse<AuditLogRow> query(String actionPrefix,
-                                           String actorAccount,
-                                           String riskLevel,
-                                           String eventCategory,
-                                           String outcome,
-                                           LocalDate dateFrom,
-                                           LocalDate dateTo,
-                                           int page,
-                                           int size) {
-        Specification<AuditLog> spec = specification(
-                actionPrefix,
-                actorAccount,
-                riskLevel,
-                eventCategory,
-                outcome,
-                dateFrom,
-                dateTo);
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+    public AuditPageResponse query(AuditSearchCriteria criteria, int page, int size) {
+        AuditSearchCriteria boundedCriteria = withResolvedSnapshot(criteria);
+        long snapshotId = boundedCriteria.snapshotId();
+        Specification<AuditLog> spec = specification(boundedCriteria);
+        Pageable pageable = Pageables.of(page, size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+                        .and(Sort.by(Sort.Direction.DESC, "id")));
         Page<AuditLog> p = repo.findAll(spec, pageable);
         List<AuditLogRow> items = p.getContent().stream()
                 .map(value -> AuditLogRow.of(value, interpreter))
                 .toList();
-        return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+        return new AuditPageResponse(
+                items,
+                pageable.getPageNumber() + 1,
+                pageable.getPageSize(),
+                p.getTotalElements(),
+                p.getTotalPages(),
+                snapshotId);
     }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('audit_log:view')")
-    public AuditSummary summary(String actionPrefix,
-                                String actorAccount,
-                                String eventCategory,
-                                LocalDate dateFrom,
-                                LocalDate dateTo) {
-        Specification<AuditLog> base = specification(
-                actionPrefix, actorAccount, null, eventCategory, null, dateFrom, dateTo);
+    public AuditSummary summary(AuditSearchCriteria criteria) {
+        Specification<AuditLog> base = specification(withResolvedSnapshot(criteria));
         long total = repo.count(base);
         long risk = repo.count(base.and(riskSpecification("risky")));
         long critical = repo.count(base.and(riskSpecification("critical")));
@@ -142,25 +149,13 @@ public class AuditQueryService {
 
         LocalDate today = BusinessTime.today();
         LocalDate trendStart = today.minusDays(6);
-        Map<LocalDate, AuditSummary.DailyPoint> actual = new HashMap<>();
-        for (Object[] row : repo.summarizeDaily(
-                BusinessTime.startOfDay(trendStart),
-                BusinessTime.startOfDay(today.plusDays(1)),
-                actionPrefix,
-                actorAccount,
-                eventCategory)) {
-            LocalDate date = row[0] instanceof LocalDate localDate
-                    ? localDate
-                    : ((java.sql.Date) row[0]).toLocalDate();
-            actual.put(date, new AuditSummary.DailyPoint(
-                    date,
-                    ((Number) row[1]).longValue(),
-                    ((Number) row[2]).longValue()));
-        }
         List<AuditSummary.DailyPoint> trend = new ArrayList<>();
         for (int offset = 0; offset < 7; offset++) {
             LocalDate date = trendStart.plusDays(offset);
-            trend.add(actual.getOrDefault(date, new AuditSummary.DailyPoint(date, 0, 0)));
+            Specification<AuditLog> day = createdAtDaySpecification(date);
+            long dayTotal = repo.count(base.and(day));
+            long dayRisk = repo.count(base.and(day).and(riskSpecification("risky")));
+            trend.add(new AuditSummary.DailyPoint(date, dayTotal, dayRisk));
         }
         return new AuditSummary(total, risk, critical, failed, dataChanges, List.copyOf(trend));
     }
@@ -175,28 +170,14 @@ public class AuditQueryService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('audit_log:view')"
             + " and hasAuthority('audit_log:export')")
-    public ExportPayload export(String actionPrefix,
-                                String actorAccount,
-                                String riskLevel,
-                                String eventCategory,
-                                String outcome,
-                                LocalDate dateFrom,
-                                LocalDate dateTo,
-                                int maxRows) {
+    public ExportPayload export(AuditSearchCriteria criteria, int maxRows) {
         if (maxRows < 1 || maxRows > 100_000) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "导出行数上限配置异常，请先在系统设置中调整为 1 至 100000");
         }
         int safeMaxRows = maxRows;
-        Specification<AuditLog> spec = specification(
-                actionPrefix,
-                actorAccount,
-                riskLevel,
-                eventCategory,
-                outcome,
-                dateFrom,
-                dateTo);
+        Specification<AuditLog> spec = specification(withResolvedSnapshot(criteria));
         long total = repo.count(spec);
         if (total > safeMaxRows) {
             throw new ApiException(
@@ -315,44 +296,227 @@ public class AuditQueryService {
         return value == null || value.isBlank() ? fallback : value;
     }
 
-    private Specification<AuditLog> specification(String actionPrefix,
-                                                  String actorAccount,
-                                                  String riskLevel,
-                                                  String eventCategory,
-                                                  String outcome,
-                                                  LocalDate dateFrom,
-                                                  LocalDate dateTo) {
+    Specification<AuditLog> specification(AuditSearchCriteria criteria) {
+        String actorScope = normalizedActorScope(criteria.actorScope());
+        String operationKind = normalizedOperationKind(criteria.operationKind());
+        UUID parsedRequestId = parseRequestId(criteria.requestId());
+        if (criteria.snapshotId() != null) {
+            validateSnapshotId(criteria.snapshotId());
+        }
         Specification<AuditLog> base = (root, q, cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            if (actionPrefix != null && !actionPrefix.isBlank()) {
+            if (hasText(criteria.action())) {
                 ps.add(cb.like(cb.lower(root.get("action")),
-                        actionPrefix.trim().toLowerCase(Locale.ROOT) + "%"));
+                        criteria.action().trim().toLowerCase(Locale.ROOT) + "%"));
             }
-            if (actorAccount != null && !actorAccount.isBlank()) {
+            if (hasText(criteria.actorAccount())) {
                 ps.add(cb.like(cb.lower(root.get("actorAccount")),
-                        "%" + actorAccount.trim().toLowerCase(Locale.ROOT) + "%"));
+                        "%" + criteria.actorAccount().trim().toLowerCase(Locale.ROOT) + "%"));
             }
-            if (dateFrom != null) {
+            if (hasText(criteria.targetType())) {
+                String normalizedTarget = criteria.targetType()
+                        .trim().toLowerCase(Locale.ROOT);
+                Expression<String> storedTarget = cb.lower(
+                        root.<String>get("targetType"));
+                List<String> aliases = TARGET_TYPE_ALIASES.get(normalizedTarget);
+                ps.add(aliases == null
+                        ? cb.equal(storedTarget, normalizedTarget)
+                        : storedTarget.in(aliases));
+            }
+            if (hasText(criteria.targetId())) {
+                ps.add(cb.equal(cb.lower(root.get("targetId")),
+                        criteria.targetId().trim().toLowerCase(Locale.ROOT)));
+            }
+            if (hasText(criteria.eventSource())) {
+                ps.add(cb.equal(cb.lower(root.get("eventSource")),
+                        criteria.eventSource().trim().toLowerCase(Locale.ROOT)));
+            }
+            if (parsedRequestId != null) {
+                ps.add(cb.equal(root.get("requestId"), parsedRequestId));
+            }
+            if (criteria.snapshotId() != null) {
+                ps.add(cb.lessThanOrEqualTo(root.get("id"), criteria.snapshotId()));
+            }
+            if (operationKind != null) {
+                Expression<String> action = cb.lower(root.<String>get("action"));
+                Predicate mappedAction = action.in(OPERATION_ACTIONS.get(operationKind));
+                if ("read".equals(operationKind)) {
+                    ps.add(cb.or(mappedAction, cb.like(action, "view!_%", '!')));
+                } else if ("delete".equals(operationKind)) {
+                    ps.add(cb.or(mappedAction, softDeletePredicate(root, cb, action)));
+                } else if ("update".equals(operationKind)) {
+                    ps.add(cb.and(mappedAction, cb.not(softDeletePredicate(root, cb, action))));
+                } else {
+                    ps.add(mappedAction);
+                }
+            }
+            if (actorScope != null) {
+                var actorId = root.get("actorId");
+                var actorAccount = root.<String>get("actorAccount");
+                Predicate accountPresent = cb.and(
+                        cb.isNotNull(actorAccount),
+                        cb.notEqual(cb.trim(actorAccount), ""));
+                Predicate userActor = cb.or(
+                        cb.isNotNull(actorId), accountPresent);
+                Predicate systemActor = cb.and(
+                        cb.isNull(actorId),
+                        cb.or(
+                                cb.isNull(actorAccount),
+                                cb.equal(cb.trim(actorAccount), "")));
+                ps.add("user".equals(actorScope) ? userActor : systemActor);
+            }
+            if (hasText(criteria.keyword())) {
+                String pattern = "%" + escapeLike(
+                        criteria.keyword().trim().toLowerCase(Locale.ROOT)) + "%";
+                Expression<String> requestIdText = ((JpaExpression<?>)
+                        root.get("requestId")).cast(String.class);
+                ps.add(cb.or(
+                        cb.like(cb.lower(root.get("action")), pattern, '!'),
+                        cb.like(cb.lower(root.get("actorAccount")), pattern, '!'),
+                        cb.like(cb.lower(root.get("targetType")), pattern, '!'),
+                        cb.like(cb.lower(root.get("targetId")), pattern, '!'),
+                        cb.like(cb.lower(root.get("httpPath")), pattern, '!'),
+                        cb.like(cb.lower(requestIdText), pattern, '!')));
+            }
+            if (criteria.dateFrom() != null) {
                 ps.add(cb.greaterThanOrEqualTo(root.get("createdAt"),
-                        BusinessTime.startOfDay(dateFrom)));
+                        BusinessTime.startOfDay(criteria.dateFrom())));
             }
-            if (dateTo != null) {
+            if (criteria.dateTo() != null) {
                 // 闭区间：dateTo 当日 23:59:59.999
-                OffsetDateTime toExclusive = BusinessTime.startOfDay(dateTo.plusDays(1));
+                OffsetDateTime toExclusive = BusinessTime.startOfDay(criteria.dateTo().plusDays(1));
                 ps.add(cb.lessThan(root.get("createdAt"), toExclusive));
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        if (riskLevel != null && !riskLevel.isBlank()) {
-            base = base.and(riskSpecification(riskLevel));
+        if (hasText(criteria.riskLevel())) {
+            base = base.and(riskSpecification(criteria.riskLevel()));
         }
-        if (eventCategory != null && !eventCategory.isBlank()) {
-            base = base.and(categorySpecification(eventCategory));
+        if (hasText(criteria.eventCategory())) {
+            base = base.and(categorySpecification(criteria.eventCategory()));
         }
-        if (outcome != null && !outcome.isBlank()) {
-            base = base.and(outcomeSpecification(outcome));
+        if (hasText(criteria.outcome())) {
+            base = base.and(outcomeSpecification(criteria.outcome()));
         }
         return base;
+    }
+
+    /**
+     * Historical soft deletes were written by PostgreSQL as UPDATE rows. Keep
+     * them visible under the user-facing delete filter without rewriting the
+     * immutable audit history. V185 stores future transitions as delete.
+     */
+    private Predicate softDeletePredicate(
+            Root<AuditLog> root,
+            CriteriaBuilder cb,
+            Expression<String> action) {
+        Expression<String> beforeDeleted = cb.function(
+                "jsonb_extract_path_text", String.class,
+                root.get("before"), cb.literal("is_deleted"));
+        Expression<String> afterDeleted = cb.function(
+                "jsonb_extract_path_text", String.class,
+                root.get("after"), cb.literal("is_deleted"));
+        Expression<String> beforeDeletedAt = cb.function(
+                "jsonb_extract_path_text", String.class,
+                root.get("before"), cb.literal("deleted_at"));
+        Expression<String> afterDeletedAt = cb.function(
+                "jsonb_extract_path_text", String.class,
+                root.get("after"), cb.literal("deleted_at"));
+        Expression<Boolean> beforeHasDeletedAt = cb.function(
+                "jsonb_exists", Boolean.class,
+                root.get("before"), cb.literal("deleted_at"));
+        Expression<Boolean> afterHasDeletedAt = cb.function(
+                "jsonb_exists", Boolean.class,
+                root.get("after"), cb.literal("deleted_at"));
+        Predicate flagTransition = cb.and(
+                cb.isNotNull(beforeDeleted),
+                cb.isNotNull(afterDeleted),
+                cb.equal(beforeDeleted, "false"),
+                cb.equal(afterDeleted, "true"));
+        Predicate timestampTransition = cb.and(
+                cb.isTrue(beforeHasDeletedAt),
+                cb.isTrue(afterHasDeletedAt),
+                cb.isNull(beforeDeletedAt),
+                cb.isNotNull(afterDeletedAt));
+        return cb.and(
+                cb.equal(action, "update"),
+                cb.or(flagTransition, timestampTransition));
+    }
+
+    private long validateSnapshotId(long snapshotId) {
+        if (snapshotId < 0) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST, "snapshotId 不能小于 0");
+        }
+        return snapshotId;
+    }
+
+    private AuditSearchCriteria withResolvedSnapshot(AuditSearchCriteria criteria) {
+        long snapshotId = criteria.snapshotId() == null
+                ? repo.findMaxId()
+                : validateSnapshotId(criteria.snapshotId());
+        return criteria.withSnapshotId(snapshotId);
+    }
+
+    private String normalizedOperationKind(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (!OPERATION_ACTIONS.containsKey(normalized)) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "operationKind 仅支持 create、update、delete、write、read");
+        }
+        return normalized;
+    }
+
+    private String normalizedActorScope(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (!List.of("user", "system").contains(normalized)) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "actorScope 仅支持 user、system");
+        }
+        return normalized;
+    }
+
+    private UUID parseRequestId(String value) {
+        if (!hasText(value)) {
+            return null;
+        }
+        try {
+            UUID parsed = UUID.fromString(value.trim());
+            if (!parsed.toString().equalsIgnoreCase(value.trim())) {
+                throw new IllegalArgumentException("non-canonical UUID");
+            }
+            return parsed;
+        } catch (IllegalArgumentException exception) {
+            throw new ApiException(
+                    ErrorCode.MALFORMED_REQUEST,
+                    "requestId 必须为标准 UUID");
+        }
+    }
+
+    private Specification<AuditLog> createdAtDaySpecification(LocalDate date) {
+        OffsetDateTime from = BusinessTime.startOfDay(date);
+        OffsetDateTime toExclusive = BusinessTime.startOfDay(date.plusDays(1));
+        return (root, q, cb) -> cb.and(
+                cb.greaterThanOrEqualTo(root.get("createdAt"), from),
+                cb.lessThan(root.get("createdAt"), toExclusive));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String escapeLike(String value) {
+        return value.replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
     }
 
     Specification<AuditLog> riskSpecification(String riskLevel) {
@@ -366,22 +530,33 @@ public class AuditQueryService {
             if ("risky".equals(normalized)) {
                 return cb.or(
                         storedRisk.in(List.of("critical", "high", "medium")),
-                        promotedMediumRisk);
+                        promotedMediumRisk,
+                        softDeletePredicate(root, cb, action));
             }
             if (!List.of("critical", "high", "medium", "low").contains(normalized)) {
                 return cb.disjunction();
             }
             if ("medium".equals(normalized)) {
-                return cb.or(
-                        cb.equal(storedRisk, "medium"),
-                        promotedMediumRisk);
+                return cb.and(
+                        cb.or(
+                                cb.equal(storedRisk, "medium"),
+                                promotedMediumRisk),
+                        cb.not(softDeletePredicate(root, cb, action)));
             }
             if ("low".equals(normalized)) {
                 return cb.and(
                         cb.equal(storedRisk, "low"),
-                        cb.not(action.in(FORCED_MEDIUM_RISK_ACTIONS)));
+                        cb.not(action.in(FORCED_MEDIUM_RISK_ACTIONS)),
+                        cb.not(softDeletePredicate(root, cb, action)));
             }
-            return cb.equal(storedRisk, normalized);
+            if ("high".equals(normalized)) {
+                return cb.or(
+                        cb.equal(storedRisk, "high"),
+                        softDeletePredicate(root, cb, action));
+            }
+            return cb.and(
+                    cb.equal(storedRisk, normalized),
+                    cb.not(softDeletePredicate(root, cb, action)));
         };
     }
 

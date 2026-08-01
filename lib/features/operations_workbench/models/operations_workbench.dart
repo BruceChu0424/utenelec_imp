@@ -128,6 +128,8 @@ class OperationsActionDocument {
     required this.docType,
     required this.number,
     required this.path,
+    required this.canView,
+    required this.canEdit,
     this.status,
   });
 
@@ -135,6 +137,8 @@ class OperationsActionDocument {
   final String docType;
   final String number;
   final String path;
+  final bool canView;
+  final bool canEdit;
   final String? status;
 
   bool get isApprovedPurchaseRequest =>
@@ -167,7 +171,8 @@ class OperationsActionDocument {
   ) {
     final id = _optionalString(json, 'actionDocId');
     final docType = _optionalString(json, 'actionDocType');
-    if (id == null || docType == null) return null;
+    final canView = json['actionDocCanView'] == true;
+    if (!canView || id == null || docType == null) return null;
     final path = _derivePath(department, docType, id);
     if (path == null) return null;
     return OperationsActionDocument(
@@ -175,6 +180,8 @@ class OperationsActionDocument {
       docType: docType,
       number: _optionalString(json, 'actionDocNo') ?? '',
       path: path,
+      canView: true,
+      canEdit: json['actionDocCanEdit'] == true,
       status: _optionalString(json, 'actionDocStatus'),
     );
   }
@@ -243,6 +250,7 @@ class OperationsWorkbenchTask {
     required this.updatedAt,
     required this.actionDocument,
     required this.actionDocItemId,
+    required this.actionDocumentRestricted,
   });
 
   final String taskId;
@@ -268,6 +276,7 @@ class OperationsWorkbenchTask {
   final String? updatedAt;
   final OperationsActionDocument? actionDocument;
   final String? actionDocItemId;
+  final bool actionDocumentRestricted;
 
   String get id => taskId;
   String get taskNo => taskId;
@@ -312,6 +321,19 @@ class OperationsWorkbenchTask {
       updatedAt: _optionalString(json, 'updatedAt'),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
+      actionDocumentRestricted: json['actionDocRestricted'] == true,
+    );
+  }
+}
+
+class OperationsWorkbenchCapabilities {
+  const OperationsWorkbenchCapabilities({this.canCreatePurchaseOrder = false});
+
+  final bool canCreatePurchaseOrder;
+
+  factory OperationsWorkbenchCapabilities.fromJson(Map<String, dynamic>? json) {
+    return OperationsWorkbenchCapabilities(
+      canCreatePurchaseOrder: json?['canCreatePurchaseOrder'] == true,
     );
   }
 }
@@ -325,6 +347,7 @@ class OperationsWorkbenchData {
     required this.size,
     required this.total,
     required this.totalPages,
+    required this.capabilities,
   });
 
   final OperationsWorkbenchDepartment department;
@@ -334,6 +357,7 @@ class OperationsWorkbenchData {
   final int size;
   final int total;
   final int totalPages;
+  final OperationsWorkbenchCapabilities capabilities;
 
   List<OperationsWorkbenchMetric> get metrics => summary.metricsFor(department);
 
@@ -374,6 +398,9 @@ class OperationsWorkbenchData {
       size: _requiredInt(json, 'size'),
       total: _requiredInt(json, 'total'),
       totalPages: _requiredInt(json, 'totalPages'),
+      capabilities: OperationsWorkbenchCapabilities.fromJson(
+        (json['capabilities'] as Map?)?.cast<String, dynamic>(),
+      ),
     );
   }
 }

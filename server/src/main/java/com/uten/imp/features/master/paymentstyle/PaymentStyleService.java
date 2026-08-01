@@ -47,7 +47,7 @@ public class PaymentStyleService {
 
     @Transactional(readOnly = true)
     public List<PaymentStyleNode> tree() {
-        return buildTree(repo.findByDeletedFalseOrderById(), null);
+        return buildTree(repo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
     }
 
     /** 按大类过滤的子树（前端按 ACCOUNT/EXPENSE/INCOME 分根展示）。 */
@@ -57,7 +57,7 @@ public class PaymentStyleService {
             throw new ApiException(ErrorCode.BUSINESS, "未知类别：" + category);
         }
         List<PaymentStyle> all = (category == null)
-                ? repo.findByDeletedFalseOrderById()
+                ? repo.findByDeletedFalseOrderBySortOrderAscNameAsc()
                 : repo.findByCategoryAndDeletedFalseOrderBySortOrderAscNameAsc(category);
         return buildTree(all, null);
     }

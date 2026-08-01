@@ -22,7 +22,10 @@ public class BomItemView {
     private String componentMaterial;  // 材质
     private String componentUnitName;  // 单位名
     private String componentColorName; // 颜色名（行级 color_legacy_id 优先，空回落组件主颜色）
+    private UUID colorId;
     private Integer colorLegacyId;
+    private UUID defaultSupplierId;
+    private Integer vendLegacyId;
     private BigDecimal qty;
     private BigDecimal price;
     private BigDecimal total;

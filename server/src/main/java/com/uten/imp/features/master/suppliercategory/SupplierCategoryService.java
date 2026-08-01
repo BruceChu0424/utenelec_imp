@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.suppliercategory;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.suppliercategory.dto.*;
@@ -24,10 +26,11 @@ public class SupplierCategoryService {
     private final SupplierCategoryRepository repo;
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final MasterCodeService masterCodeService;
 
     @Transactional(readOnly = true)
     public List<SupplierCategoryNode> tree() {
-        return buildTree(repo.findByDeletedFalseOrderById(), null);
+        return buildTree(repo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
     }
 
     @Transactional(readOnly = true)
@@ -50,7 +53,17 @@ public class SupplierCategoryService {
     public SupplierCategoryDetail create(SupplierCategorySaveRequest req) {
         tx.bind();
         SupplierCategory c = new SupplierCategory();
-        c.setCode(req.getCode());
+        // 编码：留空 → GF 前缀原子取号自动生成；非空 → 查重，冲突 409。
+        String code = req.getCode();
+        if (code == null || code.isBlank()) {
+            code = masterCodeService.nextCode(MasterCodePrefix.SUPPLIER_CATEGORY);
+        } else {
+            code = code.trim();
+            if (repo.existsByCodeAndDeletedFalse(code)) {
+                throw new ApiException(ErrorCode.CONFLICT, "编码「" + code + "」已存在，请更换");
+            }
+        }
+        c.setCode(code);
         c.setName(req.getName());
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {

@@ -177,6 +177,7 @@ public class SubcontractOrderService {
                                 it.getGoodsId(),
                                 it.getColorId(),
                                 it.getUnitId(),
+                                it.getUnitRate(),
                                 it.getQty()))
                         .toList());
         productionSupply.onSubcontractOrderApproved(id);
@@ -207,12 +208,16 @@ public class SubcontractOrderService {
         List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         if (items.stream().anyMatch(it ->
                 positive(it.getReceivedQty())
-                        || positive(it.getReturnedQty())
-                        || positive(it.getIssuedQty())
-                        || positive(it.getMaterialReturnedQty()))) {
+                        || positive(it.getReturnedQty()))) {
             throw new ApiException(
                     ErrorCode.BUSINESS,
-                    "委外订货已有进仓/退货/发料/退料记录，请先红冲下游单据");
+                    "委外订货已有进仓/成品退货记录，请先红冲下游单据");
+        }
+        if (hasApprovedMaterialActivity(
+                items.stream().map(SubcontractOrderItem::getId).toList())) {
+            throw new ApiException(
+                    ErrorCode.BUSINESS,
+                    "委外订货仍有已审核发料/退料/损耗单，请先红冲下游单据");
         }
         sourceIntegrity.lockSubcontractApplicationItemsForReversal(
                 items.stream().map(SubcontractOrderItem::getApplicationItemId).toList());
@@ -234,6 +239,56 @@ public class SubcontractOrderService {
 
     private static boolean positive(BigDecimal value) {
         return value != null && value.signum() > 0;
+    }
+
+    /**
+     * 子件活动必须从子件单据判断，不能再依赖成品行上的 legacy 汇总值。
+     * 调用方已持有订货头写锁；下游审批的来源校验也会锁该订货，避免并发穿透。
+     */
+    private boolean hasApprovedMaterialActivity(List<UUID> orderItemIds) {
+        if (orderItemIds.isEmpty()) {
+            return false;
+        }
+        Object active = em.createNativeQuery("""
+                        SELECT (
+                            EXISTS (
+                                SELECT 1
+                                FROM subcontract_material_issue_items issue_item
+                                JOIN subcontract_material_issues issue
+                                  ON issue.id = issue_item.issue_id
+                                WHERE issue_item.order_item_id IN (:orderItemIds)
+                                  AND COALESCE(issue_item.is_deleted, FALSE) = FALSE
+                                  AND COALESCE(issue.is_deleted, FALSE) = FALSE
+                                  AND issue.status = 1
+                            )
+                            OR EXISTS (
+                                SELECT 1
+                                FROM subcontract_material_return_items return_item
+                                JOIN subcontract_material_returns material_return
+                                  ON material_return.id = return_item.material_return_id
+                                WHERE return_item.order_item_id IN (:orderItemIds)
+                                  AND COALESCE(return_item.is_deleted, FALSE) = FALSE
+                                  AND COALESCE(material_return.is_deleted, FALSE) = FALSE
+                                  AND material_return.status = 1
+                            )
+                            OR EXISTS (
+                                SELECT 1
+                                FROM subcontract_waste_items waste_item
+                                JOIN subcontract_wastes waste
+                                  ON waste.id = waste_item.waste_id
+                                JOIN subcontract_material_issue_items issue_item
+                                  ON issue_item.id = waste_item.material_issue_item_id
+                                WHERE issue_item.order_item_id IN (:orderItemIds)
+                                  AND COALESCE(waste_item.is_deleted, FALSE) = FALSE
+                                  AND COALESCE(waste.is_deleted, FALSE) = FALSE
+                                  AND COALESCE(issue_item.is_deleted, FALSE) = FALSE
+                                  AND waste.status = 1
+                            )
+                        )
+                        """)
+                .setParameter("orderItemIds", orderItemIds)
+                .getSingleResult();
+        return Boolean.TRUE.equals(active);
     }
 
     /** 重算申请单结案：所有明细 qty - ordered_qty ≤ 0 → is_closed=true。 */

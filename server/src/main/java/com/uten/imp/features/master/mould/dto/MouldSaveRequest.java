@@ -30,7 +30,9 @@ public class MouldSaveRequest {
     private BigDecimal tqty;     // TQTY（总数量）
     private String mstatus;      // MStatus（制造年月，如 2018年7月）
     private String status;       // [Status]（生命周期：使用/禁用）
-    private String place;        // Place（车间/位置）
-    private String keeper;       // summary（保管人）
+    private String place;        // Place（车间/位置；picker 落 departmentId 时后端按 id 补名）
+    private String keeper;       // summary（保管人；picker 落 keeperId 时后端按 id 补名）
+    private UUID departmentId;   // 车间部门 id（departments.id，picker 落）
+    private UUID keeperId;       // 保管人员工 id（employees.id，picker 落）
     private String remark;       // Remark（备注）
 }

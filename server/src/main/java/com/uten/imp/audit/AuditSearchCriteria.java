@@ -1,0 +1,29 @@
+package com.uten.imp.audit;
+
+import java.time.LocalDate;
+
+/** Shared filters for audit list, summary, and export queries. */
+public record AuditSearchCriteria(
+        String action,
+        String actorAccount,
+        String actorScope,
+        String riskLevel,
+        String eventCategory,
+        String outcome,
+        String keyword,
+        String targetType,
+        String targetId,
+        String eventSource,
+        String requestId,
+        String operationKind,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        Long snapshotId) {
+
+    AuditSearchCriteria withSnapshotId(long value) {
+        return new AuditSearchCriteria(
+                action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
+                keyword, targetType, targetId, eventSource, requestId, operationKind,
+                dateFrom, dateTo, value);
+    }
+}

@@ -51,6 +51,8 @@ public enum DocNumberPrefix {
     FIN_EXPENSE("YF"),
     FIN_OTHER_INCOME("QS"),
     FIN_BANK_TRANSFER("YC"),
+    FIXED_ASSET("FA"),
+    DEFERRED_EXPENSE("DA"),
     // 生产
     PRODUCTION_PLAN("SJ"),
     PRODUCTION_DAILY_REPORT("SR");

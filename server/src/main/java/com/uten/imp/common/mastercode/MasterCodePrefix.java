@@ -24,7 +24,10 @@ public enum MasterCodePrefix {
     WAREHOUSE("WH"),      // 仓库
     ACCOUNT("ZH"),        // 账户
     PAYMENT_STYLE("SK"),  // 收付款类别
-    CATEGORY("FL");       // 货品/物料分类（material_categories）
+    CATEGORY("FL"),       // 货品/物料分类（material_categories）
+    MOULD_CATEGORY("MF"),    // 模具分类（mould_categories）
+    CLIENT_CATEGORY("KF"),   // 客户分类（client_categories）
+    SUPPLIER_CATEGORY("GF"); // 供应商分类（supplier_categories）
 
     private final String code;
 

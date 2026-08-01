@@ -16,8 +16,10 @@ import java.util.UUID;
  * 委外订货单主表（委外管理）。源 E_Order（2 行·本期保结构）。
  *
  * <p>链路核心节点：审核仅状态变更（无库存联动、无应收应付）+ 回写
- * {@code application_items.ordered_qty}（如挂申请明细）。被进仓/发料/退货/材料退/损耗审核回写
- * 累计量（received_qty/issued_qty/returned_qty/material_returned_qty），is_closed 派生。
+ * {@code application_items.ordered_qty}（如挂申请明细）。成品进仓/退货继续回写
+ * {@code received_qty/returned_qty}，is_closed 由成品维度派生。
+ * {@code issued_qty/material_returned_qty} 是 legacy 展示字段，不再由新业务写入，
+ * 因为不同子件数量不能聚合到成品订货行。
  *
  * <p>BOM 展开决策（design doc 22 §五）：本期不实现自动展开触发器；
  * {@code subcontract_order_cost_items} 表保结构 + 迁老库 67 行原样数据，<b>只读不展开</b>。

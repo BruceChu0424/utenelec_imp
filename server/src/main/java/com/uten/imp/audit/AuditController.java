@@ -8,7 +8,6 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -46,7 +45,7 @@ public class AuditController {
     private final SecurityContextCurrentUser currentUser;
 
     /**
-     * 分页查询审计日志（按 createdAt DESC）。
+     * 分页查询审计日志（按 createdAt DESC, id DESC）。
      *
      * @param action      动作前缀模糊匹配（如 "export" 命中所有 export_*_report）
      * @param actorAccount 操作人账号子串模糊（不区分大小写）
@@ -55,26 +54,28 @@ public class AuditController {
      */
     @GetMapping
     @PreAuthorize("hasAuthority('audit_log:view')")
-    public PageResponse<AuditLogRow> list(
+    public AuditPageResponse list(
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String actorAccount,
+            @RequestParam(required = false) String actorScope,
             @RequestParam(required = false) String riskLevel,
             @RequestParam(required = false) String eventCategory,
             @RequestParam(required = false) String outcome,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) String targetId,
+            @RequestParam(required = false) String eventSource,
+            @RequestParam(required = false) String requestId,
+            @RequestParam(required = false) String operationKind,
+            @RequestParam(required = false) Long snapshotId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        PageResponse<AuditLogRow> result = auditQuery.query(
-                action,
-                actorAccount,
-                riskLevel,
-                eventCategory,
-                outcome,
-                dateFrom,
-                dateTo,
-                page,
-                size);
+        AuditPageResponse result = auditQuery.query(new AuditSearchCriteria(
+                action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
+                keyword, targetType, targetId, eventSource, requestId, operationKind,
+                dateFrom, dateTo, snapshotId), page, size);
         logAuditAccess(
                 "view_audit_log_list",
                 "returned=" + result.getItems().size() + "; total=" + result.getTotal());
@@ -87,11 +88,21 @@ public class AuditController {
     public AuditSummary summary(
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String actorAccount,
+            @RequestParam(required = false) String actorScope,
             @RequestParam(required = false) String eventCategory,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) String targetId,
+            @RequestParam(required = false) String eventSource,
+            @RequestParam(required = false) String requestId,
+            @RequestParam(required = false) String operationKind,
+            @RequestParam(required = false) Long snapshotId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        AuditSummary result = auditQuery.summary(
-                action, actorAccount, eventCategory, dateFrom, dateTo);
+        AuditSummary result = auditQuery.summary(new AuditSearchCriteria(
+                action, actorAccount, actorScope, null, eventCategory, null,
+                keyword, targetType, targetId, eventSource, requestId, operationKind,
+                dateFrom, dateTo, snapshotId));
         logAuditAccess(
                 "view_audit_log_summary",
                 "total=" + result.total() + "; risk=" + result.riskCount());
@@ -108,23 +119,26 @@ public class AuditController {
     public ResponseEntity<byte[]> export(
             @RequestParam(required = false) String action,
             @RequestParam(required = false) String actorAccount,
+            @RequestParam(required = false) String actorScope,
             @RequestParam(required = false) String riskLevel,
             @RequestParam(required = false) String eventCategory,
             @RequestParam(required = false) String outcome,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) String targetId,
+            @RequestParam(required = false) String eventSource,
+            @RequestParam(required = false) String requestId,
+            @RequestParam(required = false) String operationKind,
+            @RequestParam(required = false) Long snapshotId,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = auditQuery.export(
-                action,
-                actorAccount,
-                riskLevel,
-                eventCategory,
-                outcome,
-                dateFrom,
-                dateTo,
-                runtimeSettings.exportMaxRows());
+        ExportPayload payload = auditQuery.export(new AuditSearchCriteria(
+                action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
+                keyword, targetType, targetId, eventSource, requestId, operationKind,
+                dateFrom, dateTo, snapshotId), runtimeSettings.exportMaxRows());
         byte[] workbook = xlsxExport.build(payload.columns(), payload.rows());
         byte[] encrypted = encryptedWorkbook.encrypt(workbook, body.password());
         logAuditAccess(

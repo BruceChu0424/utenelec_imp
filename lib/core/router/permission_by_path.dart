@@ -56,9 +56,12 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/payroll/slip' || location.startsWith('/payroll/slip/')) {
     return const [Perm.payrollViewSelf, Perm.payrollViewAll];
   }
+  if (location == RouteName.financeAssets ||
+      location.startsWith('${RouteName.financeAssets}/')) {
+    return const [Perm.financeAssetView];
+  }
   if (location == RouteName.financeReport ||
-      location.startsWith('${RouteName.financeReport}/') ||
-      location == RouteName.financeAssets) {
+      location.startsWith('${RouteName.financeReport}/')) {
     return const [Perm.financeReportView];
   }
   // 客户主档入口统一要求 client:view；本人/授权/全部范围由后端 OwnerVisibility 强制裁剪。
@@ -290,6 +293,7 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.productionPlanView,
       Perm.productionDailyReportView,
       Perm.productionReportView,
+      Perm.productionWhereUsedView,
     ];
   }
   if (location.startsWith('/production/reports')) {
@@ -326,6 +330,11 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.financeExpenseView,
       Perm.financeOtherIncomeView,
       Perm.financeBankTransferView,
+      Perm.financeReportView,
+      Perm.financeAssetView,
+      Perm.arApLedgerView,
+      Perm.financeReconciliationView,
+      Perm.accountView,
     ];
   }
   if (location == RouteName.financeArAp) {

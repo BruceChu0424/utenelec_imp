@@ -848,15 +848,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardSubmitFailed => '提交失败，请重试';
 
   @override
-  String get employeeOnboardNote =>
-      '提交后将自动创建登录账号（账号=工号）并生成高熵一次性临时密码；首次登录必须修改密码。';
+  String get employeeOnboardNote => '提交后将自动创建登录账号（账号=工号）并生成高熵一次性临时密码；首次登录必须修改密码。';
 
   @override
   String get employeeOnboardCredentialTitle => '账号已创建';
 
   @override
-  String get employeeOnboardCredentialWarning =>
-      '临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。';
+  String get employeeOnboardCredentialWarning => '临时密码只显示这一次。请立即通过安全方式交给员工；关闭后系统不会再次显示或保存明文。';
 
   @override
   String get employeeOnboardAccountLabel => '登录账号';
@@ -1418,8 +1416,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishScopeSelected => '指定范围';
 
   @override
-  String get noticePublishScopeSelectedHint =>
-      '部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。';
+  String get noticePublishScopeSelectedHint => '部门与人员可以同时选择；部门包含其下级组织，重复接收人会自动去重。';
 
   @override
   String get noticePublishDepartmentsLabel => '接收部门（可多选）';
@@ -1457,16 +1454,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticePublishValidateAudience => '请至少选择一个部门或人员';
 
   @override
-  String noticePublishAudienceSummary(
-    Object departmentCount,
-    Object employeeCount,
-  ) {
+  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount) {
     return '已选 $departmentCount 个部门、$employeeCount 人';
   }
 
   @override
-  String get noticePublishAudienceRecalculateHint =>
-      '发布前会按当前组织与账号状态重新核算实际接收人数。';
+  String get noticePublishAudienceRecalculateHint => '发布前会按当前组织与账号状态重新核算实际接收人数。';
 
   @override
   String noticePublishConfirmAudience(Object summary, Object count) {

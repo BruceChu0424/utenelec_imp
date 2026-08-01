@@ -56,11 +56,11 @@ void main() {
 
       expect(
         employeePermissionRedirect(ordinary, RouteName.deviceAuditReceipts),
-        RouteName.dashboard,
+        RouteName.accessDenied,
       );
       expect(
         employeePermissionRedirect(ordinary, RouteName.adminAuditLogs),
-        RouteName.dashboard,
+        RouteName.accessDenied,
       );
       expect(
         employeePermissionRedirect(auditor, RouteName.deviceAuditReceipts),
@@ -70,29 +70,40 @@ void main() {
         employeePermissionRedirect(auditor, RouteName.adminAuditLogs),
         isNull,
       );
+      expect(
+        employeePermissionRedirect(ordinary, RouteName.accessDenied),
+        isNull,
+      );
     });
 
-    test(
-      'finance report descendants and assets use finance report permission',
-      () {
-        for (final location in [
-          RouteName.financeReport,
-          RouteName.financeReportDetail,
-          RouteName.financeReportSummary,
-          RouteName.financeReportOverview,
-          RouteName.financeReportStatement,
-          RouteName.financeReportAccountFlow,
-          RouteName.financeReportRecon,
-          RouteName.financeReportCost,
-          RouteName.financeReportGl,
-          RouteName.financeAssets,
-        ]) {
-          expect(requiredAnyPermFor(location), const [
-            Perm.financeReportView,
-          ], reason: location);
-        }
-      },
-    );
+    test('finance report descendants use finance report permission', () {
+      for (final location in [
+        RouteName.financeReport,
+        RouteName.financeReportDetail,
+        RouteName.financeReportSummary,
+        RouteName.financeReportOverview,
+        RouteName.financeReportStatement,
+        RouteName.financeReportAccountFlow,
+        RouteName.financeReportRecon,
+        RouteName.financeReportCost,
+        RouteName.financeReportGl,
+      ]) {
+        expect(requiredAnyPermFor(location), const [
+          Perm.financeReportView,
+        ], reason: location);
+      }
+    });
+
+    test('asset workbench descendants require asset view permission', () {
+      for (final location in [
+        RouteName.financeAssets,
+        '${RouteName.financeAssets}/fixed/asset-1',
+      ]) {
+        expect(requiredAnyPermFor(location), const [
+          Perm.financeAssetView,
+        ], reason: location);
+      }
+    });
 
     test('finance master-data aliases use their real backend permissions', () {
       expect(requiredAnyPermFor(RouteName.financeCustomers), const [
@@ -126,6 +137,15 @@ void main() {
         ]);
       },
     );
+
+    test('purchase order creation deep link requires order edit permission', () {
+      expect(requiredAnyPermFor('/purchase/orders/new'), const [
+        Perm.purchaseOrderEdit,
+      ]);
+      expect(requiredAnyPermFor('/purchase/orders/order-1'), const [
+        Perm.purchaseOrderView,
+      ]);
+    });
 
     test('production progress and lab upload match backend permissions', () {
       expect(requiredAnyPermFor(RouteName.productionProgress), const [

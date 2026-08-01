@@ -151,7 +151,8 @@ public class PurchaseReturnService {
                                 it.getOrderItemId(),
                                 it.getGoodsId(),
                                 it.getColorId(),
-                                it.getUnitId()))
+                                it.getUnitId(),
+                                it.getUnitRate()))
                         .toList());
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))

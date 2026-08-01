@@ -259,6 +259,14 @@ public class ProductionExecutionPackageCommandService {
         List<GenerateSubplansRequest.Created> subplanResults =
                 mrpService.generateSelfMadeSubplansForPackage(
                         planId, begin.planningPackage().getId());
+        for (GenerateSubplansRequest.Created subplan : subplanResults) {
+            ledger.recordDocument(
+                    begin.planningPackage().getId(),
+                    "SUBPLAN",
+                    subplan.planId(),
+                    subplan.billNo(),
+                    currentUser.requireId());
+        }
         return new PlanningPackageResult(
                 begin.planningPackage().getId(),
                 begin.planningPackage().getStatus(),

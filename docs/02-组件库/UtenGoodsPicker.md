@@ -43,7 +43,7 @@
 
 - docType→scope 映射封装在各编辑页 `_pickerScope` getter，不泄漏到 picker。
 - 仅 `all` 允许「未选分类 + 关键词」全库搜；`sellable`/`material` 必须先选分类，否则会把不该显示的类目混搜出来（回归 ADR-015 老 bug）。
-- **滑窗默认隐藏已禁用货品 + 迁移兜底 stub**（内部 `list`/`search` 传 `excludeDisabled: true` + `excludeStub: true`，后者排除 `goods.auto_created=true` 的占位货品，V177）；货品资料管理页把这两类收拢到顶部集合行（见 [基础资料页](../03-页面/基础资料页.md)），不进滑窗。
+- **滑窗默认隐藏已禁用货品 + 迁移兜底 stub**（内部 `list`/`search` 传 `excludeDisabled: true` + `excludeStub: true`，后者排除 `goods.auto_created=true` 的历史外键锚，V177）；货品资料管理页把这两类收拢到顶部集合行（见 [基础资料页](../03-页面/基础资料页.md)），不进滑窗。V181 进一步把活动 BOM 的 stub 端点清零并加数据库/API 守卫，因此该排除是持续业务规则，不是等待“补全货品”后的临时筛选。
 - **「按权限显示不一样」** 由后端 `GoodsService.list` 货品归属授权过滤（V85/V89）保障，滑窗同源，无需前端处理。
 - **懒载**（2026-07-31）：打开预选第一个根分类（树高亮，用户有定位感）但**不立即加载货品列表**，输关键词或点分类才加载（省资源，与各资料页统一）。
 - **搜索扩字段**（2026-07-31）：`keyword` 除名称/编号/型号/规格/系列外，新增**客户型号/材质/备注**模糊匹配（后端 `GoodsService.list` keyword OR 谓词）。

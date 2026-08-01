@@ -16,6 +16,7 @@ class ReportData {
     required this.page,
     required this.totalPages,
     required this.total,
+    required this.meta,
   });
 
   final List<ReportColumn> columns;
@@ -24,6 +25,7 @@ class ReportData {
   final int page;
   final int totalPages;
   final int total;
+  final Map<String, dynamic> meta;
 }
 
 /// 解析后端 ReportTableResponse JSON 为 [ReportData]。
@@ -51,5 +53,8 @@ ReportData parseReportResponse(Map<String, dynamic> json, int fallbackPage) {
     page: (json['page'] as num?)?.toInt() ?? fallbackPage,
     totalPages: (json['totalPages'] as num?)?.toInt() ?? 1,
     total: (json['total'] as num?)?.toInt() ?? 0,
+    meta: json['meta'] is Map
+        ? Map<String, dynamic>.from(json['meta'] as Map)
+        : const <String, dynamic>{},
   );
 }

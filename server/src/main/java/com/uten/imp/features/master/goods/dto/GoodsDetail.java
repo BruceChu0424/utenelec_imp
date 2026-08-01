@@ -38,13 +38,23 @@ public class GoodsDetail {
     private String pack;
     private String material;
     private BigDecimal thickness;
+    private UUID unitId;
     private Integer unitLegacyId;
     @JsonProperty("mWeight")
     private BigDecimal mWeight;      // MWeight 单重（防 Jackson 连续大写 quirk，显式锁定键名）
     private Integer pieces;
     private String colorName;        // 主颜色名（color_legacy_id → colors.name 解析）
     private String unitName;         // 单位名（unit_legacy_id → units.name 解析）
+    private UUID colorId;
     private Integer colorLegacyId;   // 主颜色 legacy id（编辑表单回显选中用；unitLegacyId 已在上方）
+    private UUID mouldId;
+    private Integer mouldLegacyId;
+    private UUID clientId;
+    private Integer clientLegacyId;
+    private UUID defaultSupplierId;
+    private Integer vendLegacyId;
+    private UUID secondarySupplierId;
+    private Integer vend2LegacyId;
 
     // ===== 成本预算（「成本预算」页签） =====
     private BigDecimal sourceE;      // SourceE 材料合计

@@ -32,10 +32,13 @@ const _excludedLegacyIds = {2113, 2480, -1};
 enum UtenGoodsPickerScope {
   /// 成品/可售卖类：排除原材料/辅料/未分类（销售/生产/委外进仓等）。
   sellable,
+
   /// 原材料/辅料类：只保留原材料/辅料子树（采购/领料/物料反查等）。
   material,
+
   /// 全部：不过滤（调拨/其它出入库/盘点）。
   all,
+
   /// 组件选择（BOM 组装信息用）：只保留 原材料/半成品/辅料/OEM成品/OEM物料/OEM功能件 子树。
   component,
 }
@@ -413,11 +416,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             child: FilledButton(
               onPressed: _selected.isEmpty
                   ? null
-                  : () =>
-                      Navigator.of(context).pop(_selected.values.toList()),
-              child: Text(
-                _selected.isEmpty ? '确定' : '确定（${_selected.length}）',
-              ),
+                  : () => Navigator.of(context).pop(_selected.values.toList()),
+              child: Text(_selected.isEmpty ? '确定' : '确定（${_selected.length}）'),
             ),
           ),
         ),
@@ -503,8 +503,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
               ? null
               : Text(sub, style: const TextStyle(fontSize: 12)),
           trailing: widget.multiSelect && picked
-              ? Icon(Icons.check_circle_rounded,
-                  color: theme.colorScheme.primary, size: 22)
+              ? Icon(
+                  Icons.check_circle_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 22,
+                )
               : null,
           onTap: () {
             if (widget.multiSelect) {

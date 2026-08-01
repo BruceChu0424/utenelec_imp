@@ -30,7 +30,7 @@ public class MaterialCategoryService {
 
     @Transactional(readOnly = true)
     public List<MaterialCategoryNode> tree() {
-        return buildTree(repo.findByDeletedFalseOrderById(), null);
+        return buildTree(repo.findByDeletedFalseOrderBySortOrderAscNameAsc(), null);
     }
 
     @Transactional(readOnly = true)

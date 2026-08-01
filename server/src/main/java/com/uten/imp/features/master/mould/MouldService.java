@@ -2,6 +2,8 @@ package com.uten.imp.features.master.mould;
 
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.common.util.DepartmentNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -77,6 +79,8 @@ public class MouldService {
     private final TxSessionVars tx;
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
+    private final DepartmentNameResolver departmentNameResolver;
+    private final EmployeeNameResolver employeeNameResolver;
 
     // ===== 列表（Specification 动态筛选） =====
 
@@ -208,9 +212,25 @@ public class MouldService {
         m.setTqty(req.getTqty());
         m.setMstatus(req.getMstatus());
         m.setStatus(req.getStatus());
-        m.setPlace(req.getPlace());
-        m.setKeeper(req.getKeeper());
         m.setRemark(req.getRemark());
+        // 车间/保管人：id 优先；文本列由 id 解析补名（前端 picker 只传 id），保留文本作 fallback 显示。
+        m.setDepartmentId(req.getDepartmentId());
+        m.setKeeperId(req.getKeeperId());
+        m.setPlace(resolvePlace(req.getPlace(), req.getDepartmentId()));
+        m.setKeeper(resolveKeeper(req.getKeeper(), req.getKeeperId()));
+    }
+
+    /** 文本优先；为空则按部门 id 解析名（picker 模式前端只传 id，单条 detail 也走此分支）。 */
+    private String resolvePlace(String text, UUID departmentId) {
+        if (text != null && !text.isBlank()) return text;
+        if (departmentId == null) return null;
+        return departmentNameResolver.nameOf(departmentId);
+    }
+
+    /** 文本优先；为空则按员工 id 解析名（复用 EmployeeNameResolver，兼容 users.id）。 */
+    private String resolveKeeper(String text, UUID keeperId) {
+        if (text != null && !text.isBlank()) return text;
+        return employeeNameResolver.nameOf(keeperId);
     }
 
     private MouldDetail toDetail(Mould m) {
@@ -220,7 +240,9 @@ public class MouldService {
                 m.getId(), m.getCode(), m.getName(), m.getStatus(), m.getPlace(),
                 m.getKeeper(), m.getLegacyId(),
                 categoryId, categoryName, m.getMnumber(), m.getQty(), m.getTqty(),
-                m.getMstatus(), m.getRemark());
+                m.getMstatus(), m.getRemark(),
+                m.getDepartmentId(), resolvePlace(null, m.getDepartmentId()),
+                m.getKeeperId(), resolveKeeper(null, m.getKeeperId()));
     }
 
     private MouldListItem toList(Mould m) {

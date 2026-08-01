@@ -270,6 +270,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
           width: 160,
           value: (it) => names.warehouse(it.warehouseId),
         ),
+      if (_cfg.type == SalesDocType.shipment)
+        MasterColumnDef(
+          key: 'warehouseWorkStatus',
+          label: '仓库作业',
+          width: 150,
+          value: (it) => salesWarehouseWorkStatusLabel(it.warehouseWorkStatus),
+        ),
       if (_cfg.hasOutType)
         MasterColumnDef(
           key: 'outType',

@@ -47,6 +47,7 @@ class SalesMasterNameService extends MasterDictionaryService {
   Map<String, String> get selectableClientEntries => _selectableClients;
 }
 
-final salesMasterNameServiceProvider = Provider<SalesMasterNameService>(
-  (ref) => SalesMasterNameService(ref.watch(apiClientProvider)),
-);
+final salesMasterNameServiceProvider = Provider<SalesMasterNameService>((ref) {
+  ref.watch(masterDataSessionKeyProvider);
+  return SalesMasterNameService(ref.watch(apiClientProvider));
+});

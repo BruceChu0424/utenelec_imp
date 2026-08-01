@@ -5,21 +5,31 @@
 // 支票管理 = 账户 account_type=CHECK/FOREIGN_CHECK 的过滤视图（不单独模块），
 // 入口指向 /finance/checks（由用户在 app_router 接到 AccountPage(initialAccountTypeFilter:'CHECK')）。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 
-class FinanceHubPage extends StatelessWidget {
+class FinanceHubPage extends ConsumerWidget {
   const FinanceHubPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    List<_Entry> visible(List<_Entry> entries) => entries
+        .where((entry) {
+          final required = requiredAnyPermFor(entry.location);
+          return required == null || required.any(permissions.contains);
+        })
+        .toList(growable: false);
     return Scaffold(
       appBar: UtenAppBar(
         title: '钱流管理',
@@ -32,101 +42,111 @@ class FinanceHubPage extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.only(top: UtenSpacing.s12),
             children: [
-              _section(context, theme, '钱流管理', [
-                _Entry(
-                  icon: Icons.south_west_outlined,
-                  label: '销售收款',
-                  description: '核销应收 / 直接收款',
-                  location: RoutePath.financeDocNew('receipts'),
-                ),
-                _Entry(
-                  icon: Icons.north_east_outlined,
-                  label: '采购付款',
-                  description: '核销应付 / 直接付款',
-                  location: RoutePath.financeDocNew('payments'),
-                ),
-                _Entry(
-                  icon: Icons.outbound_outlined,
-                  label: '一般费用',
-                  description: '按部门分摊',
-                  location: RoutePath.financeDocNew('expenses'),
-                ),
-                _Entry(
-                  icon: Icons.add_circle_outline,
-                  label: '其它收入',
-                  description: '按部门分摊',
-                  location: RoutePath.financeDocNew('incomes'),
-                ),
-                _Entry(
-                  icon: Icons.swap_horiz_rounded,
-                  label: '银行存取款',
-                  description: '账户间转入',
-                  location: RoutePath.financeDocNew('bank-transfers'),
-                ),
-                const _Entry(
-                  icon: Icons.receipt_long_outlined,
-                  label: '支票管理',
-                  description: '支票账户视图',
-                  location: '/finance/checks',
-                ),
-                const _Entry(
-                  icon: Icons.apartment_rounded,
-                  label: '资产与待摊',
-                  description: '固定资产折旧 / 长期待摊摊销 计提',
-                  location: RouteName.financeAssets,
-                ),
-              ]),
+              _section(
+                context,
+                theme,
+                '钱流管理',
+                visible([
+                  _Entry(
+                    icon: Icons.south_west_outlined,
+                    label: '销售收款',
+                    description: '核销应收 / 直接收款',
+                    location: RoutePath.financeDocNew('receipts'),
+                  ),
+                  _Entry(
+                    icon: Icons.north_east_outlined,
+                    label: '采购付款',
+                    description: '核销应付 / 直接付款',
+                    location: RoutePath.financeDocNew('payments'),
+                  ),
+                  _Entry(
+                    icon: Icons.outbound_outlined,
+                    label: '一般费用',
+                    description: '按部门分摊',
+                    location: RoutePath.financeDocNew('expenses'),
+                  ),
+                  _Entry(
+                    icon: Icons.add_circle_outline,
+                    label: '其它收入',
+                    description: '按部门分摊',
+                    location: RoutePath.financeDocNew('incomes'),
+                  ),
+                  _Entry(
+                    icon: Icons.swap_horiz_rounded,
+                    label: '银行存取款',
+                    description: '账户间转入',
+                    location: RoutePath.financeDocNew('bank-transfers'),
+                  ),
+                  const _Entry(
+                    icon: Icons.receipt_long_outlined,
+                    label: '支票管理',
+                    description: '支票账户视图',
+                    location: '/finance/checks',
+                  ),
+                  const _Entry(
+                    icon: Icons.apartment_rounded,
+                    label: '资产与待摊',
+                    description: '专业子账 / 审批 / 折旧摊销 / 期间控制',
+                    location: RouteName.financeAssets,
+                  ),
+                ]),
+              ),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '钱流报表', [
-                const _Entry(
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: '应收应付',
-                  description: '树形分组：客户/供应商类别 AR/AP 余额',
-                  location: RouteName.financeReportOverview,
-                ),
-                const _Entry(
-                  icon: Icons.list_alt_outlined,
-                  label: '明细报表',
-                  description: '应收/应付/收款/付款/费用/收入/费用冲销',
-                  location: RouteName.financeReportDetail,
-                ),
-                const _Entry(
-                  icon: Icons.bar_chart_outlined,
-                  label: '汇总报表',
-                  description: '应收/应付/收款/付款/费用/收入 汇总',
-                  location: RouteName.financeReportSummary,
-                ),
-                const _Entry(
-                  icon: Icons.receipt_long_outlined,
-                  label: '往来对帐单',
-                  description: '客户/供应商 流水·明细·年度对帐',
-                  location: RouteName.financeReportStatement,
-                ),
-                const _Entry(
-                  icon: Icons.account_balance_outlined,
-                  label: '账户流水',
-                  description: '帐户进出流水 + 银行存取款',
-                  location: RouteName.financeReportAccountFlow,
-                ),
-                const _Entry(
-                  icon: Icons.handshake_outlined,
-                  label: '对账单',
-                  description: '委外加工/采购外放/供应商/其他应收/客户 月结对账',
-                  location: RouteName.financeReportRecon,
-                ),
-                const _Entry(
-                  icon: Icons.calculate_outlined,
-                  label: '成本核算',
-                  description: '产品成本/销售成本/铜柱加工费/塑料耗用',
-                  location: RouteName.financeReportCost,
-                ),
-                const _Entry(
-                  icon: Icons.menu_book_outlined,
-                  label: '总账报表',
-                  description: '科目余额表/资产负债/利润/费用明细/经营损益',
-                  location: RouteName.financeReportGl,
-                ),
-              ]),
+              _section(
+                context,
+                theme,
+                '钱流报表',
+                visible([
+                  const _Entry(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: '应收应付',
+                    description: '树形分组：客户/供应商类别 AR/AP 余额',
+                    location: RouteName.financeReportOverview,
+                  ),
+                  const _Entry(
+                    icon: Icons.list_alt_outlined,
+                    label: '明细报表',
+                    description: '应收/应付/收款/付款/费用/收入/费用冲销',
+                    location: RouteName.financeReportDetail,
+                  ),
+                  const _Entry(
+                    icon: Icons.bar_chart_outlined,
+                    label: '汇总报表',
+                    description: '应收/应付/收款/付款/费用/收入 汇总',
+                    location: RouteName.financeReportSummary,
+                  ),
+                  const _Entry(
+                    icon: Icons.receipt_long_outlined,
+                    label: '往来对帐单',
+                    description: '客户/供应商 流水·明细·年度对帐',
+                    location: RouteName.financeReportStatement,
+                  ),
+                  const _Entry(
+                    icon: Icons.account_balance_outlined,
+                    label: '账户流水',
+                    description: '帐户进出流水 + 银行存取款',
+                    location: RouteName.financeReportAccountFlow,
+                  ),
+                  const _Entry(
+                    icon: Icons.handshake_outlined,
+                    label: '对账单',
+                    description: '委外加工/采购外放/供应商/其他应收/客户 月结对账',
+                    location: RouteName.financeReportRecon,
+                  ),
+                  const _Entry(
+                    icon: Icons.calculate_outlined,
+                    label: '成本核算',
+                    description: '产品成本/销售成本/铜柱加工费/塑料耗用',
+                    location: RouteName.financeReportCost,
+                  ),
+                  const _Entry(
+                    icon: Icons.menu_book_outlined,
+                    label: '总账报表',
+                    description: '科目余额表/资产负债/利润/费用明细/经营损益',
+                    location: RouteName.financeReportGl,
+                  ),
+                ]),
+              ),
             ],
           ),
         ),
@@ -141,6 +161,7 @@ class FinanceHubPage extends StatelessWidget {
     String title,
     List<_Entry> entries,
   ) {
+    if (entries.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Column(

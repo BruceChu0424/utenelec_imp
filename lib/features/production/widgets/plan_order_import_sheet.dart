@@ -428,7 +428,6 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                 nullCounts: const {},
                 filters: const {},
                 onFilterChanged: (_, _) {},
-                onRowTap: (_) {},
                 rowColor: (item) {
                   final onhand = item.onhand;
                   final required = item.needQty;

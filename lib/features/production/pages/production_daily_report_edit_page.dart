@@ -412,7 +412,12 @@ class _ProductionDailyReportEditPageState
             : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(size: 30, search: kw, departmentId: deptId, includeSubtree: true);
+            .list(
+              size: 30,
+              search: kw,
+              departmentId: deptId,
+              includeSubtree: true,
+            );
         return [
           for (final e in res.items)
             UtenEmployeePickerItem(

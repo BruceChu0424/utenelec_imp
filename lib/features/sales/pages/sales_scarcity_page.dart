@@ -18,7 +18,11 @@ import '../repositories/sales_repository.dart';
 /// 按优先级升序、创建时间升序）→ 对低优先级行"让单"释放现货预留回池。
 /// 让单 = 复用既有释放原语 + 出货驳回同款状态回退；缺口自动回调度待排产并通知被让单销售。
 class SalesScarcityPage extends ConsumerStatefulWidget {
-  const SalesScarcityPage({super.key, this.initialGoodsId, this.initialColorId});
+  const SalesScarcityPage({
+    super.key,
+    this.initialGoodsId,
+    this.initialColorId,
+  });
   final String? initialGoodsId;
   final String? initialColorId;
 
@@ -86,15 +90,18 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${r.clientName ?? '—'} · ${r.orderNo ?? '—'}',
-                style: Theme.of(ctx).textTheme.labelMedium),
+            Text(
+              '${r.clientName ?? '—'} · ${r.orderNo ?? '—'}',
+              style: Theme.of(ctx).textTheme.labelMedium,
+            ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
               controller: qtyCtrl,
               autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                  hintText: '让单数量（0 < 数量 ≤ $reserved）'),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(hintText: '让单数量（0 < 数量 ≤ $reserved）'),
             ),
             const SizedBox(height: UtenSpacing.s8),
             TextField(
@@ -106,11 +113,13 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认让单')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认让单'),
+          ),
         ],
       ),
     );
@@ -132,8 +141,12 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
     final d = await context.guardAction(
       () => ref
           .read(salesRepositoryProvider(SalesDocType.order))
-          .yieldReservation(r.orderItemId!,
-              qty: qty, reason: reason, yielderOrderNo: r.orderNo),
+          .yieldReservation(
+            r.orderItemId!,
+            qty: qty,
+            reason: reason,
+            yielderOrderNo: r.orderNo,
+          ),
       success: '已让单 ${qty.toStringAsFixed(2)}，库存已回池',
       errorFallback: '让单失败，请稍后重试',
     );
@@ -148,7 +161,8 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
       appBar: UtenAppBar(
         title: '稀缺库存让单',
         leading: UtenBackButton(
-          onPressed: () => popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+          onPressed: () =>
+              popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
       ),
       body: SafeArea(

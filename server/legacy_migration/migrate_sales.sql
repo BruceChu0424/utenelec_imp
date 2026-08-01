@@ -160,7 +160,7 @@ WHERE lid IS NOT NULL AND lid <> 0
   AND NOT EXISTS (SELECT 1 FROM currencies c WHERE c.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
--- 货品 stub（所有明细 + BOM 子件/替代货品反推）：legacy_id+code+name+auto_created=TRUE（配合 V177，UI 隔离用）
+-- 货品历史 FK 锚（所有明细 + BOM 子件/替代货品反推）：legacy_id+code+name+auto_created=TRUE；V177/V181 要求选择器/BOM/MRP 隔离。
 INSERT INTO goods (legacy_id, code, name, auto_created)
 SELECT DISTINCT lid, 'LEGACY-G-' || lid, '（迁移自动补录）', TRUE
 FROM (SELECT goods_legacy AS lid FROM quote_item_stage UNION ALL

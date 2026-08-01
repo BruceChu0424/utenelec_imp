@@ -186,7 +186,9 @@ public class StockReservationService {
      * 出货消耗：按创建先后（FIFO）消耗订单行的生效预留，返回实际消耗量（基本单位）。
      *
      * <p>SELECT ... FOR UPDATE 锁住该行全部生效预留，防两张出货单并发双吃同一批预留。
-     * 全局预留（warehouse=null）首次消耗时改绑出货仓。消耗尽的行置完结。
+     * 全局预留（warehouse=null）若仅部分消耗，则拆成“本仓已消费完结行 +
+     * 剩余全局生效行”，避免把尚未出货的剩余量错误绑死到第一出货仓。
+     * 完全消耗的行直接绑定本仓并完结。
      * 不足时不抛错（订单行级 reserved_qty 校验已在业务 Service 前置兜底，
      * 基本单位换算尾差允许），返回实耗供调用方判断。
      */
@@ -199,8 +201,10 @@ public class StockReservationService {
         List<StockReservation> rs = em.createNativeQuery(
                         "SELECT * FROM stock_reservations"
                                 + " WHERE order_item_id = :oid AND is_deleted = FALSE AND status = 0"
+                                + " AND (warehouse_id IS NULL OR warehouse_id = :wid)"
                                 + " ORDER BY created_at, id FOR UPDATE", StockReservation.class)
                 .setParameter("oid", orderItemId)
+                .setParameter("wid", warehouseId)
                 .getResultList();
         BigDecimal remaining = needBase;
         for (StockReservation r : rs) {
@@ -208,17 +212,51 @@ public class StockReservationService {
             BigDecimal eff = r.effectiveQty();
             if (eff.signum() <= 0) continue;
             BigDecimal c = eff.min(remaining);
-            r.setConsumedQty(r.getConsumedQty().add(c));
-            if (r.getWarehouseId() == null) {
-                r.setWarehouseId(warehouseId); // 全局预留改绑出货仓
+            BigDecimal consumedBefore = nullSafe(r.getConsumedQty());
+            BigDecimal releasedBefore = nullSafe(r.getReleasedQty());
+            boolean splitGlobal = r.getWarehouseId() == null
+                    && c.compareTo(eff) < 0;
+            r.setConsumedQty(consumedBefore.add(c));
+            if (r.getWarehouseId() == null) r.setWarehouseId(warehouseId);
+            if (splitGlobal) {
+                BigDecimal carryQty = eff.subtract(c);
+                // Keep the original row as the immutable business evidence for
+                // this warehouse consumption and carry only the untouched
+                // effective quantity into a fresh global reservation row.
+                r.setQty(consumedBefore.add(releasedBefore).add(c));
+                r.setStatus(StockReservation.STATUS_DONE);
+                reservationRepo.save(r);
+                reservationRepo.save(copyGlobalRemainder(r, carryQty));
             }
             if (r.effectiveQty().signum() == 0) {
                 r.setStatus(StockReservation.STATUS_DONE);
             }
-            reservationRepo.save(r);
+            if (!splitGlobal) reservationRepo.save(r);
             remaining = remaining.subtract(c);
         }
         return needBase.subtract(remaining);
+    }
+
+    private static StockReservation copyGlobalRemainder(
+            StockReservation source, BigDecimal remainingQty) {
+        StockReservation remainder = new StockReservation();
+        remainder.setOrderItemId(source.getOrderItemId());
+        remainder.setGoodsId(source.getGoodsId());
+        remainder.setColorId(source.getColorId());
+        remainder.setWarehouseId(null);
+        remainder.setQty(remainingQty);
+        remainder.setConsumedQty(BigDecimal.ZERO);
+        remainder.setReleasedQty(BigDecimal.ZERO);
+        remainder.setStatus(StockReservation.STATUS_EFFECTIVE);
+        remainder.setSource(source.getSource());
+        remainder.setSourceDocType(source.getSourceDocType());
+        remainder.setSourceDocId(source.getSourceDocId());
+        remainder.setHoldUntil(source.getHoldUntil());
+        return remainder;
+    }
+
+    private static BigDecimal nullSafe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /**

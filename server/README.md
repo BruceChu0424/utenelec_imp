@@ -29,7 +29,7 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
   账号一旦存在，启动器严格跳过，不会把人工撤销的超级管理员权限重新授回。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V173；目标库实际版本以 `flyway_schema_history` 为准）。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码目录最高为 V190）。2026-08-01 本地目标库已验证成功应用至 V181；V182–V190 的源码存在不等于数据库已升级，目标库实际版本始终以 `flyway_schema_history` 为准。资产专项曾在隔离 PostgreSQL 16.14 按数值顺序完成 V01–V186 的 167/167 SQL 回放，但该回放未生成 Flyway 元数据，且不包含其后出现的 V187–V190，不能写成目标库或这些迁移已验收。
 - 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统 → `V13` 访客权限拆分 → `V14` 车牌加密 → `V15` 访客通行码 → `V16` 超管 → `V17` 种子 admin 文档 → `V18` 个人信息修改申请 → `V19` 修改审批权限点 → `V20` 修改申请审计列 → `V21` 权限管理体系（部门默认角色 `department_roles` + 个人权限覆盖 `user_permission_overrides`，见 [ADR-007](../docs/99-决策记录-ADR/ADR-007-导航重构与三层权限模型.md)）→ `V22` 审计覆盖扩展（部门角色/权限覆盖/紧急联系人补触发器）→ `V23` 修复 V18 坏审计触发器（个人信息修改链路的部署级阻断 bug，见 [ADR-009](../docs/99-决策记录-ADR/ADR-009-后端安全加固与功能补全.md)）→ `V24` 岗位模板种子（ADR-010）→ `V25` 决策支持独立权限点 `analytics:view` → `V26` 工资条生成权限移交财务 → `V27` 部门直配权限点 `department_permissions` + 用户偏好 `user_preferences`（[ADR-011](../docs/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）→ `V28` 权限目录分组名中文化 → `V29` **角色体系下线**（存量角色权限沉淀为部门配置，PermissionResolver 不再读 user_roles/department_roles）→ `V30` 敏感字段脱敏按权限点化（新增 `employee:pii:view`）→ …（`V31`–`V63` 各业务模块迁移，详见 migration 目录）→ `V64` 下线决策支持模块，删除 `analytics:view` 权限点（前端 `/analytics/*` 路由与工作台卡片同步移除）→ …（`V65`–`V120` 销售/采购/委外/仓库/生产/钱流/通知/建议/归属隔离/业务链 V90–V100，详见 [docs/数据迁移/41 需求落地总路线图](../docs/数据迁移/41-需求落地总路线图.md)）→ `V121` 客户铺底额 → `V122` **总账子系统**（`gl_vouchers`/`gl_entries` + `account_style_id()` 函数，科目复用 payment_styles 树，docs 44）→ `V123` 固定资产折旧+长期待摊（`fixed_assets`/`deferred_expenses`/计提日志 + 科目种子 /152/ 累计折旧·折旧费·摊销费，docs 45）→ `V124` 出货财务审核（`sales_shipments.finance_audit`）+ 费用单总账状态（`finance_expenses.gl_status`，docs 46）。
 - `V125`–`V147`：人员 ID 回填、生产计划关联/看板、货品来源、数据完整性与长期索引、权限边界拆分、物化视图刷新状态、采购/销售/委外累计数量约束、工资/员工报销领域、迁移追溯、access JWT 授权版本、财税部报销付款权限、按 owner 聚合/索引的销售月报、工资/报销、访客、财务资产与建议长期分页索引、员工 PII/薪酬独立写权限，以及跨单据交易/上游订货分配不变量的数据库兜底。2026-07-30 的 PostgreSQL 16.14 空库基线已应用 128 个迁移到 V147；其开发库探针和生产验收边界保留在当日[生产就绪审计报告](../docs/99-项目治理/2026-07-30-生产就绪审计报告.md)，不得误作当前最高版本。
 - `V145` 把货品价格从二进制浮点收敛为 `NUMERIC(18,4)` 并由 Java `BigDecimal` 对齐；
@@ -39,8 +39,28 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
 - `V148`–`V168` 落地通知定向受众、生产物料履约/执行分段/供应转换/追加式台账与约束、Outbox、
   工作台概览、特权库存调整及旧数据修复；`V169` 增加审计风险、分类与 API/公开业务表完整覆盖，
   `V170` 增加人力概览索引，`V171` 增加独立导出权限和可配置两阶段留存，`V172` 增加设备证据与
-  本机关联，`V173` 增加独立查看权限并在服务层/数据库层禁止部门授予两个审计权限。当前目录共 154
-  个版本化 SQL；2026-07-31 定向 PostgreSQL 16 空库验证已完整应用到 V173。
+  本机关联，`V173` 增加独立查看权限并在服务层/数据库层禁止部门授予两个审计权限。2026-07-31
+  定向 PostgreSQL 16 空库验证到 V173 属于历史证据。
+- `V174`–`V181` 覆盖政策受众、组织层级、自制子计划归属、历史货品锚标记、销售预留优先级、
+  自制需求路径、模具部门/保管人 UUID 以及 BOM stub 隔离，并已在 2026-08-01 本地目标库应用。
+  V181 后活动 BOM 198,025 条、活动 stub 端点 0；81 条误接边和严格证明安全的 2 条 DRAW 明细/
+  1 张空采购申请链已软删，31 个历史货品锚及成本、余额和历史单据引用保留。V181 自此不可修改，
+  后续修正必须新增迁移。V183 将 V123/V140 原型升级为资产/待摊专业子账，并为 9 张新表显式挂接审计触发器、自带只补缺 sweep；`V184`
+  不修改已应用的 V169，而是在其后独立复核审计触发器的启用状态、AFTER ROW、I/U/D 事件与调用函数；
+  `V185` 将后续软删除明确写成 delete，并扩充迁移列明的原因备注类敏感文本/大型嵌套快照脱敏且保留 V172 设备关联字段。
+  `V186` 增加生产物料反查读索引，`V187` 增加销售出货策略与仓库作业结构，`V188` 增加不可变仓库状态事件账，`V189` 增加销售退货质量冻结和追加式处置证据；`V190` 在新增业务表之后重跑“每张公开业务表恰有一个有效、启用、AFTER ROW、覆盖 I/U/D 且调用批准脱敏函数”的 fail-closed 审计 sweep，只覆盖以后操作、不补历史。V182–V190 仍须在目标 PostgreSQL 完整迁移与复核。V188/V189 不回填历史状态时间线或质检结论。资产范围、默认门禁和 NO-GO 见
+  [51 · 资产与待摊专业化全链路](../docs/数据迁移/51-资产与待摊专业化全链路.md)及
+  [2026-08-01 验收报告](../docs/99-项目治理/2026-08-01-资产与待摊全链路实现与验收报告.md)。
+- 2026-08-01 当前候选在隔离 Testcontainers PostgreSQL 16.14 从空库成功迁移并 Flyway validate
+  171 个迁移至 V190；18 组真实 PG 测试 54/54（含 `SecurityPermissionMigrationTest` 8 项和
+  库存/生产/采购/Outbox 链）、定向 JVM 56/56、Java 默认套件 589 项（0 failure/error、54 skipped）
+  和 Flutter 全量 278/278 通过。
+  本次链路 Dart 定向分析为 0；全仓另有 10 条并行基础资料 warning/info、无 error。它不是公司目标
+  数据库的升级/历史对账证据，也不替代真实账号岗位 UAT、压测、备份恢复和发布签字。
+- 销售履约当前安全边界：出货商业事实由服务端从来源订单重建，财务已审先反审才可修改；所有
+  `SHIPPED` 禁止普通红冲，缺 `handed_over_at` 的历史行也不例外；新退货审核只进 V189 冻结，
+  仅 `GOOD_RELEASE` 入可售库存。V90 `chain_status=0` 且无预留的旧未结订单不能新建 V187 出货，
+  必须逐行对账后显式激活，当前没有自动批量激活。
 - `V167` 的余额调整使用独立 `stock:balance:adjust`，迁移不默认授予部门；
   `POST /api/stock/balances/adjust` 在 Controller 与 Service 双层鉴权，以库存锁 + `expectedQty`
   防止陈旧覆盖，以服务端保留前缀和部分唯一索引保证幂等，并在同一事务生成已审核 `CHECK`、
@@ -53,7 +73,10 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
   结果/状态码、耗时、IP、UA 与设备关联，但不保存 query 值或正文；显式安全/业务事件走
   `AuditService`，V169 为公开业务表变化补脱敏 `AFTER` before/after。审计中心只允许超级管理员或获
   个人 `audit_log:view` 授权的核查人员只读访问；导出还需 `audit_log:export`、文件密码与 Agile
-  AES-256。在线/归档记录没有人工编辑或删除 API，只能由 V171 留存任务先归档后按期删除。
+  AES-256。默认最近七天的“用户操作 + 写操作”只改善可见性，系统/迁移记录仍完整保留；对象类型/ID、
+  来源、Request ID、操作类型和用户/系统范围均由服务端过滤。首次列表返回 `snapshotId`，分页、统计、
+  导出固定 `id <= snapshotId`，排除通常后续分配的高 ID（不是跨请求 MVCC；旧 ID 晚提交/留存并发仍需实库验收）。在线/归档记录没有人工编辑或
+  删除 API，只能由 V171 留存任务先归档后按期删除。V169 或任一触发器生效前的实际历史缺口不得反向补造。
 - 并发：员工档案写路径全量手动递增 `version`，修改申请审批时版本不符 → 409 防丢更新（ADR-009 §1）；V132 在数据库侧用 12 个触发器保护采购/销售/委外累计收、发、退数量，避免并发审批突破来源数量。V132 不改写历史异常，只允许其向合法方向减少。
 
 ## 包结构（模块化单体，见 [ADR-008](../docs/99-决策记录-ADR/ADR-008-后端代码结构重构.md) 与 [ADR-017](../docs/99-决策记录-ADR/ADR-017-模块化单体与异步旁路.md)）
@@ -106,7 +129,7 @@ com.uten.imp
    │  ├─ statement/              对账单 5 张（附件 1/2/4/5，docs 42）
    │  ├─ cost/                   成本核算 8 报表（附件 15/7/8，docs 43）
    │  ├─ gl/                     总账：GlPostingService（7 类源单幂等过账）+ GlReportService（8 报表，docs 44）
-   │  └─ asset/                  固定资产折旧 + 长期待摊摊销（docs 45）
+   │  └─ asset/                  资产/待摊专业子账：类别、主档/账簿/计划、审批事件、月度批次、期间与查询（docs 51 / ADR-018；docs 45 仅历史原型）
    ├─ notice/                 通知（广播+每用户已读/删除 + 业务链 8 类自动通知）
    ├─ suggestion/             建议箱（广场/回复/点赞，匿名服务端脱敏）
    ├─ reporting/              6 个物化视图默认每 5 分钟逐个 `CONCURRENTLY` 刷新 + 多实例 advisory lock + 刷新状态记录（V131）
@@ -136,6 +159,10 @@ Argon2id 密码 · access JWT（源码默认 15 分钟，运行值可由系统�
 审计证据采用独立权限：超级管理员因固有全权限可查；普通用户、访客和未被点名授权的管理员均不可查。
 非超管只能由超级管理员以个人覆盖授予 `audit_log:view`，导出还须个人 `audit_log:export`；部门权限
 服务和 V173 数据库触发器都禁止这两个权限进入部门配置或随部门树继承。
+新增 Flyway 表必须通过 `AuditTriggerCoverageMigrationContractTest`：最新 audit sweep 之后的表只能是有
+书面理由的技术白名单项，否则必须新增后续 sweep。该静态护栏不执行 PostgreSQL DDL，发布仍须查询
+`pg_trigger` 验证所有非白名单公开业务表；详见
+[审计可见性修复与复核报告](../docs/99-项目治理/2026-08-01-审计可见性修复与复核报告.md)。
 
 JSON Controller 请求体由 `JsonRequestBodyLimitAdvice` 统一限制，默认
 `UTEN_MAX_JSON_BODY_BYTES=1048576`（1 MiB），同时覆盖无 `Content-Length` 的 chunked 请求；
@@ -154,7 +181,9 @@ multipart/二进制不走该缓冲器，未来上传端点必须单独采用流�
 - 后端通过 `spring-dotenv` 自动加载 `server/.env`（开发）；`application.yml` 用 `${UTEN_DB_URL}` 等占位读取，**密钥类无弱默认值，缺失即 fail-fast**。
 - 涉及的关键配置：`UTEN_DB_*`（数据库连接）、`UTEN_JWT_SECRET`（≥32 字节）、
   `UTEN_JWT_ISSUER`（环境唯一且生产必填）、`UTEN_PGP_MASTER_KEY`（PII 加密主密钥）、
-  `BOOTSTRAP_ADMIN_PASSWORD`（仅空库首次引导所需的一次性密码）、`UTEN_CORS_ORIGINS`。
+  `BOOTSTRAP_ADMIN_PASSWORD`（仅空库首次引导所需的一次性密码）、`UTEN_CORS_ORIGINS`；
+  `UTEN_FINANCE_ASSET_POSTED_WORKFLOWS_ENABLED` 不是密钥，但属于资产核心落账高危门禁，缺省和
+  `.env.example` 均必须为 `false`。在资产验收报告从 NO-GO 改判前不得启用。
 - **生产**：不打包 `.env`，改由服务器环境变量或 Vault/KMS 注入；pgcrypto 主密钥版本化（`app.pgp_key_v1`）并规划再加密迁移路径；备份加密。
 - 前端不含任何密钥：API 基址属于可公开的部署配置，员工端与访客端共同通过
   `lib/core/network/api_base_url.dart` 校验。开发未配置时使用
@@ -193,8 +222,8 @@ Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地�
 2026-07-30 完整基线曾执行 `UTEN_RUN_DB_TESTS=true mvn verify`：178 tests、0 failures/errors/skipped，
 并在 PostgreSQL 16.14 空库完成 128 个迁移到 V147。2026-07-31 审计中心变更另完成 Flutter 定向
 28 tests、定向 analyze 无问题，后端核心 55 tests、安全链 17 tests、PostgreSQL 定向 8 tests，
-空库完整应用 154 个迁移到 V173。后者是审计功能的定向证据，不替代合并后全量远端 CI、真实 HTTP
-权限/E2E、生产同构迁移和发布演练。
+空库完整应用 154 个迁移到 V173。后者是审计功能的定向历史证据，不覆盖 V174–V190，也不替代合并后
+全量远端 CI、真实 HTTP 权限/E2E、生产同构迁移和发布演练。
 
 ## 依赖安全基线
 

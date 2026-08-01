@@ -42,8 +42,7 @@ import java.util.UUID;
  * <p>审核（status 0→1，同事务内，对每条明细）：
  * <ol>
  *   <li>{@link StockService#recordMovement} {@code TYPE_SUBCONTRACT_MATERIAL_RETURN=16, DIR_IN=+1}</li>
- *   <li>双回写：{@code material_issue_items.returned_qty += qty}
- *       + {@code order_items.material_returned_qty += qty}（子件维度双回写）</li>
+ *   <li>只回写子件权威来源：{@code material_issue_items.returned_qty += qty}</li>
  * </ol>
  * <b>不立应付</b>（材料退回不是加工费结算）。无 Price。
  *
@@ -142,7 +141,7 @@ public class SubcontractMaterialReturnService {
     }
 
     /**
-     * 审核：0→1。库存入库（DIR_IN）+ 双回写 returned_qty/material_returned_qty。<b>不立应付</b>。
+     * 审核：0→1。库存入库（DIR_IN）+ 回写发料子件 returned_qty。<b>不立应付</b>。
      */
     @Transactional
     public MaterialReturnDetail approve(UUID id) {
@@ -167,6 +166,7 @@ public class SubcontractMaterialReturnService {
                                 it.getGoodsId(),
                                 it.getColorId(),
                                 it.getUnitId(),
+                                it.getUnitRate(),
                                 it.getParentGoodsId(),
                                 it.getParentColorId()))
                         .toList());
@@ -177,19 +177,12 @@ public class SubcontractMaterialReturnService {
         for (SubcontractMaterialReturnItem it : items) {
             // ① 入库（DIR_IN=+1）
             applyMovement(r, it, StockService.DIR_IN, now, null);
-            // ② 双回写：material_issue_items.returned_qty + order_items.material_returned_qty
+            // ② 只回写发料子件权威累计；不同子件量禁止汇总到成品订货行。
             if (it.getMaterialIssueItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE subcontract_material_issue_items SET returned_qty = COALESCE(returned_qty,0) + :q WHERE id = :id")
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
-                        .executeUpdate();
-            }
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET material_returned_qty = COALESCE(material_returned_qty,0) + :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
             }
         }
@@ -200,7 +193,7 @@ public class SubcontractMaterialReturnService {
         return detail(id);
     }
 
-    /** 红冲：1→-1。反向 DIR_OUT + 回减 returned_qty/material_returned_qty（无 ArAp）。 */
+    /** 红冲：1→-1。反向 DIR_OUT + 回减发料子件 returned_qty（无 ArAp）。 */
     @Transactional
     public MaterialReturnDetail reverse(UUID id) {
         tx.bind();
@@ -220,13 +213,6 @@ public class SubcontractMaterialReturnService {
                         "UPDATE subcontract_material_issue_items SET returned_qty = COALESCE(returned_qty,0) - :q WHERE id = :id")
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
-                        .executeUpdate();
-            }
-            if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET material_returned_qty = COALESCE(material_returned_qty,0) - :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
             }
         }

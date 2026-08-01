@@ -32,6 +32,10 @@ BOM 用量 = goods_bom_items.qty；无独立单位字段，表示组件货品基
 半成品（组件本身有 BOM）= 标记「自制」，只预览不进采购申请；其净需求缺口由 V1 排产确认事务内的派生内核（`generateSelfMadeSubplansForPackage`）生成子生产计划供给，写 `subplan_links(source='EXECUTION_V1')`
 ```
 
+MRP 只读取未删除的当前 BOM。V181 已将 81 条 stub 误接边软删，并由数据库触发器保证活动边两端
+都是未删除、`auto_created=false` 的正常货品；历史 `production_plan_costs` 中保留的占位身份不参与本公式。
+20,798 条源端 BOM reject 仍须独立治理，不能因活动端点已清零就宣称迁移完整。
+
 合法在途只包含已审核、未停止、未结案、未删除且剩余量大于零的采购订单行。采购单位可以不是货品
 基本单位，但单位必须有效且 `unit_rate` 必须是可靠的正数；本文不声称当前另有一张权威、已审核的
 单位换算表。与本次货品/颜色需求相关、满足状态及剩余量条件的任一开放行若单位或换算率无效，MRP 必须 **fail-closed**
@@ -62,6 +66,9 @@ BOM 用量 = goods_bom_items.qty；无独立单位字段，表示组件货品基
 | `POST /api/production/plans/{id}/mrp/generate-finished-in` | production_plan:edit | 生成成品入库单草稿（CR 序列取号，body 传 warehouseId，仓管审核入库） |
 
 前端：生产计划详情页「物料需求（MRP）」卡（展开/刷新 + 生成采购申请/领料单/成品入库，按 production_plan:edit 门控）。
+MRP 预览与 `subplan_links` 真实自制件子计划列表独立加载、独立错误提示；点击真实子计划进入其
+`/production/plans/{childPlanId}` 详情。V1 确认生成结果中的“执行子计划”是
+`production_execution_segments`，点击后只在父计划页定位并打开执行详情，不虚构独立计划路由。
 
 ### 计划 → 成品入库单（FINISHED_IN）
 
@@ -74,7 +81,7 @@ BOM 用量 = goods_bom_items.qty；无独立单位字段，表示组件货品基
   自制件同样列出（半成品也可能从库存领，明细备注标记「自制件」）。
 - 表头 `plan_no` + 明细 `source_doc_no` 挂计划号溯源；`plan_draw_links` 防重复（规则同 mrp_generations：
   有效生成单存在即拒绝，删/红冲后可再生成，旧联动软删留痕）。
-- 领料单审核出库即走既有 StockService 库存流水 + 余额，无需新逻辑。
+- 领料单审核只确认领料需求，不扣库存；仓库按行分轮 `issue` 时才写库存流水、扣余额并消费占用。
 
 ### 验证（2026-07-28，SJ25070094，77 明细）
 
@@ -118,6 +125,14 @@ BOM 用量 = goods_bom_items.qty；无独立单位字段，表示组件货品基
 - ~~成品入库审核后回写计划明细 iqty~~ → 已在业务链闭环实现；排产/报工共享资源锁仍须分别做
   真实 PostgreSQL 双连接并发回归。
 - ~~自制件子计划自动派生~~ → 已于 2026-08-01 落地（V1 confirm 调 `generateSelfMadeSubplansForPackage`，复用递归 explode，filter 自制件(has_bom) 且净需求>0，建子 production_plans 父号-N + 写 `subplan_links(source='EXECUTION_V1')`，按父计划幂等；V176 加归属列）。
+
+### 2026-08-01 子计划读取与交互修复
+
+- `MrpService.listSubplans` 改用统一安全日期转换，兼容 JDBC 返回 `LocalDate`、`java.sql.Date` 或文本日期，避免子计划列表因强制类型转换返回 500；数量、状态和谱系口径未改变。
+- 父计划详情、MRP 预览和真实子计划列表失败隔离；子计划列表有独立错误卡和重试。
+- 生产进度页的父计划表头、展开控件和具体子计划行使用独立点击域；销售执行分段通过
+  `/production/plans/{parentId}?executionSegmentId={segmentId}` 深链定位。
+- 定向 Widget 回归覆盖执行分段详情/权限/重复点击、真实子计划跳转和销售深链；真实登录态浏览器 UAT 仍未完成。
 
 ### 2026-07-30 并发复核
 

@@ -591,7 +591,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                         controller: _bodyV,
                         shrinkWrap: true,
                         physics: const ClampingScrollPhysics(),
-                        padding: EdgeInsets.zero,
+                        // 底部留一点可滚余量，避免钉底的横向滚动条正好挡住最后一行
+                        // （问题 #10：内容多的表格拖到底应该还能再往下滚一点）。
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
                         itemCount: plan.length + (widget.loadingMore ? 1 : 0),
                         itemBuilder: (ctx, i) {
                           if (widget.loadingMore && i == plan.length) {

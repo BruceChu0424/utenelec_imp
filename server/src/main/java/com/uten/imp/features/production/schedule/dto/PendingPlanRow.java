@@ -33,5 +33,6 @@ public record PendingPlanRow(
         LocalDate deliverDate,
         Short chainStatus,
         boolean bomReady,          // 成品已维护至少一条有效 BOM，可进入排产
-        boolean urgent) {          // 距交货 ≤3 天（含逾期），前端红色醒目
+        boolean urgent,            // 距交货 ≤3 天（含逾期），前端红色醒目
+        boolean rdForwarded) {     // 已转发工程研发部维护 BOM 且仍在等待（存在未完成 BOM 类 rd_task）
 }

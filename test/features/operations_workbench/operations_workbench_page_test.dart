@@ -77,7 +77,7 @@ void main() {
 
       expect(find.text('采购任务工作台'), findsOneWidget);
       expect(find.text('已挂接轴套一'), findsOneWidget);
-      expect(find.text('批量生成采购单'), findsOneWidget);
+      expect(find.text('选中并生成订货单'), findsOneWidget);
 
       await tester.tap(find.byType(Checkbox).at(0));
       await tester.pump();
@@ -98,8 +98,7 @@ void main() {
       batchButton = tester.widget<UtenButton>(
         find.byKey(const Key('operations-workbench-purchase-batch')),
       );
-      expect(batchButton.onPressed, isNull);
-      expect(find.text('请选择同一采购申请的明细'), findsOneWidget);
+      expect(batchButton.onPressed, isNotNull);
 
       await tester.tap(find.byType(Checkbox).at(2));
       await tester.tap(find.byType(Checkbox).at(3));
@@ -109,7 +108,67 @@ void main() {
       await tester.tap(find.byType(Checkbox).at(3));
       await tester.tap(find.byType(Checkbox).at(4));
       await tester.pump();
-      expect(find.text('采购申请尚未审核，请先审核'), findsOneWidget);
+      expect(find.text('计划申请尚未下达，请刷新后重试'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'subcontract batch accepts issued waiting lines across applications',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.subcontract,
+              repository: _FakeGateway(
+                OperationsWorkbenchData(
+                  department: OperationsWorkbenchDepartment.subcontract,
+                  summary: const OperationsWorkbenchSummary(
+                    totalTasks: 2,
+                    overdueTasks: 0,
+                    openTasks: 2,
+                    openQty: 12,
+                    statusCounts: {'WAITING_ORDER': 2},
+                  ),
+                  items: [
+                    _subcontractTask(
+                      id: 'sub-task-1',
+                      applicationId: 'application-1',
+                      applicationItemId: 'application-item-1',
+                    ),
+                    _subcontractTask(
+                      id: 'sub-task-2',
+                      applicationId: 'application-2',
+                      applicationItemId: 'application-item-2',
+                    ),
+                  ],
+                  page: 1,
+                  size: 20,
+                  total: 2,
+                  totalPages: 1,
+                  capabilities: const OperationsWorkbenchCapabilities(
+                    canCreateSubcontractOrder: true,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('选中并生成委外订货单'), findsOneWidget);
+      await tester.tap(find.byType(Checkbox).at(0));
+      await tester.tap(find.byType(Checkbox).at(1));
+      await tester.pump();
+
+      final button = tester.widget<UtenButton>(
+        find.byKey(const Key('operations-workbench-subcontract-batch')),
+      );
+      expect(button.onPressed, isNotNull);
+      expect(find.text('只能选择“申请待分解”的任务'), findsNothing);
     },
   );
 
@@ -248,14 +307,14 @@ void main() {
         ),
         (
           department: OperationsWorkbenchDepartment.purchase,
-          metricLabel: '待采购处理',
-          status: 'UNPEGGED',
+          metricLabel: '申请待分解',
+          status: 'WAITING_ORDER',
           surfaceSize: const Size(800, 1200),
         ),
         (
           department: OperationsWorkbenchDepartment.subcontract,
-          metricLabel: '待委外处理',
-          status: 'UNPEGGED',
+          metricLabel: '申请待分解',
+          status: 'WAITING_ORDER',
           surfaceSize: const Size(1200, 800),
         ),
       ];
@@ -455,5 +514,46 @@ OperationsWorkbenchTask _task({
           ),
     actionDocItemId: actionDocItemId,
     actionDocumentRestricted: actionDocumentRestricted,
+  );
+}
+
+OperationsWorkbenchTask _subcontractTask({
+  required String id,
+  required String applicationId,
+  required String applicationItemId,
+}) {
+  return OperationsWorkbenchTask(
+    taskId: id,
+    packageId: 'package-1',
+    planId: 'plan-1',
+    planNo: 'PP-001',
+    warehouseName: '委外成品仓',
+    goodsCode: 'FG-$id',
+    goodsName: '委外成品',
+    spec: '标准',
+    colorName: '本色',
+    unitName: '件',
+    supplyRoute: 'SUBCONTRACT',
+    requiredQty: 10,
+    allocatedQty: 0,
+    fulfilledQty: 0,
+    supplyPeggedQty: 0,
+    openQty: 6,
+    taskStatus: 'WAITING_ORDER',
+    needDate: '2026-08-10',
+    expectedDate: null,
+    exceptionCode: null,
+    updatedAt: '2026-08-02T10:00:00+08:00',
+    actionDocument: OperationsActionDocument(
+      id: applicationId,
+      docType: 'SUBCONTRACT_APPLICATION',
+      number: 'EA-$applicationId',
+      path: '/subcontract/applications/$applicationId',
+      canView: true,
+      canEdit: false,
+      status: '1',
+    ),
+    actionDocItemId: applicationItemId,
+    actionDocumentRestricted: false,
   );
 }

@@ -657,7 +657,7 @@ public class ProductionExecutionPackageCommandService {
                         plan.deliveryDate(),
                         warehouseId,
                         lines,
-                        currentUser.requireId(),
+                        currentUser.requireEmployeeId(),
                         currentUser.requireEmployeeId());
         if (purchase == null) {
             return null;

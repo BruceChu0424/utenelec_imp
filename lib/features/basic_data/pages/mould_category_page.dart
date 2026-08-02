@@ -15,7 +15,6 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_date_field.dart';
-import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -40,8 +39,8 @@ import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
 import '../../department/widgets/uten_department_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
-import '../../production/providers/production_department_provider.dart';
+import '../../employee/widgets/department_employee_picker.dart';
+import '../providers/mould_workshop_tree.dart';
 
 class MouldCategoryPage extends ConsumerStatefulWidget {
   const MouldCategoryPage({super.key});
@@ -240,12 +239,66 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage> {
   }
 
   Future<void> _delete(ProductCategoryNode node) async {
+    // 先拉子树规模预览（后代分类数 + 模具数），用于红色确认框提示级联影响（问题 #7）。
+    MouldCategoryDeletePreview? preview;
+    try {
+      preview = await ref
+          .read(mouldCategoryRepositoryProvider)
+          .deletePreview(node.id);
+    } catch (_) {
+      preview = null; // 预览失败不阻塞：退回无计数的通用确认。
+    }
+    if (!mounted) return;
+
+    final hasCascade =
+        preview != null &&
+        (preview.descendantCount > 0 || preview.mouldCount > 0);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除分类'), // TODO(l10n): 补 arb
-        content: Text(
-          '确定删除「${node.name}」吗？若存在子分类或模具引用，删除可能失败。', // TODO(l10n): 补 arb
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: UtenColors.error),
+            SizedBox(width: UtenSpacing.s8),
+            Text('删除分类'), // TODO(l10n): 补 arb
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('确定删除分类「${node.name}」吗？'), // TODO(l10n): 补 arb
+            if (hasCascade) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: UtenColors.error.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: UtenColors.error.withValues(alpha: 0.45),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (preview!.descendantCount > 0)
+                      Text(
+                        '• ${preview.descendantCount} 个子分类',
+                      ), // TODO(l10n): 补 arb
+                    if (preview.mouldCount > 0)
+                      Text('• ${preview.mouldCount} 个模具'), // TODO(l10n): 补 arb
+                    const SizedBox(height: UtenSpacing.s4),
+                    const Text(
+                      '以上将随该分类一并删除，且不可恢复。', // TODO(l10n): 补 arb
+                      style: TextStyle(color: UtenColors.error),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -599,12 +652,16 @@ class _DetailPaneState extends State<_DetailPane> {
   /// 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
   ///
   /// custom 字段（制造年月/车间/保管人）经 [MasterFieldDef.customBuilder] 嵌入
-  /// UtenDateField / UtenDepartmentPicker / UtenEmployeePicker（右滑入滑窗，对齐生产计划页）。
+  /// UtenDateField / UtenDepartmentPicker / DepartmentEmployeePickerField（右滑入滑窗）。
   /// 闭包捕获 [iv]（初值 map）与 [widget.ref]，故为实例方法而非 static const。
-  List<MasterFieldDef> _buildMouldFields(Map<String, String> iv) {
-    final workshopTree = widget.ref
-        .read(productionWorkshopTreeProvider)
-        .valueOrNull;
+  ///
+  /// [workshop] 由调用方（_showMouldCreate/_showMouldEdit）提前 await 拿到，避免在这里
+  /// 用 .read 读到还没 resolve 的 FutureProvider（autoDispose 首次打开必是 loading，
+  /// .valueOrNull 永远 null，车间选择器会静默退化成全公司组织树——问题 #5 根因之一）。
+  List<MasterFieldDef> _buildMouldFields(
+    Map<String, String> iv,
+    MouldWorkshopTree workshop,
+  ) {
     return [
       const MasterFieldDef(
         key: 'name',
@@ -655,7 +712,8 @@ class _DetailPaneState extends State<_DetailPane> {
           onChanged: (date) => ctx.onChanged(_formatYmd(date)),
         ),
       ),
-      // 车间：部门选择滑窗（生产部子树）；落 departmentId，后端按 id 解析 place 文本。
+      // 车间：部门选择滑窗（仅制造与研发管理中心子树，默认只展开生产部，需点确定才生效，
+      // 问题 #5）；落 departmentId，后端按 id 解析 place 文本。
       MasterFieldDef(
         key: 'departmentId',
         label: '车间',
@@ -667,7 +725,12 @@ class _DetailPaneState extends State<_DetailPane> {
             mode: UtenDepartmentPickerMode.single,
             label: '车间',
             hint: '选择生产车间',
-            treeOverride: workshopTree,
+            treeOverride: workshop.tree.isEmpty ? null : workshop.tree,
+            requireConfirm: true,
+            expandOnRowTap: true,
+            initiallyExpandedIds: workshop.prodDeptId == null
+                ? const {}
+                : {workshop.prodDeptId!},
             initialSelection: (id == null || id.isEmpty)
                 ? const []
                 : [
@@ -683,7 +746,8 @@ class _DetailPaneState extends State<_DetailPane> {
           );
         },
       ),
-      // 保管人：员工选择滑窗（全公司搜）；落 keeperId，后端按 id 解析 keeper 文本。
+      // 保管人：先选部门（未展开的分类树）再挑人，也可跨部门搜姓名/工号（问题 #6）；
+      // 落 keeperId，后端按 id 解析 keeper 文本。
       MasterFieldDef(
         key: 'keeperId',
         label: '保管人',
@@ -691,28 +755,17 @@ class _DetailPaneState extends State<_DetailPane> {
         group: '制造',
         customBuilder: (ctx) {
           final id = ctx.initialValue;
-          return UtenEmployeePicker(
+          return DepartmentEmployeePickerField(
             label: '保管人',
             hint: '请选择保管人',
-            sheetTitle: '选择保管人',
-            allowClear: true,
-            initial: (id == null || id.isEmpty)
-                ? null
-                : UtenEmployeePickerItem(id: id, name: iv['keeperName'] ?? ''),
-            loader: (kw) async {
-              final res = await widget.ref
-                  .read(employeeRepositoryProvider)
-                  .list(size: 30, search: kw);
-              return [
-                for (final e in res.items)
-                  UtenEmployeePickerItem(
-                    id: e.id,
-                    name: e.fullName,
-                    departmentName: e.departmentName,
-                  ),
-              ];
-            },
-            onChanged: (item) => ctx.onChanged(item?.id),
+            initialId: id,
+            initialName: iv['keeperName'],
+            onChanged: ctx.onChanged,
+            onPick: () => showUtenDepartmentEmployeePicker(
+              context,
+              widget.ref,
+              title: '选择保管人',
+            ),
           );
         },
       ),
@@ -749,12 +802,24 @@ class _DetailPaneState extends State<_DetailPane> {
 
   // ---- 模具 新建/编辑/删除 ------------------------------------------------
 
-  void _showMouldCreate() {
+  /// 车间树需要先 await（FutureProvider 首次读永远是 loading，同步 .read 会拿到 null，
+  /// 见 [_buildMouldFields] 上的注释），失败兜底空树（picker 退回全公司组织树，不阻断填表）。
+  Future<MouldWorkshopTree> _loadWorkshopTree() async {
+    try {
+      return await widget.ref.read(mouldWorkshopTreeProvider.future);
+    } catch (_) {
+      return const MouldWorkshopTree(tree: [], prodDeptId: null);
+    }
+  }
+
+  Future<void> _showMouldCreate() async {
+    final workshop = await _loadWorkshopTree();
+    if (!mounted) return;
     final iv = {'status': '使用', 'categoryName': _detail?.name ?? ''};
     showMasterEditDialog(
       context: context,
       title: '新增模具', // TODO(l10n): 补 arb
-      fields: _buildMouldFields(iv),
+      fields: _buildMouldFields(iv, workshop),
       initialValues: iv,
       fixedValues: {'categoryId': widget.nodeId},
       onSubmit: _doCreateMould,
@@ -774,7 +839,9 @@ class _DetailPaneState extends State<_DetailPane> {
     return true;
   }
 
-  void _showMouldEdit(MouldDetail d) {
+  Future<void> _showMouldEdit(MouldDetail d) async {
+    final workshop = await _loadWorkshopTree();
+    if (!mounted) return;
     final iv = {
       'name': d.name ?? '',
       'code': d.code ?? '',
@@ -793,7 +860,7 @@ class _DetailPaneState extends State<_DetailPane> {
     showMasterEditDialog(
       context: context,
       title: '编辑模具', // TODO(l10n): 补 arb
-      fields: _buildMouldFields(iv),
+      fields: _buildMouldFields(iv, workshop),
       initialValues: iv,
       fixedValues: {'categoryId': d.categoryId ?? widget.nodeId},
       onSubmit: (body) => _doUpdateMould(d.id, body),

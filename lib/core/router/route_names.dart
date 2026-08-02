@@ -153,6 +153,9 @@ abstract final class RouteName {
   static const String operationsSubcontractWorkbench =
       '/operations/workbench/subcontract';
 
+  // 工程研发部任务中心（BOM 缺失转发 / 设计 / 打样 / 试产 / ECN）。
+  static const String rdTaskCenter = '/rd/tasks';
+
   // 采购管理（PMC 运营部）：hub + 4 单据列表。
   // new/detail/edit 走 RoutePath.purchaseDoc*(doc,id) 带参；doc=requests|orders|receipts|returns。
   static const String purchase = '/purchase';
@@ -172,6 +175,15 @@ abstract final class RouteName {
   static const String warehouseReport = '/warehouse/report';
   static const String warehouseReportDetail = '/warehouse/report/detail';
   static const String warehouseReportSummary = '/warehouse/report/summary';
+  static const String warehouseInboundExpectations =
+      '/warehouse/inbound/expectations';
+  static const String warehouseArrivalExceptions =
+      '/warehouse/inbound/arrival-exceptions';
+
+  static const String procurementArrivalExceptions =
+      '/procurement/arrival-exceptions';
+  static const String financeArrivalExceptions =
+      '/finance/procurement-arrival-exceptions';
 
   // 销售管理（综合营销部）：hub + 5 单据 + 报表。
   // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
@@ -291,6 +303,11 @@ abstract final class RoutePath {
       '/warehouse/$code/$id/edit';
   static String stockWdrawNewFromDraw(String drawId) =>
       '/warehouse/WDRAW/new?drawId=$drawId';
+
+  static String procurementArrivalException(String id) =>
+      '/procurement/arrival-exceptions/$id';
+  static String financeArrivalException(String id) =>
+      '/finance/procurement-arrival-exceptions/$id';
 
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';

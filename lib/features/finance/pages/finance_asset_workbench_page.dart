@@ -362,6 +362,17 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
+/// 防御性脱敏：把后端可能下发的英文策略键映射成中文友好标签。
+/// 即便后端回退成英文键，前端也不会把其直出给用户（防止据此推断库表结构）；
+/// 后端正常下发中文时查无命中，原样返回中文。
+String _friendlyPolicyLabel(String raw) {
+  const labels = <String, String>{
+    'FIXED_ASSET_CATEGORY_POLICY': '固定资产类别政策',
+    'DEFERRED_EXPENSE_CATEGORY_POLICY': '长期待摊费用类别政策',
+  };
+  return labels[raw] ?? raw;
+}
+
 class _PolicyBanner extends StatelessWidget {
   const _PolicyBanner({
     required this.missingItems,
@@ -378,7 +389,7 @@ class _PolicyBanner extends StatelessWidget {
     final theme = Theme.of(context);
     final detail = missingItems.isEmpty
         ? '分类或会计科目政策尚未就绪'
-        : missingItems.take(3).join('、');
+        : missingItems.take(3).map(_friendlyPolicyLabel).join('、');
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(UtenSpacing.s12),

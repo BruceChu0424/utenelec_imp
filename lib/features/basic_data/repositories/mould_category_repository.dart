@@ -7,12 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../models/mould_node.dart';
 import '../models/product_category_node.dart';
 
 abstract interface class MouldCategoryRepository {
   Future<List<ProductCategoryNode>> tree();
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
+  Future<MouldCategoryDeletePreview> deletePreview(String id);
   Future<ProductCategoryDetail> create(ProductCategorySaveInput input);
   Future<ProductCategoryDetail> update(
     String id,
@@ -41,6 +43,12 @@ class DioMouldCategoryRepository implements MouldCategoryRepository {
   Future<ProductCategoryDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.mouldCategory(id));
     return ProductCategoryDetail.fromJson(json);
+  }
+
+  @override
+  Future<MouldCategoryDeletePreview> deletePreview(String id) async {
+    final json = await api.get(ApiEndpoints.mouldCategoryDeletePreview(id));
+    return MouldCategoryDeletePreview.fromJson(json);
   }
 
   @override

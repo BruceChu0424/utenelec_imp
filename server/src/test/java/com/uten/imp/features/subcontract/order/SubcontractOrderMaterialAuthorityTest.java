@@ -6,6 +6,7 @@ import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -59,7 +60,9 @@ class SubcontractOrderMaterialAuthorityTest {
                 mock(EmployeeNameResolver.class),
                 mock(DocNumberService.class),
                 productionSupply,
-                mock(ProductionSupplySourceGuard.class));
+                mock(ProductionSupplySourceGuard.class),
+                mock(ProcurementApprovalProjectionQuery.class),
+                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class));
     }
 
     @Test

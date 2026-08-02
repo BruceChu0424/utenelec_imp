@@ -94,6 +94,9 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     final list = ref.watch(noticeListProvider);
     final filter = ref.watch(noticeFilterProvider);
 
+    // Tab 栏（全部/未读）与「管理/全部已读」放同一行：tab 用 Stack+Center 保证在整行
+    // 正中间（不受右侧按钮宽度影响，比 Row 两侧 Expanded 更精确），按钮用 Positioned
+    // 钉在最右边（问题 #12：老员工反馈两者原本分成两行，视觉上找不到入口）。
     Widget body = Column(
       children: [
         Padding(
@@ -101,67 +104,75 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
             top: UtenSpacing.s12,
             bottom: UtenSpacing.s8,
           ),
-          child: UtenSegmentedFilter<NoticeFilter>(
-            selected: filter,
-            onChanged: (v) => ref.read(noticeFilterProvider.notifier).state = v,
-            segments: const [
-              UtenSegment(value: NoticeFilter.all, label: '全部'),
-              UtenSegment(value: NoticeFilter.unread, label: '未读'),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(
-            right: UtenSpacing.s8,
-            bottom: UtenSpacing.s4,
-          ),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          child: SizedBox(
+            // 44 = UtenActionButtonSize.small 的最小高度（见 click_guard.dart _minimumHeight），
+            // 给够高度避免右侧按钮被 Stack 边界裁切。
+            height: 44,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                if (_selecting) ...[
-                  UtenActionButton(
-                    type: UtenActionButtonType.ghost,
-                    size: UtenActionButtonSize.small,
-                    label: const Text('全选'),
-                    onAction: () async {
-                      final notices = list.valueOrNull ?? const <Notice>[];
-                      setState(() {
-                        _selected
-                          ..clear()
-                          ..addAll(notices.map((n) => n.id));
-                      });
-                    },
+                Center(
+                  child: UtenSegmentedFilter<NoticeFilter>(
+                    selected: filter,
+                    onChanged: (v) =>
+                        ref.read(noticeFilterProvider.notifier).state = v,
+                    segments: const [
+                      UtenSegment(value: NoticeFilter.all, label: '全部'),
+                      UtenSegment(value: NoticeFilter.unread, label: '未读'),
+                    ],
                   ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  UtenActionButton(
-                    type: UtenActionButtonType.ghost,
-                    size: UtenActionButtonSize.small,
-                    label: const Text('退出管理'),
-                    onAction: () async => _exitSelection(),
+                ),
+                Positioned(
+                  right: UtenSpacing.s8,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_selecting) ...[
+                        UtenActionButton(
+                          type: UtenActionButtonType.ghost,
+                          size: UtenActionButtonSize.small,
+                          label: const Text('全选'),
+                          onAction: () async {
+                            final notices =
+                                list.valueOrNull ?? const <Notice>[];
+                            setState(() {
+                              _selected
+                                ..clear()
+                                ..addAll(notices.map((n) => n.id));
+                            });
+                          },
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        UtenActionButton(
+                          type: UtenActionButtonType.ghost,
+                          size: UtenActionButtonSize.small,
+                          label: const Text('退出管理'),
+                          onAction: () async => _exitSelection(),
+                        ),
+                      ] else ...[
+                        UtenActionButton(
+                          type: UtenActionButtonType.secondary,
+                          size: UtenActionButtonSize.small,
+                          icon: Icons.checklist_rounded,
+                          label: const Text('管理'),
+                          onAction: () async => _enterSelection(),
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        UtenActionButton(
+                          type: UtenActionButtonType.ghost,
+                          size: UtenActionButtonSize.small,
+                          label: const Text('全部已读'),
+                          onAction: () async {
+                            await markAllNoticeRead(ref);
+                            if (context.mounted) {
+                              context.appSuccess('全部已读');
+                            }
+                          },
+                        ),
+                      ],
+                    ],
                   ),
-                ] else ...[
-                  UtenActionButton(
-                    type: UtenActionButtonType.secondary,
-                    size: UtenActionButtonSize.small,
-                    icon: Icons.checklist_rounded,
-                    label: const Text('管理'),
-                    onAction: () async => _enterSelection(),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  UtenActionButton(
-                    type: UtenActionButtonType.ghost,
-                    size: UtenActionButtonSize.small,
-                    label: const Text('全部已读'),
-                    onAction: () async {
-                      await markAllNoticeRead(ref);
-                      if (context.mounted) {
-                        context.appSuccess('全部已读');
-                      }
-                    },
-                  ),
-                ],
+                ),
               ],
             ),
           ),

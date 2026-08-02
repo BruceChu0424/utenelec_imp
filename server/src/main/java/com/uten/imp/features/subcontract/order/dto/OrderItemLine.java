@@ -29,8 +29,8 @@ public class OrderItemLine {
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
 
-    /** 申请明细真FK（可选；审核订货时回写 application_items.ordered_qty）。 */
-    private UUID applicationItemId;
+    /** 申请明细真FK（新建/编辑必填；审核订货时回写 ordered_qty）。 */
+    @NotNull private UUID applicationItemId;
 
     private LocalDate deliverDate;
     private BigDecimal weight;

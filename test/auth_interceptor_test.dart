@@ -322,6 +322,51 @@ void main() {
       expect(await storage.getRefreshToken(), 'new-refresh');
       expect(expirations, 0);
     });
+    test('public auth exchanges never inherit stored authorization', () async {
+      await storage.saveTokens(
+        accessToken: 'old-access',
+        refreshToken: 'old-refresh',
+      );
+      final observed = <String, Object?>{};
+      final dio = _staffDio(storage, (request) {
+        observed[request.path] = request.headers['Authorization'];
+        return _jsonResponse(request, 200, <String, Object>{'ok': true});
+      });
+
+      await dio.post<dynamic>('/auth/login', data: <String, String>{});
+      await dio.post<dynamic>('/auth/refresh', data: <String, String>{});
+      await dio.post<dynamic>('/auth/logout', data: <String, String>{});
+
+      expect(observed, <String, Object?>{
+        '/auth/login': null,
+        '/auth/refresh': null,
+        '/auth/logout': null,
+      });
+    });
+
+    test(
+      'public auth exchanges bypass unavailable storage and strip stale authorization',
+      () async {
+        Object? authorization;
+        final dio = _staffDio(_ThrowingSnapshotSecureStorage(), (request) {
+          authorization = request.headers['Authorization'];
+          return _jsonResponse(request, 200, <String, Object>{'ok': true});
+        });
+
+        final response = await dio.post<dynamic>(
+          '/auth/logout',
+          data: <String, String>{},
+          options: Options(
+            headers: const <String, String>{
+              'Authorization': 'Bearer stale-access',
+            },
+          ),
+        );
+
+        expect(response.statusCode, 200);
+        expect(authorization, isNull);
+      },
+    );
   });
 
   group('VisitorAuthInterceptor', () {
@@ -433,6 +478,14 @@ Dio _visitorDio(SecureStorage storage, _Responder responder) {
     ),
   );
   return dio;
+}
+
+class _ThrowingSnapshotSecureStorage extends SecureStorage {
+  _ThrowingSnapshotSecureStorage() : super(const FlutterSecureStorage());
+
+  @override
+  Future<AuthTokenSnapshot> getAuthTokenSnapshot() =>
+      Future<AuthTokenSnapshot>.error(StateError('secure storage unavailable'));
 }
 
 ResponseBody _jsonResponse(RequestOptions request, int status, Object body) =>

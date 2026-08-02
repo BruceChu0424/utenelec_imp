@@ -41,7 +41,7 @@ public class ProductionSubcontractApplicationCoordinator {
                         needDate,
                         warehouseId,
                         lines,
-                        currentUser.requireId(),
+                        currentUser.requireEmployeeId(),
                         currentUser.requireEmployeeId());
         if (result == null) {
             return null;

@@ -238,13 +238,13 @@ class _Content extends ConsumerWidget {
               const SizedBox(height: UtenSpacing.s8),
             ],
           ],
-          if (notice.kind == NoticeKind.todo) ...[
+          if (notice.kind == NoticeKind.todo || notice.actionRoute != null) ...[
             const SizedBox(height: UtenSpacing.s24),
             Wrap(
               spacing: UtenSpacing.s12,
               runSpacing: UtenSpacing.s8,
               children: [
-                if (!notice.taskCompleted)
+                if (notice.kind == NoticeKind.todo && !notice.taskCompleted)
                   FilledButton.icon(
                     onPressed: () async {
                       try {
@@ -260,11 +260,15 @@ class _Content extends ConsumerWidget {
                     icon: const Icon(Icons.task_alt_rounded),
                     label: const Text('标记完成'),
                   ),
+                // 非 TODO 但带 actionRoute 的系统通知（排产/发货等，问题 #12）：
+                // 只给「查看详情」跳转，不给「标记完成」——完成态是 TODO 语义专属。
                 if (notice.actionRoute != null)
                   OutlinedButton.icon(
                     onPressed: () => goFrom(context, notice.actionRoute!),
                     icon: const Icon(Icons.arrow_forward_rounded),
-                    label: const Text('前往办理页面'),
+                    label: Text(
+                      notice.kind == NoticeKind.todo ? '前往办理页面' : '查看详情',
+                    ),
                   ),
               ],
             ),

@@ -1,5 +1,6 @@
 package com.uten.imp.features.dashboard;
 
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.dashboard.DashboardOverviewDto.MetricCard;
@@ -16,9 +17,11 @@ import com.uten.imp.features.visitor.VisitorHrApprovalService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,6 +36,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DashboardOverviewService {
@@ -47,8 +51,10 @@ public class DashboardOverviewService {
     private final VisitorHrApprovalService visitorApprovalService;
     private final ProfileChangeReviewService profileChangeReviewService;
     private final NoticeService noticeService;
+    private final AuditService auditService;
 
-    @Transactional(readOnly = true)
+    // Deliberately no encompassing transaction: each workbench query owns its
+    // read transaction, so one failed partition cannot poison the aggregate.
     public DashboardOverviewDto overview() {
         AuthUser user = currentUser.get()
                 .filter(candidate -> !candidate.isVisitor())
@@ -142,19 +148,105 @@ public class DashboardOverviewService {
             AuthUser user, DepartmentContext department, List<TodoCard> todos) {
         if (can(user, "stock_doc:view")
                 && belongsTo(user, department, "WAREHOUSE")) {
-            addFulfillmentTodo(todos, "WAREHOUSE", "warehouse",
+            addFulfillmentTodoSafely(user, todos, "WAREHOUSE", "warehouse",
                     "项仓库备料任务待处理", "/operations/workbench/warehouse");
         }
         if (canAny(user, "purchase_request:view", "purchase_order:view")
                 && belongsTo(user, department, "PURCHASE")) {
-            addFulfillmentTodo(todos, "PURCHASE", "purchase",
+            addFulfillmentTodoSafely(user, todos, "PURCHASE", "purchase",
                     "项采购任务待处理", "/operations/workbench/purchase");
         }
         if (hasPermissionPrefix(user, "subcontract_")
                 && belongsTo(user, department, "SUBCONTRACT")) {
-            addFulfillmentTodo(todos, "SUBCONTRACT", "subcontract",
+            addFulfillmentTodoSafely(user, todos, "SUBCONTRACT", "subcontract",
                     "项委外任务待处理", "/operations/workbench/subcontract");
         }
+    }
+
+    private void addFulfillmentTodoSafely(
+            AuthUser user,
+            List<TodoCard> todos,
+            String department,
+            String id,
+            String titleSuffix,
+            String route) {
+        try {
+            addFulfillmentTodo(todos, department, id, titleSuffix, route);
+        } catch (RuntimeException failure) {
+            if (isAuthenticationOrAuthorizationFailure(failure)) {
+                throw failure;
+            }
+            recordFulfillmentPartitionDegradation(user, department, failure);
+            todos.add(unavailableFulfillmentTodo(department, id, route));
+        }
+    }
+
+    private void recordFulfillmentPartitionDegradation(
+            AuthUser user, String department, RuntimeException failure) {
+        String result = failureCode(failure);
+        log.warn(
+                "Dashboard fulfillment partition degraded: department={}, result={}",
+                department,
+                result,
+                failure);
+        try {
+            auditService.logExplicit(
+                    user.getId(),
+                    user.getLoginAccount(),
+                    "dashboard_fulfillment_partition_degraded",
+                    "fulfillment_workbench",
+                    department,
+                    result);
+        } catch (RuntimeException auditFailure) {
+            log.error(
+                    "Dashboard fulfillment degradation audit failed: department={}, result={}",
+                    department,
+                    result,
+                    auditFailure);
+        }
+    }
+
+    private static boolean isAuthenticationOrAuthorizationFailure(
+            RuntimeException failure) {
+        if (failure instanceof AuthenticationException
+                || failure instanceof AccessDeniedException) {
+            return true;
+        }
+        return failure instanceof ApiException apiFailure
+                && (apiFailure.getCode().getHttpStatus() == 401
+                        || apiFailure.getCode().getHttpStatus() == 403);
+    }
+
+    private static String failureCode(RuntimeException failure) {
+        if (failure instanceof ApiException apiFailure) {
+            return apiFailure.getCode().name().toLowerCase(Locale.ROOT);
+        }
+        String simpleName = failure.getClass().getSimpleName();
+        return simpleName.isBlank()
+                ? "runtime_exception"
+                : simpleName.toLowerCase(Locale.ROOT);
+    }
+
+    private static TodoCard unavailableFulfillmentTodo(
+            String department, String id, String route) {
+        String departmentName = switch (department) {
+            case "WAREHOUSE" -> "仓库";
+            case "PURCHASE" -> "采购";
+            case "SUBCONTRACT" -> "委外";
+            default -> "履约";
+        };
+        return new TodoCard(
+                "fulfillment-" + id + "-unavailable",
+                departmentName + "任务正在自动恢复",
+                "其它功能可继续使用，无需退出或反复刷新",
+                0,
+                0,
+                "warning",
+                route,
+                "FULFILLMENT_UNAVAILABLE",
+                null,
+                null,
+                false);
     }
 
     private void addFulfillmentTodo(

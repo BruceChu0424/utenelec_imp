@@ -33,7 +33,8 @@ class GoodsBomStubIsolationTest {
     private final MasterReferenceValidationPort references = mock(MasterReferenceValidationPort.class);
     private final GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
     private final GoodsBomService service = new GoodsBomService(
-            goodsRepo, bomRepo, colorRepo, unitRepo, tx, references, relationships);
+            goodsRepo, bomRepo, colorRepo, unitRepo, tx, references, relationships,
+            mock(com.uten.imp.application.port.BusinessEventPublisher.class));
 
     @Test
     void listHidesLegacyStubComponentsEvenBeforeDatabaseCleanup() {

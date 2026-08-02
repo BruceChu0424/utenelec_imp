@@ -39,8 +39,10 @@ public class GoodsSaveRequest {
     private BigDecimal price;    // Price（NUMERIC(18,4)）
     private String material;     // Material 材质
     private BigDecimal thickness;
+    private Integer thicknessUnitLegacyId; // 厚度单位（→ units.legacy_id；V203）
     @JsonProperty("mWeight")
     private BigDecimal mWeight;  // MWeight 单重（防 Jackson 连续大写 quirk）
+    private Integer mWeightUnitLegacyId;   // 单重单位（→ units.legacy_id；V203）
     private String pack;         // Pack 包装
     private Integer pieces;      // Pieces 件数
     private String status;       // Status（使用/禁用）

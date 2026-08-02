@@ -33,6 +33,7 @@ class PurchaseDocConfig {
     this.showReturned = false,
     // 管理卡片点进直达新增页（true=跳过列表，列表仍可从新增页"查看历史"进入）
     this.skipListOnCreate = false,
+    this.allowDirectCreate = true,
   });
 
   final PurchaseDocType type;
@@ -64,6 +65,7 @@ class PurchaseDocConfig {
 
   /// 管理卡片点进是否直达新增页（跳过列表）。
   final bool skipListOnCreate;
+  final bool allowDirectCreate;
 
   /// 明细是否可链路引入（决定编辑页是否显示"从上游引入"按钮）。
   bool get hasUpstreamLink =>
@@ -83,14 +85,14 @@ class PurchaseDocConfig {
 
   static const request = PurchaseDocConfig(
     type: PurchaseDocType.request,
-    label: '采购申请单',
-    shortLabel: '申请',
+    label: '计划下达的采购申请',
+    shortLabel: '申请（只读）',
     icon: Icons.request_page_outlined,
     listPerm: Perm.purchaseRequestView,
     editPerm: Perm.purchaseRequestEdit,
     hasApplicant: true,
     hasNeedDate: true,
-    skipListOnCreate: true,
+    allowDirectCreate: false,
   );
 
   static const order = PurchaseDocConfig(
@@ -102,12 +104,13 @@ class PurchaseDocConfig {
     editPerm: Perm.purchaseOrderEdit,
     hasSupplier: true,
     hasCurrency: true,
+    supplierRequired: true,
     hasPurchaser: true,
     hasDeliverDate: true,
     linkToRequestItem: true,
     showReceived: true,
     showReturned: true,
-    skipListOnCreate: true,
+    allowDirectCreate: false,
   );
 
   static const receipt = PurchaseDocConfig(

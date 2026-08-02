@@ -4,6 +4,8 @@
 > 现有库存契约：`features/stock/StockService.recordMovement(MovementRequest)`（已扩 movement_type 15-20 常量）。
 >
 > **2026-08-01 现行覆盖规则**：本文是 V50–V68 普通业务单据的通用实现基线，不再是所有状态机的单一事实源。销售出货和销售退货必须服从 V187–V189 专用生命周期；V190 负责新增业务表后的审计覆盖。专用状态机与通用模板冲突时，以后置迁移、当前 Service、最新 SOP 和契约测试为准。
+> **2026-08-02 采购/委外专用覆盖规则**：计划申请分解、订货财务审批、预计到货与超量控制服从 V196–V202、当前 `features/finance/procurement`、`features/warehouse/inbound`、订单/收货 Service 和 ADR-019。订货不再由通用 `approve()` 直接生效；只有订货财务审批事务可以把原生订货从 `status=0` 改为 `status=1`，超量收货还须有绑定本收货单的财务追加批准。
+
 
 ---
 
@@ -255,3 +257,94 @@ common/docnumber/
    - 不受影响：`SalesOrder.isStopped` / `ProductionPlan.isStopped` 用原始 `boolean`（JVM 默认 `false`，Hibernate 视为已赋值），不会发 null。
 
 > 教训：DDL `NOT NULL DEFAULT X` 列在 Java 实体里**不能用包装类型无默认值**（`Boolean xxx;`）—— Hibernate insert 会以字段值 `null` 覆盖 DDL DEFAULT；要么用原始类型（`boolean xxx;`），要么显式赋默认（`Boolean xxx = false;`）。详见 [27] §二「NOT NULL DEFAULT 列契约」。
+
+## 十、计划需求分解、订货财务审批与超量到货专用契约（V196–V202）
+
+### 10.1 应用层边界
+
+- `PurchaseRequestController` 与 `SubcontractApplicationController` 只允许 list、detail、decomposition-preview；计划下达申请不是采购/委外 CRUD 资源。
+- 采购/委外分解只读预览接受多个申请明细 ID，保持输入顺序、去重并 fail-closed；选择项必须已下达、未关闭、有可靠单位且剩余量大于零。不同仓库返回 409。
+- 原生采购/委外订单每行必须有申请明细 FK。订单创建接口即使被直接调用，提交财务时也必须重新锁定并验证全部来源，不能靠 Flutter 路由守卫保证完整性。
+
+### 10.2 端点
+
+| 用途 | 端点 | 权限/对象约束 |
+|---|---|---|
+| 采购申请只读 | `GET /api/purchase/requests`、`GET /api/purchase/requests/{id}` | `purchase_request:view`；没有申请 create/update/approve/delete 端点 |
+| 委外申请只读 | `GET /api/subcontract/applications`、`GET /api/subcontract/applications/{id}` | `subcontract_application:view`；没有申请 create/update/approve/reverse/delete 端点 |
+| 采购分解预览 | `POST /api/purchase/requests/decomposition-preview` | `purchase_request:view` + `purchase_order:edit` |
+| 委外分解预览 | `POST /api/subcontract/applications/decomposition-preview` | `subcontract_application:view` + `subcontract_order:edit` |
+| 提交财务 | `POST /api/purchase/orders/{id}/submit-finance`、`POST /api/subcontract/orders/{id}/submit-finance` | 分别要求 `purchase_order:submit_finance` / `subcontract_order:submit_finance`；订单草稿和来源重验 |
+| 财务任务 | `GET /api/finance/procurement-approvals/tasks`、`GET /api/finance/procurement-approvals/count` | `finance_order_approval:view`；查询强制 `assignee_user_id=currentUser` |
+| 通过 | `POST /api/purchase/orders/{id}/approve`、`POST /api/subcontract/orders/{id}/approve` | `finance_order_approval:review` + 精确 assignee + `expectedVersion` |
+| 驳回 | `POST /api/purchase/orders/{id}/reject`、`POST /api/subcontract/orders/{id}/reject` | `finance_order_approval:review` + 精确 assignee + `expectedVersion` + `reason` |
+| 负责人列表/候选人 | `GET /api/admin/workflow-responsibilities`、`GET /api/admin/workflow-responsibilities/reviewers` | `workflow_assignment:manage` |
+| 保存负责人 | `PUT /api/admin/workflow-responsibilities/{behaviorCode}` | `workflow_assignment:manage` + 当前密码 + `assigneeUserId` + `expectedVersion` |
+| 仓库预计到货 | `GET /api/warehouse/inbound/expectations`、`GET /api/warehouse/inbound/expectations/count` | `warehouse_inbound:view`；只返回财务已批订单投影 |
+| 仓库到货异常 | `GET /api/warehouse/inbound/arrival-exceptions`、`GET /api/warehouse/inbound/arrival-exceptions/count` | `warehouse_inbound:view`；只读，不能决定入库量 |
+| 财务超量任务 | `GET /api/finance/procurement-arrival-exceptions/tasks`、`GET /api/finance/procurement-arrival-exceptions/count`、`GET /api/finance/procurement-arrival-exceptions/{id}` | `finance_order_approval:view`；查询和详情强制精确 finance assignee |
+| 财务超量决定 | `POST /api/finance/procurement-arrival-exceptions/{id}/decision` | 同时要求 `finance_order_approval:view` + `finance_order_approval:review`、精确 assignee 与 `expectedVersion`；full/custom 必填说明 |
+| 本人退货任务 | `GET /api/procurement/arrival-exceptions/tasks?orderType={orderType}`、`GET /api/procurement/arrival-exceptions/count?orderType={orderType}`、`GET /api/procurement/arrival-exceptions/{id}` | `orderType` 可省略，值仅为 `PURCHASE` / `SUBCONTRACT`；`supplier_return_task:handle` + 精确任务 owner；只投影 PENDING_RETURN |
+| 完成供应商退回 | `POST /api/procurement/arrival-exceptions/return-tasks/{id}/complete` | `supplier_return_task:handle` + 精确任务 owner + `expectedVersion` |
+
+`allowedActions` 是动作事实源：草稿/驳回后且有提交权限才返回 `SUBMIT_FINANCE`；只有待审实例的精确负责人且有 review 权限才返回订单 `APPROVE/REJECT` 或超量 `APPROVE_ALL/APPROVE_CUSTOM/REJECT_EXCESS`；只有精确任务 owner 才返回 `COMPLETE_RETURN`。超级管理员、负责人配置权或已知 UUID 都不得追加对象级动作。V201 为财务任务详情最小授予财务部门 `purchase_order:view` / `subcontract_order:view`，绝不授相应 edit。
+
+负责人设置仅接受两个固定行为码：`PURCHASE_ORDER_FINANCE_APPROVAL`、`SUBCONTRACT_ORDER_FINANCE_APPROVAL`。候选人必须是 `DEPT_FIN` 或其在用子部门中的在职员工，绑定账号处于 `active`、未删除，并在当前权限解析后仍持有 `finance_order_approval:review`。PUT 还要求当前密码、`assigneeUserId` 和非负 `expectedVersion`；配置只决定以后新实例的默认负责人，不能改写已提交实例的负责人快照。
+
+### 10.3 事务、并发和快照
+
+提交事务必须：
+
+1. 锁订单并验证 `status=0`、供应商、商业字段和全部来源；
+2. 拒绝同订单已有 `PENDING`；
+3. 锁负责人配置并复查候选账号/员工仍匹配、启用、在职且有 review 权限；
+4. 保存头行 canonical JSON 快照、hash、提交人和负责人快照；
+5. 追加 `SUBMITTED` 事件并写 Outbox。
+
+审批事务必须锁订单和待审 case，验证 `expectedVersion`、精确负责人及当前订单快照 hash 未变化。通过时在同一事务调用端口的 `applyFinanceApproval`，使订单 `status=1`、回写申请累计/生产供给，再写 case、事件和未来入库；任一步失败整体回滚。驳回只结束 case 并记录原因，不让订单生效。
+
+来源容量必须同时计算 `ordered_qty + 其它 PENDING qty + 本次 qty`，并按稳定 ID 顺序锁来源。申请余量不能因并发提交被透支。
+
+超量收货事务另须满足：
+
+1. `PurchaseReceiptService.approve` / `SubcontractReceiptService.approve` 使用 `noRollbackFor = ProcurementArrivalBlockedException.class`，但仅该专用异常可提交异常任务；其它校验、库存或 AP 失败仍整体回滚。
+2. 审核前重新锁收货、订单及来源，确认每行都链接财务已批订单，并按“原批准量 + 已退量 + 已成功过账超量额度 - 已收量”算余量。
+3. 超量时创建或重检 `PENDING_FINANCE` 异常，冻结当前同类型负责人配置和订单/收货/货品/数量/金额快照，追加事件后抛 `ARRIVAL_EXCEPTION_PENDING` 409；此路径不得改变收货状态、库存、AP 或订单累计。
+4. 财务决定锁异常并校验 `expectedVersion`、精确 assignee、账号/员工/权限仍有效。`APPROVE_ALL` 批全部超量，`APPROVE_CUSTOM` 必须满足 `0 < approvedExcess < requestedExcess`，`REJECT_EXCESS` 批 0；full/custom 必填有界财务说明。
+5. 决定事务由服务端计算接受/未接受量。采购草稿受控调整 `qty`、重量、原币/本币金额和单头合计；委外还按接受比例缩放 `girth_qty`，并令 `check_qty=min(原 check_qty, acceptedQty)`；原订货 `order_qty` 不改。未接受量 upsert 唯一 `PENDING_RETURN`，不得让客户端金额成为权威。
+6. 仓库再审只允许使用当前收货单处于 `RECEIPT_ADJUSTED` 的 `approved_excess_qty`。成功过账后才把该额度累加到订单行 `arrival_overage_posted_qty`；数据库累计触发器同时计入已过账额度和当前收货额度，防并发串用。
+7. 退货 owner 优先取订单 maker 对应的有效账号，其次订单 `created_by`，最后回退到采购员/委外经办人对应的有效账号。完成时锁 `supplier_return_tasks`，校验该精确 owner 与 `expectedVersion`，只做 `PENDING_RETURN → COMPLETED`、完成说明和追加事件，不能回改财务决定。
+
+异常状态机：
+
+```text
+PENDING_FINANCE
+  ├─ accepted > 0 → RECEIPT_ADJUSTED → 仓库再审
+  │                   ├─ return pending → RECEIPT_POSTED → return complete → CLOSED
+  │                   └─ no return / already completed → CLOSED
+  └─ accepted = 0 → RETURN_REQUIRED → return complete → CLOSED（收货行已删除）
+```
+
+标准 10→100 场景（无历史收货/退货/超量过账）：财务已批订单量 10 吨、收货草稿申报 100 吨，检测结果为批准余量 10、`requestedExcessQty=90`，先返回 `ARRIVAL_EXCEPTION_PENDING` 409，库存/AP/订单累计不变。`APPROVE_ALL` 得 accepted/return=`100/0`；`APPROVE_CUSTOM(customApprovedExcessQty=5)` 得 `15/85`；`REJECT_EXCESS` 得 `10/90`。接受量仍须仓库再审才过账；若决定时并发使批准余量变为 0，不批会删除该草稿行并直接形成 100 吨退回任务。
+
+### 10.4 数据与通知
+
+- `workflow_responsibility_assignments`：每个固定行为一个未来默认负责人；修改默认值不改在途实例。
+- `procurement_order_approval_cases`：每次提交一个 attempt，保存不可变提交快照和乐观锁版本。
+- `procurement_order_approval_events`：append-only；禁止更新/删除。
+- `inbound_expectations/items`：财务通过后唯一未来到货任务；不是实际到货、库存、IQC 或应付。
+- 业务事务只写可靠 Outbox；通知只作提醒，不作为任务或权限事实源。
+- 到货通知最小投递：`DETECTED` 只发 `finance_assignee_user_id`；`FINANCE_DECIDED` 发仓储部，接受量大于 0 提醒按调整草稿再审、接受量为 0 告知该行已移除；`RETURN_REQUIRED/RETURN_COMPLETED` 只发精确退货任务 owner。
+
+- `procurement_arrival_exceptions`：一收货行一异常，保存精确财务负责人、数量/金额快照、决定、批准追加量、接受/未接受量和乐观锁版本。
+- `supplier_return_tasks`：只承载未批准数量及精确任务 owner 的 `PENDING_RETURN/COMPLETED/CANCELED` 责任事实。
+- `procurement_arrival_exception_events`：append-only；禁止更新/删除。
+- `purchase_order_items/subcontract_order_items.arrival_overage_posted_qty`：只累计已经由仓库成功过账的财务追加额度。
+
+- V201 收货行/单头守卫禁止开放异常绕过；V202 在 V196/V201 新业务表之后重新全量扫描全部 `public` 业务表，缺失时补唯一 `trg_audit*`，并 fail-closed 校验启用、AFTER ROW、I/U/D 与批准脱敏函数。V202 只覆盖以后操作，不补历史审计。
+
+### 10.5 发布边界
+
+目标公司库只确认到 V190。V196–V202 尚未完成目标库迁移验证、真实多账号对象范围、财务负责人、仓库收货/再审、供应商退回实物 UAT、完整 IQC 和发布签字，因此生产 **NO-GO**。源码候选的超量控制不得被表述为专业质量隔离：待检、合格、不良、特采及质量反向仍须后续实现。
+
+Flyway 已执行迁移不可修改、改名或重排；任何共享环境一旦执行 V196–V202，修正只能新增 V203+，并在新增公开业务表后追加审计覆盖刷新。版本事实以目标库 `flyway_schema_history` 为准，SQL 顺序回放不能代替 Flyway 校验。详见 [ADR-019](../99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md)。

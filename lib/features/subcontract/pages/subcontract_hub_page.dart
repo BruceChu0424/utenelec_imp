@@ -15,6 +15,9 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../shared/models/procurement_inbound.dart';
+import '../../warehouse/pages/procurement_return_task_pages.dart';
+import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 
@@ -39,9 +42,20 @@ class SubcontractHubPage extends StatelessWidget {
               _section(context, theme, '任务中心', [
                 _Entry(
                   icon: Icons.precision_manufacturing_outlined,
-                  label: '生产委外需求',
-                  description: '处理申请、下单、回厂审核与齐套转生产',
+                  label: '委外任务中心',
+                  description: '查看计划申请，按委外商分解为订货单',
                   location: RouteName.operationsSubcontractWorkbench,
+                ),
+                _Entry(
+                  icon: Icons.assignment_return_outlined,
+                  label: '待退回供应商',
+                  description: '处理本人下单且财务未批准入库的数量',
+                  location: procurementReturnTasksLocation(
+                    ProcurementInboundOrderType.subcontract,
+                  ),
+                  badge: const ProcurementArrivalReturnBadge(
+                    orderType: ProcurementInboundOrderType.subcontract,
+                  ),
                 ),
               ]),
               const SizedBox(height: UtenSpacing.s16),
@@ -117,6 +131,7 @@ class _Entry {
     required this.description,
     required this.location,
     this.enabled = true,
+    this.badge,
   });
 
   _Entry.fromCfg(SubcontractDocConfig cfg)
@@ -135,6 +150,7 @@ class _Entry {
   final String description;
   final String location;
   final bool enabled;
+  final Widget? badge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -180,6 +196,10 @@ class _EntryTile extends StatelessWidget {
                     ),
                     child: Icon(entry.icon, color: color, size: 22),
                   ),
+                  if (entry.badge != null) ...[
+                    const Spacer(),
+                    entry.badge!,
+                  ],
                   if (!entry.enabled) ...[
                     const Spacer(),
                     Container(

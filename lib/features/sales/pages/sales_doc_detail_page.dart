@@ -23,7 +23,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../production/repositories/production_repository.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
@@ -104,19 +103,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       return '已有发货记录；不能整单取消，请用“改量”把数量改为已发量以取消未发部分。';
     }
     return null;
-  }
-
-  bool get _canConfirmPartialShipment {
-    final d = _detail;
-    return widget.docType == SalesDocType.order &&
-        d != null &&
-        d.status == kSalesStatusApproved &&
-        !d.stopped &&
-        !d.closed &&
-        d.shipmentPolicy == SalesShipmentPolicy.customerConfirm &&
-        ref
-            .read(currentPermissionsProvider)
-            .contains(Perm.salesOrderConfirmPartialShipment);
   }
 
   bool get _canManageWarehouseWork {
@@ -371,42 +357,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       controller.dispose();
     }
     return result;
-  }
-
-  Future<void> _setPartialShipmentConfirmation(bool confirmed) async {
-    if (_busy) {
-      context.appInfo('正在处理，请稍候…');
-      return;
-    }
-    final reason = await _askRequiredReason(
-      title: confirmed ? '登记客户同意分批' : '撤销分批确认',
-      message: confirmed
-          ? '请记录客户确认渠道、时间或书面依据。登记后，库存未齐时允许建立部分出货任务。'
-          : '撤销后将重新阻止部分出货；已有进行中的出货任务时系统会拒绝撤销。',
-      confirmLabel: confirmed ? '确认登记' : '确认撤销',
-      danger: !confirmed,
-    );
-    if (reason == null || !mounted) return;
-    setState(() => _busy = true);
-    try {
-      final detail = await ref
-          .read(salesRepositoryProvider(widget.docType))
-          .setPartialShipmentConfirmation(
-            widget.id,
-            confirmed: confirmed,
-            reason: reason,
-          );
-      if (!mounted) return;
-      setState(() => _detail = detail);
-      context.appSuccess(confirmed ? '已登记客户同意分批发货' : '已撤销客户分批确认');
-      bumpListRefresh(ref, _cfg.refreshKey);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('分批确认操作失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Future<void> _performWarehouseAction(SalesWarehouseWorkAction action) async {
@@ -1257,111 +1207,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     );
   }
 
-  /// D3（李主管）：订单物料分析底表——BOM 展开 毛需求/库存/在途/净需求（自制件标记）。
-  Future<void> _showMrpAnalysis() async {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        expand: false,
-        builder: (_, ctl) => FutureBuilder<List<MrpRow>>(
-          future: ref
-              .read(productionPlanRepositoryProvider)
-              .mrpOrderPreview(widget.id),
-          builder: (_, snap) {
-            if (snap.hasError) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Text('物料分析失败：${snap.error}'),
-                ),
-              );
-            }
-            if (!snap.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final rows = snap.data!;
-            if (rows.isEmpty) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(UtenSpacing.s16),
-                  child: Text('订单货品均未维护 BOM，无物料需求'),
-                ),
-              );
-            }
-            String fmt(double? v) => v == null
-                ? '—'
-                : v.toStringAsFixed(v == v.roundToDouble() ? 0 : 2);
-            return ListView(
-              controller: ctl,
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              children: [
-                Text(
-                  '物料分析（本订单 BOM 展开）',
-                  style: Theme.of(
-                    ctx,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Row(
-                  children: [
-                    _mrpHead('物料', 3),
-                    _mrpHead('毛需求', 1),
-                    _mrpHead('库存', 1),
-                    _mrpHead('在途', 1),
-                    _mrpHead('净需求', 1),
-                  ],
-                ),
-                const Divider(height: 1),
-                for (final r in rows)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            '${r.goodsName ?? ''}${r.selfMade ? '（自制）' : ''}',
-                            style: const TextStyle(fontSize: 12),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        _mrpCell(fmt(r.gross)),
-                        _mrpCell(fmt(r.onhand)),
-                        _mrpCell(fmt(r.openPo)),
-                        _mrpCell(fmt(r.net), bold: true),
-                      ],
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _mrpHead(String t, int flex) => Expanded(
-    flex: flex,
-    child: Text(
-      t,
-      textAlign: flex == 3 ? TextAlign.left : TextAlign.right,
-      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-    ),
-  );
-
-  Widget _mrpCell(String t, {bool bold = false}) => Expanded(
-    child: Text(
-      t,
-      textAlign: TextAlign.right,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
-      ),
-    ),
-  );
-
   Widget _actions(ThemeData theme) {
     final s = _detail!.status;
     final rejected = _detail!.rejected;
@@ -1536,17 +1381,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ..add(const SizedBox(width: UtenSpacing.s8));
           }
           children
-            // D3（李主管）：收到确定订单后即物料分析（BOM 展开 毛/净需求）
-            ..add(
-              UtenButton(
-                type: UtenButtonType.secondary,
-                icon: Icons.account_tree_outlined,
-                onPressed: _showMrpAnalysis,
-                child: const Text('物料分析'),
-              ),
-            )
-            ..add(const SizedBox(width: UtenSpacing.s8))
             // 排产进度：销售端看链路另一端（每行 已排/已产 + 关联计划单溯源）
+            // 审核完成后不再展示"物料分析"（问题 #18：内部排产用信息，销售不需要）。
             ..add(
               UtenButton(
                 type: UtenButtonType.secondary,
@@ -1569,20 +1405,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               ..add(const SizedBox(width: UtenSpacing.s8));
           }
         }
-        if (_canConfirmPartialShipment) {
-          final confirmed = _detail!.partialShipmentConfirmed;
-          add(
-            UtenButton(
-              key: const ValueKey('partial-shipment-confirmation'),
-              type: confirmed
-                  ? UtenButtonType.danger
-                  : UtenButtonType.secondary,
-              icon: confirmed ? Icons.undo_outlined : Icons.how_to_reg_outlined,
-              onPressed: () => _setPartialShipmentConfirmation(!confirmed),
-              child: Text(confirmed ? '撤销分批确认' : '登记客户同意分批'),
-            ),
-          );
-        }
+        // 审核完成后不再展示"登记客户同意分批"（问题 #16/#18）：分批发货已不要求
+        // 先登记客户同意依据，员工选的发运策略直接生效，这颗按钮没有意义了。
       }
       if (_canReverseDocument) {
         children.add(

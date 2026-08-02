@@ -1,7 +1,6 @@
 // 采购任务中心待办任务计数（工作台「采购管理」卡片徽标）。
 //
-// 口径 = 采购任务中心未完成任务数（UNPEGGED 待采购处理 + WAITING_SUPPLY 申请/订单/收货中），
-// 后端 GET /operations/workbench/purchase/count 返回 {count}，与采购任务中心同源。
+// 口径 = 计划已下达且仍有未分解数量的申请明细（WAITING_ORDER）。
 // 默认 60s 轮询；有任一采购查看权限才拉取，否则返回 0（不渲染徽章）。
 // 范式同 lib/features/production/providers/production_pending_provider.dart（生产待排产徽章）。
 
@@ -14,7 +13,7 @@ import '../../operations_workbench/repositories/operations_workbench_repository.
 
 const Duration _kPurchaseTaskPollInterval = Duration(seconds: 60);
 
-/// 采购任务中心待办任务数（UNPEGGED + WAITING_SUPPLY 行数）。
+/// 采购任务中心待分解申请明细数（WAITING_ORDER 行数）。
 ///
 /// 有任一采购查看权限时 60s 轮询；其它角色返回 0。count 为 0 时徽章不渲染。
 final purchaseTaskCountProvider =

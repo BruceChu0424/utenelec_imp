@@ -17,7 +17,7 @@ import 'subcontract_link_picker.dart' show LinkedItem;
 /// 委外明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier，仅 itemHasPrice 时有意义）。
 class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
-  SubcontractGridRow() {
+  SubcontractGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
     price.addListener(_recalc);
   }
@@ -42,14 +42,19 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// applicationItemId/orderItemId/receiptItemId/materialIssueItemId）。
   String? upstreamItemId;
+  final bool sourceLocked;
+  double? maxQty;
   String? colorId;
   String? unitId;
+  double? unitRate;
+  String? sourceDocNo;
 
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory SubcontractGridRow.fromLinked(LinkedItem li, GoodsOption goods) {
-    final r = SubcontractGridRow()
+    final r = SubcontractGridRow(sourceLocked: li.upstreamItemId != null)
       ..goods = goods
       ..upstreamItemId = li.upstreamItemId
+      ..maxQty = li.maxQty
       ..colorId = li.colorId
       ..unitId = li.unitId;
     r.qty.text = li.qty.toString();
@@ -90,7 +95,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       label: '货品',
       width: 220,
       cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
+        onTap: row.sourceLocked ? null : () => onPickGoods(row),
         child: InputDecorator(
           decoration: const InputDecoration(isDense: true),
           child: Row(
@@ -108,7 +113,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
                   ),
                 ),
               ),
-              const Icon(Icons.search_rounded, size: 16),
+              Icon(
+                row.sourceLocked ? Icons.lock_outline : Icons.search_rounded,
+                size: 16,
+              ),
             ],
           ),
         ),

@@ -27,6 +27,10 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>, JpaSp
 
     long countByDepartmentIdAndDeletedFalse(UUID departmentId);
 
+    /** 部门主管的"本部门员工"面板用：本部门（不含子部门）在册员工。 */
+    @EntityGraph(attributePaths = {"position"})
+    List<Employee> findByDepartmentIdAndDeletedFalseOrderByFullNameAsc(UUID departmentId);
+
     long countByDepartmentIdAndDeletedFalseAndStatusIn(
             UUID departmentId, java.util.Collection<String> statuses);
 

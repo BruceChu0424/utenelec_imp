@@ -23,13 +23,24 @@ class TokenRefreshResult {
   final DioException? error;
 }
 
-/// 后端刷新接口的契约：
-/// - 400/422：本地 refresh token 请求已损坏；
-/// - 401：refresh token 无效、过期、已撤销或账号已不可用。
-///
-/// 403、429、5xx 和网络异常不代表 refresh token 已失效，不能据此退出用户。
-bool isDefinitiveRefreshRejection(int? statusCode) =>
-    statusCode == 400 || statusCode == 401 || statusCode == 422;
+/// A refresh rejection is destructive only when both HTTP status and the
+/// structured application error code match the live backend contract. Proxy,
+/// servlet-container and WAF HTML/empty responses are service failures.
+const Map<String, int> _definitiveRefreshRejections = <String, int>{
+  'UNAUTHORIZED': 401,
+  'ACCOUNT_LOCKED': 401,
+  'ACCOUNT_DISABLED': 401,
+  'VALIDATION_FAILED': 422,
+  'VISITOR_BLOCKED': 403,
+};
+
+bool isDefinitiveRefreshRejection(Response<dynamic>? response) {
+  final data = response?.data;
+  if (data is! Map) return false;
+  final code = data['code'];
+  return code is String &&
+      _definitiveRefreshRejections[code] == response?.statusCode;
+}
 
 DioException invalidRefreshResponse(Response<dynamic> response) => DioException(
   requestOptions: response.requestOptions,

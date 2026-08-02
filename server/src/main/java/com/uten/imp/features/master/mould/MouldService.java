@@ -115,7 +115,8 @@ public class MouldService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
+        // 默认按编号升序（问题 #8：表头编号列默认应从小到大，不是内部 id 顺序）。
+        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
         Page<Mould> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());

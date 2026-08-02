@@ -61,10 +61,12 @@ MRP 只读取未删除的当前 BOM。V181 已将 81 条 stub 误接边软删，
 
 ### 接口与权限
 
+> 本节记录 V87 历史接口。V196+ 与 ADR-019 已后置改变申请职责：生成结果由计划链下达，采购申请页面只读，采购人员不再审核申请，而是在任务中心把申请明细分解成订货单并送指定财务负责人审核。V196–V202 仍是源码候选，目标公司库只确认到 V190；不得把隔离迁移或测试当成部署证据。
+
 | 接口 | 权限 | 说明 |
 |---|---|---|
 | `GET /api/production/plans/{id}/mrp` | production_plan:view | 预览（毛/存/途/净 + 自制标记） |
-| `POST /api/production/plans/{id}/mrp/generate` | production_plan:edit | 生成采购申请草稿（CS 序列取号，采购员走正常审核流） |
+| `POST /api/production/plans/{id}/mrp/generate` | production_plan:edit | 历史入口；V196+ 当前结果是计划链下达的采购申请，采购端只读并从任务中心分解订货 |
 | `POST /api/production/plans/{id}/mrp/generate-draw` | production_plan:edit | 生成生产领料单草稿（SL 序列取号，body 传 warehouseId，仓管审核出库） |
 | `POST /api/production/plans/{id}/mrp/generate-finished-in` | production_plan:edit | 生成成品入库单草稿（CR 序列取号，body 传 warehouseId，仓管审核入库） |
 
@@ -164,6 +166,4 @@ order→application。服务按稳定 UUID 顺序 `FOR UPDATE` 来源行，校�
 颜色/单位和累计数量；V144 再为 request/application 的 `ordered_qty` 增量增加两个数据库触发器。
 开发库两项 V144 回滚探针均被拒绝，未留测试数据。
 
-明确策略边界：没有来源 UUID 的手工订货明细仍允许；现有采购申请有 96 条历史超额分配，不自动
-篡改，只允许向合法方向减少；委外申请历史表当前为空。上线前须由业务确认“手工无来源”是否继续
-允许，并清理/解释 96 条历史超额。
+V144 阶段曾允许没有来源 UUID 的手工订货明细；V196+ 已以后置专用契约取代该新单规则：原生采购/委外新订货每行必须关联计划申请明细，提交财务时重新锁来源并 fail-closed 校验。历史无来源订单仍按既有事实保留，不反推或伪造申请。现有采购申请 96 条历史超额分配不自动篡改，只允许向合法方向减少；委外申请历史表当前为空。上线前仍须清理/解释这 96 条历史超额。

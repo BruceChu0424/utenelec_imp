@@ -80,7 +80,8 @@ class GoodsUuidRelationshipServiceTest {
         GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
         GoodsBomService service = new GoodsBomService(
                 goodsRepo, bomRepo, mock(ColorRepository.class), mock(UnitRepository.class),
-                mock(TxSessionVars.class), mock(MasterReferenceValidationPort.class), relationships);
+                mock(TxSessionVars.class), mock(MasterReferenceValidationPort.class), relationships,
+                mock(com.uten.imp.application.port.BusinessEventPublisher.class));
 
         Goods parent = new Goods();
         parent.setName("Parent");

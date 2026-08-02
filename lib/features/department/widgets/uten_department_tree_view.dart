@@ -55,7 +55,12 @@ class UtenDepartmentTreeView extends StatefulWidget {
     this.emptySearchText,
     this.expandOnRowTap = false,
     this.visibleFilterIds,
+    this.initiallyExpandedIds = const {},
   });
+
+  /// 额外强制默认展开的节点 id 集合（与 [initiallyExpandDepth] 叠加，不互斥）。
+  /// 用于"只展开某个特定子节点，同级其它节点保持折叠"的场景（如模具车间选择器只展开生产部）。
+  final Set<String> initiallyExpandedIds;
 
   /// 点击节点文字行时是否同时展开/收起子部门（有子节点才生效）。
   /// 查看类页面（如部门管理）设 true：点部门既选中又展开，不必只点 chevron 图标。
@@ -136,7 +141,8 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
     super.didUpdateWidget(oldWidget);
     if (widget.nodes != oldWidget.nodes ||
         widget.initiallyExpandDepth != oldWidget.initiallyExpandDepth ||
-        widget.showCompanyRoot != oldWidget.showCompanyRoot) {
+        widget.showCompanyRoot != oldWidget.showCompanyRoot ||
+        widget.initiallyExpandedIds != oldWidget.initiallyExpandedIds) {
       // 保留已展开节点，补上默认可展开的新节点。
       _expanded.addAll(_defaultExpanded());
     }
@@ -149,7 +155,7 @@ class _UtenDepartmentTreeViewState extends State<UtenDepartmentTreeView> {
   }
 
   Set<String> _defaultExpanded() {
-    final out = <String>{};
+    final out = <String>{...widget.initiallyExpandedIds};
     void walk(List<DepartmentNode> nodes, int depth) {
       for (final n in nodes) {
         if (n.hasChildren && depth < widget.initiallyExpandDepth) out.add(n.id);

@@ -40,11 +40,15 @@ class ProcurementDocumentStateLockTest {
 
     private static final List<LockedService> LOCKED_SERVICES = List.of(
             service("purchase/request/PurchaseRequestService.java", "PurchaseRequest", "requireRequestForUpdate"),
-            service("purchase/order/PurchaseOrderService.java", "PurchaseOrder", "requireOrderForUpdate"),
+            financeOrderService(
+                    "purchase/order/PurchaseOrderService.java",
+                    "PurchaseOrder", "requireOrderForUpdate"),
             service("purchase/receipt/PurchaseReceiptService.java", "PurchaseReceipt", "requireReceiptForUpdate"),
             service("purchase/ret/PurchaseReturnService.java", "PurchaseReturn", "requireReturnForUpdate"),
             service("subcontract/application/SubcontractApplicationService.java", "SubcontractApplication", "requireApplicationForUpdate"),
-            service("subcontract/order/SubcontractOrderService.java", "SubcontractOrder", "requireOrderForUpdate"),
+            financeOrderService(
+                    "subcontract/order/SubcontractOrderService.java",
+                    "SubcontractOrder", "requireOrderForUpdate"),
             service("subcontract/receipt/SubcontractReceiptService.java", "SubcontractReceipt", "requireReceiptForUpdate"),
             service("subcontract/ret/SubcontractReturnService.java", "SubcontractReturn", "requireReturnForUpdate"),
             service("subcontract/material_issue/SubcontractMaterialIssueService.java", "SubcontractMaterialIssue", "requireIssueForUpdate"),
@@ -57,8 +61,9 @@ class ProcurementDocumentStateLockTest {
             String source = Files.readString(Path.of("src/main/java/com/uten/imp/features")
                     .resolve(service.relativePath()));
 
-            assertEquals(4, occurrences(source, "= " + service.helper() + "(id);"),
-                    service.relativePath() + " must lock update/delete/approve/reverse before status checks");
+            assertEquals(service.expectedLockCount(),
+                    occurrences(source, "= " + service.helper() + "(id);"),
+                    service.relativePath() + " must lock every scoped state transition before status checks");
             assertTrue(source.contains(service.entity()
                             + ".class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE"),
                     service.relativePath() + " must use a direct locked find");
@@ -127,7 +132,13 @@ class ProcurementDocumentStateLockTest {
     }
 
     private static LockedService service(String relativePath, String entity, String helper) {
-        return new LockedService(relativePath, entity, helper);
+        return new LockedService(relativePath, entity, helper, 4);
+    }
+
+    private static LockedService financeOrderService(
+            String relativePath, String entity, String helper) {
+        // update/delete/submit-finance/apply-finance-approval/reverse
+        return new LockedService(relativePath, entity, helper, 5);
     }
 
     private static int occurrences(String source, String needle) {
@@ -140,6 +151,7 @@ class ProcurementDocumentStateLockTest {
         return count;
     }
 
-    private record LockedService(String relativePath, String entity, String helper) {
+    private record LockedService(
+            String relativePath, String entity, String helper, int expectedLockCount) {
     }
 }

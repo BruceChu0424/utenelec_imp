@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -16,7 +17,11 @@ void main() {
     );
     addTearDown(router.dispose);
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('任务中心'), findsOneWidget);
@@ -41,7 +46,11 @@ void main() {
     );
     addTearDown(router.dispose);
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('任务中心'), findsOneWidget);
@@ -68,13 +77,17 @@ void main() {
     );
     addTearDown(router.dispose);
 
-    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('任务中心'), findsOneWidget);
-    expect(find.text('生产委外需求'), findsOneWidget);
-    expect(find.textContaining('处理申请、下单、回厂审核与齐套转生产'), findsOneWidget);
-    await tester.tap(find.text('生产委外需求'));
+    expect(find.text('委外任务中心'), findsOneWidget);
+    expect(find.textContaining('按委外商分解为订货单'), findsOneWidget);
+    await tester.tap(find.text('委外任务中心'));
     await tester.pumpAndSettle();
 
     expect(find.text('委外工作台已打开'), findsOneWidget);

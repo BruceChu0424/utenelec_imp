@@ -15,6 +15,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/idle_timeout_controller.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/public_settings_repository.dart';
@@ -98,8 +99,12 @@ class _IdleTimeoutGuardState extends ConsumerState<IdleTimeoutGuard> {
     if (_handlingTimeout) return;
     _handlingTimeout = true;
     final idle = ref.read(idleTimeoutProvider.notifier);
+    final notifications = ref.read(appNotificationProvider.notifier);
     try {
       await ref.read(sessionProvider.notifier).logout();
+      notifications.showInfo('已安全退出，请重新登录', force: true);
+    } catch (_) {
+      notifications.showError('退出未完全完成，请重新打开应用后再登录。', force: true);
     } finally {
       // 下一次登录从新的活动时间开始，不能继承已超时状态。
       idle.reset();

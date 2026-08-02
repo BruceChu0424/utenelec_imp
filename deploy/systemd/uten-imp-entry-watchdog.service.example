@@ -1,0 +1,29 @@
+[Unit]
+Description=Uten IMP static entry watchdog probe
+Documentation=file:/opt/uten-imp/current/deploy/README.md
+After=network-online.target nginx.service
+Wants=network-online.target nginx.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=-/etc/uten-imp/watchdog.env
+RuntimeDirectory=uten-imp-entry-watchdog
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/bash /opt/uten-imp/current/deploy/watchdog/uten-imp-entry-watchdog.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/run/uten-imp-entry-watchdog
+TimeoutStartSec=15s

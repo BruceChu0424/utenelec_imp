@@ -5,6 +5,8 @@
 // 明细含 ending/standard/waste_rate/cause）。一个超集模型 ×8 配置，避免 8 套重复。
 // UUID=String；金额/数量=(json as num?)；日期=ISO 字符串直存（后端 LocalDate）；status=Short→int。
 
+import '../../../shared/models/procurement_finance_approval.dart';
+
 /// 委外单据类型。pathSegment 对齐后端 /api/subcontract/{inquiries|applications|orders|
 /// receipts|returns|material-issues|material-returns|wastes}。
 enum SubcontractDocType {
@@ -62,6 +64,7 @@ class SubcontractDocListItem {
     this.apPosted = false,
     this.fulfill = false,
     this.legacyId,
+    this.financeApproval,
   });
 
   final String id;
@@ -76,6 +79,7 @@ class SubcontractDocListItem {
   final bool apPosted;
   final bool fulfill;
   final int? legacyId;
+  final ProcurementFinanceApproval? financeApproval;
 
   factory SubcontractDocListItem.fromJson(Map<String, dynamic> json) =>
       SubcontractDocListItem(
@@ -91,6 +95,11 @@ class SubcontractDocListItem {
         apPosted: (json['apPosted'] as bool?) ?? false,
         fulfill: (json['fulfill'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        financeApproval: json['financeApproval'] is Map
+            ? ProcurementFinanceApproval.fromJson(
+                (json['financeApproval'] as Map).cast<String, dynamic>(),
+              )
+            : null,
       );
 }
 
@@ -244,6 +253,7 @@ class SubcontractDocDetail {
     this.canDelete = true,
     this.canReverse = true,
     this.restrictionReason,
+    this.financeApproval,
   });
 
   final String id;
@@ -285,6 +295,7 @@ class SubcontractDocDetail {
   final bool canDelete;
   final bool canReverse;
   final String? restrictionReason;
+  final ProcurementFinanceApproval? financeApproval;
 
   factory SubcontractDocDetail.fromJson(Map<String, dynamic> json) =>
       SubcontractDocDetail(
@@ -322,6 +333,11 @@ class SubcontractDocDetail {
         canDelete: (json['canDelete'] as bool?) ?? true,
         canReverse: (json['canReverse'] as bool?) ?? true,
         restrictionReason: json['restrictionReason'] as String?,
+        financeApproval: json['financeApproval'] is Map
+            ? ProcurementFinanceApproval.fromJson(
+                (json['financeApproval'] as Map).cast<String, dynamic>(),
+              )
+            : null,
         items:
             (json['items'] as List?)
                 ?.map(
@@ -330,4 +346,64 @@ class SubcontractDocDetail {
                 .toList() ??
             const [],
       );
+}
+
+/// 计划下达申请在委外任务中心的权威可拆分行。
+class SubcontractDecompositionLine {
+  const SubcontractDecompositionLine({
+    required this.sourceDocumentId,
+    required this.sourceDocumentNo,
+    required this.sourceItemId,
+    required this.goodsId,
+    required this.requestedQty,
+    required this.orderedQty,
+    required this.pendingQty,
+    required this.remainingQty,
+    this.colorId,
+    this.unitId,
+    this.unitRate,
+    this.needDate,
+    this.warehouseId,
+    this.sourcePlanNo,
+  });
+
+  final String sourceDocumentId;
+  final String sourceDocumentNo;
+  final String sourceItemId;
+  final String goodsId;
+  final String? colorId;
+  final String? unitId;
+  final double? unitRate;
+  final double requestedQty;
+  final double orderedQty;
+  final double pendingQty;
+  final double remainingQty;
+  final String? needDate;
+  final String? warehouseId;
+  final String? sourcePlanNo;
+
+  factory SubcontractDecompositionLine.fromJson(Map<String, dynamic> json) {
+    double number(String key) {
+      final value = json[key];
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return SubcontractDecompositionLine(
+      sourceDocumentId: json['sourceDocumentId'] as String,
+      sourceDocumentNo: json['sourceDocumentNo'] as String? ?? '',
+      sourceItemId: json['sourceItemId'] as String,
+      goodsId: json['goodsId'] as String,
+      colorId: json['colorId'] as String?,
+      unitId: json['unitId'] as String?,
+      unitRate: json['unitRate'] == null ? null : number('unitRate'),
+      requestedQty: number('requestedQty'),
+      orderedQty: number('orderedQty'),
+      pendingQty: number('pendingQty'),
+      remainingQty: number('remainingQty'),
+      needDate: json['needDate'] as String?,
+      warehouseId: json['warehouseId'] as String?,
+      sourcePlanNo: json['sourcePlanNo'] as String?,
+    );
+  }
 }

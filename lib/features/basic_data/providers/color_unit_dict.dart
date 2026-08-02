@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/action_feedback.dart';
 import '../models/color_node.dart';
 import '../models/unit_node.dart';
 import '../repositories/color_repository.dart';
@@ -77,12 +78,12 @@ Future<String?> _showAddSheet({
   required Future<String?> Function(String name) create,
 }) {
   final ctl = TextEditingController();
+  String? error;
   return showDialog<String>(
     context: context,
     builder: (ctx) {
       return StatefulBuilder(
         builder: (ctx, set) {
-          String? error;
           Future<void> doSave() async {
             final name = ctl.text.trim();
             if (name.isEmpty) {
@@ -90,7 +91,9 @@ Future<String?> _showAddSheet({
               return;
             }
             if (exists(name)) {
-              set(() => error = '该名称已存在');
+              const msg = '该名称已存在';
+              set(() => error = msg);
+              ctx.appError(msg);
               return;
             }
             try {
@@ -99,8 +102,11 @@ Future<String?> _showAddSheet({
               Navigator.of(ctx).pop(v);
             } on ApiException catch (e) {
               set(() => error = e.message);
+              if (ctx.mounted) ctx.appError(e.message);
             } catch (_) {
-              set(() => error = '保存失败，请稍后重试');
+              const msg = '保存失败，请稍后重试';
+              set(() => error = msg);
+              if (ctx.mounted) ctx.appError(msg);
             }
           }
 

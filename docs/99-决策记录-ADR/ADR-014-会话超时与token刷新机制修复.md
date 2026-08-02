@@ -1,10 +1,10 @@
 # ADR-014：会话超时与 token 刷新机制修复
 
-> 日期：2026-07-27 · 状态：已实施；2026-07-30 完成瞬态故障误登出补强与运行时冒烟
+> 日期：2026-07-27 · 状态：**源码候选（2026-08-02）；生产 NO-GO**
 > 前置：[ADR-013](ADR-013-系统设置与安全策略可视化.md)（系统设置）· 原则：安全首位、最小权限、深度防御
 >
-> **2026-07-30 现行口径**：本 ADR 保留 V75 当时“480 分钟铺底”的历史决策，但它不再是文档安全基线。
-> `application.yml` 与 `JwtService.readLong(..., 15)` 的源码回退值为 15 分钟；目标库
+> **现行 TTL 口径**：V75 的“480 分钟/8 小时”只保留为 2026-07-27 的历史决策，不是当前基线。
+> `application.yml` 与 `JwtService.readLong(..., 15)` 的当前源码值为 **15 分钟**；目标库
 > `system_settings.jwt_access_ttl_minutes` 可覆盖该值，所以生产实际 TTL 必须查目标库/部署配置。V133
 > 只把仍等于旧默认 480 的设置收敛到 15，明确自定义值保留。V135 又加入 staff JWT
 > `auth_version`/授权 `epoch` 的逐请求校验，权限形状变化会使旧 access 立即 401；该机制仍须完成
@@ -17,6 +17,18 @@
 > 文件恢复后该进程仍只能返回 Tomcat HTML 401，必须重启。这是开发构建目录竞争，不是 admin
 > 缺少生产权限，也不是生产数据冲突。
 
+> **2026-08-02 请求头故障后续（现行口径）**：本次“先无权限、刷新后 localhost 拒绝连接”
+> 不是 admin 权限被收回。旧 staff JWT 把超管全量权限复制进 `perms` claim，Authorization 字段
+> 已约 5 KiB；叠加设备审计证据和浏览器常规头后可越过 Spring Boot/Tomcat 默认 8 KiB 的组合请求头
+> 上限，请求会在进入 `JwtAuthFilter` 前被解析器拒绝。请求头异常本身只拒绝该连接，不会主动关闭
+> JVM；观测到后端随后无监听仍需按独立进程退出/部署故障调查。
+>
+> 决策是双层根治：staff JWT 缩为 `sub/typ/av/ae`，角色/权限由服务端在逐请求状态/版本校验后
+> 解析（30 秒、2048 项版本键缓存）；登录/刷新响应继续返回 user 权限兼容客户端。主动改密和管理员
+> 重置均递增 `auth_version`，旧 access 下一请求失败。Tomcat 使用 16 KiB 组合预算，
+> Nginx 模板使用 2×8 KiB large-header buffers；可通过 `UTEN_MAX_HTTP_REQUEST_HEADER_SIZE` 调整，但不得无限放大替代 claim/设备头最小化。
+> 嵌入式 Tomcat 回归需同时证明 12 KiB 通过、18 KiB 被拒绝。
+>
 ## 背景
 
 用户反馈两个症状，经全链路核实（前后端代码 + 只读调查 agent）锁定为**两个独立 bug**：
@@ -35,7 +47,7 @@
 
 > 设计意图本身正确（V73 滑动会话：有操作续期、空闲 N 分钟才弹窗）——是上述实现缺口让它没按预期工作。
 
-## 决策（4 项修复）
+## 决策（现行合并口径）
 
 ### 1. 后端过期/匿名 → 统一返 401（症状 B 根本修复）
 
@@ -47,11 +59,17 @@
 
 ### 2. access TTL 重新开放为系统设置可调项（V75）
 
-V74 曾删 `jwt_access_ttl_minutes`（怕误调破坏刷新）。V75 重新插入，默认 **480（8 小时）**，label「登录令牌有效期」。`JwtService.issueAccess/getAccessTtlSeconds` 早已 `readLong("jwt_access_ttl_minutes",15)`，**后端零代码改动**，迁移落库自动生效。`SystemSettingsService.validate` 加最小值 5 校验（防误设 0/1 致登录即过期）。
+V74 曾删 `jwt_access_ttl_minutes`；V75 历史上重新插入并给出 480 分钟。该值随后由 V133 对“仍等于
+旧默认 480”的记录收敛为 **15 分钟**，明确自定义值保留。`application.yml`、`JwtService.issueAccess`
+与 `getAccessTtlSeconds` 的当前回退均为 15，`SystemSettingsService.validate` 仍要求最小 5。
+因此当前源码/迁移基线是 15 分钟，8 小时只能用于解释历史，生产实际值仍须读取目标库设置。
 
 ### 3. 前端权限快照随 access 刷新滑动更新
 
-`SessionEventBus` 加 `publishProfile(userJson)` 事件（用 `Map` 而非 `UserProfile` 类型，避免 core 层反向依赖 features/auth/model）；`AuthInterceptor._refresh` 成功后解析 `data['user']` 并发布；`sessionProvider` 监听 `onProfileRefreshed` 更新 `state.user`。效果：权限变更随刷新即时生效，不必重登；access 改长后也不会让权限生效延迟恶化。
+`SessionEventBus` 的 `publishProfile(userJson)` 用 Map 避免 core 反向依赖 auth model；
+`AuthInterceptor` 在 refresh CAS 写回成功后为 profile 附加 generation/intent/lineage，`sessionProvider`
+只有在这些字段仍匹配权威记录和可见 lineage 时才更新 `state.user`。权限快照随当前会话刷新，不接纳
+迟到旧代 profile，也不依赖历史 8 小时 TTL。
 
 ### 4. 前端 idle 阈值实时刷新（症状 A 修复）
 
@@ -66,26 +84,88 @@ V74 曾删 `jwt_access_ttl_minutes`（怕误调破坏刷新）。V75 重新插�
 现行实现使用共享 `TokenRefreshResult` 明确区分：
 
 - `refreshed`：保存新令牌、同步最新用户权限快照并重放原请求；
-- `rejected`：仅本地没有 refresh token，或刷新接口明确返回 400/401/422 时清理会话；
-- `unavailable`：403、429、5xx、网络/超时和异常响应都保留令牌并传播真实错误，允许后续重试。
+- `rejected`：仅本地没有 refresh，或响应精确匹配 `401 + UNAUTHORIZED/ACCOUNT_LOCKED/
+  ACCOUNT_DISABLED`、`422 + VALIDATION_FAILED`；visitor 另含 `403 + VISITOR_BLOCKED`。清理前
+  还必须 CAS 命中提交时的当前 token record；
+- `unavailable`：HTML/空体/未知 code 401、status/code 错配、任意 503、429、网络/超时、
+  异常响应和缺 access 的畸形 2xx 都保留令牌并传播真实错误。
 
 刷新成功后的业务重放无论返回 401、403、5xx 或网络异常，都不直接销毁会话；账号确实被停用、
-锁定或 refresh token 被撤销时，下一次刷新会由刷新接口明确返回 401，再执行 fail closed 退出。
-访客拦截器和应用启动恢复采用同一规则。`SessionNotifier` 的两个全局事件订阅也会随 Provider
-释放，避免测试、热重载或容器重建时累积监听器。
+锁定或 refresh token 被撤销时，下一次刷新会由刷新接口返回上述权威结构化拒绝，再执行 fail closed 退出。
+访客拦截器和应用启动恢复采用同一破坏性拒绝规则。`SessionNotifier` 的 expiration、profile 与
+external-token-change 三个 Stream 订阅均随 Provider 释放，避免测试、热重载或容器重建累积监听器。
 
 生产调度页原先会在 `TabBarView` 首次构建时同时加载待排产、进行中、已完成三个 Tab，共触发
 1 个待排产请求和两组各 3 个进度请求。现在只加载当前可见 Tab：进入待排产由 7 个首批请求降为
 1 个；切换到进度 Tab 时才加载该 Tab 的 3 个查询，既降低首屏延迟，也避免并发 401 放大故障。
 
+### 6. 错峰 401、跨标签页与用户操作竞态（2026-08-02）
+
+旧实现只用进程内 refresh Future 合并“同时到达”的 401，不能覆盖请求错峰、多个 Dio 实例、多个浏览器标签页，以及登录/退出/改密与迟到响应交错。现行决策是：
+
+- access、refresh、`generation`、`intentGeneration`、`sessionLineage` 作为单个
+  `auth.token_record.v1` JSON 权威记录（当前 schema version 2）。generation 随每次权威写递增；
+  intentGeneration 只随登录、改密、退出或明确凭据失效推进；refresh 保持 intent/lineage。
+- 旧双键仅在权威记录不存在时迁移，顺序为“新记录写成功 → best-effort 删旧键”。权威键存在但不可解析
+  是 fail-closed 边界：直接写无 token、全新 lineage 的 tombstone，禁止残留旧键复活。
+- refresh 使用独立 scope 锁：Web 首选 Web Locks，不支持时用只含随机 owner/到期时间的 90 秒可续租
+  localStorage lease；非 Web 同 scope 共用进程队列。BroadcastChannel 也只发 origin、三个代次字段和
+  hasTokens，锁、lease、通知都不保存 token。
+- refresh 成功写回与明确拒绝清理比较完整快照 CAS；登录/改密先预留全局 intent，提交只在
+  `intentGeneration + reservedLineage` 仍最新时成功。`SessionNotifier` 再用本地 mutation epoch
+  对提交前后复核；网络交换不占用短提交队列。因此 latest-intent-wins，不是最后响应获胜。
+- 每个受保护请求绑定 lineage/intent。迟到旧 401 若同 lineage 的 access 已更新可直接重放；用户已经
+  登录/退出/改密换代时，旧请求/响应以本地 `409 SESSION_CHANGED` 丢弃，不能在新账号下重放或显示。
+  会话读取不可用时以 `409 SESSION_STATE_UNAVAILABLE` 拒绝结果，并提示先核对服务端权威结果。
+- 退出立即更新可见状态并激活独立、非敏感的 durable logout fence；随后在跨标签 token record 锁内读取
+  最新记录，通过 `beforeClear` 先把旧 refresh 持久交接到 `flutter_secure_storage` 加密撤销队列（最多
+  32 项、30 天），交接成功后才写 logout tombstone。交接/清理失败时按 0/30/120ms 重试；交接失败会
+  保留 fence 与原 token record 供重试，禁止先删除设备上的唯一 refresh 副本。网络撤销不阻塞 UI；只有
+  持久交接和本地清理成功才清 fence，显式新登录 intent 可安全取代它。
+- 撤销 drainer 只调用公开且幂等的 `/auth/logout`，启动、连接恢复或 5s/30s/2m/10m/30m 有界退避
+  唤醒，成功后删除精确 token。它不是通用业务离线队列，禁止承载订单、审批、支付或其它写 payload。
+- `SessionEventBus.expire()` 的异步尾事件消费前复核本地 mutation epoch 与无 token tombstone；
+  profile 刷新事件必须匹配 generation/intent/lineage。启动 `/auth/me` 成功后复核完整 identity；
+  恢复信号撞上在途恢复时登记 pending，原请求结束后补跑。
+
+该协调只决定“哪个客户端结果可以提交”，不放宽后端鉴权。明确的账号停用、授权版本变化、refresh 撤销仍 fail closed；业务写请求也不因连接恢复而重放。
+
+### 7. 安全读有限重试与严格健康恢复（2026-08-02）
+
+- `SafeRequestRetryInterceptor` 仅对 GET/HEAD/OPTIONS 的连接/发送/接收超时、连接错误、408/502/
+  504/503 自动重试两次，延迟固定 400ms、1200ms。POST/PUT/PATCH/DELETE 不因连接恢复重放。
+- 结构化 `503 + SERVICE_UNAVAILABLE` 允许安全读短重试，但说明 HTTP 服务可达、认证状态解析暂不可用；
+  它不触发全局 disconnected、不清会话。其它瞬态失败耗尽后才进入后台探测。
+- 探测固定走同源根 `/actuator/health`，不拼到 `/api`；2/5/10/15 秒档位采用 85%–100% jitter，
+  手动重试跳过等待，重叠探测合并。只有 `HTTP 200 + JSON Map + status=UP` 才恢复；HTML、空体、
+  空对象、DOWN 或非 200 都失败。Nginx 精确代理 health/liveness/readiness，其它 Actuator 路径 404，
+  防止 Flutter SPA fallback 返回假 200。
+
+### 8. 最小 JWT、服务端权限解析与请求头预算（2026-08-02）
+
+- staff access JWT 只含标准签发字段与 `sub/typ/av/ae`，不含账号、员工、角色、权限或
+  `mustChangePassword`；登录/刷新/改密响应 profile 仍返回服务端合成的 roles/permissions。
+- `JwtAuthFilter` 每请求先查当前账号状态、员工绑定和两个版本，再从服务端解析权限；版本键 LRU
+  只缓存 30 秒、最多 2048 项。账号不存在/停用/删除、绑定无效或版本不匹配为结构化 401；数据库、
+  账号投影或权限解析器异常为结构化 `503 + SERVICE_UNAVAILABLE`，客户端保留会话。
+- Tomcat 对请求行加全部请求头设置 16 KiB 有限预算；Nginx 模板为 4 KiB 常规缓冲和
+  `2 × 8 KiB` large buffers（单字段仍不超过 8 KiB）；设备审计上下文编码最多 1536 字符。先最小化
+  JWT/设备证据再做目标环境测量，禁止无限上调。嵌入式 Tomcat 合同测试覆盖约 12 KiB 接受、18 KiB
+  返回 400/431。
+- 请求头超限只发生在容器解析阶段，不能证明、也不会主动造成 JVM 停止监听；“localhost 拒绝连接”
+  必须单独按进程退出、端口、部署版本和监督服务调查。
+
 ## 安全权衡
 
-- **access TTL 改长（15 分 → 8 小时）**：token 泄露可滥用窗口变长。缓解三重：① idle timeout（30 分无操作）登出清 token；② refresh 重用检测仍生效；③ TTL 可调，管理员可按需调短；④ 最小值 5 校验防误设。用户已知悉并选择此方向。
+- **access TTL**：8 小时只记录 V75 历史；当前源码/迁移基线为 15 分钟，仍保留系统设置覆盖与最小 5。
+  生产实际值必须读取目标库，不能从本 ADR 的历史段落推断。
 - **entry point 返 401**：标准做法，未认证本就该 401，无新增风险。
 - **权限快照随 refresh 更新**：权限变更更快生效，符合「权限变更即时生效」原则，更安全。
 - **idle 阈值定时重拉**：仅拉非敏感的 `idleTimeoutMinutes`（`/api/settings/public` 本就对所有登录用户只读）。
-- **瞬态故障保留令牌**：不会放宽后端授权；后端仍逐请求拒绝无效 access。它只避免客户端把
-  5xx/断网错误误判成 refresh token 已撤销。明确的刷新 400/401/422 仍会立即清理本地会话。
+- **瞬态故障保留令牌**：不会放宽后端授权；它只避免客户端把代理/容器 HTML、空体、未知 401、
+  503/断网误判成 refresh token 已撤销。只有固定 status+code 且 CAS 命中当前记录才破坏本地会话。
+- **退出撤销最终一致**：本地先 fail closed，远端撤销可以等待网络；代价是设备上短期保存加密 refresh。
+  通过 32 项/30 天边界、专用存储/锁、幂等 logout 和精确删除控制，禁止扩大为业务离线队列。
 
 ## 开发构建纪律
 
@@ -98,21 +178,30 @@ V74 曾删 `jwt_access_ttl_minutes`（怕误调破坏刷新）。V75 重新插�
 ## 不做（范围控制）
 
 - 不删/不大改 refresh 轮换 + 重用检测机制（用户选择保留）。
-- 不动 `JwtAuthFilter` catch 放行逻辑（配 entry point 后链路自洽）。
-- 不做多 tab token 同步（Web storage 事件，独立问题）。
+- 2026-07-27 当时不动 `JwtAuthFilter` catch；该范围控制已被 2026-07-30 fail-closed 修复及
+  2026-08-02 服务端权限解析取代，不再是现行约束。
+- 2026-07-27 当时未做多标签页 token 协调；该范围已被 2026-08-02 的 Web Locks / 有界租约和原子 token record 取代，不再是现行约束。
 - 不改 idle 滑动会话设计本身（设计正确）。
 
-## 验证
+## 验证与发布边界
 
-- 当前后端完整门禁：178/178；PostgreSQL 16 空库与开发库均校验 128 个迁移至 V147。
-- 2026-07-30 重启受污染的开发后端后，`/api/production/schedule/pending` 与
-  `/api/production/plans/progress` 的匿名访问均稳定返回 JSON
-  `401 + UNAUTHORIZED`，不再出现 `ErrorCode` 类加载错误或 HTML 401。
-- refresh/重放/启动恢复新增 18 个定向测试：缺 refresh/明确 401 清会话；403/429/5xx/超时保留会话；
-  重放 401/403/500 保留新令牌；并发 401 只刷新一次；畸形 200 不删令牌；访客同型行为一致。
-- `dart format` 427 文件零变化，`flutter analyze --no-pub` 0 issue，
-  `flutter test --no-pub` 108/108。
-- idle=1 分钟弹窗、系统设置 TTL 修改及真实浏览器长会话仍须在目标发布环境完成最终 E2E。
+- 2026-07-30 的历史复现已证明：共享 `server/target/classes` 被运行时构建重写会造成类链接污染；
+  停止共享构建并重启后，匿名受保护接口恢复 JSON `401 + UNAUTHORIZED`。这不是本次生产发布证明。
+- 2026-08-02 在新的无 `target` 隔离快照中，事故相关后端集合编译主源码 1007、测试源码 221；
+  Surefire 22 类/89 项，failure 0、error 0、skipped 2。执行范围包含请求头真实 Tomcat parser、
+  JWT/StaffAuthority、密码失效、logout/audit、Dashboard 与履约工作台时间戳/query/access。
+- 两项 skipped 全部属于 `FulfillmentWorkbenchProvisionalStockPostgresTest`，因为
+  `UTEN_RUN_DB_TESTS` 未设置；因此不能把 89 项结果表述成 PostgreSQL 条件路径已通过。
+- Flutter 源码已有原子 token record、跨标签页协调、logout fence、撤销队列、精确拒绝、连接恢复和
+  health routing 的定向测试文件；仍须以当前候选重新跑完整 Flutter analyze/test/build，不能沿用
+  2026-07-30 的 108/108 或其它旧数字作为本次证明。
+- 部署模板静态合同可以验证精确 health/Actuator 路由、auth/health 独立限流、原子 release 与 watchdog
+  形状，但不等于真实 Nginx/systemd/容器已部署或运行。
+
+**生产 NO-GO 门禁**：目标 PostgreSQL/Flyway 与实际 15 分钟 TTL、真实 Nginx/Tomcat header envelope、
+最小 JWT 滚动窗口、多个真实浏览器标签页、Keychain/Keystore/Web secure storage 故障注入、离线退出
+后撤销 drain、NAT/CGNAT 千客户端恢复波次、账号/权限解析 503、进程退出监督、备份/恢复/回滚、岗位 UAT
+和 P95/P99 尚未完成。上述证据关闭前，本 ADR 只能标记为源码候选，不能批准生产。
 
 ## 关联
 

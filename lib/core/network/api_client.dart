@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../audit/device_audit_store.dart';
 import '../security/secure_storage.dart';
 import 'api_base_url.dart';
+import 'connection_recovery.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
 import 'interceptors/auth_interceptor.dart';
@@ -232,6 +233,10 @@ class ApiClient {
 
 /// 全局 API 客户端 Provider。
 final apiClientProvider = Provider<ApiClient>((ref) {
+  // Rebuild watched repositories only after a fully disconnected client has
+  // reached the server again. Ordinary responses do not churn the Dio graph.
+  ref.watch(connectionRecoveryProvider.select((state) => state.recoveryEpoch));
+  final recovery = ref.read(connectionRecoveryProvider.notifier);
   final storage = ref.watch(secureStorageProvider);
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
   Dio auditedDioFactory() {
@@ -249,6 +254,6 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       dioFactory: auditedDioFactory,
     ),
   );
-  dio.interceptors.add(SafeRequestRetryInterceptor(dio));
+  dio.interceptors.add(SafeRequestRetryInterceptor(dio, recovery: recovery));
   return ApiClient(dio);
 });

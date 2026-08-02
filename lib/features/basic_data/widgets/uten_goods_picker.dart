@@ -41,6 +41,45 @@ enum UtenGoodsPickerScope {
 
   /// 组件选择（BOM 组装信息用）：只保留 原材料/半成品/辅料/OEM成品/OEM物料/OEM功能件 子树。
   component,
+
+  /// 仅原材料（不含辅料）：货品「包装」字段选材料专用，比 [material] 更窄。
+  rawMaterial,
+
+  /// 除未分类外全部：只排除"未分类"孤儿根，原材料/辅料/半成品等其余分类都保留
+  /// （问题 #17：销售订货明细选货品此前误用 [sellable] 把原材料也过滤掉了）。
+  allExceptUncategorized,
+}
+
+/// 未分类（迁移虚拟孤儿根）legacyId。
+const _uncategorizedLegacyId = -1;
+
+/// 节点是否为"未分类"根。
+bool _isUncategorizedRoot(ProductCategoryNode n) {
+  if (n.legacyId == _uncategorizedLegacyId) return true;
+  return n.name.contains('未分类');
+}
+
+/// allExceptUncategorized 范围：过滤掉"未分类"子树，其余原样保留。
+List<ProductCategoryNode> _filterUncategorizedTree(
+  List<ProductCategoryNode> nodes,
+) {
+  final out = <ProductCategoryNode>[];
+  for (final n in nodes) {
+    if (_isUncategorizedRoot(n)) continue;
+    out.add(
+      ProductCategoryNode(
+        id: n.id,
+        code: n.code,
+        name: n.name,
+        level: n.level,
+        parentId: n.parentId,
+        sortOrder: n.sortOrder,
+        legacyId: n.legacyId,
+        children: _filterUncategorizedTree(n.children),
+      ),
+    );
+  }
+  return out;
 }
 
 /// material 范围保留的根分类 legacyId（原材料/辅料）。
@@ -132,6 +171,30 @@ List<ProductCategoryNode> _keepComponentTree(List<ProductCategoryNode> nodes) {
   return out;
 }
 
+/// rawMaterial 范围保留的根分类 legacyId（原材料，不含辅料）。
+const _rawMaterialRootLegacyIds = {2113};
+
+/// 节点是否属于原材料根（不含辅料，与名称含"辅料"区分）。
+bool _isRawMaterialRoot(ProductCategoryNode n) {
+  if (n.legacyId != null && _rawMaterialRootLegacyIds.contains(n.legacyId)) {
+    return true;
+  }
+  return n.name.contains('原材料');
+}
+
+/// rawMaterial 范围：只保留原材料子树，与 _keepMaterialTree 同构但排除辅料。
+List<ProductCategoryNode> _keepRawMaterialTree(List<ProductCategoryNode> nodes) {
+  final out = <ProductCategoryNode>[];
+  for (final n in nodes) {
+    if (_isRawMaterialRoot(n)) {
+      out.add(_cloneSubtree(n));
+    } else {
+      out.addAll(_keepRawMaterialTree(n.children));
+    }
+  }
+  return out;
+}
+
 /// 深拷贝整子树（命中节点保留全部后代用）。
 ProductCategoryNode _cloneSubtree(ProductCategoryNode n) {
   return ProductCategoryNode(
@@ -147,16 +210,21 @@ ProductCategoryNode _cloneSubtree(ProductCategoryNode n) {
 }
 
 /// 弹出货品选择器，返回所选货品（完整 GoodsListItem）；取消返回 null。
+///
+/// [requireConfirm]：默认 false（点行即选中并关闭，历史行为）。设 true 时点行只是勾选高亮，
+/// 需再点底部「确定」才返回；点右上角关闭/遮罩视为取消（包装选料等需要二次确认的场景用）。
 Future<GoodsListItem?> showUtenGoodsPicker(
   BuildContext context,
   WidgetRef ref, {
   UtenGoodsPickerScope scope = UtenGoodsPickerScope.sellable,
+  bool requireConfirm = false,
 }) {
   return _presentSheet<GoodsListItem>(
     context,
     ref,
     scope,
     multiSelect: false,
+    requireConfirm: requireConfirm,
   ).then((r) => r is GoodsListItem ? r : null);
 }
 
@@ -181,6 +249,7 @@ Future<T?> _presentSheet<T>(
   WidgetRef ref,
   UtenGoodsPickerScope scope, {
   required bool multiSelect,
+  bool requireConfirm = false,
 }) async {
   List<ProductCategoryNode> tree;
   try {
@@ -190,6 +259,9 @@ Future<T?> _presentSheet<T>(
       UtenGoodsPickerScope.material => _keepMaterialTree(raw),
       UtenGoodsPickerScope.all => raw,
       UtenGoodsPickerScope.component => _keepComponentTree(raw),
+      UtenGoodsPickerScope.rawMaterial => _keepRawMaterialTree(raw),
+      UtenGoodsPickerScope.allExceptUncategorized =>
+        _filterUncategorizedTree(raw),
     };
   } catch (_) {
     if (context.mounted) context.appError('货品分类加载失败，请稍后重试');
@@ -200,6 +272,7 @@ Future<T?> _presentSheet<T>(
     tree: tree,
     scope: scope,
     multiSelect: multiSelect,
+    requireConfirm: requireConfirm,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<T>(
@@ -248,10 +321,14 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
     required this.tree,
     required this.scope,
     this.multiSelect = false,
+    this.requireConfirm = false,
   });
   final List<ProductCategoryNode> tree;
   final UtenGoodsPickerScope scope;
   final bool multiSelect;
+
+  /// 单选模式下是否需要底部「确定」二次确认（而非点行即关闭）。多选模式恒需确认，此项无效。
+  final bool requireConfirm;
 
   @override
   ConsumerState<_GoodsPickerSheet> createState() => _GoodsPickerSheetState();
@@ -399,7 +476,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             ],
           ),
         ),
-        if (widget.multiSelect) _buildConfirmBar(theme),
+        if (widget.multiSelect || widget.requireConfirm) _buildConfirmBar(theme),
       ],
     );
   }
@@ -416,8 +493,16 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             child: FilledButton(
               onPressed: _selected.isEmpty
                   ? null
-                  : () => Navigator.of(context).pop(_selected.values.toList()),
-              child: Text(_selected.isEmpty ? '确定' : '确定（${_selected.length}）'),
+                  : () => Navigator.of(context).pop(
+                      widget.multiSelect
+                          ? _selected.values.toList()
+                          : _selected.values.single,
+                    ),
+              child: Text(
+                !widget.multiSelect || _selected.isEmpty
+                    ? '确定'
+                    : '确定（${_selected.length}）',
+              ),
             ),
           ),
         ),
@@ -493,8 +578,10 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           g.unitName,
         ].where((s) => s != null && s.isNotEmpty).join(' · ');
         final picked = _selected.containsKey(g.id);
+        final showPicked = (widget.multiSelect || widget.requireConfirm) &&
+            picked;
         return ListTile(
-          selected: widget.multiSelect && picked,
+          selected: showPicked,
           title: Text(
             '${g.name ?? '—'}'
             '${g.code != null && g.code!.isNotEmpty ? '（${g.code}）' : ''}',
@@ -502,7 +589,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           subtitle: sub.isEmpty
               ? null
               : Text(sub, style: const TextStyle(fontSize: 12)),
-          trailing: widget.multiSelect && picked
+          trailing: showPicked
               ? Icon(
                   Icons.check_circle_rounded,
                   color: theme.colorScheme.primary,
@@ -517,6 +604,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                 } else {
                   _selected[g.id] = g;
                 }
+              });
+            } else if (widget.requireConfirm) {
+              setState(() {
+                _selected
+                  ..clear()
+                  ..[g.id] = g;
               });
             } else {
               Navigator.of(context).pop(g);

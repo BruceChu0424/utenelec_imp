@@ -4,6 +4,7 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -25,6 +26,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
 
     /** JwtAuthFilter 逐请求状态复查用的闭投影（只取状态列，不抓整实体）。 */
     interface AccountState {
+        UUID getEmployeeId();
+        String getLoginAccount();
         String getStatus();
         boolean isMustChangePassword();
         boolean isSuperAdmin();
@@ -34,7 +37,9 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
     }
 
     @Query(value = """
-            SELECT u.status AS "status",
+            SELECT u.employee_id AS "employeeId",
+                   u.login_account AS "loginAccount",
+                   u.status AS "status",
                    u.must_change_password AS "mustChangePassword",
                    u.is_super_admin AS "superAdmin",
                    u.is_deleted AS "deleted",
@@ -46,4 +51,16 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
               AND s.singleton_id = 1
             """, nativeQuery = true)
     Optional<AccountState> findAccountStateById(@Param("id") UUID id);
+
+    /**
+     * Invalidates every previously issued staff access token after a credential change.
+     * The mapped entity keeps authVersion read-only so ordinary saves cannot undo this bump.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            UPDATE users
+            SET auth_version = auth_version + 1
+            WHERE id = :id
+            """, nativeQuery = true)
+    int bumpAuthVersion(@Param("id") UUID id);
 }

@@ -4,7 +4,7 @@
 // (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
 // 过滤由本页自带的状态 ChoiceChip + 关键词搜索承担（facets 传空，表头降级为纯标签）。
 // 名称解析（委外商=supplier/仓库）通过复用采购的 MasterNameService。
-// 编辑按 edit 权限显隐「新建」。未启用单据（询价/申请）仍可进入，但通常会空。
+// 编辑按 edit 权限显隐「新建」；计划下达的申请只读查看，订货必须从任务中心选择申请明细后生成。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -64,6 +64,7 @@ class _SubcontractDocListPageState
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool get _canCreate => _canEdit && _cfg.allowDirectCreate;
 
   Future<void> _load(int page) async {
     final generation = _loadRequests.begin();
@@ -108,6 +109,26 @@ class _SubcontractDocListPageState
   void _onStatus(int? s) {
     setState(() => _statusFilter = s);
     _load(1);
+  }
+
+  String _statusLabel(SubcontractDocListItem item) {
+    if (widget.docType == SubcontractDocType.application && item.status == 1) {
+      return '计划已下达';
+    }
+    if (widget.docType == SubcontractDocType.order) {
+      final approval = item.financeApproval;
+      if (approval?.isPending == true) {
+        final assignee = approval?.assigneeName?.trim();
+        return '等待${assignee?.isNotEmpty == true ? assignee : '财务负责人'}审核';
+      }
+      if (approval?.isRejected == true) return '财务已退回';
+      if (item.status == kSubcontractStatusApproved ||
+          approval?.isApproved == true) {
+        return '财务已审核 / 委外中';
+      }
+      return '待提交财务';
+    }
+    return subcontractStatusLabel(item.status);
   }
 
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
@@ -172,7 +193,7 @@ class _SubcontractDocListPageState
         key: 'status',
         label: '状态',
         width: 100,
-        value: (it) => subcontractStatusLabel(it.status),
+        value: _statusLabel,
       ),
       // 委外订货单：结案状态（未完成=部分入库，其他未入库的作为未完成委外单存在）
       if (widget.docType == SubcontractDocType.order)
@@ -238,7 +259,7 @@ class _SubcontractDocListPageState
                         ),
                       ),
                       const Spacer(),
-                      if (_canEdit)
+                      if (_canCreate)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
@@ -277,8 +298,18 @@ class _SubcontractDocListPageState
                             runSpacing: 4,
                             children: [
                               _statusChip('全部', null),
-                              _statusChip('草稿', kSubcontractStatusDraft),
-                              _statusChip('已审', kSubcontractStatusApproved),
+                              _statusChip(
+                                widget.docType == SubcontractDocType.application
+                                    ? '尚未下达'
+                                    : '草稿',
+                                kSubcontractStatusDraft,
+                              ),
+                              _statusChip(
+                                widget.docType == SubcontractDocType.application
+                                    ? '计划已下达'
+                                    : '已审',
+                                kSubcontractStatusApproved,
+                              ),
                               _statusChip('红冲', kSubcontractStatusReversed),
                             ],
                           ),

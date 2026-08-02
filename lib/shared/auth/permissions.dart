@@ -145,6 +145,13 @@ abstract final class Perm {
   static const stockReportView = 'stock_report:view';
   static const stockReportExport = 'stock_report:export';
 
+  /// 财务批准后的预计到货及仓储异常只读任务。
+  static const warehouseInboundView = 'warehouse_inbound:view';
+
+  /// 未批准超量仅允许服务端认定的原下单人完成供应商退回。
+  static const procurementArrivalExceptionHandle =
+      'supplier_return_task:handle';
+
   // ===== 实验室（V06 种子化）=====
   static const labTestView = 'lab:test:view';
   static const labTestUpload = 'lab:test:upload';
@@ -231,6 +238,13 @@ abstract final class Perm {
   static const financeAssetPeriodManage = 'finance_asset_period:manage';
   static const financePostExecute = 'finance_post:execute';
   static const financeShipmentAudit = 'finance_shipment_audit';
+
+  /// 采购/委外订货单的财务审批任务；review 仍需同时满足服务端当前 assignee 校验。
+  static const financeOrderApprovalView = 'finance_order_approval:view';
+  static const financeOrderApprovalReview = 'finance_order_approval:review';
+
+  /// 配置每类审批行为的唯一负责人。
+  static const workflowAssignmentManage = 'workflow_assignment:manage';
   static const arApLedgerView = 'ar_ap_ledger:view';
   static const financeReconciliationView = 'finance_reconciliation:view';
 
@@ -248,6 +262,13 @@ abstract final class Perm {
 
   // 注：supplierView/supplierEdit（'supplier:view'/'supplier:edit'）见上方财税部段——
   // 后端 V38 以「主数据」category 种子化同一 code，基础资料与财税业务视图共用，故不重复定义。
+
+  // ===== 工程研发部任务中心 =====
+  static const rdTaskView = 'rd_task:view';
+  static const rdTaskEdit = 'rd_task:edit';
+  static const rdTaskResolve = 'rd_task:resolve';
+  /// 生产待排产 BOM 缺失转发工程研发部（独立权限点，不复用 production_plan:edit）。
+  static const productionPlanForwardRd = 'production_plan:forward_rd';
 }
 
 /// 当前用户的功能权限集合。
@@ -315,6 +336,8 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.stockDocEdit,
       Perm.stockReportView,
       Perm.stockReportExport,
+      Perm.warehouseInboundView,
+      Perm.procurementArrivalExceptionHandle,
       Perm.labTestView,
       Perm.labTestUpload,
       Perm.supplierView,
@@ -373,6 +396,9 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.productionDailyReportView, Perm.productionDailyReportEdit,
       Perm.productionReportView, Perm.productionReportExport,
       Perm.productionWhereUsedView,
+      Perm.productionPlanForwardRd,
+      // 工程研发部任务中心
+      Perm.rdTaskView, Perm.rdTaskEdit, Perm.rdTaskResolve,
       // 钱流管理（V57）
       Perm.financeReceiptView, Perm.financeReceiptEdit,
       Perm.financePaymentView, Perm.financePaymentEdit,
@@ -389,6 +415,9 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.financeAssetPeriodManage,
       Perm.financePostExecute,
       Perm.financeShipmentAudit,
+      Perm.financeOrderApprovalView,
+      Perm.financeOrderApprovalReview,
+      Perm.workflowAssignmentManage,
       Perm.arApLedgerView,
       Perm.financeReconciliationView,
       Perm.paymentStyleView,

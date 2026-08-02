@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -16,6 +17,9 @@ import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../warehouse/widgets/procurement_inbound_badges.dart';
+import '../finance_workflow_routes.dart';
+import '../widgets/finance_procurement_approval_badge.dart';
 
 class FinanceHubPage extends ConsumerWidget {
   const FinanceHubPage({super.key});
@@ -24,6 +28,11 @@ class FinanceHubPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
+    final superAdmin = ref.watch(isSuperAdminProvider);
+    final canViewApprovals =
+        superAdmin || permissions.contains(Perm.financeOrderApprovalView);
+    final canManageResponsibilities =
+        superAdmin || permissions.contains(Perm.workflowAssignmentManage);
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) {
           final required = requiredAnyPermFor(entry.location);
@@ -36,12 +45,47 @@ class FinanceHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
+        actions: canManageResponsibilities
+            ? [
+                Padding(
+                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
+                  child: UtenButton(
+                    key: const Key('finance-workflow-responsibilities'),
+                    size: UtenButtonSize.large,
+                    type: UtenButtonType.tonal,
+                    icon: Icons.manage_accounts_outlined,
+                    onPressed: () =>
+                        goFrom(context, FinanceWorkflowRoutes.responsibilities),
+                    child: const Text('审批负责人设置'),
+                  ),
+                ),
+              ]
+            : null,
       ),
       body: SafeArea(
         child: UtenContentContainer(
           child: ListView(
             padding: const EdgeInsets.only(top: UtenSpacing.s12),
             children: [
+              if (canViewApprovals) ...[
+                _section(context, theme, '任务中心', const [
+                  _Entry(
+                    icon: Icons.approval_outlined,
+                    label: '订货审批任务中心',
+                    description: '只显示明确分配给我的采购 / 委外订货单',
+                    location: FinanceWorkflowRoutes.approvalTasks,
+                    badge: FinanceProcurementApprovalBadge(),
+                  ),
+                  _Entry(
+                    icon: Icons.local_shipping_outlined,
+                    label: '超量到货审批',
+                    description: '审核实际到货超出已批准订货数量的任务',
+                    location: FinanceWorkflowRoutes.arrivalExceptionTasks,
+                    badge: FinanceArrivalExceptionBadge(),
+                  ),
+                ]),
+                const SizedBox(height: UtenSpacing.s16),
+              ],
               _section(
                 context,
                 theme,
@@ -198,12 +242,14 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
+    this.badge,
   });
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
+  final Widget? badge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -234,14 +280,20 @@ class _EntryTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(entry.icon, color: color, size: 22),
+              Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: UtenRadius.mdAll,
+                    ),
+                    child: Icon(entry.icon, color: color, size: 24),
+                  ),
+                  const Spacer(),
+                  ?entry.badge,
+                ],
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(

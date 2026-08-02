@@ -19,7 +19,7 @@ public interface ProductionSubcontractRequestPort {
             LocalDate needDate,
             UUID warehouseId,
             List<DraftLine> lines,
-            UUID applicantUserId,
+            UUID applicantEmployeeId,
             UUID makerEmployeeId);
 
     void closeGeneratedDraft(UUID applicationId, LifecycleAction action);

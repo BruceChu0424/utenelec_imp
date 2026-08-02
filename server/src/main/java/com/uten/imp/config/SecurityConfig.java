@@ -12,6 +12,7 @@ import com.uten.imp.security.JwtAuthFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -60,6 +61,7 @@ public class SecurityConfig {
                         "/api/auth/refresh",
                         "/api/visitor/auth/**",
                         "/actuator/health",
+                        "/actuator/health/**",
                         "/swagger-ui/**",
                         "/swagger-ui.html",
                         "/v3/api-docs/**"
@@ -68,7 +70,8 @@ public class SecurityConfig {
                         "/api/auth/login",
                         "/api/auth/refresh",
                         "/api/visitor/auth/**",
-                        "/actuator/health"
+                        "/actuator/health",
+                        "/actuator/health/**"
                 };
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -80,6 +83,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource(securityProps)))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         .requestMatchers(publicPaths).permitAll()
                         .anyRequest().authenticated()
                 )

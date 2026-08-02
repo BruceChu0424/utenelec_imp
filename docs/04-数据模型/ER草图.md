@@ -21,6 +21,30 @@ erDiagram
 
 A4 生产执行工卡是上述确认事实的只读投影，不新增 ER 实体。父包的 MAKE 关系只到当前直接层子计划，后续层级由子计划再次评审生成。V195 只刷新这些公开业务表未来写入的审计触发器覆盖，不新增关系、不补历史审计。
 
+<!-- PROCUREMENT-FINANCE-V202-CURRENT -->
+## 2026-08-02 计划需求分解、财务审批与到货异常关系（V196–V202 候选）
+
+```mermaid
+erDiagram
+    PURCHASE_REQUEST_ITEM ||--o{ PURCHASE_ORDER_ITEM : "采购分解来源"
+    SUBCONTRACT_APPLICATION_ITEM ||--o{ SUBCONTRACT_ORDER_ITEM : "委外分解来源"
+    WORKFLOW_RESPONSIBILITY_ASSIGNMENT ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "提交时冻结负责人"
+    PURCHASE_ORDER ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "多次提交历史"
+    SUBCONTRACT_ORDER ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "多次提交历史"
+    PROCUREMENT_ORDER_APPROVAL_CASE ||--o{ PROCUREMENT_ORDER_APPROVAL_EVENT : "追加式事件"
+    PROCUREMENT_ORDER_APPROVAL_CASE ||--o| INBOUND_EXPECTATION : "批准后生成"
+    INBOUND_EXPECTATION ||--|{ INBOUND_EXPECTATION_ITEM : "预计到货行"
+    INBOUND_EXPECTATION_ITEM ||--o{ PROCUREMENT_ARRIVAL_EXCEPTION : "超批准余量"
+    PROCUREMENT_ARRIVAL_EXCEPTION ||--o{ PROCUREMENT_ARRIVAL_EXCEPTION_EVENT : "追加式事件"
+    PROCUREMENT_ARRIVAL_EXCEPTION ||--o| SUPPLIER_RETURN_TASK : "未批准量"
+```
+
+申请明细是计划下达、业务端只读的需求事实；订货行必须保留来源，可跨申请选择和部分分解，但一张订货单只有一个供应商/委外商和一个仓库。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有精确负责人批准才把订单置 `status=1` 并产生预计到货。
+
+`procurement_arrival_exceptions` 只隔离“超财务批准余量”的数量：异常待决期间不写库存/AP；财务决定后的批准量仍由仓库再次审核，未批准量才产生原下单人的 `supplier_return_tasks`。它不等于 IQC、质检合格或生产可用。
+
+V202 对全部 `public` 业务表重新执行审计触发器 sweep，不新增上述业务关系、不补历史审计。公司目标库仍只确认到 V190，V196–V202 是源码候选，生产 **NO-GO**。
+
 > ⏳ **随实体字典生长的活文档**。新增实体关联时同步更新本图。
 > 这里只画**概念模型**（实体 + 关系），不画物理表结构。
 
@@ -207,6 +231,8 @@ erDiagram
 
 ### 2.9 当前货品 BOM 与历史快照
 
+
+V201 候选的 `procurement_arrival_exceptions` 只处理超财务批准余量及退回责任，不是本目标图中的 `QualityDisposition`。即使财务允许追加量并由仓库再次过账，也不能据此推导“已检验合格”或补画完整 IQC。
 ```mermaid
 erDiagram
     Goods ||--o{ GoodsBomItem : "父货品"
@@ -290,4 +316,4 @@ erDiagram
 
 ---
 
-**最后更新**：2026-08-01 · **状态**：生产履约关系已区分真实子计划、执行分段、订单预留、未来供给和实物移动；仓库作业、质量与供应商库存仅标为未落地目标，生产发布仍为 **NO-GO**
+**最后更新**：2026-08-02 · **状态**：生产履约已区分真实子计划、执行分段、预留、未来供给和实物移动；V196–V202 采购/委外财务审批、预计到货与超量数量授权仅为源码候选，且不等于 IQC；公司目标库仍只确认到 V190，生产 **NO-GO**

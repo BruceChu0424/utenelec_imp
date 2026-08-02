@@ -520,7 +520,9 @@ public class GoodsService {
         g.setPrice(req.getPrice());
         g.setMaterial(req.getMaterial());
         g.setThickness(req.getThickness());
+        g.setThicknessUnitLegacyId(req.getThicknessUnitLegacyId());
         g.setMWeight(req.getMWeight());
+        g.setMWeightUnitLegacyId(req.getMWeightUnitLegacyId());
         g.setPack(req.getPack());
         g.setPieces(req.getPieces());
         g.setStatus(req.getStatus());
@@ -622,7 +624,8 @@ public class GoodsService {
                 g.getPlatingE(), g.getCasingE(), g.getPolishE(), g.getTotal(),
                 g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
                 g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
-                g.getCTotal(), g.getGTotal(), g.getSourceType());
+                g.getCTotal(), g.getGTotal(), g.getSourceType(),
+                g.getThicknessUnitLegacyId(), g.getMWeightUnitLegacyId());
     }
 
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames) {

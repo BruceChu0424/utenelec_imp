@@ -5,12 +5,14 @@ import com.uten.imp.audit.AuditRequestContextFilter;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.audit.UserOperationAuditInterceptor;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.visitor.VisitorAccountRepository;
 import com.uten.imp.security.ExportRateLimitInterceptor;
 import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.StaffAuthorityResolver;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.filter.CorsFilter;
 
 import java.util.Optional;
-import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -82,6 +84,8 @@ class SecurityCorsAuditIntegrationTest {
     private UserAccountRepository userRepo;
     @MockitoBean
     private VisitorAccountRepository visitorRepo;
+    @MockitoBean
+    private StaffAuthorityResolver staffAuthorityResolver;
 
     @BeforeEach
     void setUp() {
@@ -128,10 +132,13 @@ class SecurityCorsAuditIntegrationTest {
             String method,
             int status) throws Exception {
         UUID userId = UUID.randomUUID();
+        UUID employeeId = UUID.randomUUID();
         when(jwtService.parse("valid-token"))
                 .thenReturn(claims(userId));
         UserAccountRepository.AccountState accountState =
                 org.mockito.Mockito.mock(UserAccountRepository.AccountState.class);
+        when(accountState.getEmployeeId()).thenReturn(employeeId);
+        when(accountState.getLoginAccount()).thenReturn("E1001");
         when(accountState.getStatus()).thenReturn("active");
         when(accountState.isDeleted()).thenReturn(false);
         when(accountState.isMustChangePassword()).thenReturn(false);
@@ -140,6 +147,10 @@ class SecurityCorsAuditIntegrationTest {
         when(accountState.getAuthorizationEpoch()).thenReturn(11L);
         when(userRepo.findAccountStateById(userId))
                 .thenReturn(Optional.of(accountState));
+        when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
+                .thenReturn(new PermissionResolver.AuthorizationSnapshot(
+                        Set.of("employee"),
+                        Set.of("employee:view")));
 
         MockHttpServletRequest request = new MockHttpServletRequest(
                 method, "/api/no-such-handler");
@@ -168,10 +179,6 @@ class SecurityCorsAuditIntegrationTest {
         return Jwts.claims()
                 .subject(userId.toString())
                 .add("typ", "staff")
-                .add("emp", UUID.randomUUID().toString())
-                .add("acc", "E1001")
-                .add("roles", List.of("employee"))
-                .add("perms", List.of("employee:view"))
                 .add("av", 7L)
                 .add("ae", 11L)
                 .build();

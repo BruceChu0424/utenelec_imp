@@ -53,4 +53,10 @@ public class FulfillmentWorkbenchController {
             @RequestParam(defaultValue = "50") int size) {
         return queryService.query("SUBCONTRACT", status, keyword, exception, page, size);
     }
+
+    @GetMapping("/subcontract/count")
+    @PreAuthorize("hasAnyAuthority('subcontract_application:view','subcontract_order:view')")
+    public Map<String, Long> subcontractCount() {
+        return Map.of("count", queryService.countPending("SUBCONTRACT"));
+    }
 }

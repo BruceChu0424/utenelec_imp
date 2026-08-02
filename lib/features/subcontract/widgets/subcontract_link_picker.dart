@@ -35,6 +35,7 @@ class LinkedItem {
   const LinkedItem({
     required this.goodsId,
     required this.qty,
+    this.maxQty,
     this.price,
     this.upstreamItemId,
     this.colorId,
@@ -42,6 +43,7 @@ class LinkedItem {
   });
   final String goodsId;
   final double qty;
+  final double? maxQty;
   final double? price;
   final String? upstreamItemId;
   final String? colorId;
@@ -404,6 +406,7 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
         LinkedItem(
           goodsId: it.goodsId!,
           qty: q,
+          maxQty: _remainQty(it),
           price: it.price,
           upstreamItemId: it.id,
           colorId: it.colorId,

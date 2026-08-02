@@ -209,7 +209,13 @@ class MasterEditFormState extends State<MasterEditForm> {
           setState(() => _error = '请选择「${f.label}」'); // TODO(l10n): 补 arb
           return null;
         }
-        body[f.key] = v;
+        // 复合字段（如数字+单位）回写 {key1: v1, key2: v2} 直接展开到 body，
+        // 而非塞进单个 f.key（一个可视字段格位对应多个提交字段）。
+        if (v is Map<String, dynamic>) {
+          body.addAll(v);
+        } else {
+          body[f.key] = v;
+        }
         continue;
       }
       final raw = _controllers[f.key]!.text.trim();

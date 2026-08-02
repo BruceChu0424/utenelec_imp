@@ -1,5 +1,8 @@
 package com.uten.imp.features.dashboard;
 
+import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
@@ -9,9 +12,14 @@ import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -21,13 +29,16 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class DashboardOverviewServiceTest {
@@ -35,8 +46,12 @@ class DashboardOverviewServiceTest {
     private SecurityContextCurrentUser currentUser;
     private JdbcTemplate jdbc;
     private AuthUser user;
+    private FulfillmentWorkbenchQueryService fulfillmentWorkbench;
+    private NoticeService noticeService;
+    private AuditService auditService;
     private DashboardOverviewService service;
     private UUID employeeId;
+    private UUID userId;
 
     @BeforeEach
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -44,11 +59,17 @@ class DashboardOverviewServiceTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         jdbc = mock(JdbcTemplate.class);
         user = mock(AuthUser.class);
+        fulfillmentWorkbench = mock(FulfillmentWorkbenchQueryService.class);
+        noticeService = mock(NoticeService.class);
+        auditService = mock(AuditService.class);
         employeeId = UUID.randomUUID();
+        userId = UUID.randomUUID();
         when(currentUser.get()).thenReturn(Optional.of(user));
         when(user.isVisitor()).thenReturn(false);
         when(user.isSuperAdmin()).thenReturn(false);
         when(user.getEmployeeId()).thenReturn(employeeId);
+        when(user.getId()).thenReturn(userId);
+        when(user.getLoginAccount()).thenReturn("admin");
         when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
                 Map.of("code", "DEPT_FIN", "name", "财税部", "depth", 0)));
         when(jdbc.query(anyString(), (RowMapper) any(RowMapper.class)))
@@ -58,10 +79,21 @@ class DashboardOverviewServiceTest {
                 currentUser,
                 jdbc,
                 mock(ProductionScheduleService.class),
-                mock(FulfillmentWorkbenchQueryService.class),
+                fulfillmentWorkbench,
                 mock(VisitorHrApprovalService.class),
                 mock(ProfileChangeReviewService.class),
-                mock(NoticeService.class));
+                noticeService,
+                auditService);
+    }
+
+    @Test
+    void overviewDoesNotWrapPartitionsInSharedTransaction() throws Exception {
+        assertThat(DashboardOverviewService.class.isAnnotationPresent(
+                Transactional.class)).isFalse();
+        assertThat(DashboardOverviewService.class
+                .getDeclaredMethod("overview")
+                .isAnnotationPresent(Transactional.class))
+                .isFalse();
     }
 
     @Test
@@ -92,6 +124,119 @@ class DashboardOverviewServiceTest {
                     assertThat(metric.value()).isEqualTo("¥123,456.78");
                     assertThat(metric.sensitive()).isTrue();
                 });
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "SUB_WH,stock_doc:view,WAREHOUSE,仓库任务正在自动恢复,/operations/workbench/warehouse",
+            "SUB_PURCHASE,purchase_request:view,PURCHASE,采购任务正在自动恢复,/operations/workbench/purchase",
+            "QA_OUT,subcontract_order:view,SUBCONTRACT,委外任务正在自动恢复,/operations/workbench/subcontract"
+    })
+    void fulfillmentFailureReturnsUnavailableCardAndKeepsOtherSections(
+            String departmentCode,
+            String permission,
+            String workbenchDepartment,
+            String expectedTitle,
+            String expectedRoute) {
+        configureDepartment(
+                departmentCode,
+                Set.of("notice:read", permission));
+        when(noticeService.unreadCount()).thenReturn(3L);
+        when(noticeService.pendingTodos(8)).thenReturn(List.of());
+        when(fulfillmentWorkbench.query(
+                workbenchDepartment, "", "", "", 1, 1))
+                .thenThrow(new ApiException(
+                        ErrorCode.CONFLICT,
+                        "工作台更新时间类型异常"));
+
+        DashboardOverviewDto result = service.overview();
+
+        assertThat(result.metrics())
+                .extracting(DashboardOverviewDto.MetricCard::id)
+                .contains("notice-unread");
+        assertThat(result.todos())
+                .filteredOn(todo ->
+                        "FULFILLMENT_UNAVAILABLE".equals(todo.sourceType()))
+                .singleElement()
+                .satisfies(todo -> {
+                    assertThat(todo.title()).isEqualTo(expectedTitle);
+                    assertThat(todo.summary()).isEqualTo(
+                            "其它功能可继续使用，无需退出或反复刷新");
+                    assertThat(todo.count()).isZero();
+                    assertThat(todo.urgentCount()).isZero();
+                    assertThat(todo.tone()).isEqualTo("warning");
+                    assertThat(todo.route()).isEqualTo(expectedRoute);
+                    assertThat(todo.completable()).isFalse();
+                });
+        verify(auditService).logExplicit(
+                userId,
+                "admin",
+                "dashboard_fulfillment_partition_degraded",
+                "fulfillment_workbench",
+                workbenchDepartment,
+                "conflict");
+    }
+
+    @Test
+    void fulfillmentAuthenticationFailureIsNotDegraded() {
+        configurePurchaseDepartment(Set.of("purchase_request:view"));
+        ApiException failure = new ApiException(ErrorCode.UNAUTHORIZED);
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+                .thenThrow(failure);
+
+        assertThatThrownBy(service::overview).isSameAs(failure);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void fulfillmentAuthorizationFailureIsNotDegraded() {
+        configurePurchaseDepartment(Set.of("purchase_request:view"));
+        AccessDeniedException failure = new AccessDeniedException("denied");
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+                .thenThrow(failure);
+
+        assertThatThrownBy(service::overview).isSameAs(failure);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void springAuthenticationFailureIsNotDegraded() {
+        configurePurchaseDepartment(Set.of("purchase_request:view"));
+        AuthenticationCredentialsNotFoundException failure =
+                new AuthenticationCredentialsNotFoundException("missing");
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+                .thenThrow(failure);
+
+        assertThatThrownBy(service::overview).isSameAs(failure);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void auditWriteFailureDoesNotUndoFulfillmentPartitionDegradation() {
+        configurePurchaseDepartment(Set.of("notice:read", "purchase_request:view"));
+        when(noticeService.unreadCount()).thenReturn(2L);
+        when(noticeService.pendingTodos(8)).thenReturn(List.of());
+        when(fulfillmentWorkbench.query("PURCHASE", "", "", "", 1, 1))
+                .thenThrow(new ApiException(ErrorCode.CONFLICT));
+        doThrow(new IllegalStateException("audit unavailable"))
+                .when(auditService)
+                .logExplicit(
+                        userId,
+                        "admin",
+                        "dashboard_fulfillment_partition_degraded",
+                        "fulfillment_workbench",
+                        "PURCHASE",
+                        "conflict");
+
+        DashboardOverviewDto result = service.overview();
+
+        assertThat(result.metrics())
+                .extracting(DashboardOverviewDto.MetricCard::id)
+                .contains("notice-unread");
+        assertThat(result.todos())
+                .singleElement()
+                .extracting(DashboardOverviewDto.TodoCard::sourceType)
+                .isEqualTo("FULFILLMENT_UNAVAILABLE");
     }
 
     @Test
@@ -143,6 +288,20 @@ class DashboardOverviewServiceTest {
         DashboardOverviewDto result = service.overview();
 
         assertThat(result.intelligence()).isEmpty();
+    }
+
+    private void configurePurchaseDepartment(Set<String> permissions) {
+        configureDepartment("SUB_PURCHASE", permissions);
+    }
+
+    private void configureDepartment(
+            String departmentCode, Set<String> permissions) {
+        when(user.getPermissions()).thenReturn(permissions);
+        when(jdbc.queryForList(anyString(), eq(employeeId))).thenReturn(List.of(
+                Map.of(
+                        "code", departmentCode,
+                        "name", departmentCode,
+                        "depth", 0)));
     }
 
     private void stubPolicyRows(java.sql.ResultSet... rows) {

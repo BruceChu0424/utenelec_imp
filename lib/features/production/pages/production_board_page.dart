@@ -23,6 +23,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../providers/production_board_sort_provider.dart';
 import '../providers/production_pending_provider.dart';
 import '../repositories/production_repository.dart';
@@ -165,6 +166,34 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
+
+  bool get _canForward =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanForwardRd) ||
+      ref.read(isSuperAdminProvider);
+
+  /// 进行中的转发（按 orderItemId 去重，避免连点重复 POST）。
+  final Set<String> _forwarding = {};
+
+  /// BOM 缺失 → 转发工程研发部（建研发任务 + 通知研发）；成功后刷新徽标与本页。
+  Future<void> _forwardToRd(SchedulePendingRow r) async {
+    if (r.rdForwarded || _forwarding.contains(r.orderItemId)) return;
+    setState(() => _forwarding.add(r.orderItemId));
+    try {
+      final ok = await context.guardAction(
+        () => ref
+            .read(productionPlanRepositoryProvider)
+            .forwardToRd(r.orderItemId),
+        success: '已转发工程研发部，待其维护 BOM',
+        errorFallback: '转发失败，请稍后重试',
+      );
+      if (!mounted || ok == null) return;
+      ref.read(productionPendingCountProvider.notifier).refresh();
+      ref.read(rdTaskCountProvider.notifier).refresh();
+      await _load();
+    } finally {
+      if (mounted) setState(() => _forwarding.remove(r.orderItemId));
+    }
+  }
 
   String _fmtDate(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -621,7 +650,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              'BOM 缺失 · 请先维护组装物料资料',
+                              r.rdForwarded
+                                  ? 'BOM 缺失 · 已转发工程研发部，等待维护'
+                                  : 'BOM 缺失 · 请先维护组装物料资料',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -629,6 +660,26 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                               ),
                             ),
                           ),
+                          if (!r.rdForwarded && _canForward)
+                            TextButton.icon(
+                              onPressed: _forwarding.contains(r.orderItemId)
+                                  ? null
+                                  : () => _forwardToRd(r),
+                              icon: const Icon(Icons.send_outlined, size: 14),
+                              label: Text(
+                                _forwarding.contains(r.orderItemId)
+                                    ? '转发中…'
+                                    : '转发研发',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              style: TextButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 6),
+                                minimumSize: const Size(0, 28),
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            ),
                         ],
                       ),
                     ],

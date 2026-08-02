@@ -121,6 +121,16 @@ void main() {
         isNull,
       );
     });
+
+    test('finance procurement workflow routes use exact permissions', () {
+      expect(requiredAnyPermFor('/finance/procurement-approvals'), const [
+        Perm.financeOrderApprovalView,
+      ]);
+      expect(requiredAnyPermFor('/finance/workflow-responsibilities'), const [
+        Perm.workflowAssignmentManage,
+      ]);
+    });
+
     test('finance report descendants use finance report permission', () {
       for (final location in [
         RouteName.financeReport,

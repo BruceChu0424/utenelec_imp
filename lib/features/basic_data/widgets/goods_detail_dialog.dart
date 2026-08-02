@@ -25,6 +25,9 @@ import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
+import 'number_unit_field.dart';
+import 'packaging_picker_field.dart';
+import 'uten_goods_picker.dart';
 
 enum _GoodsDialogMode { create, edit, view }
 
@@ -205,17 +208,41 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
       const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
       const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
-      const MasterFieldDef(
+      MasterFieldDef(
         key: 'thickness',
         label: '厚度',
-        type: MasterFieldType.money,
+        type: MasterFieldType.custom,
         group: '规格',
+        customBuilder: (ctx) => NumberUnitField(
+          label: '厚度',
+          numberKey: 'thickness',
+          unitKey: 'thicknessUnitLegacyId',
+          numberInitial: ctx.initialValue,
+          unitInitial: _detail?.thicknessUnitLegacyId == null
+              ? null
+              : '${_detail!.thicknessUnitLegacyId}',
+          unitOptions: _unitOptions,
+          onAddUnit: () => showUnitAddSheet(context, ref),
+          onChanged: ctx.onChanged,
+        ),
       ),
-      const MasterFieldDef(
+      MasterFieldDef(
         key: 'mWeight',
         label: '单重',
-        type: MasterFieldType.money,
+        type: MasterFieldType.custom,
         group: '规格',
+        customBuilder: (ctx) => NumberUnitField(
+          label: '单重',
+          numberKey: 'mWeight',
+          unitKey: 'mWeightUnitLegacyId',
+          numberInitial: ctx.initialValue,
+          unitInitial: _detail?.mWeightUnitLegacyId == null
+              ? null
+              : '${_detail!.mWeightUnitLegacyId}',
+          unitOptions: _unitOptions,
+          onAddUnit: () => showUnitAddSheet(context, ref),
+          onChanged: ctx.onChanged,
+        ),
       ),
       MasterFieldDef(
         key: 'colorLegacyId',
@@ -232,7 +259,25 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
         type: MasterFieldType.money,
         group: '商务',
       ),
-      const MasterFieldDef(key: 'pack', label: '包装', group: '商务'),
+      MasterFieldDef(
+        key: 'pack',
+        label: '包装',
+        type: MasterFieldType.custom,
+        group: '商务',
+        customBuilder: (ctx) => PackagingPickerField(
+          initialValue: ctx.initialValue,
+          onChanged: ctx.onChanged,
+          onPick: () async {
+            final g = await showUtenGoodsPicker(
+              context,
+              ref,
+              scope: UtenGoodsPickerScope.rawMaterial,
+              requireConfirm: true,
+            );
+            return g?.name;
+          },
+        ),
+      ),
       MasterFieldDef(
         key: 'unitLegacyId',
         label: '单位',
@@ -555,10 +600,25 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     );
   }
 
+  /// 厚度/单重的单位显示名（legacy_id → 单位主档名称；无匹配则不附单位）。
+  String _unitSuffix(int? legacyId) {
+    if (legacyId == null) return '';
+    for (final o in _unitOptions) {
+      if (o.value == '$legacyId') return o.label;
+    }
+    return '';
+  }
+
   List<MasterDetailRow> _detailRows() {
     final d = _detail;
     if (d == null) return const [];
     String s(Object? v) => v == null ? '' : '$v';
+    String withUnit(Object? v, int? unitLegacyId) {
+      if (v == null) return '';
+      final u = _unitSuffix(unitLegacyId);
+      return u.isEmpty ? '$v' : '$v $u';
+    }
+
     return [
       MasterDetailRow('编号', d.code),
       MasterDetailRow('货品名称', d.name),
@@ -568,8 +628,8 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       MasterDetailRow('型号', d.model),
       MasterDetailRow('规格', d.spec),
       MasterDetailRow('材质', d.material),
-      MasterDetailRow('厚度', s(d.thickness)),
-      MasterDetailRow('单重', s(d.mWeight)),
+      MasterDetailRow('厚度', withUnit(d.thickness, d.thicknessUnitLegacyId)),
+      MasterDetailRow('单重', withUnit(d.mWeight, d.mWeightUnitLegacyId)),
       MasterDetailRow('主颜色', d.colorName),
       MasterDetailRow('单位', d.unitName),
       MasterDetailRow('价格', s(d.price)),

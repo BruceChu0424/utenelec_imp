@@ -25,7 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>V169 is the immutable original full-table sweep, V184 refreshes that
  * contract after later business tables were introduced, V185 hardens
  * soft-delete semantics plus row minimization, V190 covers the V188/V189
- * business tables, V193 covers V191/V192 planning tables, and V195 covers the V194 MAKE receipt-allocation ledger.
+ * business tables, V193 covers V191/V192 planning tables, V195 covers the V194
+ * MAKE receipt-allocation ledger, V197 covers V196 procurement approval and
+ * expected-inbound ledgers, and V202 covers V201 arrival-exception ledgers.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -36,9 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 195;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 202;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V195__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V202__refresh_arrival_exception_audit_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -71,7 +73,14 @@ class AuditTriggerCoverageMigrationContractTest {
             "sales_return_quality_events",
             // Pre-approval planning, workshop defaults and MAKE receipt provenance.
             "production_planning_drafts", "production_goods_workshop_preferences",
-            "production_material_make_receipt_allocations");
+            "production_material_make_receipt_allocations",
+            // Finance-assigned procurement approval and warehouse expectation ledgers.
+            "workflow_responsibility_assignments", "procurement_order_approval_cases",
+            "procurement_order_approval_events", "inbound_expectations",
+            "inbound_expectation_items",
+            // Finance-controlled over-arrival and exact-owner supplier-return ledgers.
+            "procurement_arrival_exceptions", "supplier_return_tasks",
+            "procurement_arrival_exception_events");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(

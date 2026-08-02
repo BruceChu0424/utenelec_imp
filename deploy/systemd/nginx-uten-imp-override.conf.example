@@ -1,0 +1,9 @@
+# Install as /etc/systemd/system/nginx.service.d/uten-imp.conf.
+# Manual stop remains stopped; abnormal master-process exit is restarted.
+[Unit]
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Restart=on-failure
+RestartSec=3s

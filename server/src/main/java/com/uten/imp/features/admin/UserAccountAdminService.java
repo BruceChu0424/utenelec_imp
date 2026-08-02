@@ -47,20 +47,31 @@ public class UserAccountAdminService {
     @Transactional(readOnly = true)
     public PageResponse<UserSummary> list(int page, int size, String search, String status) {
         Specification<UserAccount> spec = (root, q, cb) -> {
-            List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.isFalse(root.get("deleted")));
             if (search != null && !search.isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("loginAccount")), "%" + search.toLowerCase() + "%"));
+                predicates.add(
+                        cb.like(
+                                cb.lower(root.get("loginAccount")),
+                                "%" + search.toLowerCase() + "%"));
             }
             if (status != null && !status.isBlank()) {
-                ps.add(cb.equal(root.get("status"), status));
+                predicates.add(cb.equal(root.get("status"), status));
             }
-            return cb.and(ps.toArray(new Predicate[0]));
+            return cb.and(predicates.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "loginAccount"));
-        Page<UserAccount> p = userRepo.findAll(spec, pageable);
-        List<UserSummary> items = p.getContent().stream().map(this::toSummary).toList();
-        return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
+        Pageable pageable = Pageables.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.ASC, "loginAccount"));
+        Page<UserAccount> result = userRepo.findAll(spec, pageable);
+        List<UserSummary> items = result.getContent().stream().map(this::toSummary).toList();
+        return new PageResponse<>(
+                items,
+                page,
+                size,
+                result.getTotalElements(),
+                result.getTotalPages());
     }
 
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
@@ -69,90 +80,123 @@ public class UserAccountAdminService {
         UserAccount user = userRepo.findByEmployeeId(employeeId)
                 .filter(row -> !row.isDeleted())
                 .orElseThrow(() -> new ApiException(
-                        ErrorCode.NOT_FOUND, "该员工未开通可用账号，无法设置权限"));
+                        ErrorCode.NOT_FOUND,
+                        "该员工未开通可用账号，无法设置权限"));
         return toSummary(user);
     }
 
-    private UserSummary toSummary(UserAccount u) {
-        Employee e = empRepo.findById(u.getEmployeeId()).orElse(null);
-        Department dept = e == null ? null : e.getDepartment();
-        List<String> roles = userRoleRepo.findRoleCodesByUserId(u.getId());
-        return new UserSummary(u.getId(), u.getLoginAccount(),
-                e == null ? null : e.getFullName(), e == null ? null : e.getCode(),
-                dept == null ? null : dept.getId(), dept == null ? null : dept.getName(),
-                u.getStatus(), u.isMustChangePassword(), u.getLastLoginAt(), roles);
+    private UserSummary toSummary(UserAccount user) {
+        Employee employee = empRepo.findById(user.getEmployeeId()).orElse(null);
+        Department department = employee == null ? null : employee.getDepartment();
+        List<String> roles = userRoleRepo.findRoleCodesByUserId(user.getId());
+        return new UserSummary(
+                user.getId(),
+                user.getLoginAccount(),
+                employee == null ? null : employee.getFullName(),
+                employee == null ? null : employee.getCode(),
+                department == null ? null : department.getId(),
+                department == null ? null : department.getName(),
+                user.getStatus(),
+                user.isMustChangePassword(),
+                user.getLastLoginAt(),
+                roles);
     }
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public void setStatus(UUID id, String status) {
         tx.bind();
-        UserAccount u = support.require(id);
-        support.requireAccountSupportTarget(u);
+        UserAccount user = support.require(id);
+        support.requireAccountSupportTarget(user);
         if (!List.of("active", "locked", "disabled").contains(status)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的账号状态");
         }
-        if ("active".equals(status)) {
-            requireActiveEmployee(u);
+        boolean statusChanged = !status.equals(user.getStatus());
+        boolean manualLockChanged =
+                "locked".equals(status) && user.getLockedUntil() != null;
+        boolean activationStateChanged =
+                "active".equals(status)
+                        && (user.getFailedAttempts() != 0 || user.getLockedUntil() != null);
+        if (!statusChanged && !manualLockChanged && !activationStateChanged) {
+            return;
         }
-        u.setStatus(status);
+        if ("active".equals(status)) {
+            requireActiveEmployee(user);
+            user.setFailedAttempts(0);
+            user.setLockedUntil(null);
+        }
+        user.setStatus(status);
         if ("locked".equals(status)) {
             // 管理员手动锁 = 无限期：清掉暴力破解的临时锁时间戳，
-            // 避免 lockedUntil 到期后登录成功路径把 status 恢复为 active
-            u.setLockedUntil(null);
+            // 避免 lockedUntil 到期后登录成功路径把 status 恢复为 active。
+            user.setLockedUntil(null);
         }
-        userRepo.save(u);
-        if ("locked".equals(status) || "disabled".equals(status)) {
-            refreshTokenRepo.revokeAllByUserId(id);
-        }
+        userRepo.save(user);
+        invalidateAllSessions(id);
     }
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public void unlock(UUID id) {
         tx.bind();
-        UserAccount u = support.require(id);
-        support.requireAccountSupportTarget(u);
-        requireActiveEmployee(u);
-        u.setStatus("active");
-        u.setFailedAttempts(0);
-        u.setLockedUntil(null);
-        userRepo.save(u);
+        UserAccount user = support.require(id);
+        support.requireAccountSupportTarget(user);
+        boolean changed = !"active".equals(user.getStatus())
+                || user.getFailedAttempts() != 0
+                || user.getLockedUntil() != null;
+        if (!changed) {
+            return;
+        }
+        requireActiveEmployee(user);
+        user.setStatus("active");
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
+        userRepo.save(user);
+        invalidateAllSessions(id);
     }
 
     /**
-     * Reset to a high-entropy one-time-display temporary password.
-     * The plaintext is returned once, never persisted, and the account can only
-     * access the password-change flow until it chooses a permanent password.
+     * Reset to a high-entropy one-time-display temporary password. The plaintext
+     * is returned once, never persisted, and only the password-change flow remains
+     * available until the user chooses a permanent password.
      */
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public String resetPassword(UUID id) {
         tx.bind();
-        UserAccount u = support.require(id);
-        support.requireAccountSupportTarget(u);
+        UserAccount user = support.require(id);
+        support.requireAccountSupportTarget(user);
         String temporaryPassword = temporaryPasswordGenerator.generate();
-        u.setPasswordHash(passwordEncoder.encode(temporaryPassword));
-        u.setMustChangePassword(true);
-        u.setFailedAttempts(0);
-        u.setLockedUntil(null);
-        if (!"disabled".equals(u.getStatus())) {
-            requireActiveEmployee(u);
-            u.setStatus("active");
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        user.setMustChangePassword(true);
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
+        if (!"disabled".equals(user.getStatus())) {
+            requireActiveEmployee(user);
+            user.setStatus("active");
         }
-        userRepo.save(u);
-        refreshTokenRepo.revokeAllByUserId(id);
+        userRepo.save(user);
+        invalidateAllSessions(id);
         return temporaryPassword;
+    }
+
+    private void invalidateAllSessions(UUID userId) {
+        if (userRepo.bumpAuthVersion(userId) != 1) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED);
+        }
+        refreshTokenRepo.revokeAllByUserId(userId);
     }
 
     private void requireActiveEmployee(UserAccount account) {
         Employee employee = empRepo.findById(account.getEmployeeId())
                 .filter(row -> !row.isDeleted())
                 .orElseThrow(() -> new ApiException(
-                        ErrorCode.CONFLICT, "账号未绑定有效员工档案，不能启用"));
+                        ErrorCode.CONFLICT,
+                        "账号未绑定有效员工档案，不能启用"));
         if ("resigned".equals(employee.getStatus())) {
             throw new ApiException(
-                    ErrorCode.CONFLICT, "离职员工必须先完成复职流程，不能直接启用账号");
+                    ErrorCode.CONFLICT,
+                    "离职员工必须先完成复职流程，不能直接启用账号");
         }
     }
 }

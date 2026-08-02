@@ -62,6 +62,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
 
   bool get _canEdit =>
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
+  bool get _canCreate => _canEdit && _cfg.allowDirectCreate;
 
   Future<void> _load(int page) async {
     final generation = _loadRequests.begin();
@@ -116,6 +117,22 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     _load(1);
   }
 
+  String _statusLabel(PurchaseDocListItem item) {
+    if (widget.docType == PurchaseDocType.request && item.status == 1) {
+      return '计划已下达';
+    }
+    if (widget.docType == PurchaseDocType.order) {
+      return switch (item.financeApproval?.status) {
+        'PENDING' => '等待财务审核',
+        'REJECTED' => '财务退回',
+        'APPROVED' => '财务已通过',
+        'DRAFT' => '待提交财务',
+        _ => purchaseStatusLabel(item.status),
+      };
+    }
+    return purchaseStatusLabel(item.status);
+  }
+
   List<MasterColumnDef<PurchaseDocListItem>> _columns(MasterNameService names) {
     return <MasterColumnDef<PurchaseDocListItem>>[
       MasterColumnDef(
@@ -145,19 +162,20 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
         width: 160,
         value: (it) => names.warehouse(it.warehouseId),
       ),
-      MasterColumnDef(
-        key: 'total',
-        label: '合计',
-        width: 140,
-        type: 'money',
-        sortable: true,
-        value: (it) => it.totalLocal?.toStringAsFixed(2),
-      ),
+      if (widget.docType != PurchaseDocType.request)
+        MasterColumnDef(
+          key: 'total',
+          label: '合计',
+          width: 140,
+          type: 'money',
+          sortable: true,
+          value: (it) => it.totalLocal?.toStringAsFixed(2),
+        ),
       MasterColumnDef(
         key: 'status',
         label: '状态',
-        width: 100,
-        value: (it) => purchaseStatusLabel(it.status),
+        width: widget.docType == PurchaseDocType.order ? 140 : 100,
+        value: _statusLabel,
       ),
     ];
   }
@@ -214,7 +232,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
                         ),
                       ),
                       const Spacer(),
-                      if (_canEdit)
+                      if (_canCreate)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,

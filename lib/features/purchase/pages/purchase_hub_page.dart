@@ -11,8 +11,12 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/models/procurement_inbound.dart';
+import '../../warehouse/pages/procurement_return_task_pages.dart';
+import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/purchase_doc_config.dart';
 import '../config/purchase_report_config.dart';
+import '../widgets/purchase_task_badge.dart';
 
 class PurchaseHubPage extends StatelessWidget {
   const PurchaseHubPage({super.key});
@@ -36,8 +40,20 @@ class PurchaseHubPage extends StatelessWidget {
                 _Entry(
                   icon: Icons.pending_actions_rounded,
                   label: '采购任务中心',
-                  description: '集中处理缺料申请、采购订单与到货进度',
+                  description: '查看计划申请，按供应商分解为订货单',
                   location: RouteName.operationsPurchaseWorkbench,
+                  badge: const PurchaseTaskBadge(),
+                ),
+                _Entry(
+                  icon: Icons.assignment_return_outlined,
+                  label: '待退回供应商',
+                  description: '处理本人下单且财务未批准入库的数量',
+                  location: procurementReturnTasksLocation(
+                    ProcurementInboundOrderType.purchase,
+                  ),
+                  badge: const ProcurementArrivalReturnBadge(
+                    orderType: ProcurementInboundOrderType.purchase,
+                  ),
                 ),
               ]),
               const SizedBox(height: UtenSpacing.s16),
@@ -107,6 +123,7 @@ class _Entry {
     required this.label,
     required this.description,
     required this.location,
+    this.badge,
   });
 
   _Entry.fromCfg(PurchaseDocConfig cfg)
@@ -115,12 +132,14 @@ class _Entry {
       description = cfg.shortLabel,
       location = cfg.skipListOnCreate
           ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
-          : '/purchase/${cfg.type.pathSegment}';
+          : '/purchase/${cfg.type.pathSegment}',
+      badge = null;
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
+  final Widget? badge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -151,14 +170,22 @@ class _EntryTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(entry.icon, color: color, size: 22),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.1),
+                      borderRadius: UtenRadius.mdAll,
+                    ),
+                    child: Icon(entry.icon, color: color, size: 22),
+                  ),
+                  if (entry.badge != null) ...[
+                    const Spacer(),
+                    entry.badge!,
+                  ],
+                ],
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(

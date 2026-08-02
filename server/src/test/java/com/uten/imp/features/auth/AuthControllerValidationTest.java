@@ -1,6 +1,5 @@
 package com.uten.imp.features.auth;
 
-import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.GlobalExceptionHandler;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -24,7 +23,9 @@ class AuthControllerValidationTest {
     @Test
     void logoutRejectsOversizedRefreshTokenBeforeTokenService() throws Exception {
         TokenIssuer tokenIssuer = mock(TokenIssuer.class);
-        AuthController controller = controller(tokenIssuer, mock(SecurityContextCurrentUser.class));
+        AuthController controller = controller(
+                tokenIssuer,
+                mock(SecurityContextCurrentUser.class));
         MockMvc mvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -60,7 +61,6 @@ class AuthControllerValidationTest {
                 mock(LoginService.class),
                 mock(PasswordService.class),
                 tokenIssuer,
-                currentUser,
-                mock(AuditService.class));
+                currentUser);
     }
 }

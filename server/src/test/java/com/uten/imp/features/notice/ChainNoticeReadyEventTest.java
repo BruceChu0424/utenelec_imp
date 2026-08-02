@@ -23,7 +23,8 @@ class ChainNoticeReadyEventTest {
                 mock(UserAccountRepository.class),
                 mock(UserRoleRepository.class),
                 mock(JdbcTemplate.class),
-                outbox);
+                outbox,
+                mock(com.uten.imp.features.rd_task.RdTaskService.class));
         UUID segmentId = UUID.randomUUID();
         UUID receiptId = UUID.randomUUID();
 

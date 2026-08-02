@@ -150,7 +150,7 @@ public class ProductionPurchaseRequestFacade {
             LocalDate needDate,
             UUID warehouseId,
             List<DraftLine> requestedLines,
-            UUID applicantUserId,
+            UUID applicantEmployeeId,
             UUID makerEmployeeId) {
         List<DraftLine> lines = requestedLines == null
                 ? List.of()
@@ -173,11 +173,11 @@ public class ProductionPurchaseRequestFacade {
         request.setBillDate(BusinessTime.today());
         request.setNeedDate(needDate);
         request.setWarehouseId(warehouseId);
-        request.setApplicantId(applicantUserId);
+        request.setApplicantId(applicantEmployeeId);
         request.setMakerId(makerEmployeeId);
         request.setRemark("生产计划 " + productionPlanNo + " 未覆盖物料自动生成");
         request.setSourceDocNo(productionPlanNo);
-        request.setStatus(STATUS_DRAFT);
+        request.setStatus(STATUS_APPROVED);
         requestRepo.save(request);
 
         List<DraftLineResult> created = new ArrayList<>(lines.size());
@@ -197,6 +197,7 @@ public class ProductionPurchaseRequestFacade {
             item.setPrice(BigDecimal.ZERO);
             item.setAmountOriginal(BigDecimal.ZERO);
             item.setAmountLocal(BigDecimal.ZERO);
+            item.setOrderedQty(BigDecimal.ZERO);
             item.setGiftQty(BigDecimal.ZERO);
             item.setDeliverDate(line.needDate() == null ? needDate : line.needDate());
             item.setProductionPlanNo(productionPlanNo);
@@ -245,10 +246,11 @@ public class ProductionPurchaseRequestFacade {
         }
 
         if (action == LifecycleAction.CANCEL) {
-            if (request.getStatus() != STATUS_DRAFT) {
+            if (request.getStatus() != STATUS_DRAFT
+                    && request.getStatus() != STATUS_APPROVED) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "仅草稿采购申请可随计划包取消");
+                        "仅无下游订货的计划采购申请可随计划包取消");
             }
             request.setDeleted(true);
             request.setDeletedAt(OffsetDateTime.now());

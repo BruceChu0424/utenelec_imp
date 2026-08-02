@@ -1,10 +1,18 @@
 package com.uten.imp.features.operations.workbench;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -12,10 +20,17 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.util.Properties;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * PostgreSQL evidence that WAITING segments do not reserve partial kits and
@@ -30,6 +45,10 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                     .withUsername("uten")
                     .withPassword("uten");
 
+    private static EntityManagerFactory entityManagerFactory;
+    private static EntityManager entityManager;
+    private static TransactionTemplate transactions;
+
     @BeforeAll
     static void migrate() {
         POSTGRES.start();
@@ -41,10 +60,38 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                 .locations("classpath:db/migration")
                 .load()
                 .migrate();
+
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+        LocalContainerEntityManagerFactoryBean factory =
+                new LocalContainerEntityManagerFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+        factory.setPackagesToScan(
+                "com.uten.imp.features.production.fulfillment");
+        Properties properties = new Properties();
+        properties.setProperty("hibernate.hbm2ddl.auto", "none");
+        properties.setProperty("hibernate.show_sql", "false");
+        properties.setProperty("hibernate.jdbc.time_zone", "UTC");
+        factory.setJpaProperties(properties);
+        factory.afterPropertiesSet();
+
+        entityManagerFactory = factory.getObject();
+        assertNotNull(entityManagerFactory);
+        entityManager = SharedEntityManagerCreator.createSharedEntityManager(
+                entityManagerFactory);
+        transactions = new TransactionTemplate(
+                new JpaTransactionManager(entityManagerFactory));
+        transactions.setTimeout(20);
     }
 
     @AfterAll
     static void stop() {
+        if (entityManagerFactory != null) {
+            entityManagerFactory.close();
+        }
         POSTGRES.stop();
     }
 
@@ -98,6 +145,51 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                     fixture.laterA(),
                     fixture.laterB());
         }
+    }
+
+    @Test
+    void nonEmptyPostgresProjectionMapsHibernateInstantToUtc() throws Exception {
+        Fixture fixture;
+        UUID purchaseTaskId;
+        try (Connection connection = connection()) {
+            fixture = fixture(connection);
+            purchaseTaskId = insertPurchaseDecompositionTask(connection, fixture);
+        }
+
+        Object projectedUpdatedAt = transactions.execute(status ->
+                entityManager.createNativeQuery("""
+                                SELECT updated_at
+                                FROM v_procurement_decomposition_tasks
+                                WHERE department = 'PURCHASE'
+                                  AND task_id = :taskId
+                                """)
+                        .setParameter("taskId", purchaseTaskId)
+                        .getSingleResult());
+        assertNotNull(projectedUpdatedAt);
+        assertTrue(
+                projectedUpdatedAt instanceof Instant,
+                () -> "Expected Hibernate UTC projection to be Instant, got "
+                        + projectedUpdatedAt.getClass().getName());
+
+        FulfillmentWorkbenchAccessPolicy accessPolicy =
+                mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(accessPolicy.documentAccess("PURCHASE", "PURCHASE_REQUEST"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(
+                        false,
+                        false));
+        FulfillmentWorkbenchQueryService service =
+                new FulfillmentWorkbenchQueryService(entityManager, accessPolicy);
+        FulfillmentWorkbenchPage page = transactions.execute(status ->
+                service.query("PURCHASE", "", "", "", 1, 100));
+        assertNotNull(page);
+        FulfillmentTaskRow task = page.items().stream()
+                .filter(row -> row.taskId().equals(purchaseTaskId))
+                .findFirst()
+                .orElseThrow();
+
+        assertNotNull(task.updatedAt());
+        assertEquals(ZoneOffset.UTC, task.updatedAt().getOffset());
+        assertEquals(projectedUpdatedAt, task.updatedAt().toInstant());
     }
 
     private static Fixture fixture(Connection connection) throws Exception {
@@ -170,8 +262,20 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                 plan,
                 "PLAN-" + plan,
                 LocalDate.of(2026, 7, 31));
-        insertPlanItem(connection, earlyPlanItem, plan, product, unit, "EARLY");
-        insertPlanItem(connection, laterPlanItem, plan, product, unit, "LATER");
+        insertPlanItem(
+                connection,
+                earlyPlanItem,
+                plan,
+                product,
+                unit,
+                "EARLY-" + earlyPlanItem);
+        insertPlanItem(
+                connection,
+                laterPlanItem,
+                plan,
+                product,
+                unit,
+                "LATER-" + laterPlanItem);
 
         connection.setAutoCommit(false);
         try {
@@ -198,7 +302,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                     product,
                     unit,
                     1,
-                    "EARLY",
+                    "EARLY-" + earlySegment,
                     LocalDate.of(2026, 8, 1));
             insertSegment(
                     connection,
@@ -209,7 +313,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                     product,
                     unit,
                     2,
-                    "LATER",
+                    "LATER-" + laterSegment,
                     LocalDate.of(2026, 8, 2));
             insertDemand(
                     connection,
@@ -251,7 +355,67 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         } finally {
             connection.setAutoCommit(true);
         }
-        return new Fixture(balanceA, earlyA, laterA, laterB);
+        return new Fixture(
+                balanceA,
+                earlyA,
+                laterA,
+                laterB,
+                warehouse,
+                unit,
+                materialB,
+                plan);
+    }
+
+    private static UUID insertPurchaseDecompositionTask(
+            Connection connection,
+            Fixture fixture) throws Exception {
+        UUID requestId = UUID.randomUUID();
+        UUID requestItemId = UUID.randomUUID();
+        String billNo = "PR-" + requestId;
+        String planNo = "PLAN-" + fixture.plan();
+        LocalDate needDate = LocalDate.of(2026, 8, 2);
+
+        connection.setAutoCommit(false);
+        try {
+            insert(
+                    connection,
+                    """
+                    INSERT INTO purchase_requests(
+                        id,bill_no,bill_date,warehouse_id,need_date,status,source_doc_no
+                    ) VALUES(?,?,?,?,?,1,?)
+                    """,
+                    requestId,
+                    billNo,
+                    needDate,
+                    fixture.warehouse(),
+                    needDate,
+                    planNo);
+            insert(
+                    connection,
+                    """
+                    INSERT INTO purchase_request_items(
+                        id,bill_no,bill_date,request_id,line_no,goods_id,unit_id,
+                        unit_rate,qty,ordered_qty,deliver_date,production_plan_no,
+                        source_doc_no
+                    ) VALUES(?,?,?,?,1,?,?,1,4,0,?,?,?)
+                    """,
+                    requestItemId,
+                    billNo,
+                    needDate,
+                    requestId,
+                    fixture.materialB(),
+                    fixture.unit(),
+                    needDate,
+                    planNo,
+                    planNo);
+            connection.commit();
+        } catch (Throwable error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(true);
+        }
+        return requestItemId;
     }
 
     private static void insertPlanItem(
@@ -425,6 +589,10 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
             UUID balanceA,
             UUID earlyA,
             UUID laterA,
-            UUID laterB) {
+            UUID laterB,
+            UUID warehouse,
+            UUID unit,
+            UUID materialB,
+            UUID plan) {
     }
 }

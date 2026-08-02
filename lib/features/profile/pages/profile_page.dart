@@ -32,6 +32,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/role.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../employee/models/employee_api_models.dart';
 import '../providers/profile_change_providers.dart';
 
 class ProfilePage extends ConsumerWidget {
@@ -59,8 +60,16 @@ class ProfilePage extends ConsumerWidget {
       expanded: UtenSpacing.s32,
     );
 
+    final employeeProfile = ref.watch(myEmployeeProfileProvider).valueOrNull;
+
     final identityGroup = _buildIdentityGroup(context, ref, theme, l10n, user);
-    final profileGroup = _buildProfileGroup(context, theme, l10n, user);
+    final profileGroup = _buildProfileGroup(
+      context,
+      theme,
+      l10n,
+      user,
+      employeeProfile,
+    );
 
     return Scaffold(
       // 顶部无 AppBar：标题已由侧栏 / NavigationBar 高亮表达，
@@ -181,7 +190,13 @@ class ProfilePage extends ConsumerWidget {
     ThemeData theme,
     AppLocalizations l10n,
     AppUser user,
+    EmployeeProfile? p,
   ) {
+    // AppUser（session/JWT）只带登录鉴权必需的字段；联系方式/地址等来自
+    // myEmployeeProfileProvider 异步拉取的完整员工档案，加载完成前用 '—' 占位
+    // （而不是像旧版那样永远写死 '—'——那才是用户反馈"很多缺的"的根因）。
+    String v(String? value) =>
+        (value == null || value.isEmpty) ? _notSet : value;
     return _section(l10n, l10n.profileTitle, [
       UtenInfoRow(
         label: l10n.profileEmployeeCode,
@@ -191,14 +206,28 @@ class ProfilePage extends ConsumerWidget {
       UtenInfoRow(label: l10n.profileChangeFieldFullName, value: user.name),
       UtenInfoRow(label: l10n.profileDepartment, value: user.department),
       UtenInfoRow(label: l10n.profilePosition, value: user.position),
-      UtenInfoRow(label: l10n.profileFieldEmail, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldOfficePhone, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldSeatNo, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldResidenceAddress, value: _notSet),
-      UtenInfoRow(label: l10n.profileFieldHujiAddress, value: _notSet),
+      UtenInfoRow(label: l10n.profileFieldMobile, value: v(p?.phone)),
+      UtenInfoRow(label: l10n.profileFieldEmail, value: v(p?.email)),
+      UtenInfoRow(
+        label: l10n.profileFieldOfficePhone,
+        value: v(p?.officePhone),
+      ),
+      UtenInfoRow(label: l10n.profileFieldSeatNo, value: v(p?.seatNo)),
+      UtenInfoRow(
+        label: l10n.profileFieldHireDate,
+        value: v(p?.hireDate),
+      ),
+      UtenInfoRow(
+        label: l10n.profileFieldResidenceAddress,
+        value: v(p?.residenceAddress),
+      ),
+      UtenInfoRow(
+        label: l10n.profileFieldHujiAddress,
+        value: v(p?.hujiAddress),
+      ),
       UtenInfoRow(
         label: l10n.profileFieldEthnicity,
-        value: _notSet,
+        value: v(p?.ethnicity),
         showDivider: false,
       ),
     ]);

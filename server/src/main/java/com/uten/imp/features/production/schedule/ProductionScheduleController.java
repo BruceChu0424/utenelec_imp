@@ -3,6 +3,7 @@ package com.uten.imp.features.production.schedule;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapRequest;
 import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import jakarta.validation.Valid;
@@ -76,6 +77,13 @@ public class ProductionScheduleController {
     @PreAuthorize("hasAuthority('production_plan:edit')")
     public Map<String, UUID> mergePlan(@Valid @RequestBody MergePlanRequest req) {
         return Map.of("planId", service.createMergePlan(req));
+    }
+
+    /** 待排产 BOM 缺失转发工程研发部（建研发任务 + 通知）。返回 {"taskId": "..."}。 */
+    @PostMapping("/forward-rd")
+    @PreAuthorize("hasAuthority('production_plan:forward_rd')")
+    public Map<String, UUID> forwardRd(@Valid @RequestBody ForwardBomGapRequest req) {
+        return Map.of("taskId", service.forwardToRd(req));
     }
 
     /** D2 建议完工日期：body {items:[{goodsId,qty}], startDate?} → suggestedDate + 逐货品依据。 */

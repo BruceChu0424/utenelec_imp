@@ -5,11 +5,15 @@ import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.dto.TokenResponse;
+import com.uten.imp.features.auth.model.RefreshToken;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.UUID;
 
@@ -17,6 +21,7 @@ import java.util.UUID;
  * Issues access/refresh token pairs and provides refresh rotation, logout and profile lookup.
  */
 @Service
+@Slf4j
 public class TokenIssuer {
 
     private final UserAccountRepository userRepo;
@@ -52,8 +57,13 @@ public class TokenIssuer {
         try {
             outcome = refreshTransaction.rotate(rawRefresh);
         } catch (ApiException ex) {
-            audit.logExplicit(null, null, "refresh_failed", "refresh_tokens",
-                    null, ex.getCode().name().toLowerCase(java.util.Locale.ROOT));
+            audit.logExplicit(
+                    null,
+                    null,
+                    "refresh_failed",
+                    "refresh_tokens",
+                    null,
+                    ex.getCode().name().toLowerCase(java.util.Locale.ROOT));
             throw ex;
         }
         if (outcome.reuseDetected()) {
@@ -61,18 +71,84 @@ public class TokenIssuer {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
         UserAccount user = outcome.account();
-        audit.logExplicit(user.getId(), user.getLoginAccount(), "refresh_token",
-                "refresh_tokens", outcome.tokenId().toString(), "success");
+        audit.logExplicit(
+                user.getId(),
+                user.getLoginAccount(),
+                "refresh_token",
+                "refresh_tokens",
+                outcome.tokenId().toString(),
+                "success");
         return responseFactory.build(user, outcome.newRefreshToken());
     }
 
+    /**
+     * Idempotently revoke by refresh-token possession alone. Missing, unknown and
+     * already-revoked tokens are deliberately indistinguishable no-ops.
+     *
+     * <p>A successful revocation records the refresh-token owner as the business actor
+     * and the token UUID as the target. The raw token and its hash are never included.
+     * Audit runs after commit when a transaction synchronization is available, and all
+     * audit/scheduling failures are logged and swallowed so they cannot roll back or
+     * alter the security result.
+     */
     @Transactional
     public void logout(String rawRefresh) {
         if (rawRefresh == null || rawRefresh.isBlank()) {
             return;
         }
-        refreshTokenRepo.findByTokenHash(HashUtil.sha256(rawRefresh))
-                .ifPresent(token -> refreshTokenService.revoke(token, null));
+        RefreshToken token = refreshTokenRepo
+                .findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
+                .filter(row -> row.getRevokedAt() == null)
+                .orElse(null);
+        if (token == null) {
+            return;
+        }
+        UUID userId = token.getUserId();
+        UUID tokenId = token.getId();
+        refreshTokenService.revoke(token, null);
+        scheduleLogoutAudit(userId, tokenId);
+    }
+
+    private void scheduleLogoutAudit(UUID userId, UUID tokenId) {
+        try {
+            if (TransactionSynchronizationManager.isSynchronizationActive()
+                    && TransactionSynchronizationManager.isActualTransactionActive()) {
+                TransactionSynchronizationManager.registerSynchronization(
+                        new TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                logLogoutBestEffort(userId, tokenId);
+                            }
+                        });
+                return;
+            }
+            logLogoutBestEffort(userId, tokenId);
+        } catch (RuntimeException ex) {
+            // Scheduling/logging is deliberately secondary to token revocation.
+            log.error(
+                    "Failed to schedule logout audit for userId={} tokenId={}",
+                    userId,
+                    tokenId,
+                    ex);
+        }
+    }
+
+    private void logLogoutBestEffort(UUID userId, UUID tokenId) {
+        try {
+            audit.logExplicit(
+                    userId,
+                    null,
+                    "logout",
+                    "refresh_tokens",
+                    tokenId.toString(),
+                    "success");
+        } catch (RuntimeException ex) {
+            log.error(
+                    "Failed to persist logout audit for userId={} tokenId={}",
+                    userId,
+                    tokenId,
+                    ex);
+        }
     }
 
     @Transactional(readOnly = true)

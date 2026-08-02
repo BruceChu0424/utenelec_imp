@@ -42,6 +42,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonRetry => 'Retry';
 
   @override
+  String get connectionReconnecting => 'The network is unstable. Reconnecting…';
+
+  @override
+  String get connectionDisconnected =>
+      'The server is temporarily unavailable. Reconnecting automatically';
+
+  @override
+  String get connectionRestored => 'Connection restored. You can continue.';
+
+  @override
+  String get connectionRetryNow => 'Retry now';
+
+  @override
   String get commonClose => 'Close';
 
   @override
@@ -1753,6 +1766,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileFieldOfficePhone => 'Office phone';
+
+  @override
+  String get profileFieldMobile => 'Mobile';
 
   @override
   String get profileFieldEmail => 'Email';

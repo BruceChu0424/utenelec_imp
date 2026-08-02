@@ -238,6 +238,34 @@ void main() {
     );
     await tester.binding.setSurfaceSize(null);
   });
+
+  testWidgets('policy banner masks English policy keys with Chinese labels', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(720, 900));
+    await _pumpWorkbench(
+      tester,
+      repository: _FakeAssetRepository(),
+      policyReady: false,
+      missingPolicyItems: const <String>[
+        'FIXED_ASSET_CATEGORY_POLICY',
+        'DEFERRED_EXPENSE_CATEGORY_POLICY',
+      ],
+    );
+
+    expect(find.textContaining('政策未就绪'), findsOneWidget);
+    // 用完整友好标签断言（账簿 Tab 只写「固定资产/长期待摊费用」，标签全称仅出现在横幅）
+    expect(find.textContaining('固定资产类别政策'), findsOneWidget);
+    expect(find.textContaining('长期待摊费用类别政策'), findsOneWidget);
+    // 英文敏感键不得直出给用户
+    expect(find.textContaining('CATEGORY_POLICY'), findsNothing);
+    expect(find.textContaining('FIXED_ASSET_CATEGORY_POLICY'), findsNothing);
+    expect(
+      find.textContaining('DEFERRED_EXPENSE_CATEGORY_POLICY'),
+      findsNothing,
+    );
+    await tester.binding.setSurfaceSize(null);
+  });
 }
 
 Future<void> _pumpWorkbench(
@@ -252,6 +280,8 @@ Future<void> _pumpWorkbench(
     Perm.financeAssetPeriodManage,
   },
   bool postedWorkflowsEnabled = true,
+  bool policyReady = true,
+  List<String> missingPolicyItems = const <String>[],
 }) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   final preferences = await SharedPreferences.getInstance();
@@ -265,6 +295,8 @@ Future<void> _pumpWorkbench(
         financeAssetOverviewRepositoryProvider.overrideWithValue(
           _FakeOverviewRepository(
             postedWorkflowsEnabled: postedWorkflowsEnabled,
+            policyReady: policyReady,
+            missingPolicyItems: missingPolicyItems,
           ),
         ),
         financeAssetCategoryRepositoryProvider.overrideWithValue(
@@ -278,9 +310,15 @@ Future<void> _pumpWorkbench(
 }
 
 class _FakeOverviewRepository implements FinanceAssetOverviewRepository {
-  const _FakeOverviewRepository({this.postedWorkflowsEnabled = true});
+  const _FakeOverviewRepository({
+    this.postedWorkflowsEnabled = true,
+    this.policyReady = true,
+    this.missingPolicyItems = const <String>[],
+  });
 
   final bool postedWorkflowsEnabled;
+  final bool policyReady;
+  final List<String> missingPolicyItems;
 
   @override
   Future<FinanceAssetWorkbenchOverview> load() async {
@@ -291,8 +329,8 @@ class _FakeOverviewRepository implements FinanceAssetOverviewRepository {
         deferredBalance: '21000.00',
         pendingOrExceptionCount: 2,
       ),
-      policyReady: true,
-      missingPolicyItems: const <String>[],
+      policyReady: policyReady,
+      missingPolicyItems: missingPolicyItems,
       postedWorkflowsEnabled: postedWorkflowsEnabled,
       operationalBlockers: postedWorkflowsEnabled
           ? const <String>[]

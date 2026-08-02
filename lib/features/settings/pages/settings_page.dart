@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/settings/uten_font_scaler.dart';
 import '../../../components/settings/uten_locale_switcher.dart';
@@ -20,6 +21,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -35,6 +37,7 @@ class SettingsPage extends ConsumerWidget {
     final canViewAuditLog = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.auditLogView);
+    final user = ref.watch(sessionProvider).user;
 
     return Scaffold(
       body: UtenContentContainer.narrow(
@@ -46,6 +49,64 @@ class SettingsPage extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // 标题行：之前整页没有任何标题/当前账号提示，一进来就是「外观」分组，
+              // 容易让人觉得"这页缺东西"（问题 #14）。
+              Padding(
+                padding: const EdgeInsets.only(
+                  bottom: UtenSpacing.s16,
+                  left: UtenSpacing.s4,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.settings_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Text(
+                      l10n.settingsTitle,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (user != null) ...[
+                UtenCard(
+                  child: Row(
+                    children: [
+                      UtenUserAvatar(size: 44, name: user.name),
+                      const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.name,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              [
+                                user.code,
+                                if (user.department != null) user.department!,
+                              ].join(' · '),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s24),
+              ],
               // 外观区
               SettingsSection(
                 title: l10n.settingsSectionAppearance,
@@ -194,8 +255,16 @@ class SettingsPage extends ConsumerWidget {
       icon: Icons.logout_rounded,
     );
 
-    if (confirmed == true) {
+    if (confirmed != true) return;
+
+    // Capture the app-level host before logout changes the route. The warning
+    // remains visible on the login page even if this Settings context unmounts.
+    final notifications = ref.read(appNotificationProvider.notifier);
+    try {
       await ref.read(sessionProvider.notifier).logout();
+    } catch (_) {
+      notifications.showError('退出未完全完成，请重新打开应用后再登录。', force: true);
+    } finally {
       if (context.mounted) {
         context.go(RouteName.login);
       }

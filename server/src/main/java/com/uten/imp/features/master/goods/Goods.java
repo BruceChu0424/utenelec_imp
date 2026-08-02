@@ -127,12 +127,16 @@ public class Goods extends SoftDeletableEntity {
     // ===== 物理属性 =====
     private String material;            // Material
     private BigDecimal thickness;       // Thickness
+    @Column(name = "thickness_unit_legacy_id")
+    private Integer thicknessUnitLegacyId; // 厚度单位（→ units.legacy_id，V203）
     @Column(name = "l_style")
     private String lStyle;              // LStyle
     @Column(name = "z_weight")
     private BigDecimal zWeight;         // ZWeight
     @Column(name = "m_weight")
     private BigDecimal mWeight;         // MWeight
+    @Column(name = "m_weight_unit_legacy_id")
+    private Integer mWeightUnitLegacyId; // 单重单位（→ units.legacy_id，V203）
     private String pack;                // Pack
     @Column(name = "b_pack")
     private String bPack;               // BPack

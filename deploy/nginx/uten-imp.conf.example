@@ -1,16 +1,36 @@
 # Include this file from nginx's `http` context after replacing the host names,
 # TLS certificate paths, and trusted network ranges for the real environment.
 
-# The gateway buckets are deliberately coarse IP-level flood protection.
-# Mainland office networks and mobile carriers commonly place many legitimate
-# users behind one NAT/CGNAT address, so per-account/per-phone limits belong in
-# the application and these values must be load-tested against the real site.
-limit_req_zone $binary_remote_addr zone=uten_auth_ip:10m rate=300r/m;
+# These are coarse, finite IP-level flood guards, not per-user policy. A shared
+# office NAT can contain 1,000 recovering clients: health has a separate bucket
+# sized for that recovery wave, while auth accepts a bounded login/refresh burst.
+# Per-account/per-phone controls remain in the application. Load-test and tune all
+# three buckets with the real NAT/CGNAT topology before production.
+limit_req_zone $binary_remote_addr zone=uten_health_ip:10m rate=1000r/s;
+limit_req_zone $binary_remote_addr zone=uten_auth_ip:10m rate=300r/s;
 limit_req_zone $binary_remote_addr zone=uten_api_ip:20m rate=3000r/m;
 
 upstream uten_imp_backend {
     server uten-imp-server:8080;
     keepalive 32;
+}
+
+# Loopback-only static-entry probe. The external systemd watchdog requires both
+# Nginx request handling and the immutable current/index.html to be available.
+server {
+    listen 127.0.0.1:8081;
+    server_name _;
+    root /opt/uten-imp/current/web;
+    access_log off;
+    log_not_found off;
+
+    location = /index.html {
+        try_files $uri =503;
+    }
+
+    location / {
+        return 404;
+    }
 }
 
 server {
@@ -28,9 +48,22 @@ server {
     ssl_certificate /etc/nginx/tls/fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/privkey.pem;
 
-    root /srv/uten-imp/web;
+    # `current` is an atomically replaced symlink to an immutable versioned
+    # release directory. Never copy files through this path in place.
+    root /opt/uten-imp/current/web;
     index index.html;
     client_max_body_size 2m;
+
+    # Keep the gateway and Spring request-header budgets aligned. Two 8 KiB
+    # large buffers cap the exceptional total at roughly 16 KiB while each
+    # individual field must still fit in 8 KiB. Do not raise this without a
+    # measured header-budget review.
+    client_header_buffer_size 4k;
+    large_client_header_buffers 2 8k;
+
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 30s;
+    proxy_read_timeout 45s;
 
     # Compress the large Flutter JavaScript/Wasm payloads for mainland mobile
     # and cross-carrier links. Brotli may be enabled at the CDN/load balancer
@@ -57,20 +90,74 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header Cross-Origin-Opener-Policy "same-origin" always;
 
-    location ~ ^/api/(?:auth/login|visitor/auth/(?:send-code|login))$ {
-        limit_req zone=uten_auth_ip burst=50 nodelay;
+    # Browser recovery probes Actuator outside the /api application namespace.
+    # Keep this exact route before the SPA fallback; otherwise index.html could
+    # return 200 and falsely claim that a stopped backend is healthy.
+    location = /actuator/health {
+        limit_req zone=uten_health_ip burst=5000 nodelay;
+        proxy_pass http://uten_imp_backend/actuator/health;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 5s;
+    }
+
+    # Spring Boot exposes these probe groups when health probes are enabled.
+    # Proxy them explicitly so the SPA fallback can never return index.html/200
+    # and make an orchestrator believe a stopped backend is healthy.
+    location ~ ^/actuator/health/(?:liveness|readiness)$ {
+        limit_req zone=uten_health_ip burst=5000 nodelay;
         proxy_pass http://uten_imp_backend;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 5s;
+    }
+
+    # Do not use ^~ here: the exact root and regex liveness/readiness locations
+    # above must win. Every other Actuator path is denied at the gateway instead
+    # of falling through to Flutter's SPA index.html with a false 200.
+    location /actuator/ {
+        return 404;
+    }
+
+    location ~ ^/api/(?:auth/(?:login|refresh|logout)|visitor/auth/(?:send-code|login|refresh|logout))$ {
+        limit_req zone=uten_auth_ip burst=2000 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Request-Id $request_id;
     }
 
+    # Encrypted workbook endpoints build the complete response before sending
+    # the first byte. Match the client's two-minute download budget without
+    # weakening ordinary API timeouts.
+    location ~ ^/api/.*/export$ {
+        limit_req zone=uten_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 120s;
+    }
+
     location /api/ {
         limit_req zone=uten_api_ip burst=500 nodelay;
         proxy_pass http://uten_imp_backend;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

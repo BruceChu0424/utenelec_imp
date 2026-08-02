@@ -93,8 +93,10 @@ class GoodsDetail {
     this.pack,
     this.material,
     this.thickness,
+    this.thicknessUnitLegacyId,
     this.unitLegacyId,
     this.mWeight,
+    this.mWeightUnitLegacyId,
     this.pieces,
     this.colorName,
     this.unitName,
@@ -134,8 +136,10 @@ class GoodsDetail {
   final String? pack;
   final String? material;
   final double? thickness;
+  final int? thicknessUnitLegacyId;
   final int? unitLegacyId;
   final double? mWeight;
+  final int? mWeightUnitLegacyId;
   final int? pieces;
   final String? colorName;
   final String? unitName;
@@ -178,10 +182,12 @@ class GoodsDetail {
     pack: json['pack'] as String?,
     material: json['material'] as String?,
     thickness: (json['thickness'] as num?)?.toDouble(),
+    thicknessUnitLegacyId: (json['thicknessUnitLegacyId'] as num?)?.toInt(),
     unitLegacyId: (json['unitLegacyId'] as num?)?.toInt(),
     // 后端 Jackson 对连续大写字段 mWeight（getter getMWeight）序列化为 "mweight"，
     // 与字段名不符；兼容两种写法，避免"单重"始终取不到值。
     mWeight: ((json['mWeight'] ?? json['mweight']) as num?)?.toDouble(),
+    mWeightUnitLegacyId: (json['mWeightUnitLegacyId'] as num?)?.toInt(),
     pieces: (json['pieces'] as num?)?.toInt(),
     colorName: json['colorName'] as String?,
     unitName: json['unitName'] as String?,

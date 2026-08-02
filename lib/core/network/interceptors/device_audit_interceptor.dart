@@ -17,6 +17,10 @@ class DeviceAuditInterceptor extends Interceptor {
   static const _startedAtExtra = 'uten.audit.startedAt';
   static const _localReceiptEnabledExtra = 'uten.audit.localReceiptEnabled';
 
+  /// Keeps the complete client request comfortably below the gateway/server
+  /// budget even for super-admin sessions and verbose browser headers.
+  static const maxEncodedContextLength = 1536;
+
   final DeviceAuditStore store;
   final Uuid _uuid;
 
@@ -143,10 +147,11 @@ class DeviceAuditInterceptor extends Interceptor {
       'model',
       'osVersion',
       'browserName',
+      'formFactor',
       'locale',
       'timeZone',
     ]) {
-      if (encoded.length <= 4000) break;
+      if (encoded.length <= maxEncodedContextLength) break;
       context.remove(field);
       encoded = encode();
     }

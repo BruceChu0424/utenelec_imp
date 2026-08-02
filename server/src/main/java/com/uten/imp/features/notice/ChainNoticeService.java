@@ -1,11 +1,12 @@
 package com.uten.imp.features.notice;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.notice.outbox.BusinessOutboxPublisher;
 import com.uten.imp.features.rbac.UserRoleRepository;
+import com.uten.imp.features.rd_task.RdTaskService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +37,7 @@ public class ChainNoticeService {
     public static final String TYPE_WORKFLOW = "workflow";
     public static final String TYPE_TASK = "task";
     public static final String TYPE_URGENT = "urgent";
+    public static final String TYPE_APPROVAL = "approval";
 
     private static final String PUBLISHER = "系统";
     static final String EVENT_PLAN_SCHEDULED = "PRODUCTION_PLAN_SCHEDULED";
@@ -52,6 +54,23 @@ public class ChainNoticeService {
     static final String EVENT_DELIVERY_DUE = "SALES_DELIVERY_DUE";
     static final String EVENT_RESERVATION_HOLD_OVERDUE = "SALES_RESERVATION_HOLD_OVERDUE";
     static final String EVENT_RESERVATION_YIELDED = "SALES_RESERVATION_YIELDED";
+    static final String EVENT_PROCUREMENT_FINANCE_SUBMITTED =
+            "PROCUREMENT_FINANCE_SUBMITTED";
+    static final String EVENT_PROCUREMENT_FINANCE_APPROVED =
+            "PROCUREMENT_FINANCE_APPROVED";
+    static final String EVENT_PROCUREMENT_FINANCE_REJECTED =
+            "PROCUREMENT_FINANCE_REJECTED";
+    static final String EVENT_PROCUREMENT_ARRIVAL_DETECTED =
+            "PROCUREMENT_ARRIVAL_EXCEPTION_DETECTED";
+    static final String EVENT_PROCUREMENT_ARRIVAL_DECIDED =
+            "PROCUREMENT_ARRIVAL_EXCEPTION_DECIDED";
+    static final String EVENT_PROCUREMENT_RETURN_REQUIRED =
+            "PROCUREMENT_SUPPLIER_RETURN_REQUIRED";
+    static final String EVENT_PROCUREMENT_RETURN_COMPLETED =
+            "PROCUREMENT_SUPPLIER_RETURN_COMPLETED";
+    static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
+    static final String EVENT_RD_TASK_FORWARDED = "RD_TASK_FORWARDED";
+    static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
     private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
             ThreadLocal.withInitial(() -> false);
 
@@ -60,18 +79,21 @@ public class ChainNoticeService {
     private final UserAccountRepository userRepo;
     private final UserRoleRepository userRoleRepo;
     private final JdbcTemplate jdbc;
-    private final BusinessOutboxPublisher outbox;
+    private final BusinessEventPublisher outbox;
+    private final RdTaskService rdTaskService;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
                               UserRoleRepository userRoleRepo,
                               JdbcTemplate jdbc,
-                              BusinessOutboxPublisher outbox) {
+                              BusinessEventPublisher outbox,
+                              RdTaskService rdTaskService) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.userRoleRepo = userRoleRepo;
         this.jdbc = jdbc;
         this.outbox = outbox;
+        this.rdTaskService = rdTaskService;
     }
 
     /** Called only by the locked outbox processor inside its delivery transaction. */
@@ -119,6 +141,18 @@ public class ChainNoticeService {
                 case EVENT_RESERVATION_YIELDED ->
                         notifyReservationYielded(aggregateId, payload.path("qty").asText(""),
                                 payload.path("reason").asText(""), payload.path("yielderOrderNo").asText(""));
+                case EVENT_PROCUREMENT_FINANCE_SUBMITTED,
+                     EVENT_PROCUREMENT_FINANCE_APPROVED,
+                     EVENT_PROCUREMENT_FINANCE_REJECTED ->
+                        notifyProcurementFinanceEvent(eventType, aggregateId);
+                case EVENT_PROCUREMENT_ARRIVAL_DETECTED,
+                     EVENT_PROCUREMENT_ARRIVAL_DECIDED,
+                     EVENT_PROCUREMENT_RETURN_REQUIRED,
+                     EVENT_PROCUREMENT_RETURN_COMPLETED ->
+                        notifyProcurementArrivalEvent(eventType, aggregateId);
+                case EVENT_RD_TASK_FORWARDED -> notifyRdTaskForwarded(aggregateId);
+                case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
+                case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
             }
@@ -137,7 +171,7 @@ public class ChainNoticeService {
             return;
         }
         deliverAtomically(() -> {
-            String planNo = str(one("SELECT bill_no FROM production_plans WHERE id = ?", planId));
+            String planNo = oneStr("SELECT bill_no FROM production_plans WHERE id = ?", planId);
             Map<UUID, BigDecimal> byOrder = new LinkedHashMap<>();
             Map<UUID, String> goodsByOrder = new LinkedHashMap<>();
             for (Map<String, Object> r : jdbc.queryForList("""
@@ -159,19 +193,22 @@ public class ChainNoticeService {
                 notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                         "排产通知：" + o.billNo(),
                         "订单 " + o.billNo() + " 货品 " + goodsByOrder.get(e.getKey())
-                                + " 已排产 " + qty(e.getValue()) + "（计划单 " + planNo + "）。");
+                                + " 已排产 " + qty(e.getValue()) + "（计划单 " + planNo + "）。",
+                        o.route());
                 if (shortage) {
                     notifyUser(o.ownerUserId(), TYPE_URGENT,
                             "生产缺料：" + o.billNo(),
                             "订单 " + o.billNo() + " 的计划单 " + planNo
                                     + " 已核验存在及时物料缺口，采购/调度已收到处理任务；"
-                                    + "销售端排产进度会随到料、开工和完工继续更新。");
+                                    + "销售端排产进度会随到料、开工和完工继续更新。",
+                            o.route());
                 }
             }
             if (shortage) {
                 notifyRoles(List.of("buyer", "planner"), TYPE_TASK,
                         "缺料提醒：" + planNo,
-                        "计划单 " + planNo + " 审核后 BOM 净需求不足（订单行状态=待物料），请采购/调度跟进备料。");
+                        "计划单 " + planNo + " 审核后 BOM 净需求不足（订单行状态=待物料），请采购/调度跟进备料。",
+                        "/production/plans/" + planId);
             }
         });
     }
@@ -187,8 +224,8 @@ public class ChainNoticeService {
             return;
         }
         deliverAtomically(() -> {
-            String reportNo = str(one(
-                    "SELECT bill_no FROM production_daily_reports WHERE id = ?", reportId));
+            String reportNo = oneStr(
+                    "SELECT bill_no FROM production_daily_reports WHERE id = ?", reportId);
             for (Map<String, Object> r : jdbc.queryForList("""
                     WITH affected AS (
                         SELECT DISTINCT allocation.sales_order_item_id AS order_item_id
@@ -239,7 +276,8 @@ public class ChainNoticeService {
                                 + " 的报工单 " + reportNo + " 已审核，累计合格 "
                                 + qty(produced) + "/已排产 " + qty(planned)
                                 + "（订单数量 " + qty(bd(r.get("order_qty"))) + "）。"
-                                + (reportedComplete ? "成品入库审核后会再次通知可发货状态。" : ""));
+                                + (reportedComplete ? "成品入库审核后会再次通知可发货状态。" : ""),
+                        order.route());
             }
         });
     }
@@ -251,7 +289,7 @@ public class ChainNoticeService {
             return;
         }
         deliverAtomically(() -> {
-            String docNo = str(one("SELECT bill_no FROM stock_documents WHERE id = ?", stockDocId));
+            String docNo = oneStr("SELECT bill_no FROM stock_documents WHERE id = ?", stockDocId);
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, rv.qty, oi.produced_qty, oi.qty AS order_qty,
                            oi.chain_status, g.code AS goods
@@ -267,7 +305,8 @@ public class ChainNoticeService {
                         (full ? "完工通知：" : "部分完工：") + o.billNo(),
                         "订单 " + o.billNo() + " 货品 " + str(r.get("goods")) + " 完工入库 " + qty(bd(r.get("qty")))
                                 + "（入库单 " + docNo + "），累计完工 " + qty(bd(r.get("produced_qty")))
-                                + "/订货 " + qty(bd(r.get("order_qty"))) + (full ? "，已可发货。" : "。"));
+                                + "/订货 " + qty(bd(r.get("order_qty"))) + (full ? "，已可发货。" : "。"),
+                        o.route());
             }
         });
     }
@@ -295,7 +334,8 @@ public class ChainNoticeService {
                         "数量不足·已补产：" + o.billNo(),
                         "订单 " + o.billNo() + " 报工完结缺额 " + qty(bd(r.get("qty")))
                                 + "，已自动生成补产计划 " + str(r.get("plan_no")) + "（报工单 " + reportBillNo
-                                + "），待调度审核排产。");
+                                + "），待调度审核排产。",
+                        o.route());
             }
         });
     }
@@ -345,7 +385,8 @@ public class ChainNoticeService {
                                 + " " + qty(bd(owner.get("allocated_qty")))
                                 + "（计划 " + str(segment.get("plan_no"))
                                 + "，子任务 " + str(segment.get("segment_code"))
-                                + "，计划 " + begin + " 至 " + end + "）。");
+                                + "，计划 " + begin + " 至 " + end + "）。",
+                        order.route());
             }
         });
     }
@@ -417,7 +458,7 @@ public class ChainNoticeService {
         deliverAtomically(() -> {
             Map<String, Object> h = one("SELECT bill_no, warehouse_id FROM sales_shipments WHERE id = ?", shipmentId);
             if (h == null) return;
-            String wh = str(one("SELECT name FROM warehouses WHERE id = ?", h.get("warehouse_id")));
+            String wh = oneStr("SELECT name FROM warehouses WHERE id = ?", h.get("warehouse_id"));
             Map<UUID, BigDecimal> byOrder = new LinkedHashMap<>();
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, SUM(si.qty) AS qty
@@ -434,7 +475,8 @@ public class ChainNoticeService {
                 notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                         "发货通知：" + o.billNo(),
                         "订单 " + o.billNo() + " 已发货 " + qty(e.getValue()) + "（出货单 " + str(h.get("bill_no"))
-                                + (wh.isEmpty() ? "" : "，仓库 " + wh) + "）。");
+                                + (wh.isEmpty() ? "" : "，仓库 " + wh) + "）。",
+                        "/sales/shipments/" + shipmentId);
             }
         });
     }
@@ -447,7 +489,7 @@ public class ChainNoticeService {
             return;
         }
         deliverAtomically(() -> {
-            String billNo = str(one("SELECT bill_no FROM sales_shipments WHERE id = ?", shipmentId));
+            String billNo = oneStr("SELECT bill_no FROM sales_shipments WHERE id = ?", shipmentId);
             for (Map<String, Object> r : jdbc.queryForList("""
                     SELECT oi.order_id, SUM(si.qty) AS qty
                     FROM sales_shipment_items si
@@ -461,7 +503,8 @@ public class ChainNoticeService {
                         "出货驳回：" + o.billNo(),
                         "出货单 " + billNo + " 被仓库驳回（" + (reason == null || reason.isBlank() ? "备货异常" : reason)
                                 + "），订单 " + o.billNo() + " 缺口 " + qty(bd(r.get("qty")))
-                                + " 已释放预留并回到调度待排产。");
+                                + " 已释放预留并回到调度待排产。",
+                        "/sales/shipments/" + shipmentId);
             }
         });
     }
@@ -478,10 +521,12 @@ public class ChainNoticeService {
             notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
                     "取消确认：" + o.billNo(),
                     "订单 " + o.billNo() + " 已整单取消：销售库存预留已释放；"
-                            + "系统已确认不存在待清理的排产、领料或完工承诺。");
+                            + "系统已确认不存在待清理的排产、领料或完工承诺。",
+                    o.route());
             notifyRoles(List.of("planner"), TYPE_WORKFLOW,
                     "订单取消·无需排产：" + o.billNo(),
-                    "订单 " + o.billNo() + " 已取消且没有有效生产承诺，无需后续排产。");
+                    "订单 " + o.billNo() + " 已取消且没有有效生产承诺，无需后续排产。",
+                    o.route());
         });
     }
 
@@ -510,7 +555,8 @@ public class ChainNoticeService {
             notifyRoles(List.of("planner"), TYPE_TASK,
                     "新订单待排产：" + o.billNo(),
                     "订单 " + o.billNo() + " 已审核，共 " + lines + " 行货品（" + goods
-                            + "）待排产，最早交货日 " + deliver + "，请到「生产调度」处理。");
+                            + "）待排产，最早交货日 " + deliver + "，请到「生产调度」处理。",
+                    "/production/schedule");
         });
     }
 
@@ -644,19 +690,174 @@ public class ChainNoticeService {
                         + "（原因：" + why + "）。缺口已自动回到调度待排产，将转生产补足，进度会在排产后更新。");
     }
 
+    private void notifyProcurementFinanceEvent(
+            String eventType, UUID approvalCaseId) {
+        deliverAtomically(() -> {
+            Map<String, Object> approval = one("""
+                    SELECT approval_case.bill_no_snapshot,
+                           approval_case.amount_snapshot,
+                           approval_case.order_type,
+                           approval_case.assignee_user_id,
+                           approval_case.submitted_by_user_id,
+                           approval_case.rejection_reason,
+                           expectation.expected_date,
+                           warehouse.name AS warehouse_name
+                    FROM procurement_order_approval_cases approval_case
+                    LEFT JOIN inbound_expectations expectation
+                      ON expectation.approval_case_id = approval_case.id
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id = expectation.warehouse_id
+                    WHERE approval_case.id = ?
+                    """, approvalCaseId);
+            if (approval == null) {
+                return;
+            }
+            String billNo = str(approval.get("bill_no_snapshot"));
+            String orderLabel = "SUBCONTRACT".equals(
+                    str(approval.get("order_type")))
+                    ? "委外订货单"
+                    : "采购订货单";
+            if (EVENT_PROCUREMENT_FINANCE_SUBMITTED.equals(eventType)) {
+                notifyUser(
+                        (UUID) approval.get("assignee_user_id"),
+                        TYPE_APPROVAL,
+                        "待财务审核：" + billNo,
+                        orderLabel + " " + billNo + " 已提交财务审核，金额 "
+                                + str(approval.get("amount_snapshot"))
+                                + "。该任务仅分配给您，请到钱流管理任务中心处理。");
+                return;
+            }
+            if (EVENT_PROCUREMENT_FINANCE_REJECTED.equals(eventType)) {
+                notifyUser(
+                        (UUID) approval.get("submitted_by_user_id"),
+                        TYPE_URGENT,
+                        "财务驳回：" + billNo,
+                        orderLabel + " " + billNo + " 未通过财务审核。原因："
+                                + str(approval.get("rejection_reason"))
+                                + "。请修改后重新提交。");
+                return;
+            }
+            notifyUser(
+                    (UUID) approval.get("submitted_by_user_id"),
+                    TYPE_WORKFLOW,
+                    "财务通过：" + billNo,
+                    orderLabel + " " + billNo
+                            + " 已通过财务审核并正式生效，仓储部已收到预计到货提醒。");
+            String warehouseName = str(approval.get("warehouse_name"));
+            String expectedDate = str(approval.get("expected_date"));
+            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_TASK,
+                        "预计到货：" + billNo,
+                        orderLabel + " " + billNo + " 已生效"
+                                + (warehouseName.isBlank()
+                                        ? ""
+                                        : "，目标仓库 " + warehouseName)
+                                + (expectedDate.isBlank()
+                                        ? ""
+                                        : "，预计日期 " + expectedDate)
+                                + "。请在仓库预计到货队列跟进。");
+            }
+        });
+    }
+
+    private void notifyProcurementArrivalEvent(String eventType, UUID exceptionId) {
+        deliverAtomically(() -> {
+            Map<String, Object> arrival = one("""
+                    SELECT exception.order_type,
+                           exception.receipt_bill_no_snapshot,
+                           exception.order_bill_no_snapshot,
+                           exception.owner_user_id,
+                           exception.finance_assignee_user_id,
+                           exception.declared_qty,
+                           exception.approved_remaining_qty,
+                           exception.approved_excess_qty,
+                           exception.accepted_qty,
+                           exception.unaccepted_qty,
+                           exception.status,
+                           exception.decision,
+                           exception.finance_reason,
+                           return_task.qty AS return_qty,
+                           return_task.status AS return_status
+                    FROM procurement_arrival_exceptions exception
+                    LEFT JOIN supplier_return_tasks return_task
+                      ON return_task.arrival_exception_id = exception.id
+                    WHERE exception.id = ?
+                    """, exceptionId);
+            if (arrival == null) return;
+            UUID ownerUser = (UUID) arrival.get("owner_user_id");
+            UUID financeUser = (UUID) arrival.get("finance_assignee_user_id");
+            String orderNo = str(arrival.get("order_bill_no_snapshot"));
+            String receiptNo = str(arrival.get("receipt_bill_no_snapshot"));
+            String orderLabel = "SUBCONTRACT".equals(str(arrival.get("order_type")))
+                    ? "委外订货单" : "采购订货单";
+
+            if (EVENT_PROCUREMENT_ARRIVAL_DETECTED.equals(eventType)) {
+                notifyUser(financeUser, TYPE_URGENT,
+                        "到货超量待财务审核：" + orderNo,
+                        "收货单 " + receiptNo + " 的实际到货量 "
+                                + str(arrival.get("declared_qty"))
+                                + " 超过当前财务批准剩余可收量 "
+                                + str(arrival.get("approved_remaining_qty"))
+                                + "。本次未入库、未立应付；该任务只允许分配快照中的财务负责人审核。");
+                return;
+            }
+            if (EVENT_PROCUREMENT_RETURN_REQUIRED.equals(eventType)) {
+                notifyUser(ownerUser, TYPE_TASK,
+                        "供应商退回任务：" + orderNo,
+                        orderLabel + " " + orderNo + " 的未接收数量 "
+                                + str(arrival.get("return_qty"))
+                                + " 已形成持久任务。请完成实物退回后在本人任务中确认；通知不能代替任务台账。");
+                return;
+            }
+            if (EVENT_PROCUREMENT_RETURN_COMPLETED.equals(eventType)) {
+                notifyUser(ownerUser, TYPE_WORKFLOW,
+                        "供应商退回已登记：" + orderNo,
+                        orderLabel + " " + orderNo + " 的供应商退回任务已登记完成。");
+                return;
+            }
+
+            BigDecimal accepted = bd(arrival.get("accepted_qty"));
+            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+                if (accepted.signum() > 0) {
+                    sendToUser(warehouseUser, TYPE_TASK,
+                            "到货数量已由财务审核：" + orderNo,
+                            "财务批准本行接收 " + str(arrival.get("accepted_qty"))
+                                    + "，未接收 " + str(arrival.get("unaccepted_qty"))
+                                    + "，批准额外超量 "
+                                    + str(arrival.get("approved_excess_qty"))
+                                    + "。收货草稿已由服务端调整，请重新核对并审核；不得按原申报量入库。");
+                } else {
+                    sendToUser(warehouseUser, TYPE_WORKFLOW,
+                            "到货超量已由财务拒绝：" + orderNo,
+                            "财务未批准收货单 " + receiptNo
+                                    + " 的该行接收，收货草稿行已移除；未接收数量 "
+                                    + str(arrival.get("unaccepted_qty"))
+                                    + " 已转原下单人处理供应商退回。");
+                }
+            }
+        });
+    }
+
     // ---------- 接收人解析与发送 ----------
 
-    /** 订单快照：单号 + 归属销售的用户账号（owner_employee_id 优先，回退 seller_id）。 */
+    /** 订单快照：id + 单号 + 归属销售的用户账号（owner_employee_id 优先，回退 seller_id）。 */
     private OrderRef orderRef(UUID orderId) {
         Map<String, Object> r = one(
                 "SELECT bill_no, owner_employee_id, seller_id FROM sales_orders WHERE id = ?", orderId);
         if (r == null) return null;
         UUID userId = userIdOfEmployee((UUID) r.get("owner_employee_id"));
         if (userId == null) userId = userIdOfEmployee((UUID) r.get("seller_id"));
-        return new OrderRef(str(r.get("bill_no")), userId);
+        return new OrderRef(orderId, str(r.get("bill_no")), userId);
     }
 
-    private record OrderRef(String billNo, UUID ownerUserId) {}
+    private record OrderRef(UUID orderId, String billNo, UUID ownerUserId) {
+        /** 订单详情页路由（问题 #12：通知点击跳源单据）。 */
+        String route() {
+            return "/sales/orders/" + orderId;
+        }
+    }
 
     /** 员工 → 活跃账号（无账号/已停用/已删除 → null，静默跳过）。 */
     private UUID userIdOfEmployee(UUID employeeId) {
@@ -668,11 +869,21 @@ public class ChainNoticeService {
     }
 
     private void notifyUser(UUID userId, String type, String title, String content) {
+        notifyUser(userId, type, title, content, null);
+    }
+
+    /** 带跳转入口的定向通知（问题 #12：点排产/发货等通知能跳到对应单据）。 */
+    private void notifyUser(UUID userId, String type, String title, String content, String actionRoute) {
         if (userId == null) return;
-        sendToUser(userId, type, title, content);
+        sendToUser(userId, type, title, content, actionRoute);
     }
 
     private void notifyRoles(List<String> roleCodes, String type, String title, String content) {
+        notifyRoles(roleCodes, type, title, content, null);
+    }
+
+    private void notifyRoles(
+            List<String> roleCodes, String type, String title, String content, String actionRoute) {
         Set<UUID> targets = new LinkedHashSet<>();
         for (String code : roleCodes) {
             targets.addAll(userRoleRepo.findUserIdsByRoleCode(code));
@@ -687,7 +898,7 @@ public class ChainNoticeService {
             }
         }
         for (UUID uid : targets) {
-            sendToUser(uid, type, title, content);
+            sendToUser(uid, type, title, content, actionRoute);
         }
     }
 
@@ -721,11 +932,83 @@ public class ChainNoticeService {
                 """, UUID.class, departmentCode);
     }
 
-    /** 停用/删除账号跳过；写入失败交给 Outbox 整体回滚重试。 */
     private void sendToUser(UUID userId, String type, String title, String content) {
+        sendToUser(userId, type, title, content, null);
+    }
+
+    /** 停用/删除账号跳过；写入失败交给 Outbox 整体回滚重试。 */
+    private void sendToUser(UUID userId, String type, String title, String content, String actionRoute) {
         UserAccount u = userRepo.findById(userId).orElse(null);
         if (u == null || !"active".equals(u.getStatus()) || u.isDeleted()) return;
-        noticeService.publishForUser(userId, title, content, type, PUBLISHER);
+        noticeService.publishForUser(userId, title, content, type, PUBLISHER, actionRoute);
+    }
+
+    // ---------- 研发任务 / BOM 维护 通知 ----------
+
+    /** BOM 维护完成（GoodsBomService create/update/delete 后发）：若 BOM 已就绪，自动完成对应未完成 BOM 任务 + 通知生产转发人。 */
+    public void notifyBomUpdated(UUID goodsId) {
+        deliverAtomically(() -> {
+            // 删除清空 BOM 时不应误完成——仅当确实已有可用 BOM 行才处理。
+            Integer ready = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM goods_bom_items WHERE goods_id = ? AND is_deleted = false",
+                    Integer.class, goodsId);
+            if (ready == null || ready == 0) return;
+            List<UUID> reporters = rdTaskService.openBomTaskReporters(goodsId);
+            int updated = rdTaskService.resolveOpenBomTasksForGoods(goodsId, "BOM已维护，自动完成");
+            if (updated == 0) return;
+            String goodsLabel = oneStr(
+                    "SELECT COALESCE(code,'') || ' ' || COALESCE(name,'') FROM goods WHERE id = ?",
+                    goodsId);
+            for (UUID empId : reporters) {
+                UUID uid = userIdOfEmployee(empId);
+                if (uid != null) {
+                    sendToUser(uid, TYPE_TASK,
+                            "BOM 已维护：" + goodsLabel,
+                            "工程研发部已维护该货品的组装物料，可继续排产。",
+                            "/production/schedule");
+                }
+            }
+        });
+    }
+
+    /** 生产转发 BOM 缺失（RdTaskService.forwardBomGap 发）：通知工程研发部（DEPT_ENG 子树）。 */
+    public void notifyRdTaskForwarded(UUID taskId) {
+        deliverAtomically(() -> {
+            Map<String, Object> t = one("""
+                    SELECT r.title, g.code AS goods_code, g.name AS goods_name
+                    FROM rd_tasks r LEFT JOIN goods g ON g.id = r.goods_id
+                    WHERE r.id = ? AND r.is_deleted = false
+                    """, taskId);
+            if (t == null) return;
+            String goodsLabel = str(t.get("goods_code")) + " " + str(t.get("goods_name"));
+            String title = "新 BOM 维护任务：" + goodsLabel;
+            String content = "生产排产转发了该货品的 BOM 缺失请求：" + str(t.get("title"))
+                    + "，请尽快维护组装物料。";
+            for (UUID uid : departmentUserIds("DEPT_ENG")) {
+                sendToUser(uid, TYPE_TASK, title, content, "/rd/tasks");
+            }
+        });
+    }
+
+    /** 研发任务手动完成（RdTaskService.resolve 发）：通知制单人/转发人。 */
+    public void notifyRdTaskResolved(UUID taskId) {
+        deliverAtomically(() -> {
+            Map<String, Object> t = one("""
+                    SELECT r.title, r.reporter_employee_id,
+                           g.code AS goods_code, g.name AS goods_name
+                    FROM rd_tasks r LEFT JOIN goods g ON g.id = r.goods_id
+                    WHERE r.id = ? AND r.is_deleted = false
+                    """, taskId);
+            if (t == null) return;
+            UUID uid = userIdOfEmployee((UUID) t.get("reporter_employee_id"));
+            if (uid == null) return;
+            String goodsLabel = str(t.get("goods_code")) + " " + str(t.get("goods_name"));
+            sendToUser(uid, TYPE_TASK,
+                    "研发任务已完成：" + goodsLabel,
+                    "工程研发部已标记完成：" + str(t.get("title"))
+                            + "。若为 BOM 维护任务，可继续排产。",
+                    "/production/schedule");
+        });
     }
 
     // ---------- Outbox 原子送达 ----------
@@ -751,6 +1034,17 @@ public class ChainNoticeService {
 
     private static String str(Object v) {
         return v == null ? "" : v.toString();
+    }
+
+    /**
+     * 单值查询：SQL 只投影一列时取该列的值。{@link #one} 返回整行 {@code Map<String,Object>}，
+     * 之前多处直接 {@code str(one(...))} 把整行 Map 的 toString()（如 {@code {bill_no=SJ26080016}}）
+     * 拼进通知文案，用户能在通知卡片里看到裸的字段名（问题 #12）；改用本方法只取列值。
+     */
+    private String oneStr(String sql, Object... args) {
+        Map<String, Object> row = one(sql, args);
+        if (row == null || row.isEmpty()) return "";
+        return str(row.values().iterator().next());
     }
 
     private static BigDecimal bd(Object v) {

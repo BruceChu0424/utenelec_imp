@@ -19,7 +19,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('客户确认后分批'), findsOneWidget);
-    expect(find.textContaining('需要先在订单详情登记客户同意'), findsOneWidget);
+    // 问题 #16：这个策略不再要求先登记客户同意依据才能部分发货，说明文案已同步改过。
+    expect(find.textContaining('不影响实际能否建立部分出货任务'), findsOneWidget);
   });
 
   testWidgets('legacy order keeps shipment policy read-only', (tester) async {

@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.ret;
 
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -77,6 +79,7 @@ public class SubcontractReturnService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final ProcurementArrivalControlPort arrivalControl;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
@@ -210,6 +213,8 @@ public class SubcontractReturnService {
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setApPosted(true);
         returnRepo.save(r);
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.SUBCONTRACT,
+                items.stream().map(SubcontractReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 
@@ -249,6 +254,8 @@ public class SubcontractReturnService {
         r.setStatus(STATUS_REVERSED);
         r.setApPosted(false);
         returnRepo.save(r);
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.SUBCONTRACT,
+                items.stream().map(SubcontractReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 

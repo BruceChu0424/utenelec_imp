@@ -42,7 +42,7 @@ class OperationsWorkbenchRepository implements OperationsWorkbenchGateway {
     return OperationsWorkbenchData.fromJson(json, department);
   }
 
-  /// 采购任务中心待办任务数（UNPEGGED + WAITING_SUPPLY），与采购管理角标同源。
+  /// 采购任务中心待分解申请明细数（WAITING_ORDER），与采购管理角标同源。
   Future<int> purchaseTaskCount() async {
     final json = await api.get('/operations/workbench/purchase/count');
     return (json['count'] as num?)?.toInt() ?? 0;

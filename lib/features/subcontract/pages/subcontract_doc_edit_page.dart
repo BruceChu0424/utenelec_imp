@@ -28,6 +28,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -38,10 +39,12 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/models/procurement_inbound.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../providers/subcontract_providers.dart';
 import '../repositories/subcontract_repository.dart';
+import '../services/subcontract_save_workflow.dart';
 import '../widgets/subcontract_grid_columns.dart';
 import '../widgets/subcontract_link_picker.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -49,9 +52,17 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
-  const SubcontractDocEditPage({super.key, required this.docType, this.id});
+  const SubcontractDocEditPage({
+    super.key,
+    required this.docType,
+    this.id,
+    this.applicationItemIds = const [],
+    this.receiptPrefill,
+  });
   final SubcontractDocType docType;
   final String? id; // null=新建
+  final List<String> applicationItemIds;
+  final ProcurementReceiptPrefill? receiptPrefill;
 
   @override
   ConsumerState<SubcontractDocEditPage> createState() =>
@@ -105,6 +116,8 @@ class _SubcontractDocEditPageState
   final _scrollCtl = ScrollController();
   bool _saving = false;
   bool _loading = false;
+  bool _orderSourceReady = true;
+  String? _sourceApplicationBillNo;
 
   @override
   void initState() {
@@ -148,6 +161,12 @@ class _SubcontractDocEditPageState
         await _preloadEmployees([meId]);
       }
     }
+    if (widget.id == null && widget.docType == SubcontractDocType.receipt) {
+      _prefillReceiptFromExpectation();
+    }
+    if (widget.id == null && widget.docType == SubcontractDocType.order) {
+      await _prefillFromApplication();
+    }
     if (widget.id != null) {
       try {
         final d = await ref
@@ -182,7 +201,12 @@ class _SubcontractDocEditPageState
         _createdAt = d.createdAt;
         final rows = <SubcontractGridRow>[];
         for (final it in d.items) {
-          final row = SubcontractGridRow()
+          final upstreamItemId =
+              it.receiptItemId ??
+              it.materialIssueItemId ??
+              it.orderItemId ??
+              it.applicationItemId;
+          final row = SubcontractGridRow(sourceLocked: upstreamItemId != null)
             ..goods = it.goodsId == null
                 ? null
                 : GoodsOption(
@@ -194,14 +218,11 @@ class _SubcontractDocEditPageState
             ..qty.text = it.qty?.toString() ?? ''
             ..price.text = it.price?.toString() ?? ''
             ..weight.text = it.weight?.toString() ?? ''
-            // 优先级与 _linkItemKey 一致（receipt > materialIssue > order > application）
-            ..upstreamItemId =
-                it.receiptItemId ??
-                it.materialIssueItemId ??
-                it.orderItemId ??
-                it.applicationItemId
+            ..upstreamItemId = upstreamItemId
             ..colorId = it.colorId
-            ..unitId = it.unitId;
+            ..unitId = it.unitId
+            ..unitRate = it.unitRate
+            ..sourceDocNo = it.sourceDocNo;
           row.endingQty.text = it.endingQty?.toString() ?? '';
           row.standardQty.text = it.standardQty?.toString() ?? '';
           row.wasteRate.text = it.wasteRate?.toString() ?? '';
@@ -217,7 +238,10 @@ class _SubcontractDocEditPageState
         // 静默降级
       }
     }
-    if (_grid.isEmpty) _grid.addRow(SubcontractGridRow());
+    if (_grid.isEmpty &&
+        !(widget.id == null && widget.docType == SubcontractDocType.order)) {
+      _grid.addRow(SubcontractGridRow());
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -245,6 +269,116 @@ class _SubcontractDocEditPageState
     );
   }
 
+  Future<void> _prefillFromApplication() async {
+    final selectedIds = widget.applicationItemIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (selectedIds.isEmpty) {
+      _orderSourceReady = false;
+      if (mounted) context.appError('请从委外任务中心选择申请明细后生成订货单');
+      return;
+    }
+    try {
+      final open = await ref
+          .read(subcontractRepositoryProvider(SubcontractDocType.application))
+          .decompositionPreview(selectedIds);
+      if (open.isEmpty) {
+        throw StateError('所选申请明细已全部分解，请返回委外任务中心刷新');
+      }
+      final goodsIds = open.map((item) => item.goodsId).toSet();
+      await ref.read(mn.masterNameServiceProvider).loadGoodsNames(goodsIds);
+      if (!mounted) return;
+      final names = ref.read(mn.masterNameServiceProvider);
+      final rows = <SubcontractGridRow>[];
+      for (final item in open) {
+        final linked = LinkedItem(
+          goodsId: item.goodsId,
+          qty: item.remainingQty,
+          maxQty: item.remainingQty,
+          upstreamItemId: item.sourceItemId,
+          colorId: item.colorId,
+          unitId: item.unitId,
+        );
+        rows.add(
+          SubcontractGridRow.fromLinked(
+              linked,
+              GoodsOption(id: item.goodsId, name: names.goods(item.goodsId)),
+            )
+            ..unitRate = item.unitRate
+            ..sourceDocNo = item.sourceDocumentNo,
+        );
+      }
+      if (rows.isEmpty) throw StateError('所选委外申请明细缺少有效货品');
+      final warehouses = open
+          .map((line) => line.warehouseId)
+          .whereType<String>()
+          .toSet();
+      if (warehouses.length != 1) {
+        throw StateError('所选申请不属于同一仓库，请按仓库分别生成委外订货单');
+      }
+      _grid.replaceAll(rows);
+      _warehouseId = warehouses.single;
+      final dates =
+          open
+              .map((line) => _parseDate(line.needDate))
+              .whereType<DateTime>()
+              .toList()
+            ..sort();
+      _deliverDate = dates.isEmpty ? null : dates.first;
+      _sourceApplicationBillNo = open
+          .map((line) => line.sourceDocumentNo)
+          .where((number) => number.isNotEmpty)
+          .toSet()
+          .join('、');
+      _orderSourceReady = true;
+    } on StateError catch (error) {
+      _orderSourceReady = false;
+      if (mounted) context.appError(error.message);
+    } on ApiException catch (error) {
+      _orderSourceReady = false;
+      if (mounted) context.appError(error.message);
+    } catch (_) {
+      _orderSourceReady = false;
+      if (mounted) context.appError('读取委外申请失败，请返回委外任务中心重试');
+    }
+  }
+
+  void _prefillReceiptFromExpectation() {
+    final prefill = widget.receiptPrefill;
+    if (prefill == null) return;
+    if (prefill.orderType != ProcurementInboundOrderType.subcontract) {
+      context.appError('预计到货来源与委外进仓单不一致，请返回任务中心重试');
+      return;
+    }
+    _supplierId = prefill.supplierId;
+    _warehouseId = prefill.warehouseId;
+    final rows = <SubcontractGridRow>[];
+    for (final item in prefill.items) {
+      if (item.orderItemId.isEmpty ||
+          item.goodsId.isEmpty ||
+          item.approvedRemainingQty <= 0) {
+        continue;
+      }
+      final row = SubcontractGridRow(sourceLocked: true)
+        ..goods = GoodsOption(
+          id: item.goodsId,
+          code: item.goodsCode,
+          name: item.goodsName,
+        )
+        ..upstreamItemId = item.orderItemId
+        ..colorId = item.colorId
+        ..unitId = item.unitId
+        ..unitRate = item.unitRate.toDouble()
+        ..sourceDocNo = prefill.orderBillNo;
+      // 预填批准剩余量但不设置 maxQty；仓库必须能如实登记实到超量，
+      // 是否隔离由服务端审核动作权威判定。
+      row.qty.text = procurementQty(item.approvedRemainingQty);
+      rows.add(row);
+    }
+    if (rows.isNotEmpty) _grid.replaceAll(rows);
+  }
+
   /// 选货品范围：发料/材料退/损耗=材料；进仓/退货/订货/申请/询价=成品。
   UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
     SubcontractDocType.materialIssue ||
@@ -254,6 +388,7 @@ class _SubcontractDocEditPageState
   };
 
   Future<void> _pickGoods(SubcontractGridRow row) async {
+    if (row.sourceLocked) return;
     final g = await showUtenGoodsPicker(context, ref, scope: _pickerScope);
     if (g == null) return;
     final names = ref.read(mn.masterNameServiceProvider);
@@ -304,6 +439,12 @@ class _SubcontractDocEditPageState
   }
 
   Future<void> _save() async {
+    if (widget.id == null &&
+        widget.docType == SubcontractDocType.order &&
+        !_orderSourceReady) {
+      context.appError('请返回委外任务中心选择申请明细后生成订货单');
+      return;
+    }
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
@@ -321,7 +462,31 @@ class _SubcontractDocEditPageState
     for (final r in rows) {
       if (r.goods == null) continue;
       final qty = double.tryParse(r.qty.text) ?? 0;
+      if (qty <= 0) {
+        context.appError('${r.goods!.name} 的数量必须大于 0');
+        return;
+      }
+      if (widget.docType != SubcontractDocType.receipt &&
+          r.maxQty != null &&
+          qty > r.maxQty! + 0.0000001) {
+        context.appError('${r.goods!.name} 的数量不能超过申请剩余量 ${r.maxQty}');
+        return;
+      }
+      if (widget.docType == SubcontractDocType.order &&
+          r.upstreamItemId == null) {
+        context.appError('${r.goods!.name} 缺少申请来源，请返回委外任务中心重新生成');
+        return;
+      }
       final price = double.tryParse(r.price.text);
+      final priceError = validateSubcontractOrderPrice(
+        docType: widget.docType,
+        goodsName: r.goods!.name ?? r.goods!.code ?? '\u8be5\u8d27\u54c1',
+        priceText: r.price.text,
+      );
+      if (priceError != null) {
+        context.appError(priceError);
+        return;
+      }
       final w = double.tryParse(r.weight.text);
       final ending = double.tryParse(r.endingQty.text);
       final std = double.tryParse(r.standardQty.text);
@@ -331,6 +496,8 @@ class _SubcontractDocEditPageState
         'qty': qty,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
+        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (_cfg.itemHasPrice && price != null) 'price': price,
         if (_cfg.itemHasPrice && price != null) 'amountOriginal': qty * price,
         if (_cfg.itemHasPrice && price != null) 'amountLocal': qty * price,
@@ -371,11 +538,26 @@ class _SubcontractDocEditPageState
     setState(() => _saving = true);
     try {
       final repo = ref.read(subcontractRepositoryProvider(widget.docType));
-      final d = widget.id == null
-          ? await repo.create(body)
-          : await repo.update(widget.id!, body);
+      final outcome = await saveSubcontractDocument(
+        repository: repo,
+        docType: widget.docType,
+        body: body,
+        id: widget.id,
+      );
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      final d = outcome.detail;
+      if (outcome.financeSubmitError case final error?) {
+        context.appWarning('委外订货单已保存，但未提交财务：$error。可在详情页重新提交。');
+        bumpListRefresh(ref, _cfg.refreshKey);
+        context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
+        return;
+      }
+      if (!mounted) return;
+      context.appSuccess(
+        widget.docType == SubcontractDocType.order
+            ? '委外订货单已提交财务审核'
+            : (widget.id == null ? '已创建' : '已保存'),
+      );
       bumpListRefresh(ref, _cfg.refreshKey);
       context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
     } on ApiException catch (e) {
@@ -437,6 +619,15 @@ class _SubcontractDocEditPageState
                     controller: _scrollCtl,
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     children: [
+                      if (widget.id == null &&
+                          widget.docType == SubcontractDocType.order) ...[
+                        _orderSourceBanner(theme),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
+                      if (widget.docType == SubcontractDocType.receipt) ...[
+                        _receiptArrivalBanner(theme),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
                       if (_cfg.approvalBlockedReason != null) ...[
                         _materialIssueSafetyBanner(theme),
                         const SizedBox(height: UtenSpacing.s12),
@@ -452,7 +643,8 @@ class _SubcontractDocEditPageState
                             ),
                           ),
                           const Spacer(),
-                          if (_cfg.hasUpstreamLink)
+                          if (_cfg.hasUpstreamLink &&
+                              widget.docType != SubcontractDocType.order)
                             UtenImportButton(
                               label: '从上游引入',
                               onPressed: _importFromUpstream,
@@ -463,6 +655,7 @@ class _SubcontractDocEditPageState
                         controller: _grid,
                         columns: subcontractGridColumns(_pickGoods, _cfg),
                         createBlankRow: () => SubcontractGridRow(),
+                        showAddRow: widget.docType != SubcontractDocType.order,
                       ),
                     ],
                   ),
@@ -515,11 +708,127 @@ class _SubcontractDocEditPageState
                 child: const Text('取消'),
               ),
               const SizedBox(width: UtenSpacing.s12),
-              UtenButton(
+              SubcontractSaveActionButton(
+                docType: widget.docType,
                 isLoading: _saving,
-                icon: Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                child: const Text('保存'),
+                enabled:
+                    !(widget.id == null &&
+                        widget.docType == SubcontractDocType.order &&
+                        !_orderSourceReady),
+                onPressed: _save,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _receiptArrivalBanner(ThemeData theme) {
+    final source = widget.receiptPrefill?.orderBillNo;
+    return Semantics(
+      container: true,
+      label: '请按实际到货数量登记。超出财务批准剩余量时不会直接入库。',
+      child: Card(
+        color: theme.colorScheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.fact_check_outlined,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '请按实际到货数量登记',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      '${source == null ? '' : '来源订货单：$source。'}'
+                      '如果实到数量超过财务批准剩余量，仍可如实填写。保存草稿后审核时，'
+                      '服务端会先隔离异常，不入库存、不立应付，并发送财务审批。',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _orderSourceBanner(ThemeData theme) {
+    final ready = _orderSourceReady;
+    final background = ready
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.errorContainer;
+    final foreground = ready
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onErrorContainer;
+    final source = _sourceApplicationBillNo?.trim();
+    return Semantics(
+      container: true,
+      label: ready ? '已从委外任务中心带入计划下达申请，可填写委外商和单价' : '必须先从委外任务中心选择计划下达申请',
+      child: Card(
+        color: background,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                ready ? Icons.account_tree_outlined : Icons.task_alt_outlined,
+                color: foreground,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ready ? '已带入计划下达申请' : '请先选择委外申请明细',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: foreground,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      ready
+                          ? '来源：${source?.isNotEmpty == true ? source : '计划下达申请'}。'
+                                '每一行都保留原申请来源；可减少本次委外数量，剩余数量会继续留在任务中心。'
+                          : '委外订货单不能手工空白新建。请回到任务中心选择需要分解的申请明细。',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: foreground,
+                      ),
+                    ),
+                    if (!ready) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      UtenButton(
+                        icon: Icons.arrow_back_rounded,
+                        onPressed: () => goFrom(
+                          context,
+                          RouteName.operationsSubcontractWorkbench,
+                        ),
+                        child: const Text('返回委外任务中心选择'),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -793,6 +1102,32 @@ class _SubcontractDocEditPageState
           UtenDropdownItem(value: value, label: value),
       ],
       onChanged: onChanged,
+    );
+  }
+}
+
+class SubcontractSaveActionButton extends StatelessWidget {
+  const SubcontractSaveActionButton({
+    super.key,
+    required this.docType,
+    required this.isLoading,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final SubcontractDocType docType;
+  final bool isLoading;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final submitsFinance = docType == SubcontractDocType.order;
+    return UtenButton(
+      isLoading: isLoading,
+      icon: submitsFinance ? Icons.send_outlined : Icons.save_outlined,
+      onPressed: enabled && !isLoading ? onPressed : null,
+      child: Text(submitsFinance ? '保存并提交财务' : '保存'),
     );
   }
 }

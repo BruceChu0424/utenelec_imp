@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.order.dto;
 
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -21,4 +22,5 @@ public class OrderListItem {
     private boolean closed;
     private boolean fulfill;
     private Integer legacyId;
+    private FinanceApproval financeApproval;
 }

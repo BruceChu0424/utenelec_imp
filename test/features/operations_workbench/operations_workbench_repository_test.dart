@@ -91,8 +91,8 @@ void main() {
       expect(data.items.single.actionDocument?.canEdit, isFalse);
       expect(data.items.single.actionDocumentRestricted, isFalse);
       expect(data.capabilities.canCreatePurchaseOrder, isTrue);
-      expect(data.items.single.actionDocument?.label, '已审采购申请 PR-001');
-      expect(data.items.single.statusLabel, '采购申请已审核，待下单');
+      expect(data.items.single.actionDocument?.label, '计划下达申请 PR-001');
+      expect(data.items.single.statusLabel, '计划申请已下达，待分解');
     },
   );
 }

@@ -1612,7 +1612,6 @@ public class SalesShipmentService {
                             row[3] == null
                                     ? SalesOrder.SHIPMENT_POLICY_LEGACY
                                     : String.valueOf(row[3]),
-                            row[4] != null,
                             false));
             if (shipping.compareTo(outstanding) < 0) {
                 state.partial = true;
@@ -1627,11 +1626,10 @@ public class SalesShipmentService {
                 throw new ApiException(ErrorCode.BUSINESS,
                         "订单 " + state.billNo + " 要求整单齐套，当前不可部分发货");
             }
-            if (SalesOrder.SHIPMENT_POLICY_CUSTOMER_CONFIRM.equals(state.policy)
-                    && !state.confirmed) {
-                throw new ApiException(ErrorCode.BUSINESS,
-                        "订单 " + state.billNo + " 当前只能部分发货，须先记录客户同意");
-            }
+            // CUSTOMER_CONFIRM 不再拦截：员工选了这个策略就是这个策略，不强制先登记客户同意
+            // 依据——那一步（partial_shipment_confirmed_at）从没做过录入 UI，选了这个策略的
+            // 订单此前实际上永远无法部分发货（问题 #16）。字段本身仍保留可选、仍落库，只是
+            // 不再当成一道拦审批的门。
         }
     }
 
@@ -2113,15 +2111,11 @@ public class SalesShipmentService {
     private static final class ShipmentPolicyState {
         private final String billNo;
         private final String policy;
-        private final boolean confirmed;
         private boolean partial;
 
-        private ShipmentPolicyState(
-                String billNo, String policy, boolean confirmed,
-                boolean partial) {
+        private ShipmentPolicyState(String billNo, String policy, boolean partial) {
             this.billNo = billNo;
             this.policy = policy;
-            this.confirmed = confirmed;
             this.partial = partial;
         }
     }

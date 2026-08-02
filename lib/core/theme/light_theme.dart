@@ -194,6 +194,24 @@ ThemeData buildLightTheme() {
       space: 1,
     ),
 
+    // 滚动条：默认 Material 主题的浅灰太淡，长表格（基础资料/单据明细）难以察觉可滚动
+    // （问题 #10）；统一加深轨道/滑块颜色，悬浮/拖拽态再加深一档。
+    scrollbarTheme: ScrollbarThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.dragged) ||
+            states.contains(WidgetState.hovered)) {
+          return UtenColors.slate700.withValues(alpha: 0.75);
+        }
+        return UtenColors.slate500.withValues(alpha: 0.55);
+      }),
+      trackColor: WidgetStateProperty.all(
+        UtenColors.slate300.withValues(alpha: 0.35),
+      ),
+      trackBorderColor: WidgetStateProperty.all(Colors.transparent),
+      thickness: WidgetStateProperty.all(10),
+      radius: const Radius.circular(6),
+    ),
+
     // ===== 按钮：克制、清晰 =====
     // 浅色模式实心按钮使用 teal700，确保白色文字达到 WCAG AA
     // 叠加态（overlayColor）：框架按 hover 8% / pressed 10% 自动派生透明度，

@@ -22,6 +22,7 @@ public record FulfillmentWorkbenchPage(
             Map<String, Long> exceptionCounts) {
     }
 
-    public record Capabilities(boolean canCreatePurchaseOrder) {
+    public record Capabilities(
+            boolean canCreatePurchaseOrder, boolean canCreateSubcontractOrder) {
     }
 }

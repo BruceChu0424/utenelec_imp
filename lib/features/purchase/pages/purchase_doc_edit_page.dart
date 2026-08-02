@@ -32,6 +32,7 @@ import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/models/procurement_inbound.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -49,11 +50,13 @@ class PurchaseDocEditPage extends ConsumerStatefulWidget {
     this.id,
     this.sourceRequestId,
     this.sourceRequestItemIds = const [],
+    this.receiptPrefill,
   });
   final PurchaseDocType docType;
   final String? id; // null=新建
   final String? sourceRequestId;
   final List<String> sourceRequestItemIds;
+  final ProcurementReceiptPrefill? receiptPrefill;
 
   @override
   ConsumerState<PurchaseDocEditPage> createState() =>
@@ -89,6 +92,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   String? _makerName;
   String? _createdAt;
   String? _sourceRequestBillNo;
+  bool _taskSourceReady = false;
+
+  bool get _requiresTaskSource =>
+      widget.id == null && widget.docType == PurchaseDocType.order;
 
   @override
   void initState() {
@@ -129,6 +136,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         if (_cfg.hasReceiver) _receiverId = meId;
         await _preloadEmployees([meId]);
       }
+    }
+    if (widget.id == null && widget.docType == PurchaseDocType.receipt) {
+      _prefillReceiptFromExpectation();
     }
     if (widget.id == null && widget.docType == PurchaseDocType.order) {
       await _prefillFromRequest();
@@ -222,71 +232,102 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   }
 
   Future<void> _prefillFromRequest() async {
-    final requestId = widget.sourceRequestId?.trim();
     final selectedIds = widget.sourceRequestItemIds
         .map((id) => id.trim())
         .where((id) => id.isNotEmpty)
         .toSet();
-    if (requestId == null || requestId.isEmpty || selectedIds.isEmpty) return;
+    if (selectedIds.isEmpty) {
+      if (mounted) context.appError('请从采购任务中心选择申请明细后生成订货单');
+      return;
+    }
     try {
-      final detail = await ref
+      final open = await ref
           .read(purchaseRepositoryProvider(PurchaseDocType.request))
-          .detail(requestId);
-      if (detail.status != kPurchaseStatusApproved) {
-        throw StateError('采购申请未审核，不能生成采购单');
-      }
-      final selected = [
-        for (final item in detail.items)
-          if (item.id != null && selectedIds.contains(item.id)) item,
-      ];
-      if (selected.length != selectedIds.length) {
-        throw StateError('所选采购申请明细已变化，请返回采购工作台刷新');
-      }
-      final open = [
-        for (final item in selected)
-          if ((item.qty ?? 0) - (item.orderedQty ?? 0) > 0) item,
-      ];
+          .decompositionPreview(selectedIds);
       if (open.isEmpty) {
-        throw StateError('所选采购申请明细已全部订购，请返回采购工作台刷新');
+        throw StateError('所选申请明细已全部分解，请返回任务中心刷新');
       }
-      final goodsIds = open
-          .map((item) => item.goodsId)
-          .whereType<String>()
-          .toSet();
+      final goodsIds = open.map((item) => item.goodsId).toSet();
       await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
       if (!mounted) return;
       final names = ref.read(masterNameServiceProvider);
       final rows = <PurchaseGridRow>[];
       for (final item in open) {
-        if (item.id == null || item.goodsId == null) continue;
-        final remaining = (item.qty ?? 0) - (item.orderedQty ?? 0);
         final linked = LinkedItem(
-          goodsId: item.goodsId!,
-          qty: remaining,
-          maxQty: remaining,
-          price: item.price,
-          upstreamItemId: item.id,
+          goodsId: item.goodsId,
+          qty: item.remainingQty,
+          maxQty: item.remainingQty,
+          upstreamItemId: item.sourceItemId,
           colorId: item.colorId,
           unitId: item.unitId,
         );
         rows.add(
           PurchaseGridRow.fromLinked(
             linked,
-            GoodsOption(id: item.goodsId!, name: names.goods(item.goodsId)),
+            GoodsOption(id: item.goodsId, name: names.goods(item.goodsId)),
           ),
         );
       }
       if (rows.isEmpty) throw StateError('所选采购申请明细缺少有效物料');
       _grid.replaceAll(rows);
-      _deliverDate = _parseDate(detail.needDate);
-      _sourceRequestBillNo = detail.billNo ?? requestId;
+      _taskSourceReady = true;
+      final dates =
+          open
+              .map((line) => _parseDate(line.needDate))
+              .whereType<DateTime>()
+              .toList()
+            ..sort();
+      _deliverDate = dates.isEmpty ? null : dates.first;
+      final warehouses = open
+          .map((line) => line.warehouseId)
+          .whereType<String>()
+          .toSet();
+      if (warehouses.length == 1) _warehouseId = warehouses.single;
+      _sourceRequestBillNo = open
+          .map((line) => line.sourceDocumentNo)
+          .where((number) => number.isNotEmpty)
+          .toSet()
+          .join('、');
     } on StateError catch (error) {
       if (mounted) context.appError(error.message);
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
     } catch (_) {
-      if (mounted) context.appError('读取采购申请失败，请从上游引入重试');
+      if (mounted) context.appError('读取采购申请失败，请返回任务中心重新选择');
     }
+  }
+
+  void _prefillReceiptFromExpectation() {
+    final prefill = widget.receiptPrefill;
+    if (prefill == null) return;
+    if (prefill.orderType != ProcurementInboundOrderType.purchase) {
+      context.appError('预计到货来源与采购收货单不一致，请返回任务中心重试');
+      return;
+    }
+    _supplierId = prefill.supplierId;
+    _warehouseId = prefill.warehouseId;
+    final rows = <PurchaseGridRow>[];
+    for (final item in prefill.items) {
+      if (item.orderItemId.isEmpty ||
+          item.goodsId.isEmpty ||
+          item.approvedRemainingQty <= 0) {
+        continue;
+      }
+      final row = PurchaseGridRow(sourceLocked: true)
+        ..goods = GoodsOption(
+          id: item.goodsId,
+          code: item.goodsCode,
+          name: item.goodsName,
+        )
+        ..upstreamItemId = item.orderItemId
+        ..colorId = item.colorId
+        ..unitId = item.unitId;
+      // 预填批准剩余量但不设置 maxQty；仓库必须能如实填写超量实到数，
+      // 是否隔离由服务端审核动作权威判定。
+      row.qty.text = procurementQty(item.approvedRemainingQty);
+      rows.add(row);
+    }
+    if (rows.isNotEmpty) _grid.replaceAll(rows);
   }
 
   Future<void> _pickGoods(PurchaseGridRow row) async {
@@ -352,6 +393,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   }
 
   Future<void> _save() async {
+    if (_requiresTaskSource && !_taskSourceReady) {
+      context.appError('请返回采购任务中心选择申请明细后生成订货单');
+      return;
+    }
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
@@ -369,11 +414,18 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
         context.appError('${r.goods!.name} 的数量必须大于 0');
         return;
       }
-      if (r.maxQty != null && qty > r.maxQty! + 0.0000001) {
+      if (widget.docType != PurchaseDocType.receipt &&
+          r.maxQty != null &&
+          qty > r.maxQty! + 0.0000001) {
         context.appError('${r.goods!.name} 的数量不能超过上游剩余量 ${r.maxQty}');
         return;
       }
       final price = double.tryParse(r.price.text);
+      if (widget.docType == PurchaseDocType.order &&
+          (price == null || price < 0)) {
+        context.appError('请填写${r.goods!.name}的有效采购单价');
+        return;
+      }
       itemsBody.add({
         'goodsId': r.goods!.id,
         'qty': qty,
@@ -409,11 +461,29 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     setState(() => _saving = true);
     try {
       final repo = ref.read(purchaseRepositoryProvider(widget.docType));
-      final d = widget.id == null
+      var d = widget.id == null
           ? await repo.create(body)
           : await repo.update(widget.id!, body);
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      if (widget.docType == PurchaseDocType.order) {
+        try {
+          d = await repo.submitFinance(d.id);
+        } on ApiException catch (e) {
+          if (!mounted) return;
+          context.appWarning('订货单已保存，但未能提交财务：${e.message}');
+          bumpListRefresh(ref, _cfg.refreshKey);
+          context.replace(
+            RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
+          );
+          return;
+        }
+      }
+      if (!mounted) return;
+      context.appSuccess(
+        widget.docType == PurchaseDocType.order
+            ? '订货单已提交财务审核'
+            : (widget.id == null ? '已创建' : '已保存'),
+      );
       bumpListRefresh(ref, _cfg.refreshKey);
       context.replace(RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id));
     } on ApiException catch (e) {
@@ -472,6 +542,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                     controller: _scrollCtl,
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     children: [
+                      if (widget.docType == PurchaseDocType.receipt) ...[
+                        _receiptArrivalBanner(theme),
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -626,12 +700,38 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                               Expanded(
                                 child: Text(
                                   '已从采购申请 $_sourceRequestBillNo 引入 ${_grid.length} 行；'
-                                  '请补充供应商、交货日期和价格后保存。',
+                                  '请补充供应商、交货日期和价格后提交财务审核。',
                                 ),
                               ),
                             ],
                           ),
                         ),
+                      ],
+                      if (_requiresTaskSource && !_taskSourceReady) ...[
+                        Card(
+                          color: theme.colorScheme.errorContainer,
+                          child: Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s12),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.task_alt_outlined,
+                                  color: theme.colorScheme.onErrorContainer,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    '订货单不能直接新建。请返回采购任务中心，选择计划下达的申请明细后生成。',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onErrorContainer,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
                       ],
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
@@ -643,7 +743,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                             ),
                           ),
                           const Spacer(),
-                          if (_cfg.hasUpstreamLink)
+                          if (_cfg.hasUpstreamLink &&
+                              widget.docType != PurchaseDocType.order)
                             UtenImportButton(
                               label: '从上游引入',
                               onPressed: _importFromUpstream,
@@ -690,9 +791,65 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
               const SizedBox(width: UtenSpacing.s12),
               UtenButton(
                 isLoading: _saving,
-                icon: Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                child: const Text('保存'),
+                icon: widget.docType == PurchaseDocType.order
+                    ? Icons.send_outlined
+                    : Icons.save_outlined,
+                onPressed: _saving || (_requiresTaskSource && !_taskSourceReady)
+                    ? null
+                    : _save,
+                onDisabledTap: _requiresTaskSource && !_taskSourceReady
+                    ? () => context.appWarning('请先从采购任务中心选择申请明细')
+                    : null,
+                child: Text(
+                  widget.docType == PurchaseDocType.order ? '保存并提交财务' : '保存',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _receiptArrivalBanner(ThemeData theme) {
+    final source = widget.receiptPrefill?.orderBillNo;
+    return Semantics(
+      container: true,
+      label: '请按实际到货数量登记。超出财务批准剩余量时不会直接入库。',
+      child: Card(
+        color: theme.colorScheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.fact_check_outlined,
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '请按实际到货数量登记',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      '${source == null ? '' : '来源订货单：$source。'}'
+                      '如果实到数量超过财务批准剩余量，仍可如实填写。保存草稿后审核时，'
+                      '服务端会先隔离异常，不入库存、不立应付，并发送财务审批。',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onTertiaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

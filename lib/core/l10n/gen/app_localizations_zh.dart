@@ -42,6 +42,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commonRetry => '重试';
 
   @override
+  String get connectionReconnecting => '网络暂时不稳定，正在自动连接…';
+
+  @override
+  String get connectionDisconnected => '暂时连不上服务器，系统会继续自动连接';
+
+  @override
+  String get connectionRestored => '网络已恢复，可以继续使用';
+
+  @override
+  String get connectionRetryNow => '立即重试';
+
+  @override
   String get commonClose => '关闭';
 
   @override
@@ -1724,6 +1736,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileFieldOfficePhone => '办公电话';
+
+  @override
+  String get profileFieldMobile => '手机号';
 
   @override
   String get profileFieldEmail => '邮箱';

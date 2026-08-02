@@ -103,11 +103,22 @@ public class PasswordService {
         user.setMustChangePassword(false);
         user.setLastPasswordChangedAt(OffsetDateTime.now());
         userRepo.save(user);
+        if (userRepo.bumpAuthVersion(userId) != 1) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED);
+        }
 
         // 撤销所有旧刷新令牌（其他设备失效），再为当前设备签发新对
         refreshTokenRepo.revokeAllByUserId(userId);
-        audit.logExplicit(userId, user.getLoginAccount(), "change_password", "users", userId.toString(), "success");
-        return tokenIssuer.issueTokens(user);
+        UserAccount refreshedUser = userRepo.findById(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        audit.logExplicit(
+                userId,
+                refreshedUser.getLoginAccount(),
+                "change_password",
+                "users",
+                userId.toString(),
+                "success");
+        return tokenIssuer.issueTokens(refreshedUser);
     }
 
     /**

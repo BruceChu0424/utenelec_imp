@@ -48,6 +48,17 @@ class FulfillmentWorkbenchAccessPolicyTest {
     }
 
     @Test
+    void subcontractOrderCreationRequiresDemandViewAndOrderEdit() {
+        FulfillmentWorkbenchAccessPolicy allowed = policyWith(
+                "subcontract_application:view", "subcontract_order:edit");
+        FulfillmentWorkbenchAccessPolicy denied = policyWith(
+                "subcontract_order:edit");
+
+        assertTrue(allowed.canCreateSubcontractOrder());
+        assertFalse(denied.canCreateSubcontractOrder());
+    }
+
+    @Test
     void aliasesAreDepartmentScopedAndUnknownTypesFailClosed() {
         FulfillmentWorkbenchAccessPolicy policy = policyWith(
                 "purchase_order:view", "subcontract_order:view");

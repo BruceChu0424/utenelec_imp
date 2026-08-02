@@ -36,6 +36,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../hr_profile/widgets/hr_pending_badge.dart';
 import '../../production/widgets/production_pending_badge.dart';
 import '../../purchase/widgets/purchase_task_badge.dart';
+import '../../rd_task/widgets/rd_task_badge.dart';
 import '../../visitor_approval/widgets/visitor_pending_badge.dart';
 import '../providers/workbench_layout_provider.dart';
 
@@ -339,6 +340,12 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.find_in_page_outlined,
         label: '物料反查产成品',
         location: RouteName.productionWhereUsed,
+      ),
+      _ModuleItem(
+        icon: Icons.task_alt_outlined,
+        label: '任务中心',
+        location: RouteName.rdTaskCenter,
+        badge: RdTaskBadge(),
       ),
     ],
   ),

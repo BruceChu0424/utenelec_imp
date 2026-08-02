@@ -55,7 +55,9 @@ public enum DocNumberPrefix {
     DEFERRED_EXPENSE("DA"),
     // 生产
     PRODUCTION_PLAN("SJ"),
-    PRODUCTION_DAILY_REPORT("SR");
+    PRODUCTION_DAILY_REPORT("SR"),
+    // 研发
+    RD_TASK("RD");
 
     private final String code;
 

@@ -1,4 +1,5 @@
 package com.uten.imp.features.master.goods;
+import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 
 import com.uten.imp.common.export.ExportColumn;
@@ -52,6 +53,7 @@ public class GoodsBomService {
     private final TxSessionVars tx;
     private final MasterReferenceValidationPort references;
     private final GoodsMasterRelationshipResolver relationships;
+    private final BusinessEventPublisher events;
 
     // ===== 列表（含组件展示信息 + hasChildren） =====
 
@@ -341,6 +343,11 @@ public class GoodsBomService {
         }
         parent.setSourceE(sum.setScale(2, RoundingMode.HALF_UP));
         goodsRepo.save(parent);
+        // BOM 变更 → 通知旁路：触发研发 BOM 任务自动完成 + 通知生产转发人
+        // （ChainNoticeService.notifyBomUpdated 经 outbox 原子送达）。create/update/delete 三处共用此钩子。
+        events.publishOnce(
+                "GOODS_BOM_UPDATED", "GOODS_BOM", parent.getId(), Map.of(),
+                "GOODS_BOM_UPDATED:" + parent.getId());
     }
 
     private Goods requireGoods(UUID id) {

@@ -461,6 +461,18 @@ class ProductionPlanRepository {
     return json['planId'] as String;
   }
 
+  /// 待排产 BOM 缺失 → 转发工程研发部（建研发任务 + 通知）。返回任务 id。
+  Future<String> forwardToRd(String orderItemId, {String? note}) async {
+    final json = await api.post(
+      '/production/schedule/forward-rd',
+      body: {
+        'orderItemId': orderItemId,
+        if (note != null && note.isNotEmpty) 'note': note,
+      },
+    ); // ENDPOINT
+    return json['taskId'] as String;
+  }
+
   /// D2 建议完工日期（历史日均完工×BOM 层级缓冲）。
   Future<Map<String, dynamic>> suggestFinish(Map<String, dynamic> body) async {
     final json = await api.post(
@@ -492,6 +504,7 @@ class SchedulePendingRow {
     this.chainStatus,
     this.bomReady = true,
     this.urgent = false,
+    this.rdForwarded = false,
   });
   final String orderItemId;
   final String orderId;
@@ -511,6 +524,8 @@ class SchedulePendingRow {
   final int? chainStatus;
   final bool bomReady;
   final bool urgent;
+  /// 已转发工程研发部维护 BOM 且仍在等待（存在未完成 BOM 类 rd_task）。
+  final bool rdForwarded;
 
   factory SchedulePendingRow.fromJson(Map<String, dynamic> j) =>
       SchedulePendingRow(
@@ -532,6 +547,7 @@ class SchedulePendingRow {
         chainStatus: (j['chainStatus'] as num?)?.toInt(),
         bomReady: j['bomReady'] != false,
         urgent: j['urgent'] == true,
+        rdForwarded: j['rdForwarded'] == true,
       );
 }
 

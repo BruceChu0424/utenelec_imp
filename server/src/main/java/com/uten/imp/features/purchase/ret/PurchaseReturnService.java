@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.ret;
 
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -65,6 +66,7 @@ public class PurchaseReturnService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
+    private final ProcurementArrivalControlPort arrivalControl;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
@@ -174,6 +176,8 @@ public class PurchaseReturnService {
                 "AP", StockService.SRC_PURCHASE_RETURN, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
                 returnLocal, (short) 17, null));
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.PURCHASE,
+                items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 
@@ -201,6 +205,8 @@ public class PurchaseReturnService {
         }
         r.setStatus(STATUS_REVERSED);
         returnRepo.save(r);
+        arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.PURCHASE,
+                items.stream().map(PurchaseReturnItem::getOrderItemId).toList());
         return detail(id);
     }
 

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.order.dto;
 
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -42,4 +43,5 @@ public class OrderDetail {
     private boolean canDelete;
     private boolean canReverse;
     private String restrictionReason;
+    private FinanceApproval financeApproval;
 }

@@ -74,7 +74,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   Future<void> _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isLoading || !_formKey.currentState!.validate()) return;
 
     setState(() {
       _isLoading = true;

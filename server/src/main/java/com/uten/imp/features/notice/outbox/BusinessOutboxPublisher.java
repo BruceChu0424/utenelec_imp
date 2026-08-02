@@ -3,6 +3,7 @@ package com.uten.imp.features.notice.outbox;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -25,7 +26,7 @@ import java.util.UUID;
  * and this publisher creates a fresh event identity.
  */
 @Service
-public class BusinessOutboxPublisher {
+public class BusinessOutboxPublisher implements BusinessEventPublisher {
 
     public static final String IDEMPOTENCY_HEADER = "X-Idempotency-Key";
 
@@ -42,6 +43,7 @@ public class BusinessOutboxPublisher {
         this.currentUser = currentUser;
     }
 
+    @Override
     @Transactional
     public UUID publish(
             String eventType,
@@ -56,6 +58,7 @@ public class BusinessOutboxPublisher {
                 requestDedupeKey(eventType, aggregateId));
     }
 
+    @Override
     @Transactional
     public UUID publishOnce(
             String eventType,

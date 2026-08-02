@@ -75,6 +75,7 @@ class SubcontractDocConfig {
     this.approvalBlockedReason,
     // 管理卡片点进直达新增页（true=跳过列表）
     this.skipListOnCreate = false,
+    this.allowDirectCreate = true,
   });
 
   final SubcontractDocType type;
@@ -132,6 +133,9 @@ class SubcontractDocConfig {
   /// 管理卡片点进是否直达新增页（跳过列表）。
   final bool skipListOnCreate;
 
+  /// 是否允许绕过任务中心直接新建。
+  final bool allowDirectCreate;
+
   /// 明细是否可链路引入。
   bool get hasUpstreamLink =>
       linkToApplicationItem ||
@@ -177,17 +181,17 @@ class SubcontractDocConfig {
     approveEffect: '审核仅变更状态（询价为链路起点，无库存/ArAp 联动）。',
   );
 
-  /// 委外申请单（生产 SUBCONTRACT 缺口会自动创建草稿）。
+  /// 委外申请单（由计划链以已下达状态生成，委外部门只读查看并在任务中心分解）。
   static const application = SubcontractDocConfig(
     type: SubcontractDocType.application,
-    label: '委外申请单',
-    shortLabel: '申请',
+    label: '计划下达的委外申请',
+    shortLabel: '申请（只读）',
     icon: Icons.assignment_outlined,
     listPerm: Perm.subcontractApplicationView,
     editPerm: Perm.subcontractApplicationEdit,
-    hasSupplier: true,
+    itemHasPrice: false,
     itemHasWeight: true,
-    approveEffect: '审核仅变更状态（申请无库存/ArAp 联动）。',
+    allowDirectCreate: false,
   );
 
   /// 委外订货单（2 行；链到申请；BOM 成本子表只读本期不展开）。
@@ -199,6 +203,7 @@ class SubcontractDocConfig {
     listPerm: Perm.subcontractOrderView,
     editPerm: Perm.subcontractOrderEdit,
     hasSupplier: true,
+    supplierRequired: true,
     hasCurrency: true,
     hasTaxRate: true,
     hasPurchaser: true,
@@ -206,8 +211,8 @@ class SubcontractDocConfig {
     itemHasWeight: true,
     linkToApplicationItem: true,
     showReceived: true,
-    approveEffect: '审核将回写申请明细已订量（无库存/ArAp 联动）。',
-    skipListOnCreate: true,
+    approveEffect: '财务批准后订货单生效，并生成仓库预计到货任务。',
+    allowDirectCreate: false,
   );
 
   /// 委外进仓单（收回成品；10732 行；链到订货；审核入库+立应付）。

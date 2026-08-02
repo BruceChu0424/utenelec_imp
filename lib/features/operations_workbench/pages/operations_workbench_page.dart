@@ -8,6 +8,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/connection_recovery.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -54,6 +55,7 @@ class _OperationsWorkbenchPageState
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     final requestId = ++_requestId;
     setState(() {
       _loading = true;
@@ -121,6 +123,15 @@ class _OperationsWorkbenchPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      connectionRecoveryProvider.select((state) => state.recoveryEpoch),
+      (previous, next) {
+        if (next <= (previous ?? 0)) return;
+        // Recovery must reload the currently visible workbench without asking
+        // older users to leave the page or repeatedly press refresh.
+        Future<void>.microtask(_load);
+      },
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: widget.department.label,
@@ -210,6 +221,8 @@ class _OperationsWorkbenchPageState
             selected: _selectedTasks,
             pageItems: data.items,
             canCreatePurchaseOrder: data.capabilities.canCreatePurchaseOrder,
+            canCreateSubcontractOrder:
+                data.capabilities.canCreateSubcontractOrder,
             onSelectPage: () => setState(
               () => _selectedIds.addAll(
                 data.items
@@ -567,6 +580,7 @@ class _SelectionBar extends StatelessWidget {
     required this.selected,
     required this.pageItems,
     required this.canCreatePurchaseOrder,
+    required this.canCreateSubcontractOrder,
     required this.onSelectPage,
     required this.onClear,
     required this.onOpen,
@@ -576,6 +590,7 @@ class _SelectionBar extends StatelessWidget {
   final List<OperationsWorkbenchTask> selected;
   final List<OperationsWorkbenchTask> pageItems;
   final bool canCreatePurchaseOrder;
+  final bool canCreateSubcontractOrder;
   final VoidCallback onSelectPage;
   final VoidCallback onClear;
   final VoidCallback? onOpen;
@@ -591,7 +606,6 @@ class _SelectionBar extends StatelessWidget {
           itemId.isNotEmpty &&
           taskSource != null &&
           _isPurchaseRequest(taskSource) &&
-          taskSource.id == source.id &&
           taskSource.isApprovedPurchaseRequest;
     });
     return everyItemCanBeCarried && source.isApprovedPurchaseRequest
@@ -613,25 +627,62 @@ class _SelectionBar extends StatelessWidget {
       (task) => !_isPurchaseRequest(task.actionDocument!),
     );
     if (hasLaterStage) return '所选任务已进入采购订单或收货阶段';
-    final requestIds = selected.map((task) => task.actionDocument!.id).toSet();
-    if (requestIds.length != 1) return '请选择同一采购申请的明细';
     final hasUnapproved = selected.any(
       (task) => !task.actionDocument!.isApprovedPurchaseRequest,
     );
-    if (hasUnapproved) return '采购申请尚未审核，请先审核';
+    if (hasUnapproved) return '计划申请尚未下达，请刷新后重试';
     return '所选采购申请明细不可生成采购单，请刷新后重试';
   }
 
   void _openPurchaseBatch(BuildContext context) {
-    final source = _purchaseSource!;
     final ids = selected
         .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
         .join(',');
-    final requestId = Uri.encodeComponent(source.id);
-    goFrom(
-      context,
-      '/purchase/orders/new?requestId=$requestId&requestItemIds=$ids',
+    goFrom(context, '/purchase/orders/new?requestItemIds=$ids');
+  }
+
+  bool get _subcontractBatchReady {
+    if (selected.isEmpty) return false;
+    return selected.every((task) {
+      final itemId = task.actionDocItemId?.trim();
+      final source = task.actionDocument;
+      return task.taskStatus.toUpperCase() == 'WAITING_ORDER' &&
+          itemId != null &&
+          itemId.isNotEmpty &&
+          source != null &&
+          _isSubcontractApplication(source) &&
+          source.isIssuedSubcontractApplication;
+    });
+  }
+
+  String get _subcontractUnavailableReason {
+    if (selected.isEmpty) return '请先选择委外申请任务';
+    final hasUnlinked = selected.any(
+      (task) =>
+          (task.actionDocItemId?.trim().isEmpty ?? true) ||
+          task.actionDocument == null,
     );
+    if (hasUnlinked) return '所选任务缺少委外申请来源，请刷新后重试';
+    final hasWrongStage = selected.any(
+      (task) => task.taskStatus.toUpperCase() != 'WAITING_ORDER',
+    );
+    if (hasWrongStage) return '只能选择“申请待分解”的任务';
+    final hasLaterDocument = selected.any(
+      (task) => !_isSubcontractApplication(task.actionDocument!),
+    );
+    if (hasLaterDocument) return '所选任务已进入委外订货或回厂阶段';
+    final hasUnissued = selected.any(
+      (task) => !task.actionDocument!.isIssuedSubcontractApplication,
+    );
+    if (hasUnissued) return '计划申请尚未下达，请刷新后重试';
+    return '所选委外申请明细不可生成订货单，请刷新后重试';
+  }
+
+  void _openSubcontractBatch(BuildContext context) {
+    final ids = selected
+        .map((task) => Uri.encodeComponent(task.actionDocItemId!.trim()))
+        .join(',');
+    goFrom(context, '/subcontract/orders/new?applicationItemIds=$ids');
   }
 
   @override
@@ -685,12 +736,12 @@ class _SelectionBar extends StatelessWidget {
                   : _purchaseUnavailableReason,
               child: UtenButton(
                 key: const Key('operations-workbench-purchase-batch'),
-                size: UtenButtonSize.small,
+                size: UtenButtonSize.large,
                 icon: Icons.add_shopping_cart_rounded,
                 onPressed: _purchaseBatchReady
                     ? () => _openPurchaseBatch(context)
                     : null,
-                child: const Text('批量生成采购单'),
+                child: const Text('选中并生成订货单'),
               ),
             ),
           if (department == OperationsWorkbenchDepartment.purchase &&
@@ -699,6 +750,32 @@ class _SelectionBar extends StatelessWidget {
               !_purchaseBatchReady)
             Text(
               _purchaseUnavailableReason,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          if (department == OperationsWorkbenchDepartment.subcontract &&
+              canCreateSubcontractOrder)
+            Tooltip(
+              message: _subcontractBatchReady
+                  ? '把所选计划委外申请明细带入委外订货单'
+                  : _subcontractUnavailableReason,
+              child: UtenButton(
+                key: const Key('operations-workbench-subcontract-batch'),
+                size: UtenButtonSize.large,
+                icon: Icons.precision_manufacturing_outlined,
+                onPressed: _subcontractBatchReady
+                    ? () => _openSubcontractBatch(context)
+                    : null,
+                child: const Text('选中并生成委外订货单'),
+              ),
+            ),
+          if (department == OperationsWorkbenchDepartment.subcontract &&
+              canCreateSubcontractOrder &&
+              selected.isNotEmpty &&
+              !_subcontractBatchReady)
+            Text(
+              _subcontractUnavailableReason,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.error,
               ),
@@ -1105,9 +1182,10 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
 
 String _departmentSubtitle(OperationsWorkbenchDepartment department) {
   return switch (department) {
-    OperationsWorkbenchDepartment.subcontract => '按真实单据推进申请、下单、回厂审核与生产齐套',
+    OperationsWorkbenchDepartment.subcontract =>
+      '只显示计划已下达、仍待分解的委外申请明细',
     OperationsWorkbenchDepartment.warehouse ||
-    OperationsWorkbenchDepartment.purchase => '只展示后端已确认的履约任务与计数',
+    OperationsWorkbenchDepartment.purchase => '只显示计划已下达、仍待分解的采购申请明细',
   };
 }
 
@@ -1131,4 +1209,9 @@ String _quantity(num value, String unitName) {
 bool _isPurchaseRequest(OperationsActionDocument document) {
   final type = document.docType.toUpperCase();
   return type == 'PURCHASE_REQUEST' || type == 'REQUEST';
+}
+
+bool _isSubcontractApplication(OperationsActionDocument document) {
+  final type = document.docType.toUpperCase();
+  return type == 'SUBCONTRACT_APPLICATION' || type == 'APPLICATION';
 }

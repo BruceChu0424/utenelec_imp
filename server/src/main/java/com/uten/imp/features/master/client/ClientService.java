@@ -63,7 +63,7 @@ public class ClientService {
             "empId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax",
             "postcode", "address", "bank", "bankAccount", "taxId", "credit", "website");
 
-    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量列；命中才排序，否则默认 id ASC）。 */
+    /** 列排序白名单：前端列 key → JPA 实体属性名（金额/数量列；命中才排序，否则默认 code ASC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of(
             "tday", "tday", "credit", "credit");
 
@@ -177,7 +177,7 @@ public class ClientService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "id"), ALLOWED_SORT));
+                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
         Page<Client> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());

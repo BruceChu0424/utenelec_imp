@@ -78,6 +78,11 @@ public class FulfillmentWorkbenchAccessPolicy {
                 && hasAuthority("purchase_order:edit");
     }
 
+    public boolean canCreateSubcontractOrder() {
+        return hasAuthority("subcontract_application:view")
+                && hasAuthority("subcontract_order:edit");
+    }
+
     private boolean hasAuthority(String authority) {
         AuthUser user = currentUser.get().orElse(null);
         return user != null && (user.isSuperAdmin() || user.getAuthorities().stream()

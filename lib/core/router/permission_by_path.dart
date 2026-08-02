@@ -54,6 +54,16 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == '/payroll/slip' || location.startsWith('/payroll/slip/')) {
     return const [Perm.payrollViewSelf, Perm.payrollViewAll];
   }
+  if (location == '/finance/procurement-approvals') {
+    return const [Perm.financeOrderApprovalView];
+  }
+  if (location == RouteName.financeArrivalExceptions ||
+      location.startsWith('${RouteName.financeArrivalExceptions}/')) {
+    return const [Perm.financeOrderApprovalView];
+  }
+  if (location == '/finance/workflow-responsibilities') {
+    return const [Perm.workflowAssignmentManage];
+  }
   if (location == RouteName.financeAssets ||
       location.startsWith('${RouteName.financeAssets}/')) {
     return const [Perm.financeAssetView];
@@ -96,6 +106,10 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.subcontractWasteView,
     ];
   }
+  // 工程研发部任务中心。
+  if (location == RouteName.rdTaskCenter) {
+    return const [Perm.rdTaskView];
+  }
   // 采购管理（PMC 运营部；V44 细粒度：view 全员、edit 归 PMC）
   if (location == RouteName.purchase) {
     // hub：任一采购单据 view 即可见
@@ -113,10 +127,20 @@ List<String>? requiredAnyPermFor(String location) {
   // 库存查询（余额 + 流水）
   if (location.startsWith('/stock/')) return const [Perm.stockView];
   // 仓库管理（8 单据，stock_doc:view 全员 / edit 归 PMC）
-  if (location == RouteName.warehouse) return const [Perm.stockDocView];
+  if (location == RouteName.warehouse) {
+    return const [Perm.stockDocView, Perm.warehouseInboundView];
+  }
+  if (location == RouteName.warehouseInboundExpectations ||
+      location == RouteName.warehouseArrivalExceptions) {
+    return const [Perm.warehouseInboundView];
+  }
   if (location == RouteName.warehouseReport ||
       location.startsWith('${RouteName.warehouseReport}/')) {
     return const [Perm.stockReportView];
+  }
+  if (location == RouteName.procurementArrivalExceptions ||
+      location.startsWith('${RouteName.procurementArrivalExceptions}/')) {
+    return const [Perm.procurementArrivalExceptionHandle];
   }
   if (location.startsWith('/warehouse/')) {
     final segments = location.split('/');
@@ -345,6 +369,8 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.arApLedgerView,
       Perm.financeReconciliationView,
       Perm.accountView,
+      Perm.financeOrderApprovalView,
+      Perm.workflowAssignmentManage,
     ];
   }
   if (location == RouteName.financeArAp) {

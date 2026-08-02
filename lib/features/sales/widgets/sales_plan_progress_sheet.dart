@@ -146,10 +146,12 @@ class _ProgressList extends ConsumerWidget {
             Row(
               children: [
                 _num(theme, '订货', l.qty),
-                _num(theme, '可发', l.reservedQty),
+                // 问题 #18：审核后销售端不再看"可发"（内部预留口径，容易和客户承诺量混淆），
+                // 改在最后展示"剩余"（订货 − 已发，还欠客户多少）。
                 _num(theme, '已排', l.plannedQty, highlight: true),
                 _num(theme, '已产', l.producedQty, highlight: true),
                 _num(theme, '已发', l.shippedQty),
+                _num(theme, '剩余', _remaining(l.qty, l.shippedQty)),
               ],
             ),
             if (l.links.isNotEmpty) ...[
@@ -406,6 +408,13 @@ class _ProgressList extends ConsumerWidget {
         feedbackContext.appError('生产计划打开失败，请稍后重试', force: true);
       }
     }
+  }
+
+  /// 剩余 = 订货 − 已发（还欠客户多少，负数/缺失一律按 0 处理）。
+  double? _remaining(double? qty, double? shipped) {
+    if (qty == null) return null;
+    final left = qty - (shipped ?? 0);
+    return left > 0 ? left : 0;
   }
 
   Widget _num(

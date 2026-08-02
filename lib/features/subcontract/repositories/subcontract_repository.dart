@@ -76,6 +76,18 @@ class SubcontractRepository {
     return SubcontractDocDetail.fromJson(json);
   }
 
+  Future<List<SubcontractDecompositionLine>> decompositionPreview(
+    Iterable<String> itemIds,
+  ) async {
+    final rows = await api.postList(
+      '/subcontract/applications/decomposition-preview',
+      body: {'itemIds': itemIds.toSet().toList(growable: false)},
+    );
+    return rows
+        .map(SubcontractDecompositionLine.fromJson)
+        .toList(growable: false);
+  }
+
   Future<SubcontractDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(_base, body: body);
     return SubcontractDocDetail.fromJson(json);
@@ -95,6 +107,34 @@ class SubcontractRepository {
 
   Future<SubcontractDocDetail> approve(String id) async {
     final json = await api.post('${_doc(id)}/approve');
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  Future<SubcontractDocDetail> submitFinance(String id) async {
+    final json = await api.post('${_doc(id)}/submit-finance');
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  Future<SubcontractDocDetail> approveFinance(
+    String id, {
+    required int expectedVersion,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/approve',
+      body: {'expectedVersion': expectedVersion},
+    );
+    return SubcontractDocDetail.fromJson(json);
+  }
+
+  Future<SubcontractDocDetail> rejectFinance(
+    String id, {
+    required int expectedVersion,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/reject',
+      body: {'expectedVersion': expectedVersion, 'reason': reason.trim()},
+    );
     return SubcontractDocDetail.fromJson(json);
   }
 

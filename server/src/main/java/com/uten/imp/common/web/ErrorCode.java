@@ -13,6 +13,7 @@ public enum ErrorCode {
     FORBIDDEN(403, "无权限访问"),
     NOT_FOUND(404, "资源不存在"),
     CONFLICT(409, "数据冲突"),
+    ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待指定财务负责人审核"),
     VALIDATION_FAILED(422, "参数校验失败"),
     PASSWORD_TOO_WEAK(422, "密码强度不足"),
     PASSWORD_REUSE(422, "不能与最近用过的密码相同"),

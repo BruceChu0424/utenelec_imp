@@ -188,6 +188,23 @@ ThemeData buildDarkTheme() {
       space: 1,
     ),
 
+    // 滚动条：深色下默认滚动条更淡，同浅色主题一并加深（问题 #10）。
+    scrollbarTheme: ScrollbarThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.dragged) ||
+            states.contains(WidgetState.hovered)) {
+          return UtenColors.slate300.withValues(alpha: 0.75);
+        }
+        return UtenColors.slate400.withValues(alpha: 0.55);
+      }),
+      trackColor: WidgetStateProperty.all(
+        UtenColors.darkSurfaceHigh.withValues(alpha: 0.6),
+      ),
+      trackBorderColor: WidgetStateProperty.all(Colors.transparent),
+      thickness: WidgetStateProperty.all(10),
+      radius: const Radius.circular(6),
+    ),
+
     // 叠加态与浅色主题一致：实心叠 teal700，线框/文字叠 teal400（深色下更亮）
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(

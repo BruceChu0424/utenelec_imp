@@ -10,6 +10,37 @@ abstract final class ApiEndpoints {
   // 工作台权限化聚合读模型
   static const dashboardOverview = '/dashboard/overview';
 
+  // 财务订货审批：服务端按当前 assigneeUserId 返回个人任务与数量。
+  static const financeProcurementApprovalTasks =
+      '/finance/procurement-approvals/tasks';
+  static const financeProcurementApprovalCount =
+      '/finance/procurement-approvals/count';
+
+  // 财务批准后形成的仓储预计到货，以及超量到货隔离任务。
+  static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
+  static const warehouseInboundExpectationCount =
+      '/warehouse/inbound/expectations/count';
+  static const warehouseArrivalExceptions =
+      '/warehouse/inbound/arrival-exceptions';
+  static const warehouseArrivalExceptionCount =
+      '/warehouse/inbound/arrival-exceptions/count';
+  static const procurementArrivalExceptionTasks =
+      '/procurement/arrival-exceptions/tasks';
+  static const procurementArrivalExceptionTaskCount =
+      '/procurement/arrival-exceptions/count';
+  static const financeArrivalExceptionTasks =
+      '/finance/procurement-arrival-exceptions/tasks';
+  static const financeArrivalExceptionCount =
+      '/finance/procurement-arrival-exceptions/count';
+  static String procurementArrivalException(String id) =>
+      '/procurement/arrival-exceptions/$id';
+  static String financeArrivalException(String id) =>
+      '/finance/procurement-arrival-exceptions/$id';
+  static String financeArrivalExceptionDecision(String id) =>
+      '/finance/procurement-arrival-exceptions/$id/decision';
+  static String procurementArrivalReturnTaskComplete(String id) =>
+      '/procurement/arrival-exceptions/return-tasks/$id/complete';
+
   // 部门
   static const departmentsTree = '/org/departments/tree';
   static String departmentSubtree(String id) => '/org/departments/$id/subtree';
@@ -17,6 +48,26 @@ abstract final class ApiEndpoints {
   static String departmentWorkforceOverview(String id) =>
       '/org/departments/$id/workforce-overview';
   static const departments = '/org/departments';
+
+  // 我的部门（工作台卡片，问题 #20；任意员工可用，不走 department:view/employee:view）
+  static const myDepartmentTree = '/my-department/tree';
+  static const myDepartmentRoster = '/my-department/roster';
+
+  // 部门主管管理本部门员工权限（问题 #20）
+  static const departmentStaffPermissionsManaged =
+      '/department-staff-permissions/managed';
+  static String departmentStaffPermissionOverride(
+    String employeeId,
+    String code,
+  ) => '/department-staff-permissions/employees/$employeeId/overrides/$code';
+
+  // 工程研发部任务中心（rd_tasks）
+  static const rdTasks = '/rd-tasks';
+  static const rdTaskCount = '$rdTasks/count';
+  static String rdTaskResolve(String id) => '$rdTasks/$id/resolve';
+  static String rdTaskAssign(String id) => '$rdTasks/$id/assign';
+  // 生产待排产 BOM 缺失 → 转发工程研发部
+  static const productionScheduleForwardRd = '/production/schedule/forward-rd';
 
   // 货品资料分类（基础资料 / master-data）
   static const materialCategories = '/master/material-categories';
@@ -44,6 +95,8 @@ abstract final class ApiEndpoints {
   static String mouldCategorySubtree(String id) =>
       '$mouldCategories/$id/subtree';
   static String mouldCategory(String id) => '$mouldCategories/$id';
+  static String mouldCategoryDeletePreview(String id) =>
+      '$mouldCategories/$id/delete-preview';
 
   // 模具主档（基础资料 / master-data）—— 分类下模具分页 + 详情 + 字段 facet
   static const moulds = '/master/moulds';
@@ -203,6 +256,14 @@ abstract final class ApiEndpoints {
 
   /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
+
+  /// 审批行为 → 唯一负责人设置（workflow_assignment:manage + 密码二次确认）。
+  static const adminWorkflowResponsibilities =
+      '/admin/workflow-responsibilities';
+  static const adminWorkflowResponsibilityReviewers =
+      '$adminWorkflowResponsibilities/reviewers';
+  static String adminWorkflowResponsibility(String behaviorCode) =>
+      '$adminWorkflowResponsibilities/${Uri.encodeComponent(behaviorCode)}';
 
   /// 公共运行时设置（仅需登录，前端读会话空闲超时阈值等）
   static const publicSettings = '/settings/public';

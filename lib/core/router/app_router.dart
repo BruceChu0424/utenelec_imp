@@ -41,6 +41,8 @@ import '../../features/finance/pages/finance_doc_detail_page.dart';
 import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
+import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
+import '../../features/finance/pages/finance_workflow_responsibilities_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -56,6 +58,7 @@ import '../../features/lab/pages/lab_test_upload_page.dart';
 import '../../features/notice/pages/notice_detail_page.dart';
 import '../../features/operations_workbench/models/operations_workbench.dart';
 import '../../features/operations_workbench/pages/operations_workbench_page.dart';
+import '../../features/rd_task/pages/rd_task_page.dart';
 import '../../features/purchase/pages/purchase_doc_detail_page.dart';
 import '../../features/purchase/pages/purchase_doc_edit_page.dart';
 import '../../features/purchase/pages/purchase_doc_list_page.dart';
@@ -68,6 +71,11 @@ import '../../features/stock/pages/instant_inventory_page.dart';
 import '../../features/stock/pages/stock_balance_page.dart';
 import '../../features/stock/pages/stock_movement_page.dart';
 import '../../features/warehouse/models/stock_doc.dart';
+import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
+import '../../features/warehouse/pages/procurement_return_task_pages.dart';
+import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
+import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
+import '../../shared/models/procurement_inbound.dart';
 import '../../features/warehouse/pages/stock_doc_detail_page.dart';
 import '../../features/warehouse/pages/stock_doc_edit_page.dart';
 import '../../features/warehouse/pages/stock_doc_list_page.dart';
@@ -548,6 +556,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               department: OperationsWorkbenchDepartment.subcontract,
             ),
           ),
+          // —— 工程研发部任务中心 ——
+          GoRoute(
+            path: RouteName.rdTaskCenter,
+            name: 'rd-task-center',
+            builder: (_, _) => const RdTaskPage(),
+          ),
+          GoRoute(
+            path: RouteName.procurementArrivalExceptions,
+            name: 'procurement-return-tasks',
+            builder: (_, state) => ProcurementReturnTasksPage(
+              orderType: procurementInboundOrderTypeFrom(
+                state.uri.queryParameters['orderType'],
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '${RouteName.procurementArrivalExceptions}/:id',
+            name: 'procurement-return-task-detail',
+            builder: (_, state) => ProcurementReturnTaskDetailPage(
+              id: state.pathParameters['id']!,
+            ),
+          ),
 
           // —— 采购管理（hub + 4 单据 list + new/detail/edit）——
           GoRoute(
@@ -600,6 +630,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       .where((id) => id.trim().isNotEmpty)
                       .toList() ??
                   const [],
+              receiptPrefill: s.extra is ProcurementReceiptPrefill
+                  ? s.extra! as ProcurementReceiptPrefill
+                  : null,
             ),
           ),
           GoRoute(
@@ -652,6 +685,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.warehouse,
             name: 'warehouse-hub',
             builder: (_, _) => const WarehouseHubPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseInboundExpectations,
+            name: 'warehouse-inbound-expectations',
+            builder: (_, _) => const WarehouseInboundExpectationsPage(),
+          ),
+          GoRoute(
+            path: RouteName.warehouseArrivalExceptions,
+            name: 'warehouse-arrival-exceptions',
+            builder: (_, _) => const WarehouseArrivalExceptionsPage(),
           ),
           // 报表（静态段，需在 /warehouse/:code 之前声明以免被当作 :code 匹配）
           GoRoute(
@@ -844,6 +887,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             redirect: _rejectUnknownSubcontractDoc,
             builder: (_, s) => SubcontractDocEditPage(
               docType: SubcontractDocType.byPath(s.pathParameters['seg']!),
+              applicationItemIds:
+                  s.uri.queryParameters['applicationItemIds']
+                      ?.split(',')
+                      .where((id) => id.trim().isNotEmpty)
+                      .toList() ??
+                  const [],
+              receiptPrefill: s.extra is ProcurementReceiptPrefill
+                  ? s.extra! as ProcurementReceiptPrefill
+                  : null,
             ),
           ),
           GoRoute(
@@ -882,6 +934,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.finance,
             name: 'finance-hub',
             builder: (_, _) => const FinanceHubPage(),
+          ),
+          GoRoute(
+            path: '/finance/procurement-approvals',
+            name: 'finance-procurement-approvals',
+            builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+          ),
+          GoRoute(
+            path: RouteName.financeArrivalExceptions,
+            name: 'finance-arrival-exceptions',
+            builder: (_, _) => const FinanceArrivalExceptionTasksPage(),
+          ),
+          GoRoute(
+            path: '${RouteName.financeArrivalExceptions}/:id',
+            name: 'finance-arrival-exception-detail',
+            builder: (_, state) => FinanceArrivalExceptionDetailPage(
+              id: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/finance/workflow-responsibilities',
+            name: 'finance-workflow-responsibilities',
+            builder: (_, _) => const FinanceWorkflowResponsibilitiesPage(),
           ),
           GoRoute(
             path: RouteName.financeReport,

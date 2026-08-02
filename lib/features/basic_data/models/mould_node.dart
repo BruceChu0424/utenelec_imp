@@ -148,3 +148,24 @@ class MouldFacets {
     return MouldFacets(fields: fields, nullCounts: nullCounts);
   }
 }
+
+/// 模具分类删除预览：该分类（含自身）子树规模，删除前弹级联确认框用（问题 #7）。
+/// 与 ProductCategoryDeletePreview 同构，字段换成 mouldCount。
+class MouldCategoryDeletePreview {
+  const MouldCategoryDeletePreview({
+    required this.id,
+    required this.descendantCount,
+    required this.mouldCount,
+  });
+
+  final String id;
+  final int descendantCount;
+  final int mouldCount;
+
+  factory MouldCategoryDeletePreview.fromJson(Map<String, dynamic> json) =>
+      MouldCategoryDeletePreview(
+        id: json['id'] as String,
+        descendantCount: (json['descendantCount'] as num?)?.toInt() ?? 0,
+        mouldCount: (json['mouldCount'] as num?)?.toInt() ?? 0,
+      );
+}

@@ -164,6 +164,30 @@ abstract class AppLocalizations {
   /// **'重试'**
   String get commonRetry;
 
+  /// No description provided for @connectionReconnecting.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络暂时不稳定，正在自动连接…'**
+  String get connectionReconnecting;
+
+  /// No description provided for @connectionDisconnected.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时连不上服务器，系统会继续自动连接'**
+  String get connectionDisconnected;
+
+  /// No description provided for @connectionRestored.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络已恢复，可以继续使用'**
+  String get connectionRestored;
+
+  /// No description provided for @connectionRetryNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即重试'**
+  String get connectionRetryNow;
+
   /// No description provided for @commonClose.
   ///
   /// In zh, this message translates to:
@@ -3400,6 +3424,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'办公电话'**
   String get profileFieldOfficePhone;
+
+  /// No description provided for @profileFieldMobile.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机号'**
+  String get profileFieldMobile;
 
   /// No description provided for @profileFieldEmail.
   ///

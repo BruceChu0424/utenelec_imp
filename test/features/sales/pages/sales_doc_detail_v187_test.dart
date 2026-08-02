@@ -147,8 +147,11 @@ void main() {
   );
 
   testWidgets(
-    'dedicated permission can confirm partial shipment independently',
+    '"登记客户同意分批" button removed: partial shipment no longer needs customer consent evidence',
     (tester) async {
+      // 问题 #16/#18：发运策略选了 CUSTOMER_CONFIRM 不再要求先登记客户同意依据才能
+      // 部分发货——那步登记 UI 从没做完整（没有可用的录入入口），订单实际上永远卡住；
+      // 现在直接按员工选的策略生效，详情页也不再展示这颗按钮。
       await _pumpDetail(
         tester,
         type: SalesDocType.order,
@@ -162,7 +165,7 @@ void main() {
         permissions: const {Perm.salesOrderConfirmPartialShipment},
       );
 
-      expect(find.text('登记客户同意分批'), findsOneWidget);
+      expect(find.text('登记客户同意分批'), findsNothing);
       expect(find.text('红冲'), findsNothing);
     },
   );

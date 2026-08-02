@@ -10,8 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,9 @@ public class FulfillmentWorkbenchQueryService {
         String normalizedStatus = status == null ? "" : status.strip();
         String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
         String normalizedException = exception == null ? "" : exception.strip().toUpperCase();
+        String sourceView = "WAREHOUSE".equals(department)
+                ? "v_fulfillment_workbench_actions"
+                : "v_procurement_decomposition_tasks";
         String filters = """
                 department = :department
                   AND (:status = '' OR task_status = :status)
@@ -65,11 +71,11 @@ public class FulfillmentWorkbenchQueryService {
                        supply_pegged_qty, open_qty, task_status, need_date,
                        expected_date, exception_code, updated_at,
                        action_doc_type, action_doc_id, action_doc_no, action_item_id, action_doc_status
-                FROM v_fulfillment_workbench_actions
+                FROM %s
                 WHERE %s
                 ORDER BY need_date NULLS LAST, task_id
                 OFFSET :offset LIMIT :limit
-                """.formatted(filters));
+                """.formatted(sourceView, filters));
         bind(rowsQuery, department, normalizedStatus, normalizedKeyword, normalizedException);
         rowsQuery.setParameter("offset", (safePage - 1) * safeSize);
         rowsQuery.setParameter("limit", safeSize);
@@ -84,20 +90,20 @@ public class FulfillmentWorkbenchQueryService {
                        COUNT(*) FILTER (WHERE exception_code LIKE 'OVERDUE%%'),
                        COUNT(*) FILTER (WHERE open_qty > 0),
                        COALESCE(SUM(open_qty), 0)
-                FROM v_fulfillment_workbench_actions
+                FROM %s
                 WHERE %s
-                """.formatted(filters));
+                """.formatted(sourceView, filters));
         bind(summaryQuery, department, normalizedStatus, normalizedKeyword, normalizedException);
         Object[] summary = (Object[]) summaryQuery.getSingleResult();
         long total = ((Number) summary[0]).longValue();
 
         Query statusQuery = em.createNativeQuery("""
                 SELECT task_status, COUNT(*)
-                FROM v_fulfillment_workbench_actions
+                FROM %s
                 WHERE %s
                 GROUP BY task_status
                 ORDER BY task_status
-                """.formatted(filters));
+                """.formatted(sourceView, filters));
         // Status cards always describe the whole department/keyword result so
         // selecting one card never makes the other card counts disappear.
         bind(statusQuery, department, "", normalizedKeyword, normalizedException);
@@ -108,12 +114,12 @@ public class FulfillmentWorkbenchQueryService {
 
         Query exceptionQuery = em.createNativeQuery("""
                 SELECT exception_code, COUNT(*)
-                FROM v_fulfillment_workbench_actions
+                FROM %s
                 WHERE %s
                   AND exception_code IS NOT NULL
                 GROUP BY exception_code
                 ORDER BY exception_code
-                """.formatted(filters));
+                """.formatted(sourceView, filters));
         // Exception options are server-wide for the active department/status/keyword,
         // never inferred from the current page.
         bind(exceptionQuery, department, normalizedStatus, normalizedKeyword, "");
@@ -136,7 +142,9 @@ public class FulfillmentWorkbenchQueryService {
                         exceptionCounts),
                 new FulfillmentWorkbenchPage.Capabilities(
                         "PURCHASE".equals(department)
-                                && accessPolicy.canCreatePurchaseOrder()));
+                                && accessPolicy.canCreatePurchaseOrder(),
+                        "SUBCONTRACT".equals(department)
+                                && accessPolicy.canCreateSubcontractOrder()));
     }
 
     @Transactional(readOnly = true)
@@ -144,11 +152,18 @@ public class FulfillmentWorkbenchQueryService {
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
         }
-        Query query = em.createNativeQuery("""
-                SELECT COUNT(*) FROM v_fulfillment_workbench_actions
-                WHERE department = :department
-                  AND task_status IN ('UNPEGGED', 'WAITING_SUPPLY')
-                """);
+        boolean decomposition = "PURCHASE".equals(department)
+                || "SUBCONTRACT".equals(department);
+        Query query = em.createNativeQuery(decomposition
+                ? """
+                    SELECT COUNT(*) FROM v_procurement_decomposition_tasks
+                    WHERE department = :department AND open_qty > 0
+                    """
+                : """
+                    SELECT COUNT(*) FROM v_fulfillment_workbench_actions
+                    WHERE department = :department
+                      AND task_status IN ('UNPEGGED', 'WAITING_SUPPLY')
+                    """);
         query.setParameter("department", department);
         return ((Number) query.getSingleResult()).longValue();
     }
@@ -215,7 +230,7 @@ public class FulfillmentWorkbenchQueryService {
                 row.actionDocType(),
                 row.actionDocId(),
                 row.actionDocNo(),
-                row.actionItemId(),
+                row.actionDocItemId(),
                 row.actionDocStatus(),
                 true,
                 access.canEdit(),
@@ -227,7 +242,7 @@ public class FulfillmentWorkbenchQueryService {
             String actionDocType,
             UUID actionDocId,
             String actionDocNo,
-            UUID actionItemId,
+            UUID actionDocItemId,
             String actionDocStatus,
             boolean canView,
             boolean canEdit,
@@ -239,7 +254,7 @@ public class FulfillmentWorkbenchQueryService {
                 row.unitName(), row.supplyRoute(), row.requiredQty(), row.allocatedQty(),
                 row.fulfilledQty(), row.supplyPeggedQty(), row.openQty(), row.taskStatus(),
                 row.needDate(), row.expectedDate(), row.exceptionCode(), row.updatedAt(),
-                actionDocType, actionDocId, actionDocNo, actionItemId, actionDocStatus,
+                actionDocType, actionDocId, actionDocNo, actionDocItemId, actionDocStatus,
                 canView, canEdit, restricted);
     }
 
@@ -253,11 +268,16 @@ public class FulfillmentWorkbenchQueryService {
         return ((java.sql.Date) value).toLocalDate();
     }
 
-    private static OffsetDateTime offsetDateTime(Object value) {
+    static OffsetDateTime offsetDateTime(Object value) {
         if (value == null) return null;
-        if (value instanceof OffsetDateTime dateTime) return dateTime;
-        if (value instanceof java.sql.Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(java.time.ZoneOffset.UTC);
+        if (value instanceof OffsetDateTime dateTime) {
+            return dateTime.withOffsetSameInstant(ZoneOffset.UTC);
+        }
+        if (value instanceof Instant instant) {
+            return instant.atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
         }
         throw new ApiException(ErrorCode.CONFLICT, "工作台更新时间类型异常");
     }

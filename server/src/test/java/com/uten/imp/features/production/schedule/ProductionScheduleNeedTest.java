@@ -70,7 +70,8 @@ class ProductionScheduleNeedTest {
                 mock(DocNumberService.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
-                mrp);
+                mrp,
+                mock(com.uten.imp.features.rd_task.RdTaskService.class));
 
         assertThat(service.shortageCount()).isEqualTo(Map.of("count", 0L));
         verify(em, never()).createNativeQuery(org.mockito.ArgumentMatchers.anyString());

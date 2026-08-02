@@ -77,3 +77,9 @@ server/src/main/resources/legacy-migration/
 # 调试/调查草稿区（一次性脚本与临时文件，完成后清理，不进仓库）
 # 覆盖根 _scratch/ 与 server/legacy_migration/_scratch/
 _scratch/
+
+# 临时补丁/会话草稿（不入库）
+/.tmp-*.patch
+/.tmp_*.patch
+/scratchpad_problems_dump.txt
+/YTDQ.txt

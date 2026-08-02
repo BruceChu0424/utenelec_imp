@@ -2,6 +2,7 @@ package com.uten.imp.features.subcontract.application;
 
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
+import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -15,6 +16,7 @@ import com.uten.imp.features.subcontract.application.dto.ApplicationItemLine;
 import com.uten.imp.features.subcontract.application.dto.ApplicationListItem;
 import com.uten.imp.features.subcontract.application.dto.ApplicationQueryFilter;
 import com.uten.imp.features.subcontract.application.dto.ApplicationSaveRequest;
+import com.uten.imp.features.subcontract.application.dto.DecompositionPreviewItem;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -29,10 +31,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -94,6 +100,81 @@ public class SubcontractApplicationService {
         List<ApplicationItemDto> items = itemRepo.findByApplicationIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {
+        List<UUID> itemIds = normalizePreviewItemIds(requestedItemIds, "委外申请");
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT a.id, a.bill_no, i.id, i.goods_id, i.color_id, i.unit_id,
+                                       COALESCE(i.unit_rate, 1), COALESCE(i.qty, 0),
+                                       COALESCE(i.ordered_qty, 0), COALESCE(pending.pending_qty, 0),
+                                       a.need_date, a.warehouse_id,
+                                       COALESCE(NULLIF(i.source_doc_no, ''),
+                                                NULLIF(a.source_doc_no, ''), a.bill_no)
+                                FROM subcontract_application_items i
+                                JOIN subcontract_applications a ON a.id = i.application_id
+                                LEFT JOIN (
+                                    SELECT oi.application_item_id,
+                                           SUM(COALESCE(oi.qty, 0)) AS pending_qty
+                                    FROM subcontract_order_items oi
+                                    JOIN subcontract_orders o ON o.id = oi.order_id
+                                    JOIN (
+                                        SELECT DISTINCT order_id
+                                        FROM procurement_order_approval_cases
+                                        WHERE order_type = 'SUBCONTRACT'
+                                          AND status = 'PENDING'
+                                    ) pending_case ON pending_case.order_id = o.id
+                                    WHERE oi.is_deleted = FALSE
+                                      AND oi.application_item_id IS NOT NULL
+                                      AND o.status = 0
+                                      AND o.is_deleted = FALSE
+                                    GROUP BY oi.application_item_id
+                                ) pending ON pending.application_item_id = i.id
+                                WHERE i.id IN (:itemIds)
+                                  AND i.is_deleted = FALSE
+                                  AND a.status = 1
+                                  AND a.is_deleted = FALSE
+                                  AND a.is_closed = FALSE
+                                  AND i.unit_id IS NOT NULL
+                                  AND COALESCE(i.unit_rate, 0) > 0
+                                  AND COALESCE(i.qty, 0)
+                                        - COALESCE(i.ordered_qty, 0)
+                                        - COALESCE(pending.pending_qty, 0) > 0
+                                ORDER BY i.id
+                                """)
+                        .setParameter("itemIds", itemIds));
+
+        Map<UUID, Object[]> rowsByItemId = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            UUID itemId = uuid(row[2]);
+            if (rowsByItemId.putIfAbsent(itemId, row) != null) {
+                throw unavailablePreviewSelection("委外申请");
+            }
+        }
+        if (rowsByItemId.size() != itemIds.size()) {
+            throw unavailablePreviewSelection("委外申请");
+        }
+        if (rowsByItemId.values().stream()
+                .map(row -> uuid(row[11]))
+                .distinct()
+                .count() > 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "不同仓库请分别生成订货单");
+        }
+        return itemIds.stream().map(itemId -> {
+            Object[] row = rowsByItemId.get(itemId);
+            BigDecimal requestedQty = decimal(row[7]);
+            BigDecimal orderedQty = decimal(row[8]);
+            BigDecimal pendingQty = decimal(row[9]);
+            BigDecimal remainingQty = requestedQty
+                    .subtract(orderedQty)
+                    .subtract(pendingQty);
+            return new DecompositionPreviewItem(
+                    uuid(row[0]), text(row[1]), itemId, uuid(row[3]), uuid(row[4]),
+                    uuid(row[5]), decimal(row[6]), requestedQty, orderedQty, pendingQty,
+                    remainingQty, localDate(row[10]), uuid(row[11]), text(row[12]));
+        }).toList();
     }
 
     @Transactional
@@ -253,6 +334,57 @@ public class SubcontractApplicationService {
 
     private String restrictionReason(boolean linked) {
         return linked ? "该委外申请关联生产物料需求，编辑和删除已锁定；红冲须走生产供给校验" : null;
+    }
+
+    private static List<UUID> normalizePreviewItemIds(
+            List<UUID> requestedItemIds, String documentLabel) {
+        if (requestedItemIds == null
+                || requestedItemIds.isEmpty()
+                || requestedItemIds.size() > 200
+                || requestedItemIds.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    documentLabel + "明细数量须为 1 至 200 条且不能为空");
+        }
+        return requestedItemIds.stream()
+                .distinct()
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
+    }
+
+    private static ApiException unavailablePreviewSelection(String documentLabel) {
+        return new ApiException(
+                ErrorCode.CONFLICT,
+                "所选" + documentLabel + "明细不存在、已失效或已无可分解数量，请刷新后重试");
+    }
+
+    private static UUID uuid(Object value) {
+        return value == null ? null : value instanceof UUID id
+                ? id
+                : UUID.fromString(value.toString());
+    }
+
+    private static BigDecimal decimal(Object value) {
+        return value == null ? BigDecimal.ZERO : value instanceof BigDecimal number
+                ? number
+                : new BigDecimal(value.toString());
+    }
+
+    private static LocalDate localDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof LocalDate date) {
+            return date;
+        }
+        if (value instanceof java.sql.Date date) {
+            return date.toLocalDate();
+        }
+        return LocalDate.parse(value.toString());
+    }
+
+    private static String text(Object value) {
+        return value == null ? null : value.toString();
     }
 
     private SubcontractApplication requireApplication(UUID id) {

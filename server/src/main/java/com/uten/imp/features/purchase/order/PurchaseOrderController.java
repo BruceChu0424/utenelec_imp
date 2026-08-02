@@ -1,6 +1,9 @@
 package com.uten.imp.features.purchase.order;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalDecisionRequest;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.RejectionDecisionRequest;
+import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderListItem;
 import com.uten.imp.features.purchase.order.dto.OrderQueryFilter;
@@ -23,7 +26,9 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 /**
- * 采购订货单 API（采购管理）。CRUD + 审核 + 红冲（审核回写申请单，不入库）。
+ * 采购订货单 API。采购从计划申请明细生成草稿并提交财务；只有当前精确
+ * 财务负责人可批准/驳回。批准是唯一 0→1 生效点，会回写申请已订量并生成
+ * 仓库预计到货任务；订货批准本身不入库存。
  */
 @RestController
 @RequestMapping("/api/purchase/orders")
@@ -31,6 +36,7 @@ import java.util.UUID;
 public class PurchaseOrderController {
 
     private final PurchaseOrderService service;
+    private final ProcurementFinanceApprovalService financeApproval;
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase_order:view')")
@@ -72,10 +78,30 @@ public class PurchaseOrderController {
         service.delete(id);
     }
 
+    @PostMapping("/{id}/submit-finance")
+    @PreAuthorize("hasAuthority('purchase_order:submit_finance')")
+    public OrderDetail submitFinance(@PathVariable UUID id) {
+        financeApproval.submit("PURCHASE", id);
+        return service.detail(id);
+    }
+
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('purchase_order:edit')")
-    public OrderDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    public OrderDetail approve(
+            @PathVariable UUID id,
+            @Valid @RequestBody ApprovalDecisionRequest request) {
+        financeApproval.approve("PURCHASE", id, request.expectedVersion());
+        return service.detail(id);
+    }
+
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority('finance_order_approval:review')")
+    public OrderDetail reject(
+            @PathVariable UUID id,
+            @Valid @RequestBody RejectionDecisionRequest request) {
+        financeApproval.reject(
+                "PURCHASE", id, request.expectedVersion(), request.reason());
+        return service.detail(id);
     }
 
     @PostMapping("/{id}/reverse")

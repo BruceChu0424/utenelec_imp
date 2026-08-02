@@ -4,6 +4,7 @@ import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.mouldcategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -27,6 +28,7 @@ public class MouldCategoryService {
             "SELECT pg_advisory_xact_lock(hashtextextended('MOULD_CATEGORY_HIERARCHY',0))";
 
     private final MouldCategoryRepository repo;
+    private final MouldRepository mouldRepo;
     private final EntityManager em;
     private final TxSessionVars tx;
     private final MasterCodeService masterCodeService;
@@ -115,16 +117,43 @@ public class MouldCategoryService {
         return detail(id);
     }
 
+    /** 删除预览：该分类（含自身）子树规模，供前端删父类前弹级联确认框（问题 #7）。 */
+    @Transactional(readOnly = true)
+    public MouldCategoryDeletePreview deletePreview(UUID id) {
+        requireCategory(id);
+        List<UUID> ids = subtreeIds(id);
+        int descendantCount = ids.size() - 1; // findSubtree 含自身，后代数减 1
+        long mouldCount = mouldRepo.countByCategoryIds(ids);
+        return new MouldCategoryDeletePreview(id, descendantCount, mouldCount);
+    }
+
+    /**
+     * 级联软删：该分类及其全部后代分类 + 子树下模具，一并 is_deleted=true。
+     * 与 {@code MaterialCategoryService.delete} 同构，不再拦截「有子分类」（问题 #7：
+     * 删父类需一并删光子类，而非报错要求先手动清空）。
+     */
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        MouldCategory c = requireCategory(id);
-        if (!repo.findByParentIdAndDeletedFalseOrderBySortOrderAscNameAsc(id).isEmpty()) {
-            throw new ApiException(ErrorCode.CONFLICT, "请先删除该分类的子分类");
+        requireCategory(id);
+        List<UUID> ids = subtreeIds(id);
+        OffsetDateTime now = OffsetDateTime.now();
+        List<MouldCategory> nodes = repo.findSubtree(id);
+        for (MouldCategory c : nodes) {
+            c.setDeleted(true);
+            c.setDeletedAt(now);
         }
-        c.setDeleted(true);
-        c.setDeletedAt(OffsetDateTime.now());
-        repo.save(c);
+        repo.saveAll(nodes);
+        if (!ids.isEmpty()) {
+            mouldRepo.softDeleteByCategoryIds(ids, now);
+        }
+    }
+
+    /** 收集某分类子树（含自身）的全部 id（findSubtree 已含自身、按 path 先序）。 */
+    private List<UUID> subtreeIds(UUID rootId) {
+        return repo.findSubtree(rootId).stream()
+                .map(MouldCategory::getId)
+                .toList();
     }
 
     /** 移动后按 parent 关系递归重算整棵子树 level/path，不依赖移动前的旧 path 排序。 */

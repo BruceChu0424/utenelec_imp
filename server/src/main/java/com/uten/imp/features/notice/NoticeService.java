@@ -299,6 +299,18 @@ public class NoticeService {
     @Transactional
     public Notice publishForUser(UUID audienceUserId, String title, String content,
                                  String type, String publisher) {
+        return publishForUser(audienceUserId, title, content, type, publisher, null);
+    }
+
+    /**
+     * 系统定向通知 + 跳转入口：[actionRoute] 非空时通知详情带「查看详情」按钮直达源单据
+     * （问题 #12：点击排产/发货等通知应能跳到对应单据）。不复用人工发布通道的
+     * validatedActionRoute（那里强制要求 TODO kind），这里的路由是调用方硬编码的
+     * 前端路由字符串，非用户输入，只做基本 sanity check。
+     */
+    @Transactional
+    public Notice publishForUser(UUID audienceUserId, String title, String content,
+                                 String type, String publisher, String actionRoute) {
         if (audienceUserId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "定向通知缺少接收人");
         }
@@ -317,6 +329,10 @@ public class NoticeService {
         n.setAudienceScope("selected");
         n.setAudienceSummary("指定人员");
         n.setAudienceCount(1);
+        if (actionRoute != null && !actionRoute.isBlank() && actionRoute.startsWith("/")
+                && actionRoute.length() <= 500) {
+            n.setActionRoute(actionRoute.strip());
+        }
         Notice saved = noticeRepo.saveAndFlush(n);
         stateRepo.save(newState(saved.getId(), audienceUserId));
         return saved;

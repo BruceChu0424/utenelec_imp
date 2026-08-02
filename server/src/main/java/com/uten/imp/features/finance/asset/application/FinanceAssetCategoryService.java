@@ -167,23 +167,23 @@ public class FinanceAssetCategoryService {
         AssetCategoryContracts.Category category = get(id);
         if (category.effectiveFrom().isAfter(LocalDate.now(SHANGHAI))) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "A future-dated category must remain DRAFT until its effective date");
+                    "未来生效的政策在生效日前须保持草稿状态");
         }
         List<String> missing = category.missingPolicyItems();
         if (!missing.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Category policy is incomplete: " + String.join(", ", missing));
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "会计政策字段不完整，请补齐：" + String.join("、", missing));
         }
         if ("DEFERRED_EXPENSE".equals(category.objectType()) && category.accumulatedStyleId() != null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Deferred-expense policy must not use an accumulated depreciation account");
+                    "长期待摊费用政策不应使用累计折旧（备抵）科目");
         }
         requireDistinctAccounts(category);
-        requirePostableStyle(category.costStyleId(), "costStyleId", "ACCOUNT");
+        requirePostableStyle(category.costStyleId(), "成本科目", "ACCOUNT", "账户");
         if (category.accumulatedStyleId() != null) {
-            requirePostableStyle(category.accumulatedStyleId(), "accumulatedStyleId", "ACCOUNT");
+            requirePostableStyle(category.accumulatedStyleId(), "累计折旧科目", "ACCOUNT", "账户");
         }
-        requirePostableStyle(category.expenseStyleId(), "expenseStyleId", "EXPENSE");
-        requirePostableStyle(category.clearingStyleId(), "clearingStyleId", "ACCOUNT");
+        requirePostableStyle(category.expenseStyleId(), "费用科目", "EXPENSE", "费用");
+        requirePostableStyle(category.clearingStyleId(), "清理科目", "ACCOUNT", "账户");
         em.createNativeQuery("""
                 UPDATE finance_asset_categories
                 SET status='INACTIVE', row_version=row_version+1,
@@ -287,11 +287,11 @@ public class FinanceAssetCategoryService {
         accounts.add(category.clearingStyleId());
         if (accounts.stream().distinct().count() != accounts.size()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Cost, accumulated depreciation, expense and clearing accounts must be distinct");
+                    "成本、累计折旧、费用与清理科目必须互不相同");
         }
     }
 
-    private void requirePostableStyle(UUID styleId, String field, String expectedCategory) {
+    private void requirePostableStyle(UUID styleId, String fieldLabel, String expectedCategory, String categoryLabel) {
         Number valid = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM payment_styles s
                 WHERE s.id=:id AND s.is_deleted=false AND s.status='使用' AND s.category=:category
@@ -301,7 +301,7 @@ public class FinanceAssetCategoryService {
                 """).setParameter("id", styleId).setParameter("category", expectedCategory).getSingleResult();
         if (valid.longValue() != 1) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    field + " must reference an active postable leaf " + expectedCategory + " payment style");
+                    fieldLabel + " 须为在用且可过账的叶子" + categoryLabel);
         }
     }
 

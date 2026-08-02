@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase.receipt;
 
+import com.uten.imp.application.port.ProcurementArrivalBlockedException;
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -69,6 +71,7 @@ public class PurchaseReceiptService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
+    private final ProcurementArrivalControlPort arrivalControl;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -143,7 +146,7 @@ public class PurchaseReceiptService {
     }
 
     /** 审核：status 0→1，库存入库 + 回写订货 received_qty + 结案重算。 */
-    @Transactional
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     public ReceiptDetail approve(UUID id) {
         tx.bind();
         productionSupply.lockPurchaseReceiptMutationDimensions(
@@ -171,6 +174,8 @@ public class PurchaseReceiptService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        arrivalControl.validateBeforeApproval(
+                ProcurementArrivalControlPort.PURCHASE, id);
         productionSupply.lockReceiptProductionDemands(
                 id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
@@ -197,6 +202,8 @@ public class PurchaseReceiptService {
                 "AP", StockService.SRC_PURCHASE_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
                 r.getTotalLocal(), (short) 1, null));
+        arrivalControl.recordApproval(
+                ProcurementArrivalControlPort.PURCHASE, id);
         return detail(id);
     }
 
@@ -241,6 +248,8 @@ public class PurchaseReceiptService {
         }
         r.setStatus(STATUS_REVERSED);
         receiptRepo.save(r);
+        arrivalControl.recordReversal(
+                ProcurementArrivalControlPort.PURCHASE, id);
         return detail(id);
     }
 

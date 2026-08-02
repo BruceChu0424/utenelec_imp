@@ -55,6 +55,9 @@ spring:
 server:
   port: 8080
   shutdown: graceful
+  # Finite combined request-line/header budget. Keep the reverse proxy aligned;
+  # reduce JWT/device evidence size before considering any further increase.
+  max-http-request-header-size: ${UTEN_MAX_HTTP_REQUEST_HEADER_SIZE:16KB}
   servlet:
     encoding:
       charset: UTF-8

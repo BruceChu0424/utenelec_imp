@@ -54,18 +54,10 @@ class OperationsWorkbenchSummary {
         ('DONE', '已领取', 'success'),
       ],
       OperationsWorkbenchDepartment.purchase => const [
-        ('UNPEGGED', '待采购处理', 'warning'),
-        ('WAITING_SUPPLY', '申请 / 订单 / 收货中', 'info'),
-        ('COVERED', '供给已覆盖', 'success'),
+        ('WAITING_ORDER', '申请待分解', 'warning'),
       ],
       OperationsWorkbenchDepartment.subcontract => const [
-        ('UNPEGGED', '待委外处理', 'warning'),
-        ('APPLICATION_PENDING_APPROVAL', '申请待审', 'warning'),
-        ('WAITING_ORDER', '待下单', 'warning'),
-        ('ORDER_PENDING_APPROVAL', '订单待审', 'warning'),
-        ('WAITING_RETURN', '委外中 / 待回厂', 'info'),
-        ('RECEIPT_PENDING_APPROVAL', '回厂待审', 'warning'),
-        ('COVERED', '已覆盖 / 可备料', 'success'),
+        ('WAITING_ORDER', '申请待分解', 'warning'),
       ],
     };
     return [
@@ -144,15 +136,18 @@ class OperationsActionDocument {
   bool get isApprovedPurchaseRequest =>
       _isType('PURCHASE_REQUEST', 'REQUEST') && status == '1';
 
+  bool get isIssuedSubcontractApplication =>
+      _isType('SUBCONTRACT_APPLICATION', 'APPLICATION') && status == '1';
+
   String? get purchaseStageLabel => switch (docType.toUpperCase()) {
     'PURCHASE_REQUEST' || 'REQUEST' => switch (status) {
-      '0' => '采购申请待审核',
-      '1' => '采购申请已审核，待下单',
+      '0' => '计划申请尚未下达',
+      '1' => '计划申请已下达，待分解',
       _ => '采购申请处理中',
     },
     'PURCHASE_ORDER' || 'ORDER' => switch (status) {
-      '0' => '采购订单待审核',
-      '1' => '采购订单已审核 / 在途',
+      '0' => '采购订货单等待财务审核',
+      '1' => '采购订货单财务已通过 / 在途',
       _ => '采购订单处理中',
     },
     'PURCHASE_RECEIPT' || 'RECEIPT' => switch (status) {
@@ -327,13 +322,18 @@ class OperationsWorkbenchTask {
 }
 
 class OperationsWorkbenchCapabilities {
-  const OperationsWorkbenchCapabilities({this.canCreatePurchaseOrder = false});
+  const OperationsWorkbenchCapabilities({
+    this.canCreatePurchaseOrder = false,
+    this.canCreateSubcontractOrder = false,
+  });
 
   final bool canCreatePurchaseOrder;
+  final bool canCreateSubcontractOrder;
 
   factory OperationsWorkbenchCapabilities.fromJson(Map<String, dynamic>? json) {
     return OperationsWorkbenchCapabilities(
       canCreatePurchaseOrder: json?['canCreatePurchaseOrder'] == true,
+      canCreateSubcontractOrder: json?['canCreateSubcontractOrder'] == true,
     );
   }
 }
@@ -426,9 +426,9 @@ String operationsWorkbenchStatusLabel(String code) =>
       'UNPEGGED' => '待生成供给单',
       'WAITING' => '等待中',
       'WAITING_SUPPLY' => '采购 / 委外执行中',
-      'APPLICATION_PENDING_APPROVAL' => '委外申请待审核',
-      'WAITING_ORDER' => '委外申请已审 / 待下单',
-      'ORDER_PENDING_APPROVAL' => '委外订单待审核',
+      'APPLICATION_PENDING_APPROVAL' => '计划申请尚未下达',
+      'WAITING_ORDER' => '计划申请已下达 / 待分解',
+      'ORDER_PENDING_APPROVAL' => '委外订单等待财务审核',
       'WAITING_RETURN' => '委外中 / 待回厂',
       'RECEIPT_PENDING_APPROVAL' => '回厂单待审核',
       'IN_PROGRESS' => '处理中',
@@ -456,13 +456,13 @@ String _actionDocumentLabel(OperationsActionDocument document) {
   final status = document.status;
   return switch (document.docType.toUpperCase()) {
     'PURCHASE_REQUEST' || 'REQUEST' => switch (status) {
-      '0' => '采购申请草稿$suffix',
-      '1' => '已审采购申请$suffix',
+      '0' => '计划申请未下达$suffix',
+      '1' => '计划下达申请$suffix',
       _ => '采购申请$suffix',
     },
     'PURCHASE_ORDER' || 'ORDER' => switch (status) {
-      '0' => '采购订单草稿$suffix',
-      '1' => '已审采购订单$suffix',
+      '0' => '采购订货单等待财务审核$suffix',
+      '1' => '财务已通过采购订货单$suffix',
       _ => '采购订单$suffix',
     },
     'PURCHASE_RECEIPT' || 'RECEIPT' => switch (status) {
@@ -471,12 +471,12 @@ String _actionDocumentLabel(OperationsActionDocument document) {
       _ => '收货单$suffix',
     },
     'SUBCONTRACT_APPLICATION' || 'APPLICATION' => switch (status) {
-      '0' => '委外申请待审$suffix',
-      '1' => '已审委外申请$suffix',
+      '0' => '计划委外申请尚未下达$suffix',
+      '1' => '计划下达委外申请$suffix',
       _ => '委外申请$suffix',
     },
     'SUBCONTRACT_ORDER' => switch (status) {
-      '0' => '委外订单待审$suffix',
+      '0' => '委外订单待财务审核$suffix',
       '1' => '委外执行中$suffix',
       _ => '委外订单$suffix',
     },

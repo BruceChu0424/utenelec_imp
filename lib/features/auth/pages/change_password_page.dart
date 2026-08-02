@@ -49,6 +49,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
   }
 
   Future<void> _submit() async {
+    if (_loading) return;
     final l10n = AppLocalizations.of(context);
     if (!_formKey.currentState!.validate()) return;
     if (_new.text != _confirm.text) {

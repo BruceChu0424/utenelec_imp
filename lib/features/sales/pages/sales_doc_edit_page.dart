@@ -42,6 +42,8 @@ import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import '../widgets/sales_doc_link_picker.dart';
+import '../../basic_data/models/goods_node.dart' show GoodsListItem;
+import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../widgets/sales_grid_columns.dart';
 
@@ -293,15 +295,34 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     );
   }
 
+  /// 点货品：滑窗除未分类外全部分类都展示（含原材料，问题 #17），支持多选——
+  /// 选中的第一个填当前行，其余各自追加一新行，一次选完不用逐个重复"加行→选货品"。
   Future<void> _pickGoods(SalesGridRow row) async {
-    final g = await showUtenGoodsPicker(context, ref);
-    if (g == null) return;
+    final picked = await showUtenGoodsPickerMulti(
+      context,
+      ref,
+      scope: UtenGoodsPickerScope.allExceptUncategorized,
+    );
+    if (picked.isEmpty) return;
     final names = ref.read(salesMasterNameServiceProvider);
-    row
-      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
-      ..colorId = names.colorIdByLegacy(g.colorLegacyId)
-      ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+    void fill(SalesGridRow target, GoodsListItem g) {
+      target
+        ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+        // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
+        ..colorId = names.colorIdByLegacy(g.colorLegacyId)
+        ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+    }
+
+    fill(row, picked.first);
+    if (picked.length > 1) {
+      final extraRows = <SalesGridRow>[];
+      for (final g in picked.skip(1)) {
+        final r = SalesGridRow();
+        fill(r, g);
+        extraRows.add(r);
+      }
+      _grid.addRows(extraRows);
+    }
     // 货品选定后该行数量才计入件数（先填数量后选货品的情形）。
     _recalcParcelCount();
   }
@@ -371,19 +392,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     } catch (_) {
       // 查询失败静默：不阻塞开单，地址/电话可手填。
     }
-  }
-
-  /// Only active clients are offered; keep the current client when editing history.
-  Map<String, String> _clientOptions(SalesMasterNameService names) {
-    final entries = Map<String, String>.of(names.selectableClientEntries);
-    final selectedId = _clientId;
-    if (selectedId != null && !entries.containsKey(selectedId)) {
-      final selectedName = names.clientEntries[selectedId];
-      if (selectedName != null && selectedName.isNotEmpty) {
-        entries[selectedId] = selectedName;
-      }
-    }
-    return entries;
   }
 
   /// Rebind quantity listeners and recalculate parcel totals after row changes.
@@ -707,16 +715,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                     onChanged: (d) =>
                                         setState(() => _billDate = d),
                                   ),
-                                  _dropdown(
-                                    '客户',
-                                    _clientId,
-                                    _clientOptions(names),
-                                    // 选客户后联动带出主档收货地址/联系电话。
-                                    (v) => _onClientChanged(v),
+                                  ClientPickerField(
+                                    initialId: _clientId,
+                                    initialName: names.client(_clientId),
                                     required: _cfg.clientRequired,
                                     errorText: _errors.contains('client')
                                         ? '请选择客户'
                                         : null,
+                                    // 选客户后联动带出主档收货地址/联系电话。
+                                    onChanged: (v) => _onClientChanged(v),
+                                    onPick: () =>
+                                        showUtenClientPicker(context, ref),
                                   ),
                                   if (_cfg.hasWarehouse)
                                     _dropdown(

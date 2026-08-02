@@ -60,7 +60,7 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     @Test
-    void countPendingCountsUnpeggedAndWaitingSupplyTasks() {
+    void purchaseCountUsesRequestLineDecompositionProjection() {
         EntityManager em = mock(EntityManager.class);
         Query countQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
@@ -74,9 +74,8 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         String captured = sql.getValue();
-        assertTrue(captured.contains("v_fulfillment_workbench_actions"));
-        assertTrue(captured.contains("'UNPEGGED'"));
-        assertTrue(captured.contains("'WAITING_SUPPLY'"));
+        assertTrue(captured.contains("v_procurement_decomposition_tasks"));
+        assertTrue(captured.contains("open_qty > 0"));
         verify(countQuery).setParameter("department", "PURCHASE");
     }
 
@@ -109,7 +108,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertEquals(null, task.actionDocType());
         assertEquals(null, task.actionDocId());
         assertEquals(null, task.actionDocNo());
-        assertEquals(null, task.actionItemId());
+        assertEquals(null, task.actionDocItemId());
         assertEquals(null, task.actionDocStatus());
         assertTrue(!task.actionDocCanView());
         assertTrue(!task.actionDocCanEdit());
@@ -142,7 +141,7 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         FulfillmentTaskRow task = page.items().getFirst();
         assertEquals(documentId, task.actionDocId());
-        assertEquals(documentItemId, task.actionItemId());
+        assertEquals(documentItemId, task.actionDocItemId());
         assertTrue(task.actionDocCanView());
         assertTrue(!task.actionDocCanEdit());
         assertTrue(!task.actionDocRestricted());

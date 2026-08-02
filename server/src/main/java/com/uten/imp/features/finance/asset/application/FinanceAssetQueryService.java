@@ -81,11 +81,12 @@ public class FinanceAssetQueryService {
                       WHERE COALESCE(issue->>'severity','BLOCKING')='BLOCKING')
                 """).getSingleResult()).longValue();
         List<String> missing = new ArrayList<>();
-        if (!hasReadyCategory("FIXED_ASSET")) missing.add("FIXED_ASSET_CATEGORY_POLICY");
-        if (!hasReadyCategory("DEFERRED_EXPENSE")) missing.add("DEFERRED_EXPENSE_CATEGORY_POLICY");
+        // 下发中文友好标签，避免直出英文策略键（防止据此推断库表结构）。逻辑只看 policyReady 布尔。
+        if (!hasReadyCategory("FIXED_ASSET")) missing.add("固定资产类别政策");
+        if (!hasReadyCategory("DEFERRED_EXPENSE")) missing.add("长期待摊费用类别政策");
         boolean postedWorkflowsEnabled = featureGate.postedWorkflowsEnabled();
         List<String> blockers = postedWorkflowsEnabled ? List.of() : List.of(
-                "Initial recognition, disposal and termination posting are disabled until dedicated maker-checker business-event reversal is delivered");
+                "初始确认、处置与提前终止的过账暂未开放，待专用的制单—复核—反冲链路交付后启用");
         return new AssetWorkbenchResponses.Overview(
                 decimal(fixed[0]), decimal(fixed[1]), deferred,
                 pending, exceptions, pending + exceptions, Instant.now().toString(),

@@ -228,7 +228,7 @@ public class ProductionPlanningPackageService {
                             plan.deliveryDate(),
                             request.getWarehouseId(),
                             purchaseLines,
-                            currentUser.requireId(),
+                            currentUser.requireEmployeeId(),
                             currentUser.requireEmployeeId());
             if (purchase != null) {
                 ledger.attachPurchaseRequest(

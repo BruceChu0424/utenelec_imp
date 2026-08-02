@@ -39,20 +39,19 @@ public class JwtService {
         this.key = Keys.hmacShaKeyFor(secret);
     }
 
-    public String issueAccess(UUID userId, UUID employeeId, String loginAccount,
-                              Set<String> roles, Set<String> permissions,
-                              boolean mustChangePassword, long authVersion,
-                              long authorizationEpoch) {
+    /**
+     * Issues a deliberately small staff access token.
+     *
+     * <p>Roles, permissions and mutable profile fields are resolved from the database
+     * after the authorization stamps are validated on every request. This keeps request
+     * headers bounded and prevents a signed-but-stale permission snapshot from being used.
+     */
+    public String issueAccess(UUID userId, long authVersion, long authorizationEpoch) {
         Instant now = Instant.now();
         Instant exp = now.plusSeconds(settings.readLong("jwt_access_ttl_minutes", 15) * 60);
         return Jwts.builder()
                 .issuer(props.getIssuer())
                 .subject(userId.toString())
-                .claim("emp", employeeId == null ? null : employeeId.toString())
-                .claim("acc", loginAccount)
-                .claim("roles", roles)
-                .claim("perms", permissions)
-                .claim("mcp", mustChangePassword)
                 .claim("av", authVersion)
                 .claim("ae", authorizationEpoch)
                 .claim("typ", "staff")

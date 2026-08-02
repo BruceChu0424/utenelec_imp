@@ -2,10 +2,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+
+import 'support/fake_auth_logout_fence.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +23,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         secureStorageProvider.overrideWithValue(storage),
+        authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
         authRepositoryProvider.overrideWithValue(
           _FailingAuthRepository(ApiException('INTERNAL', '服务器繁忙')),
         ),
@@ -44,6 +48,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         secureStorageProvider.overrideWithValue(storage),
+        authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
         authRepositoryProvider.overrideWithValue(
           _FailingAuthRepository(ApiException('UNAUTHORIZED', '会话已过期')),
         ),
@@ -76,11 +81,7 @@ class _FailingAuthRepository implements AuthRepository {
       throw UnimplementedError();
 
   @override
-  Future<void> logout(
-    String? refreshToken, {
-    String? accessToken,
-    bool clearLocal = true,
-  }) => throw UnimplementedError();
+  Future<void> logout(String? refreshToken) => throw UnimplementedError();
 
   @override
   Future<AuthResult> refresh(String refreshToken) => throw UnimplementedError();

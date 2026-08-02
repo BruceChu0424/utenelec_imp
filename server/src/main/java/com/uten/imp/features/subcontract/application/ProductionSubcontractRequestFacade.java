@@ -44,7 +44,7 @@ public class ProductionSubcontractRequestFacade
             java.time.LocalDate needDate,
             UUID warehouseId,
             List<DraftLine> requestedLines,
-            UUID applicantUserId,
+            UUID applicantEmployeeId,
             UUID makerEmployeeId) {
         List<DraftLine> lines = requestedLines == null
                 ? List.of()
@@ -68,7 +68,8 @@ public class ProductionSubcontractRequestFacade
                         DocNumberPrefix.SUB_APPLICATION));
         application.setBillDate(BusinessTime.today());
         application.setWarehouseId(warehouseId);
-        application.setApplicantId(applicantUserId);
+        application.setSupplierId(null);
+        application.setApplicantId(applicantEmployeeId);
         application.setMakerId(makerEmployeeId);
         application.setNeedDate(needDate);
         application.setSourceDocNo(productionPlanNo);
@@ -77,7 +78,7 @@ public class ProductionSubcontractRequestFacade
                         + " 委外来源物料缺口自动生成；供应商待委外部门确认");
         application.setTotalOriginal(BigDecimal.ZERO);
         application.setTotalLocal(BigDecimal.ZERO);
-        application.setStatus(STATUS_DRAFT);
+        application.setStatus(STATUS_APPROVED);
         applicationRepo.save(application);
 
         List<DraftLineResult> created = new ArrayList<>();
@@ -149,10 +150,11 @@ public class ProductionSubcontractRequestFacade
                     "计划包委外申请已转委外订单，必须先反向处理下游单据");
         }
         if (action == LifecycleAction.CANCEL) {
-            if (application.getStatus() != STATUS_DRAFT) {
+            if (application.getStatus() != STATUS_DRAFT
+                    && application.getStatus() != STATUS_APPROVED) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "只有草稿委外申请可随计划包取消");
+                        "仅无下游订货的计划委外申请可随计划包取消");
             }
             application.setDeleted(true);
             application.setDeletedAt(OffsetDateTime.now());

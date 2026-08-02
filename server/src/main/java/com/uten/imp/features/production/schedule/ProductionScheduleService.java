@@ -13,9 +13,11 @@ import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.features.production.plan.PlanOrderItemLink;
 import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapRequest;
 import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
 import com.uten.imp.features.production.schedule.dto.ScheduleOrderLine;
+import com.uten.imp.features.rd_task.RdTaskService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -67,6 +69,7 @@ public class ProductionScheduleService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final MrpService mrpService;
+    private final RdTaskService rdTaskService;
 
     /** 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天或已逾期）。
      *  keyword 模糊 订单号/客户/货品名/货品编码；dateFrom/dateTo 交货日期范围（行级优先、缺省取单头）。
@@ -114,7 +117,11 @@ public class ProductionScheduleService {
                        i.chain_status,
                        EXISTS (SELECT 1 FROM goods_bom_items b
                                WHERE b.goods_id = i.goods_id
-                                 AND b.is_deleted = false) AS bom_ready
+                                 AND b.is_deleted = false) AS bom_ready,
+                       EXISTS (SELECT 1 FROM rd_tasks rt
+                               WHERE rt.is_deleted = false AND rt.category = 'BOM'
+                                 AND rt.status IN ('OPEN','IN_PROGRESS')
+                                 AND rt.order_item_id = i.id) AS rd_handoff
                 """.formatted(SCHEDULING_NEED_SQL) + filters
                 + " ORDER BY deliver ASC NULLS LAST, o.bill_date LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo);
@@ -134,9 +141,32 @@ public class ProductionScheduleService {
                     bd(r[13]), bd(r[14]), bd(r[15]), bd(r[16]),
                     deliver, r[18] == null ? null : ((Number) r[18]).shortValue(),
                     Boolean.TRUE.equals(r[19]),
-                    deliver != null && !deliver.isAfter(warn)));
+                    deliver != null && !deliver.isAfter(warn),
+                    Boolean.TRUE.equals(r[20])));
         }
         return new com.uten.imp.common.web.PageResponse<>(out, p, sz, total, totalPages);
+    }
+
+    /** 待排产 BOM 缺失 → 转发工程研发部（建/复用 BOM 类 rd_task + 通知研发）。返回任务 id。 */
+    @Transactional
+    public UUID forwardToRd(ForwardBomGapRequest req) {
+        tx.bind();
+        UUID employeeId = currentUser.requireEmployeeId();
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT i.id, i.goods_id, i.order_id, o.bill_no
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id = i.order_id
+                WHERE i.id = :id AND i.is_deleted = false
+                  AND o.is_deleted = false AND o.status = 1
+                """).setParameter("id", req.orderItemId()).getResultList();
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在或订单未审核");
+        }
+        Object[] r = rows.get(0);
+        return rdTaskService.forwardBomGap(
+                (UUID) r[0], (UUID) r[1], "SALES_ORDER_ITEM",
+                (UUID) r[2], (String) r[3], req.note(), employeeId);
     }
 
     /** 绑定 pending 过滤参数（未出现的条件不绑）。 */

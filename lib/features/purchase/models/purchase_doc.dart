@@ -6,6 +6,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../shared/models/procurement_finance_approval.dart';
+
 /// 采购单据类型。pathSegment 对齐后端 /api/purchase/{requests|orders|receipts|returns}。
 enum PurchaseDocType {
   request('requests'),
@@ -70,6 +72,7 @@ class PurchaseDocListItem {
     this.status,
     this.closed = false,
     this.legacyId,
+    this.financeApproval,
   });
 
   final String id;
@@ -81,6 +84,7 @@ class PurchaseDocListItem {
   final int? status;
   final bool closed;
   final int? legacyId;
+  final ProcurementFinanceApproval? financeApproval;
 
   factory PurchaseDocListItem.fromJson(Map<String, dynamic> json) =>
       PurchaseDocListItem(
@@ -93,6 +97,11 @@ class PurchaseDocListItem {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        financeApproval: json['financeApproval'] is Map
+            ? ProcurementFinanceApproval.fromJson(
+                (json['financeApproval'] as Map).cast<String, dynamic>(),
+              )
+            : null,
       );
 }
 
@@ -202,6 +211,7 @@ class PurchaseDocDetail {
     this.canDelete = true,
     this.canReverse = true,
     this.restrictionReason,
+    this.financeApproval,
   });
 
   final String id;
@@ -239,6 +249,7 @@ class PurchaseDocDetail {
   final bool canDelete;
   final bool canReverse;
   final String? restrictionReason;
+  final ProcurementFinanceApproval? financeApproval;
 
   factory PurchaseDocDetail.fromJson(Map<String, dynamic> json) =>
       PurchaseDocDetail(
@@ -272,6 +283,11 @@ class PurchaseDocDetail {
         canDelete: (json['canDelete'] as bool?) ?? true,
         canReverse: (json['canReverse'] as bool?) ?? true,
         restrictionReason: json['restrictionReason'] as String?,
+        financeApproval: json['financeApproval'] is Map
+            ? ProcurementFinanceApproval.fromJson(
+                (json['financeApproval'] as Map).cast<String, dynamic>(),
+              )
+            : null,
         items:
             (json['items'] as List?)
                 ?.map(
@@ -280,4 +296,63 @@ class PurchaseDocDetail {
                 .toList() ??
             const [],
       );
+}
+
+class ProcurementDecompositionLine {
+  const ProcurementDecompositionLine({
+    required this.sourceDocumentId,
+    required this.sourceDocumentNo,
+    required this.sourceItemId,
+    required this.goodsId,
+    required this.requestedQty,
+    required this.orderedQty,
+    required this.pendingQty,
+    required this.remainingQty,
+    this.colorId,
+    this.unitId,
+    this.unitRate,
+    this.needDate,
+    this.warehouseId,
+    this.sourcePlanNo,
+  });
+
+  final String sourceDocumentId;
+  final String sourceDocumentNo;
+  final String sourceItemId;
+  final String goodsId;
+  final String? colorId;
+  final String? unitId;
+  final double? unitRate;
+  final double requestedQty;
+  final double orderedQty;
+  final double pendingQty;
+  final double remainingQty;
+  final String? needDate;
+  final String? warehouseId;
+  final String? sourcePlanNo;
+
+  factory ProcurementDecompositionLine.fromJson(Map<String, dynamic> json) {
+    double number(String key) {
+      final value = json[key];
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return ProcurementDecompositionLine(
+      sourceDocumentId: json['sourceDocumentId'] as String,
+      sourceDocumentNo: json['sourceDocumentNo'] as String? ?? '',
+      sourceItemId: json['sourceItemId'] as String,
+      goodsId: json['goodsId'] as String,
+      colorId: json['colorId'] as String?,
+      unitId: json['unitId'] as String?,
+      unitRate: json['unitRate'] == null ? null : number('unitRate'),
+      requestedQty: number('requestedQty'),
+      orderedQty: number('orderedQty'),
+      pendingQty: number('pendingQty'),
+      remainingQty: number('remainingQty'),
+      needDate: json['needDate'] as String?,
+      warehouseId: json['warehouseId'] as String?,
+      sourcePlanNo: json['sourcePlanNo'] as String?,
+    );
+  }
 }

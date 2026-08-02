@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.receipt;
 
+import com.uten.imp.application.port.ProcurementArrivalBlockedException;
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -78,6 +80,7 @@ public class SubcontractReceiptService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final ProductionSubcontractSupplyTransitionPort productionSupply;
+    private final ProcurementArrivalControlPort arrivalControl;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -154,7 +157,7 @@ public class SubcontractReceiptService {
      * 审核：status 0→1，库存正向入库（DIR_IN）+ 回写订货 received_qty + 立应付 + ap_posted + 结案重算。
      * 关键纠偏：老库触发器写 QTY-=（减库存）是反的，新库按方向 +1 正向入库。design doc 22 §一决策4。
      */
-    @Transactional
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     public ReceiptDetail approve(UUID id) {
         tx.bind();
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
@@ -182,6 +185,8 @@ public class SubcontractReceiptService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        arrivalControl.validateBeforeApproval(
+                ProcurementArrivalControlPort.SUBCONTRACT, id);
         productionSupply.lockSubcontractReceiptProductionDemands(
                 id, r.getWarehouseId());
         stockService.lockInventory(items.stream()
@@ -208,6 +213,8 @@ public class SubcontractReceiptService {
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setApPosted(true);
         receiptRepo.save(r);
+        arrivalControl.recordApproval(
+                ProcurementArrivalControlPort.SUBCONTRACT, id);
         return detail(id);
     }
 
@@ -247,6 +254,8 @@ public class SubcontractReceiptService {
         r.setStatus(STATUS_REVERSED);
         r.setApPosted(false);
         receiptRepo.save(r);
+        arrivalControl.recordReversal(
+                ProcurementArrivalControlPort.SUBCONTRACT, id);
         return detail(id);
     }
 

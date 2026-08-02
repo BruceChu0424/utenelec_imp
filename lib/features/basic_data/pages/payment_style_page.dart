@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -185,7 +186,13 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除类别'),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: UtenColors.error),
+            SizedBox(width: UtenSpacing.s8),
+            Text('删除类别'),
+          ],
+        ),
         content: Text('确定删除「${node.name}」吗？若存在子类别或被引用，删除可能失败。'),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -260,6 +267,16 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   // _treeTile 已移除：树渲染改由 UtenCategoryTreeView<PaymentStyleNode> 统一负责。
 
+  /// 大类图标（纯视觉辅助，语义对齐会计科目类型）。
+  static IconData _categoryIcon(PaymentStyleCategory c) => switch (c) {
+    PaymentStyleCategory.account => Icons.account_balance_wallet_outlined,
+    PaymentStyleCategory.liability => Icons.credit_card_outlined,
+    PaymentStyleCategory.equity => Icons.pie_chart_outline_rounded,
+    PaymentStyleCategory.expense => Icons.trending_down_rounded,
+    PaymentStyleCategory.income => Icons.trending_up_rounded,
+    PaymentStyleCategory.method => Icons.payments_outlined,
+  };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -280,20 +297,61 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     } else {
       body = Column(
         children: [
-          // 大类切换条
+          // 标题行：图标 + 页面名 + 添加顶级类别（对齐货品/颜色/单位等基础资料页统一样式）。
+          Padding(
+            padding: const EdgeInsets.only(
+              bottom: UtenSpacing.s8,
+              left: UtenSpacing.s4,
+              right: UtenSpacing.s4,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.payments_outlined,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Text(
+                  '收付款类别',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                if (_canEdit)
+                  UtenButton(
+                    type: UtenButtonType.tonal,
+                    icon: Icons.add_rounded,
+                    onPressed: () => _showCreate(),
+                    child: const Text('添加顶级类别'),
+                  ),
+              ],
+            ),
+          ),
+          // 大类切换条：卡片化容器 + 每类图标，比单排 ChoiceChip 更有层次。
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s8,
-              UtenSpacing.s8,
-              UtenSpacing.s8,
-              UtenSpacing.s4,
+            padding: const EdgeInsets.all(UtenSpacing.s8),
+            margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: UtenRadius.lgAll,
+              border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
             child: Wrap(
-              spacing: 6,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final c in PaymentStyleCategory.values)
                   ChoiceChip(
+                    avatar: Icon(
+                      _categoryIcon(c),
+                      size: 16,
+                      color: c == _category
+                          ? theme.colorScheme.onPrimaryContainer
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
                     label: Text(c.label),
                     selected: c == _category,
                     onSelected: (_) => _switchCategory(c),
@@ -301,7 +359,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
               ],
             ),
           ),
-          const Divider(height: 1),
           Expanded(
             child: bp == UtenBreakpoint.compact
                 ? (selected == null
@@ -375,7 +432,14 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           ),
         ],
       ),
-      body: SafeArea(child: body),
+      body: SafeArea(
+        child: UtenContentContainer(
+          child: Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: body,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -624,13 +688,11 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
               decoration: const InputDecoration(labelText: '名称 *'),
             ),
             const SizedBox(height: UtenSpacing.s12),
-            DropdownButtonFormField<String?>(
-              initialValue: _parent?.id,
-              decoration: const InputDecoration(labelText: '父级'),
-              items: [
-                const DropdownMenuItem<String?>(child: Text('— 顶级 —')),
-                ..._flatOptions(widget.tree),
-              ],
+            UtenDropdownField(
+              label: '父级',
+              hintText: '— 顶级 —',
+              value: _parent?.id,
+              items: _flatOptions(widget.tree),
               onChanged: (v) {
                 setState(() {
                   _parent = v == null ? null : _findById(widget.tree, v);
@@ -659,13 +721,13 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
               value: _departmental,
               onChanged: (v) => setState(() => _departmental = v),
             ),
-            DropdownButtonFormField<String?>(
-              initialValue: _status,
-              decoration: const InputDecoration(labelText: '状态'),
+            UtenDropdownField(
+              label: '状态',
+              hintText: '— 不选 —',
+              value: _status,
               items: const [
-                DropdownMenuItem<String?>(child: Text('— 不选 —')),
-                DropdownMenuItem<String?>(value: '使用', child: Text('使用')),
-                DropdownMenuItem<String?>(value: '禁用', child: Text('禁用')),
+                UtenDropdownItem(value: '使用', label: '使用'),
+                UtenDropdownItem(value: '禁用', label: '禁用'),
               ],
               onChanged: (v) => setState(() => _status = v),
             ),
@@ -695,17 +757,14 @@ class _PaymentStyleEditDialogState extends State<_PaymentStyleEditDialog> {
   }
 
   /// 树扁平化为下拉项（带缩进表示层级）。
-  List<DropdownMenuItem<String?>> _flatOptions(
+  List<UtenDropdownItem> _flatOptions(
     List<PaymentStyleNode> nodes, {
     int depth = 0,
   }) {
-    final out = <DropdownMenuItem<String?>>[];
+    final out = <UtenDropdownItem>[];
     for (final n in nodes) {
       out.add(
-        DropdownMenuItem<String?>(
-          value: n.id,
-          child: Text('${'  ' * depth}${n.name}'),
-        ),
+        UtenDropdownItem(value: n.id, label: '${'  ' * depth}${n.name}'),
       );
       if (n.hasChildren) {
         out.addAll(_flatOptions(n.children, depth: depth + 1));

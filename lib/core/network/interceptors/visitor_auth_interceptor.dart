@@ -112,7 +112,7 @@ class VisitorAuthInterceptor extends Interceptor {
       c.complete(result);
       return result;
     } on DioException catch (error) {
-      final result = isDefinitiveRefreshRejection(error.response?.statusCode)
+      final result = isDefinitiveRefreshRejection(error.response)
           ? TokenRefreshResult.rejected(error)
           : TokenRefreshResult.unavailable(error);
       c.complete(result);

@@ -10,6 +10,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
+import '../widgets/procurement_inbound_badges.dart';
 
 class WarehouseHubPage extends StatelessWidget {
   const WarehouseHubPage({super.key});
@@ -43,13 +44,40 @@ class WarehouseHubPage extends StatelessWidget {
                 ),
               ),
               UtenResponsiveGrid(
-                itemCount: 1,
+                itemCount: 3,
                 spacing: UtenSpacing.s12,
-                columns: const UtenResponsiveColumns(compact: 2, medium: 4),
-                itemBuilder: (context, _, _) => _WarehouseTaskCenterTile(
-                  onTap: () =>
-                      goFrom(context, RouteName.operationsWarehouseWorkbench),
-                ),
+                columns: const UtenResponsiveColumns(medium: 3),
+                itemBuilder: (context, index, _) {
+                  return switch (index) {
+                    0 => _WarehouseTaskCenterTile(
+                      icon: Icons.local_shipping_outlined,
+                      label: '预计到货任务中心',
+                      description: '查看财务已批准的采购和委外订货，登记实际到货',
+                      badge: const WarehouseInboundExpectationBadge(),
+                      onTap: () => goFrom(
+                        context,
+                        RouteName.warehouseInboundExpectations,
+                      ),
+                    ),
+                    1 => _WarehouseTaskCenterTile(
+                      icon: Icons.warning_amber_rounded,
+                      label: '到货异常任务中心',
+                      description: '超量先隔离，等待财务审批后再继续入库',
+                      badge: const WarehouseArrivalExceptionBadge(),
+                      onTap: () =>
+                          goFrom(context, RouteName.warehouseArrivalExceptions),
+                    ),
+                    _ => _WarehouseTaskCenterTile(
+                      icon: Icons.inventory_2_outlined,
+                      label: '生产领料任务中心',
+                      description: '提前备料并跟踪待领取、部分领取和已领取任务',
+                      onTap: () => goFrom(
+                        context,
+                        RouteName.operationsWarehouseWorkbench,
+                      ),
+                    ),
+                  };
+                },
               ),
               const SizedBox(height: UtenSpacing.s20),
               Padding(
@@ -289,9 +317,19 @@ class WarehouseHubPage extends StatelessWidget {
 }
 
 class _WarehouseTaskCenterTile extends StatelessWidget {
-  const _WarehouseTaskCenterTile({required this.onTap});
+  const _WarehouseTaskCenterTile({
+    required this.icon,
+    required this.label,
+    required this.description,
+    required this.onTap,
+    this.badge,
+  });
 
+  final IconData icon;
+  final String label;
+  final String description;
   final VoidCallback onTap;
+  final Widget? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -324,18 +362,28 @@ class _WarehouseTaskCenterTile extends StatelessWidget {
                   color: color.withValues(alpha: 0.1),
                   borderRadius: UtenRadius.mdAll,
                 ),
-                child: Icon(Icons.inventory_2_outlined, color: color, size: 22),
+                child: Icon(icon, color: color, size: 22),
               ),
               const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '生产领料任务中心',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (badge != null) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    badge!,
+                  ],
+                ],
               ),
               const SizedBox(height: 2),
               Text(
-                '提前备料并跟踪待领取、部分领取和已领取任务',
+                description,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

@@ -21,8 +21,8 @@ public class OrderItemLine {
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;
     private BigDecimal giftQty;
-    /** 关联申请明细（可选；有则审核回写 ordered_qty）。 */
-    private UUID requestItemId;
+    /** 关联申请明细（新建/编辑必填；审核时回写 ordered_qty）。 */
+    @NotNull private UUID requestItemId;
     private LocalDate deliverDate;
     private BigDecimal weight;
     private String sourceDocNo;

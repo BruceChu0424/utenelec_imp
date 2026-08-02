@@ -1,73 +1,64 @@
-# App 外壳（导航容器）
+# App 外壳（导航与全局连接状态）
 
-> 路由：`/` (ShellRoute) · 实现源：`lib/features/shell/pages/main_shell_page.dart` + `lib/features/shell/widgets/floating_capsule_nav_bar.dart`
-> 最近重构：2026-07-23（UI v4 · 取消侧边栏，全断点统一悬浮胶囊导航）
+> 路由：`/`（ShellRoute）
+> 实现源：`lib/features/shell/pages/main_shell_page.dart`、`uten_side_nav_rail.dart`、`floating_capsule_nav_bar.dart`、`uten_sliding_tab_view.dart`；全局连接提示位于 `lib/app.dart` 与 `lib/core/ui/connection_recovery_banner.dart`
+> 最近核对：2026-08-02（响应式导航、状态保活、断网自动恢复）
 
 ## 一、定位
 
-登录后所有员工端页面的容器。负责：四大主 Tab 的承载与切换、全局导航入口、未读通知角标。
+登录后员工页面的统一容器，负责四个主 Tab、业务子路由、空闲会话守卫、通知未读数，以及不打断工作的全局连接状态提示。
 
-- UI v4 变化：**取消** v3 的三档外壳（compact 底栏 / medium 折叠 Rail / expanded 左侧分组侧栏），改为**全断点统一**的底部悬浮胶囊导航；原侧边栏的角色分组功能入口全部迁入 [工作台首页](工作台首页.md) 的功能模块区。
+- compact（`<600dp`）：底部悬浮胶囊，支持相邻 Tab 横滑；
+- medium（`600–1279dp`）：左侧纯图标 NavigationRail + Tooltip；
+- expanded（`>=1280dp`）：左侧展开 NavigationRail，常驻文字标签；
+- medium+ 内容区由 `UtenContentContainer(maxWidth: 1600)` 收敛，超宽屏不无限拉伸。
 
-## 二、结构
+## 二、主导航与页面保活
 
-```
-┌──────────────────────────────────────────────┐
-│                                              │
-│   内容区（全屏宽、全高）                        │
-│   · 主 Tab 路由 → 内部 PageView（4 页保活）     │
-│   · 业务子路由 → ShellRoute child              │
-│   （业务页底部自动预留胶囊高度，防遮挡底栏按钮）    │
-│                                              │
-│        ╭─────────────────────────╮           │
-│        │ 工作台  通知•  我的  设置  │ ← 悬浮胶囊  │
-│        ╰─────────────────────────╯   overlay  │
-└──────────────────────────────────────────────┘
-```
+四个主 Tab 为工作台、通知、我的、设置。`UtenSlidingTabView` 让四页常驻并用 `Offstage` 隐藏非当前页，因此滚动位置和页面状态在切换及进入业务子页后仍保留。
 
-### 悬浮胶囊导航（FloatingCapsuleNavBar）
+- compact 点导航或横滑相邻 Tab 时，转场位置与胶囊高亮同步；
+- medium+ 只允许点击 Rail 切换，不做大屏整页横移动画；
+- 深链、路由守卫和导航点击都通过 go_router 同步 URL；
+- 业务子页覆盖在保活主 Tab 之上，返回时不重建主 Tab。
 
-- 交互参考 JustPlay 同款：高 56 / 圆角 28，半透明玻璃底色（浅 `white 0.85` / 深 `#1C2523 0.78`）+ 主色淡投影 + 1px 描边。
-- **整体滑块跟手高亮**：滑块横向位置 = 连续位置 × 单格宽，手指拖多少走多少；文字颜色/字重按与当前位置的距离实时插值。
-- **宽度自适应**：按最长 label 用 `TextPainter` 计算单格宽（64–96 clamp），**携带 `MediaQuery.textScaler`**——全局字号档（小/中/大/超大）调大时胶囊同步变长；外壳宽度 = 内容区 + padding(12) + 描边(2)，防溢出；极端小屏 + 超大字号时 label 由 `FittedBox` 等比缩小兜底。
-- 通知项未读红点（`unreadNoticeCountProvider`，>0 显示）。
-- overlay 悬浮（`Stack` + `Positioned`），**不占布局空间**；`resizeToAvoidBottomInset: false`，键盘弹起不顶胶囊。
+## 三、全局连接恢复提示
 
-### 四页 PageView（跟手滑动）
+`MaterialApp.builder` 在所有路由上方挂载 `ConnectionRecoveryBanner`，不改变当前导航、筛选、输入内容或滚动位置：
 
-- 四个主 Tab（工作台 / 通知 `/notice` / 我的 / 设置）由外壳内部 `PageView` 承载，支持左右跟手滑动；`PageController.page` 连续位置喂给胶囊滑块。
-- 四页 `AutomaticKeepAlive` 保活：滑过的页常驻，滚动位置/页面状态不丢。
-- **路由双向同步**：滑动停稳 → `context.go(tab 路由)` 更新 URL；深链/点胶囊/权限重定向进入 tab 路由 → `animateToPage` 切到对应页。
-- 主 Tab 页自带底部留白 ~96px，滚动到底内容可越过胶囊。
+- GET/HEAD/OPTIONS 安全读遇到瞬态连接故障时最多额外重试两次（400ms、1200ms）；开始重试时显示“网络暂时不稳定，正在自动连接…”，耗尽后显示“暂时连不上服务器，系统会继续自动连接”；
+- 后台只探测同源根路径 `/actuator/health`，按 2/5/10/15 秒上限并带 0.85–1.0 抖动继续尝试；只有状态码 200、响应为 Map 且 `data['status'] == 'UP'` 才算恢复，SPA HTML、空体或空对象不能冒充健康；
+- 恢复后显示“网络已恢复，可以继续使用”，并递增 `recoveryEpoch`。当前明确接入恢复刷新的页面包括生产履约工作台；首页履约分区另在降级期间每 15 秒重新读取。普通 Stateful 页面若未监听恢复事件，不承诺自动重载整个页面；
+- 断开态只提供一个高 48dp 的“立即重试”按钮，避免多入口和技术术语；
+- 提示使用主题语义色、屏幕阅读器 live region，并服从系统“减少动画”设置；
+- “立即重试”会合并重复点击并绕过等待和抖动；403 代表服务可达但没有权限，不能显示成离线；POST/PUT/PATCH/DELETE 也绝不自动重放；
+- 后端权限解析或数据库短暂不可用时返回结构化 `503 SERVICE_UNAVAILABLE`。安全读可以按上述有限次数重试，但该响应证明 HTTP 服务仍可达，不启动全局断网 health 循环、不显示“无权限”，也不清除会话。
 
-### 业务子页面
+浏览器静态入口进程已经停止时，当前页面内代码无法拯救整页刷新。员工生产入口必须使用 Nginx 提供的 Release 静态文件，后端由 systemd/编排器/Windows 服务监督自动拉起，不能使用 `flutter run` 调试端口充当生产入口。
 
-- 其余路由（工资条/报销/人事…）照常渲染 ShellRoute child，胶囊停留在归属 Tab（前缀匹配，如 `/notice/123` → 通知）。
-- 业务页底部预留「胶囊高 + 系统手势条」高度：部分页面自带 `bottomNavigationBar`（提交/审批按钮），预留后永不被胶囊遮挡。
+## 四、结构示意
 
-## 三、涉及的 Uten 组件 / 机制
-
-- `FloatingCapsuleNavBar`（外壳私有组件）
-- `UtenAnim`（切页动画时长/曲线 token）
-- `unreadNoticeCountProvider`（通知未读数）
-- go_router `ShellRoute` + `permission_by_path` 路由守卫
-
-## 四、功能链路图
-
-```mermaid
-flowchart LR
-    Swipe[左右滑动] -->|停稳 onPageChanged| Go[context.go 同步 URL]
-    Tap[点胶囊项] --> Go2[context.go] --> Anim[animateToPage]
-    Deep[深链 /notice] --> Anim
-    Guard[路由守卫拒绝] -->|redirect| Dash[/dashboard]
+```text
+compact                         medium / expanded
+┌──────────────────────┐       ┌──────┬──────────────────────┐
+│ 连接恢复提示（按需）   │       │ Rail │ 连接恢复提示（按需）   │
+│                      │       │      │                      │
+│ 主 Tab / 业务子页面    │       │      │ 主 Tab / 业务子页面    │
+│                      │       │      │                      │
+│ ╭ 工作台 通知 我的 设置╮│       │      │ maxWidth 1600 内容区   │
+└──────────────────────┘       └──────┴──────────────────────┘
 ```
 
-## 五、权限要求
+## 五、权限与边界
 
-- 四个主 Tab 全员可见；业务子页面的显隐与准入由工作台模块区 + 路由守卫按权限点控制（见 [全局机制.md §一](../05-架构/全局机制.md)）。
+- 四个主 Tab 对已登录员工可见；业务入口和子路由继续使用同一份权限映射与服务端授权。
+- 账号停用、授权版本变化或 refresh 的结构化凭据拒绝仍会 fail-closed 退出；瞬态断网、超时、HTML/空体错误、未知 401、结构化 503 和其它 5xx 保留会话。不能仅凭 HTTP 状态族清除令牌。
+- 应用从后台回到前台时刷新通知未读数和列表；连接恢复只刷新网络数据，不重置用户正在操作的本地状态。
+- 极小屏、超大字号和键盘弹出时，compact 胶囊按现有缩放与底部安全区规则避免遮挡；全局连接提示限制最大宽度并允许文案换行。
 
-## 六、边界情况
+## 六、关联
 
-- 滑动中途被系统手势/来电打断：`PageView` 原生吸附回最近页，位置不会悬挂。
-- 屏幕旋转/窗口拉宽：胶囊宽度按当前屏宽与 textScaler 重算，不溢出。
-- 桌面端（鼠标无法拖拽 PageView）：点胶囊切换，动画与移动端一致。
+- [工作台首页](工作台首页.md)
+- [网络层与拦截器](../05-架构/网络层与Mock.md)
+- [全局机制](../05-架构/全局机制.md)
+- [ADR-014 会话超时与 token 刷新](../99-决策记录-ADR/ADR-014-会话超时与token刷新机制修复.md)

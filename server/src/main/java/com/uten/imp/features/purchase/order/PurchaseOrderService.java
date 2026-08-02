@@ -1,5 +1,9 @@
 package com.uten.imp.features.purchase.order;
 
+import com.uten.imp.application.port.ProcurementArrivalControlPort;
+import com.uten.imp.application.port.ProcurementOrderApprovalPort;
+import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
+import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -10,6 +14,9 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
+import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
+import com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderItemDto;
@@ -29,14 +36,17 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 采购订货单服务：CRUD（主+明细）+ 审核状态机。
@@ -46,7 +56,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class PurchaseOrderService {
+public class PurchaseOrderService implements ProcurementOrderApprovalPort {
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -66,6 +76,8 @@ public class PurchaseOrderService {
     private final DocNumberService docNumberService;
     private final ProductionSupplySourceGuard productionSourceGuard;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
+    private final ProcurementApprovalProjectionQuery approvalProjection;
+    private final ProcurementArrivalControlPort arrivalControl;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
@@ -86,7 +98,16 @@ public class PurchaseOrderService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<PurchaseOrder> p = orderRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size, p.getTotalElements(), p.getTotalPages());
+        Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
+                orderType(),
+                p.getContent().stream().collect(Collectors.toMap(
+                        PurchaseOrder::getId,
+                        row -> row.getStatus())));
+        List<OrderListItem> items = p.getContent().stream()
+                .map(row -> toList(row, approvals.get(row.getId())))
+                .toList();
+        return new PageResponse<>(
+                items, page, size, p.getTotalElements(), p.getTotalPages());
     }
 
     @Transactional(readOnly = true)
@@ -114,7 +135,7 @@ public class PurchaseOrderService {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
         if (o.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
-        productionSourceGuard.requirePurchaseOrderMutable(id);
+        approvalProjection.requireMutable(orderType(), id);
         applyHeader(req, o);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -128,46 +149,74 @@ public class PurchaseOrderService {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
         if (o.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
-        productionSourceGuard.requirePurchaseOrderMutable(id);
+        approvalProjection.requireMutable(orderType(), id);
         o.setDeleted(true);
         o.setDeletedAt(OffsetDateTime.now());
         orderRepo.save(o);
     }
 
-    /** 审核：回写申请明细 ordered_qty + 重算申请单 is_closed（订货不入库）。 */
-    @Transactional
-    public OrderDetail approve(UUID id) {
-        tx.bind();
-        PurchaseOrder o = requireOrderForUpdate(id);
-        if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT)
-            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
-        List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
-        if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
-        normalizePersistedItemUnits(items);
-        sourceIntegrity.validatePurchaseOrder(items.stream()
-                .map(it -> new LinkedDocumentIntegrityService.QuantityLinkedLine(
-                        it.getRequestItemId(),
-                        it.getGoodsId(),
-                        it.getColorId(),
-                        it.getUnitId(),
-                        it.getUnitRate(),
-                        it.getQty()))
-                .toList());
-        productionSupply.onPurchaseOrderApproved(id);
-        for (PurchaseOrderItem it : items) {
-            if (it.getRequestItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE purchase_request_items SET ordered_qty = COALESCE(ordered_qty,0) + :q WHERE id = :id")
-                        .setParameter("q", it.getQty())
-                        .setParameter("id", it.getRequestItemId())
-                        .executeUpdate();
-                recalcRequestClosed(it.getRequestItemId());
-            }
+    @Override
+    public String orderType() {
+        return "PURCHASE";
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public OrderSnapshot lockAndValidateFinanceSubmission(UUID id) {
+        PurchaseOrder order = requireOrderForUpdate(id);
+        if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.CONFLICT, "仅草稿订货单可提交或执行财务审核");
         }
-        o.setStatus(STATUS_APPROVED);
-        o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
-        orderRepo.save(o);
-        return detail(id);
+        if (order.getSupplierId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "采购订货单必须指定供应商");
+        }
+        List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
+        }
+        if (items.stream().anyMatch(item -> item.getRequestItemId() == null)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "采购订货每一行都必须关联计划下达的采购申请明细");
+        }
+        normalizePersistedItemUnits(items);
+        requireFinanceCommercialAuthority(order, items);
+        sourceIntegrity.validatePurchaseOrder(items.stream()
+                .map(item -> new LinkedDocumentIntegrityService.QuantityLinkedLine(
+                        item.getRequestItemId(),
+                        item.getGoodsId(),
+                        item.getColorId(),
+                        item.getUnitId(),
+                        item.getUnitRate(),
+                        item.getQty()))
+                .toList());
+        requireCapacityIncludingPending(id, items);
+        return snapshot(order, items);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void applyFinanceApproval(UUID id, UUID approverEmployeeId) {
+        PurchaseOrder order = requireOrderForUpdate(id);
+        if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
+        }
+        List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        productionSupply.onPurchaseOrderApproved(id);
+        for (PurchaseOrderItem item : items) {
+            em.createNativeQuery("""
+                    UPDATE purchase_request_items
+                    SET ordered_qty = COALESCE(ordered_qty, 0) + :qty
+                    WHERE id = :id
+                    """)
+                    .setParameter("qty", item.getQty())
+                    .setParameter("id", item.getRequestItemId())
+                    .executeUpdate();
+            recalcRequestClosed(item.getRequestItemId());
+        }
+        order.setStatus(STATUS_APPROVED);
+        order.setApproverId(approverEmployeeId);
+        orderRepo.save(order);
     }
 
     @Transactional
@@ -194,9 +243,163 @@ public class PurchaseOrderService {
                 recalcRequestClosed(it.getRequestItemId());
             }
         }
+        arrivalControl.cancelForOrderReversal(
+                ProcurementArrivalControlPort.PURCHASE, id);
         o.setStatus(STATUS_REVERSED);
         orderRepo.save(o);
         return detail(id);
+    }
+
+    private void requireCapacityIncludingPending(
+            UUID orderId, List<PurchaseOrderItem> items) {
+        Map<UUID, BigDecimal> submittedBySource = items.stream()
+                .collect(Collectors.toMap(
+                        PurchaseOrderItem::getRequestItemId,
+                        PurchaseOrderItem::getQty,
+                        BigDecimal::add));
+        List<?> lockedSources = em.createNativeQuery("""
+                        SELECT source.id
+                        FROM purchase_request_items source
+                        WHERE source.id IN (:sourceIds)
+                        ORDER BY source.id
+                        FOR UPDATE OF source
+                        """)
+                .setParameter("sourceIds", submittedBySource.keySet())
+                .getResultList();
+        if (lockedSources.size() != submittedBySource.size()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "采购申请来源已变化，请刷新后重试");
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT source.id,
+                               source.qty,
+                               COALESCE(source.ordered_qty, 0),
+                               COALESCE((
+                                   SELECT SUM(pending_item.qty)
+                                   FROM procurement_order_approval_cases approval_case
+                                   JOIN purchase_order_items pending_item
+                                     ON pending_item.order_id = approval_case.order_id
+                                    AND pending_item.is_deleted = FALSE
+                                   JOIN purchase_orders pending_order
+                                     ON pending_order.id = pending_item.order_id
+                                    AND pending_order.is_deleted = FALSE
+                                   WHERE approval_case.order_type = 'PURCHASE'
+                                     AND approval_case.status = 'PENDING'
+                                     AND approval_case.order_id <> :orderId
+                                     AND pending_item.request_item_id = source.id
+                               ), 0)
+                        FROM purchase_request_items source
+                        WHERE source.id IN (:sourceIds)
+                        ORDER BY source.id
+                        """)
+                        .setParameter("orderId", orderId)
+                        .setParameter("sourceIds", submittedBySource.keySet()));
+        if (rows.size() != submittedBySource.size()) {
+            throw new ApiException(ErrorCode.CONFLICT, "采购申请来源已变化，请刷新后重试");
+        }
+        for (Object[] row : rows) {
+            UUID sourceId = (UUID) row[0];
+            BigDecimal capacity = decimal(row[1]);
+            BigDecimal effective = decimal(row[2]);
+            BigDecimal pending = decimal(row[3]);
+            BigDecimal submitted = submittedBySource.get(sourceId);
+            if (effective.add(pending).add(submitted).compareTo(capacity) > 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "采购订货量连同其它待财务审核订单已超过申请剩余量");
+            }
+        }
+    }
+
+    private static void requireFinanceCommercialAuthority(
+            PurchaseOrder order, List<PurchaseOrderItem> items) {
+        BigDecimal rate = order.getExchangeRate() == null
+                ? BigDecimal.ONE
+                : order.getExchangeRate();
+        if (rate.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "采购订货汇率必须大于0");
+        }
+        BigDecimal totalOriginal = BigDecimal.ZERO;
+        BigDecimal totalLocal = BigDecimal.ZERO;
+        for (PurchaseOrderItem item : items) {
+            if (item.getQty() == null || item.getQty().signum() <= 0
+                    || item.getPrice() == null || item.getPrice().signum() < 0
+                    || item.getAmountOriginal() == null
+                    || item.getAmountOriginal().signum() < 0
+                    || item.getAmountLocal() == null
+                    || item.getAmountLocal().signum() < 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "采购订货数量、单价和金额必须完整且不能为负");
+            }
+            BigDecimal expectedOriginal =
+                    money(item.getQty().multiply(item.getPrice()));
+            BigDecimal expectedLocal = money(expectedOriginal.multiply(rate));
+            if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
+                    || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "采购订货金额与数量、单价或汇率不一致");
+            }
+            totalOriginal = totalOriginal.add(expectedOriginal);
+            totalLocal = totalLocal.add(expectedLocal);
+        }
+        if (order.getTotalOriginal() == null
+                || order.getTotalLocal() == null
+                || money(order.getTotalOriginal()).compareTo(money(totalOriginal)) != 0
+                || money(order.getTotalLocal()).compareTo(money(totalLocal)) != 0) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "采购订货表头金额与明细汇总不一致");
+        }
+    }
+
+    private OrderSnapshot snapshot(
+            PurchaseOrder order, List<PurchaseOrderItem> items) {
+        return new OrderSnapshot(
+                orderType(),
+                order.getId(),
+                order.getBillNo(),
+                order.getBillDate(),
+                order.getSupplierId(),
+                order.getWarehouseId(),
+                order.getCurrencyId(),
+                order.getExchangeRate(),
+                order.getTaxRate(),
+                order.getPurchaserId(),
+                order.getMakerId(),
+                order.getDeliverDate(),
+                order.getTotalOriginal(),
+                order.getTotalLocal(),
+                items.stream()
+                        .map(item -> new ItemSnapshot(
+                                item.getId(),
+                                item.getLineNo(),
+                                item.getRequestItemId(),
+                                item.getGoodsId(),
+                                item.getColorId(),
+                                item.getUnitId(),
+                                item.getUnitRate(),
+                                item.getQty(),
+                                item.getPrice(),
+                                item.getAmountOriginal(),
+                                item.getAmountLocal(),
+                                item.getDeliverDate()))
+                        .toList());
+    }
+
+    private static BigDecimal money(BigDecimal value) {
+        return value.setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal decimal(Object value) {
+        return value == null
+                ? BigDecimal.ZERO
+                : value instanceof BigDecimal decimal
+                        ? decimal
+                        : new BigDecimal(value.toString());
     }
 
     private static boolean positive(BigDecimal value) {
@@ -234,6 +437,11 @@ public class PurchaseOrderService {
         int auto = 1;
         for (OrderItemLine l : lines) {
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            if (l.getRequestItemId() == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "第 " + lineNo + " 行必须关联采购申请明细");
+            }
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
                             l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
@@ -287,9 +495,18 @@ public class PurchaseOrderService {
         orderRepo.save(o);
     }
 
-    private OrderListItem toList(PurchaseOrder o) {
-        return new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getSupplierId(),
-                o.getTotalLocal(), o.getStatus(), o.isClosed(), o.getLegacyId());
+    private OrderListItem toList(
+            PurchaseOrder order, FinanceApproval approval) {
+        return new OrderListItem(
+                order.getId(),
+                order.getBillNo(),
+                order.getBillDate(),
+                order.getSupplierId(),
+                order.getTotalLocal(),
+                order.getStatus(),
+                order.isClosed(),
+                order.getLegacyId(),
+                approval);
     }
 
     private OrderItemDto toItemDto(PurchaseOrderItem it) {
@@ -299,20 +516,34 @@ public class PurchaseOrderService {
                 it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark());
     }
 
-    private OrderDetail toDetail(PurchaseOrder o, List<OrderItemDto> items) {
+    private OrderDetail toDetail(PurchaseOrder order, List<OrderItemDto> items) {
         boolean productionLinked =
-                productionSourceGuard.isPurchaseOrderLinked(o.getId());
-        return new OrderDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
-                o.getSupplierId(), o.getWarehouseId(), o.getCurrencyId(), o.getExchangeRate(), o.getTaxRate(),
-                o.getPurchaserId(), o.getMakerId(), o.getApproverId(), o.getDeliverDate(), o.getRemark(),
-                o.getTotalOriginal(), o.getTotalLocal(), o.getStatus(), o.isClosed(), o.getSourceDocNo(), items,
-                nameResolver.nameOf(o.getMakerId()), o.getCreatedAt(),
-                productionLinked, !productionLinked, !productionLinked, true,
-                restrictionReason(productionLinked));
+                productionSourceGuard.isPurchaseOrderLinked(order.getId());
+        FinanceApproval approval = approvalProjection.latestForOrder(
+                orderType(), order.getId(), order.getStatus());
+        boolean pending = approval != null
+                && "PENDING".equals(approval.status());
+        boolean canEdit = order.getStatus() == STATUS_DRAFT
+                && !pending;
+        return new OrderDetail(
+                order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
+                order.getSupplierId(), order.getWarehouseId(), order.getCurrencyId(),
+                order.getExchangeRate(), order.getTaxRate(), order.getPurchaserId(),
+                order.getMakerId(), order.getApproverId(), order.getDeliverDate(),
+                order.getRemark(), order.getTotalOriginal(), order.getTotalLocal(),
+                order.getStatus(), order.isClosed(), order.getSourceDocNo(), items,
+                nameResolver.nameOf(order.getMakerId()), order.getCreatedAt(),
+                productionLinked, canEdit, canEdit,
+                order.getStatus() == STATUS_APPROVED,
+                restrictionReason(pending),
+                approval);
     }
 
-    private String restrictionReason(boolean linked) {
-        return linked ? "该采购订单承接生产物料需求，编辑和删除已锁定；红冲须走守恒校验" : null;
+    private String restrictionReason(boolean financePending) {
+        if (financePending) {
+            return "该采购订单正在财务审核，驳回后方可修改或删除";
+        }
+        return null;
     }
 
     private PurchaseOrder requireOrder(UUID id) {

@@ -3,6 +3,8 @@
 // - 同 message 600ms 内合并去重，避免"先 success 再 fail"的叠加抖动。
 // - 队列上限 3 条（FIFO 出队），防止堆积。
 // - API 错误自动带 fieldErrors，高密度提示。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -291,6 +293,8 @@ class _AppNotificationBanner extends ConsumerStatefulWidget {
 class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
+  late final Timer _autoDismissTimer;
+  bool _dismissing = false;
 
   @override
   void initState() {
@@ -298,22 +302,24 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
+    )..forward();
+    _autoDismissTimer = Timer(
+      Duration(milliseconds: widget.notification.durationMs),
+      _dismiss,
     );
-    Future.delayed(Duration(milliseconds: widget.notification.durationMs), () {
-      if (!mounted) return;
-      ref
-          .read(appNotificationProvider.notifier)
-          .dismiss(widget.notification.id);
-    });
   }
 
   @override
   void dispose() {
+    _autoDismissTimer.cancel();
     _ctrl.dispose();
     super.dispose();
   }
 
   Future<void> _dismiss() async {
+    if (_dismissing) return;
+    _dismissing = true;
+    _autoDismissTimer.cancel();
     await _ctrl.reverse();
     if (!mounted) return;
     ref.read(appNotificationProvider.notifier).dismiss(widget.notification.id);
@@ -349,6 +355,7 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: FadeTransition(
+        key: ValueKey('app-notification-fade-${n.id}'),
         opacity: _ctrl,
         child: SlideTransition(
           position: Tween<Offset>(
@@ -360,70 +367,75 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
             onDismissed: (_) {
               ref.read(appNotificationProvider.notifier).dismiss(n.id);
             },
-            child: Material(
-              color: bg,
-              elevation: 6,
-              shadowColor: fg.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
+            child: Semantics(
+              container: true,
+              liveRegion: true,
+              explicitChildNodes: true,
+              child: Material(
+                color: bg,
+                elevation: 6,
+                shadowColor: fg.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(12),
-                // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
-                onTap: n.onTap == null
-                    ? _dismiss
-                    : () {
-                        n.onTap!();
-                        _dismiss();
-                      },
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(n.icon ?? icon, color: fg, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (n.title != null && n.title!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  n.title!,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    color: fg,
-                                    fontWeight: FontWeight.w600,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
+                  onTap: n.onTap == null
+                      ? _dismiss
+                      : () {
+                          n.onTap!();
+                          _dismiss();
+                        },
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(n.icon ?? icon, color: fg, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (n.title != null && n.title!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 2),
+                                  child: Text(
+                                    n.title!,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      color: fg,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            Text(
-                              n.message,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: fg,
-                              ),
-                            ),
-                            if (n.fieldErrors != null &&
-                                n.fieldErrors!.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: fg.withValues(alpha: 0.85),
-                                  ),
+                              Text(
+                                n.message,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: fg,
                                 ),
                               ),
-                          ],
+                              if (n.fieldErrors != null &&
+                                  n.fieldErrors!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: fg.withValues(alpha: 0.85),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.close_rounded, color: fg, size: 18),
-                        onPressed: _dismiss,
-                        tooltip: '',
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    ],
+                        IconButton(
+                          icon: Icon(Icons.close_rounded, color: fg, size: 18),
+                          onPressed: _dismiss,
+                          tooltip: '关闭通知',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

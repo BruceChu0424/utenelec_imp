@@ -36,6 +36,15 @@ public class ProductionExecutionSegmentController {
         return service.assign(planId, segmentId, request);
     }
 
+    @PostMapping("/{segmentId}/release-defer")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public ExecutionSegmentView releaseDefer(
+            @PathVariable UUID planId,
+            @PathVariable UUID segmentId,
+            @Valid @RequestBody SegmentTransitionRequest request) {
+        return service.releaseDefer(planId, segmentId, request);
+    }
+
     @PostMapping("/{segmentId}/dispatch")
     @PreAuthorize("hasAuthority('production_plan:edit')")
     public ExecutionSegmentView dispatch(

@@ -320,7 +320,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         if (_workerCtrl.text.trim().isNotEmpty)
           'workerName': _workerCtrl.text.trim(),
       }),
-      success: '已生成生产计划（草稿），请确认后审核',
+      success: '已生成计划草稿，请先物料评审与预排，再审核下达',
       errorFallback: '合并排产失败，请稍后重试',
     );
     if (!mounted) return;

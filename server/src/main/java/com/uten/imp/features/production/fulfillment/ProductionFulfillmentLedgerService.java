@@ -42,9 +42,9 @@ public class ProductionFulfillmentLedgerService {
             String idempotencyKey,
             String requestHash,
             String previewFingerprint) {
-        requireKey(idempotencyKey);
+        String normalizedKey = normalizedKey(idempotencyKey);
         ProductionPlanningPackage existing = packageRepo
-                .lockByPlanAndKey(planId, idempotencyKey)
+                .lockByPlanAndKey(planId, normalizedKey)
                 .orElse(null);
         if (existing != null) {
             if (!Objects.equals(existing.getRequestHash(), requestHash)
@@ -53,6 +53,11 @@ public class ProductionFulfillmentLedgerService {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "相同幂等键对应不同计划包请求");
+            }
+            if (!ProductionPlanningPackage.STATUS_CONFIRMED.equals(existing.getStatus())) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "\u8be5\u5e42\u7b49\u952e\u5bf9\u5e94\u7684\u8ba1\u5212\u5305\u5df2\u53d6\u6d88\u6216\u7ea2\u51b2\uff1b\u5982\u9700\u91cd\u65b0\u786e\u8ba4\uff0c\u8bf7\u4f7f\u7528\u65b0\u7684\u5e42\u7b49\u952e");
             }
             return new BeginConfirmation(existing, true);
         }
@@ -65,7 +70,7 @@ public class ProductionFulfillmentLedgerService {
         ProductionPlanningPackage created = new ProductionPlanningPackage();
         created.setPlanId(planId);
         created.setWarehouseId(warehouseId);
-        created.setIdempotencyKey(idempotencyKey.strip());
+        created.setIdempotencyKey(normalizedKey);
         created.setRequestHash(requestHash);
         created.setPreviewFingerprint(previewFingerprint);
         created.setStatus(ProductionPlanningPackage.STATUS_CONFIRMED);
@@ -333,7 +338,7 @@ public class ProductionFulfillmentLedgerService {
             UUID packageId,
             LifecycleAction action,
             String idempotencyKey) {
-        requireKey(idempotencyKey);
+        String normalizedKey = normalizedKey(idempotencyKey);
         ProductionPlanningPackage planningPackage = em.find(
                 ProductionPlanningPackage.class,
                 packageId,
@@ -350,7 +355,7 @@ public class ProductionFulfillmentLedgerService {
                 ? planningPackage.getCancelIdempotencyKey()
                 : planningPackage.getReverseIdempotencyKey();
         if (target.equals(planningPackage.getStatus())) {
-            if (Objects.equals(storedKey, idempotencyKey)) {
+            if (Objects.equals(storedKey, normalizedKey)) {
                 return new LifecycleHandle(planningPackage, List.of(), true);
             }
             throw new ApiException(
@@ -442,10 +447,10 @@ public class ProductionFulfillmentLedgerService {
         ProductionPlanningPackage planningPackage = handle.planningPackage();
         if (action == LifecycleAction.CANCEL) {
             planningPackage.setStatus(ProductionPlanningPackage.STATUS_CANCELLED);
-            planningPackage.setCancelIdempotencyKey(idempotencyKey);
+            planningPackage.setCancelIdempotencyKey(normalizedKey(idempotencyKey));
         } else {
             planningPackage.setStatus(ProductionPlanningPackage.STATUS_REVERSED);
-            planningPackage.setReverseIdempotencyKey(idempotencyKey);
+            planningPackage.setReverseIdempotencyKey(normalizedKey(idempotencyKey));
         }
         planningPackage.setLifecycleReason(normalizeReason(reason));
         planningPackage.setLockVersion(planningPackage.getLockVersion() + 1);
@@ -509,6 +514,11 @@ public class ProductionFulfillmentLedgerService {
                     ErrorCode.VALIDATION_FAILED,
                     "幂等键长度必须为 8 到 128 个字符");
         }
+    }
+
+    private static String normalizedKey(String key) {
+        requireKey(key);
+        return key.strip();
     }
 
     private static String normalizeReason(String reason) {

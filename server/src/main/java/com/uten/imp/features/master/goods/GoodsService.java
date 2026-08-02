@@ -225,25 +225,31 @@ public class GoodsService {
         return categoryRepo.findSubtree(categoryId).stream().map(MaterialCategory::getId).toList();
     }
 
-    /** 批量按 legacy_id 查 colors 取 name（仅未软删）。空集合返回空 map。 */
+    /**
+     * 批量按 legacy_id 查 colors 取 name（仅未软删）。空集合返回空 map。
+     * 历史迁移允许颜色名称为 null；此类记录不放入名称 map，调用方保留 legacy id 并按未解析处理。
+     */
     private Map<Integer, String> colorNamesFor(Collection<Integer> legacyIds) {
         Set<Integer> distinct = legacyIds.stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         if (distinct.isEmpty()) return Map.of();
         return colorRepo.findByLegacyIdInAndDeletedFalse(distinct).stream()
-                .filter(c -> c.getLegacyId() != null)
+                .filter(c -> c.getLegacyId() != null && c.getName() != null)
                 .collect(Collectors.toMap(Color::getLegacyId, Color::getName, (a, b) -> a));
     }
 
-    /** 批量按 legacy_id 查 units 取 name（仅未软删）。空集合返回空 map。 */
+    /**
+     * 批量按 legacy_id 查 units 取 name（仅未软删）。空集合返回空 map。
+     * 历史迁移允许单位名称为 null；此类记录不放入名称 map，调用方保留 legacy id 并按未解析处理。
+     */
     private Map<Integer, String> unitNamesFor(Collection<Integer> legacyIds) {
         Set<Integer> distinct = legacyIds.stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         if (distinct.isEmpty()) return Map.of();
         return unitRepo.findByLegacyIdInAndDeletedFalse(distinct).stream()
-                .filter(u -> u.getLegacyId() != null)
+                .filter(u -> u.getLegacyId() != null && u.getName() != null)
                 .collect(Collectors.toMap(Unit::getLegacyId, Unit::getName, (a, b) -> a));
     }
 
@@ -627,10 +633,10 @@ public class GoodsService {
                 g.getColor() == null ? g.getColorLegacyId() : g.getColor().getLegacyId(),
                 g.getUnit() == null ? g.getUnitLegacyId() : g.getUnit().getLegacyId(),
                 g.getColor() == null
-                        ? colorNames.get(g.getColorLegacyId())
+                        ? (g.getColorLegacyId() == null ? null : colorNames.get(g.getColorLegacyId()))
                         : (g.getColor().isDeleted() ? null : g.getColor().getName()),
                 g.getUnit() == null
-                        ? unitNames.get(g.getUnitLegacyId())
+                        ? (g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()))
                         : (g.getUnit().isDeleted() ? null : g.getUnit().getName()),
                 g.getSourceType(),
                 g.getCategory() == null ? null : g.getCategory().getId(),

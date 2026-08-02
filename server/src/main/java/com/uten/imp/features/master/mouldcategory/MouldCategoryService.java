@@ -23,6 +23,9 @@ import java.util.*;
 @RequiredArgsConstructor
 public class MouldCategoryService {
 
+    private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
+            "SELECT pg_advisory_xact_lock(hashtextextended('MOULD_CATEGORY_HIERARCHY',0))";
+
     private final MouldCategoryRepository repo;
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -82,21 +85,26 @@ public class MouldCategoryService {
     @Transactional
     public MouldCategoryDetail update(UUID id, MouldCategoryUpdateRequest req) {
         tx.bind();
+        if (req.getParentId() != null) {
+            lockCategoryHierarchy();
+        }
         MouldCategory c = requireCategory(id);
         c.setName(req.getName());
         if (req.getSortOrder() != null) {
             c.setSortOrder(req.getSortOrder());
         }
-        boolean parentChanged = false;
-        if (req.getParentId() != null) {
-            if (req.getParentId().equals(id)) {
+        UUID currentParentId = c.getParent() == null ? null : c.getParent().getId();
+        UUID requestedParentId = req.getParentId();
+        boolean parentChanged = requestedParentId != null
+                && !requestedParentId.equals(currentParentId);
+        if (parentChanged) {
+            if (requestedParentId.equals(id)) {
                 throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
             }
-            if (repo.isDescendant(id, req.getParentId())) {
+            if (repo.isDescendant(id, requestedParentId)) {
                 throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下（会成环）");
             }
-            c.setParent(requireCategory(req.getParentId()));
-            parentChanged = true;
+            c.setParent(requireCategory(requestedParentId));
         }
         repo.save(c);
         em.flush();
@@ -119,16 +127,15 @@ public class MouldCategoryService {
         repo.save(c);
     }
 
-    /** 改父级后重算子树 level（findSubtree 按 path 排序，父先于子）。 */
+    /** 移动后按 parent 关系递归重算整棵子树 level/path，不依赖移动前的旧 path 排序。 */
     private void relevelSubtree(UUID rootId) {
-        List<MouldCategory> nodes = repo.findSubtree(rootId);
-        Map<UUID, Integer> levelById = new HashMap<>();
-        for (MouldCategory c : nodes) {
-            int lvl = c.getParent() == null ? 0 : levelById.getOrDefault(c.getParent().getId(), 0) + 1;
-            c.setLevel(lvl);
-            levelById.put(c.getId(), lvl);
+        if (repo.rebuildSubtreeHierarchy(rootId) == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "模具分类子树结构异常，无法安全移动");
         }
-        repo.saveAll(nodes);
+    }
+
+    private void lockCategoryHierarchy() {
+        em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
     }
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */

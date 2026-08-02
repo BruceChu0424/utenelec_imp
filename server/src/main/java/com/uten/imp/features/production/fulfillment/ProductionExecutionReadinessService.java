@@ -74,6 +74,7 @@ public class ProductionExecutionReadinessService {
                         JOIN production_execution_segments segment
                           ON segment.id = d.execution_segment_id
                          AND segment.status = 'WAITING'
+                         AND segment.auto_promote_when_ready = TRUE
                          AND segment.is_deleted = FALSE
                         WHERE receipt_item.receipt_id = :receiptId
                           AND receipt_item.is_deleted = FALSE
@@ -111,6 +112,7 @@ public class ProductionExecutionReadinessService {
                         JOIN production_execution_segments segment
                           ON segment.id = demand.execution_segment_id
                          AND segment.status = 'WAITING'
+                         AND segment.auto_promote_when_ready = TRUE
                          AND segment.is_deleted = FALSE
                         WHERE receipt_item.receipt_id = :receiptId
                           AND receipt_item.is_deleted = FALSE
@@ -124,6 +126,145 @@ public class ProductionExecutionReadinessService {
                     triggeringReceiptId,
                     warehouseId,
                     ReceiptKind.SUBCONTRACT);
+        }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockFinishedInboundProductionDimensions(
+            UUID receiptId,
+            UUID warehouseId) {
+        if (receiptId == null || warehouseId == null) {
+            return;
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                WITH receipt_segments AS (
+                                    SELECT DISTINCT
+                                           demand.execution_segment_id
+                                    FROM stock_document_items receipt_item
+                                    JOIN production_material_supply_pegs peg
+                                      ON peg.supply_type =
+                                            'PRODUCTION_PLAN_ITEM'
+                                     AND peg.supply_item_id =
+                                            receipt_item.upstream_item_id
+                                     AND peg.status <> 'REVERSED'
+                                    JOIN production_material_demands demand
+                                      ON demand.id = peg.demand_id
+                                     AND demand.execution_segment_id
+                                            IS NOT NULL
+                                     AND demand.is_deleted = FALSE
+                                     AND demand.warehouse_id = :warehouseId
+                                    JOIN production_execution_segments segment
+                                      ON segment.id =
+                                            demand.execution_segment_id
+                                     AND segment.is_deleted = FALSE
+                                     AND segment.auto_promote_when_ready = TRUE
+                                    JOIN production_planning_packages package
+                                      ON package.id = segment.package_id
+                                     AND package.status = 'CONFIRMED'
+                                     AND package.execution_model_version = 1
+                                     AND package.is_deleted = FALSE
+                                    WHERE receipt_item.doc_id = :receiptId
+                                      AND receipt_item.bill_type =
+                                            'FINISHED_IN'
+                                      AND receipt_item.is_deleted = FALSE
+                                ), dimensions AS (
+                                    SELECT receipt_item.goods_id,
+                                           receipt_item.color_id
+                                    FROM stock_document_items receipt_item
+                                    WHERE receipt_item.doc_id = :receiptId
+                                      AND receipt_item.bill_type =
+                                            'FINISHED_IN'
+                                      AND receipt_item.is_deleted = FALSE
+                                      AND receipt_item.goods_id IS NOT NULL
+                                    UNION ALL
+                                    SELECT demand.goods_id, demand.color_id
+                                    FROM receipt_segments source
+                                    JOIN production_material_demands demand
+                                      ON demand.execution_segment_id =
+                                            source.execution_segment_id
+                                     AND demand.is_deleted = FALSE
+                                     AND demand.status NOT IN (
+                                            'RELEASED', 'REVERSED')
+                                     AND demand.warehouse_id = :warehouseId
+                                )
+                                SELECT DISTINCT goods_id, color_id
+                                FROM dimensions
+                                ORDER BY goods_id, color_id NULLS FIRST
+                                """)
+                        .setParameter("receiptId", receiptId)
+                        .setParameter("warehouseId", warehouseId));
+        stockAllocation.lockMaterialDimensions(rows.stream()
+                .map(row -> new ProductionMaterialAllocationFacade
+                        .MaterialDimension(
+                        uuid(row[0]), uuid(row[1])))
+                .toList());
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void onFinishedInboundApproved(
+            UUID triggeringReceiptId,
+            UUID warehouseId) {
+        List<UUID> segmentIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT DISTINCT demand.execution_segment_id
+                                FROM stock_document_items receipt_item
+                                JOIN stock_documents receipt
+                                  ON receipt.id = receipt_item.doc_id
+                                 AND receipt.doc_type = 'FINISHED_IN'
+                                 AND receipt.is_deleted = FALSE
+                                 AND receipt.warehouse_id = :warehouseId
+                                JOIN production_material_supply_pegs peg
+                                  ON peg.supply_type =
+                                        'PRODUCTION_PLAN_ITEM'
+                                 AND peg.supply_item_id =
+                                        receipt_item.upstream_item_id
+                                 AND peg.status <> 'REVERSED'
+                                JOIN production_material_demands demand
+                                  ON demand.id = peg.demand_id
+                                 AND demand.execution_segment_id IS NOT NULL
+                                 AND demand.is_deleted = FALSE
+                                 AND demand.warehouse_id = :warehouseId
+                                JOIN production_execution_segments segment
+                                  ON segment.id = demand.execution_segment_id
+                                 AND segment.status = 'WAITING'
+                                 AND segment.auto_promote_when_ready = TRUE
+                                 AND segment.is_deleted = FALSE
+                                WHERE receipt_item.doc_id = :receiptId
+                                  AND receipt_item.bill_type = 'FINISHED_IN'
+                                  AND receipt_item.is_deleted = FALSE
+                                ORDER BY demand.execution_segment_id
+                                """, UUID.class)
+                        .setParameter("receiptId", triggeringReceiptId)
+                        .setParameter("warehouseId", warehouseId),
+                UUID.class);
+        for (UUID segmentId : segmentIds) {
+            tryPromote(
+                    segmentId,
+                    triggeringReceiptId,
+                    warehouseId,
+                    ReceiptKind.MAKE);
+        }
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void beforeFinishedInboundReversed(UUID receiptId) {
+        List<UUID> segmentIds = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT DISTINCT demand.execution_segment_id
+                                FROM production_material_make_receipt_allocations
+                                     allocation
+                                JOIN production_material_demands demand
+                                  ON demand.id = allocation.demand_id
+                                WHERE allocation.receipt_id = :receiptId
+                                  AND allocation.status = 'EFFECTIVE'
+                                  AND demand.execution_segment_id IS NOT NULL
+                                ORDER BY demand.execution_segment_id
+                                """, UUID.class)
+                        .setParameter("receiptId", receiptId),
+                UUID.class);
+        for (UUID segmentId : segmentIds) {
+            unwindPromotedSegment(segmentId);
         }
     }
 
@@ -344,6 +485,33 @@ public class ProductionExecutionReadinessService {
                                 uuid(row[1]),
                                 decimal(row[2]),
                                 uuid(row[3]))));
+        NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT allocation.id,
+                                       allocation.supply_peg_id,
+                                       allocation.allocated_qty,
+                                       allocation.draw_id
+                                FROM
+                                  production_material_make_receipt_allocations
+                                    allocation
+                                JOIN production_material_demands demand
+                                  ON demand.id = allocation.demand_id
+                                JOIN production_material_supply_pegs peg
+                                  ON peg.id = allocation.supply_peg_id
+                                WHERE demand.execution_segment_id = :segmentId
+                                  AND allocation.status = 'EFFECTIVE'
+                                ORDER BY allocation.supply_peg_id,
+                                         allocation.id
+                                FOR UPDATE OF allocation, peg
+                                """)
+                        .setParameter("segmentId", segmentId))
+                .forEach(row -> allocations.add(
+                        new ReceiptAllocationRow(
+                                ReceiptKind.MAKE,
+                                uuid(row[0]),
+                                uuid(row[1]),
+                                decimal(row[2]),
+                                uuid(row[3]))));
         if (allocations.isEmpty()
                 || allocations.stream().anyMatch(row ->
                         !drawIds.contains(row.drawId()))) {
@@ -435,9 +603,7 @@ public class ProductionExecutionReadinessService {
         }
         for (Map.Entry<ReceiptKind, List<UUID>> entry
                 : allocationIds.entrySet()) {
-            String table = entry.getKey() == ReceiptKind.PURCHASE
-                    ? "production_material_receipt_allocations"
-                    : "production_material_subcontract_receipt_allocations";
+            String table = allocationTable(entry.getKey());
             int reversed = em.createNativeQuery("""
                             UPDATE %s
                             SET status = 'REVERSED',
@@ -520,11 +686,60 @@ public class ProductionExecutionReadinessService {
         ledger.refreshDemandStatuses(demandIds);
     }
 
+    /**
+     * Acquires the canonical material-dimension locks before the segment row
+     * lock used by a manual defer release. This preserves the same ordering as
+     * receipt-driven promotion and avoids an inventory-dimension/segment cycle.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID lockManualReleaseDimensions(
+            UUID planId,
+            UUID segmentId) {
+        List<UUID> warehouses = NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                                SELECT package.warehouse_id
+                                FROM production_execution_segments segment
+                                JOIN production_planning_packages package
+                                  ON package.id = segment.package_id
+                                 AND package.execution_model_version = 1
+                                 AND package.is_deleted = FALSE
+                                WHERE segment.id = :segmentId
+                                  AND segment.plan_id = :planId
+                                  AND segment.is_deleted = FALSE
+                                """)
+                        .setParameter("segmentId", segmentId)
+                        .setParameter("planId", planId),
+                UUID.class);
+        if (warehouses.isEmpty() || warehouses.getFirst() == null) {
+            return null;
+        }
+        UUID warehouseId = warehouses.getFirst();
+        lockExecutionSegmentMaterialDimensions(segmentId, warehouseId);
+        return warehouseId;
+    }
+
+    /**
+     * Re-evaluates a just-released USER_DEFER segment. Already approved,
+     * provenance-matching receipts may satisfy open pegs; otherwise the segment
+     * remains WAITING with automatic receipt-driven promotion enabled.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void promoteAfterManualRelease(
+            UUID segmentId,
+            UUID warehouseId) {
+        if (segmentId == null || warehouseId == null) {
+            return;
+        }
+        tryPromote(segmentId, segmentId, warehouseId, null);
+    }
+
     private void tryPromote(
             UUID segmentId,
             UUID triggeringReceiptId,
             UUID expectedWarehouseId,
             ReceiptKind triggeringKind) {
+        lockExecutionSegmentMaterialDimensions(
+                segmentId, expectedWarehouseId);
         List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT segment.package_id,
@@ -541,6 +756,7 @@ public class ProductionExecutionReadinessService {
                                 JOIN production_plans plan
                                   ON plan.id = segment.plan_id
                                 WHERE segment.id = :segmentId
+                                  AND segment.auto_promote_when_ready = TRUE
                                   AND segment.is_deleted = FALSE
                                 FOR UPDATE OF segment, package
                                 """)
@@ -582,12 +798,6 @@ public class ProductionExecutionReadinessService {
             throw conflict("Execution segment has no material demands");
         }
 
-        stockAllocation.lockMaterialDimensions(demands.stream()
-                .map(demand ->
-                        new ProductionMaterialAllocationFacade
-                                .MaterialDimension(
-                                demand.goodsId(), demand.colorId()))
-                .toList());
         if (!isFullyAvailable(warehouseId, demands)) {
             return;
         }
@@ -622,7 +832,8 @@ public class ProductionExecutionReadinessService {
                                         demand.colorId(),
                                         warehouseId,
                                         demand.requiredQty(),
-                                        packageId + ":REKIT:" + demand.id(),
+                                        packageId + ":REKIT:" + demand.id()
+                                                + ":" + triggeringReceiptId,
                                         currentUser.requireId()))
                         .toList());
         Map<UUID, ProductionMaterialAllocationFacade.AllocationResult>
@@ -661,7 +872,8 @@ public class ProductionExecutionReadinessService {
                         contribution.qty(),
                         ++lineNo,
                         planNo,
-                        "Purchase receipt " + contribution.receiptId());
+                        contribution.kind().name()
+                                + " receipt " + contribution.receiptId());
                 recordReceiptAllocation(
                         contribution,
                         packageId,
@@ -698,6 +910,7 @@ public class ProductionExecutionReadinessService {
                             updated_by = :actorId
                         WHERE id = :segmentId
                           AND status = 'WAITING'
+                          AND auto_promote_when_ready = TRUE
                           AND is_deleted = FALSE
                         """)
                 .setParameter("actorId", currentUser.requireId())
@@ -711,7 +924,9 @@ public class ProductionExecutionReadinessService {
         chainNotice.notifyExecutionSegmentReady(
                 segmentId,
                 triggeringReceiptId,
-                triggeringKind.name());
+                triggeringKind == null
+                        ? "MANUAL_RELEASE"
+                        : triggeringKind.name());
     }
 
     private boolean isFullyAvailable(
@@ -771,6 +986,29 @@ public class ProductionExecutionReadinessService {
                 available.getOrDefault(
                                 demand.id(), BigDecimal.ZERO)
                         .compareTo(demand.requiredQty()) >= 0);
+    }
+
+    private void lockExecutionSegmentMaterialDimensions(
+            UUID segmentId,
+            UUID warehouseId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT DISTINCT goods_id, color_id
+                                FROM production_material_demands
+                                WHERE execution_segment_id = :segmentId
+                                  AND warehouse_id = :warehouseId
+                                  AND is_deleted = FALSE
+                                  AND status NOT IN (
+                                      'RELEASED', 'REVERSED')
+                                ORDER BY goods_id, color_id NULLS FIRST
+                                """)
+                        .setParameter("segmentId", segmentId)
+                        .setParameter("warehouseId", warehouseId));
+        stockAllocation.lockMaterialDimensions(rows.stream()
+                .map(row -> new ProductionMaterialAllocationFacade
+                        .MaterialDimension(
+                        uuid(row[0]), uuid(row[1])))
+                .toList());
     }
 
     private Map<UUID, List<ReceiptContribution>> receiptContributions(
@@ -911,6 +1149,82 @@ public class ProductionExecutionReadinessService {
                             .setParameter(
                                     "triggeringReceiptId",
                                     triggeringKind == ReceiptKind.SUBCONTRACT
+                                            ? triggeringReceiptId
+                                            : new UUID(0L, 0L))));
+            rows.addAll(NativeQueryResults.objectArrayRows(
+                    em.createNativeQuery("""
+                                    SELECT receipt.id,
+                                           receipt_item.id,
+                                           peg.id,
+                                           LEAST(
+                                               peg.allocated_qty
+                                                   - peg.consumed_qty
+                                                   - peg.released_qty,
+                                               COALESCE(
+                                                   receipt_item.base_qty,
+                                                   receipt_item.qty
+                                                       * COALESCE(
+                                                           receipt_item.unit_rate,
+                                                           1))
+                                                   - COALESCE((
+                                                       SELECT SUM(
+                                                           allocation
+                                                               .allocated_qty)
+                                                       FROM
+                                                         production_material_make_receipt_allocations
+                                                           allocation
+                                                       WHERE allocation
+                                                               .receipt_item_id
+                                                             = receipt_item.id
+                                                         AND allocation.status
+                                                             = 'EFFECTIVE'
+                                                   ), 0)
+                                           ) AS available_qty,
+                                           peg.allocated_qty
+                                               - peg.consumed_qty
+                                               - peg.released_qty
+                                               AS peg_available_qty,
+                                           'MAKE'::text AS receipt_kind,
+                                           receipt.bill_date
+                                    FROM production_material_supply_pegs peg
+                                    JOIN stock_document_items receipt_item
+                                      ON receipt_item.upstream_item_id =
+                                         peg.supply_item_id
+                                     AND receipt_item.bill_type =
+                                         'FINISHED_IN'
+                                     AND receipt_item.is_deleted = FALSE
+                                    JOIN stock_documents receipt
+                                      ON receipt.id = receipt_item.doc_id
+                                     AND receipt.doc_type = 'FINISHED_IN'
+                                     AND receipt.is_deleted = FALSE
+                                     AND receipt.warehouse_id = :warehouseId
+                                    WHERE peg.demand_id = :demandId
+                                      AND peg.supply_type =
+                                          'PRODUCTION_PLAN_ITEM'
+                                      AND peg.status <> 'REVERSED'
+                                      AND peg.allocated_qty
+                                            - peg.consumed_qty
+                                            - peg.released_qty > 0
+                                      AND receipt_item.goods_id = :goodsId
+                                      AND receipt_item.color_id IS NOT DISTINCT
+                                          FROM :colorId
+                                      AND receipt_item.unit_id = :unitId
+                                      AND (
+                                          receipt.status = 1
+                                          OR receipt.id = :triggeringReceiptId
+                                      )
+                                    ORDER BY receipt.bill_date,
+                                             receipt.id, receipt_item.id
+                                    FOR UPDATE OF peg, receipt_item, receipt
+                                    """)
+                            .setParameter("warehouseId", warehouseId)
+                            .setParameter("demandId", demand.id())
+                            .setParameter("goodsId", demand.goodsId())
+                            .setParameter("colorId", demand.colorId())
+                            .setParameter("unitId", demand.unitId())
+                            .setParameter(
+                                    "triggeringReceiptId",
+                                    triggeringKind == ReceiptKind.MAKE
                                             ? triggeringReceiptId
                                             : new UUID(0L, 0L))));
             rows.sort(Comparator
@@ -1102,14 +1416,13 @@ public class ProductionExecutionReadinessService {
             UUID reservationId,
             UUID drawId,
             UUID drawItemId) {
-        String table = contribution.kind() == ReceiptKind.PURCHASE
-                ? "production_material_receipt_allocations"
-                : "production_material_subcontract_receipt_allocations";
+        String table = allocationTable(contribution.kind());
+        String pegColumn = allocationPegColumn(contribution.kind());
         em.createNativeQuery("""
                         INSERT INTO
                             %s (
                                 receipt_id, receipt_item_id, package_id,
-                                demand_id, order_peg_id, reservation_id,
+                                demand_id, %s, reservation_id,
                                 draw_id, draw_item_id, allocated_qty,
                                 status, idempotency_key,
                                 created_at, updated_at,
@@ -1120,7 +1433,7 @@ public class ProductionExecutionReadinessService {
                             :drawId, :drawItemId, :qty,
                             'EFFECTIVE', :key,
                             now(), now(), :actorId, :actorId)
-                        """.formatted(table))
+                        """.formatted(table, pegColumn))
                 .setParameter(
                         "receiptId", contribution.receiptId())
                 .setParameter(
@@ -1135,16 +1448,41 @@ public class ProductionExecutionReadinessService {
                 .setParameter("qty", contribution.qty())
                 .setParameter(
                         "key",
-                        (contribution.kind() == ReceiptKind.PURCHASE
-                                ? "SEG-REKIT:"
-                                : "SEG-SUB-REKIT:")
+                        allocationKeyPrefix(contribution.kind())
                                 + contribution.receiptItemId()
                                 + ":"
-                                + contribution.pegId())
+                                + contribution.pegId()
+                                + ":"
+                                + reservationId)
                 .setParameter("actorId", currentUser.requireId())
                 .executeUpdate();
     }
 
+
+    private static String allocationTable(ReceiptKind kind) {
+        return switch (kind) {
+            case PURCHASE ->
+                    "production_material_receipt_allocations";
+            case SUBCONTRACT ->
+                    "production_material_subcontract_receipt_allocations";
+            case MAKE ->
+                    "production_material_make_receipt_allocations";
+        };
+    }
+
+    private static String allocationPegColumn(ReceiptKind kind) {
+        return kind == ReceiptKind.MAKE
+                ? "supply_peg_id"
+                : "order_peg_id";
+    }
+
+    private static String allocationKeyPrefix(ReceiptKind kind) {
+        return switch (kind) {
+            case PURCHASE -> "SEG-REKIT:";
+            case SUBCONTRACT -> "SEG-SUB-REKIT:";
+            case MAKE -> "SEG-MAKE-REKIT:";
+        };
+    }
     private static BigDecimal decimal(Object value) {
         if (value == null) return BigDecimal.ZERO;
         if (value instanceof BigDecimal decimal) return decimal;
@@ -1196,6 +1534,7 @@ public class ProductionExecutionReadinessService {
 
     private enum ReceiptKind {
         PURCHASE,
-        SUBCONTRACT
+        SUBCONTRACT,
+        MAKE
     }
 }

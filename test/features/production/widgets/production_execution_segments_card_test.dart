@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_execution_segments_card.dart';
@@ -53,6 +54,38 @@ void main() {
     expect(find.text('调整分配'), findsOneWidget);
     expect(find.text('派工'), findsOneWidget);
     expect(find.text('分批报工'), findsNothing);
+  });
+
+  testWidgets('manual defer can be released and rechecked', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    RequestOptions? command;
+
+    await tester.pumpWidget(
+      _app(
+        repository: _repository(
+          status: 'WAITING',
+          autoPromoteWhenReady: false,
+          onCommand: (request) => command = request,
+        ),
+        canEdit: true,
+        canReport: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('人工暂缓'), findsOneWidget);
+    await tester.tap(find.text('SEG-001'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('解除人工暂缓'), findsWidgets);
+    await tester.tap(find.widgetWithText(UtenButton, '解除人工暂缓'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认解除'));
+    await tester.pumpAndSettle();
+
+    expect(command?.path, endsWith('/release-defer'));
+    expect(command?.data, containsPair('expectedVersion', 1));
   });
 
   testWidgets('execution-segment deep link opens one detail dialog', (
@@ -118,23 +151,41 @@ Widget _app({
   );
 }
 
-ProductionPlanRepository _repository({required String status}) {
+ProductionPlanRepository _repository({
+  required String status,
+  bool autoPromoteWhenReady = true,
+  void Function(RequestOptions request)? onCommand,
+}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) => handler.resolve(
-        Response<dynamic>(
-          requestOptions: request,
-          statusCode: 200,
-          data: [_segmentJson(status: status)],
-        ),
-      ),
+      onRequest: (request, handler) {
+        final isRead = request.method == 'GET';
+        if (!isRead) onCommand?.call(request);
+        return handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: isRead
+                ? [
+                    _segmentJson(
+                      status: status,
+                      autoPromoteWhenReady: autoPromoteWhenReady,
+                    ),
+                  ]
+                : _segmentJson(status: status),
+          ),
+        );
+      },
     ),
   );
   return ProductionPlanRepository(ApiClient(dio));
 }
 
-Map<String, dynamic> _segmentJson({required String status}) => {
+Map<String, dynamic> _segmentJson({
+  required String status,
+  bool autoPromoteWhenReady = true,
+}) => {
   'id': 'segment-1',
   'packageId': 'package-1',
   'planId': 'plan-1',
@@ -150,6 +201,7 @@ Map<String, dynamic> _segmentJson({required String status}) => {
   'reportedQty': 3,
   'remainingQty': 7,
   'status': status,
+  'autoPromoteWhenReady': autoPromoteWhenReady,
   'workshopDepartmentId': 'workshop-1',
   'workshopName': '装配一车间',
   'teamDepartmentId': 'team-1',

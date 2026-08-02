@@ -21,6 +21,13 @@ public class DepartmentService {
     private static final Set<String> CURRENT_EMPLOYEE_STATUSES =
             Set.of("active", "probation", "onLeave");
 
+    /** 组织骨架由迁移维护，不能通过普通部门编辑改变其结构位置。 */
+    private static final Set<String> IMMUTABLE_STRUCTURE_LEVELS =
+            Set.of("公司", "决策层", "管理中心");
+
+    private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
+            "SELECT pg_advisory_xact_lock(hashtextextended('DEPARTMENT_HIERARCHY',0))";
+
     private final DepartmentRepository deptRepo;
     private final EmployeeRepository empRepo;
     private final EntityManager em;
@@ -67,6 +74,7 @@ public class DepartmentService {
             d.setParent(requireDept(req.getParentId()));
         }
         if (req.getManagerId() != null) {
+            rejectStructureNodeManager(req.getLevel());
             d.setManager(requireCurrentEmployee(req.getManagerId()));
         }
         d = deptRepo.save(d); // UUID 构造时赋值→isNew=false→save 走 merge 返回托管副本；用返回值，否则 em.refresh(游离 d) 报 "Entity not managed"
@@ -78,6 +86,9 @@ public class DepartmentService {
     @Transactional
     public DepartmentDetail update(UUID id, DepartmentUpdateRequest req) {
         tx.bind();
+        if (req.getParentId() != null) {
+            lockDepartmentHierarchy();
+        }
         Department d = requireDept(id);
         d.setName(req.getName());
         if (req.getSortOrder() != null) {
@@ -87,6 +98,7 @@ public class DepartmentService {
             if (req.getManagerId() == null) {
                 d.setManager(null);
             } else {
+                rejectStructureNodeManager(d.getLevel());
                 Employee manager = requireCurrentEmployee(req.getManagerId());
                 if (manager.getDepartment() == null
                         || !id.equals(manager.getDepartment().getId())) {
@@ -97,16 +109,23 @@ public class DepartmentService {
                 d.setManager(manager);
             }
         }
-        boolean parentChanged = false;
-        if (req.getParentId() != null) {
-            if (req.getParentId().equals(id)) {
+        UUID currentParentId = d.getParent() == null ? null : d.getParent().getId();
+        UUID requestedParentId = req.getParentId();
+        boolean parentChanged = requestedParentId != null
+                && !requestedParentId.equals(currentParentId);
+        if (parentChanged) {
+            if (IMMUTABLE_STRUCTURE_LEVELS.contains(d.getLevel())) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "公司、决策层和管理中心等组织骨架节点不可修改上级");
+            }
+            if (requestedParentId.equals(id)) {
                 throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
             }
-            if (deptRepo.isDescendant(id, req.getParentId())) {
+            if (deptRepo.isDescendant(id, requestedParentId)) {
                 throw new ApiException(ErrorCode.CONFLICT, "不能将部门挂到其子部门下（会成环）");
             }
-            d.setParent(requireDept(req.getParentId()));
-            parentChanged = true;
+            d.setParent(requireDept(requestedParentId));
         }
         deptRepo.save(d);
         em.flush();
@@ -117,33 +136,21 @@ public class DepartmentService {
         return detail(id);
     }
 
-    /** 父部门层级 → 子部门层级（公司/骨架→一级；一级→二级；二级→三级；三级封顶）。 */
-    private String childDeptLevel(String parentLevel) {
-        if (parentLevel == null) return "一级部门";
-        return switch (parentLevel) {
-            case "公司", "决策层", "管理中心" -> "一级部门";
-            case "一级部门" -> "二级班组";
-            case "二级班组" -> "三级科室";
-            case "三级科室" -> "三级科室";
-            default -> "二级班组";
-        };
+    /** 移动后按 parent 关系递归重算整棵子树 level/path，不依赖移动前的旧 path 排序。 */
+    private void relevelSubtree(UUID rootId) {
+        if (deptRepo.rebuildSubtreeHierarchy(rootId) == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "部门子树结构异常，无法安全移动");
+        }
     }
 
-    /** 移动后重算子树 level：findSubtree 按 path 排序（根先于后代），根的 level 由其新父级决定。 */
-    private void relevelSubtree(UUID rootId) {
-        List<Department> nodes = deptRepo.findSubtree(rootId);
-        Department root = nodes.stream().filter(d -> d.getId().equals(rootId)).findFirst().orElse(null);
-        if (root == null) return;
-        String rootParentLevel = root.getParent() == null ? null : root.getParent().getLevel();
-        Map<UUID, String> levelById = new HashMap<>();
-        for (Department d : nodes) {
-            String lvl = d.getId().equals(rootId)
-                    ? childDeptLevel(rootParentLevel)
-                    : childDeptLevel(levelById.get(d.getParent().getId()));
-            d.setLevel(lvl);
-            levelById.put(d.getId(), lvl);
+    private void lockDepartmentHierarchy() {
+        em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
+    }
+
+    private void rejectStructureNodeManager(String level) {
+        if (IMMUTABLE_STRUCTURE_LEVELS.contains(level)) {
+            throw new ApiException(ErrorCode.CONFLICT, "组织骨架节点不能设置部门负责人");
         }
-        deptRepo.saveAll(nodes);
     }
 
     @Transactional

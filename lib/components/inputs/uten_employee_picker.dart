@@ -45,6 +45,8 @@ class UtenEmployeePicker extends StatefulWidget {
     this.departmentName,
     this.sheetTitle = '选择员工',
     this.allowClear = false,
+    this.emptyMessage = '未找到匹配的人员',
+    this.emptyDescription,
   });
 
   /// 候选加载器（抽屉内搜索时调用）。
@@ -69,6 +71,10 @@ class UtenEmployeePicker extends StatefulWidget {
   final String sheetTitle;
 
   final bool allowClear;
+
+  /// 未输入搜索词且候选为空时的业务空态；搜索无命中仍使用通用提示。
+  final String emptyMessage;
+  final String? emptyDescription;
 
   @override
   State<UtenEmployeePicker> createState() => _UtenEmployeePickerState();
@@ -98,6 +104,8 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
       title: widget.sheetTitle,
       selectedId: _selected?.id,
       departmentName: widget.departmentName,
+      emptyMessage: widget.emptyMessage,
+      emptyDescription: widget.emptyDescription,
     );
     final UtenEmployeePickerItem? result;
     if (context.breakpoint.isCompact) {
@@ -227,14 +235,18 @@ class _EmployeePickerSheet extends StatefulWidget {
   const _EmployeePickerSheet({
     required this.loader,
     required this.title,
+    required this.emptyMessage,
     this.selectedId,
     this.departmentName,
+    this.emptyDescription,
   });
 
   final UtenEmployeePickerLoader loader;
   final String title;
   final String? selectedId;
   final String? departmentName;
+  final String emptyMessage;
+  final String? emptyDescription;
 
   @override
   State<_EmployeePickerSheet> createState() => _EmployeePickerSheetState();
@@ -330,9 +342,14 @@ class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
                   onAction: _load,
                 )
               : _items.isEmpty
-              ? const UtenEmpty(
+              ? UtenEmpty(
                   icon: Icons.person_off_outlined,
-                  message: '未找到匹配的人员',
+                  message: _keyword.trim().isEmpty
+                      ? widget.emptyMessage
+                      : '未找到匹配的人员',
+                  description: _keyword.trim().isEmpty
+                      ? widget.emptyDescription
+                      : null,
                 )
               : ListView.separated(
                   itemCount: _items.length,

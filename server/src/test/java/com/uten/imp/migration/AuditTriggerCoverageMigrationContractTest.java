@@ -24,8 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>V169 is the immutable original full-table sweep, V184 refreshes that
  * contract after later business tables were introduced, V185 hardens
- * soft-delete semantics plus row minimization, and V190 repeats the trusted
- * full sweep after the V188/V189 business tables. This test deliberately
+ * soft-delete semantics plus row minimization, V190 covers the V188/V189
+ * business tables, V193 covers V191/V192 planning tables, and V195 covers the V194 MAKE receipt-allocation ledger.
+ * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
  * latest trusted sweep, and no later table can silently appear outside the
@@ -35,9 +36,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 190;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 195;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V190__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V195__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -67,7 +68,10 @@ class AuditTriggerCoverageMigrationContractTest {
             "finance_asset_posting_lines",
             // Warehouse shipment and sales-return quality ledgers added before V190.
             "sales_shipment_warehouse_events", "sales_return_quality_items",
-            "sales_return_quality_events");
+            "sales_return_quality_events",
+            // Pre-approval planning, workshop defaults and MAKE receipt provenance.
+            "production_planning_drafts", "production_goods_workshop_preferences",
+            "production_material_make_receipt_allocations");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(

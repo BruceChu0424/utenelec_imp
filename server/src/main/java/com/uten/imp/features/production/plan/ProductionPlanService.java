@@ -18,6 +18,7 @@ import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.production.mrp.MrpRow;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -77,6 +78,7 @@ public class ProductionPlanService {
     private final ProductionPlanItemRepository itemRepo;
     private final PlanOrderItemLinkRepository linkRepo;
     private final MrpService mrpService;
+    private final ProductionPlanningDraftService planningDraftService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
@@ -131,6 +133,7 @@ public class ProductionPlanService {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
         if (p.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        planningDraftService.supersedeActive(id, "生产计划已编辑，原预排草案失效");
         applyHeader(req, p);
         itemRepo.deleteByPlanId(id);
         itemRepo.flush();
@@ -145,6 +148,7 @@ public class ProductionPlanService {
         ProductionPlan p = requirePlanForUpdate(id);
         rejectDirectLifecycleOfExecutionV1Subplan(id, "删除");
         if (p.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        planningDraftService.supersedeActive(id, "生产计划已删除，原预排草案失效");
         p.setDeleted(true);
         p.setDeletedAt(OffsetDateTime.now());
         planRepo.save(p);
@@ -170,8 +174,11 @@ public class ProductionPlanService {
         p.setStatus(STATUS_APPROVED);
         p.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         planRepo.save(p);
+        planRepo.flush();
         boolean shortage = linkOrderItems(id); // shortage 仅表示分配已核验后的真实及时缺口
+        linkRepo.flush();
         recomputeClosed(id);
+        planningDraftService.applyActive(id);
         chainNotice.notifyPlanScheduled(id, shortage); // 未核验不伪装成缺料；真实缺料才通知采购/调度
         return detail(id);
     }

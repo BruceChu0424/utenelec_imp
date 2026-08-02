@@ -21,6 +21,7 @@ public record ExecutionSegmentView(
         BigDecimal reportedQty,
         BigDecimal remainingQty,
         String status,
+        boolean autoPromoteWhenReady,
         UUID workshopDepartmentId,
         String workshopName,
         UUID teamDepartmentId,

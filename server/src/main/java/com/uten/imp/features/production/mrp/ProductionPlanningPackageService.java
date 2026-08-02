@@ -10,6 +10,7 @@ import com.uten.imp.features.production.fulfillment.ProductionExecutionSegmentRe
 import com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerService;
 import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
 import com.uten.imp.features.production.fulfillment.ProductionPlanningPackage;
+import com.uten.imp.features.production.fulfillment.ProductionPlanningPackageRepository;
 import com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacade;
 import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -28,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -45,6 +47,7 @@ public class ProductionPlanningPackageService {
 
     private final EntityManager em;
     private final ProductionExecutionPackageCommandService executionCommand;
+    private final ProductionPlanningPackageRepository planningPackageRepo;
     private final MrpService mrpService;
     private final ProductionExecutionPlanningService executionPlanning;
     private final ProductionFulfillmentLedgerService ledger;
@@ -68,7 +71,10 @@ public class ProductionPlanningPackageService {
         ProductionExecutionPlanningService.Snapshot snapshot =
                 executionPlanning.preview(planId, warehouseId);
         CompleteKitAllocator.Allocation proposal =
-                executionPlanning.propose(snapshot);
+                snapshot.productLines().isEmpty()
+                        ? new CompleteKitAllocator.Allocation(
+                                List.of(), snapshot.availability())
+                        : executionPlanning.propose(snapshot);
         Map<MaterialKey, BigDecimal> targetWarehouseAvailable =
                 warehouseAvailability(warehouseId, rows);
         return new PlanningPreviewResult(
@@ -81,6 +87,16 @@ public class ProductionPlanningPackageService {
                 true,
                 executionPlanning.toPreview(proposal),
                 snapshot.noBomPlanItemIds());
+    }
+
+    @Transactional
+    public Optional<PlanningPackageResult> currentResult(UUID planId) {
+        return planningPackageRepo
+                .findFirstByPlanIdAndStatusAndExecutionModelVersionAndDeletedFalseOrderByCreatedAtDesc(
+                        planId,
+                        ProductionPlanningPackage.STATUS_CONFIRMED,
+                        (short) 1)
+                .map(executionCommand::replay);
     }
 
     @Transactional
@@ -418,10 +434,10 @@ public class ProductionPlanningPackageService {
                                     .LifecycleAction.REVERSE);
         }
         closeExecutionSegments(packageId, action);
-        closeSubplans(documents, action);
         closeDraw(documents, action);
         ledger.releaseLocked(
                 handle, action, request.idempotencyKey(), request.reason());
+        closeSubplans(documents, action);
         return new PlanningPackageLifecycleResult(
                 packageId, handle.planningPackage().getStatus(), false);
     }

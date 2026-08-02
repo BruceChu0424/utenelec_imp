@@ -273,18 +273,21 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   void _showEditDialog(DepartmentInfo detail) {
     if (!_hasPermission(Perm.departmentEdit)) return;
+    final canAssignManager = kSelectableDepartmentLevels.contains(detail.level);
     showDialog<void>(
       context: context,
       builder: (ctx) => DepartmentEditDialog(
-        managerLoader: (keyword) => _loadManagerCandidates(detail.id, keyword),
+        managerLoader: canAssignManager
+            ? (keyword) => _loadManagerCandidates(detail.id, keyword)
+            : null,
         tree: _tree ?? const <DepartmentNode>[],
         editing: detail,
-        onSubmit: (r) => _doUpdate(detail.id, r),
+        onSubmit: (r) => _doUpdate(detail, r),
       ),
     );
   }
 
-  Future<bool> _doUpdate(String id, DepartmentEditResult r) async {
+  Future<bool> _doUpdate(DepartmentInfo detail, DepartmentEditResult r) async {
     if (!_hasPermission(Perm.departmentEdit)) {
       _toastError('无权编辑部门'); // TODO(l10n): 补 arb
       return false;
@@ -293,12 +296,15 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       await ref
           .read(departmentRepositoryProvider)
           .update(
-            id,
+            detail.id,
             DepartmentUpdateInput(
               name: r.name,
-              parentId: r.parentId,
+              // 未移动时不发送 parentId，避免后端把同一父级误判为移动并重算整棵子树。
+              parentId: r.parentId == detail.parentId ? null : r.parentId,
               managerId: r.managerId,
-              managerSpecified: true,
+              managerSpecified: kSelectableDepartmentLevels.contains(
+                detail.level,
+              ),
             ),
           );
       if (!mounted) return false;

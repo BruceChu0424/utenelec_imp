@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -17,6 +18,8 @@ import '../../employee/repositories/employee_repository.dart';
 import '../models/production_execution_planning.dart';
 import '../providers/production_department_provider.dart';
 
+enum ProductionPlanningSheetMode { draft, confirm }
+
 /// Opens the V155 execution-segment planner.
 ///
 /// Desktop uses an 840 px right drawer; compact screens use a nearly full
@@ -27,11 +30,19 @@ Future<ProductionPlanningConfirmRequest?> showExecutionSegmentPlanningSheet(
   required ProductionPlanningPreview preview,
   required MasterNameService names,
   required String warehouseName,
+  required ProductionPlanningSheetMode mode,
+  ProductionPlanningDraftView? initialDraft,
+  bool initialDraftRebased = false,
+  List<String> initialFocusMaterialIds = const <String>[],
 }) {
   final sheet = _ExecutionPlanningSheet(
     preview: preview,
     names: names,
     warehouseName: warehouseName,
+    mode: mode,
+    initialDraft: initialDraft,
+    initialDraftRebased: initialDraftRebased,
+    initialFocusMaterialIds: initialFocusMaterialIds,
   );
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<ProductionPlanningConfirmRequest>(
@@ -91,6 +102,7 @@ class _ExecutionGridRow extends EditableGridRow {
     required double plannedQty,
     required this.status,
     required this.onChanged,
+    this.deferUntilManualRelease = false,
     this.workshopDepartmentId,
     this.teamDepartmentId,
     this.responsible,
@@ -98,6 +110,33 @@ class _ExecutionGridRow extends EditableGridRow {
     this.planEndDate,
   }) : qty = TextEditingController(text: _fmt(plannedQty)) {
     qty.addListener(onChanged);
+  }
+
+  factory _ExecutionGridRow.fromDraft(
+    ProductionExecutionSegmentConfirm draft,
+    ProductionExecutionSegmentPreview source,
+    VoidCallback onChanged,
+    MasterNameService names,
+  ) {
+    final responsibleId = draft.responsibleEmployeeId;
+    return _ExecutionGridRow(
+      source: source,
+      clientSegmentKey: draft.clientSegmentKey,
+      plannedQty: draft.plannedQty,
+      status: draft.requestedStatus,
+      deferUntilManualRelease: draft.deferUntilManualRelease,
+      workshopDepartmentId: draft.workshopDepartmentId,
+      teamDepartmentId: draft.teamDepartmentId,
+      responsible: responsibleId == null
+          ? null
+          : UtenEmployeePickerItem(
+              id: responsibleId,
+              name: names.employee(responsibleId),
+            ),
+      planBeginDate: DateTime.tryParse(draft.planBeginDate ?? ''),
+      planEndDate: DateTime.tryParse(draft.planEndDate ?? ''),
+      onChanged: onChanged,
+    );
   }
 
   factory _ExecutionGridRow.fromPreview(
@@ -131,6 +170,7 @@ class _ExecutionGridRow extends EditableGridRow {
   final VoidCallback onChanged;
 
   String status;
+  bool deferUntilManualRelease;
   String? workshopDepartmentId;
   String? teamDepartmentId;
   UtenEmployeePickerItem? responsible;
@@ -139,6 +179,17 @@ class _ExecutionGridRow extends EditableGridRow {
 
   double? get parsedQty => double.tryParse(qty.text.trim());
 
+  String get dispatchDecision => status == 'READY'
+      ? 'READY'
+      : deferUntilManualRelease
+      ? 'DEFERRED'
+      : 'AUTO_WAIT';
+
+  void setDispatchDecision(String decision) {
+    status = decision == 'READY' ? 'READY' : 'WAITING';
+    deferUntilManualRelease = decision == 'DEFERRED';
+  }
+
   @override
   void dispose() {
     qty.removeListener(onChanged);
@@ -146,15 +197,16 @@ class _ExecutionGridRow extends EditableGridRow {
     super.dispose();
   }
 
-  static String _fmt(double value) => value == value.roundToDouble()
-      ? value.toStringAsFixed(0)
-      : value.toStringAsFixed(3);
+  static String _fmt(double value) => formatProductionPlanningQuantity(value);
 }
 
 class _MaterialDisplayRow {
   const _MaterialDisplayRow({
     required this.goodsId,
     required this.unitId,
+    this.goodsCode,
+    this.goodsName,
+    this.spec,
     required this.perProductQty,
     required this.requiredQty,
     required this.availableBeforeQty,
@@ -173,6 +225,9 @@ class _MaterialDisplayRow {
   });
 
   final String goodsId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? spec;
   final String? colorId;
   final String unitId;
   final double perProductQty;
@@ -215,11 +270,19 @@ class _ExecutionPlanningSheet extends ConsumerStatefulWidget {
     required this.preview,
     required this.names,
     required this.warehouseName,
+    required this.mode,
+    this.initialDraft,
+    this.initialDraftRebased = false,
+    this.initialFocusMaterialIds = const <String>[],
   });
 
   final ProductionPlanningPreview preview;
   final MasterNameService names;
   final String warehouseName;
+  final ProductionPlanningSheetMode mode;
+  final ProductionPlanningDraftView? initialDraft;
+  final bool initialDraftRebased;
+  final List<String> initialFocusMaterialIds;
 
   @override
   ConsumerState<_ExecutionPlanningSheet> createState() =>
@@ -233,21 +296,40 @@ class _ExecutionPlanningSheetState
   bool _generatePurchaseRequest = false;
   bool _dirty = false;
   bool _allowPop = false;
+  bool _showAllProductGroups = true;
   int _nextManualKey = 1;
 
   @override
   void initState() {
     super.initState();
-    _generatePurchaseRequest = _purchaseShortageKinds > 0;
+    final initialDraft = widget.initialDraft;
+    _showAllProductGroups = widget.initialFocusMaterialIds.isEmpty;
+    _generatePurchaseRequest =
+        initialDraft?.generatePurchaseRequest ?? _purchaseShortageKinds > 0;
     _productGroups = _buildProductGroups(
       widget.preview.executionSegments,
       widget.preview.materials,
     );
+    final sources = <String, ProductionExecutionSegmentPreview>{
+      for (final source in widget.preview.executionSegments)
+        source.sourcePlanItemId: source,
+    };
     _grid = UtenEditableGridController(
-      initial: [
-        for (final source in widget.preview.executionSegments)
-          _ExecutionGridRow.fromPreview(source, _markDirty, widget.names),
-      ],
+      initial: initialDraft == null
+          ? [
+              for (final source in widget.preview.executionSegments)
+                _ExecutionGridRow.fromPreview(source, _markDirty, widget.names),
+            ]
+          : [
+              for (final segment in initialDraft.segments)
+                if (sources[segment.sourcePlanItemId] case final source?)
+                  _ExecutionGridRow.fromDraft(
+                    segment,
+                    source,
+                    _markDirty,
+                    widget.names,
+                  ),
+            ],
     )..addListener(_gridShapeChanged);
   }
 
@@ -256,6 +338,19 @@ class _ExecutionPlanningSheetState
     _grid.removeListener(_gridShapeChanged);
     _grid.dispose();
     super.dispose();
+  }
+
+  List<_ProductGroup> get _visibleProductGroups {
+    if (_showAllProductGroups) return _productGroups;
+    final focused = widget.initialFocusMaterialIds.toSet();
+    final matches = _productGroups
+        .where(
+          (group) => group.materials.any(
+            (material) => focused.contains(material.goodsId),
+          ),
+        )
+        .toList(growable: false);
+    return matches.isEmpty ? _productGroups : matches;
   }
 
   int get _purchaseShortageKinds {
@@ -273,8 +368,12 @@ class _ExecutionPlanningSheetState
   int get _readyCount =>
       _grid.rows.where((row) => row.status == 'READY').length;
 
-  int get _waitingCount =>
-      _grid.rows.where((row) => row.status == 'WAITING').length;
+  int get _waitingCount => _grid.rows
+      .where((row) => row.status == 'WAITING' && !row.deferUntilManualRelease)
+      .length;
+
+  int get _deferredCount =>
+      _grid.rows.where((row) => row.deferUntilManualRelease).length;
 
   int get _unassignedCount =>
       _grid.rows.where((row) => row.workshopDepartmentId == null).length;
@@ -417,32 +516,29 @@ class _ExecutionPlanningSheetState
   }
 
   void _confirm() {
+    if (widget.preview.hasBlockingBomGaps) {
+      context.appError('仍有成品或自制组件缺少 BOM，补齐前不能保存或下达排产方案');
+      return;
+    }
     if (!widget.preview.executionSegmentationReady) {
       context.appError('服务端未能形成可追溯执行分段，请刷新物料或补齐 BOM 后重试');
       return;
     }
     if (_grid.isEmpty) {
-      context.appError('至少保留一个执行子计划');
+      context.appError('至少保留一个执行分段');
       return;
     }
 
     final originalTotals = _sourceTotals(widget.preview.executionSegments);
-    final originalReady = <String, double>{};
-    for (final segment in widget.preview.executionSegments) {
-      if (segment.suggestedStatus == 'READY') {
-        originalReady.update(
-          segment.sourcePlanItemId,
-          (value) => value + segment.plannedQty,
-          ifAbsent: () => segment.plannedQty,
-        );
-      }
-    }
 
     final currentTotals = <String, double>{};
-    final currentReady = <String, double>{};
     for (final row in _grid.rows) {
       final qty = row.parsedQty;
       final name = row.source.productName ?? row.source.productCode ?? '未命名产品';
+      if (!_hasValidPlanningQuantityScale(row.qty.text)) {
+        context.appError('$name 的实排数量最多保留四位小数');
+        return;
+      }
       if (qty == null || !qty.isFinite || qty <= 0) {
         context.appError('$name 的计划数量必须大于 0');
         return;
@@ -458,13 +554,6 @@ class _ExecutionPlanningSheetState
         (value) => value + qty,
         ifAbsent: () => qty,
       );
-      if (row.status == 'READY') {
-        currentReady.update(
-          row.source.sourcePlanItemId,
-          (value) => value + qty,
-          ifAbsent: () => qty,
-        );
-      }
     }
 
     for (final entry in originalTotals.entries) {
@@ -475,21 +564,8 @@ class _ExecutionPlanningSheetState
         );
         final name = product.productName ?? product.productCode ?? '未命名产品';
         context.appError(
-          '$name 的子计划合计必须等于订单未排数量 ${_fmt(entry.value)}，'
+          '$name 的执行分段合计必须等于订单未排数量 ${_fmt(entry.value)}，'
           '当前为 ${_fmt(actual)}',
-        );
-        return;
-      }
-      final ready = currentReady[entry.key] ?? 0;
-      final readyLimit = originalReady[entry.key] ?? 0;
-      if (ready > readyLimit + _epsilon) {
-        final product = widget.preview.executionSegments.firstWhere(
-          (item) => item.sourcePlanItemId == entry.key,
-        );
-        final name = product.productName ?? product.productCode ?? '未命名产品';
-        context.appError(
-          '$name 当前完整齐套最多支持 ${_fmt(readyLimit)}，'
-          '不能把 ${_fmt(ready)} 标记为可开工',
         );
         return;
       }
@@ -499,21 +575,9 @@ class _ExecutionPlanningSheetState
       return;
     }
 
-    final routes = <String, ProductionMaterialRoute>{};
-    for (final segment in widget.preview.executionSegments) {
-      for (final material in segment.materials) {
-        if (material.shortageQty <= _epsilon) continue;
-        final key = '${material.goodsId}|${material.colorId ?? ''}';
-        routes.putIfAbsent(
-          key,
-          () => ProductionMaterialRoute(
-            goodsId: material.goodsId,
-            colorId: material.colorId,
-            supplyRoute: material.supplyRoute,
-          ),
-        );
-      }
-    }
+    final routes = buildProductionMaterialSupplyRoutes(
+      widget.preview.executionSegments,
+    );
 
     final segments = [
       for (final row in _grid.rows)
@@ -521,6 +585,7 @@ class _ExecutionPlanningSheetState
           clientSegmentKey: row.clientSegmentKey,
           sourcePlanItemId: row.source.sourcePlanItemId,
           requestedStatus: row.status,
+          deferUntilManualRelease: row.deferUntilManualRelease,
           plannedQty: row.parsedQty!,
           workshopDepartmentId: row.workshopDepartmentId,
           teamDepartmentId: row.teamDepartmentId,
@@ -540,6 +605,7 @@ class _ExecutionPlanningSheetState
           segment.clientSegmentKey,
           segment.sourcePlanItemId,
           segment.requestedStatus,
+          segment.deferUntilManualRelease,
           segment.plannedQty,
           segment.workshopDepartmentId,
           segment.teamDepartmentId,
@@ -555,12 +621,12 @@ class _ExecutionPlanningSheetState
         warehouseId: widget.preview.warehouseId,
         idempotencyKey: businessIdempotencyKey(
           'production-planning',
-          canonical,
+          '$canonical::ATTEMPT::${const Uuid().v4()}',
         ),
         previewFingerprint: widget.preview.fingerprint,
         generatePurchaseRequest:
             _purchaseShortageKinds > 0 && _generatePurchaseRequest,
-        routes: routes.values.toList(),
+        routes: routes,
         segments: segments,
       ),
     );
@@ -588,6 +654,22 @@ class _ExecutionPlanningSheetState
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _stats(theme),
+                      if (widget.initialDraft != null) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        _notice(
+                          theme,
+                          color: widget.initialDraftRebased
+                              ? theme.colorScheme.tertiary
+                              : Colors.green,
+                          icon: widget.initialDraftRebased
+                              ? Icons.sync_problem_outlined
+                              : Icons.edit_note_outlined,
+                          text: widget.initialDraftRebased
+                              ? '已载入原草案的数量、先后顺序、车间和日期；库存可用量发生变化，'
+                                    '下方物料建议按最新库存重算。保存时服务端会再次校验，可开工行不齐套将拒绝提交。'
+                              : '已载入当前有效草案，可继续调整后覆盖保存；不会修改历史计划或生成正式单据。',
+                        ),
+                      ],
                       const SizedBox(height: UtenSpacing.s8),
                       if (_waitingCount > 0)
                         _notice(
@@ -595,7 +677,7 @@ class _ExecutionPlanningSheetState
                           color: theme.colorScheme.error,
                           icon: Icons.inventory_2_outlined,
                           text:
-                              '待料子计划不会锁定任何零散物料；只有整套物料补齐后，'
+                              '待料执行段不会锁定任何零散物料；只有整套物料补齐后，'
                               '系统才会在同一事务内锁料、生成对应领料单并转为可开工。',
                         ),
                       if (_unassignedCount > 0) ...[
@@ -605,7 +687,7 @@ class _ExecutionPlanningSheetState
                           color: theme.colorScheme.tertiary,
                           icon: Icons.factory_outlined,
                           text:
-                              '有 $_unassignedCount 个子计划尚未指定车间。可以先生成待派工计划，'
+                              '有 $_unassignedCount 个执行段尚未指定车间。可以先生成待派工计划，'
                               '但派工前必须补齐车间、班组和负责人并复核产能。',
                         ),
                       ],
@@ -621,14 +703,43 @@ class _ExecutionPlanningSheetState
                         ),
                       ],
                       const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        '产品与物料明细（默认全部展开）',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
+                      if (_dirty) ...[
+                        _notice(
+                          theme,
+                          color: theme.colorScheme.tertiary,
+                          icon: Icons.info_outline_rounded,
+                          text:
+                              '下方物料卡是进入页面时的最新系统齐套快照，不会用本地估算冒充重算结果；'
+                              '保存或正式下达时服务端会按调整后的实排数量重新校验，陈旧或不齐套方案会被拒绝。',
                         ),
+                        const SizedBox(height: UtenSpacing.s8),
+                      ],
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _showAllProductGroups
+                                  ? '产品与物料明细（系统初始齐套快照，全部展开）'
+                                  : '对应物料详情（${_visibleProductGroups.length} 个产品）',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (!_showAllProductGroups)
+                            TextButton.icon(
+                              onPressed: () =>
+                                  setState(() => _showAllProductGroups = true),
+                              icon: const Icon(
+                                Icons.unfold_more_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('显示全部'),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: UtenSpacing.s8),
-                      for (final group in _productGroups) ...[
+                      for (final group in _visibleProductGroups) ...[
                         _productCard(theme, group),
                         const SizedBox(height: UtenSpacing.s8),
                       ],
@@ -723,15 +834,20 @@ class _ExecutionPlanningSheetState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '一键生成子计划',
+                  widget.mode == ProductionPlanningSheetMode.draft
+                      ? '详细预排'
+                      : '正式排产下达',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
-                  '发料仓：${widget.warehouseName} · '
-                  '系统方案已按完整齐套量拆分，请复核后一次提交。',
+                  widget.mode == ProductionPlanningSheetMode.draft
+                      ? '发料仓：${widget.warehouseName} · '
+                            '保存后仅形成预排草案，不锁料、不开单。'
+                      : '发料仓：${widget.warehouseName} · '
+                            '确认后将锁料并生成适用的关联单据。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -859,6 +975,8 @@ class _ExecutionPlanningSheetState
                     Text(
                       [
                             source.productCode,
+                            if (source.productSpec?.trim().isNotEmpty == true)
+                              '规格 ${source.productSpec}',
                             widget.names.color(source.productColorId),
                             '订单行 ${source.sourceLineNo ?? '—'}',
                           ]
@@ -917,12 +1035,21 @@ class _ExecutionPlanningSheetState
   List<MasterColumnDef<_MaterialDisplayRow>> _materialColumns() => [
     MasterColumnDef(
       key: 'material',
-      label: '物料 / 颜色',
-      width: 180,
+      label: '编号 · 货品名称（规格）/ 颜色',
+      width: 270,
       value: (row) {
         final color = widget.names.color(row.colorId);
-        return '${widget.names.goods(row.goodsId)}'
-            '${color == '—' ? '' : ' · $color'}';
+        final code = row.goodsCode?.trim();
+        final resolvedName = row.goodsName?.trim();
+        final name = resolvedName == null || resolvedName.isEmpty
+            ? widget.names.goods(row.goodsId)
+            : resolvedName;
+        final spec = row.spec?.trim();
+        return <String>[
+          if (code != null && code.isNotEmpty) code,
+          spec == null || spec.isEmpty ? name : '$name（$spec）',
+          if (color != '—') color,
+        ].join(' · ');
       },
     ),
     MasterColumnDef(
@@ -936,7 +1063,7 @@ class _ExecutionPlanningSheetState
       label: '单台用量',
       width: 92,
       type: 'number',
-      value: (row) => _fmt(row.perProductQty),
+      value: (row) => formatProductionPlanningUsage(row.perProductQty),
     ),
     MasterColumnDef(
       key: 'required',
@@ -1018,7 +1145,12 @@ class _ExecutionPlanningSheetState
       key: 'route',
       label: '供应方式',
       width: 88,
-      value: (row) => row.supplyRoute == 'BUY' ? '外购' : '委外',
+      value: (row) => switch (row.supplyRoute) {
+        'BUY' => '外购',
+        'SUBCONTRACT' => '委外',
+        'MAKE' => '自制',
+        _ => '未配置',
+      },
     ),
     MasterColumnDef(
       key: 'status',
@@ -1034,7 +1166,7 @@ class _ExecutionPlanningSheetState
     return [
       EditableGridColumn(
         key: 'code',
-        label: '子计划',
+        label: '临时分段号',
         width: 130,
         cellBuilder: (_, row) => Text(
           row.clientSegmentKey,
@@ -1046,26 +1178,40 @@ class _ExecutionPlanningSheetState
       EditableGridColumn(
         key: 'product',
         label: '生产产品',
-        width: 190,
-        cellBuilder: (context, row) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              row.source.productName ?? row.source.productCode ?? '未命名产品',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            Text(
-              '订单行 ${row.source.sourceLineNo ?? '—'}',
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ],
-        ),
+        width: 230,
+        cellBuilder: (context, row) {
+          final source = row.source;
+          final details = <String>[
+            if (source.productCode?.trim().isNotEmpty == true)
+              source.productCode!,
+            if (source.productSpec?.trim().isNotEmpty == true)
+              '规格 ${source.productSpec}',
+            if (source.productColorId?.trim().isNotEmpty == true)
+              widget.names.color(source.productColorId),
+            '订单行 ${source.sourceLineNo ?? '—'}',
+          ];
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                source.productName ?? source.productCode ?? '未命名产品',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                details.join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ],
+          );
+        },
       ),
       EditableGridColumn(
         key: 'qty',
-        label: '计划数量',
+        label: '实排数量',
         width: 105,
         numeric: true,
         cellBuilder: (_, row) => TextField(
@@ -1077,19 +1223,20 @@ class _ExecutionPlanningSheetState
       ),
       EditableGridColumn(
         key: 'status',
-        label: '物料状态',
-        width: 118,
+        label: '排产决策',
+        width: 196,
         cellBuilder: (_, row) => DropdownButtonFormField<String>(
-          key: ValueKey('${row.clientSegmentKey}-${row.status}'),
-          initialValue: row.status,
+          key: ValueKey('${row.clientSegmentKey}-${row.dispatchDecision}'),
+          initialValue: row.dispatchDecision,
           isExpanded: true,
           decoration: const InputDecoration(isDense: true),
           items: const [
-            DropdownMenuItem(value: 'READY', child: Text('可开工')),
-            DropdownMenuItem(value: 'WAITING', child: Text('待料')),
+            DropdownMenuItem(value: 'READY', child: Text('优先生产')),
+            DropdownMenuItem(value: 'AUTO_WAIT', child: Text('待料 · 齐套自动转产')),
+            DropdownMenuItem(value: 'DEFERRED', child: Text('人工暂缓 · 手动恢复')),
           ],
           onChanged: (value) => setState(() {
-            row.status = value ?? 'WAITING';
+            row.setDispatchDecision(value ?? 'AUTO_WAIT');
             _dirty = true;
           }),
         ),
@@ -1117,7 +1264,16 @@ class _ExecutionPlanningSheetState
           loader: (keyword) async {
             final result = await ref
                 .read(employeeRepositoryProvider)
-                .list(size: 30, search: keyword);
+                .list(
+                  size: 30,
+                  search: keyword,
+                  statuses: const {'active', 'probation'},
+                  departmentId:
+                      row.teamDepartmentId ?? row.workshopDepartmentId,
+                  includeSubtree:
+                      row.teamDepartmentId != null ||
+                      row.workshopDepartmentId != null,
+                );
             return [
               for (final employee in result.items)
                 UtenEmployeePickerItem(
@@ -1180,6 +1336,7 @@ class _ExecutionPlanningSheetState
             ? null
             : value;
         row.teamDepartmentId = null;
+        row.responsible = null;
         _dirty = true;
       }),
     );
@@ -1217,6 +1374,7 @@ class _ExecutionPlanningSheetState
               row.teamDepartmentId = value == null || value.isEmpty
                   ? null
                   : value;
+              row.responsible = null;
               _dirty = true;
             }),
     );
@@ -1248,8 +1406,8 @@ class _ExecutionPlanningSheetState
           runSpacing: UtenSpacing.s8,
           children: [
             Text(
-              '可开工 $_readyCount · 待料 $_waitingCount · '
-              '${_grid.length} 个执行段',
+              '优先生产 $_readyCount · 待料自动转产 $_waitingCount · '
+              '人工暂缓 $_deferredCount · ${_grid.length} 个执行段',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -1261,10 +1419,19 @@ class _ExecutionPlanningSheetState
             ),
             UtenButton(
               icon: Icons.account_tree_outlined,
-              onPressed: widget.preview.executionSegmentationReady
+              onPressed:
+                  widget.preview.executionSegmentationReady &&
+                      !widget.preview.hasBlockingBomGaps
                   ? _confirm
                   : null,
-              child: const Text('确认生成计划'),
+              onDisabledTap: widget.preview.hasBlockingBomGaps
+                  ? () => context.appWarning('请先补齐全部成品及自制组件 BOM，再保存或下达排产方案')
+                  : null,
+              child: Text(
+                widget.mode == ProductionPlanningSheetMode.draft
+                    ? '保存预排草案'
+                    : '正式下达',
+              ),
             ),
           ],
         ),
@@ -1377,6 +1544,9 @@ _MaterialDisplayRow _materialDisplayRow(
 ) {
   return _MaterialDisplayRow(
     goodsId: entries.first.goodsId,
+    goodsCode: planning?.goodsCode,
+    goodsName: planning?.goodsName,
+    spec: planning?.spec,
     colorId: entries.first.colorId,
     unitId: entries.first.unitId,
     perProductQty: entries.first.perProductQty,
@@ -1427,9 +1597,7 @@ String? _dateText(DateTime? value) {
       '${value.day.toString().padLeft(2, '0')}';
 }
 
-String _fmt(double value) => value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value.toStringAsFixed(3);
+String _fmt(double value) => formatProductionPlanningQuantity(value);
 
 String _fmtOptional(double? value) => value == null ? '—' : _fmt(value);
 
@@ -1448,6 +1616,13 @@ String _materialStatusText(_MaterialDisplayRow row) {
           ? '到货后齐套'
           : '缺料',
   };
+}
+
+bool _hasValidPlanningQuantityScale(String raw) {
+  final value = raw.trim();
+  return RegExp(
+    r'^(?:[0-9]+|[0-9]+\.[0-9]{1,4}|\.[0-9]{1,4})$',
+  ).hasMatch(value);
 }
 
 const double _epsilon = 0.000001;

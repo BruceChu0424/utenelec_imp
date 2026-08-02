@@ -450,6 +450,14 @@ public class MrpService {
                              BigDecimal inboundQty, double percent) {
     }
 
+    public record DirectMakeRequirement(
+            UUID goodsId,
+            UUID colorId,
+            UUID unitId,
+            BigDecimal requiredQty,
+            BigDecimal shortageQty) {
+    }
+
     /** D3 订单物料分析（李主管）：从已审销售订单直接 BOM 展开（不必先建生产计划）。 */
     @Transactional(readOnly = true)
     public List<MrpRow> previewOrder(UUID orderId) {
@@ -877,26 +885,28 @@ public class MrpService {
     }
 
     /**
-     * V1 执行分段确认事务内的自制件派生内核（干净入口）。
+     * V1 执行分段确认事务内的直接层自制件派生内核。
      *
-     * <p>为父计划 BOM 中"本身有下层 BOM（has_bom）且净需求为正"的自制组件汇总生成一张
-     * 草稿子生产计划（父号-N），明细 qty=净需求、oqty=毛需求，写 subplan_links
-     * （source='EXECUTION_V1'，带 planning_package_id）。多层嵌套通过进入子计划再次
-     * 「一键生成子计划」逐级下钻（旧版既定语义，SAP 计划订单逐级转换惯例）。
-     *
-     * <p>与旧版 {@link #generateSubplan} 的区别：不调 requirePlanningWriteReady /
-     * assertLegacyDerivedWriteAllowed（避开硬开关与 V1 互斥锁自相矛盾）；按父计划幂等
-     * （已有 V1 子计划则跳过，需红冲子计划后才能重生成）；从 V1 confirm 事务内调用，
-     * 无净需求自制件时返回空列表（不抛错）。
+     * <p>输入只能来自已锁定、已校验的执行分段 allocation：仅把本包直接层
+     * MAKE 的候选短缺生成一张草稿子生产计划。这里禁止调用递归 explode；
+     * 下层 BOM 必须进入该子计划后再逐级预排，避免父子计划重复生成同一孙层物料。
+     * qty=直接层短缺，oqty=直接层毛需求，货品/颜色/单位沿用 allocation 权威值。
      */
     @Transactional
     public List<GenerateSubplansRequest.Created> generateSelfMadeSubplansForPackage(
-            UUID planId, UUID planningPackageId) {
+            UUID planId,
+            UUID planningPackageId,
+            List<DirectMakeRequirement> directRequirements) {
         tx.bind();
+        List<DirectMakeRequirement> make =
+                normalizeDirectMakeRequirements(directRequirements);
+        if (make.isEmpty()) {
+            return List.of();
+        }
         ProductionPlan plan = lockPlan(planId);
         requireNotTerminal(plan, "自制件子计划");
 
-        // 幂等/防重复：父计划已有 V1 产生的有效子计划则跳过（红冲子计划后才能重生成）
+        // 幂等/防重复：父计划已有 V1 产生的有效子计划则跳过。
         Number existing = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM subplan_links l
                 JOIN production_plans p ON p.id = l.subplan_id
@@ -905,58 +915,55 @@ public class MrpService {
                   AND p.is_deleted = false AND p.status <> -1
                 """).setParameter("planId", planId).getSingleResult();
         if (existing.intValue() > 0) {
-            return List.of();
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "An active EXECUTION_V1 subplan already exists for this parent plan");
         }
 
-        List<MrpRow> make = explode(planId).stream()
-                .filter(r -> r.selfMade() && r.net() != null && r.net().signum() > 0)
-                .toList();
-        if (make.isEmpty()) {
-            return List.of();
-        }
-
-        // 子计划交货日：父计划最早开工日（零件要先于成品投产），无开工日则取父计划交货日
+        // 子计划交货日：父计划最早开工日；无开工日则取父计划交货日。
         Object begin = em.createNativeQuery("""
                 SELECT MIN(plan_begin_date) FROM production_plan_items
                 WHERE plan_id = :planId AND is_deleted = false
                 """).setParameter("planId", planId).getSingleResult();
         LocalDate subDelivery = begin != null
-                ? ((java.sql.Date) begin).toLocalDate() : plan.getDeliveryDate();
+                ? ((java.sql.Date) begin).toLocalDate()
+                : plan.getDeliveryDate();
 
-        LocalDate today = BusinessTime.today();
         ProductionPlan sub = new ProductionPlan();
-        // 子计划编号 = 父计划号-N（编号体系内一眼看出归属，如 SJ26070078-1）
         sub.setBillNo(plan.getBillNo() + "-" + nextSubSuffix(plan.getBillNo()));
-        sub.setBillDate(today);
+        sub.setBillDate(BusinessTime.today());
         sub.setDeliveryDate(subDelivery);
+        em.flush();
         sub.setDepartmentId(plan.getDepartmentId());
         sub.setWorkshopName(plan.getWorkshopName());
-        sub.setRemark("父计划 " + plan.getBillNo() + " 自制件按净需求自动生成（执行分段）");
+        sub.setRemark("父计划 " + plan.getBillNo()
+                + " 直接层自制短缺自动生成（执行分段）");
         sub.setSourceDocNo(plan.getBillNo());
         sub.setMakerId(currentUser.requireEmployeeId());
         sub.setStatus((short) 0);
         planRepo.save(sub);
 
         int line = 0;
-        for (MrpRow row : make) {
+        for (DirectMakeRequirement row : make) {
             line++;
-            ProductionPlanItem it = new ProductionPlanItem();
-            it.setPlanId(sub.getId());
-            it.setBillNo(sub.getBillNo());
-            it.setBillDate(sub.getBillDate());
-            it.setLineNo(line);
-            it.setProductNo(sub.getBillNo() + "-" + line);
-            it.setGoodsId(row.goodsId());
-            it.setColorId(row.colorId());
-            it.setUnitId(row.unitId());
-            it.setUnitRate(BigDecimal.ONE); // MRP 展开行已是基本单位口径
-            it.setQty(row.net());
-            it.setOqty(row.gross());
-            it.setSourceDocNo(plan.getBillNo());
-            it.setRemark("毛需求 " + row.gross().stripTrailingZeros().toPlainString()
-                    + " − 库存 " + row.onhand().stripTrailingZeros().toPlainString()
-                    + " − 在途 " + row.openPo().stripTrailingZeros().toPlainString());
-            itemRepo.save(it);
+            ProductionPlanItem item = new ProductionPlanItem();
+            item.setPlanId(sub.getId());
+            item.setBillNo(sub.getBillNo());
+            item.setBillDate(sub.getBillDate());
+            item.setLineNo(line);
+            item.setProductNo(sub.getBillNo() + "-" + line);
+            item.setGoodsId(row.goodsId());
+            item.setColorId(row.colorId());
+            item.setUnitId(row.unitId());
+            item.setUnitRate(BigDecimal.ONE);
+            item.setQty(row.shortageQty());
+            item.setOqty(row.requiredQty());
+            item.setSourceDocNo(plan.getBillNo());
+            item.setRemark("直接层毛需求 "
+                    + row.requiredQty().stripTrailingZeros().toPlainString()
+                    + "，短缺 "
+                    + row.shortageQty().stripTrailingZeros().toPlainString());
+            itemRepo.save(item);
         }
 
         em.createNativeQuery("""
@@ -970,10 +977,47 @@ public class MrpService {
                 .setParameter("packageId", planningPackageId)
                 .executeUpdate();
 
-        // 返回子计划汇总（Created）：planId/billNo/lineCount 都现成，
-        // workshopName 取刚写入子计划的 sub.getWorkshopName()（=父计划车间，:933 已设）。
         return List.of(new GenerateSubplansRequest.Created(
                 sub.getId(), sub.getBillNo(), line, sub.getWorkshopName()));
+    }
+
+    private static List<DirectMakeRequirement>
+            normalizeDirectMakeRequirements(
+                    List<DirectMakeRequirement> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        Map<Key, DirectMakeRequirement> unique = new LinkedHashMap<>();
+        for (DirectMakeRequirement value : raw) {
+            if (value == null
+                    || value.goodsId() == null
+                    || value.unitId() == null
+                    || value.requiredQty() == null
+                    || value.requiredQty().signum() <= 0
+                    || value.shortageQty() == null
+                    || value.shortageQty().signum() <= 0
+                    || value.shortageQty().compareTo(
+                            value.requiredQty()) > 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "直接层自制需求的货品、单位或数量无效，不能生成子计划");
+            }
+            Key key = new Key(value.goodsId(), value.colorId());
+            DirectMakeRequirement previous = unique.putIfAbsent(key, value);
+            if (previous != null) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "同一直接层自制物料颜色维度重复，不能生成子计划");
+            }
+        }
+        return unique.values().stream()
+                .sorted(java.util.Comparator
+                        .comparing((DirectMakeRequirement value) ->
+                                value.goodsId().toString())
+                        .thenComparing(value ->
+                                java.util.Objects.toString(value.colorId(), ""))
+                        .thenComparing(value -> value.unitId().toString()))
+                .toList();
     }
 
     /**

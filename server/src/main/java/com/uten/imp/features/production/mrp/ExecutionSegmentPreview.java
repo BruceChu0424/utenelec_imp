@@ -13,6 +13,7 @@ public record ExecutionSegmentPreview(
         UUID productGoodsId,
         String productCode,
         String productName,
+        String productSpec,
         UUID productColorId,
         UUID productUnitId,
         BigDecimal plannedQty,

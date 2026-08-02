@@ -36,6 +36,7 @@ import '../models/production_daily_report.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_plan.dart';
 import '../models/production_report.dart';
+import '../models/production_work_card.dart';
 import '../models/reportable_plan_line.dart';
 
 // ───────────────────────── 生产计划单 ─────────────────────────
@@ -225,6 +226,52 @@ class ProductionPlanRepository {
       body: request.toJson(),
     ); // ENDPOINT
     return ProductionPlanningConfirmResult.fromJson(json);
+  }
+
+  Future<ProductionPlanningDraftView> planningDraft(String id) async {
+    final json = await api.get(
+      '/production/plans/$id/mrp/planning-draft',
+    ); // ENDPOINT
+    if (json.isEmpty) {
+      throw ApiException('NOT_FOUND', '当前计划没有预排草案');
+    }
+    return ProductionPlanningDraftView.fromJson(json);
+  }
+
+  Future<ProductionPlanningDraftView> savePlanningDraft(
+    String id,
+    ProductionPlanningConfirmRequest request,
+  ) async {
+    final json = await api.put(
+      '/production/plans/$id/mrp/planning-draft',
+      body: request.toJson(),
+    ); // ENDPOINT
+    return ProductionPlanningDraftView.fromJson(json);
+  }
+
+  Future<ProductionPlanningConfirmResult> latestPlanningPackageResult(
+    String id,
+  ) async {
+    final json = await api.get(
+      '/production/plans/$id/mrp/planning-package-result',
+    ); // ENDPOINT
+    if (json.isEmpty) {
+      throw ApiException('NOT_FOUND', '当前计划没有已确认的计划包');
+    }
+    return ProductionPlanningConfirmResult.fromJson(json);
+  }
+
+  Future<ProductionWorkCardView> productionWorkCards(
+    String planId,
+    String packageId,
+  ) async {
+    final json = await api.get(
+      '/production/plans/$planId/planning-packages/$packageId/work-cards',
+    ); // ENDPOINT
+    if (json.isEmpty) {
+      throw ApiException('NOT_FOUND', '当前计划包没有可打印的生产执行工卡');
+    }
+    return ProductionWorkCardView.fromJson(json);
   }
 
   Future<List<ProductionExecutionSegmentView>> executionSegments(

@@ -14,6 +14,22 @@ import java.util.UUID;
 public interface ProductionCompletionReversePort {
 
     /**
+     * Acquires every inventory dimension that a linked parent segment may
+     * need, before the stock module locks the current FINISHED_IN dimensions.
+     * This keeps concurrent receipts on one segment in one global lock order.
+     */
+    void lockFinishedInboundProductionDimensions(
+            UUID stockDocumentId, UUID warehouseId);
+
+    /**
+     * Converts an approved finished-in line for a generated child plan into
+     * exact parent MAKE coverage and promotes only a fully available parent
+     * segment. The stock approval and production promotion share one
+     * transaction.
+     */
+    void afterFinishedInboundApproved(
+            UUID stockDocumentId, UUID warehouseId);
+    /**
      * Locks and reopens every completed exact segment referenced by the
      * approved finished-in document. Documents without exact segment rows are
      * a legacy/manual no-op.

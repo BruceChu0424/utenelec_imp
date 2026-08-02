@@ -76,7 +76,9 @@ public final class CompleteKitAllocator {
     /**
      * Applies user-edited segment quantities. READY requests are processed
      * before WAITING requests; exact source-line totals are validated by the
-     * caller against the authoritative plan snapshot.
+     * caller against the authoritative plan snapshot. WAITING remains
+     * auto-promotable unless the caller carries the separate, explicit user
+     * defer intent; status text alone is not treated as that intent.
      */
     public Allocation allocateRequested(
             List<RequestedSegment> rawSegments,
@@ -99,12 +101,12 @@ public final class CompleteKitAllocator {
         for (RequestedSegment request : segments) {
             boolean mustBeReady = ProductionExecutionSegment.STATUS_READY.equals(
                     request.requestedStatus());
-            boolean canBeReady = canFullyTake(
-                    request.line(), request.plannedQty(), remaining);
-            if (mustBeReady && !canBeReady) {
-                throw new InsufficientKitException(request.clientSegmentKey());
-            }
-            if (mustBeReady || canBeReady) {
+            if (mustBeReady) {
+                if (!canFullyTake(
+                        request.line(), request.plannedQty(), remaining)) {
+                    throw new InsufficientKitException(
+                            request.clientSegmentKey());
+                }
                 ready.add(new SegmentAllocation(
                         request.clientSegmentKey(),
                         request.line(),
@@ -131,7 +133,8 @@ public final class CompleteKitAllocator {
                     netWaitingMaterials(
                             request.line(),
                             request.plannedQty(),
-                            virtualRemaining)));
+                            virtualRemaining),
+                    !request.deferUntilManualRelease()));
         }
         return new Allocation(List.copyOf(result), Map.copyOf(remaining));
     }
@@ -315,14 +318,18 @@ public final class CompleteKitAllocator {
                 || !List.of(
                                 ProductionExecutionSegment.STATUS_READY,
                                 ProductionExecutionSegment.STATUS_WAITING)
-                        .contains(value.requestedStatus())) {
+                        .contains(value.requestedStatus())
+                || (value.deferUntilManualRelease()
+                    && !ProductionExecutionSegment.STATUS_WAITING.equals(
+                            value.requestedStatus()))) {
             throw new IllegalArgumentException("invalid requested segment");
         }
         return new RequestedSegment(
                 value.clientSegmentKey().strip(),
                 normalizeLine(value.line()),
                 value.requestedStatus(),
-                value.plannedQty().setScale(PRODUCT_SCALE, RoundingMode.UNNECESSARY));
+                value.plannedQty().setScale(PRODUCT_SCALE, RoundingMode.UNNECESSARY),
+                value.deferUntilManualRelease());
     }
 
     private static Map<MaterialKey, BigDecimal> normalizeAvailable(
@@ -383,7 +390,21 @@ public final class CompleteKitAllocator {
             String clientSegmentKey,
             ProductLine line,
             String requestedStatus,
-            BigDecimal plannedQty) {
+            BigDecimal plannedQty,
+            boolean deferUntilManualRelease) {
+
+        public RequestedSegment(
+                String clientSegmentKey,
+                ProductLine line,
+                String requestedStatus,
+                BigDecimal plannedQty) {
+            this(
+                    clientSegmentKey,
+                    line,
+                    requestedStatus,
+                    plannedQty,
+                    false);
+        }
     }
 
     public record SegmentAllocation(
@@ -391,7 +412,23 @@ public final class CompleteKitAllocator {
             ProductLine line,
             String status,
             BigDecimal plannedQty,
-            List<MaterialAllocation> materials) {
+            List<MaterialAllocation> materials,
+            boolean autoPromoteWhenReady) {
+
+        public SegmentAllocation(
+                String clientSegmentKey,
+                ProductLine line,
+                String status,
+                BigDecimal plannedQty,
+                List<MaterialAllocation> materials) {
+            this(
+                    clientSegmentKey,
+                    line,
+                    status,
+                    plannedQty,
+                    materials,
+                    true);
+        }
     }
 
     public record MaterialAllocation(

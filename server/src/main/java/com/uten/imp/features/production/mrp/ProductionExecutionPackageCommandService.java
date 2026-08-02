@@ -34,7 +34,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -54,12 +53,14 @@ public class ProductionExecutionPackageCommandService {
     private final ProductionPurchaseRequestFacade purchaseFacade;
     private final ProductionSubcontractApplicationCoordinator
             subcontractCoordinator;
+    private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
     private final SecurityContextCurrentUser currentUser;
     private final StockDocumentRepository stockDocumentRepo;
     private final StockDocumentItemRepository stockDocumentItemRepo;
     private final DocNumberService docNumberService;
     private final TxSessionVars tx;
     private final MrpService mrpService;
+    private final ProductionPlanningRequestValidator requestValidator;
 
     @Transactional
     public PlanningPackageResult confirm(
@@ -67,12 +68,7 @@ public class ProductionExecutionPackageCommandService {
             GeneratePlanningPackageRequest request) {
         tx.bind();
         PlanHeader plan = lockPlan(planId);
-        validateRequest(request);
-        ProductionExecutionPlanningService.Snapshot initial =
-                planning.preview(planId, request.getWarehouseId());
-        Map<CompleteKitAllocator.MaterialKey, String> routes =
-                authoritativeRoutes(request, initial);
-
+        requestValidator.validateRequestShape(request);
         requireNoActiveLegacyPackage(planId);
         ProductionFulfillmentLedgerService.BeginConfirmation begin =
                 ledger.beginConfirmation(
@@ -84,6 +80,11 @@ public class ProductionExecutionPackageCommandService {
         if (begin.replayed()) {
             return replay(begin.planningPackage());
         }
+        ProductionPlanningRequestValidator.Validated initialValidation =
+                requestValidator.validateCurrent(planId, request);
+        Map<CompleteKitAllocator.MaterialKey, String> routes =
+                initialValidation.routes();
+
         requireNoLegacyExecutionFacts(loadLegacyExecutionFacts(
                 planId,
                 begin.planningPackage().getId()));
@@ -98,7 +99,7 @@ public class ProductionExecutionPackageCommandService {
                 .executeUpdate();
 
         List<ProductionPurchaseRequestFacade.MaterialDimension> dimensions =
-                initial.productLines().stream()
+                initialValidation.snapshot().productLines().stream()
                         .flatMap(line -> line.materials().stream())
                         .map(material ->
                                 new ProductionPurchaseRequestFacade.MaterialDimension(
@@ -121,8 +122,9 @@ public class ProductionExecutionPackageCommandService {
             throw conflict(
                     "排产预览已过期：目标仓库存、占用、计划行或 BOM 已变化");
         }
-        CompleteKitAllocator.Allocation allocation =
-                planning.applyRequested(locked, request.getSegments());
+        CompleteKitAllocator.Allocation allocation = requestValidator
+                .validateAgainstSnapshot(request, locked)
+                .allocation();
         List<SegmentDraft> segmentDrafts = persistSegments(
                 plan, begin.planningPackage(), allocation);
         persistSalesAllocations(segmentDrafts);
@@ -248,17 +250,16 @@ public class ProductionExecutionPackageCommandService {
                         demands,
                         subcontractLines);
 
-        ledger.refreshDemandStatuses(
-                demands.stream().map(ProductionMaterialDemand::getId).toList());
         List<ExecutionSegmentResult> results = results(
                 segmentDrafts, demandsBySegment, allocatedByDemand, draws);
         List<MrpGenerateResult> drawResults =
                 List.copyOf(draws.values());
-        // 自制件派生：为 BOM 中本身有下层 BOM 且净需求为正的自制组件生成子生产计划
-        // （走 subplan_links，source='EXECUTION_V1'）。与领料/采购同事务，幂等不重复。
+        // 自制件派生只使用本次直接层 MAKE 缺口；下层 BOM 进入子计划后再逐级排产。
+        // 与领料/采购同事务，走 EXECUTION_V1 subplan_links，幂等不重复。
         List<GenerateSubplansRequest.Created> subplanResults =
                 mrpService.generateSelfMadeSubplansForPackage(
-                        planId, begin.planningPackage().getId());
+                        planId, begin.planningPackage().getId(),
+                        directMakeRequirements(allocation));
         for (GenerateSubplansRequest.Created subplan : subplanResults) {
             ledger.recordDocument(
                     begin.planningPackage().getId(),
@@ -267,6 +268,17 @@ public class ProductionExecutionPackageCommandService {
                     subplan.billNo(),
                     currentUser.requireId());
         }
+        createMakeSupplyPegs(
+                begin.planningPackage(), demands,
+                segmentDrafts, subplanResults);
+        ledger.refreshDemandStatuses(
+                demands.stream()
+                        .map(ProductionMaterialDemand::getId)
+                        .toList());
+        workshopPreferences.learnFromConfirmedSegments(
+                segmentDrafts.stream()
+                        .map(SegmentDraft::segment).toList(),
+                currentUser.requireEmployeeId());
         return new PlanningPackageResult(
                 begin.planningPackage().getId(),
                 begin.planningPackage().getStatus(),
@@ -308,6 +320,8 @@ public class ProductionExecutionPackageCommandService {
                     proposal.line().productUnitRate());
             segment.setPlannedQty(proposal.plannedQty());
             segment.setStatus(proposal.status());
+            segment.setAutoPromoteWhenReady(
+                    proposal.autoPromoteWhenReady());
             segment.setWorkshopDepartmentId(
                     proposal.line().defaultWorkshopDepartmentId());
             segment.setTeamDepartmentId(
@@ -683,7 +697,179 @@ public class ProductionExecutionPackageCommandService {
                 && purchaseLines != null
                 && !purchaseLines.isEmpty()) {
             throw validation(
-                    "BUY shortage requires purchase-request generation");
+                    "存在外购物料缺口，必须同时生成采购申请草稿");
+        }
+    }
+
+    static List<MrpService.DirectMakeRequirement> directMakeRequirements(
+            CompleteKitAllocator.Allocation allocation) {
+        Map<CompleteKitAllocator.MaterialKey,
+                MrpService.DirectMakeRequirement> totals =
+                new LinkedHashMap<>();
+        for (CompleteKitAllocator.SegmentAllocation segment
+                : allocation.segments()) {
+            for (CompleteKitAllocator.MaterialAllocation material
+                    : segment.materials()) {
+                if (!ProductionMaterialDemand.ROUTE_MAKE.equals(
+                        material.supplyRoute())) {
+                    continue;
+                }
+                CompleteKitAllocator.MaterialKey key =
+                        new CompleteKitAllocator.MaterialKey(
+                                material.goodsId(), material.colorId());
+                MrpService.DirectMakeRequirement previous = totals.get(key);
+                if (previous != null
+                        && !Objects.equals(
+                                previous.unitId(), material.unitId())) {
+                    throw conflict("同一直接层自制物料颜色维度存在不同基本单位，不能生成子计划");
+                }
+                totals.put(key, new MrpService.DirectMakeRequirement(
+                        material.goodsId(),
+                        material.colorId(),
+                        material.unitId(),
+                        (previous == null ? BigDecimal.ZERO
+                                : previous.requiredQty())
+                                .add(material.requiredQty()),
+                        (previous == null ? BigDecimal.ZERO
+                                : previous.shortageQty())
+                                .add(material.shortageQty())));
+            }
+        }
+        return totals.values().stream()
+                .filter(value -> value.shortageQty().signum() > 0)
+                .sorted(Comparator
+                        .comparing((MrpService.DirectMakeRequirement value) ->
+                                value.goodsId().toString())
+                        .thenComparing(value ->
+                                Objects.toString(value.colorId(), ""))
+                        .thenComparing(value -> value.unitId().toString()))
+                .toList();
+    }
+
+    private void createMakeSupplyPegs(
+            ProductionPlanningPackage planningPackage,
+            List<ProductionMaterialDemand> demands,
+            List<SegmentDraft> segments,
+            List<GenerateSubplansRequest.Created> subplans) {
+        Map<DemandMaterialKey, BigDecimal> shortageByDemand =
+                proposedShortage(
+                        segments, ProductionMaterialDemand.ROUTE_MAKE);
+        if (shortageByDemand.isEmpty()) {
+            if (subplans != null && !subplans.isEmpty()) {
+                throw conflict(
+                        "MAKE subplan exists without a direct material shortage");
+            }
+            return;
+        }
+        if (subplans == null || subplans.size() != 1) {
+            throw conflict(
+                    "Direct MAKE shortages require exactly one attributed subplan");
+        }
+
+        em.flush();
+        UUID subplanId = subplans.getFirst().planId();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT item.id, item.goods_id,
+                                       item.color_id, item.unit_id,
+                                       item.qty * COALESCE(
+                                           item.unit_rate, 1)
+                                FROM production_plan_items item
+                                JOIN subplan_links link
+                                  ON link.subplan_id = item.plan_id
+                                 AND link.plan_id = :planId
+                                 AND link.planning_package_id = :packageId
+                                 AND link.source = 'EXECUTION_V1'
+                                 AND link.is_deleted = FALSE
+                                JOIN production_plans child
+                                  ON child.id = item.plan_id
+                                 AND child.is_deleted = FALSE
+                                 AND child.status <> -1
+                                WHERE item.plan_id = :subplanId
+                                  AND item.is_deleted = FALSE
+                                ORDER BY item.goods_id,
+                                         item.color_id NULLS FIRST,
+                                         item.id
+                                FOR UPDATE OF item
+                                """)
+                        .setParameter(
+                                "planId", planningPackage.getPlanId())
+                        .setParameter(
+                                "packageId", planningPackage.getId())
+                        .setParameter("subplanId", subplanId));
+        record MakeSourceItem(
+                UUID itemId, UUID unitId, BigDecimal capacity) {
+        }
+        Map<CompleteKitAllocator.MaterialKey, MakeSourceItem> sources =
+                new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            CompleteKitAllocator.MaterialKey key =
+                    new CompleteKitAllocator.MaterialKey(
+                            (UUID) row[1], (UUID) row[2]);
+            MakeSourceItem previous = sources.putIfAbsent(
+                    key,
+                    new MakeSourceItem(
+                            (UUID) row[0], (UUID) row[3],
+                            decimal(row[4])));
+            if (previous != null) {
+                throw conflict(
+                        "Direct MAKE subplan contains a duplicate material dimension");
+            }
+        }
+
+        Map<CompleteKitAllocator.MaterialKey, BigDecimal> expected =
+                new LinkedHashMap<>();
+        shortageByDemand.forEach((key, qty) -> expected.merge(
+                new CompleteKitAllocator.MaterialKey(
+                        key.goodsId(), key.colorId()),
+                qty, BigDecimal::add));
+        if (!sources.keySet().equals(expected.keySet())) {
+            throw conflict(
+                    "Direct MAKE subplan lines do not match package shortages");
+        }
+
+        Map<UUID, BigDecimal> peggedBySource = new LinkedHashMap<>();
+        Set<DemandMaterialKey> peggedDemands = new java.util.HashSet<>();
+        for (ProductionMaterialDemand demand : demands.stream()
+                .sorted(Comparator
+                        .comparing(ProductionMaterialDemand::getExecutionSegmentId)
+                        .thenComparing(ProductionMaterialDemand::getGoodsId)
+                        .thenComparing(value -> Objects.toString(
+                                value.getColorId(), ""))
+                        .thenComparing(ProductionMaterialDemand::getId))
+                .toList()) {
+            DemandMaterialKey demandKey = new DemandMaterialKey(
+                    demand.getExecutionSegmentId(),
+                    demand.getGoodsId(), demand.getColorId());
+            BigDecimal qty = shortageByDemand.getOrDefault(
+                    demandKey, BigDecimal.ZERO);
+            if (qty.signum() <= 0) {
+                continue;
+            }
+            MakeSourceItem source = sources.get(
+                    new CompleteKitAllocator.MaterialKey(
+                            demand.getGoodsId(), demand.getColorId()));
+            if (source == null
+                    || !Objects.equals(
+                            source.unitId(), demand.getUnitId())
+                    || !ProductionMaterialDemand.ROUTE_MAKE.equals(
+                            demand.getSupplyRoute())) {
+                throw conflict(
+                        "Direct MAKE demand and subplan dimensions are inconsistent");
+            }
+            ledger.createSupplyPeg(
+                    demand, "PRODUCTION_PLAN_ITEM", source.itemId(),
+                    qty, demand.getNeedDate());
+            peggedBySource.merge(source.itemId(), qty, BigDecimal::add);
+            peggedDemands.add(demandKey);
+        }
+        if (!peggedDemands.equals(shortageByDemand.keySet())
+                || sources.values().stream().anyMatch(source ->
+                        peggedBySource.getOrDefault(
+                                        source.itemId(), BigDecimal.ZERO)
+                                .compareTo(source.capacity()) != 0)) {
+            throw conflict(
+                    "Direct MAKE supply pegs do not exactly cover subplan quantity");
         }
     }
 
@@ -762,7 +948,7 @@ public class ProductionExecutionPackageCommandService {
         }).toList();
     }
 
-    private PlanningPackageResult replay(
+    PlanningPackageResult replay(
             ProductionPlanningPackage planningPackage) {
         List<ProductionExecutionSegment> segments =
                 segmentRepo.findByPackageIdAndDeletedFalseOrderBySegmentNoAsc(
@@ -824,6 +1010,8 @@ public class ProductionExecutionPackageCommandService {
                         .toList());
         MrpGenerateResult purchase = replayPurchase(planningPackage);
         MrpGenerateResult subcontract = replaySubcontract(planningPackage);
+        List<GenerateSubplansRequest.Created> subplans =
+                replaySubplans(planningPackage.getId());
         List<ExecutionSegmentResult> executionResults =
                 replayResults(drafts, demandsBySegment, allocated, draws);
         List<MrpGenerateResult> drawResults =
@@ -832,12 +1020,41 @@ public class ProductionExecutionPackageCommandService {
                 planningPackage.getId(),
                 planningPackage.getStatus(),
                 true,
-                List.of(),
+                subplans,
                 purchase,
                 subcontract,
                 drawResults.isEmpty() ? null : drawResults.getFirst(),
                 executionResults,
                 drawResults);
+    }
+
+    private List<GenerateSubplansRequest.Created> replaySubplans(
+            UUID packageId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT plan.id, plan.bill_no,
+                                       COUNT(item.id), plan.workshop_name
+                                FROM production_planning_package_documents doc
+                                JOIN production_plans plan
+                                  ON plan.id = doc.document_id
+                                 AND plan.is_deleted = FALSE
+                                LEFT JOIN production_plan_items item
+                                  ON item.plan_id = plan.id
+                                 AND item.is_deleted = FALSE
+                                WHERE doc.package_id = :packageId
+                                  AND doc.document_type = 'SUBPLAN'
+                                GROUP BY plan.id, plan.bill_no,
+                                         plan.workshop_name, doc.created_at
+                                ORDER BY doc.created_at, plan.id
+                                """)
+                        .setParameter("packageId", packageId));
+        return rows.stream()
+                .map(row -> new GenerateSubplansRequest.Created(
+                        (UUID) row[0],
+                        (String) row[1],
+                        ((Number) row[2]).intValue(),
+                        row[3] == null ? null : row[3].toString()))
+                .toList();
     }
 
     private List<ExecutionSegmentResult> replayResults(
@@ -961,56 +1178,6 @@ public class ProductionExecutionPackageCommandService {
                 List.of());
     }
 
-    private Map<CompleteKitAllocator.MaterialKey, String> authoritativeRoutes(
-            GeneratePlanningPackageRequest request,
-            ProductionExecutionPlanningService.Snapshot snapshot) {
-        Map<CompleteKitAllocator.MaterialKey, String> result =
-                new LinkedHashMap<>();
-        snapshot.productLines().stream()
-                .flatMap(line -> line.materials().stream())
-                .forEach(material -> {
-                    CompleteKitAllocator.MaterialKey key =
-                            new CompleteKitAllocator.MaterialKey(
-                                    material.goodsId(), material.colorId());
-                    String previous = result.putIfAbsent(
-                            key, material.supplyRoute());
-                    if (previous != null
-                            && !previous.equals(material.supplyRoute())) {
-                        throw conflict(
-                                "The same material dimension has conflicting authoritative supply routes");
-                    }
-                });
-        if (request.getRoutes() == null) {
-            return result;
-        }
-        for (GeneratePlanningPackageRequest.MaterialRoute route
-                : request.getRoutes()) {
-            CompleteKitAllocator.MaterialKey key =
-                    new CompleteKitAllocator.MaterialKey(
-                            route.getGoodsId(), route.getColorId());
-            if (!result.containsKey(key)) {
-                throw validation(
-                        "Supply route does not belong to the current BOM");
-            }
-            String requested = route.getSupplyRoute() == null
-                    ? ""
-                    : route.getSupplyRoute()
-                            .strip()
-                            .toUpperCase(Locale.ROOT);
-            if (!ProductionMaterialDemand.ROUTE_BUY.equals(requested)
-                    && !ProductionMaterialDemand.ROUTE_SUBCONTRACT.equals(
-                            requested)) {
-                throw validation(
-                        "Supply route must be BUY or SUBCONTRACT");
-            }
-            if (!result.get(key).equals(requested)) {
-                throw conflict(
-                        "Supply route conflicts with the material master");
-            }
-        }
-        return result;
-    }
-
     private Map<CompleteKitAllocator.MaterialKey, String> routes(
             GeneratePlanningPackageRequest request,
             ProductionExecutionPlanningService.Snapshot snapshot) {
@@ -1041,33 +1208,6 @@ public class ProductionExecutionPackageCommandService {
         return result;
     }
 
-    private void validateRequest(GeneratePlanningPackageRequest request) {
-        if (request == null
-                || request.getWarehouseId() == null
-                || request.getIdempotencyKey() == null
-                || request.getIdempotencyKey().isBlank()
-                || request.getPreviewFingerprint() == null
-                || !request.getPreviewFingerprint()
-                        .matches("(?i)[0-9a-f]{64}")) {
-            throw validation("计划包缺少仓库、幂等键或有效预览指纹");
-        }
-        if (request.getItems() != null && !request.getItems().isEmpty()) {
-            throw conflict(
-                    "items 是旧自制子计划字段，不能用于成品执行分段");
-        }
-        long warehouse = ((Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM warehouses
-                        WHERE id = :id AND is_deleted = FALSE
-                        """)
-                .setParameter("id", request.getWarehouseId())
-                .getSingleResult()).longValue();
-        if (warehouse != 1) {
-            throw new ApiException(
-                    ErrorCode.NOT_FOUND, "目标仓库不存在或已停用");
-        }
-    }
-
     private PlanHeader lockPlan(UUID planId) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -1083,10 +1223,10 @@ public class ProductionExecutionPackageCommandService {
                     ErrorCode.NOT_FOUND, "生产计划不存在");
         }
         Object[] row = rows.getFirst();
-        if (((Number) row[2]).shortValue() == -1
+        if (((Number) row[2]).shortValue() != 1
                 || Boolean.TRUE.equals(row[4])
                 || Boolean.TRUE.equals(row[5])) {
-            throw conflict("终态生产计划不能生成执行分段");
+            throw conflict("仅已审核且未取消、未中止的生产计划可正式下达执行分段；草稿请先保存预排草案并审核");
         }
         return new PlanHeader(
                 (String) row[0], date(row[1]));
@@ -1191,7 +1331,7 @@ public class ProductionExecutionPackageCommandService {
                 "该生产计划仍有旧执行事实或旧版计划包；请先完成/反向旧链，或新建生产计划后再生成执行子计划");
     }
 
-    private static String requestHash(
+    static String requestHash(
             GeneratePlanningPackageRequest request) {
         List<String> parts = new ArrayList<>();
         parts.add("WAREHOUSE|" + request.getWarehouseId());
@@ -1209,6 +1349,7 @@ public class ProductionExecutionPackageCommandService {
                     Objects.toString(segment.getClientSegmentKey(), ""),
                     Objects.toString(segment.getSourcePlanItemId(), ""),
                     Objects.toString(segment.getRequestedStatus(), ""),
+                    Boolean.toString(segment.isDeferUntilManualRelease()),
                     decimalText(segment.getPlannedQty()),
                     Objects.toString(
                             segment.getWorkshopDepartmentId(), ""),

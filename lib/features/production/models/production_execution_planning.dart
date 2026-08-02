@@ -3,6 +3,30 @@
 /// These models intentionally live outside the repository so the execution
 /// segment flow can replace the legacy "child plan" DTOs without introducing
 /// a circular dependency.
+/// Smaller than the minimum persisted planning quantity (0.0001).
+const double kProductionPlanningQuantityEpsilon = 0.000001;
+
+String formatProductionPlanningQuantity(double value) =>
+    _formatProductionDecimal(value, 4);
+
+String formatProductionPlanningUsage(double value) =>
+    _formatProductionDecimal(value, 6);
+
+String _formatProductionDecimal(double value, int scale) {
+  final fixed = value.toStringAsFixed(scale);
+  final withoutTrailingZeros = fixed.replaceFirst(RegExp(r'0+$'), '');
+  return withoutTrailingZeros.endsWith('.')
+      ? withoutTrailingZeros.substring(0, withoutTrailingZeros.length - 1)
+      : withoutTrailingZeros;
+}
+
+bool isValidProductionPlanningQuantityText(String raw) {
+  final value = raw.trim();
+  return RegExp(
+    r'^(?:[0-9]+|[0-9]+\.[0-9]{1,4}|\.[0-9]{1,4})$',
+  ).hasMatch(value);
+}
+
 class ProductionPlanningPreview {
   const ProductionPlanningPreview({
     required this.planId,
@@ -51,6 +75,18 @@ class ProductionPlanningPreview {
       ),
     );
   }
+}
+
+extension ProductionPlanningPreviewIntegrity on ProductionPlanningPreview {
+  bool get hasBlockingBomGaps =>
+      noBomPlanItemIds.isNotEmpty ||
+      buildProductionDirectReviewMaterials(this).any(
+        (material) =>
+            (material.timelyShortage ?? 0) >
+                kProductionPlanningQuantityEpsilon &&
+            material.sourceType == '自制' &&
+            !material.selfMade,
+      );
 }
 
 class ProductionPlanningMaterial {
@@ -181,6 +217,7 @@ class ProductionExecutionSegmentPreview {
     this.sourceLineNo,
     this.productCode,
     this.productName,
+    this.productSpec,
     this.productColorId,
     this.productUnitId,
     this.workshopDepartmentId,
@@ -197,6 +234,7 @@ class ProductionExecutionSegmentPreview {
   final String productGoodsId;
   final String? productCode;
   final String? productName;
+  final String? productSpec;
   final String? productColorId;
   final String? productUnitId;
   final double plannedQty;
@@ -219,6 +257,7 @@ class ProductionExecutionSegmentPreview {
       productGoodsId: json['productGoodsId'] as String,
       productCode: json['productCode'] as String?,
       productName: json['productName'] as String?,
+      productSpec: json['productSpec'] as String?,
       productColorId: json['productColorId'] as String?,
       productUnitId: json['productUnitId'] as String?,
       plannedQty: _requiredDouble(json['plannedQty']),
@@ -321,11 +360,174 @@ class ProductionMaterialRoute {
   final String? colorId;
   final String supplyRoute;
 
+  factory ProductionMaterialRoute.fromJson(Map<String, dynamic> json) {
+    return ProductionMaterialRoute(
+      goodsId: json['goodsId'] as String,
+      colorId: json['colorId'] as String?,
+      supplyRoute: json['supplyRoute'] as String,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'goodsId': goodsId,
     if (colorId != null) 'colorId': colorId,
     'supplyRoute': supplyRoute,
   };
+}
+
+/// Builds the explicit supply-route overrides accepted by the planning API.
+///
+/// MAKE shortages are expanded into child production plans by the server and
+/// must not be submitted as a user-selected material route. Stock-covered
+/// materials likewise need no route override.
+List<ProductionMaterialRoute> buildProductionMaterialSupplyRoutes(
+  Iterable<ProductionExecutionSegmentPreview> segments, {
+  double shortageEpsilon = kProductionPlanningQuantityEpsilon,
+}) {
+  final routes = <String, ProductionMaterialRoute>{};
+  for (final segment in segments) {
+    for (final material in segment.materials) {
+      if (material.shortageQty <= shortageEpsilon) continue;
+      if (material.supplyRoute != 'BUY' &&
+          material.supplyRoute != 'SUBCONTRACT') {
+        continue;
+      }
+      final key = '${material.goodsId}|${material.colorId ?? ''}';
+      routes.putIfAbsent(
+        key,
+        () => ProductionMaterialRoute(
+          goodsId: material.goodsId,
+          colorId: material.colorId,
+          supplyRoute: material.supplyRoute,
+        ),
+      );
+    }
+  }
+  return routes.values.toList(growable: false);
+}
+
+/// Aggregates only the direct BOM materials carried by execution segments.
+///
+/// [ProductionPlanningPreview.materials] may contain recursively exploded
+/// lower-level components. Those components belong to a derived MAKE child
+/// plan and must not be presented as documents created by the current plan.
+List<ProductionPlanningMaterial> buildProductionDirectReviewMaterials(
+  ProductionPlanningPreview preview,
+) {
+  String key(String goodsId, String? colorId) => '$goodsId|${colorId ?? ''}';
+
+  final detailsByKey = <String, ProductionPlanningMaterial>{};
+  for (final material in preview.materials) {
+    detailsByKey.putIfAbsent(
+      key(material.goodsId, material.colorId),
+      () => material,
+    );
+  }
+
+  final directByKey = <String, _DirectPlanningMaterialAggregate>{};
+  for (final segment in preview.executionSegments) {
+    for (final material in segment.materials) {
+      final materialKey = key(material.goodsId, material.colorId);
+      final aggregate = directByKey.putIfAbsent(
+        materialKey,
+        () => _DirectPlanningMaterialAggregate(material),
+      );
+      aggregate.requiredQty += material.requiredQty;
+      aggregate.shortageQty += material.shortageQty;
+    }
+  }
+
+  return [
+    for (final entry in directByKey.entries)
+      _directReviewMaterial(entry.value, detailsByKey[entry.key]),
+  ];
+}
+
+ProductionPlanningMaterial _directReviewMaterial(
+  _DirectPlanningMaterialAggregate aggregate,
+  ProductionPlanningMaterial? details,
+) {
+  final direct = aggregate.material;
+  final route = direct.supplyRoute;
+  final sourceType = switch (route) {
+    'BUY' => '采购',
+    'SUBCONTRACT' => '委外',
+    'MAKE' => details?.sourceType ?? '自制',
+    _ => details?.sourceType,
+  };
+  return ProductionPlanningMaterial(
+    goodsId: direct.goodsId,
+    goodsCode: details?.goodsCode,
+    goodsName: details?.goodsName,
+    spec: details?.spec,
+    colorId: direct.colorId,
+    gross: aggregate.requiredQty,
+    selfMade: route == 'MAKE' && (details?.selfMade ?? false),
+    unitId: direct.unitId,
+    bookStock: details?.bookStock ?? direct.availableBeforeQty,
+    availableNow: details?.availableNow ?? direct.availableBeforeQty,
+    timelyShortage: aggregate.shortageQty,
+    sourceType: sourceType,
+  );
+}
+
+class _DirectPlanningMaterialAggregate {
+  _DirectPlanningMaterialAggregate(this.material);
+
+  final ProductionExecutionMaterialPreview material;
+  double requiredQty = 0;
+  double shortageQty = 0;
+}
+
+class ProductionPlanningDraftView {
+  const ProductionPlanningDraftView({
+    required this.draftId,
+    required this.planId,
+    required this.warehouseId,
+    required this.status,
+    required this.previewFingerprint,
+    required this.segmentCount,
+    required this.generatePurchaseRequest,
+    required this.plannedAt,
+    required this.plannedBy,
+    this.routes = const [],
+    this.segments = const [],
+  });
+
+  final String draftId;
+  final String planId;
+  final String warehouseId;
+  final String status;
+  final String previewFingerprint;
+  final int segmentCount;
+  final bool generatePurchaseRequest;
+  final String plannedAt;
+  final String plannedBy;
+  final List<ProductionMaterialRoute> routes;
+  final List<ProductionExecutionSegmentConfirm> segments;
+
+  factory ProductionPlanningDraftView.fromJson(Map<String, dynamic> json) {
+    final rawRequest = json['request'];
+    final request = rawRequest is Map
+        ? Map<String, dynamic>.from(rawRequest)
+        : const <String, dynamic>{};
+    return ProductionPlanningDraftView(
+      draftId: json['draftId'] as String,
+      planId: json['planId'] as String,
+      warehouseId: json['warehouseId'] as String,
+      status: json['status'] as String,
+      previewFingerprint: json['previewFingerprint'] as String,
+      segmentCount: (json['segmentCount'] as num).toInt(),
+      generatePurchaseRequest: json['generatePurchaseRequest'] == true,
+      plannedAt: json['plannedAt'] as String,
+      plannedBy: json['plannedBy'] as String,
+      routes: _decodeList(request['routes'], ProductionMaterialRoute.fromJson),
+      segments: _decodeList(
+        request['segments'],
+        ProductionExecutionSegmentConfirm.fromJson,
+      ),
+    );
+  }
 }
 
 class ProductionExecutionSegmentConfirm {
@@ -335,6 +537,7 @@ class ProductionExecutionSegmentConfirm {
     required this.requestedStatus,
     required this.plannedQty,
     required this.bomFingerprint,
+    this.deferUntilManualRelease = false,
     this.workshopDepartmentId,
     this.teamDepartmentId,
     this.responsibleEmployeeId,
@@ -345,6 +548,11 @@ class ProductionExecutionSegmentConfirm {
   final String clientSegmentKey;
   final String sourcePlanItemId;
   final String requestedStatus;
+
+  /// True only when the dispatcher explicitly chose to hold this WAITING
+  /// segment until a later manual release. Ordinary material shortages keep
+  /// this false so receipt-driven readiness may promote them automatically.
+  final bool deferUntilManualRelease;
   final double plannedQty;
   final String? workshopDepartmentId;
   final String? teamDepartmentId;
@@ -353,10 +561,28 @@ class ProductionExecutionSegmentConfirm {
   final String? planEndDate;
   final String bomFingerprint;
 
+  factory ProductionExecutionSegmentConfirm.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    return ProductionExecutionSegmentConfirm(
+      clientSegmentKey: json['clientSegmentKey'] as String,
+      sourcePlanItemId: json['sourcePlanItemId'] as String,
+      requestedStatus: json['requestedStatus'] as String,
+      deferUntilManualRelease: json['deferUntilManualRelease'] == true,
+      plannedQty: _requiredDouble(json['plannedQty']),
+      workshopDepartmentId: json['workshopDepartmentId'] as String?,
+      teamDepartmentId: json['teamDepartmentId'] as String?,
+      responsibleEmployeeId: json['responsibleEmployeeId'] as String?,
+      planBeginDate: json['planBeginDate'] as String?,
+      planEndDate: json['planEndDate'] as String?,
+      bomFingerprint: json['bomFingerprint'] as String,
+    );
+  }
   Map<String, dynamic> toJson() => <String, dynamic>{
     'clientSegmentKey': clientSegmentKey,
     'sourcePlanItemId': sourcePlanItemId,
     'requestedStatus': requestedStatus,
+    'deferUntilManualRelease': deferUntilManualRelease,
     'plannedQty': plannedQty,
     if (workshopDepartmentId != null)
       'workshopDepartmentId': workshopDepartmentId,
@@ -589,6 +815,7 @@ class ProductionExecutionSegmentView {
     required this.reportedQty,
     required this.remainingQty,
     required this.status,
+    required this.autoPromoteWhenReady,
     required this.materialKindCount,
     required this.shortageKindCount,
     required this.materialReady,
@@ -623,6 +850,7 @@ class ProductionExecutionSegmentView {
   final double reportedQty;
   final double remainingQty;
   final String status;
+  final bool autoPromoteWhenReady;
   final String? workshopDepartmentId;
   final String? workshopName;
   final String? teamDepartmentId;
@@ -653,6 +881,7 @@ class ProductionExecutionSegmentView {
       reportedQty: _requiredDouble(json['reportedQty']),
       remainingQty: _requiredDouble(json['remainingQty']),
       status: json['status'] as String,
+      autoPromoteWhenReady: json['autoPromoteWhenReady'] != false,
       workshopDepartmentId: json['workshopDepartmentId'] as String?,
       workshopName: json['workshopName'] as String?,
       teamDepartmentId: json['teamDepartmentId'] as String?,

@@ -88,6 +88,11 @@ public class ProductionExecutionPlanningService {
                     && edit.getPlanEndDate().isBefore(edit.getPlanBeginDate())) {
                 throw validation("计划完工日期不能早于计划开工日期");
             }
+            if (edit.isDeferUntilManualRelease()
+                    && !"WAITING".equals(edit.getRequestedStatus())) {
+                throw validation(
+                        "Only WAITING segments may be explicitly deferred");
+            }
             BigDecimal qty = scaleProduct(edit.getPlannedQty());
             totals.merge(line.sourcePlanItemId(), qty, BigDecimal::add);
             CompleteKitAllocator.ProductLine editedLine =
@@ -96,7 +101,8 @@ public class ProductionExecutionPlanningService {
                     edit.getClientSegmentKey().strip(),
                     editedLine,
                     edit.getRequestedStatus(),
-                    qty));
+                    qty,
+                    edit.isDeferUntilManualRelease()));
         }
         for (CompleteKitAllocator.ProductLine line : snapshot.productLines()) {
             if (totals.getOrDefault(line.sourcePlanItemId(), BigDecimal.ZERO)
@@ -116,6 +122,7 @@ public class ProductionExecutionPlanningService {
 
     public List<ExecutionSegmentPreview> toPreview(
             CompleteKitAllocator.Allocation allocation) {
+        Map<UUID, String> productSpecs = productSpecs(allocation);
         return allocation.segments().stream()
                 .map(segment -> new ExecutionSegmentPreview(
                         segment.clientSegmentKey(),
@@ -124,6 +131,7 @@ public class ProductionExecutionPlanningService {
                         segment.line().productGoodsId(),
                         segment.line().productCode(),
                         segment.line().productName(),
+                        productSpecs.get(segment.line().productGoodsId()),
                         segment.line().productColorId(),
                         segment.line().productUnitId(),
                         segment.plannedQty(),
@@ -149,6 +157,32 @@ public class ProductionExecutionPlanningService {
                 .toList();
     }
 
+    private Map<UUID, String> productSpecs(
+            CompleteKitAllocator.Allocation allocation) {
+        List<UUID> goodsIds = allocation.segments().stream()
+                .map(segment -> segment.line().productGoodsId())
+                .distinct()
+                .sorted()
+                .toList();
+        if (goodsIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT id, spec
+                                FROM goods
+                                WHERE id IN (:goodsIds)
+                                  AND is_deleted = FALSE
+                                ORDER BY id
+                                """)
+                        .setParameter("goodsIds", goodsIds));
+        Map<UUID, String> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], (String) row[1]);
+        }
+        return result;
+    }
+
     private Snapshot snapshot(
             UUID planId,
             UUID warehouseId,
@@ -171,7 +205,13 @@ public class ProductionExecutionPlanningService {
                                        i.qty,
                                        i.plan_begin_date,
                                        i.plan_end_date,
-                                       p.department_id,
+                                       CASE
+                                           WHEN preferred_workshop_parent.id IS NOT NULL
+                                           THEN workshop_preference.workshop_department_id
+                                           WHEN plan_workshop_parent.id IS NOT NULL
+                                           THEN p.department_id
+                                           ELSE NULL
+                                       END,
                                        p.worker_id,
                                        product.code,
                                        product.name,
@@ -200,6 +240,26 @@ public class ProductionExecutionPlanningService {
                                 JOIN goods product
                                   ON product.id = i.goods_id
                                  AND product.is_deleted = FALSE
+                                 LEFT JOIN production_goods_workshop_preferences
+                                      workshop_preference
+                                   ON workshop_preference.goods_id = product.id
+                                 LEFT JOIN departments preferred_workshop
+                                   ON preferred_workshop.id =
+                                      workshop_preference.workshop_department_id
+                                  AND preferred_workshop.is_deleted = FALSE
+                                 LEFT JOIN departments preferred_workshop_parent
+                                   ON preferred_workshop_parent.id =
+                                      preferred_workshop.parent_id
+                                  AND preferred_workshop_parent.code = 'DEPT_PROD'
+                                  AND preferred_workshop_parent.is_deleted = FALSE
+                                 LEFT JOIN departments plan_workshop
+                                   ON plan_workshop.id = p.department_id
+                                  AND plan_workshop.is_deleted = FALSE
+                                 LEFT JOIN departments plan_workshop_parent
+                                   ON plan_workshop_parent.id =
+                                      plan_workshop.parent_id
+                                  AND plan_workshop_parent.code = 'DEPT_PROD'
+                                  AND plan_workshop_parent.is_deleted = FALSE
                                 JOIN units product_unit
                                   ON product_unit.id = i.unit_id
                                  AND product_unit.is_deleted = FALSE
@@ -237,8 +297,8 @@ public class ProductionExecutionPlanningService {
                         """)
                 .setParameter("planId", planId)
                 .getResultList());
-        if (allSourceItemIds.isEmpty() || rows.isEmpty()) {
-            throw conflict("生产计划没有可排产的成品行或有效 BOM");
+        if (allSourceItemIds.isEmpty()) {
+            throw conflict("生产计划没有数量大于零的可排产成品行");
         }
 
         Map<UUID, LineAccumulator> lines = new LinkedHashMap<>();
@@ -292,8 +352,8 @@ public class ProductionExecutionPlanningService {
                             componentSourceType,
                             Objects.toString(row[21], "")));
         }
-        // 部分成品行未维护 BOM：收集其 ID 供前端引导，不再整批拒绝。
-        // 有 BOM 的行照常生成执行分段，无 BOM 的行在前端提示去货品资料维护。
+        // 收集所有未维护 BOM 的正数量成品行；即使全部缺 BOM，也返回快照供前端精确提示。
+        // 正式保存草案/审核下达由共享校验器 fail-closed，禁止形成不完整排产方案。
         List<UUID> noBomPlanItemIds = allSourceItemIds.stream()
                 .filter(id -> !lines.containsKey(id))
                 .toList();
@@ -340,6 +400,9 @@ public class ProductionExecutionPlanningService {
             warehouseAvailability(
                     UUID warehouseId,
                     List<CompleteKitAllocator.ProductLine> lines) {
+        if (lines.isEmpty()) {
+            return Map.of();
+        }
         List<UUID> goodsIds = lines.stream()
                 .flatMap(line -> line.materials().stream())
                 .map(CompleteKitAllocator.MaterialUsage::goodsId)

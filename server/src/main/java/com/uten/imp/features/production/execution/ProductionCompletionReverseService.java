@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,30 @@ public class ProductionCompletionReverseService
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
 
+    private final ProductionExecutionReadinessService readiness;
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockFinishedInboundProductionDimensions(
+            UUID stockDocumentId,
+            UUID warehouseId) {
+        readiness.lockFinishedInboundProductionDimensions(
+                stockDocumentId, warehouseId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterFinishedInboundApproved(
+            UUID stockDocumentId,
+            UUID warehouseId) {
+        if (stockDocumentId == null || warehouseId == null) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "Finished inbound MAKE promotion requires document and warehouse");
+        }
+        readiness.onFinishedInboundApproved(
+                stockDocumentId, warehouseId);
+    }
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeFinishedInboundReversed(UUID stockDocumentId) {
@@ -46,6 +71,7 @@ public class ProductionCompletionReverseService
                     ErrorCode.VALIDATION_FAILED, "成品入库红冲缺少单据标识");
         }
         lockAndRequireApprovedFinishedIn(stockDocumentId);
+        readiness.beforeFinishedInboundReversed(stockDocumentId);
         List<UUID> segmentIds = exactSegmentIds(stockDocumentId);
         if (segmentIds.isEmpty()) {
             return;

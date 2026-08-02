@@ -274,12 +274,8 @@ class ProductionExecutionSegmentOperationsPostgresTest {
             c.setAutoCommit(true);
         }
 
-        UUID department = UUID.randomUUID();
+        UUID department = departmentId(c, "WS_ZHUSU");
         UUID employee = UUID.randomUUID();
-        insert(c, """
-                insert into departments(id,code,name,level)
-                values(?,?,?,'一级部门')
-                """, department, "D-" + department, "workshop");
         insert(c, """
                 insert into employees(
                     id,code,full_name,id_type,department_id,hire_date,
@@ -332,6 +328,19 @@ class ProductionExecutionSegmentOperationsPostgresTest {
             try (ResultSet result = statement.executeQuery()) {
                 result.next();
                 assertEquals(expected, result.getString(1));
+            }
+        }
+    }
+
+    private static UUID departmentId(
+            Connection connection,
+            String code) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT id FROM departments WHERE code = ? AND is_deleted = FALSE")) {
+            statement.setString(1, code);
+            try (ResultSet result = statement.executeQuery()) {
+                result.next();
+                return result.getObject(1, UUID.class);
             }
         }
     }

@@ -34,4 +34,24 @@ public interface ProductionPlanningPackageRepository
             """)
     Optional<ProductionPlanningPackage> lockConfirmedByPlan(
             @Param("planId") UUID planId);
+
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    Optional<ProductionPlanningPackage>
+            findFirstByPlanIdAndStatusAndExecutionModelVersionAndDeletedFalseOrderByCreatedAtDesc(
+                    UUID planId,
+                    String status,
+                    Short executionModelVersion);
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            SELECT p
+            FROM ProductionPlanningPackage p
+            WHERE p.id = :packageId
+              AND p.planId = :planId
+              AND p.status = 'CONFIRMED'
+              AND p.executionModelVersion = 1
+              AND p.deleted = false
+            """)
+    Optional<ProductionPlanningPackage> lockConfirmedExecutionPackage(
+            @Param("planId") UUID planId,
+            @Param("packageId") UUID packageId);
 }

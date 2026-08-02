@@ -24,6 +24,8 @@ class CategoryEditResult {
 
   final String? code;
   final String name;
+
+  /// 新建时是所选父级；编辑时仅在父级实际改变后非空。
   final String? parentId;
 }
 
@@ -135,7 +137,9 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       // 新建：留空→后端自动生成；非空→提交后端查重。编辑：code 不可改（null 不上送）。
       code: _isEdit ? null : (codeText.isEmpty ? null : codeText),
       name: _nameCtl.text.trim(),
-      parentId: _parent?.id,
+      parentId: _isEdit && _parent?.id == widget.editing?.parentId
+          ? null
+          : _parent?.id,
     );
     // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
     late final bool ok;
@@ -159,18 +163,20 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
       title: _isEdit ? '选择上级分类' : '选择添加位置', // TODO(l10n): 补 arb
       rootLabel: '顶级分类', // TODO(l10n): 补 arb
       showRootOption: !_isEdit, // 编辑不支持移到根（后端 parentId=null 视为不改），新建可加顶级
-      childBuilder: (ctx, onSelect, onSelectRoot) => UtenCategoryTreeView(
-        mode: UtenCategoryTreeMode.single,
-        nodes: widget.tree,
-        selectedIds: {_parent?.id ?? ''},
-        nodeEnabledPredicate: (n) {
-          // 编辑态：禁用自身及其后代（选后代当父级会成环）。新建态全部可选。
-          if (selfNode == null) return true;
-          return !_isSelfOrDescendant(selfNode, n.id);
-        },
-        onToggleSelect: onSelect,
-        initiallyExpandDepth: 2,
-      ),
+      initialSelection: (node: _parent, isRoot: _parent == null),
+      childBuilder: (ctx, pendingSelection, onSelect, onSelectRoot) =>
+          UtenCategoryTreeView(
+            mode: UtenCategoryTreeMode.single,
+            nodes: widget.tree,
+            selectedIds: {pendingSelection?.node?.id ?? ''},
+            nodeEnabledPredicate: (n) {
+              // 编辑态：禁用自身及其后代（选后代当父级会成环）。新建态全部可选。
+              if (selfNode == null) return true;
+              return !_isSelfOrDescendant(selfNode, n.id);
+            },
+            onToggleSelect: onSelect,
+            initiallyExpandDepth: 2,
+          ),
     );
     if (!mounted || result == null) return;
     setState(() => _parent = result.isRoot ? null : result.node);
@@ -192,6 +198,7 @@ class _CategoryEditDialogState extends State<CategoryEditDialog> {
               pathLabel: _parent?.name,
               rootLabel: '顶级分类', // TODO(l10n): 补 arb
               resultLevelLabel: 'L$_resultLevel',
+              headingLabel: _isEdit ? '上级分类' : '添加位置',
               onTap: _pickParent,
             ),
             const SizedBox(height: UtenSpacing.s12),

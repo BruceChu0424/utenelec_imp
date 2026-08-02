@@ -25,6 +25,32 @@ class ProductionMakeSubplanLifecycleContractTest {
     }
 
     @Test
+    void v1SelfMadeSubplanUsesOnlyDirectAllocationShortage() throws Exception {
+        String mrp = source("MrpService.java");
+        int start = mrp.indexOf(
+                "generateSelfMadeSubplansForPackage(");
+        int end = mrp.indexOf(
+                "public List<GenerateSubplansRequest.Created> generateSubplans(",
+                start);
+
+        assertTrue(start >= 0 && end > start);
+        String method = mrp.substring(start, end);
+        assertTrue(method.contains("List<DirectMakeRequirement>"));
+        assertTrue(method.contains("item.setQty(row.shortageQty())"));
+        assertTrue(method.contains("item.setOqty(row.requiredQty())"));
+        assertTrue(!method.contains("explode(planId)"));
+        assertTrue(method.contains("if (make.isEmpty())"));
+        assertTrue(method.contains("return List.of();"));
+        assertTrue(method.contains("if (existing.intValue() > 0)"));
+        assertTrue(method.contains("An active EXECUTION_V1 subplan already exists"));
+
+        String command = source(
+                "ProductionExecutionPackageCommandService.java");
+        assertTrue(command.contains(
+                "directMakeRequirements(allocation)"));
+    }
+
+    @Test
     void genericPlanLifecycleCannotOrphanExecutionV1Subplan()
             throws Exception {
         String source = Files.readString(Path.of(

@@ -71,6 +71,12 @@ public class GeneratePlanningPackageRequest {
         @Pattern(regexp = "READY|WAITING")
         private String requestedStatus;
 
+        /**
+         * Explicit user hold. A normal shortage-suggested WAITING segment keeps
+         * this false so an authoritative receipt may promote it later.
+         */
+        private boolean deferUntilManualRelease;
+
         @NotNull
         private BigDecimal plannedQty;
 

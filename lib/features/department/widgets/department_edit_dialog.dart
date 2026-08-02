@@ -2,7 +2,8 @@
 //
 // 范式照 basic_data 的 CategoryEditDialog，仅领域差异：
 // - 树用 UtenDepartmentTreeView（保留 level 徽标）；
-// - 父级仅可选 kSelectableDepartmentLevels（一级/二级/三级），骨架层灰显仅展开；
+// - 业务部门的父级位置可选业务部门或骨架层；骨架自身的上级位置只读；
+//   员工归属等普通部门选择器仍禁选骨架层；
 // - 新节点 level 由父级推导（_childDeptLevel）；
 // - 编辑态不能移到根、不能挂到自身/子树下。
 //
@@ -31,6 +32,8 @@ class DepartmentEditResult {
 
   final String? code;
   final String name;
+
+  /// 新建时是所选父级；编辑时仅在父级实际改变后非空。
   final String? parentId;
   final String? managerId;
 
@@ -79,6 +82,10 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
   String? _formError;
 
   bool get _isEdit => widget.editing != null;
+  bool get _canAssignManager =>
+      _isEdit && kSelectableDepartmentLevels.contains(widget.editing?.level);
+  bool get _canChangeParent =>
+      !_isEdit || kSelectableDepartmentLevels.contains(widget.editing?.level);
 
   @override
   void initState() {
@@ -158,8 +165,10 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
     final result = DepartmentEditResult(
       code: _isEdit ? null : _codeCtl.text.trim(),
       name: _nameCtl.text.trim(),
-      parentId: _parent?.id,
-      level: _resultLevel,
+      parentId: _isEdit && _parent?.id == widget.editing?.parentId
+          ? null
+          : _parent?.id,
+      level: _canChangeParent ? _resultLevel : widget.editing!.level,
       managerId: _manager?.id,
     );
     // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
@@ -183,6 +192,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
   }
 
   Future<void> _pickParent() async {
+    if (!_canChangeParent) return;
     final selfId = widget.editing?.id;
     // 自身节点（编辑态）：在自身子树内判定候选父级，禁用自身及其后代（否则成环）。
     final selfNode = selfId == null ? null : _findById(widget.tree, selfId);
@@ -191,17 +201,20 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
       title: _isEdit ? '选择上级部门' : '选择添加位置', // TODO(l10n): 补 arb
       rootLabel: '公司', // TODO(l10n): 补 arb
       showRootOption: !_isEdit, // 编辑不支持移到根（后端 parentId=null 视为不改），新建可加顶层
-      childBuilder: (ctx, onSelect, onSelectRoot) => UtenDepartmentTreeView(
-        nodes: widget.tree,
-        mode: UtenDepartmentTreeMode.single,
-        selectedIds: {_parent?.id ?? ''},
-        // 仅可选层级（一级/二级/三级）能被选为父级；编辑态排除自身及其后代。
-        nodeEnabledPredicate: (n) =>
-            kSelectableDepartmentLevels.contains(n.level) &&
-            (selfNode == null || !_isSelfOrDescendant(selfNode, n.id)),
-        onToggleSelect: onSelect,
-        initiallyExpandDepth: 2,
-      ),
+      initialSelection: (node: _parent, isRoot: _parent == null),
+      childBuilder: (ctx, pendingSelection, onSelect, onSelectRoot) =>
+          UtenDepartmentTreeView(
+            nodes: widget.tree,
+            mode: UtenDepartmentTreeMode.single,
+            selectedIds: {pendingSelection?.node?.id ?? ''},
+            // “上级位置”允许管理中心等骨架承载一级部门；编辑态仍排除自身及其后代。
+            nodeEnabledPredicate: (n) =>
+                (kSelectableDepartmentLevels.contains(n.level) ||
+                    kSkeletonDepartmentLevels.contains(n.level)) &&
+                (selfNode == null || !_isSelfOrDescendant(selfNode, n.id)),
+            onToggleSelect: onSelect,
+            initiallyExpandDepth: 2,
+          ),
     );
     if (!mounted || result == null) return;
     setState(() => _parent = result.isRoot ? null : result.node);
@@ -222,8 +235,12 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
             UtenLocationField(
               pathLabel: _parent?.name,
               rootLabel: '公司', // TODO(l10n): 补 arb
-              resultLevelLabel: _resultLevel,
+              resultLevelLabel: _canChangeParent
+                  ? _resultLevel
+                  : widget.editing!.level,
+              headingLabel: _isEdit ? '上级部门' : '添加位置',
               onTap: _pickParent,
+              enabled: _canChangeParent,
             ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
@@ -243,7 +260,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
                 labelText: '名称', // TODO(l10n): 补 arb
               ),
             ),
-            if (_isEdit && widget.managerLoader != null) ...[
+            if (_canAssignManager && widget.managerLoader != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               UtenEmployeePicker(
                 loader: widget.managerLoader!,
@@ -253,7 +270,39 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
                 sheetTitle: '选择部门负责人',
                 allowClear: true,
                 departmentName: widget.editing?.name,
+                emptyMessage: '本部门暂无可选负责人',
+                emptyDescription: '负责人只能从本部门直属在册员工中选择。请先添加或调入员工，再设置负责人。',
                 onChanged: (value) => setState(() => _manager = value),
+              ),
+            ],
+            if (_isEdit && !_canAssignManager) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 20,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        '此节点是组织骨架，上级部门不可更改，也不设置部门负责人；请在下级业务部门设置。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
             if (!_isEdit && widget.suggestions.isNotEmpty) ...[

@@ -70,6 +70,9 @@ public class ProductionExecutionSegment extends SoftDeletableEntity {
     @Column(nullable = false)
     private String status;
 
+    @Column(name = "auto_promote_when_ready", nullable = false)
+    private boolean autoPromoteWhenReady = true;
+
     @Column(name = "workshop_department_id")
     private UUID workshopDepartmentId;
 

@@ -62,6 +62,7 @@ class CompleteKitAllocatorTest {
 
         assertThat(waiting.status())
                 .isEqualTo(ProductionExecutionSegment.STATUS_WAITING);
+        assertThat(waiting.autoPromoteWhenReady()).isTrue();
         assertThat(waiting.plannedQty()).isEqualByComparingTo("4");
         assertThat(waiting.materials())
                 .allSatisfy(material ->
@@ -124,7 +125,7 @@ class CompleteKitAllocatorTest {
     }
 
     @Test
-    void editedWaitingSegmentPromotesOnlyWhenTheWholeKitIsAvailable() {
+    void editedWaitingSegmentStaysDeferredEvenWhenTheWholeKitIsAvailable() {
         CompleteKitAllocator.ProductLine line =
                 line("4", usage(MATERIAL_A, "1"), usage(MATERIAL_B, "1"));
         CompleteKitAllocator.RequestedSegment request =
@@ -132,7 +133,8 @@ class CompleteKitAllocatorTest {
                         "manual-1",
                         line,
                         ProductionExecutionSegment.STATUS_WAITING,
-                        decimal("4"));
+                        decimal("4"),
+                        true);
 
         CompleteKitAllocator.Allocation result =
                 allocator.allocateRequested(
@@ -144,11 +146,12 @@ class CompleteKitAllocatorTest {
                                         MATERIAL_B, null), decimal("4")));
 
         assertThat(result.segments().getFirst().status())
-                .isEqualTo(ProductionExecutionSegment.STATUS_READY);
+                .isEqualTo(ProductionExecutionSegment.STATUS_WAITING);
+        assertThat(result.segments().getFirst().autoPromoteWhenReady()).isFalse();
         assertThat(result.segments().getFirst().materials())
                 .allSatisfy(material ->
                         assertThat(material.candidateAllocatedQty())
-                                .isEqualByComparingTo("4"));
+                                .isZero());
     }
 
     @Test
@@ -172,6 +175,58 @@ class CompleteKitAllocatorTest {
                 .isInstanceOf(
                         CompleteKitAllocator.InsufficientKitException.class)
                 .hasMessageContaining("manual-ready");
+    }
+
+    @Test
+    void userCanPrioritizeALaterProductAcrossSharedStock() {
+        UUID laterPlanItem =
+                UUID.fromString("00000000-0000-0000-0000-000000000111");
+        UUID laterProduct =
+                UUID.fromString("00000000-0000-0000-0000-000000000112");
+        CompleteKitAllocator.ProductLine earlier = line(
+                PLAN_ITEM, PRODUCT, "4", usage(MATERIAL_A, "1"));
+        CompleteKitAllocator.ProductLine later = line(
+                laterPlanItem, laterProduct, "4", usage(MATERIAL_A, "1"));
+
+        CompleteKitAllocator.Allocation result = allocator.allocateRequested(
+                List.of(
+                        new CompleteKitAllocator.RequestedSegment(
+                                "earlier-waiting",
+                                earlier,
+                                ProductionExecutionSegment.STATUS_WAITING,
+                                decimal("4")),
+                        new CompleteKitAllocator.RequestedSegment(
+                                "later-ready",
+                                later,
+                                ProductionExecutionSegment.STATUS_READY,
+                                decimal("4"))),
+                Map.of(
+                        new CompleteKitAllocator.MaterialKey(
+                                MATERIAL_A, null), decimal("4")));
+
+        CompleteKitAllocator.SegmentAllocation prioritized =
+                result.segments().stream()
+                        .filter(segment -> segment.line()
+                                .sourcePlanItemId().equals(laterPlanItem))
+                        .findFirst()
+                        .orElseThrow();
+        CompleteKitAllocator.SegmentAllocation deferred =
+                result.segments().stream()
+                        .filter(segment -> segment.line()
+                                .sourcePlanItemId().equals(PLAN_ITEM))
+                        .findFirst()
+                        .orElseThrow();
+
+        assertThat(prioritized.status())
+                .isEqualTo(ProductionExecutionSegment.STATUS_READY);
+        assertThat(material(prioritized, MATERIAL_A).candidateAllocatedQty())
+                .isEqualByComparingTo("4");
+        assertThat(deferred.status())
+                .isEqualTo(ProductionExecutionSegment.STATUS_WAITING);
+        assertThat(material(deferred, MATERIAL_A).candidateAllocatedQty())
+                .isZero();
+        assertThat(material(deferred, MATERIAL_A).shortageQty())
+                .isEqualByComparingTo("4");
     }
 
     @Test

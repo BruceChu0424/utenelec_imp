@@ -367,12 +367,8 @@ class ProductionCompletionReversePostgresTest {
             connection.setAutoCommit(true);
         }
 
-        UUID department = UUID.randomUUID();
+        UUID department = departmentId(connection, "WS_ZHUSU");
         UUID employee = UUID.randomUUID();
-        insert(connection, """
-                INSERT INTO departments(id,code,name,level)
-                VALUES(?,?,?,'一级部门')
-                """, department, "D-" + department, "workshop");
         insert(connection, """
                 INSERT INTO employees(
                     id,code,full_name,id_type,department_id,
@@ -634,6 +630,19 @@ class ProductionCompletionReversePostgresTest {
             try (ResultSet result = statement.executeQuery()) {
                 result.next();
                 assertEquals(expected, result.getInt(1));
+            }
+        }
+    }
+
+    private static UUID departmentId(
+            Connection connection,
+            String code) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT id FROM departments WHERE code = ? AND is_deleted = FALSE")) {
+            statement.setString(1, code);
+            try (ResultSet result = statement.executeQuery()) {
+                result.next();
+                return result.getObject(1, UUID.class);
             }
         }
     }

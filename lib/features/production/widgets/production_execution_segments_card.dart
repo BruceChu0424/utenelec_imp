@@ -161,6 +161,9 @@ class _ProductionExecutionSegmentsCardState
       case _SegmentAction.assign:
         await _assign(segment);
         break;
+      case _SegmentAction.releaseDefer:
+        await _releaseDefer(segment);
+        break;
       case _SegmentAction.dispatch:
         await _transition(segment, 'dispatch');
         break;
@@ -282,6 +285,7 @@ class _ProductionExecutionSegmentsCardState
                             ? null
                             : value;
                         teamId = null;
+                        responsible = null;
                       }),
                     ),
                     const SizedBox(height: UtenSpacing.s12),
@@ -300,11 +304,12 @@ class _ProductionExecutionSegmentsCardState
                       ],
                       onChanged: workshopId == null
                           ? null
-                          : (value) => setDialogState(
-                              () => teamId = value == null || value.isEmpty
+                          : (value) => setDialogState(() {
+                              teamId = value == null || value.isEmpty
                                   ? null
-                                  : value,
-                            ),
+                                  : value;
+                              responsible = null;
+                            }),
                     ),
                     const SizedBox(height: UtenSpacing.s12),
                     UtenEmployeePicker(
@@ -314,7 +319,14 @@ class _ProductionExecutionSegmentsCardState
                       loader: (keyword) async {
                         final result = await ref
                             .read(employeeRepositoryProvider)
-                            .list(size: 30, search: keyword);
+                            .list(
+                              size: 30,
+                              search: keyword,
+                              statuses: const {'active', 'probation'},
+                              departmentId: teamId ?? workshopId,
+                              includeSubtree:
+                                  teamId != null || workshopId != null,
+                            );
                         return [
                           for (final employee in result.items)
                             UtenEmployeePickerItem(
@@ -400,6 +412,46 @@ class _ProductionExecutionSegmentsCardState
             planEndDate: _dateText(end),
           ),
       '分配已保存',
+    );
+  }
+
+  Future<void> _releaseDefer(ProductionExecutionSegmentView segment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('解除人工暂缓'),
+        content: const Text(
+          '系统会立即重新检查整套物料：已满足时转为可开工，'
+          '仍有缺口时保持待料并在后续到货后自动转产。确认继续？',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认解除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runCommand(
+      () => ref
+          .read(productionPlanRepositoryProvider)
+          .transitionExecutionSegment(
+            widget.planId,
+            segment.id,
+            action: 'release-defer',
+            expectedVersion: segment.lockVersion,
+            idempotencyKey: businessIdempotencyKey(
+              'production-segment-release-defer',
+              '${segment.id}|${segment.lockVersion}|${segment.status}',
+            ),
+          ),
+      '已解除人工暂缓并重新检查齐套',
     );
   }
 
@@ -520,7 +572,12 @@ class _ProductionExecutionSegmentsCardState
 
     final theme = Theme.of(context);
     final ready = segments.where((item) => item.status == 'READY').length;
-    final waiting = segments.where((item) => item.status == 'WAITING').length;
+    final waiting = segments
+        .where((item) => item.status == 'WAITING' && item.autoPromoteWhenReady)
+        .length;
+    final deferred = segments
+        .where((item) => item.status == 'WAITING' && !item.autoPromoteWhenReady)
+        .length;
     final running = segments
         .where(
           (item) => item.status == 'DISPATCHED' || item.status == 'IN_PROGRESS',
@@ -548,7 +605,8 @@ class _ProductionExecutionSegmentsCardState
                         ),
                       ),
                       Text(
-                        '可开工 $ready · 待料 $waiting · 执行中 $running · 已完成 $completed',
+                        '可开工 $ready · 待料 $waiting · 人工暂缓 $deferred · '
+                        '执行中 $running · 已完成 $completed',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -587,11 +645,11 @@ class _ProductionExecutionSegmentsCardState
                   value: (item) =>
                       item.productName ?? item.productCode ?? '未命名产品',
                 ),
-                MasterColumnDef(
+                const MasterColumnDef(
                   key: 'status',
                   label: '状态',
                   width: 95,
-                  value: (item) => _statusText(item.status),
+                  value: _segmentStatusText,
                 ),
                 MasterColumnDef(
                   key: 'planned',
@@ -680,7 +738,7 @@ class _ProductionExecutionSegmentsCardState
   }
 }
 
-enum _SegmentAction { assign, dispatch, start, report }
+enum _SegmentAction { assign, releaseDefer, dispatch, start, report }
 
 class _ExecutionSegmentDetail extends StatelessWidget {
   const _ExecutionSegmentDetail({
@@ -745,7 +803,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _statusBadge(theme, segment.status),
+                  _statusBadge(theme, segment),
                   const SizedBox(width: UtenSpacing.s4),
                   IconButton(
                     tooltip: '关闭',
@@ -793,10 +851,18 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                     _detailRow(theme, '计划开工', segment.planBeginDate ?? '待排定'),
                     _detailRow(theme, '计划完工', segment.planEndDate ?? '待排定'),
                     const SizedBox(height: UtenSpacing.s8),
-                    if (segment.status == 'WAITING')
+                    if (segment.status == 'WAITING' &&
+                        !segment.autoPromoteWhenReady)
                       _notice(
                         theme,
-                        '等待整套物料补齐；当前不会占用零散库存。',
+                        '当前为人工暂缓，不会自动转产；解除暂缓后会立即重算齐套，'
+                        '未齐套时继续等待后续到货。',
+                        theme.colorScheme.tertiary,
+                      )
+                    else if (segment.status == 'WAITING')
+                      _notice(
+                        theme,
+                        '等待整套物料补齐；当前不会占用零散库存，到货齐套后自动转产。',
                         theme.colorScheme.error,
                       )
                     else if (segment.status == 'COMPLETED')
@@ -829,6 +895,16 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('关闭'),
                   ),
+                  if (canEdit &&
+                      segment.status == 'WAITING' &&
+                      !segment.autoPromoteWhenReady)
+                    UtenButton(
+                      icon: Icons.play_circle_outline_rounded,
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pop(_SegmentAction.releaseDefer),
+                      child: const Text('解除人工暂缓'),
+                    ),
                   if (canEdit &&
                       (segment.status == 'READY' ||
                           segment.status == 'WAITING'))
@@ -917,7 +993,8 @@ class _ExecutionSegmentDetail extends StatelessWidget {
     );
   }
 
-  Widget _statusBadge(ThemeData theme, String status) {
+  Widget _statusBadge(ThemeData theme, ProductionExecutionSegmentView segment) {
+    final status = segment.status;
     final color = switch (status) {
       'WAITING' => theme.colorScheme.error,
       'READY' || 'COMPLETED' => Colors.green.shade700,
@@ -931,7 +1008,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
         borderRadius: UtenRadius.smAll,
       ),
       child: Text(
-        _statusText(status),
+        _segmentStatusText(segment),
         style: theme.textTheme.labelSmall?.copyWith(
           color: color,
           fontWeight: FontWeight.w700,
@@ -941,13 +1018,18 @@ class _ExecutionSegmentDetail extends StatelessWidget {
   }
 }
 
+String _segmentStatusText(ProductionExecutionSegmentView segment) =>
+    segment.status == 'WAITING' && !segment.autoPromoteWhenReady
+    ? '人工暂缓'
+    : _statusText(segment.status);
+
 String _statusText(String status) => switch (status) {
   'WAITING' => '待料',
   'READY' => '可开工',
   'DISPATCHED' => '已派工',
   'IN_PROGRESS' => '生产中',
   'COMPLETED' => '已完成',
-  'CANCELED' => '已取消',
+  'CANCELLED' => '已取消',
   'REVERSED' => '已红冲',
   _ => status,
 };

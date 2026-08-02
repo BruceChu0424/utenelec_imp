@@ -128,6 +128,195 @@ class ProductionExecutionSegmentPostgresTest {
     }
 
     @Test
+    void explicitDeferReleaseRequiresEventAndAdvancesVersionExactlyOnce() {
+        assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+            try (Connection connection = connection()) {
+                SegmentFixture fixture =
+                        createSegmentFixture(connection, false, false);
+
+                assertEquals(
+                        "WAITING|false|0",
+                        scalarText(
+                                connection,
+                                """
+                                select concat_ws(
+                                    '|', status,
+                                    auto_promote_when_ready::text,
+                                    lock_version::text)
+                                from production_execution_segments
+                                where id = ?
+                                """,
+                                fixture.waitingSegmentId()));
+
+                connection.setAutoCommit(false);
+                try {
+                    execute(
+                            connection,
+                            """
+                            update production_execution_segments
+                            set auto_promote_when_ready = true
+                            where id = ? and lock_version = 0
+                            """,
+                            fixture.waitingSegmentId());
+                    PSQLException missingEvent = assertThrows(
+                            PSQLException.class, connection::commit);
+                    assertEquals(CHECK_VIOLATION, missingEvent.getSQLState());
+                    assertEquals(
+                            "production_execution_segment_defer_release_event_guard",
+                            missingEvent.getServerErrorMessage().getConstraint());
+                    connection.rollback();
+                } finally {
+                    connection.setAutoCommit(true);
+                }
+
+                connection.setAutoCommit(false);
+                try {
+                    execute(
+                            connection,
+                            """
+                            update production_execution_segments
+                            set auto_promote_when_ready = true
+                            where id = ? and lock_version = 0
+                            """,
+                            fixture.waitingSegmentId());
+                    assertEquals(
+                            "1",
+                            scalarText(
+                                    connection,
+                                    """
+                                    select lock_version::text
+                                    from production_execution_segments
+                                    where id = ?
+                                    """,
+                                    fixture.waitingSegmentId()));
+                    execute(
+                            connection,
+                            """
+                            insert into production_execution_segment_events(
+                                execution_segment_id, action,
+                                idempotency_key, request_hash,
+                                expected_version, resulting_version)
+                            values (?, 'RELEASE_DEFER', ?, ?, 0, 1)
+                            """,
+                            fixture.waitingSegmentId(),
+                            "release-defer-" + fixture.waitingSegmentId(),
+                            "f".repeat(64));
+                    connection.commit();
+                } catch (Exception error) {
+                    connection.rollback();
+                    throw error;
+                } finally {
+                    connection.setAutoCommit(true);
+                }
+
+                assertEquals(
+                        "WAITING|true|1",
+                        scalarText(
+                                connection,
+                                """
+                                select concat_ws(
+                                    '|', status,
+                                    auto_promote_when_ready::text,
+                                    lock_version::text)
+                                from production_execution_segments
+                                where id = ?
+                                """,
+                                fixture.waitingSegmentId()));
+                assertQuantity(
+                        connection,
+                        """
+                        select count(*)
+                        from production_execution_segment_events
+                        where execution_segment_id = ?
+                          and action = 'RELEASE_DEFER'
+                          and expected_version = 0
+                          and resulting_version = 1
+                        """,
+                        fixture.waitingSegmentId(),
+                        "1");
+
+                PSQLException cannotDeferAgain = assertThrows(
+                        PSQLException.class,
+                        () -> execute(
+                                connection,
+                                """
+                                update production_execution_segments
+                                set auto_promote_when_ready = false
+                                where id = ?
+                                """,
+                                fixture.waitingSegmentId()));
+                assertEquals(
+                        CHECK_VIOLATION,
+                        cannotDeferAgain.getSQLState());
+                assertEquals(
+                        "production_execution_segment_readiness_policy_guard",
+                        cannotDeferAgain.getServerErrorMessage().getConstraint());
+            }
+        });
+    }
+
+
+    @Test
+    void assignmentScopeRejectsNonProductionWorkshopAndNonDirectTeam() {
+        assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+            try (Connection connection = connection()) {
+                SegmentFixture fixture =
+                        createSegmentFixture(connection, false);
+                UUID engineeringGroup = scalarUuid(
+                        connection,
+                        "select id from departments where code = 'GRP_PE'");
+                UUID injectionWorkshop = scalarUuid(
+                        connection,
+                        "select id from departments where code = 'WS_ZHUSU'");
+                UUID metalWorkshop = scalarUuid(
+                        connection,
+                        "select id from departments where code = 'WS_WJTZ'");
+
+                assertConstraint(
+                        connection,
+                        "production_execution_segment_production_workshop_guard",
+                        """
+                        update production_execution_segments
+                        set workshop_department_id = ?
+                        where id = ?
+                        """,
+                        engineeringGroup,
+                        fixture.waitingSegmentId());
+
+                execute(
+                        connection,
+                        """
+                        update production_execution_segments
+                        set workshop_department_id = ?
+                        where id = ?
+                        """,
+                        injectionWorkshop,
+                        fixture.waitingSegmentId());
+                assertEquals(
+                        injectionWorkshop,
+                        scalarUuid(
+                                connection,
+                                """
+                                select workshop_department_id
+                                from production_execution_segments
+                                where id = ?
+                                """,
+                                fixture.waitingSegmentId()));
+
+                assertConstraint(
+                        connection,
+                        "production_execution_segment_direct_team_guard",
+                        """
+                        update production_execution_segments
+                        set team_department_id = ?
+                        where id = ?
+                        """,
+                        metalWorkshop,
+                        fixture.waitingSegmentId());
+            }
+        });
+    }
+    @Test
     void b4InTwoReceiptsPromotesOnlyAfterWholeKitCanBeCommitted() {
         assertTimeoutPreemptively(Duration.ofSeconds(20), () -> {
             try (Connection connection = connection()) {
@@ -1011,6 +1200,14 @@ class ProductionExecutionSegmentPostgresTest {
     private static SegmentFixture createSegmentFixture(
             Connection connection,
             boolean withWaitingPurchasePeg) throws Exception {
+        return createSegmentFixture(
+                connection, withWaitingPurchasePeg, true);
+    }
+
+    private static SegmentFixture createSegmentFixture(
+            Connection connection,
+            boolean withWaitingPurchasePeg,
+            boolean waitingAutoPromote) throws Exception {
         UUID unitId = UUID.randomUUID();
         UUID productId = UUID.randomUUID();
         UUID materialAId = UUID.randomUUID();
@@ -1141,7 +1338,8 @@ class ProductionExecutionSegmentPostgresTest {
                     productId,
                     unitId,
                     "4",
-                    "WAITING");
+                    "WAITING",
+                    waitingAutoPromote);
             insertDemand(
                     connection,
                     readyADemandId,
@@ -1372,6 +1570,23 @@ class ProductionExecutionSegmentPostgresTest {
             UUID unitId,
             String plannedQty,
             String status) throws Exception {
+        insertSegment(
+                connection, segmentId, packageId, planId, planItemId,
+                segmentNo, productId, unitId, plannedQty, status, true);
+    }
+
+    private static void insertSegment(
+            Connection connection,
+            UUID segmentId,
+            UUID packageId,
+            UUID planId,
+            UUID planItemId,
+            int segmentNo,
+            UUID productId,
+            UUID unitId,
+            String plannedQty,
+            String status,
+            boolean autoPromoteWhenReady) throws Exception {
         execute(
                 connection,
                 """
@@ -1379,10 +1594,11 @@ class ProductionExecutionSegmentPostgresTest {
                     id, package_id, plan_id, source_plan_item_id,
                     segment_no, segment_code, client_segment_key,
                     product_goods_id, product_unit_id, product_unit_rate,
-                    planned_qty, status, bom_fingerprint, idempotency_key
+                    planned_qty, status, bom_fingerprint, idempotency_key,
+                    auto_promote_when_ready
                 ) values (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
-                    ?, ?, ?, ?
+                    ?, ?, ?, ?, ?
                 )
                 """,
                 segmentId,
@@ -1397,7 +1613,8 @@ class ProductionExecutionSegmentPostgresTest {
                 decimal(plannedQty),
                 status,
                 "e".repeat(64),
-                "segment-" + segmentId);
+                "segment-" + segmentId,
+                autoPromoteWhenReady);
     }
 
     private static void insertDemand(

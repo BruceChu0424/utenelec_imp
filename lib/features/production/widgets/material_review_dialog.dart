@@ -8,19 +8,50 @@
 //
 // 自制件派生子计划、委外生成委外申请由后端 confirm 事务自动处理（前端只需对采购勾选）。
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../models/production_execution_planning.dart';
 
-/// 打开物料需求评审对话框，返回确认请求；用户取消返回 null。
-Future<ProductionPlanningConfirmRequest?> showMaterialReviewDialog(
+enum MaterialReviewDecisionType { useSuggestedPlan, openDetailedPlanning }
+
+class MaterialReviewDecision {
+  const MaterialReviewDecision._(
+    this.type,
+    this.request,
+    this.focusMaterialIds,
+  );
+
+  const MaterialReviewDecision.useSuggestedPlan(
+    ProductionPlanningConfirmRequest request,
+  ) : this._(
+        MaterialReviewDecisionType.useSuggestedPlan,
+        request,
+        const <String>[],
+      );
+
+  MaterialReviewDecision.openDetailedPlanning([
+    Iterable<String> focusMaterialIds = const <String>[],
+  ]) : this._(
+         MaterialReviewDecisionType.openDetailedPlanning,
+         null,
+         List<String>.unmodifiable(focusMaterialIds),
+       );
+
+  final MaterialReviewDecisionType type;
+  final ProductionPlanningConfirmRequest? request;
+  final List<String> focusMaterialIds;
+}
+
+/// Opens material review and returns the chosen planning path.
+Future<MaterialReviewDecision?> showMaterialReviewDialog(
   BuildContext context, {
   required ProductionPlanningPreview preview,
   required String warehouseName,
   required String planBillNo,
 }) {
-  return showDialog<ProductionPlanningConfirmRequest>(
+  return showDialog<MaterialReviewDecision>(
     context: context,
     builder: (ctx) => _MaterialReviewDialog(
       preview: preview,
@@ -46,16 +77,14 @@ class _MaterialReviewDialog extends StatefulWidget {
 }
 
 class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
-  static const double _epsilon = 0.001;
+  static const double _epsilon = kProductionPlanningQuantityEpsilon;
 
   late final _Buckets _buckets;
-  late bool _generatePurchaseRequest;
 
   @override
   void initState() {
     super.initState();
-    _buckets = _classify(widget.preview.materials);
-    _generatePurchaseRequest = _buckets.buyShortage.isNotEmpty;
+    _buckets = _classify(buildProductionDirectReviewMaterials(widget.preview));
   }
 
   _Buckets _classify(List<ProductionPlanningMaterial> materials) {
@@ -86,6 +115,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
 
   void _confirm() {
     final preview = widget.preview;
+    if (preview.hasBlockingBomGaps) return;
     // segments 直接采用预览建议值（不编辑），天然满足"合计=计划量"与"READY 齐套"约束。
     final segments = [
       for (final seg in preview.executionSegments)
@@ -102,32 +132,18 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
           bomFingerprint: seg.bomFingerprint,
         ),
     ];
-    // routes：缺料物料按 goodsId|colorId 去重（与 execution_segment_planning_sheet 同口径）
-    final routeMap = <String, ProductionMaterialRoute>{};
-    for (final seg in preview.executionSegments) {
-      for (final mat in seg.materials) {
-        if (mat.shortageQty <= _epsilon) continue;
-        final key = '${mat.goodsId}|${mat.colorId ?? ''}';
-        routeMap.putIfAbsent(
-          key,
-          () => ProductionMaterialRoute(
-            goodsId: mat.goodsId,
-            colorId: mat.colorId,
-            supplyRoute: mat.supplyRoute,
-          ),
-        );
-      }
-    }
+    final generatePurchaseRequest = _buckets.buyShortage.isNotEmpty;
     final canonical = [
       preview.planId,
       preview.warehouseId,
       preview.fingerprint,
-      _generatePurchaseRequest,
+      generatePurchaseRequest,
       for (final seg in segments)
         [
           seg.clientSegmentKey,
           seg.sourcePlanItemId,
           seg.requestedStatus,
+          seg.deferUntilManualRelease,
           seg.plannedQty,
           seg.workshopDepartmentId,
           seg.teamDepartmentId,
@@ -138,17 +154,31 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
         ].join('|'),
     ].join('::');
     Navigator.of(context).pop(
-      ProductionPlanningConfirmRequest(
-        warehouseId: preview.warehouseId,
-        idempotencyKey: businessIdempotencyKey(
-          'production-planning',
-          canonical,
+      MaterialReviewDecision.useSuggestedPlan(
+        ProductionPlanningConfirmRequest(
+          warehouseId: preview.warehouseId,
+          idempotencyKey: businessIdempotencyKey(
+            'production-planning',
+            '$canonical::ATTEMPT::${const Uuid().v4()}',
+          ),
+          previewFingerprint: preview.fingerprint,
+          generatePurchaseRequest: generatePurchaseRequest,
+          routes: buildProductionMaterialSupplyRoutes(
+            preview.executionSegments,
+          ),
+          segments: segments,
         ),
-        previewFingerprint: preview.fingerprint,
-        generatePurchaseRequest:
-            _buckets.buyShortage.isNotEmpty && _generatePurchaseRequest,
-        routes: routeMap.values.toList(),
-        segments: segments,
+      ),
+    );
+  }
+
+  void _openDetailedPlanning([
+    Iterable<ProductionPlanningMaterial> materials =
+        const <ProductionPlanningMaterial>[],
+  ]) {
+    Navigator.of(context).pop(
+      MaterialReviewDecision.openDetailedPlanning(
+        materials.map((material) => material.goodsId),
       ),
     );
   }
@@ -157,6 +187,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final noBomCount = widget.preview.noBomPlanItemIds.length;
+    final hasBlockingBomGaps = widget.preview.hasBlockingBomGaps;
     return AlertDialog(
       title: Row(
         children: [
@@ -204,14 +235,18 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   count: _buckets.buyShortage.length,
                   materials: _buckets.buyShortage,
                   hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
-                  trailing: CheckboxListTile(
+                  trailing: ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    value: _generatePurchaseRequest,
-                    onChanged: (v) =>
-                        setState(() => _generatePurchaseRequest = v ?? false),
-                    title: Text('生成采购申请', style: theme.textTheme.bodyMedium),
+                    leading: Icon(
+                      Icons.check_box_rounded,
+                      color: theme.colorScheme.primary,
+                    ),
+                    title: Text(
+                      '自动生成采购申请（必需）',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    subtitle: const Text('采购缺口必须形成可跟进的供给单据，此项不可取消。'),
                   ),
                 ),
               if (_buckets.makeShortage.isNotEmpty)
@@ -254,8 +289,8 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                     color: theme.colorScheme.error,
                     icon: Icons.report_problem_outlined,
                     text:
-                        '另有 $noBomCount 个成品未维护 BOM，未参与本次排产，'
-                        '请到货品资料为它们维护组成 BOM 后再生成。',
+                        '另有 $noBomCount 个成品未维护 BOM。为保证计划完整，'
+                        '补齐全部 BOM 前不能保存预排草案或正式下达。',
                   ),
                 ),
             ],
@@ -268,30 +303,42 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'),
         ),
+        OutlinedButton.icon(
+          onPressed: () => _openDetailedPlanning(),
+          icon: const Icon(Icons.table_view_outlined, size: 18),
+          label: const Text('详细排产'),
+        ),
         FilledButton.icon(
-          onPressed: _confirm,
-          icon: const Icon(Icons.play_arrow_rounded, size: 18),
-          label: const Text('确认生成'),
+          onPressed: hasBlockingBomGaps ? null : _confirm,
+          icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+          label: Text(hasBlockingBomGaps ? '请先补齐 BOM' : '采用建议方案'),
         ),
       ],
     );
   }
 
   Widget _infoBanner(ThemeData theme) {
+    final hasBlockingBomGaps = widget.preview.hasBlockingBomGaps;
     final hasShortage =
         _buckets.buyShortage.isNotEmpty ||
         _buckets.makeShortage.isNotEmpty ||
-        _buckets.subcontractShortage.isNotEmpty;
-    final text = hasShortage
-        ? '系统已按目标仓库存、在途与 BOM 计算缺口。勾选要生成的供给单据后点击「确认生成」，'
-              '执行分段、锁料、领料单将在同一事务内提交。'
-        : '所有物料库存充足，可直接生产。点击「确认生成」即可建立执行子计划。';
+        _buckets.subcontractShortage.isNotEmpty ||
+        _buckets.makeNoBom.isNotEmpty;
+    final text = hasBlockingBomGaps
+        ? '存在成品或本层自制组件未维护 BOM。为保证完整覆盖，补齐前只能查看详情，不能保存或下达方案。'
+        : hasShortage
+        ? '系统已按目标仓库存、在途与 BOM 形成建议方案。可直接采用，也可进入详细排产调整数量、车间、班组与日期。'
+        : '所有本层物料库存充足。可直接采用建议方案，也可进入详细排产复核车间、班组与日期。';
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
       child: _notice(
         theme,
-        color: theme.colorScheme.primary,
-        icon: Icons.info_outline_rounded,
+        color: hasBlockingBomGaps
+            ? theme.colorScheme.error
+            : theme.colorScheme.primary,
+        icon: hasBlockingBomGaps
+            ? Icons.report_problem_outlined
+            : Icons.info_outline_rounded,
         text: text,
       ),
     );
@@ -324,12 +371,19 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                 children: [
                   Icon(icon, color: color, size: 18),
                   const SizedBox(width: 6),
-                  Text(
-                    '$title（$count）',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Text(
+                      '$title（$count）',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _openDetailedPlanning(materials),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text('查看对应详情'),
                   ),
                 ],
               ),
@@ -415,11 +469,7 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
     );
   }
 
-  static String _q(double? v) {
-    final n = v ?? 0;
-    if (n == n.roundToDouble()) return n.toStringAsFixed(0);
-    return n.toStringAsFixed(2);
-  }
+  static String _q(double? v) => formatProductionPlanningQuantity(v ?? 0);
 }
 
 class _Buckets {

@@ -6,6 +6,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
+import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
+import com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -35,8 +37,12 @@ public class ProductionExecutionSegmentService {
     private static final String ACTION_START = "START";
     private static final String ACTION_CANCEL = "CANCEL";
     private static final String ACTION_REVERSE = "REVERSE";
+    private static final String ACTION_RELEASE_DEFER = "RELEASE_DEFER";
 
     private final EntityManager em;
+    private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
+    private final ProductionExecutionReadinessService readiness;
+    private final ProductionAssignmentValidator assignmentValidator;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final ChainNoticeService chainNotice;
@@ -67,11 +73,12 @@ public class ProductionExecutionSegmentService {
                 .contains(segment.status())) {
             throw conflict("仅待料或齐套未派工的执行段可以调整分配");
         }
-        if (request.planBeginDate() != null
-                && request.planEndDate() != null
-                && request.planEndDate().isBefore(request.planBeginDate())) {
-            throw validation("计划完工日期不能早于计划开工日期");
-        }
+        assignmentValidator.validate(new ProductionAssignmentValidator.Assignment(
+                request.workshopDepartmentId(),
+                request.teamDepartmentId(),
+                request.responsibleEmployeeId(),
+                request.planBeginDate(),
+                request.planEndDate()));
         int updated = em.createNativeQuery("""
                         UPDATE production_execution_segments
                         SET workshop_department_id = :workshopId,
@@ -101,7 +108,75 @@ public class ProductionExecutionSegmentService {
                 requestHash,
                 request.expectedVersion(),
                 resultingVersion);
+        if (request.workshopDepartmentId() != null
+                && !Objects.equals(segment.workshopDepartmentId(),
+                        request.workshopDepartmentId())) {
+            workshopPreferences.learnSelection(
+                    segment.productGoodsId(),
+                    request.workshopDepartmentId(),
+                    currentUser.requireEmployeeId());
+        }
         return one(planId, segmentId);
+    }
+
+    /**
+     * Releases an explicit USER_DEFER decision exactly once. Material
+     * dimensions are locked before the segment row; the same transaction then
+     * rechecks complete-kit availability and either promotes to READY or leaves
+     * an automatically promotable WAITING segment.
+     */
+    @Transactional
+    public ExecutionSegmentView releaseDefer(
+            UUID planId,
+            UUID segmentId,
+            SegmentTransitionRequest request) {
+        tx.bind();
+        requireTransitionRequest(request);
+        UUID warehouseId = readiness.lockManualReleaseDimensions(
+                planId, segmentId);
+        LockedSegment segment = lock(planId, segmentId);
+        String requestHash = hashTransition(
+                request, ACTION_RELEASE_DEFER);
+        ExecutionSegmentView replay = replay(
+                segment, ACTION_RELEASE_DEFER,
+                request.idempotencyKey(), requestHash);
+        if (replay != null) return replay;
+        requireVersion(segment, request.expectedVersion());
+        requireActivePlan(segment);
+        if (!ProductionExecutionSegment.STATUS_WAITING.equals(
+                segment.status())
+                || segment.autoPromoteWhenReady()) {
+            throw conflict("仅人工暂缓中的待料执行段可以解除暂缓");
+        }
+        if (warehouseId == null) {
+            throw conflict("执行段缺少有效的确认计划包或发料仓");
+        }
+
+        int updated = em.createNativeQuery("""
+                        UPDATE production_execution_segments
+                        SET auto_promote_when_ready = TRUE,
+                            updated_by = :actorId
+                        WHERE id = :segmentId
+                          AND lock_version = :expectedVersion
+                          AND status = 'WAITING'
+                          AND auto_promote_when_ready = FALSE
+                          AND is_deleted = FALSE
+                        """)
+                .setParameter("actorId", currentUser.requireId())
+                .setParameter("segmentId", segmentId)
+                .setParameter("expectedVersion", request.expectedVersion())
+                .executeUpdate();
+        requireUpdated(updated);
+        readiness.promoteAfterManualRelease(segmentId, warehouseId);
+        ExecutionSegmentView result = one(planId, segmentId);
+        recordEvent(
+                segmentId,
+                ACTION_RELEASE_DEFER,
+                request.idempotencyKey(),
+                requestHash,
+                request.expectedVersion(),
+                result.lockVersion());
+        return result;
     }
 
     @Transactional
@@ -184,6 +259,12 @@ public class ProductionExecutionSegmentService {
             if (!current.materialReady()) {
                 throw conflict("执行段尚未齐套，不能派工");
             }
+            assignmentValidator.validate(new ProductionAssignmentValidator.Assignment(
+                    current.workshopDepartmentId(),
+                    current.teamDepartmentId(),
+                    current.responsibleEmployeeId(),
+                    current.planBeginDate(),
+                    current.planEndDate()));
             if (current.workshopDepartmentId() == null
                     || current.responsibleEmployeeId() == null
                     || current.planBeginDate() == null
@@ -283,7 +364,9 @@ public class ProductionExecutionSegmentService {
                                 SELECT s.id, s.plan_id, s.package_id, s.status,
                                        s.lock_version, p.status,
                                        plan.status, plan.is_closed,
-                                       plan.is_canceled, plan.is_stopped
+                                       plan.is_canceled, plan.is_stopped,
+                                       s.product_goods_id, s.workshop_department_id,
+                                       s.auto_promote_when_ready
                                 FROM production_execution_segments s
                                 JOIN production_planning_packages p
                                   ON p.id = s.package_id
@@ -313,7 +396,10 @@ public class ProductionExecutionSegmentService {
                 row[6] == null ? null : ((Number) row[6]).shortValue(),
                 Boolean.TRUE.equals(row[7]),
                 Boolean.TRUE.equals(row[8]),
-                Boolean.TRUE.equals(row[9]));
+                Boolean.TRUE.equals(row[9]),
+                (UUID) row[10],
+                (UUID) row[11],
+                Boolean.TRUE.equals(row[12]));
     }
 
     private ExecutionSegmentView replay(
@@ -419,8 +505,12 @@ public class ProductionExecutionSegmentService {
                                s.plan_begin_date, s.plan_end_date,
                                s.material_kind_count,
                                s.shortage_kind_count,
-                               s.material_ready, s.lock_version
+                               s.material_ready,
+                               base.auto_promote_when_ready,
+                               s.lock_version
                         FROM v_production_execution_segments s
+                        JOIN production_execution_segments base
+                          ON base.id = s.id
                         LEFT JOIN LATERAL (
                             SELECT SUM(item.qty) AS reported_qty
                             FROM production_daily_report_items item
@@ -544,6 +634,7 @@ public class ProductionExecutionSegmentService {
                 decimal(row[12]),
                 decimal(row[13]),
                 (String) row[14],
+                Boolean.TRUE.equals(row[26]),
                 (UUID) row[15],
                 (String) row[16],
                 (UUID) row[17],
@@ -555,7 +646,7 @@ public class ProductionExecutionSegmentService {
                 ((Number) row[23]).intValue(),
                 ((Number) row[24]).intValue(),
                 Boolean.TRUE.equals(row[25]),
-                ((Number) row[26]).longValue());
+                ((Number) row[27]).longValue());
     }
 
     private static BigDecimal decimal(Object value) {
@@ -588,6 +679,9 @@ public class ProductionExecutionSegmentService {
             Short planStatus,
             boolean planClosed,
             boolean planCanceled,
-            boolean planStopped) {
+            boolean planStopped,
+            UUID productGoodsId,
+            UUID workshopDepartmentId,
+            boolean autoPromoteWhenReady) {
     }
 }

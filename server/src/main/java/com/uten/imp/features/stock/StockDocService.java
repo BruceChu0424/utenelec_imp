@@ -247,6 +247,10 @@ public class StockDocService {
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         validatePositiveStockItems(d, items, "审核");
+        if ("FINISHED_IN".equals(d.getDocType())) {
+            productionCompletionReverse.lockFinishedInboundProductionDimensions(
+                    d.getId(), d.getWarehouseId());
+        }
         lockInventory(items);
         if ("CHECK".equals(d.getDocType())) {
             validateCheckSnapshot(d, items);
@@ -259,6 +263,8 @@ public class StockDocService {
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
             applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty（V90）
+            productionCompletionReverse.afterFinishedInboundApproved(
+                    d.getId(), d.getWarehouseId());
             chainNotice.notifyFinishedInbound(d.getId()); // 旁路通知：完工/部分完工→销售，提交后发送
         }
         d.setStatus(STATUS_APPROVED);
@@ -281,6 +287,10 @@ public class StockDocService {
         if (d.getStatus() == null || d.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        if ("FINISHED_IN".equals(d.getDocType())) {
+            productionCompletionReverse.lockFinishedInboundProductionDimensions(
+                    d.getId(), d.getWarehouseId());
+        }
         lockInventory(items);
         if ("DRAW".equals(d.getDocType())) {
             boolean anyIssued = items.stream().anyMatch(it ->

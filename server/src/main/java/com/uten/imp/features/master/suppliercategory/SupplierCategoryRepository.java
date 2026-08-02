@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.suppliercategory;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -47,4 +48,39 @@ public interface SupplierCategoryRepository extends JpaRepository<SupplierCatego
             SELECT EXISTS(SELECT 1 FROM subtree WHERE id = :candidate)
             """, nativeQuery = true)
     boolean isDescendant(@Param("rootId") UUID rootId, @Param("candidate") UUID candidate);
+
+    /** 按当前 parent_id 原子重建移动子树的 level/path，不依赖移动前的旧 path 排序。 */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            WITH RECURSIVE rebuilt(id, new_level, new_path, visited) AS (
+                SELECT c.id,
+                       CASE WHEN parent.id IS NULL THEN 0 ELSE parent.level + 1 END,
+                       CASE
+                           WHEN parent.id IS NULL THEN '/' || c.code || '/'
+                           ELSE COALESCE(parent.path, '/') || c.code || '/'
+                       END::text,
+                       ARRAY[c.id]
+                FROM supplier_categories c
+                LEFT JOIN supplier_categories parent ON c.parent_id = parent.id
+                WHERE c.id = :rootId AND c.is_deleted = false
+                UNION ALL
+                SELECT child.id,
+                       parent.new_level + 1,
+                       (parent.new_path || child.code || '/')::text,
+                       parent.visited || child.id
+                FROM supplier_categories child
+                JOIN rebuilt parent ON child.parent_id = parent.id
+                WHERE NOT child.id = ANY(parent.visited)
+            )
+            UPDATE supplier_categories c
+            SET level = rebuilt.new_level,
+                path = rebuilt.new_path,
+                updated_at = now(),
+                updated_by = COALESCE(
+                    NULLIF(current_setting('app.actor_id', true), '')::uuid,
+                    c.updated_by)
+            FROM rebuilt
+            WHERE c.id = rebuilt.id
+            """, nativeQuery = true)
+    int rebuildSubtreeHierarchy(@Param("rootId") UUID rootId);
 }

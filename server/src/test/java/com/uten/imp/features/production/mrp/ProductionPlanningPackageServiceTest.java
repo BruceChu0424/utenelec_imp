@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -118,6 +120,77 @@ class ProductionPlanningPackageServiceTest {
                                     .contains("先完成/反向旧链")
                                     .contains("新建生产计划");
                         }));
+    }
+
+    @Test
+    void directMakeRequirementsAggregateOnlyCurrentLayerCandidateShortage() {
+        UUID makeGoodsId = UUID.randomUUID();
+        UUID makeUnitId = UUID.randomUUID();
+        UUID coveredGoodsId = UUID.randomUUID();
+        UUID coveredUnitId = UUID.randomUUID();
+        CompleteKitAllocator.Allocation allocation =
+                new CompleteKitAllocator.Allocation(List.of(
+                        new CompleteKitAllocator.SegmentAllocation(
+                                "S1", null, "WAITING", BigDecimal.ONE,
+                                List.of(
+                                        material(makeGoodsId, makeUnitId,
+                                                "4", "0", "MAKE"),
+                                        material(UUID.randomUUID(),
+                                                UUID.randomUUID(),
+                                                "2", "2", "BUY"))),
+                        new CompleteKitAllocator.SegmentAllocation(
+                                "S2", null, "WAITING", BigDecimal.ONE,
+                                List.of(
+                                        material(makeGoodsId, makeUnitId,
+                                                "6", "3", "MAKE"),
+                                        material(coveredGoodsId, coveredUnitId,
+                                                "2", "0", "MAKE")))),
+                        Map.of());
+
+        List<MrpService.DirectMakeRequirement> requirements =
+                ProductionExecutionPackageCommandService
+                        .directMakeRequirements(allocation);
+
+        assertThat(requirements).hasSize(1);
+        MrpService.DirectMakeRequirement requirement = requirements.getFirst();
+        assertThat(requirement.goodsId()).isEqualTo(makeGoodsId);
+        assertThat(requirement.unitId()).isEqualTo(makeUnitId);
+        assertThat(requirement.requiredQty()).isEqualByComparingTo("10");
+        assertThat(requirement.shortageQty()).isEqualByComparingTo("3");
+    }
+
+    @Test
+    void currentResultLocksTheConfirmedPackageAgainstConcurrentLifecycleChanges()
+            throws NoSuchMethodException {
+        var method = com.uten.imp.features.production.fulfillment
+                .ProductionPlanningPackageRepository.class.getMethod(
+                        "findFirstByPlanIdAndStatusAndExecutionModelVersionAndDeletedFalseOrderByCreatedAtDesc",
+                        UUID.class, String.class, Short.class);
+        var lock = method.getAnnotation(
+                org.springframework.data.jpa.repository.Lock.class);
+
+        assertThat(lock).isNotNull();
+        assertThat(lock.value())
+                .isEqualTo(jakarta.persistence.LockModeType.PESSIMISTIC_READ);
+
+        var serviceMethod = ProductionPlanningPackageService.class.getMethod(
+                "currentResult", UUID.class);
+        var transaction = serviceMethod.getAnnotation(
+                org.springframework.transaction.annotation.Transactional.class);
+        assertThat(transaction).isNotNull();
+        assertThat(transaction.readOnly()).isFalse();
+    }
+
+    private static CompleteKitAllocator.MaterialAllocation material(
+            UUID goodsId,
+            UUID unitId,
+            String required,
+            String shortage,
+            String route) {
+        return new CompleteKitAllocator.MaterialAllocation(
+                goodsId, null, unitId, BigDecimal.ONE,
+                new BigDecimal(required), BigDecimal.ZERO,
+                BigDecimal.ZERO, new BigDecimal(shortage), route);
     }
 
     private static ProductionExecutionPackageCommandService

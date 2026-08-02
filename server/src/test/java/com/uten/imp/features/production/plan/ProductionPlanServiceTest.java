@@ -3,8 +3,10 @@ package com.uten.imp.features.production.plan;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.mrp.MrpService;
+import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -40,6 +42,7 @@ class ProductionPlanServiceTest {
     private ProductionPlanItemRepository itemRepo;
     private PlanOrderItemLinkRepository linkRepo;
     private MrpService mrpService;
+    private ProductionPlanningDraftService planningDraftService;
     private SecurityContextCurrentUser currentUser;
     private EmployeeNameResolver nameResolver;
     private EntityManager em;
@@ -65,6 +68,7 @@ class ProductionPlanServiceTest {
         itemRepo = mock(ProductionPlanItemRepository.class);
         linkRepo = mock(PlanOrderItemLinkRepository.class);
         mrpService = mock(MrpService.class);
+        planningDraftService = mock(ProductionPlanningDraftService.class);
         TxSessionVars tx = mock(TxSessionVars.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         nameResolver = mock(EmployeeNameResolver.class);
@@ -134,8 +138,8 @@ class ProductionPlanServiceTest {
         });
 
         service = new ProductionPlanService(
-                planRepo, itemRepo, linkRepo, mrpService, tx, currentUser,
-                nameResolver, em, docNumbers, chainNotice);
+                planRepo, itemRepo, linkRepo, mrpService, planningDraftService,
+                tx, currentUser, nameResolver, em, docNumbers, chainNotice);
     }
 
     @Test
@@ -163,7 +167,41 @@ class ProductionPlanServiceTest {
         assertEquals(orderItemId, link.getValue().getOrderItemId());
         assertEquals(0, new BigDecimal("5").compareTo(link.getValue().getAllocatedQty()));
         verify(planRepo, atLeastOnce()).save(plan);
+        verify(planRepo).flush();
+        verify(linkRepo).flush();
+        verify(planningDraftService).applyActive(plan.getId());
         verify(chainNotice).notifyPlanScheduled(plan.getId(), false);
+    }
+
+
+    @Test
+    void approvePropagatesDraftApplyFailureBeforeNotice() {
+        UUID orderItemId = UUID.randomUUID();
+        ProductionPlan plan = plan((short) 0);
+        ProductionPlanItem item = item(plan, orderItemId, "5");
+        arrangePlan(plan, List.of(item));
+        when(linkRepo.findActiveByPlanItemIds(List.of(item.getId())))
+                .thenReturn(List.of());
+        when(allocationLock.getResultList()).thenReturn(
+                java.util.Collections.singletonList(orderRow(
+                        orderItemId, item, (short) 1,
+                        false, false, false, false,
+                        "20", "4", "1", "2", "3", "10", "7", (short) 8)));
+        when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        when(planningDraftService.applyActive(plan.getId())).thenThrow(
+                new ApiException(ErrorCode.CONFLICT, "draft apply failed"));
+
+        ApiException error = assertThrows(
+                ApiException.class, () -> service.approve(plan.getId()));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(
+                planRepo, linkRepo, planningDraftService);
+        order.verify(planRepo).flush();
+        order.verify(linkRepo).flush();
+        order.verify(planningDraftService).applyActive(plan.getId());
+        verify(chainNotice, never()).notifyPlanScheduled(
+                any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.department;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,4 +43,57 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
             SELECT EXISTS(SELECT 1 FROM subtree WHERE id = :candidate)
             """, nativeQuery = true)
     boolean isDescendant(@Param("rootId") UUID rootId, @Param("candidate") UUID candidate);
+
+    /**
+     * 按当前 parent_id 一次性重建移动子树的语义层级和物化路径。
+     *
+     * <p>V02 的 path 触发器只处理 parent_id/code 发生 UPDATE 的当前行；该 CTE 显式更新
+     * 后代 path，且不依赖移动前的旧 path 排序。服务层在防环检查前用事务级 advisory lock
+     * 串行化层级变更；该 UPDATE 负责在一次语句内写入并锁定本次子树行。
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            WITH RECURSIVE rebuilt(id, new_level, new_path, visited) AS (
+                SELECT d.id,
+                       CASE
+                           WHEN p.id IS NULL THEN '一级部门'
+                           WHEN p.level IN ('公司', '决策层', '管理中心') THEN '一级部门'
+                           WHEN p.level = '一级部门' THEN '二级班组'
+                           WHEN p.level IN ('二级班组', '三级科室') THEN '三级科室'
+                           ELSE '二级班组'
+                       END::text,
+                       CASE
+                           WHEN p.id IS NULL THEN '/' || d.code || '/'
+                           ELSE COALESCE(p.path, '/') || d.code || '/'
+                       END::text,
+                       ARRAY[d.id]
+                FROM departments d
+                LEFT JOIN departments p ON p.id = d.parent_id
+                WHERE d.id = :rootId AND d.is_deleted = false
+
+                UNION ALL
+
+                SELECT child.id,
+                       CASE
+                           WHEN parent.new_level = '一级部门' THEN '二级班组'
+                           WHEN parent.new_level IN ('二级班组', '三级科室') THEN '三级科室'
+                           ELSE '一级部门'
+                       END::text,
+                       (parent.new_path || child.code || '/')::text,
+                       parent.visited || child.id
+                FROM departments child
+                JOIN rebuilt parent ON child.parent_id = parent.id
+                WHERE NOT child.id = ANY(parent.visited)
+            )
+            UPDATE departments d
+            SET level = rebuilt.new_level,
+                path = rebuilt.new_path,
+                updated_by = COALESCE(
+                    NULLIF(current_setting('app.actor_id', true), '')::uuid,
+                    d.updated_by
+                )
+            FROM rebuilt
+            WHERE d.id = rebuilt.id
+            """, nativeQuery = true)
+    int rebuildSubtreeHierarchy(@Param("rootId") UUID rootId);
 }

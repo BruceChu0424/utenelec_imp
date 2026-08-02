@@ -1,10 +1,12 @@
 package com.uten.imp.features.production.mrp;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,6 +24,7 @@ public class MrpController {
 
     private final MrpService mrpService;
     private final ProductionPlanningPackageService planningPackageService;
+    private final ProductionPlanningDraftService planningDraftService;
 
     /** 物料需求预览（毛需求/库存/在途/净需求，自制件标记）。 */
     @GetMapping("/{id}/mrp")
@@ -99,6 +102,34 @@ public class MrpController {
             @PathVariable UUID id,
             @org.springframework.web.bind.annotation.RequestParam UUID warehouseId) {
         return planningPackageService.preview(id, warehouseId);
+    }
+
+    @PutMapping("/{id}/mrp/planning-draft")
+    @PreAuthorize("hasAuthority('production_plan:edit')")
+    public ProductionPlanningDraftView savePlanningDraft(
+            @PathVariable UUID id,
+            @jakarta.validation.Valid
+            @org.springframework.web.bind.annotation.RequestBody
+            GeneratePlanningPackageRequest request) {
+        return planningDraftService.save(id, request);
+    }
+
+    @GetMapping("/{id}/mrp/planning-draft")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public ResponseEntity<ProductionPlanningDraftView> currentPlanningDraft(
+            @PathVariable UUID id) {
+        return planningDraftService.current(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{id}/mrp/planning-package-result")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public ResponseEntity<PlanningPackageResult> currentPlanningPackageResult(
+            @PathVariable UUID id) {
+        return planningPackageService.currentResult(id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PostMapping("/{id}/mrp/planning-packages/{packageId}/cancel")

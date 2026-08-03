@@ -151,6 +151,9 @@ logging:
   level:
     com.uten.imp: INFO
     org.hibernate.SQL: WARN
+    # HHH10001005：Hibernate 无法从 Hikari 代理数据源读到底层 JDBC 元信息，
+    # 输出一堆 undefined/unknown，纯属噪音。静音即可。
+    org.hibernate.orm.connections.pooling: WARN
 
 management:
   endpoints:

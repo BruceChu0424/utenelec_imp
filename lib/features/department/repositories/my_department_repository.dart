@@ -27,9 +27,12 @@ class MyDepartmentRepository {
     return MyDepartmentRoster.fromJson(json);
   }
 
-  /// 部门负责人的「本部门员工权限」面板数据（非负责人 403）。
-  Future<DepartmentStaffPermissions> managed() async {
-    final json = await _api.get(ApiEndpoints.departmentStaffPermissionsManaged);
+  /// 负责人对指定部门直属员工的权限面板数据（超出负责范围返回 403）。
+  Future<DepartmentStaffPermissions> managed(String departmentId) async {
+    final json = await _api.get(
+      ApiEndpoints.departmentStaffPermissionsManaged,
+      query: {'departmentId': departmentId},
+    );
     return DepartmentStaffPermissions.fromJson(json);
   }
 

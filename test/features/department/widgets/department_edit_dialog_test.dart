@@ -10,7 +10,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/uten_location_field.dart';
 
 void main() {
-  testWidgets('管理中心编辑时不显示负责人选择器且不加载候选', (tester) async {
+  testWidgets('管理中心可设置负责人但上级位置保持只读', (tester) async {
     var loadCalls = 0;
     DepartmentEditResult? submitted;
 
@@ -39,12 +39,9 @@ void main() {
       },
     );
 
-    expect(find.byType(UtenEmployeePicker), findsNothing);
-    expect(find.text('部门负责人'), findsNothing);
-    expect(
-      find.text('此节点是组织骨架，上级部门不可更改，也不设置部门负责人；请在下级业务部门设置。'),
-      findsOneWidget,
-    );
+    expect(find.byType(UtenEmployeePicker), findsOneWidget);
+    expect(find.text('部门负责人'), findsOneWidget);
+    expect(find.textContaining('此节点是组织骨架'), findsNothing);
     expect(loadCalls, 0);
 
     final locationField = tester.widget<UtenLocationField>(
@@ -57,6 +54,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('选择上级部门'), findsNothing);
+    await tester.tap(find.text('从本部门直属在册员工中选择'));
+    await tester.pumpAndSettle();
+    expect(loadCalls, 1);
+    await tester.tap(find.text('张三'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('张三'), findsOneWidget);
 
     await tester.enterText(_textFieldWithLabel('名称'), '营销管理中心');
     await tester.tap(find.text('保存'));
@@ -65,7 +68,7 @@ void main() {
     expect(submitted, isNotNull);
     expect(submitted!.name, '营销管理中心');
     expect(submitted!.parentId, isNull);
-    expect(submitted!.managerId, isNull);
+    expect(submitted!.managerId, 'employee-1');
     expect(submitted!.level, '管理中心');
   });
 

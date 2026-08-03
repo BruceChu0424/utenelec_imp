@@ -960,7 +960,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         document.setPlanNo(planNo);
         document.setSourceDocNo(planNo);
         document.setRemark("采购到货转生产备料，计划包 " + packageId);
-        document.setWorkerId(actorId);
+        document.setWorkerId(employeeId);
         document.setMakerId(employeeId);
         document.setStatus((short) 0);
         stockDocumentRepo.saveAndFlush(document);

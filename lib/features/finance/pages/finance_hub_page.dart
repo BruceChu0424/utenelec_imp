@@ -13,12 +13,15 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../finance_workflow_routes.dart';
+import '../providers/finance_procurement_approval_count_provider.dart';
 import '../widgets/finance_procurement_approval_badge.dart';
 
 class FinanceHubPage extends ConsumerWidget {
@@ -26,6 +29,11 @@ class FinanceHubPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 返回即刷新：回到本 hub 时重拉「订货审批任务中心」「超量到货审批」计数。
+    ref.onPageResume(RouteName.finance, () {
+      ref.invalidate(financeProcurementApprovalCountProvider);
+      ref.invalidate(financeArrivalExceptionCountProvider);
+    });
     final theme = Theme.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);

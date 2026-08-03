@@ -1,22 +1,30 @@
 // 仓库管理入口页（hub）—— 8 单据类型 tile（调拨/其它出入库/领退料/产成品进出仓/盘点）。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
+import '../providers/procurement_inbound_count_providers.dart';
 import '../widgets/procurement_inbound_badges.dart';
 
-class WarehouseHubPage extends StatelessWidget {
+class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 返回即刷新：回到本 hub 时重拉「预计到货」「到货异常」两个任务中心计数。
+    ref.onPageResume(RouteName.warehouse, () {
+      ref.invalidate(warehouseInboundExpectationCountProvider);
+      ref.invalidate(warehouseArrivalExceptionCountProvider);
+    });
     final theme = Theme.of(context);
     final color = theme.colorScheme.primary;
     return Scaffold(

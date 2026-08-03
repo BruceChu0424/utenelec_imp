@@ -23,6 +23,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -537,6 +538,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 返回即刷新：从其它页面回到审计中心时重拉当前页（保留筛选/页码），
+    // 保证看到最新审计记录。本页路由为静态路径，直接用 RouteName 常量。
+    ref.onPageResume(RouteName.adminAuditLogs, () => _load(_pageNum));
     final items = _page?.items ?? const <AuditLogEntry>[];
     final hasDrillDown =
         _riskFilter != null ||

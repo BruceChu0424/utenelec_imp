@@ -31,7 +31,7 @@ public final class PlanningPackageFingerprint {
             }
             return HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+            throw new IllegalStateException("SHA-256 不可用", impossible);
         }
     }
 }

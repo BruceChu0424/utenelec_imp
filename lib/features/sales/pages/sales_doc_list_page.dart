@@ -17,6 +17,7 @@ import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
@@ -55,6 +56,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
   bool _sortAsc = true;
   // 可发货置顶（工作台小项）：true 时后端按"有预留单排前 + 交货日升序"排序，忽略列排序
   bool _shippableFirst = false;
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
 
   bool get _isOrder => widget.docType == SalesDocType.order;
 
@@ -396,6 +401,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
     ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
       _load(_pageNum);
     });
+    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
+    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _load(_pageNum));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,

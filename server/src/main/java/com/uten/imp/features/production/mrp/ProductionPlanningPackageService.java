@@ -296,7 +296,7 @@ public class ProductionPlanningPackageService {
         document.setPlanNo(plan.billNo());
         document.setSourceDocNo(plan.billNo());
         document.setRemark("计划包 " + planningPackage.getId() + " 自动备料");
-        document.setWorkerId(currentUser.requireId());
+        document.setWorkerId(currentUser.requireEmployeeId());
         document.setMakerId(currentUser.requireEmployeeId());
         document.setStatus((short) 0);
         stockDocumentRepo.save(document);
@@ -465,7 +465,7 @@ public class ProductionPlanningPackageService {
                         .contains((String) row[1]))) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "Only unstarted READY/WAITING segments can be closed with a package");
+                    "只有未开工的「就绪/等待」执行分段才能随计划包一起关闭");
         }
         int updated = em.createNativeQuery("""
                         UPDATE production_execution_segments
@@ -488,7 +488,7 @@ public class ProductionPlanningPackageService {
         if (updated != rows.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "Execution segment changed concurrently");
+                    "执行分段已被并发修改，请刷新后重试");
         }
     }
 
@@ -925,13 +925,13 @@ public class ProductionPlanningPackageService {
         }
         CoverageQuantity reference = quantities.getFirst();
         if (reference.requiredQty().signum() <= 0) {
-            throw new IllegalArgumentException("required quantity must be positive");
+            throw new IllegalArgumentException("需求数量必须大于零");
         }
         return quantities.stream().allMatch(quantity -> {
             if (quantity.requiredQty().signum() <= 0
                     || quantity.allocatedQty().signum() < 0
                     || quantity.allocatedQty().compareTo(quantity.requiredQty()) > 0) {
-                throw new IllegalArgumentException("invalid coverage quantity");
+                throw new IllegalArgumentException("覆盖数量无效");
             }
             return quantity.allocatedQty().multiply(reference.requiredQty())
                     .compareTo(reference.allocatedQty().multiply(

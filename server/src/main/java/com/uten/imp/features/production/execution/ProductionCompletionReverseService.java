@@ -58,7 +58,7 @@ public class ProductionCompletionReverseService
         if (stockDocumentId == null || warehouseId == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "Finished inbound MAKE promotion requires document and warehouse");
+                    "成品入库触发自制件就绪提升时缺少单据或仓库");
         }
         readiness.onFinishedInboundApproved(
                 stockDocumentId, warehouseId);

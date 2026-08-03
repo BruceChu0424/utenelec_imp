@@ -6,26 +6,37 @@
 //
 // 入口归综合营销部（DEPT_SALES）；view 权限全员，edit 归综合营销部（V53 seed）。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
+import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
 
-class SubcontractHubPage extends StatelessWidget {
+class SubcontractHubPage extends ConsumerWidget {
   const SubcontractHubPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 返回即刷新：回到本 hub 时重拉「待退回供应商」任务数。
+    ref.onPageResume(RouteName.subcontract, () {
+      ref.invalidate(
+        procurementArrivalReturnCountProvider(
+          ProcurementInboundOrderType.subcontract,
+        ),
+      );
+    });
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(

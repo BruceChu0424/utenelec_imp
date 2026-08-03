@@ -127,6 +127,7 @@ import '../../features/visitor/pages/visitor_login_page.dart';
 import '../../features/visitor/providers/visitor_session_provider.dart';
 import '../../shared/providers/session_provider.dart';
 import '../../features/auth/pages/change_password_page.dart';
+import 'page_resume_provider.dart';
 import 'route_access_policy.dart';
 import 'route_names.dart';
 
@@ -1138,6 +1139,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     errorBuilder: (_, _) => const _ErrorPage(),
   );
 
+  // 「返回即刷新」信号源：任何导航落定（go / push / pop / 系统返回手势 / 深链）后，
+  // 把最新路径写入 pageResumeProvider；页面据此在自己重新可见时刷新数据。
+  // 路由监听可能在 build 阶段触发，故推迟到微任务里再改 provider，
+  // 避免 "Tried to modify a provider while the widget tree was building"。
+  var routerDisposed = false;
+  router.routerDelegate.addListener(() {
+    if (routerDisposed) return;
+    Future.microtask(() {
+      if (routerDisposed) return;
+      bumpPageResume(
+        ref,
+        router.routerDelegate.currentConfiguration.uri.path,
+      );
+    });
+  });
+
   ref.listen(sessionProvider, (_, _) {
     router.refresh();
   });
@@ -1145,7 +1162,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     router.refresh();
   });
 
-  ref.onDispose(router.dispose);
+  ref.onDispose(() {
+    routerDisposed = true;
+    router.dispose();
+  });
 
   return router;
 });

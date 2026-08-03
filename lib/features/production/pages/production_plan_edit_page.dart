@@ -597,6 +597,8 @@ class _ProductionPlanEditPageState
                                     mode: UtenDepartmentPickerMode.single,
                                     label: '车间',
                                     hint: '选择生产车间（部门）',
+                                    selectablePredicate:
+                                        isBusinessDepartmentNode,
                                     treeOverride: workshopTree,
                                     initialSelection: _departmentId == null
                                         ? const []

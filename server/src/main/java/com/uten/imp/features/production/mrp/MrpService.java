@@ -631,7 +631,7 @@ public class MrpService {
         d.setPlanNo(plan.getBillNo());
         d.setSourceDocNo(plan.getBillNo());
         d.setRemark("生产计划 " + plan.getBillNo() + " 按 BOM 毛需求自动生成");
-        d.setWorkerId(currentUser.requireId());
+        d.setWorkerId(currentUser.requireEmployeeId());
         d.setMakerId(currentUser.requireEmployeeId());
         d.setStatus((short) 0);
         stockDocRepo.save(d);
@@ -752,7 +752,7 @@ public class MrpService {
         d.setPlanNo(plan.getBillNo());
         d.setSourceDocNo(plan.getBillNo());
         d.setRemark("生产计划 " + plan.getBillNo() + " 完工入库自动生成");
-        d.setWorkerId(currentUser.requireId());
+        d.setWorkerId(currentUser.requireEmployeeId());
         d.setMakerId(currentUser.requireEmployeeId());
         d.setStatus((short) 0);
         stockDocRepo.save(d);
@@ -917,7 +917,7 @@ public class MrpService {
         if (existing.intValue() > 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "An active EXECUTION_V1 subplan already exists for this parent plan");
+                    "该父计划已存在有效的执行分段（EXECUTION_V1）子计划，不能重复生成");
         }
 
         // 子计划交货日：父计划最早开工日；无开工日则取父计划交货日。

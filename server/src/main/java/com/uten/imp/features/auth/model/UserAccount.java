@@ -16,7 +16,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * 登录账号（与 Employee 1:1）。登录账号默认 = 工号。
+ * 登录账号（与 Employee 1:1）。登录账号默认 = 手机号（历史曾用工号）。
  * employeeId 为具体字段（鉴权链路需直接读取，避免 LAZY 加载）；employee 为只读关联便于取姓名/部门。
  */
 @Getter

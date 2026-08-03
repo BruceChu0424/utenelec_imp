@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
+import com.uten.imp.features.org.department.DepartmentLevelPolicy;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.employee.dto.EmployeeDetail;
 import com.uten.imp.features.org.employee.dto.NestedDtos;
@@ -71,8 +72,14 @@ public class EmployeeCommandService {
         if (nn(r.maritalStatus())) e.setMaritalStatus(r.maritalStatus());
         if (nn(r.hujiAddress())) e.setHujiAddress(r.hujiAddress());
         if (nn(r.residenceAddress())) e.setResidenceAddress(r.residenceAddress());
-        if (r.positionId() != null) e.setPosition(positionRepo.findById(r.positionId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "岗位不存在")));
+        if (r.positionId() != null) {
+            Department currentDepartment = e.getDepartment();
+            if (currentDepartment == null || currentDepartment.isDeleted()) {
+                throw new ApiException(ErrorCode.CONFLICT, "员工当前部门不存在或已停用");
+            }
+            e.setPosition(requireActivePositionInDepartment(
+                    r.positionId(), currentDepartment.getId()));
+        }
         if (r.supervisorId() != null) e.setSupervisor(empRepo.findById(r.supervisorId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "直属上级不存在")));
         if (nn(r.workLocation())) e.setWorkLocation(r.workLocation());
@@ -223,9 +230,10 @@ public class EmployeeCommandService {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职，不可调岗");
         }
         assertEffectiveDate(e, req.effectiveDate());
-        Department to = deptRepo.findById(req.toDepartmentId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "目标部门不存在"));
-        Position toPos = req.toPositionId() == null ? null : positionRepo.findById(req.toPositionId()).orElse(null);
+        Department to = requireEmployeeHostDepartment(req.toDepartmentId());
+        Position toPos = req.toPositionId() == null
+                ? null
+                : requireActivePositionInDepartment(req.toPositionId(), to.getId());
 
         UUID fromDepartmentId = e.getDepartment() == null
                 ? null
@@ -390,6 +398,30 @@ public class EmployeeCommandService {
         if (managed.isEmpty()) return;
         managed.forEach(department -> department.setManager(null));
         deptRepo.saveAll(managed);
+    }
+
+    private Department requireEmployeeHostDepartment(UUID departmentId) {
+        Department department = deptRepo.findById(departmentId)
+                .filter(candidate -> !candidate.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "目标部门不存在或已停用"));
+        if (!DepartmentLevelPolicy.canHostEmployees(department.getLevel())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "公司和决策层节点不能接收员工");
+        }
+        return department;
+    }
+
+    private Position requireActivePositionInDepartment(
+            UUID positionId,
+            UUID departmentId) {
+        return positionRepo
+                .findByIdAndDepartmentIdAndDeletedFalse(positionId, departmentId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.CONFLICT,
+                        "岗位不存在、已停用或不属于目标部门"));
     }
 
     static void assertDepartmentChangeUsesTransfer(

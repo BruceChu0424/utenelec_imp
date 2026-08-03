@@ -28,6 +28,31 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
 - 空库首次引导超管账号 `admin` / 密码 = `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`（首登强制改）。
   账号一旦存在，启动器严格跳过，不会把人工撤销的超级管理员权限重新授回。
 
+## 本机免 Maven 启动（`_scratch/`，git-ignored）
+
+本机没有全局 Maven 时，用「固定类路径 argfile + java 直启」的方式跑后端（2026-08-03 起实际使用）：
+
+- `_scratch/server_classpath.argfile` — 解析好的运行时类路径（`target/classes` + `.m2` 依赖，
+  一行一个长 `-cp` 参数，供 `java -cp "@<argfile>"` 使用）。
+- `_scratch/run_server.bat` — 用上述 argfile 启动 `com.uten.imp.UtenImpApplication`，
+  控制台输出重定向到 `_scratch/server_restart.log`。
+- `_scratch/start_server.ps1` — `Start-Process` 后台拉起 `run_server.bat`（最小化窗口），
+  用于重启后立即可用；停止用 `taskkill /PID <pid> /F`。
+
+三个文件都在 git 忽略的 `_scratch/` 里，可以写本机绝对路径，不进仓库。
+
+**两个坑（2026-08-03 实录）**：
+1. **argfile 会过期**。`spring-boot:run`/IDE 生成的 argfile 是按当时依赖版本解析的，pom 升级
+   （如 Spring Boot 3.3.5 → 3.5.16）后旧 argfile 仍指旧 jar，且放 `%TEMP%` 会被系统清理。
+   升级依赖或清理 Temp 后必须重新生成：`mvn spring-boot:run` 跑一次会生成最新
+   `spring-boot-*.argfile`，复制覆盖 `_scratch/server_classpath.argfile` 即可；或直接用
+   新版解析结果重建。版本对不对：`Select-String "spring-boot-(\d)" _scratch/server_classpath.argfile`
+   应与 pom 的 `spring-boot-starter-parent` 版本一致。
+2. **改完代码要重编 class 再重启**。运行中的 JVM 不热加载：IDE 自动构建或手动
+   `javac -d target/classes`（`-processorpath` 限定 Lombok，否则 Spring 配置处理器会读
+   target 里的 metadata 报错）之后，重启进程才生效。另外给已有 Spring Bean 加第二个构造器时，
+   主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
+
 ## 数据库
 - schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前候选源码最高为 V202）。2026-08-01 只读证据确认公司目标库最高已应用 V190；V191–V202 的源码存在、编译或隔离迁移通过都不等于目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准。资产专项 V01–V186 的 SQL 顺序回放没有 Flyway 元数据，仍不得冒充目标库迁移证据。
 - 迁移：`V01` pgcrypto → `V02` 部门/岗位 → `V03` 员工+7 子实体 → `V04` 鉴权+RBAC → `V05` 审计触发器 → `V06` 种子 RBAC → `V07` 种子组织树（含保安部）→ `V08` 种子 admin 员工 → `V09` 审计去密 → `V10` 身份证 HMAC → `V11` 角色/权限审计列 → `V12` 访客系统 → `V13` 访客权限拆分 → `V14` 车牌加密 → `V15` 访客通行码 → `V16` 超管 → `V17` 种子 admin 文档 → `V18` 个人信息修改申请 → `V19` 修改审批权限点 → `V20` 修改申请审计列 → `V21` 权限管理体系（部门默认角色 `department_roles` + 个人权限覆盖 `user_permission_overrides`，见 [ADR-007](../docs/99-决策记录-ADR/ADR-007-导航重构与三层权限模型.md)）→ `V22` 审计覆盖扩展（部门角色/权限覆盖/紧急联系人补触发器）→ `V23` 修复 V18 坏审计触发器（个人信息修改链路的部署级阻断 bug，见 [ADR-009](../docs/99-决策记录-ADR/ADR-009-后端安全加固与功能补全.md)）→ `V24` 岗位模板种子（ADR-010）→ `V25` 决策支持独立权限点 `analytics:view` → `V26` 工资条生成权限移交财务 → `V27` 部门直配权限点 `department_permissions` + 用户偏好 `user_preferences`（[ADR-011](../docs/99-决策记录-ADR/ADR-011-工作台部门分区与动态权限配置.md)）→ `V28` 权限目录分组名中文化 → `V29` **角色体系下线**（存量角色权限沉淀为部门配置，PermissionResolver 不再读 user_roles/department_roles）→ `V30` 敏感字段脱敏按权限点化（新增 `employee:pii:view`）→ …（`V31`–`V63` 各业务模块迁移，详见 migration 目录）→ `V64` 下线决策支持模块，删除 `analytics:view` 权限点（前端 `/analytics/*` 路由与工作台卡片同步移除）→ …（`V65`–`V120` 销售/采购/委外/仓库/生产/钱流/通知/建议/归属隔离/业务链 V90–V100，详见 [docs/数据迁移/41 需求落地总路线图](../docs/数据迁移/41-需求落地总路线图.md)）→ `V121` 客户铺底额 → `V122` **总账子系统**（`gl_vouchers`/`gl_entries` + `account_style_id()` 函数，科目复用 payment_styles 树，docs 44）→ `V123` 固定资产折旧+长期待摊（`fixed_assets`/`deferred_expenses`/计提日志 + 科目种子 /152/ 累计折旧·折旧费·摊销费，docs 45）→ `V124` 出货财务审核（`sales_shipments.finance_audit`）+ 费用单总账状态（`finance_expenses.gl_status`，docs 46）。

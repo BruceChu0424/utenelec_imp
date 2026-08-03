@@ -21,10 +21,6 @@ public class DepartmentService {
     private static final Set<String> CURRENT_EMPLOYEE_STATUSES =
             Set.of("active", "probation", "onLeave");
 
-    /** 组织骨架由迁移维护，不能通过普通部门编辑改变其结构位置。 */
-    private static final Set<String> IMMUTABLE_STRUCTURE_LEVELS =
-            Set.of("公司", "决策层", "管理中心");
-
     private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
             "SELECT pg_advisory_xact_lock(hashtextextended('DEPARTMENT_HIERARCHY',0))";
 
@@ -74,8 +70,10 @@ public class DepartmentService {
             d.setParent(requireDept(req.getParentId()));
         }
         if (req.getManagerId() != null) {
-            rejectStructureNodeManager(req.getLevel());
-            d.setManager(requireCurrentEmployee(req.getManagerId()));
+            rejectNonOperatingNodeManager(req.getLevel());
+            Employee manager = requireCurrentEmployee(req.getManagerId());
+            requireDirectManager(d.getId(), manager);
+            d.setManager(manager);
         }
         d = deptRepo.save(d); // UUID 构造时赋值→isNew=false→save 走 merge 返回托管副本；用返回值，否则 em.refresh(游离 d) 报 "Entity not managed"
         em.flush();
@@ -98,14 +96,9 @@ public class DepartmentService {
             if (req.getManagerId() == null) {
                 d.setManager(null);
             } else {
-                rejectStructureNodeManager(d.getLevel());
+                rejectNonOperatingNodeManager(d.getLevel());
                 Employee manager = requireCurrentEmployee(req.getManagerId());
-                if (manager.getDepartment() == null
-                        || !id.equals(manager.getDepartment().getId())) {
-                    throw new ApiException(
-                            ErrorCode.CONFLICT,
-                            "部门负责人必须是该部门的直属在岗员工");
-                }
+                requireDirectManager(id, manager);
                 d.setManager(manager);
             }
         }
@@ -114,7 +107,7 @@ public class DepartmentService {
         boolean parentChanged = requestedParentId != null
                 && !requestedParentId.equals(currentParentId);
         if (parentChanged) {
-            if (IMMUTABLE_STRUCTURE_LEVELS.contains(d.getLevel())) {
+            if (DepartmentLevelPolicy.hasImmutableParent(d.getLevel())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "公司、决策层和管理中心等组织骨架节点不可修改上级");
@@ -147,9 +140,18 @@ public class DepartmentService {
         em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
     }
 
-    private void rejectStructureNodeManager(String level) {
-        if (IMMUTABLE_STRUCTURE_LEVELS.contains(level)) {
-            throw new ApiException(ErrorCode.CONFLICT, "组织骨架节点不能设置部门负责人");
+    private void rejectNonOperatingNodeManager(String level) {
+        if (!DepartmentLevelPolicy.canHostEmployees(level)) {
+            throw new ApiException(ErrorCode.CONFLICT, "公司和决策层节点不能设置部门负责人");
+        }
+    }
+
+    private void requireDirectManager(UUID departmentId, Employee manager) {
+        if (manager.getDepartment() == null
+                || !departmentId.equals(manager.getDepartment().getId())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "部门负责人必须是该部门的直属在岗员工");
         }
     }
 

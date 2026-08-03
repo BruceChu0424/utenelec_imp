@@ -2,11 +2,20 @@
 
 import '../../basic_data/models/uten_tree_node.dart';
 
-/// 可选部门层级（一级部门/二级班组/三级科室）。
+/// 业务部门层级：可作为普通业务单据里的部门/车间，但不包含管理中心。
+///
+/// 保留历史名称供专业业务选择器使用；人事/组织归属请使用
+/// [kOperationalDepartmentLevels]，结构移动请使用 [kMovableDepartmentLevels]。
 const kSelectableDepartmentLevels = {'一级部门', '二级班组', '三级科室'};
 
-/// 骨架层级（决策层/管理中心）：仅作展开骨架，不可选。
-const kSkeletonDepartmentLevels = {'决策层', '管理中心'};
+/// 可承载人员、岗位和负责人的组织层级。
+const kOperationalDepartmentLevels = {'管理中心', ...kSelectableDepartmentLevels};
+
+/// 允许调整上级位置的层级。管理中心属于固定组织骨架，不允许移动。
+const kMovableDepartmentLevels = kSelectableDepartmentLevels;
+
+/// 仅作展开骨架、不可承载人员的层级。
+const kSkeletonDepartmentLevels = {'决策层'};
 
 /// 公司根层级（选择器中不显示，从决策层开始列）。
 const kCompanyDepartmentLevel = '公司';
@@ -78,6 +87,14 @@ class DepartmentNode implements UtenTreeNode<DepartmentNode> {
     );
   }
 }
+
+/// 人事/组织场景的默认选择策略：管理中心和各级业务部门均可选。
+bool isOperationalDepartmentNode(DepartmentNode node) =>
+    kOperationalDepartmentLevels.contains(node.level);
+
+/// 生产、车间等专业业务场景的选择策略：排除管理中心。
+bool isBusinessDepartmentNode(DepartmentNode node) =>
+    kSelectableDepartmentLevels.contains(node.level);
 
 /// 按 code 在部门树里递归查找节点（如找生产部 DEPT_PROD）。
 DepartmentNode? findDepartmentByCode(List<DepartmentNode> nodes, String code) {

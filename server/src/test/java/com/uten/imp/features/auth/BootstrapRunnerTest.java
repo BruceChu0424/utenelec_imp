@@ -36,19 +36,19 @@ class BootstrapRunnerTest {
 
     @Test
     void existingAdminDoesNotRequireBootstrapSecret() {
-        when(userRepository.existsByLoginAccount("admin")).thenReturn(true);
+        when(userRepository.existsByLoginAccount("17665410007")).thenReturn(true);
 
         runner.run(mock(ApplicationArguments.class));
 
         verify(employeeRepository, never()).findByCode("ADMIN");
         verify(passwordEncoder, never()).encode(org.mockito.ArgumentMatchers.anyString());
-        verify(userRepository, never()).findByLoginAccount("admin");
+        verify(userRepository, never()).findByLoginAccount("17665410007");
         verify(userRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void emptyDatabaseFailsClosedWithoutStrongOneTimeSecret() {
-        when(userRepository.existsByLoginAccount("admin")).thenReturn(false);
+        when(userRepository.existsByLoginAccount("17665410007")).thenReturn(false);
         when(employeeRepository.findByCode("ADMIN")).thenReturn(Optional.of(new Employee()));
 
         assertThatThrownBy(() -> runner.run(mock(ApplicationArguments.class)))

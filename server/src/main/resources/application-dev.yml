@@ -3,10 +3,33 @@ server:
   ssl:
     enabled: false
 
+spring:
+  main:
+    # 启动日志足以说明状态，关掉 ASCII banner
+    banner-mode: "off"
+
 logging:
+  # 同步写入文件，供日志监控 Widget 读取；控制台输出不受影响
+  file:
+    name: logs/uten-imp-dev.log
+  pattern:
+    # 文件里保留完整 logger 名（不缩写），方便监控面板区分业务/框架日志
+    file: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p --- [%15.15thread] %logger : %m%n"
   level:
     com.uten.imp: DEBUG
     org.springframework.security: INFO
+    # —— 框架启动噪音：只保留 WARN 及以上 ——
+    # Tomcat 内部（Starting service / Servlet engine / WebApplicationContext）
+    org.apache.catalina: WARN
+    org.apache.tomcat: WARN
+    # Hibernate 版本横幅、二级缓存、JTA 平台等 HHH 提示
+    org.hibernate: WARN
+    # Spring Data 仓库扫描、HQL parser 提示
+    org.springframework.data: WARN
+    # Hikari 每根连接的 Added connection 明细（池启动/完成仍保留）
+    com.zaxxer.hikari.pool: WARN
+    # Flyway “已校验 187 个迁移”摘要；真正执行迁移时仍按 INFO 输出
+    org.flywaydb.core.internal.command.DbValidate: WARN
 
 uten:
   jwt:

@@ -91,7 +91,7 @@ public class ProductionExecutionPlanningService {
             if (edit.isDeferUntilManualRelease()
                     && !"WAITING".equals(edit.getRequestedStatus())) {
                 throw validation(
-                        "Only WAITING segments may be explicitly deferred");
+                        "只有「等待」状态的执行分段才能设置为暂缓放行");
             }
             BigDecimal qty = scaleProduct(edit.getPlannedQty());
             totals.merge(line.sourcePlanItemId(), qty, BigDecimal::add);
@@ -505,7 +505,7 @@ public class ProductionExecutionPlanningService {
             return ProductionMaterialDemand.ROUTE_SUBCONTRACT;
         }
         throw conflict(
-                "Material source_type must explicitly be purchase, self-made or subcontract");
+                "物料来源必须明确为「采购」「自制」或「委外」，请到货品资料中维护该货品的来源后再试");
     }
 
     private static String normalizeSourceType(String rawSourceType) {

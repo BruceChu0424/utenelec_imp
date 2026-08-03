@@ -84,7 +84,7 @@ public final class CompleteKitAllocator {
             List<RequestedSegment> rawSegments,
             Map<MaterialKey, BigDecimal> rawAvailable) {
         if (rawSegments == null || rawSegments.isEmpty()) {
-            throw new IllegalArgumentException("segments are required");
+            throw new IllegalArgumentException("执行分段不能为空");
         }
         List<RequestedSegment> segments = rawSegments.stream()
                 .map(CompleteKitAllocator::normalizeRequested)
@@ -238,7 +238,7 @@ public final class CompleteKitAllocator {
 
     private static List<ProductLine> normalizeLines(List<ProductLine> rawLines) {
         if (rawLines == null || rawLines.isEmpty()) {
-            throw new IllegalArgumentException("product lines are required");
+            throw new IllegalArgumentException("产品行不能为空");
         }
         return rawLines.stream()
                 .map(CompleteKitAllocator::normalizeLine)
@@ -259,7 +259,7 @@ public final class CompleteKitAllocator {
                 || line.plannedQty().signum() <= 0
                 || line.materials() == null
                 || line.materials().isEmpty()) {
-            throw new IllegalArgumentException("invalid product line");
+            throw new IllegalArgumentException("产品行数据无效");
         }
         List<MaterialUsage> materials = line.materials().stream()
                 .map(CompleteKitAllocator::normalizeUsage)
@@ -267,7 +267,7 @@ public final class CompleteKitAllocator {
                 .toList();
         if (materials.stream().map(MaterialUsage::materialKey).distinct().count()
                 != materials.size()) {
-            throw new IllegalArgumentException("duplicate material dimension");
+            throw new IllegalArgumentException("存在重复的物料维度");
         }
         return new ProductLine(
                 line.sourcePlanItemId(),
@@ -297,7 +297,7 @@ public final class CompleteKitAllocator {
                 || usage.perProductQty().signum() <= 0
                 || usage.supplyRoute() == null
                 || usage.supplyRoute().isBlank()) {
-            throw new IllegalArgumentException("invalid material usage");
+            throw new IllegalArgumentException("物料用量数据无效");
         }
         return new MaterialUsage(
                 usage.goodsId(),
@@ -322,7 +322,7 @@ public final class CompleteKitAllocator {
                 || (value.deferUntilManualRelease()
                     && !ProductionExecutionSegment.STATUS_WAITING.equals(
                             value.requestedStatus()))) {
-            throw new IllegalArgumentException("invalid requested segment");
+            throw new IllegalArgumentException("请求的执行分段无效");
         }
         return new RequestedSegment(
                 value.clientSegmentKey().strip(),
@@ -344,7 +344,7 @@ public final class CompleteKitAllocator {
                     if (entry.getKey() == null
                             || entry.getValue() == null
                             || entry.getValue().signum() < 0) {
-                        throw new IllegalArgumentException("invalid availability");
+                        throw new IllegalArgumentException("可用库存数据无效");
                     }
                     result.put(
                             entry.getKey(),

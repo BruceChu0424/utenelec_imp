@@ -114,7 +114,7 @@ uten:
     # 必填：HMAC 密钥（身份证号查重）。走 server/.env 或环境变量；缺省 fail-fast。
     hmac-key: ${UTEN_HMAC_KEY}
   bootstrap:
-    admin-login: admin
+    admin-login: 17665410007
     # 仅空库首次创建 admin 时必填；账号已存在后可从密钥管理中删除。首登强制改密。
     admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
   sms:

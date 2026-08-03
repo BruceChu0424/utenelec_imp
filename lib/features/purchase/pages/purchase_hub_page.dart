@@ -3,26 +3,39 @@
 //  ② 采购报表：报表卡片（明细/汇总/待交货）
 // 点卡片进对应列表/报表页。布局对齐基础资料 hub 的卡片风格。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../warehouse/pages/procurement_return_task_pages.dart';
+import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/purchase_doc_config.dart';
 import '../config/purchase_report_config.dart';
 import '../widgets/purchase_task_badge.dart';
 
-class PurchaseHubPage extends StatelessWidget {
+class PurchaseHubPage extends ConsumerWidget {
   const PurchaseHubPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 返回即刷新：回到本 hub 时重拉「待退回供应商」任务数。
+    // 「采购任务中心」角标（PurchaseTaskBadge）是全局轮询 Provider，
+    // 由外壳 MainShellPage 的全局角标刷新覆盖，这里无需重复。
+    ref.onPageResume(RouteName.purchase, () {
+      ref.invalidate(
+        procurementArrivalReturnCountProvider(
+          ProcurementInboundOrderType.purchase,
+        ),
+      );
+    });
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(

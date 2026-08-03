@@ -67,9 +67,16 @@ class DioEmployeeRepository implements EmployeeRepository {
         temporaryPassword.trim().isEmpty) {
       throw const FormatException('入职响应缺少员工资料或一次性临时密码');
     }
+    final profile = EmployeeProfile.fromJson(employee);
+    // 登录账号：优先取后端返回（=手机号）；缺失时回退手机号/工号，保证弹窗总能展示。
+    final loginAccountRaw = (json['loginAccount'] as String?)?.trim();
+    final loginAccount = loginAccountRaw != null && loginAccountRaw.isNotEmpty
+        ? loginAccountRaw
+        : (profile.phone?.isNotEmpty == true ? profile.phone! : profile.code);
     return EmployeeOnboardingResult(
-      employee: EmployeeProfile.fromJson(employee),
+      employee: profile,
       temporaryPassword: temporaryPassword,
+      loginAccount: loginAccount,
     );
   }
 
@@ -105,8 +112,12 @@ class EmployeeOnboardingResult {
   const EmployeeOnboardingResult({
     required this.employee,
     required this.temporaryPassword,
+    required this.loginAccount,
   });
 
   final EmployeeProfile employee;
   final String temporaryPassword;
+
+  /// 登录账号（默认=手机号），凭据弹窗展示给 HR。
+  final String loginAccount;
 }

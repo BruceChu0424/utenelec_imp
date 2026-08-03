@@ -62,7 +62,7 @@ public class ProductionSubcontractApplicationCoordinator {
                     demandById.get(line.demandId());
             if (demand == null) {
                 throw new IllegalStateException(
-                        "Subcontract application returned an unknown demand");
+                        "委外申请返回了未知的物料需求");
             }
             ledger.createSupplyPeg(
                     demand,

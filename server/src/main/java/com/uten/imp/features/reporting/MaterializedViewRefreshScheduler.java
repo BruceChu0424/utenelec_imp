@@ -103,8 +103,22 @@ public class MaterializedViewRefreshScheduler {
             }
 
             try {
+                long cycleStartedNanos = System.nanoTime();
+                int refreshed = 0;
                 for (String viewName : REPORT_VIEWS) {
-                    refreshOne(connection, viewName);
+                    if (refreshOne(connection, viewName)) {
+                        refreshed++;
+                    }
+                }
+                long elapsedMillis = (System.nanoTime() - cycleStartedNanos) / 1_000_000L;
+                // 全部成功：一行日志都不打（每 5 分钟一轮，纯噪音；dev 环境 DEBUG 也
+                // 开着，降级别没用）。运行状态随时查 report_materialized_view_refresh_state
+                // 表。失败由 refreshOne 记 error；部分失败补一条 warn 汇总，
+                // 避免只看到单条 error 不知道整轮受影响面。
+                if (refreshed < REPORT_VIEWS.size()) {
+                    log.warn(
+                            "物化视图刷新部分失败 {}/{}，总耗时 {} ms（明细见上方 error 日志）",
+                            refreshed, REPORT_VIEWS.size(), elapsedMillis);
                 }
             } finally {
                 releaseLock(connection);
@@ -114,7 +128,7 @@ public class MaterializedViewRefreshScheduler {
         }
     }
 
-    private void refreshOne(Connection connection, String viewName) {
+    private boolean refreshOne(Connection connection, String viewName) {
         Instant startedAt = clock.instant();
         try {
             markRunning(connection, viewName);
@@ -124,11 +138,12 @@ public class MaterializedViewRefreshScheduler {
             }
             long durationMillis = elapsedMillis(startedAt);
             markSuccess(connection, viewName, durationMillis);
-            log.info("Refreshed materialized view {} in {} ms", viewName, durationMillis);
+            return true;
         } catch (SQLException exception) {
             long durationMillis = elapsedMillis(startedAt);
             markFailureSafely(connection, viewName, durationMillis, exception);
             log.error("Failed to refresh materialized view {}", viewName, exception);
+            return false;
         }
     }
 

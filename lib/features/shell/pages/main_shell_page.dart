@@ -32,8 +32,11 @@ import 'package:go_router/go_router.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../dashboard/pages/dashboard_page.dart';
+import '../../dashboard/providers/dashboard_overview_provider.dart';
+import '../../dashboard/providers/workbench_refresh.dart';
 import '../../notice/pages/notice_list_page.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../profile/pages/profile_page.dart';
@@ -152,6 +155,23 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final location = GoRouterState.of(context).matchedLocation;
+
+    // 「返回即刷新」：任何导航落定（子页面返回 / 切 Tab / 系统返回手势）后，
+    // 立即重拉全部全局角标（生产/采购/研发/访客/HR/通知未读），不等 60s 轮询；
+    // 落点是工作台时再 invalidate 今日概览（重聚合），是通知 Tab 时再刷通知列表。
+    // 于是「审计中心返回工作台」「销售订货单走完流程返回」等场景回到的页面
+    // 立即显示最新待办与角标。
+    ref.listen(pageResumeProvider, (prev, next) {
+      if (prev == null || prev.location.isEmpty) return; // App 启动首次落定
+      if (next.location == prev.location) return; // 原地通知（路径未变）
+      refreshGlobalBadges(ref);
+      if (next.location == RouteName.dashboard) {
+        ref.invalidate(dashboardOverviewProvider);
+      } else if (next.location == RouteName.notice) {
+        ref.invalidate(noticeListProvider);
+      }
+    });
+
     final labels = <String>[
       l10n.navDashboard,
       l10n.navNotice,

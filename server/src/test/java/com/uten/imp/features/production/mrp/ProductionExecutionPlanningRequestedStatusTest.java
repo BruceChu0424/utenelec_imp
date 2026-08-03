@@ -102,6 +102,6 @@ class ProductionExecutionPlanningRequestedStatusTest {
                 .isInstanceOf(
                         com.uten.imp.common.web.ApiException.class)
                 .hasMessageContaining(
-                        "Only WAITING segments may be explicitly deferred");
+                        "只有「等待」状态的执行分段才能设置为暂缓放行");
     }
 }

@@ -77,7 +77,7 @@ class GoodsListMasterNameResolutionTest {
 
     private void returnPage(Goods goods) {
         when(goodsRepo.findAll(
-                any(Specification.class),
+                org.mockito.ArgumentMatchers.<Specification<Goods>>any(),
                 any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(goods)));
     }

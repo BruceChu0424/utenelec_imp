@@ -1,5 +1,6 @@
 // 入职办理页（真实后端）：单表单分组提交 → 后端原子建 employee+敏感+薪资+合同+轨迹+账号。
-// 账号 = 工号；初始密码为服务端生成的高熵一次性密码（首登强制改）。
+// 工号提交时自动生成（UT 前缀）；登录账号 = 手机号；初始密码 = 身份证后 6 位（首登强制改）。
+// 岗位为空起步：可选择部门已有岗位，也可填写新岗位，确认后再回填表单。
 // 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120），分组为 UtenSectionHeader + UtenCard。
 // 文档：docs/03-页面/入职流程页.md
 import 'package:flutter/material.dart';
@@ -22,9 +23,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/id_card_utils.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../department/models/position.dart';
+import '../../department/widgets/uten_position_entry_picker.dart';
 import '../../department/widgets/uten_department_picker.dart';
-import '../../department/widgets/uten_position_picker.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 
@@ -42,7 +42,6 @@ class EmployeeOnboardingPage extends ConsumerStatefulWidget {
 class _EmployeeOnboardingPageState
     extends ConsumerState<EmployeeOnboardingPage> {
   final _formKey = GlobalKey<FormState>();
-  final _code = TextEditingController();
   final _name = TextEditingController();
   final _idNumber = TextEditingController();
   final _phone = TextEditingController();
@@ -51,6 +50,9 @@ class _EmployeeOnboardingPageState
   final _baseSalary = TextEditingController();
   final _bankAccount = TextEditingController();
   final _bankBranch = TextEditingController();
+
+  /// 岗位只有在弹层点击确认后才更新；已有岗位保留 id，自定义岗位保留名称。
+  PositionEntryValue _position = const PositionEntryValue.empty();
 
   // Backend option codes are unchanged; labels come from l10n at build time.
   static const _idTypeCodes = ['身份证', '护照', '港澳台通行证', '其他'];
@@ -66,19 +68,31 @@ class _EmployeeOnboardingPageState
   String _employmentType = 'regular';
   String _status = 'active';
   String? _departmentId;
-  Position? _position;
+  List<DeptSelection> _departmentSelection = const [];
   bool _submitting = false;
 
   @override
   void initState() {
     super.initState();
-    _departmentId = widget.initialDepartmentId;
+    final initialDepartmentId = widget.initialDepartmentId?.trim();
+    _departmentId = initialDepartmentId?.isEmpty == true
+        ? null
+        : initialDepartmentId;
+    _departmentSelection = _departmentId == null
+        ? const []
+        : [
+            DeptSelection(
+              id: _departmentId!,
+              name: '',
+              fullPath: '',
+              level: '',
+            ),
+          ];
   }
 
   @override
   void dispose() {
     for (final c in [
-      _code,
       _name,
       _idNumber,
       _phone,
@@ -142,7 +156,6 @@ class _EmployeeOnboardingPageState
     final l10n = AppLocalizations.of(context);
     try {
       final profile = <String, dynamic>{
-        'code': _code.text.trim(),
         'fullName': _name.text.trim(),
         'idType': _idType,
         'idNumber': _idNumber.text.trim(),
@@ -151,7 +164,10 @@ class _EmployeeOnboardingPageState
       };
       final employment = <String, dynamic>{
         'departmentId': _departmentId,
-        if (_position != null) 'positionId': _position!.id,
+        if (_position.position != null) 'positionId': _position.position!.id,
+        if (_position.position == null &&
+            (_position.customName?.trim().isNotEmpty ?? false))
+          'positionName': _position.customName!.trim(),
         'hireDate': _hireDate.text.trim().isEmpty
             ? ChinaDateTime.formatDate(ChinaDateTime.today())
             : _hireDate.text.trim(),
@@ -223,10 +239,16 @@ class _EmployeeOnboardingPageState
                 Text(l10n.employeeOnboardCredentialWarning),
                 const SizedBox(height: UtenSpacing.s16),
                 Text(
-                  l10n.employeeOnboardAccountLabel,
+                  l10n.employeeFieldCode,
                   style: Theme.of(dialogContext).textTheme.labelMedium,
                 ),
                 SelectableText(result.employee.code),
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  l10n.employeeOnboardAccountLabel,
+                  style: Theme.of(dialogContext).textTheme.labelMedium,
+                ),
+                SelectableText(result.loginAccount),
                 const SizedBox(height: UtenSpacing.s12),
                 Text(
                   l10n.employeeOnboardTemporaryPasswordLabel,
@@ -310,11 +332,33 @@ class _EmployeeOnboardingPageState
                   ),
                   children: [
                     _group(l10n.employeeOnboardGroupProfile, [
-                      _text(
-                        _code,
-                        '${l10n.employeeFieldCode}*',
-                        l10n.employeeOnboardHintCode,
-                        validator: (v) => _req(l10n, v, l10n.employeeFieldCode),
+                      Builder(
+                        builder: (noteCtx) {
+                          final theme = Theme.of(noteCtx);
+                          return Container(
+                            padding: const EdgeInsets.all(UtenSpacing.s12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHigh,
+                              borderRadius: UtenRadius.lgAll,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 18,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    l10n.employeeOnboardCodeAutoNote,
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                       _text(
                         _name,
@@ -381,29 +425,32 @@ class _EmployeeOnboardingPageState
                       UtenDepartmentPicker(
                         mode: UtenDepartmentPickerMode.single,
                         label: '${l10n.employeeFieldDepartment}*',
-                        initialSelection: _departmentId == null
-                            ? const []
-                            : [
-                                DeptSelection(
-                                  id: _departmentId!,
-                                  name: '',
-                                  fullPath: '',
-                                  level: '',
-                                ),
-                              ],
-                        onChanged: (sel) => setState(() {
-                          _departmentId = sel.isEmpty ? null : sel.first.id;
-                          _position = null;
-                        }),
+                        initialSelection: _departmentSelection,
+                        requireConfirm: true,
+                        expandOnRowTap: true,
+                        onChanged: (sel) {
+                          final nextDepartmentId = sel.isEmpty
+                              ? null
+                              : sel.first.id;
+                          final departmentChanged =
+                              nextDepartmentId != _departmentId;
+                          setState(() {
+                            _departmentId = nextDepartmentId;
+                            _departmentSelection = List.unmodifiable(sel);
+                            if (departmentChanged) {
+                              _position = const PositionEntryValue.empty();
+                            }
+                          });
+                        },
                         validator: (sel) => sel.isEmpty
                             ? l10n.employeeOnboardPickDepartment
                             : null,
                       ),
-                      UtenPositionPicker(
+                      UtenPositionEntryPicker(
                         departmentId: _departmentId,
-                        label: l10n.employeeFieldPosition,
                         value: _position,
-                        onChanged: (p) => setState(() => _position = p),
+                        label: l10n.employeeFieldPosition,
+                        onChanged: (value) => setState(() => _position = value),
                       ),
                       GestureDetector(
                         onTap: _pickDate,

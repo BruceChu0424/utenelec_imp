@@ -496,7 +496,7 @@ public class ProductionDailyReportService {
                             allocationRows.getFirst()[1])) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "Report sales allocation does not match its plan/order line");
+                        "报工的销售分摊与计划行/订单行不一致");
             }
             UUID exactLinkId = (UUID) allocationRows.getFirst()[0];
             targets = links.stream()
@@ -505,7 +505,7 @@ public class ProductionDailyReportService {
             if (targets.size() != 1) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "Report sales allocation link is no longer active");
+                        "报工的销售分摊关联已失效");
             }
         } else if (orderItemId != null) {
             targets = links.stream().filter(l -> l.getOrderItemId().equals(orderItemId)).toList();
@@ -693,7 +693,7 @@ public class ProductionDailyReportService {
         d.setPlanNo(planNo);
         d.setSourceDocNo(r.getBillNo()); // 红冲按此回查
         d.setRemark("报工 " + r.getBillNo() + " 自动生成");
-        d.setWorkerId(r.getWorkerId() != null ? r.getWorkerId() : currentUser.requireId());
+        d.setWorkerId(r.getWorkerId() != null ? r.getWorkerId() : currentUser.requireEmployeeId());
         d.setMakerId(currentUser.requireEmployeeId());
         d.setStatus((short) 0);
         stockDocRepo.save(d);

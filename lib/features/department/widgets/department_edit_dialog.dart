@@ -83,9 +83,9 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
 
   bool get _isEdit => widget.editing != null;
   bool get _canAssignManager =>
-      _isEdit && kSelectableDepartmentLevels.contains(widget.editing?.level);
+      _isEdit && kOperationalDepartmentLevels.contains(widget.editing?.level);
   bool get _canChangeParent =>
-      !_isEdit || kSelectableDepartmentLevels.contains(widget.editing?.level);
+      !_isEdit || kMovableDepartmentLevels.contains(widget.editing?.level);
 
   @override
   void initState() {
@@ -209,7 +209,7 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
             selectedIds: {pendingSelection?.node?.id ?? ''},
             // “上级位置”允许管理中心等骨架承载一级部门；编辑态仍排除自身及其后代。
             nodeEnabledPredicate: (n) =>
-                (kSelectableDepartmentLevels.contains(n.level) ||
+                (kOperationalDepartmentLevels.contains(n.level) ||
                     kSkeletonDepartmentLevels.contains(n.level)) &&
                 (selfNode == null || !_isSelfOrDescendant(selfNode, n.id)),
             onToggleSelect: onSelect,

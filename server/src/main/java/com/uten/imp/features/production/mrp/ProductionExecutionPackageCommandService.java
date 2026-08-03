@@ -236,7 +236,7 @@ public class ProductionExecutionPackageCommandService {
                                     demand.getUnitId(),
                                     qty,
                                     demand.getNeedDate(),
-                                    "Execution segment "
+                                    "执行分段 "
                                             + demand.getExecutionSegmentId());
                         })
                         .filter(line -> line.qty().signum() > 0)
@@ -394,7 +394,7 @@ public class ProductionExecutionPackageCommandService {
             BigDecimal quantity = decimal(row[3]);
             if (quantity.signum() <= 0) {
                 throw conflict(
-                        "Sales-backed production link has a non-positive allocation");
+                        "销售关联的生产联动存在不大于零的分摊数量");
             }
             linksByPlanItem.computeIfAbsent(
                             (UUID) row[1], ignored -> new ArrayList<>())
@@ -431,7 +431,7 @@ public class ProductionExecutionPackageCommandService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             if (segmentTotal.compareTo(linkTotal) != 0) {
                 throw conflict(
-                        "Execution segment total does not match its sales allocation total");
+                        "执行分段总量与销售分摊总量不一致");
             }
 
             int linkIndex = 0;
@@ -441,7 +441,7 @@ public class ProductionExecutionPackageCommandService {
                 while (remaining.signum() > 0) {
                     if (linkIndex >= links.size()) {
                         throw conflict(
-                                "Execution segment sales allocation is incomplete");
+                                "执行分段的销售分摊不完整");
                     }
                     SalesLinkSlice link = links.get(linkIndex);
                     BigDecimal quantity =
@@ -480,7 +480,7 @@ public class ProductionExecutionPackageCommandService {
             if (links.stream().anyMatch(
                     link -> link.remaining().signum() != 0)) {
                 throw conflict(
-                        "Production sales allocation was not consumed exactly");
+                        "生产占用的销售分摊未被精确消耗完");
             }
         }
     }
@@ -577,7 +577,7 @@ public class ProductionExecutionPackageCommandService {
         document.setSourceDocNo(plan.billNo());
         document.setRemark(
                 "执行分段 " + segment.getSegmentCode() + " 自动备料");
-        document.setWorkerId(currentUser.requireId());
+        document.setWorkerId(currentUser.requireEmployeeId());
         document.setMakerId(currentUser.requireEmployeeId());
         document.setStatus((short) 0);
         stockDocumentRepo.save(document);
@@ -757,13 +757,13 @@ public class ProductionExecutionPackageCommandService {
         if (shortageByDemand.isEmpty()) {
             if (subplans != null && !subplans.isEmpty()) {
                 throw conflict(
-                        "MAKE subplan exists without a direct material shortage");
+                        "存在自制子计划，但没有对应的直接物料缺口");
             }
             return;
         }
         if (subplans == null || subplans.size() != 1) {
             throw conflict(
-                    "Direct MAKE shortages require exactly one attributed subplan");
+                    "直接自制缺口必须且只能归属一个子计划");
         }
 
         em.flush();
@@ -813,7 +813,7 @@ public class ProductionExecutionPackageCommandService {
                             decimal(row[4])));
             if (previous != null) {
                 throw conflict(
-                        "Direct MAKE subplan contains a duplicate material dimension");
+                        "直接自制子计划包含重复的物料维度（货品+颜色）");
             }
         }
 
@@ -825,7 +825,7 @@ public class ProductionExecutionPackageCommandService {
                 qty, BigDecimal::add));
         if (!sources.keySet().equals(expected.keySet())) {
             throw conflict(
-                    "Direct MAKE subplan lines do not match package shortages");
+                    "直接自制子计划行与计划包缺口不一致");
         }
 
         Map<UUID, BigDecimal> peggedBySource = new LinkedHashMap<>();
@@ -855,7 +855,7 @@ public class ProductionExecutionPackageCommandService {
                     || !ProductionMaterialDemand.ROUTE_MAKE.equals(
                             demand.getSupplyRoute())) {
                 throw conflict(
-                        "Direct MAKE demand and subplan dimensions are inconsistent");
+                        "直接自制需求与子计划的物料维度不一致");
             }
             ledger.createSupplyPeg(
                     demand, "PRODUCTION_PLAN_ITEM", source.itemId(),
@@ -869,7 +869,7 @@ public class ProductionExecutionPackageCommandService {
                                         source.itemId(), BigDecimal.ZERO)
                                 .compareTo(source.capacity()) != 0)) {
             throw conflict(
-                    "Direct MAKE supply pegs do not exactly cover subplan quantity");
+                    "直接自制供给锚点未能精确覆盖子计划数量");
         }
     }
 

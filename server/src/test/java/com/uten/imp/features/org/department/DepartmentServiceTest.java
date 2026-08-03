@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.department.dto.DepartmentDetail;
 import com.uten.imp.features.org.department.dto.DepartmentSaveRequest;
 import com.uten.imp.features.org.department.dto.DepartmentUpdateRequest;
+import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -127,37 +128,60 @@ class DepartmentServiceTest {
     }
 
     @Test
-    void structureNodeCannotReceiveNonNullManagerOnUpdate() {
+    void managementCenterCanReceiveDirectActiveManagerOnUpdate() {
         Department center = department(
                 "MFG_CENTER", "管理中心", "/UTEN/MFG_CENTER/");
         DepartmentUpdateRequest request = updateRequest("制造管理中心", null);
         UUID managerId = UUID.randomUUID();
         request.setManagerId(managerId);
+        Employee manager = new Employee();
+        manager.setId(managerId);
+        manager.setFullName("制造中心负责人");
+        manager.setDepartment(center);
+        manager.setStatus("active");
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
+        when(empRepo.findById(managerId)).thenReturn(Optional.of(manager));
+
+        DepartmentDetail result = service().update(center.getId(), request);
+
+        assertSame(manager, center.getManager());
+        assertEquals(managerId, result.getManagerId());
+        verify(deptRepo).save(center);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"公司", "决策层"})
+    void nonOperatingNodeCannotReceiveNonNullManagerOnUpdate(String level) {
+        Department node = department("SKELETON", level, "/SKELETON/");
+        DepartmentUpdateRequest request = updateRequest("组织骨架", null);
+        UUID managerId = UUID.randomUUID();
+        request.setManagerId(managerId);
+        when(deptRepo.findById(node.getId())).thenReturn(Optional.of(node));
 
         ApiException error = assertThrows(
                 ApiException.class,
-                () -> service().update(center.getId(), request));
+                () -> service().update(node.getId(), request));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertEquals("组织骨架节点不能设置部门负责人", error.getMessage());
+        assertEquals("公司和决策层节点不能设置部门负责人", error.getMessage());
         verify(empRepo, never()).findById(managerId);
         verify(deptRepo, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
-    @Test
-    void structureNodeCannotReceiveNonNullManagerOnCreate() {
+    @ParameterizedTest
+    @ValueSource(strings = {"公司", "决策层"})
+    void nonOperatingNodeCannotReceiveNonNullManagerOnCreate(String level) {
         DepartmentSaveRequest request = new DepartmentSaveRequest();
-        request.setCode("NEW_CENTER");
-        request.setName("新管理中心");
-        request.setLevel("管理中心");
+        request.setCode("NEW_SKELETON");
+        request.setName("新组织骨架");
+        request.setLevel(level);
         UUID managerId = UUID.randomUUID();
         request.setManagerId(managerId);
 
         ApiException error = assertThrows(ApiException.class, () -> service().create(request));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertEquals("组织骨架节点不能设置部门负责人", error.getMessage());
+        assertEquals("公司和决策层节点不能设置部门负责人", error.getMessage());
         verify(empRepo, never()).findById(managerId);
         verify(deptRepo, never()).save(org.mockito.ArgumentMatchers.any());
     }

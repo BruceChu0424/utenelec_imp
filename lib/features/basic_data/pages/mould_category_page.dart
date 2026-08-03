@@ -38,6 +38,7 @@ import '../widgets/master_detail_sheet.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
+import '../../department/models/department_node.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../providers/mould_workshop_tree.dart';
@@ -725,6 +726,7 @@ class _DetailPaneState extends State<_DetailPane> {
             mode: UtenDepartmentPickerMode.single,
             label: '车间',
             hint: '选择生产车间',
+            selectablePredicate: isBusinessDepartmentNode,
             treeOverride: workshop.tree.isEmpty ? null : workshop.tree,
             requireConfirm: true,
             expandOnRowTap: true,

@@ -21,10 +21,11 @@ public class DepartmentStaffPermissionController {
 
     private final DepartmentStaffPermissionService service;
 
-    /** 当前登录人管理的部门 + 可转授权限点上限 + 本部门员工当前覆盖状态。 */
+    /** 当前登录人管理范围内的目标部门 + 可转授权限点上限 + 直属员工当前覆盖状态。 */
     @GetMapping("/managed")
-    public DepartmentStaffPermissionsDto managed() {
-        return service.getManagedStaffPermissions();
+    public DepartmentStaffPermissionsDto managed(
+            @RequestParam(required = false) UUID departmentId) {
+        return service.getManagedStaffPermissions(departmentId);
     }
 
     /** 设置/清除（effect=null）某员工单个权限点的个人覆盖。 */

@@ -18,6 +18,7 @@ import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -46,6 +47,10 @@ class _SubcontractDocListPageState
   bool _loading = false;
   String? _error;
   final _loadRequests = LatestRequestGuard();
+
+  /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
+  /// 「返回即刷新」onPageResume 用，见 build。
+  String? _myLocation;
   String _keyword = '';
   int? _statusFilter; // null=全部
   bool? _closedFilter; // 结案筛选（仅委外订货单）：false=未完成 / true=已结案
@@ -216,6 +221,10 @@ class _SubcontractDocListPageState
     ref.listen(listRefreshTickProvider(_cfg.refreshKey), (_, _) {
       _load(_pageNum);
     });
+    // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
+    // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
+    _myLocation ??= GoRouterState.of(context).matchedLocation;
+    ref.onPageResume(_myLocation!, () => _load(_pageNum));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,

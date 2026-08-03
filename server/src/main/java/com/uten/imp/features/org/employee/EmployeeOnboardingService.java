@@ -1,5 +1,7 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.common.mastercode.MasterCodePrefix;
+import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
@@ -7,6 +9,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
+import com.uten.imp.features.org.department.DepartmentLevelPolicy;
 import com.uten.imp.features.org.department.DepartmentRepository;
 import com.uten.imp.features.org.employee.dto.EmployeeDetail;
 import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
@@ -20,8 +23,8 @@ import com.uten.imp.features.rbac.UserRoleId;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.AdminGrantGuard;
 import com.uten.imp.security.SecurityContextCurrentUser;
-import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
 
@@ -49,11 +54,12 @@ public class EmployeeOnboardingService {
     private final EmploymentHistoryRepository historyRepo;
     private final DepartmentRepository deptRepo;
     private final PositionRepository positionRepo;
+    private final EntityManager entityManager;
     private final UserAccountRepository userRepo;
     private final RoleRepository roleRepo;
     private final UserRoleRepository userRoleRepo;
     private final PasswordEncoder passwordEncoder;
-    private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final MasterCodeService masterCodeService;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
     private final EmployeeQueryService queryService;
@@ -67,18 +73,22 @@ public class EmployeeOnboardingService {
         tx.bind();
         OnboardingRequest.Profile p = req.profile();
         OnboardingRequest.Employment em = req.employment();
-        if (p == null || em == null || isBlank(p.code()) || isBlank(p.fullName())
+        if (p == null || em == null || isBlank(p.fullName())
                 || isBlank(p.idType()) || isBlank(p.idNumber()) || isBlank(p.phone())
                 || em.departmentId() == null || em.hireDate() == null
                 || isBlank(em.employmentType()) || isBlank(em.status())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "必填项缺失");
         }
         assertHireDateNotFuture(em.hireDate());
-        if (empRepo.existsByCode(p.code())) {
-            throw new ApiException(ErrorCode.CONFLICT, "工号已存在");
+        // 入职工号完全由服务端分配。profile.code 仅为旧客户端兼容字段，故意忽略，避免缓存客户端
+        // 重放已使用的工号。V206 将序列抬到历史最大后缀；循环只是迁移外数据的防御兜底。
+        String code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
+        while (empRepo.existsByCode(code)) {
+            code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
         }
+        // 登录账号默认 = 手机号（不再用工号）。
         String loginAccount = isBlank(req.account() != null ? req.account().loginAccount() : null)
-                ? p.code() : req.account().loginAccount();
+                ? p.phone().trim() : req.account().loginAccount();
         if (userRepo.existsByLoginAccount(loginAccount)) {
             throw new ApiException(ErrorCode.CONFLICT, "登录账号已存在");
         }
@@ -96,15 +106,18 @@ public class EmployeeOnboardingService {
         }
 
         Department dept = deptRepo.findById(em.departmentId())
+                .filter(department -> !department.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在"));
-        Position pos = em.positionId() == null ? null : positionRepo.findById(em.positionId())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "岗位不存在"));
+        if (!DepartmentLevelPolicy.canHostEmployees(dept.getLevel())) {
+            throw new ApiException(ErrorCode.CONFLICT, "公司和决策层节点不能添加员工");
+        }
+        Position pos = resolvePosition(em, dept);
         Employee sup = em.supervisorId() == null ? null : empRepo.findById(em.supervisorId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "直属上级不存在"));
 
         // 1. 员工主档
         Employee e = new Employee();
-        e.setCode(p.code());
+        e.setCode(code);
         e.setFullName(p.fullName());
         e.setGender(gender);
         e.setIdType(p.idType());
@@ -219,8 +232,8 @@ public class EmployeeOnboardingService {
             }
         }
 
-        // 7. 账号（高熵一次性密码仅在本次响应交付；Argon2id 入库；首登强制改）
-        String temporaryPassword = temporaryPasswordGenerator.generate();
+        // 7. 账号（一次性临时密码=证件号后6位，仅在本次响应交付；Argon2id 入库；首登强制改）
+        String temporaryPassword = lastSix(normalizedIdNumber);
         UserAccount user = new UserAccount();
         user.setEmployeeId(e.getId());
         user.setLoginAccount(loginAccount);
@@ -240,7 +253,7 @@ public class EmployeeOnboardingService {
             userRoleRepo.save(ur);
         }
 
-        return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword);
+        return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
     static void assertHireDateNotFuture(LocalDate hireDate) {
@@ -249,6 +262,67 @@ public class EmployeeOnboardingService {
                     ErrorCode.VALIDATION_FAILED,
                     "入职日期不能晚于今天");
         }
+    }
+
+    /**
+     * 解析入职岗位：{@code positionId} 优先；否则按 {@code positionName} 在本部门查（忽略大小写，
+     * 命中复用，未命中则新建：code 由序列生成、level=「员工」、sortOrder=0）；两者都空返回 null。
+     * 新建在本入职事务内完成；同部门规范化名称使用事务级咨询锁，避免并发生成重复岗位。
+     */
+    private Position resolvePosition(OnboardingRequest.Employment em, Department dept) {
+        if (em.positionId() != null) {
+            return positionRepo
+                    .findByIdAndDepartmentIdAndDeletedFalse(em.positionId(), dept.getId())
+                    .orElseThrow(() -> new ApiException(
+                            ErrorCode.CONFLICT,
+                            "岗位不存在、已停用或不属于所选部门"));
+        }
+        if (isBlank(em.positionName())) {
+            return null;
+        }
+        String name = em.positionName().trim();
+        String normalizedName = normalizePositionName(name);
+        acquirePositionNameLock(dept.getId(), normalizedName);
+        Position existing = positionRepo
+                .findFirstActiveByNormalizedName(dept.getId(), normalizedName)
+                .orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+
+        Position created = new Position();
+        created.setCode(masterCodeService.nextCode(MasterCodePrefix.POSITION));
+        created.setName(name);
+        created.setLevel("员工");
+        created.setSortOrder(0);
+        created.setDepartment(dept);
+        return positionRepo.save(created);
+    }
+
+    static String normalizePositionName(String name) {
+        return name.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void acquirePositionNameLock(UUID departmentId, String normalizedName) {
+        entityManager.createNativeQuery("""
+                        SELECT pg_advisory_xact_lock(
+                            hashtextextended(
+                                'POSITION_NAME|' || CAST(:departmentId AS text)
+                                || '|' || CAST(:normalizedName AS text),
+                                0))
+                        """)
+                .setParameter("departmentId", departmentId)
+                .setParameter("normalizedName", normalizedName)
+                .getSingleResult();
+    }
+
+    /** 证件号后 6 位作为一次性临时密码（不足 6 位取全部）。 */
+    static String lastSix(String idNumber) {
+        if (idNumber == null) {
+            return "";
+        }
+        String trimmed = idNumber.trim();
+        return trimmed.length() <= 6 ? trimmed : trimmed.substring(trimmed.length() - 6);
     }
 
 }

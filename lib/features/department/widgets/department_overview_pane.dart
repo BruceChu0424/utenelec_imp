@@ -303,7 +303,7 @@ class _DepartmentOverviewPaneState
     }
     final info = _info;
     if (info == null) return const SizedBox.shrink();
-    final selectable = kSelectableDepartmentLevels.contains(info.level);
+    final selectable = kOperationalDepartmentLevels.contains(info.level);
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
 
     return CustomScrollView(

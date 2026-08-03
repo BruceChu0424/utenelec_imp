@@ -331,7 +331,7 @@ public class ProductionExecutionReadinessService {
                 || !ProductionExecutionSegment.STATUS_READY.equals(
                         segmentRows.getFirst()[1])) {
             throw conflict(
-                    "Receipt-backed execution segment is no longer unstarted READY");
+                    "收货关联的执行分段已不是未开工的「就绪」状态");
         }
         UUID packageId = uuid(segmentRows.getFirst()[0]);
         UUID actorId = currentUser.requireId();
@@ -348,7 +348,7 @@ public class ProductionExecutionReadinessService {
                 .setParameter("segmentId", segmentId), UUID.class);
         if (demandIds.isEmpty()) {
             throw conflict(
-                    "Receipt-backed execution segment has no active demands");
+                    "收货关联的执行分段没有有效的物料需求");
         }
 
         List<Object[]> reservations = NativeQueryResults.objectArrayRows(
@@ -371,7 +371,7 @@ public class ProductionExecutionReadinessService {
                                 || decimal(row[1]).signum() > 0
                                 || decimal(row[2]).signum() > 0)) {
             throw conflict(
-                    "Receipt-backed execution segment has issued or released material");
+                    "收货关联的执行分段已发料或已释放物料，不能回退");
         }
 
         List<Object[]> draws = NativeQueryResults.objectArrayRows(
@@ -397,7 +397,7 @@ public class ProductionExecutionReadinessService {
                         ((Number) row[1]).shortValue() != 0
                                 || Boolean.TRUE.equals(row[2]))) {
             throw conflict(
-                    "Receipt-backed execution segment DRAW is no longer draft");
+                    "收货关联的执行分段领料单已不是草稿状态");
         }
         List<UUID> drawIds = draws.stream()
                 .map(row -> uuid(row[0]))
@@ -427,7 +427,7 @@ public class ProductionExecutionReadinessService {
                         decimal(row[1]).signum() > 0)
                 || ((Number) postings).longValue() > 0) {
             throw conflict(
-                    "Receipt-backed execution segment material has been issued");
+                    "收货关联的执行分段物料已发出，不能回退");
         }
 
         List<ReceiptAllocationRow> allocations = new ArrayList<>();
@@ -516,7 +516,7 @@ public class ProductionExecutionReadinessService {
                 || allocations.stream().anyMatch(row ->
                         !drawIds.contains(row.drawId()))) {
             throw conflict(
-                    "Receipt-backed execution segment provenance is incomplete");
+                    "收货关联的执行分段溯源信息不完整");
         }
 
         int demoted = em.createNativeQuery("""
@@ -532,7 +532,7 @@ public class ProductionExecutionReadinessService {
                 .executeUpdate();
         if (demoted != 1) {
             throw conflict(
-                    "Receipt-backed execution segment changed concurrently");
+                    "收货关联的执行分段已被并发修改，请刷新后重试");
         }
 
         int released = em.createNativeQuery("""
@@ -558,7 +558,7 @@ public class ProductionExecutionReadinessService {
                 .executeUpdate();
         if (released != reservations.size()) {
             throw conflict(
-                    "Receipt-backed execution reservations changed concurrently");
+                    "收货关联的执行分段库存预留已被并发修改，请刷新后重试");
         }
 
         Map<UUID, BigDecimal> reverseByPeg = new LinkedHashMap<>();
@@ -598,7 +598,7 @@ public class ProductionExecutionReadinessService {
                     .executeUpdate();
             if (updated != 1) {
                 throw conflict(
-                        "Receipt-backed purchase peg changed concurrently");
+                        "收货关联的采购供给锚点已被并发修改，请刷新后重试");
             }
         }
         for (Map.Entry<ReceiptKind, List<UUID>> entry
@@ -618,7 +618,7 @@ public class ProductionExecutionReadinessService {
                     .executeUpdate();
             if (reversed != entry.getValue().size()) {
                 throw conflict(
-                        "Receipt allocation changed concurrently");
+                        "收货分配记录已被并发修改，请刷新后重试");
             }
         }
 
@@ -795,7 +795,7 @@ public class ProductionExecutionReadinessService {
                         uuid(row[3]), decimal(row[4])))
                 .toList();
         if (demands.isEmpty()) {
-            throw conflict("Execution segment has no material demands");
+            throw conflict("执行分段没有物料需求");
         }
 
         if (!isFullyAvailable(warehouseId, demands)) {
@@ -848,7 +848,7 @@ public class ProductionExecutionReadinessService {
                                 .allocatedQty()
                                 .compareTo(demand.requiredQty()) != 0)) {
             throw conflict(
-                    "Complete-kit availability changed during promotion");
+                    "齐套判定的可用库存在提升就绪时已变化，请刷新后重试");
         }
 
         StockDocument draw = createDraw(
@@ -893,12 +893,12 @@ public class ProductionExecutionReadinessService {
                         genericQty,
                         ++lineNo,
                         planNo,
-                        "Complete-kit existing stock");
+                        "齐套现有库存");
             }
             touched.add(demand.id());
         }
         if (lineNo == 0) {
-            throw conflict("Execution segment DRAW has no material lines");
+            throw conflict("执行分段领料单没有任何物料行");
         }
         stockDocumentItemRepo.flush();
         stockDocumentRepo.flush();
@@ -918,7 +918,7 @@ public class ProductionExecutionReadinessService {
                 .executeUpdate();
         if (promoted != 1) {
             throw conflict(
-                    "Execution segment changed while promoting readiness");
+                    "提升就绪时执行分段已被并发修改，请刷新后重试");
         }
         ledger.refreshDemandStatuses(touched);
         chainNotice.notifyExecutionSegmentReady(
@@ -1315,9 +1315,9 @@ public class ProductionExecutionReadinessService {
         document.setPlanNo(planNo);
         document.setSourceDocNo(planNo);
         document.setRemark(
-                "Execution segment complete-kit promotion "
+                "执行分段齐套就绪自动备料 "
                         + segmentId);
-        document.setWorkerId(currentUser.requireId());
+        document.setWorkerId(currentUser.requireEmployeeId());
         document.setMakerId(currentUser.requireEmployeeId());
         document.setStatus((short) 0);
         stockDocumentRepo.saveAndFlush(document);
@@ -1405,7 +1405,7 @@ public class ProductionExecutionReadinessService {
                 .setParameter("pegId", contribution.pegId())
                 .executeUpdate();
         if (updated != 1) {
-            throw conflict("Receipt supply peg changed concurrently");
+            throw conflict("收货供给锚点已被并发修改，请刷新后重试");
         }
     }
 
@@ -1495,7 +1495,7 @@ public class ProductionExecutionReadinessService {
         if (value instanceof java.sql.Date date) {
             return date.toLocalDate();
         }
-        throw conflict("Receipt date type is invalid");
+        throw conflict("收货日期类型无效");
     }
 
     private static UUID uuid(Object value) {

@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /**
  * 入职 payload（对应前端 5 步向导）。一个原子事务内创建
- * employee + sensitive + compensation + contract + history + user(高熵一次性密码) + userRoles。
+ * employee + sensitive + compensation + contract + history + user(一次性临时密码) + userRoles。
  */
 public record OnboardingRequest(
         @Valid Profile profile,
@@ -29,6 +29,7 @@ public record OnboardingRequest(
         @Valid Account account
 ) {
     public record Profile(
+            // 旧客户端兼容字段；服务端始终自行生成工号并忽略该值。
             String code, String fullName, String gender, String idType, String idNumber,
             LocalDate birthDate, String phone, String email,
             String ethnicity, String politicalStatus, String maritalStatus,
@@ -37,6 +38,7 @@ public record OnboardingRequest(
 
     public record Employment(
             UUID departmentId, UUID positionId, UUID supervisorId,
+            String positionName,
             LocalDate hireDate, String employmentType, String status,
             String workLocation, String seatNo, String attendanceGroup, String officePhone, String paperArchiveNo
     ) {}
@@ -63,7 +65,7 @@ public record OnboardingRequest(
             String degree, String school, String major, LocalDate startDate, LocalDate endDate
     ) {}
 
-    /** roles 默认 [employee]；loginAccount 默认 = 工号（不填则用 profile.code）。 */
+    /** roles 默认 [employee]；loginAccount 默认 = 手机号。 */
     public record Account(
             @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS) List<String> roles,
             String loginAccount

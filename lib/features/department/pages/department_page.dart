@@ -273,7 +273,9 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   void _showEditDialog(DepartmentInfo detail) {
     if (!_hasPermission(Perm.departmentEdit)) return;
-    final canAssignManager = kSelectableDepartmentLevels.contains(detail.level);
+    final canAssignManager = kOperationalDepartmentLevels.contains(
+      detail.level,
+    );
     showDialog<void>(
       context: context,
       builder: (ctx) => DepartmentEditDialog(
@@ -302,7 +304,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
               // 未移动时不发送 parentId，避免后端把同一父级误判为移动并重算整棵子树。
               parentId: r.parentId == detail.parentId ? null : r.parentId,
               managerId: r.managerId,
-              managerSpecified: kSelectableDepartmentLevels.contains(
+              managerSpecified: kOperationalDepartmentLevels.contains(
                 detail.level,
               ),
             ),

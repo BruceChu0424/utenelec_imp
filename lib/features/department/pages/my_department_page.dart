@@ -157,9 +157,10 @@ class _MyDepartmentDetail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final async = ref.watch(myDepartmentRosterProvider(node.id));
-    // 仅本人管理的部门才展示权限转授面板（非负责人 403 → 隐藏）。
-    final isManaged = ref.watch(managedStaffPermissionsProvider).maybeWhen(
-      data: (m) => m.departmentId == node.id,
+    // 普通负责人仅命中本部门；管理中心负责人可命中中心及其下属部门。
+    final managedAsync = ref.watch(managedStaffPermissionsProvider(node.id));
+    final isManaged = managedAsync.maybeWhen(
+      data: (_) => true,
       orElse: () => false,
     );
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
@@ -205,7 +206,9 @@ class _MyDepartmentDetail extends ConsumerWidget {
               hPad,
               UtenSpacing.s16,
             ),
-            sliver: const SliverToBoxAdapter(child: _ManagerPermissionPanel()),
+            sliver: SliverToBoxAdapter(
+              child: _ManagerPermissionPanel(departmentId: node.id),
+            ),
           ),
       ],
     );
@@ -350,12 +353,15 @@ class _MyDepartmentDetail extends ConsumerWidget {
 
 /// 部门负责人的权限面板（非负责人 403 时整体隐藏）。
 class _ManagerPermissionPanel extends ConsumerWidget {
-  const _ManagerPermissionPanel();
+  const _ManagerPermissionPanel({required this.departmentId});
+
+  final String departmentId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final async = ref.watch(managedStaffPermissionsProvider);
+    final provider = managedStaffPermissionsProvider(departmentId);
+    final async = ref.watch(provider);
     return async.when(
       loading: () => const SizedBox.shrink(),
       error: (e, _) {
@@ -365,7 +371,7 @@ class _ManagerPermissionPanel extends ConsumerWidget {
         }
         return _InlineError(
           message: e is ApiException ? e.message : '权限面板加载失败',
-          onRetry: () => ref.invalidate(managedStaffPermissionsProvider),
+          onRetry: () => ref.invalidate(provider),
         );
       },
       data: (data) {
@@ -390,7 +396,7 @@ class _ManagerPermissionPanel extends ConsumerWidget {
                   const SizedBox(width: UtenSpacing.s8),
                   Expanded(
                     child: Text(
-                      '本部门员工权限（你是「${data.departmentName}」负责人）',
+                      '直属员工权限 · ${data.departmentName}',
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -400,14 +406,15 @@ class _ManagerPermissionPanel extends ConsumerWidget {
               ),
               const SizedBox(height: UtenSpacing.s4),
               Text(
-                '基线权限默认开启（可关闭），额外权限默认关闭（可授予）。仅本部门负责人可见可改。',
+                '基线权限默认开启，额外权限默认关闭。部门负责人仅管理本部门；'
+                '管理中心负责人可管理中心下属部门，且都不能超出本人已有权限。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),
               if (data.staff.isEmpty)
-                Text('本部门暂无在册员工', style: theme.textTheme.bodySmall)
+                Text('该部门暂无直属在册员工', style: theme.textTheme.bodySmall)
               else
                 for (final s in data.staff) ...[
                   _StaffPermissionRow(codes: data.permissionCodes, staff: s),

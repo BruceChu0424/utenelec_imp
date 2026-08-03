@@ -62,8 +62,7 @@ import 'app_localizations_zh.dart';
 /// be consistent with the languages listed in the AppLocalizations.supportedLocales
 /// property.
 abstract class AppLocalizations {
-  AppLocalizations(String locale)
-    : localeName = intl.Intl.canonicalizedLocale(locale.toString());
+  AppLocalizations(String locale) : localeName = intl.Intl.canonicalizedLocale(locale.toString());
 
   final String localeName;
 
@@ -71,8 +70,7 @@ abstract class AppLocalizations {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
   }
 
-  static const LocalizationsDelegate<AppLocalizations> delegate =
-      _AppLocalizationsDelegate();
+  static const LocalizationsDelegate<AppLocalizations> delegate = _AppLocalizationsDelegate();
 
   /// A list of this localizations delegate along with the default localizations
   /// delegates.
@@ -84,18 +82,17 @@ abstract class AppLocalizations {
   /// Additional delegates can be added by appending to this list in
   /// MaterialApp. This list does not have to be used at all if a custom list
   /// of delegates is preferred or required.
-  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates =
-      <LocalizationsDelegate<dynamic>>[
-        delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-      ];
+  static const List<LocalizationsDelegate<dynamic>> localizationsDelegates = <LocalizationsDelegate<dynamic>>[
+    delegate,
+    GlobalMaterialLocalizations.delegate,
+    GlobalCupertinoLocalizations.delegate,
+    GlobalWidgetsLocalizations.delegate,
+  ];
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('zh'),
-    Locale('en'),
+    Locale('en')
   ];
 
   /// 应用标题
@@ -1751,8 +1748,68 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后将自动创建登录账号（账号=工号）并生成高熵一次性临时密码；首次登录必须修改密码。'**
+  /// **'提交后将自动生成工号（UT 前缀）、以手机号作为登录账号，并生成一次性临时密码（身份证后 6 位）；首次登录必须修改密码。'**
   String get employeeOnboardNote;
+
+  /// No description provided for @employeeOnboardCodeAutoNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'工号提交后自动生成（UT 前缀，唯一递增）'**
+  String get employeeOnboardCodeAutoNote;
+
+  /// No description provided for @positionPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择或填写岗位'**
+  String get positionPickerTitle;
+
+  /// No description provided for @positionPickerHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择或填写岗位'**
+  String get positionPickerHint;
+
+  /// No description provided for @positionPickerDepartmentFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择部门'**
+  String get positionPickerDepartmentFirst;
+
+  /// No description provided for @positionPickerSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入岗位名称、编码或职级'**
+  String get positionPickerSearchHint;
+
+  /// No description provided for @positionPickerUseCustom.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用“{name}”作为新岗位'**
+  String positionPickerUseCustom(Object name);
+
+  /// No description provided for @positionPickerCustomDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后将按当前部门保存'**
+  String get positionPickerCustomDescription;
+
+  /// No description provided for @positionPickerNoPositions.
+  ///
+  /// In zh, this message translates to:
+  /// **'该部门暂无岗位，可直接填写新岗位'**
+  String get positionPickerNoPositions;
+
+  /// No description provided for @positionPickerLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'岗位加载失败，可重试或直接填写新岗位'**
+  String get positionPickerLoadFailed;
+
+  /// No description provided for @positionPickerClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空'**
+  String get positionPickerClear;
 
   /// No description provided for @employeeOnboardCredentialTitle.
   ///
@@ -1795,12 +1852,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'我已妥善保存'**
   String get employeeOnboardCredentialSaved;
-
-  /// No description provided for @employeeOnboardHintCode.
-  ///
-  /// In zh, this message translates to:
-  /// **'如 E1001'**
-  String get employeeOnboardHintCode;
 
   /// No description provided for @employeeOnboardHintName.
   ///
@@ -2916,10 +2967,7 @@ abstract class AppLocalizations {
   ///
   /// In zh, this message translates to:
   /// **'已选 {departmentCount} 个部门、{employeeCount} 人'**
-  String noticePublishAudienceSummary(
-    Object departmentCount,
-    Object employeeCount,
-  );
+  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount);
 
   /// No description provided for @noticePublishAudienceRecalculateHint.
   ///
@@ -3606,8 +3654,7 @@ abstract class AppLocalizations {
   String get profileFieldRenewCount;
 }
 
-class _AppLocalizationsDelegate
-    extends LocalizationsDelegate<AppLocalizations> {
+class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
   const _AppLocalizationsDelegate();
 
   @override
@@ -3616,26 +3663,25 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['en', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
+
+
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
-    case 'en':
-      return AppLocalizationsEn();
-    case 'zh':
-      return AppLocalizationsZh();
+    case 'en': return AppLocalizationsEn();
+    case 'zh': return AppLocalizationsZh();
   }
 
   throw FlutterError(
     'AppLocalizations.delegate failed to load unsupported locale "$locale". This is likely '
     'an issue with the localizations generation tool. Please file an issue '
     'on GitHub with a reproducible sample app and the gen-l10n configuration '
-    'that was used.',
+    'that was used.'
   );
 }

@@ -150,8 +150,7 @@ public class DailyReportExecutionSegmentGuard {
             if (existing.add(entry.getValue())
                     .compareTo(capacity) > 0) {
                 throw conflict(
-                        "Execution segment report exceeds the selected "
-                                + "sales-order allocation");
+                        "执行分段报工数量超出所选销售订单分摊");
             }
         }
         return List.copyOf(new TreeSet<>(requested.keySet()));
@@ -237,7 +236,7 @@ public class DailyReportExecutionSegmentGuard {
         if (line.executionSegmentId() == null) {
             if (line.executionSegmentSalesAllocationId() != null) {
                 throw conflict(
-                        "Legacy report line cannot reference a segment sales allocation");
+                        "旧式报工行不能引用执行分段销售分摊");
             }
             return null;
         }
@@ -257,14 +256,14 @@ public class DailyReportExecutionSegmentGuard {
             if (line.executionSegmentSalesAllocationId() != null
                     || line.salesOrderItemId() != null) {
                 throw conflict(
-                        "Internal execution segment cannot reference a sales order line");
+                        "内部执行分段不能引用销售订单行");
             }
             return null;
         }
         if (line.executionSegmentSalesAllocationId() == null
                 || line.salesOrderItemId() == null) {
             throw validation(
-                    "Sales-backed execution segment requires its exact sales allocation");
+                    "销售关联的执行分段必须指定其精确的销售分摊");
         }
         for (Object[] row : rows) {
             if (Objects.equals(
@@ -276,7 +275,7 @@ public class DailyReportExecutionSegmentGuard {
             }
         }
         throw conflict(
-                "The selected sales allocation does not belong to this execution segment");
+                "所选销售分摊不属于该执行分段");
     }
 
     private void requireSegmentWhenNeeded(ReportLine line) {

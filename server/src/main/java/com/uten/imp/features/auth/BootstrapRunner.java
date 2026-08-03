@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * 首次启动创建引导超管账号（admin）。
+ * 首次启动创建引导超管账号。
  * <p>
  * 该账号语义上是"超级管理员"：
  * <ul>
@@ -26,8 +26,10 @@ import org.springframework.util.StringUtils;
  *   <li>不依赖 role_permissions 是否齐全——PermissionResolver.permsOf() 在 isSuperAdmin=true 时
  *       直接返回 permissions 表全量</li>
  * </ul>
+ * 登录账号取自 {@code uten.bootstrap.admin-login}（默认管理员手机号 17665410007，替代历史的 "admin"）；
  * 密码取自 BOOTSTRAP_ADMIN_PASSWORD，Argon2id 哈希入库，must_change_password=true。
- * 已存在则严格跳过；运行时不会把被人工撤销的超管权限重新授回。
+ * 已存在则严格跳过；运行时不会把被人工撤销的超管权限重新授回。V205 迁移把既有 {@code admin} 登录名
+ * 改为管理员手机号，使既有库与新默认一致（Flyway 先于本 Runner 执行）。
  * SQL 迁移已种入 admin 员工档案（code=ADMIN）。
  */
 @Slf4j

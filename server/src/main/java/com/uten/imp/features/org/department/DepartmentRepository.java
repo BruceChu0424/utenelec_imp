@@ -45,6 +45,37 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
     boolean isDescendant(@Param("rootId") UUID rootId, @Param("candidate") UUID candidate);
 
     /**
+     * 判断目标组织是否落在当前负责人允许管理的范围内。
+     *
+     * <p>普通部门负责人维持既有“仅本部门”边界；管理中心负责人可管理中心本身及全部后代。
+     * 岗位名称和职级不参与授权，唯一事实来源是 {@code departments.manager_id}。
+     */
+    @Query(value = """
+            WITH RECURSIVE ancestors AS (
+                SELECT id, parent_id, level, manager_id
+                FROM departments
+                WHERE id = :departmentId AND is_deleted = false
+                UNION ALL
+                SELECT parent.id, parent.parent_id, parent.level, parent.manager_id
+                FROM departments parent
+                JOIN ancestors child ON child.parent_id = parent.id
+                WHERE parent.is_deleted = false
+            )
+            SELECT EXISTS(
+                SELECT 1
+                FROM ancestors
+                WHERE manager_id = :employeeId
+                  AND (
+                      id = :departmentId
+                      OR level = '管理中心'
+                  )
+            )
+            """, nativeQuery = true)
+    boolean isWithinManagerScope(
+            @Param("departmentId") UUID departmentId,
+            @Param("employeeId") UUID employeeId);
+
+    /**
      * 按当前 parent_id 一次性重建移动子树的语义层级和物化路径。
      *
      * <p>V02 的 path 触发器只处理 parent_id/code 发生 UPDATE 的当前行；该 CTE 显式更新

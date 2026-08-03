@@ -747,9 +747,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   ON detector.id = exception.detected_by_employee_id
                 LEFT JOIN supplier_return_tasks return_task
                   ON return_task.arrival_exception_id = exception.id
-                WHERE """ + whereClause + """
-                ORDER BY exception.detected_at, exception.id
-                """ + tailClause;
+                """ + " WHERE " + whereClause
+                + " ORDER BY exception.detected_at, exception.id " + tailClause;
         return jdbc.query(sql, (rs, rowNum) -> {
             SupplierReturnTask returnTask = rs.getObject("return_task_id") == null
                     ? null

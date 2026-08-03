@@ -32,6 +32,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/role.dart';
 import '../../../shared/models/user.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../department/providers/my_department_providers.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../providers/profile_change_providers.dart';
 
@@ -90,6 +91,8 @@ class ProfilePage extends ConsumerWidget {
               children: [
                 identityGroup.hero,
                 const SizedBox(height: UtenSpacing.s12),
+                identityGroup.department,
+                const SizedBox(height: UtenSpacing.s12),
                 identityGroup.shortcut,
                 const SizedBox(height: UtenSpacing.s24),
                 profileGroup,
@@ -113,6 +116,8 @@ class ProfilePage extends ConsumerWidget {
                   children: [
                     identityGroup.hero,
                     const SizedBox(height: UtenSpacing.s16),
+                    identityGroup.department,
+                    const SizedBox(height: UtenSpacing.s12),
                     identityGroup.shortcut,
                     const SizedBox(height: UtenSpacing.s24),
                     profileGroup,
@@ -144,6 +149,8 @@ class ProfilePage extends ConsumerWidget {
                     children: [
                       identityGroup.hero,
                       const SizedBox(height: UtenSpacing.s16),
+                      identityGroup.department,
+                      const SizedBox(height: UtenSpacing.s12),
                       identityGroup.shortcut,
                     ],
                   ),
@@ -178,6 +185,7 @@ class ProfilePage extends ConsumerWidget {
   ) {
     return _IdentityGroup(
       hero: _HeroCard(user: user, theme: theme, l10n: l10n),
+      department: const _MyDepartmentShortcut(),
       shortcut: _MyChangesShortcut(l10n: l10n),
     );
   }
@@ -255,8 +263,13 @@ class ProfilePage extends ConsumerWidget {
 
 /// 把 Hero 卡 + 快捷入口包成一个结构体，避免 layout 里来回来回传参。
 class _IdentityGroup {
-  const _IdentityGroup({required this.hero, required this.shortcut});
+  const _IdentityGroup({
+    required this.hero,
+    required this.department,
+    required this.shortcut,
+  });
   final Widget hero;
+  final Widget department;
   final Widget shortcut;
 }
 
@@ -487,6 +500,57 @@ class _RoleChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 我的部门快捷入口：显示所属分支名 + 跳 /profile/me/department 全页面查看。
+class _MyDepartmentShortcut extends ConsumerWidget {
+  const _MyDepartmentShortcut();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    // 取所属大部门分支根名做副标题；加载中/失败/未分配时给中性占位文案。
+    final async = ref.watch(myDepartmentTreeProvider);
+    final branchName = async.maybeWhen(
+      data: (tree) => tree.isEmpty ? null : tree.first.name,
+      orElse: () => null,
+    );
+
+    return UtenCard(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s4,
+        ),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.secondaryContainer,
+            borderRadius: UtenRadius.lgAll,
+          ),
+          child: Icon(
+            Icons.account_tree_rounded,
+            size: 18,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+        ),
+        title: Text(
+          '我的部门',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          branchName ?? '查看本部门架构与花名册',
+          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
+        // 同上：主 Tab 前缀子路由用 go 不用 push。
+        onTap: () => context.go(RouteName.profileMyDepartment),
       ),
     );
   }

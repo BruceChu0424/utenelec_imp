@@ -683,7 +683,7 @@ public class SalesShipmentService {
                       AND s.warehouse_work_status IN ('PICKING','PICKED')
                       AND si.goods_id = :gid
                       AND si.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                      AND """ + activeOwnPredicate)
+                      """ + " AND " + activeOwnPredicate)
                     .setParameter("shipmentId", shipment.getId())
                     .setParameter("wid", shipment.getWarehouseId())
                     .setParameter("gid", key.goodsId())

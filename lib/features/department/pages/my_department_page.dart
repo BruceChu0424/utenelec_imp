@@ -1,302 +1,312 @@
-// 工作台「我的部门」卡片：展示本部门（大部门分支）架构树 + 花名册（安全字段），
-// 大屏左右分屏、小屏弹窗选部门；普通员工只读；部门负责人额外可对本部门成员做权限开/关。
-// 后端 /api/my-department/** 与 /api/department-staff-permissions/** 已就绪（问题 #20）。
+// MyDepartmentPage - 我的部门（全页面，镜像「部门管理」页布局）
+// 文档：docs/03-页面/我的页.md（§我的部门）
+//
+// 布局复用部门管理页（/department）：
+//   expanded：全高分栏 左树(300) | 分隔线 | 右详情
+//   compact/medium：组织树进 endDrawer，详情单列（UtenContentContainer 收敛宽度）
+// 组件复用：UtenDepartmentTreeView + MasterDetailCard + UtenPersonCard（与部门管理页同款）。
+//
+// 数据仍走 /api/my-department/**（任意员工可见，无 department:view/employee:view）：
+//   部门管理页的 DepartmentOverviewPane 调的是 department:view/employee:view 接口，
+//   普通员工 403；故此处复用「布局与组件」但保留 my-department 安全花名册数据源。
+// 花名册：负责人/管理人排最前；安全 8 字段；部门负责人额外见权限转授面板（仅本人管理的部门）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/cards/uten_card.dart';
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_person_card.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/widgets/master_detail_card.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
 import '../models/department_node.dart';
 import '../models/my_department.dart';
 import '../providers/my_department_providers.dart';
 import '../repositories/my_department_repository.dart';
-import 'uten_department_tree_view.dart';
+import '../widgets/uten_department_tree_view.dart';
 
-class MyDepartmentCard extends ConsumerStatefulWidget {
-  const MyDepartmentCard({super.key});
+class MyDepartmentPage extends ConsumerStatefulWidget {
+  const MyDepartmentPage({super.key});
 
   @override
-  ConsumerState<MyDepartmentCard> createState() => _MyDepartmentCardState();
+  ConsumerState<MyDepartmentPage> createState() => _MyDepartmentPageState();
 }
 
-class _MyDepartmentCardState extends ConsumerState<MyDepartmentCard> {
+class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
   String? _selectedId;
-  bool _expanded = true;
-
-  void _select(String id) => setState(() => _selectedId = id);
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final useSplit = context.breakpoint.isExpanded;
     final treeAsync = ref.watch(myDepartmentTreeProvider);
-    return UtenCard(
-      margin: EdgeInsets.zero,
-      child: treeAsync.when(
-        loading: () => const Padding(
-          padding: EdgeInsets.symmetric(vertical: UtenSpacing.s32),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-        error: (e, _) => _InlineError(
-          message: e is ApiException ? e.message : '部门信息加载失败',
-          onRetry: () => ref.invalidate(myDepartmentTreeProvider),
-        ),
-        data: (tree) {
-          if (tree.isEmpty) return const SizedBox.shrink();
-          final selectedId = _selectedId ?? tree.first.id;
-          final selectedNode = _findNode(tree, selectedId) ?? tree.first;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final tree = treeAsync.valueOrNull ?? const <DepartmentNode>[];
+    final selectedId = tree.isNotEmpty ? (_selectedId ?? tree.first.id) : null;
+
+    final Widget body = treeAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => UtenEmpty.error(
+        message: e is ApiException ? e.message : '部门信息加载失败',
+        actionLabel: '重试',
+        onAction: () => ref.invalidate(myDepartmentTreeProvider),
+      ),
+      data: (_) {
+        final node = selectedId == null
+            ? tree.first
+            : (_findNode(tree, selectedId) ?? tree.first);
+        // 路径：根 › … › 当前（仅多于一层时展示，避免与标题重复）。
+        final chain = _nameChain(tree, node.id);
+        final path = chain.length > 1 ? chain.join(' › ') : null;
+        final detail = _MyDepartmentDetail(node: node, path: path);
+
+        if (useSplit) {
+          return Row(
             children: [
-              _header(theme, tree.first.name),
-              if (_expanded) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                _treeAndRoster(theme, tree, selectedNode),
-                const SizedBox(height: UtenSpacing.s16),
-                const _ManagerPermissionPanel(),
-              ],
+              SizedBox(
+                width: 300,
+                child: _buildTree(
+                  tree,
+                  node.id,
+                  onSelect: (id) => setState(() => _selectedId = id),
+                ),
+              ),
+              Container(width: 1, color: theme.colorScheme.outlineVariant),
+              Expanded(child: detail),
             ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _header(ThemeData theme, String branchName) {
-    return InkWell(
-      borderRadius: UtenRadius.mdAll,
-      onTap: () => setState(() => _expanded = !_expanded),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.secondaryContainer,
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Icon(
-              Icons.account_tree_rounded,
-              color: theme.colorScheme.onSecondaryContainer,
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '我的部门',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  branchName,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            _expanded
-                ? Icons.expand_less_rounded
-                : Icons.expand_more_rounded,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _treeAndRoster(
-    ThemeData theme,
-    List<DepartmentNode> tree,
-    DepartmentNode selected,
-  ) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        if (c.maxWidth >= 720) {
-          // 大屏：左右分屏（树 | 花名册）；固定高度，内部各自滚动（避免随人数无限增高）。
-          return SizedBox(
-            height: 380,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  width: 280,
-                  child: _tree(tree, selected.id),
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Container(
-                  width: 1,
-                  margin: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s4,
-                  ),
-                  color: theme.colorScheme.outlineVariant,
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(child: _roster(selected.id)),
-              ],
-            ),
           );
         }
-        // 小屏：选部门按钮（弹窗） + 花名册。
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _compactSelector(theme, selected),
-            const SizedBox(height: UtenSpacing.s8),
-            SizedBox(
-              height: 340,
-              child: _roster(selected.id),
-            ),
-          ],
-        );
+        // compact/medium：树进抽屉，详情单列收敛宽度。
+        return UtenContentContainer(child: detail);
       },
     );
-  }
 
-  Widget _compactSelector(ThemeData theme, DepartmentNode selected) {
-    return InkWell(
-      borderRadius: UtenRadius.mdAll,
-      onTap: () => _showTreePopup(selected.id),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s8,
+    return Scaffold(
+      key: _scaffoldKey,
+      appBar: UtenAppBar(
+        title: '我的部门',
+        // go 进入（主 Tab 前缀子路由），栈被替换；返回显式回「我的」页
+        leading: UtenBackButton(
+          onPressed: () => backTo(context, defaultPath: RouteName.profile),
         ),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: UtenRadius.mdAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.corporate_fare_rounded,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: '刷新',
+            onPressed: () => ref.invalidate(myDepartmentTreeProvider),
+          ),
+          if (!useSplit && selectedId != null)
+            IconButton(
+              icon: const Icon(Icons.account_tree_rounded),
+              tooltip: '部门列表',
+              onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
             ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                selected.name,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
+        ],
+      ),
+      endDrawer: (!useSplit && selectedId != null)
+          ? Drawer(
+              child: SafeArea(
+                child: _buildTree(
+                  tree,
+                  selectedId,
+                  onSelect: (id) {
+                    setState(() => _selectedId = id);
+                    Navigator.of(context).pop();
+                  },
                 ),
               ),
-            ),
-            Icon(
-              Icons.unfold_more_rounded,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
+            )
+          : null,
+      body: SafeArea(child: body),
     );
   }
 
-  void _showTreePopup(String selectedId) {
-    final tree = ref.read(myDepartmentTreeProvider).valueOrNull ?? const [];
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => FractionallySizedBox(
-        heightFactor: 0.8,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s12,
-            UtenSpacing.s8,
-            UtenSpacing.s12,
-            UtenSpacing.s16,
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Text(
-                    '选择部门',
-                    style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                  ),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('关闭'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Expanded(
-                child: _tree(tree, selectedId, showSearch: true, popOnTap: true),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _tree(
+  /// 组织树（复用 UtenDepartmentTreeView，内置搜索）。onSelect：分栏只切选中；抽屉额外关抽屉。
+  Widget _buildTree(
     List<DepartmentNode> tree,
     String selectedId, {
-    bool showSearch = false,
-    bool popOnTap = false,
+    required ValueChanged<String> onSelect,
   }) {
     return UtenDepartmentTreeView(
       nodes: tree,
       selectedIds: {selectedId},
-      onNodeTap: (n) {
-        _select(n.id);
-        if (popOnTap && mounted) Navigator.of(context).pop();
-      },
+      onNodeTap: (n) => onSelect(n.id),
       nodeEnabledPredicate: (_) => true,
-      showSearch: showSearch,
       expandOnRowTap: true,
       initiallyExpandDepth: 2,
     );
   }
+}
 
-  Widget _roster(String deptId) {
+/// 右侧详情：MasterDetailCard（部门概况，只读）+ 安全花名册（负责人排最前）
+/// + 部门负责人权限转授面板（仅当当前部门正是本人管理的部门时显示）。
+class _MyDepartmentDetail extends ConsumerWidget {
+  const _MyDepartmentDetail({required this.node, this.path});
+
+  final DepartmentNode node;
+  final String? path;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final async = ref.watch(myDepartmentRosterProvider(deptId));
+    final async = ref.watch(myDepartmentRosterProvider(node.id));
+    // 仅本人管理的部门才展示权限转授面板（非负责人 403 → 隐藏）。
+    final isManaged = ref.watch(managedStaffPermissionsProvider).maybeWhen(
+      data: (m) => m.departmentId == node.id,
+      orElse: () => false,
+    );
+    final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
+    final directCount = async.maybeWhen(
+      data: (r) => r.staff.length,
+      orElse: () => null,
+    );
+
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            hPad,
+            UtenSpacing.s16,
+            hPad,
+            UtenSpacing.s12,
+          ),
+          sliver: SliverToBoxAdapter(
+            child: MasterDetailCard(
+              title: node.name,
+              icon: Icons.account_tree_outlined,
+              subtitle: '${node.level} · ${node.code}',
+              stats: [
+                MasterDetailStat('直属在册', directCount?.toString()),
+                MasterDetailStat('子部门', '${node.children.length}'),
+                MasterDetailStat('负责人', node.managerName),
+                MasterDetailStat('编制', node.headcount?.toString()),
+              ],
+              path: path,
+              canEdit: false, // 我的部门只读：编辑/删除/新增子部门按钮不渲染
+              onAddChild: () {},
+              onEdit: () {},
+              onDelete: () {},
+            ),
+          ),
+        ),
+        ..._rosterSlivers(async, theme, hPad, ref),
+        if (isManaged)
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              hPad,
+              UtenSpacing.s4,
+              hPad,
+              UtenSpacing.s16,
+            ),
+            sliver: const SliverToBoxAdapter(child: _ManagerPermissionPanel()),
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _rosterSlivers(
+    AsyncValue<MyDepartmentRoster> async,
+    ThemeData theme,
+    double hPad,
+    WidgetRef ref,
+  ) {
+    EdgeInsets pad({double bottom = UtenSpacing.s16}) =>
+        EdgeInsets.fromLTRB(hPad, 0, hPad, bottom);
     return async.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => _InlineError(
-        message: e is ApiException ? e.message : '花名册加载失败',
-        onRetry: () => ref.invalidate(myDepartmentRosterProvider(deptId)),
-      ),
-      data: (roster) {
-        if (roster.staff.isEmpty) {
-          return Center(
-            child: Text(
-              '该部门暂无在册员工',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+      loading: () => [
+        SliverPadding(
+          padding: pad(),
+          sliver: const SliverToBoxAdapter(
+            child: SizedBox(
+              height: 160,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ),
+        ),
+      ],
+      error: (e, _) => [
+        SliverPadding(
+          padding: pad(),
+          sliver: SliverToBoxAdapter(
+            child: SizedBox(
+              height: 160,
+              child: UtenEmpty.error(
+                message: e is ApiException ? e.message : '花名册加载失败',
+                actionLabel: '重试',
+                onAction: () =>
+                    ref.invalidate(myDepartmentRosterProvider(node.id)),
               ),
             ),
-          );
+          ),
+        ),
+      ],
+      data: (roster) {
+        // 负责人/管理人排最前（稳定：保留服务端顺序，仅前置 departmentManager）。
+        final managers = roster.staff.where((s) => s.departmentManager).toList();
+        final others = roster.staff.where((s) => !s.departmentManager).toList();
+        final ordered = [...managers, ...others];
+        if (ordered.isEmpty) {
+          return [
+            SliverPadding(
+              padding: pad(),
+              sliver: const SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 160,
+                  child: UtenEmpty(
+                    icon: Icons.people_outline_rounded,
+                    message: '该部门暂无在册员工',
+                  ),
+                ),
+              ),
+            ),
+          ];
         }
-        return ListView.separated(
-          padding: EdgeInsets.zero,
-          itemCount: roster.staff.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (_, i) => _staffRow(roster.staff[i]),
-        );
+        return [
+          SliverPadding(
+            padding: pad(bottom: UtenSpacing.s8),
+            sliver: SliverToBoxAdapter(child: _rosterHeader(theme, ordered.length)),
+          ),
+          SliverPadding(
+            padding: pad(),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => _staffRow(theme, ordered[i]),
+                childCount: ordered.length,
+              ),
+            ),
+          ),
+        ];
       },
     );
   }
 
-  Widget _staffRow(MyDepartmentStaffRow r) {
+  Widget _rosterHeader(ThemeData theme, int count) {
+    return Row(
+      children: [
+        Icon(
+          Icons.people_outline_rounded,
+          size: 18,
+          color: theme.colorScheme.primary,
+        ),
+        const SizedBox(width: UtenSpacing.s8),
+        Text(
+          '在册员工 $count 人',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _staffRow(ThemeData theme, MyDepartmentStaffRow r) {
     final parts = <String>[
       if (r.code != null && r.code!.isNotEmpty) r.code!,
       if (r.positionName != null && r.positionName!.isNotEmpty)
@@ -306,20 +316,23 @@ class _MyDepartmentCardState extends ConsumerState<MyDepartmentCard> {
       if (r.email != null && r.email!.isNotEmpty) r.email!,
     ];
     return UtenPersonCard(
+      margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
       title: r.fullName ?? '—',
       subtitle: parts.isEmpty ? null : parts.join(' · '),
       titleLeading: r.departmentManager
           ? const EmployeeLeadershipBadge(departmentManager: true)
           : null,
       avatarText: r.fullName,
-      trailing: r.isSelf ? _selfBadge() : null,
+      trailing: r.isSelf ? _selfBadge(theme) : null,
     );
   }
 
-  Widget _selfBadge() {
-    final theme = Theme.of(context);
+  Widget _selfBadge(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: 2,
+      ),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(UtenSpacing.s8),
@@ -618,6 +631,16 @@ DepartmentNode? _findNode(List<DepartmentNode> nodes, String id) {
     if (hit != null) return hit;
   }
   return null;
+}
+
+/// 根 → … → 目标 的名称链（用于详情卡「路径」）。
+List<String> _nameChain(List<DepartmentNode> nodes, String id) {
+  for (final n in nodes) {
+    if (n.id == id) return [n.name];
+    final sub = _nameChain(n.children, id);
+    if (sub.isNotEmpty) return [n.name, ...sub];
+  }
+  return const [];
 }
 
 class _InlineError extends StatelessWidget {

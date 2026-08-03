@@ -381,11 +381,6 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       canEdit: canEdit,
       canViewEmployees: canViewEmployees,
       canCreateEmployee: canCreateEmployee,
-      canManagePermissions:
-          ref.read(isSuperAdminProvider) &&
-          ref
-              .read(currentPermissionsProvider)
-              .contains(Perm.authorizationManage),
       onAddChild: () => _showCreateDialog(parent: selected),
       onEdit: (detail) => _showEditDialog(detail),
       onDelete: () => _delete(selected),

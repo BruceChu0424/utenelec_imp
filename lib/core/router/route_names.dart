@@ -112,6 +112,7 @@ abstract final class RouteName {
   // 个人信息修改（Phase 6）
   static const String profileEdit = '/profile/edit';
   static const String profileMyChanges = '/profile/me/changes';
+  static const String profileMyDepartment = '/profile/me/department';
 
   // HR 端：员工个人信息修改审批
   static const String hrProfileChanges = '/hr/profile-changes';

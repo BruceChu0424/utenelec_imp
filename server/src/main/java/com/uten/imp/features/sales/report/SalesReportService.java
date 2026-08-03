@@ -495,7 +495,7 @@ public class SalesReportService {
                   LEFT JOIN (SELECT order_id, SUM(qty) AS qty, SUM(amount_local) AS amount
                              FROM sales_order_items WHERE COALESCE(is_deleted,false)=false GROUP BY order_id) x
                     ON x.order_id = o.id
-                  """ + " " + inner.sql() + """
+                  """ + " " + inner.sql() + " " + """
                   GROUP BY o.client_id
                 ) t
                 """;
@@ -542,7 +542,7 @@ public class SalesReportService {
                                              THEN amount_local * discount ELSE amount_local END) AS deal
                              FROM sales_shipment_items WHERE COALESCE(is_deleted,false)=false GROUP BY shipment_id) x
                     ON x.shipment_id = o.id
-                  """ + " " + inner.sql() + """
+                  """ + " " + inner.sql() + " " + """
                   GROUP BY o.client_id
                 ) t
                 """;
@@ -584,7 +584,7 @@ public class SalesReportService {
                                              THEN amount_local * discount ELSE amount_local END) AS deal
                              FROM sales_return_items WHERE COALESCE(is_deleted,false)=false GROUP BY return_id) x
                     ON x.return_id = o.id
-                  """ + " " + inner.sql() + """
+                  """ + " " + inner.sql() + " " + """
                   GROUP BY o.client_id
                 ) t
                 """;
@@ -627,7 +627,7 @@ public class SalesReportService {
                                     SUM(amount_local - COALESCE(returned_amount,0)) AS actual
                              FROM sales_other_shipment_items WHERE COALESCE(is_deleted,false)=false GROUP BY shipment_id) x
                     ON x.shipment_id = o.id
-                  """ + " " + inner.sql() + """
+                  """ + " " + inner.sql() + " " + """
                   GROUP BY o.client_id
                 ) t
                 """;
@@ -743,7 +743,7 @@ public class SalesReportService {
                   AND (CAST(:to AS date) IS NULL OR ym <= :to)
                   AND (CAST(:clientId AS uuid) IS NULL OR client_id = :clientId)
                   AND (CAST(:goodsId AS uuid) IS NULL OR goods_id = :goodsId)
-                  AND """ + scopedOwners.predicate() + """
+                  """ + "AND " + scopedOwners.predicate() + " " + """
                 GROUP BY doc_type, ym, goods_id, client_id
                 ORDER BY amt DESC NULLS LAST
                 LIMIT :limit
@@ -789,8 +789,8 @@ public class SalesReportService {
                     JOIN sales_orders o ON o.id = i.order_id
                     WHERE COALESCE(i.is_deleted,false)=false
                       AND COALESCE(o.is_deleted,false)=false
-                      AND """ + scopedOwners.predicate()
-                    + (clientId == null ? "" : " AND o.client_id = :clientId") + """
+                      """ + "AND " + scopedOwners.predicate()
+                    + (clientId == null ? "" : " AND o.client_id = :clientId") + " " + """
                     GROUP BY i.goods_id, i.color_id, o.client_id
                     HAVING SUM(i.qty - i.shipped_qty + i.returned_qty - i.flag_qty) > 0
                     """;

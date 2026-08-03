@@ -11,7 +11,6 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/widgets/master_detail_card.dart';
@@ -32,7 +31,6 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
     required this.canEdit,
     required this.canViewEmployees,
     required this.canCreateEmployee,
-    required this.canManagePermissions,
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
@@ -42,7 +40,6 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
   final bool canEdit;
   final bool canViewEmployees;
   final bool canCreateEmployee;
-  final bool canManagePermissions;
   final VoidCallback onAddChild;
   final void Function(DepartmentInfo detail) onEdit;
   final VoidCallback onDelete;
@@ -293,14 +290,6 @@ class _DepartmentOverviewPaneState
     _refreshPeopleData();
   }
 
-  void _openDepartmentPermissions() {
-    final target = Uri(
-      path: RouteName.adminPermissions,
-      queryParameters: {'departmentId': widget.node.id},
-    );
-    context.push(target.toString());
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -363,12 +352,6 @@ class _DepartmentOverviewPaneState
                         label: '岗位管理',
                         onPressed: () =>
                             showPositionManagerSheet(context, widget.node),
-                      ),
-                    if (selectable && widget.canManagePermissions)
-                      MasterDetailCardAction(
-                        icon: Icons.admin_panel_settings_outlined,
-                        label: '权限设置',
-                        onPressed: _openDepartmentPermissions,
                       ),
                   ],
                 ),

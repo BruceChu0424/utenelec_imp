@@ -92,9 +92,7 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
                   AND u.status = 'active'
                   AND e.is_deleted = FALSE
                   AND e.status <> 'resigned'
-                """ + userPredicate + """
-                ORDER BY e.full_name, e.code, u.id
-                """;
+                """ + userPredicate + " ORDER BY e.full_name, e.code, u.id";
         Object[] args = userId == null ? new Object[0] : new Object[]{userId};
         return jdbc.query(sql, (rs, rowNum) -> new EligibleReviewer(
                 rs.getObject("user_id", UUID.class),

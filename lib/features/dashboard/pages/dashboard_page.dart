@@ -25,7 +25,6 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/session_provider.dart';
-import '../../department/widgets/my_department_card.dart';
 import '../widgets/dashboard_overview_sections.dart';
 import '../widgets/workbench_module_area.dart';
 
@@ -46,9 +45,6 @@ class DashboardPage extends ConsumerWidget {
         _buildPageHeader(theme, name),
         const SizedBox(height: UtenSpacing.s24),
         const DashboardOverviewSections(),
-        const SizedBox(height: UtenSpacing.s24),
-        // 我的部门：架构树 + 花名册（任意员工可见；负责人可调权限）。不走权限点。
-        const MyDepartmentCard(),
         const SizedBox(height: UtenSpacing.s24),
         // 功能模块区：原侧边栏全部分组迁入，按权限点显隐（各组可折叠）
         const WorkbenchModuleArea(),

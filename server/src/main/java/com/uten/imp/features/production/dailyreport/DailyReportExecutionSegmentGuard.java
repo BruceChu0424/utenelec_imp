@@ -316,7 +316,7 @@ public class DailyReportExecutionSegmentGuard {
                           AND item.report_id <> :reportId
                           AND item.is_deleted = FALSE
                           AND report.is_deleted = FALSE
-                          AND """ + statuses)
+                          """ + " AND " + statuses)
                 .setParameter("segmentId", segmentId)
                 .setParameter("reportId", excludedReportId)
                 .getSingleResult();
@@ -340,7 +340,7 @@ public class DailyReportExecutionSegmentGuard {
                           AND item.report_id <> :reportId
                           AND item.is_deleted = FALSE
                           AND report.is_deleted = FALSE
-                          AND """ + statuses)
+                          """ + " AND " + statuses)
                 .setParameter("allocationId", allocationId)
                 .setParameter("reportId", excludedReportId)
                 .getSingleResult();

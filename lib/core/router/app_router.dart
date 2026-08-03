@@ -90,6 +90,7 @@ import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
+import '../../features/department/pages/my_department_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
 import '../../features/settings/pages/settings_page.dart';
@@ -1092,6 +1093,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.profileMyChanges,
             name: 'profile-my-changes',
             builder: (_, _) => const MyProfileChangesPage(),
+          ),
+          GoRoute(
+            path: RouteName.profileMyDepartment,
+            name: 'profile-my-department',
+            builder: (_, _) => const MyDepartmentPage(),
           ),
 
           // —— HR 端：员工个人信息修改审批 ——

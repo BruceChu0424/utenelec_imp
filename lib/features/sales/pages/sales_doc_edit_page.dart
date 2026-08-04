@@ -440,6 +440,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     }
 
     if (_cfg.clientRequired && _clientId == null) fail('client', '请选择客户');
+    if (_cfg.sellerRequired && _sellerId == null) fail('seller', '请选择业务员');
     if (_cfg.hasWarehouse && _warehouseId == null) fail('warehouse', '请选择仓库');
     if (_cfg.hasCurrency && _currencyId == null) fail('currency', '请选择币种');
     if (_cfg.hasDeliverDate && _deliverDate == null) {
@@ -782,6 +783,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       label: '业务员',
                                       currentId: _sellerId,
                                       defaultDeptCode: kDeptCodeMarketing,
+                                      required: _cfg.sellerRequired,
                                       onChanged: (id) =>
                                           setState(() => _sellerId = id),
                                     ),
@@ -1062,10 +1064,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     required String? currentId,
     required ValueChanged<String?> onChanged,
     String? defaultDeptCode,
+    bool required = false,
   }) {
     return UtenEmployeePicker(
       key: ValueKey('${label}_$currentId'),
       label: label,
+      required: required,
       hint: '请选择$label',
       sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],

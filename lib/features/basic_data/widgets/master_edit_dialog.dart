@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -50,11 +51,18 @@ const List<MasterSelectOption> kGoodsSourceTypeOptions = [
 /// 初值来自 [MasterEditForm.initialValues]（字符串形式：日期=yyyy-MM-dd、picker=id）；
 /// widget 内部自行转成所需类型（DateTime / UtenEmployeePickerItem 等），通过 [onChanged] 回写提交值。
 class MasterFieldContext {
-  const MasterFieldContext({this.initialValue, required this.onChanged});
+  const MasterFieldContext({
+    this.initialValue,
+    required this.onChanged,
+    this.required = false,
+  });
 
   final String? initialValue;
 
   final void Function(dynamic value) onChanged;
+
+  /// 该自定义字段是否必填：customBuilder 可据此渲染红框（与表单内建字段口径一致）。
+  final bool required;
 }
 
 /// 主档字段定义。
@@ -336,18 +344,37 @@ class MasterEditFormState extends State<MasterEditForm> {
         MasterFieldContext(
           initialValue: widget.initialValues[f.key],
           onChanged: (v) => setState(() => _customValues[f.key] = v),
+          required: f.required,
         ),
       );
     }
-    return TextField(
-      controller: _controllers[f.key],
-      keyboardType: f.type == MasterFieldType.text
-          ? TextInputType.text
-          : const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
-        labelText: f.required ? '${f.label} *' : f.label,
-        hintText: f.hint,
-      ),
+    // text / integer / money：听控制器，必填且为空时描红边 + 红 *，填好即恢复。
+    final theme = Theme.of(context);
+    final controller = _controllers[f.key]!;
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final requiredEmpty = f.required && controller.text.trim().isEmpty;
+        return TextField(
+          controller: controller,
+          keyboardType: f.type == MasterFieldType.text
+              ? TextInputType.text
+              : const TextInputType.numberWithOptions(decimal: true),
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              label: requiredLabel(
+                f.label,
+                theme,
+                required: f.required,
+                base: theme.inputDecorationTheme.labelStyle,
+              ),
+              hintText: f.hint,
+            ),
+            theme,
+            requiredEmpty: requiredEmpty,
+          ),
+        );
+      },
     );
   }
 

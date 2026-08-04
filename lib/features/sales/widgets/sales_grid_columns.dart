@@ -123,9 +123,10 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       key: 'goods',
       label: '货品',
       width: 220,
-      cellBuilder: (context, row) => _invalidFrame(
-        row,
-        showWhen: () => row.goods == null,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.goodsNotifier,
+        isEmpty: () => row.goods == null,
         child: InkWell(
           onTap: () => onPickGoods(row),
           child: InputDecorator(
@@ -171,9 +172,10 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       label: '数量',
       width: 96,
       numeric: true,
-      cellBuilder: (context, row) => _invalidFrame(
-        row,
-        showWhen: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.qty,
+        isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
         child: TextField(
           controller: row.qty,
           textAlign: TextAlign.right,
@@ -187,9 +189,10 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       label: '单价',
       width: 96,
       numeric: true,
-      cellBuilder: (context, row) => _invalidFrame(
-        row,
-        showWhen: () =>
+      required: priceRequired,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.price,
+        isEmpty: () =>
             priceRequired &&
             (row.price.text.trim().isEmpty ||
                 double.tryParse(row.price.text.trim()) == null),
@@ -243,32 +246,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       ),
     ),
   ];
-}
-
-/// 行级校验红框：保存拦截时该行的缺失必填格外描红边（[showWhen] 判断本格是否缺失）。
-/// 仅在行 invalidNotifier 翻转时重绘外框，不重绘内部输入控件。
-Widget _invalidFrame(
-  SalesGridRow row, {
-  required bool Function() showWhen,
-  required Widget child,
-}) {
-  return ValueListenableBuilder<bool>(
-    valueListenable: row.invalidNotifier,
-    builder: (context, invalid, child) {
-      if (!invalid || !showWhen()) return child!;
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: Theme.of(context).colorScheme.error,
-            width: 1.5,
-          ),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: child,
-      );
-    },
-    child: child,
-  );
 }
 
 /// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。

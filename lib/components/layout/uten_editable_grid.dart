@@ -65,6 +65,7 @@ class EditableGridColumn<T extends EditableGridRow> {
     required this.width,
     required this.cellBuilder,
     this.numeric = false,
+    this.required = false,
   });
 
   final String key;
@@ -72,6 +73,90 @@ class EditableGridColumn<T extends EditableGridRow> {
   final double width;
   final Widget Function(BuildContext context, T row) cellBuilder;
   final bool numeric;
+
+  /// 该列是否必填：表头文案后显红 *；单元为空时由 [RequiredCellFrame] 描红边。
+  final bool required;
+}
+
+/// 必填单元的**实时**红框：订阅 [listenable]，当 [isEmpty] 为真时给 [child] 描红边，
+/// 填好后红边消失。替代各 feature 重复的提交态 `_invalidFrame`——本件随单元内容即时变化，
+/// 不依赖"保存拦截"触发。
+///
+/// 用法（包住必填单元控件）：
+/// ```
+/// RequiredCellFrame(
+///   listenable: row.qty,                 // TextEditingController / ValueNotifier
+///   isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+///   child: TextField(controller: row.qty, ...),
+/// )
+/// ```
+class RequiredCellFrame extends StatefulWidget {
+  const RequiredCellFrame({
+    super.key,
+    required this.listenable,
+    required this.isEmpty,
+    required this.child,
+  });
+
+  /// 单元内容的变更源（控制器/通知器）。空判只在其触发时重算。
+  final Listenable listenable;
+
+  /// 判断本单元是否"为空/缺失"。返回 true → 描红边。
+  final bool Function() isEmpty;
+
+  final Widget child;
+
+  @override
+  State<RequiredCellFrame> createState() => _RequiredCellFrameState();
+}
+
+class _RequiredCellFrameState extends State<RequiredCellFrame> {
+  bool _empty = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _empty = widget.isEmpty();
+    widget.listenable.addListener(_onChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant RequiredCellFrame oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(widget.listenable, oldWidget.listenable)) {
+      oldWidget.listenable.removeListener(_onChange);
+      widget.listenable.addListener(_onChange);
+    }
+    // 谓词/child 可能随重建变化，重算一次空态。
+    final e = widget.isEmpty();
+    if (e != _empty) _empty = e;
+  }
+
+  void _onChange() {
+    final e = widget.isEmpty();
+    if (e != _empty) setState(() => _empty = e);
+  }
+
+  @override
+  void dispose() {
+    widget.listenable.removeListener(_onChange);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_empty) return widget.child;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Theme.of(context).colorScheme.error,
+          width: 1.5,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: widget.child,
+    );
+  }
 }
 
 /// 行列表 + 合计通知器的持有者。所有改行操作走这里（[rows] 私有），
@@ -339,14 +424,31 @@ class _UtenEditableGridState<T extends EditableGridRow>
                               ),
                               child: Align(
                                 alignment: Alignment.centerLeft,
-                                child: Text(
-                                  widget.columns[i].label,
-                                  style:
-                                      (theme.textTheme.labelMedium ??
-                                              const TextStyle())
-                                          .copyWith(
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                                child: Text.rich(
+                                  TextSpan(
+                                    text: widget.columns[i].label,
+                                    style: (theme.textTheme.labelMedium ??
+                                            const TextStyle())
+                                        .copyWith(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                    children: widget.columns[i].required
+                                        ? [
+                                            TextSpan(
+                                              text: ' *',
+                                              style: (theme.textTheme.labelMedium ??
+                                                      const TextStyle())
+                                                  .copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .error,
+                                                    fontWeight:
+                                                        FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
                                 ),
                               ),
                             ),

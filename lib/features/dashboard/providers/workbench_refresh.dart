@@ -15,20 +15,42 @@ import '../../notice/providers/notice_providers.dart';
 import '../../production/providers/production_pending_provider.dart';
 import '../../purchase/providers/purchase_task_count_provider.dart';
 import '../../rd_task/providers/rd_task_count_provider.dart';
+import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
+import '../../finance/providers/finance_procurement_approval_count_provider.dart';
+import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../../shared/auth/pending_review_provider.dart';
+import '../../../shared/models/procurement_inbound.dart';
 import 'dashboard_overview_provider.dart';
 
 /// 立即重拉全部全局角标/未读计数，不等 60s 轮询。
 /// 各 Notifier 内部已做权限自卫（无权限静默置 0），可无条件调用。
+///
+/// 除 7 个全局 StateNotifier 角标外，还失效钱流/仓库/委外那批
+/// `FutureProvider.autoDispose` 计数（工作台卡片徽章聚合用）——它们只在被 watch
+/// 时存活，invalidate 触发重拉，使「返回工作台」「新通知到达」时这些角标即时更新。
 void refreshGlobalBadges(WidgetRef ref) {
   ref.read(productionPendingCountProvider.notifier).refresh();
   ref.read(purchaseTaskCountProvider.notifier).refresh();
+  ref.read(subcontractTaskCountProvider.notifier).refresh();
   ref.read(rdTaskCountProvider.notifier).refresh();
   ref.read(visitorPendingCountProvider.notifier).refresh();
   ref.read(visitorHostPendingCountProvider.notifier).refresh();
   ref.read(pendingReviewCountProvider.notifier).refresh();
   ref.read(unreadNoticeCountProvider.notifier).refresh();
+  // 钱流/仓库/委外 autoDispose 计数（工作台卡片角标聚合源）
+  ref.invalidate(financeProcurementApprovalCountProvider);
+  ref.invalidate(financeArrivalExceptionCountProvider);
+  ref.invalidate(warehouseInboundExpectationCountProvider);
+  ref.invalidate(warehouseArrivalExceptionCountProvider);
+  ref.invalidate(
+    procurementArrivalReturnCountProvider(ProcurementInboundOrderType.purchase),
+  );
+  ref.invalidate(
+    procurementArrivalReturnCountProvider(
+      ProcurementInboundOrderType.subcontract,
+    ),
+  );
 }
 
 /// 回到工作台时调用：角标全刷 + 今日概览/待办重聚合。

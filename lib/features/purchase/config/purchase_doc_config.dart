@@ -18,6 +18,7 @@ class PurchaseDocConfig {
     this.hasSupplier = false,
     this.hasCurrency = false,
     this.supplierRequired = false,
+    this.warehouseRequired = false,
     this.hasApplicant = false,
     this.hasPurchaser = false,
     this.hasSender = false,
@@ -47,6 +48,8 @@ class PurchaseDocConfig {
   final bool hasSupplier;
   final bool hasCurrency;
   final bool supplierRequired;
+  /// 仓库是否必填（现仅收货/退货强制；订货/申请可空）。
+  final bool warehouseRequired;
   final bool hasApplicant;
   final bool hasPurchaser;
   final bool hasSender;
@@ -123,6 +126,7 @@ class PurchaseDocConfig {
     hasSupplier: true,
     hasCurrency: true,
     supplierRequired: true,
+    warehouseRequired: true,
     hasSender: true,
     hasReceiver: true,
     linkToOrderItem: true,
@@ -140,6 +144,7 @@ class PurchaseDocConfig {
     hasSupplier: true,
     hasCurrency: true,
     supplierRequired: true,
+    warehouseRequired: true,
     hasReceiver: true,
     linkToOrderItem: true,
     linkToReceiptItem: true,

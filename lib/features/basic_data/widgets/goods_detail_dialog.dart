@@ -201,6 +201,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       const MasterFieldDef(
         key: 'sourceType',
         label: '来源',
+        required: true,
         type: MasterFieldType.select,
         options: kGoodsSourceTypeOptions,
         group: '基础',
@@ -281,6 +282,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       MasterFieldDef(
         key: 'unitLegacyId',
         label: '单位',
+        required: true,
         type: MasterFieldType.select,
         options: _unitOptions,
         selectInteger: true,

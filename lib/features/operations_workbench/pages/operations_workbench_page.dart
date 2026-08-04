@@ -193,7 +193,10 @@ class _OperationsWorkbenchPageState
             activeException: _exception,
             onMetricTap: (metric) {
               final status = metric.statusFilter;
-              if (status != null) {
+              if (status == kOperationsWorkbenchAllStatus) {
+                // 「全部」卡：清除状态筛选，显示所有阶段
+                _applyFilter(status: '');
+              } else if (status != null) {
                 _applyFilter(status: _status == status ? '' : status);
               }
               final exception = metric.exceptionFilter;
@@ -351,11 +354,12 @@ class _Overview extends StatelessWidget {
             width: 220,
             child: _MetricCard(
               metric: metric,
-              selected:
-                  (metric.statusFilter != null &&
-                      metric.statusFilter == activeStatus) ||
-                  (metric.exceptionFilter != null &&
-                      metric.exceptionFilter == activeException),
+              selected: metric.statusFilter == kOperationsWorkbenchAllStatus
+                  ? (activeStatus?.isEmpty ?? true)
+                  : ((metric.statusFilter != null &&
+                        metric.statusFilter == activeStatus) ||
+                      (metric.exceptionFilter != null &&
+                          metric.exceptionFilter == activeException)),
               onTap:
                   metric.statusFilter == null && metric.exceptionFilter == null
                   ? null
@@ -925,11 +929,24 @@ class _DesktopTaskTable extends StatelessWidget {
       filters: const {},
       onFilterChanged: (_, _) {},
       onRowTap: onToggle,
-      rowColor: (item) => selectedIds.contains(item.id)
-          ? selectedColor
-          : item.hasException
-          ? Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.35)
-          : null,
+      rowColor: (item) {
+        if (selectedIds.contains(item.id)) return selectedColor;
+        // 采购/委外任务台：行按状态着色（全部视图下绿/蓝/黄/红一眼可辨）；
+        // 仓库履约部门保留异常行高亮。
+        if (data.department == OperationsWorkbenchDepartment.purchase ||
+            data.department == OperationsWorkbenchDepartment.subcontract) {
+          return _toneColor(
+            _statusTone(item.taskStatus),
+            Theme.of(context),
+          ).withValues(alpha: 0.10);
+        }
+        return item.hasException
+            ? Theme.of(context)
+                  .colorScheme
+                  .errorContainer
+                  .withValues(alpha: 0.35)
+            : null;
+      },
       isLoading: loading,
       emptyMessage: '当前筛选下没有任务',
       currentPage: data.page,
@@ -1007,7 +1024,7 @@ class _TaskCard extends StatelessWidget {
                   ),
                   _StatusPill(
                     label: task.statusLabel,
-                    color: theme.colorScheme.primary,
+                    color: _toneColor(_statusTone(task.taskStatus), theme),
                   ),
                 ],
               ),
@@ -1182,10 +1199,11 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
 
 String _departmentSubtitle(OperationsWorkbenchDepartment department) {
   return switch (department) {
+    OperationsWorkbenchDepartment.purchase =>
+      '采购任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
     OperationsWorkbenchDepartment.subcontract =>
-      '只显示计划已下达、仍待分解的委外申请明细',
-    OperationsWorkbenchDepartment.warehouse ||
-    OperationsWorkbenchDepartment.purchase => '只显示计划已下达、仍待分解的采购申请明细',
+      '委外任务：申请待分解 / 财务已通过 / 财务驳回 / 已完成',
+    OperationsWorkbenchDepartment.warehouse => '仓库履约：待备料 / 部分领取 / 已领取',
   };
 }
 
@@ -1196,6 +1214,19 @@ Color _toneColor(String tone, ThemeData theme) {
     'success' || 'ready' => UtenColors.success,
     'info' => UtenColors.info,
     _ => theme.colorScheme.primary,
+  };
+}
+
+/// 任务状态 → 色调（与概览计数卡同色系）：待分解=警示黄、待采购完成/执行中=信息蓝、
+/// 已完成=成功绿、阻塞=红、其余=主色。用于行级状态药丸着色。
+String _statusTone(String taskStatus) {
+  return switch (taskStatus.toUpperCase()) {
+    'WAITING_ORDER' || 'APPLICATION_PENDING_APPROVAL' || 'UNPEGGED' => 'warning',
+    'FINANCE_APPROVED' || 'WAITING_SUPPLY' || 'IN_PROGRESS' ||
+    'PARTIAL' || 'ORDER_PENDING_APPROVAL' => 'info',
+    'COMPLETED' || 'DONE' || 'COVERED' => 'success',
+    'BLOCKED' || 'FINANCE_REJECTED' => 'danger',
+    _ => 'neutral',
   };
 }
 

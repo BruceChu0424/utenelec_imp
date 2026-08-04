@@ -42,6 +42,7 @@ class SalesDocConfig {
     this.hasWarehouse = false,
     this.hasCurrency = false,
     this.hasSeller = false,
+    this.sellerRequired = false,
     this.hasSender = false,
     this.hasValidUntil = false,
     this.hasDeliverDate = false,
@@ -74,6 +75,8 @@ class SalesDocConfig {
   final bool hasWarehouse;
   final bool hasCurrency;
   final bool hasSeller;
+  /// 业务员是否必填（hasSeller 为真时才生效；现仅 order 强制）。
+  final bool sellerRequired;
   final bool hasSender;
   final bool hasValidUntil;
   final bool hasDeliverDate;
@@ -134,6 +137,7 @@ class SalesDocConfig {
     clientRequired: true,
     hasCurrency: true,
     hasSeller: true,
+    sellerRequired: true,
     hasDeliverDate: true,
     hasContractInfo: true,
     showStopped: true,

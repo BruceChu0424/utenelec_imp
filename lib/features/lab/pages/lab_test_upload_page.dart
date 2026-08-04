@@ -96,11 +96,11 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
           UtenCard(
             child: Column(
               children: [
-                UtenInput(controller: _sampleCode, label: '样品编号 *'),
+                UtenInput(controller: _sampleCode, label: '样品编号', required: true),
                 const SizedBox(height: UtenSpacing.s12),
-                UtenInput(controller: _sampleName, label: '样品名称 *'),
+                UtenInput(controller: _sampleName, label: '样品名称', required: true),
                 const SizedBox(height: UtenSpacing.s12),
-                UtenInput(controller: _project, label: '检测项目 *'),
+                UtenInput(controller: _project, label: '检测项目', required: true),
               ],
             ),
           ),
@@ -110,7 +110,7 @@ class _LabTestUploadPageState extends ConsumerState<LabTestUploadPage> {
           UtenCard(
             child: Column(
               children: [
-                UtenInput(controller: _result, label: '检测结果 *'),
+                UtenInput(controller: _result, label: '检测结果', required: true),
                 const SizedBox(height: UtenSpacing.s12),
                 UtenInput(controller: _standard, label: '标准值'),
                 SwitchListTile(

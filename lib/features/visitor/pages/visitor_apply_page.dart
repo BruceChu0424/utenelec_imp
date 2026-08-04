@@ -10,6 +10,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -257,6 +258,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                           UtenInput(
                             controller: _nameCtl,
                             label: l10n.visitorApplyName,
+                            required: true,
                             hint: l10n.visitorApplyNameHint,
                             autofillHints: const [AutofillHints.name],
                           ),
@@ -278,6 +280,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                           UtenInput(
                             controller: _purposeCtl,
                             label: l10n.visitorApplyPurpose,
+                            required: true,
                             hint: l10n.visitorApplyPurposeHint,
                             maxLines: 3,
                           ),
@@ -343,6 +346,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                               ];
                             },
                             label: l10n.visitorApplyHost,
+                            required: true,
                             hint: '请选择被访人',
                             sheetTitle: '选择被访人',
                             departmentName: _deptName,
@@ -353,12 +357,21 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                           InkWell(
                             onTap: _pickTime,
                             child: InputDecorator(
-                              decoration: InputDecoration(
-                                labelText: l10n.visitorApplyVisitTime,
-                                prefixIcon: Icon(
-                                  Icons.event_rounded,
-                                  size: context.scaled(20),
+                              decoration: applyRequiredEmpty(
+                                InputDecoration(
+                                  label: requiredLabel(
+                                    l10n.visitorApplyVisitTime,
+                                    theme,
+                                    required: true,
+                                    base: theme.inputDecorationTheme.labelStyle,
+                                  ),
+                                  prefixIcon: Icon(
+                                    Icons.event_rounded,
+                                    size: context.scaled(20),
+                                  ),
                                 ),
+                                theme,
+                                requiredEmpty: _visitTime == null,
                               ),
                               child: Text(
                                 _visitTime == null

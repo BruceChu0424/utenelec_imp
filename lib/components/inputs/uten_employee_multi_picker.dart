@@ -12,6 +12,7 @@ import '../../core/theme/uten_tokens.dart';
 import '../feedback/uten_empty.dart';
 import '../feedback/uten_skeleton.dart';
 import '../layout/uten_bottom_action_bar.dart';
+import 'required_field_decoration.dart';
 import 'uten_employee_picker.dart';
 import 'uten_search_bar.dart';
 
@@ -31,6 +32,7 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
     this.clearLabel = '清空',
     this.confirmLabel = '确定',
     this.validator,
+    this.required = false,
   });
 
   final UtenEmployeePickerLoader loader;
@@ -46,6 +48,9 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
   final String clearLabel;
   final String confirmLabel;
   final String? Function(List<UtenEmployeePickerItem> selection)? validator;
+
+  /// 是否必填：标签后显红 *；未选且启用时输入框描红边。
+  final bool required;
 
   @override
   State<UtenEmployeeMultiPicker> createState() =>
@@ -159,6 +164,7 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
         ? null
         : widget.selectedCountLabel?.call(_selection.length) ??
               '已选 ${_selection.length} 人';
+    final requiredEmpty = widget.enabled && widget.required && _selection.isEmpty;
     return FormField<List<UtenEmployeePickerItem>>(
       key: _fieldKey,
       initialValue: _selection,
@@ -178,21 +184,32 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
               borderRadius: UtenRadius.mdAll,
               child: InputDecorator(
                 isEmpty: display == null,
-                decoration: InputDecoration(
-                  labelText: widget.label,
-                  hintText: widget.hint,
-                  enabled: widget.enabled,
-                  errorText: field.errorText,
-                  prefixIcon: const Icon(Icons.group_add_outlined),
-                  suffixIcon: Icon(
-                    Icons.unfold_more_rounded,
-                    color: theme.colorScheme.onSurfaceVariant,
+                decoration: applyRequiredEmpty(
+                  InputDecoration(
+                    label: widget.label == null
+                        ? null
+                        : requiredLabel(
+                            widget.label!,
+                            theme,
+                            required: widget.required,
+                            base: theme.inputDecorationTheme.labelStyle,
+                          ),
+                    hintText: widget.hint,
+                    enabled: widget.enabled,
+                    errorText: field.errorText,
+                    prefixIcon: const Icon(Icons.group_add_outlined),
+                    suffixIcon: Icon(
+                      Icons.unfold_more_rounded,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    border: const OutlineInputBorder(),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s16,
+                      vertical: UtenSpacing.s16,
+                    ),
                   ),
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s16,
-                    vertical: UtenSpacing.s16,
-                  ),
+                  theme,
+                  requiredEmpty: requiredEmpty,
                 ),
                 child: display == null ? null : Text(display),
               ),

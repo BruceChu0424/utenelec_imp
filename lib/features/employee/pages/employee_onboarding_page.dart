@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -362,8 +363,9 @@ class _EmployeeOnboardingPageState
                       ),
                       _text(
                         _name,
-                        '${l10n.employeeFieldName}*',
+                        l10n.employeeFieldName,
                         l10n.employeeOnboardHintName,
+                        required: true,
                         validator: (v) => _req(l10n, v, l10n.employeeFieldName),
                         autofillHints: const [AutofillHints.name],
                       ),
@@ -385,8 +387,9 @@ class _EmployeeOnboardingPageState
                       ),
                       _text(
                         _idNumber,
-                        '${l10n.employeeFieldIdNumber}*',
+                        l10n.employeeFieldIdNumber,
                         l10n.employeeOnboardHintIdNumber,
+                        required: true,
                         validator: (v) =>
                             _idType == '身份证' && !IdCardUtils.isValid(v)
                             ? l10n.employeeOnboardIdNumberInvalid
@@ -398,8 +401,9 @@ class _EmployeeOnboardingPageState
                       ),
                       _text(
                         _phone,
-                        '${l10n.employeeFieldPhone}*',
+                        l10n.employeeFieldPhone,
                         l10n.employeeOnboardHintPhone,
+                        required: true,
                         validator: (v) {
                           final error = InputValidators.phone(v);
                           return error == null
@@ -457,8 +461,9 @@ class _EmployeeOnboardingPageState
                         child: AbsorbPointer(
                           child: _text(
                             _hireDate,
-                            '${l10n.employeeFieldHireDate}*',
+                            l10n.employeeFieldHireDate,
                             l10n.employeeOnboardHireDateHint,
+                            required: true,
                             validator: (v) => (v == null || v.isEmpty)
                                 ? l10n.employeeOnboardPickHireDate
                                 : null,
@@ -591,20 +596,54 @@ class _EmployeeOnboardingPageState
     List<TextInputFormatter>? inputFormatters,
     Iterable<String>? autofillHints,
     TextCapitalization textCapitalization = TextCapitalization.none,
+    bool required = false,
   }) {
-    return TextFormField(
-      controller: c,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        isDense: true,
-        border: const OutlineInputBorder(),
-      ),
-      validator: validator,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      autofillHints: autofillHints,
-      textCapitalization: textCapitalization,
+    if (!required) {
+      return TextFormField(
+        controller: c,
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          isDense: true,
+          border: const OutlineInputBorder(),
+        ),
+        validator: validator,
+        keyboardType: keyboardType,
+        inputFormatters: inputFormatters,
+        autofillHints: autofillHints,
+        textCapitalization: textCapitalization,
+      );
+    }
+    // 必填：听控制器，为空时描红边 + 红 *（label 由本项追加，调用方勿再带 *）。
+    return ListenableBuilder(
+      listenable: c,
+      builder: (context, _) {
+        final theme = Theme.of(context);
+        final empty = c.text.trim().isEmpty;
+        return TextFormField(
+          controller: c,
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              label: requiredLabel(
+                label,
+                theme,
+                required: true,
+                base: theme.inputDecorationTheme.labelStyle,
+              ),
+              hintText: hint,
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+            theme,
+            requiredEmpty: empty,
+          ),
+          validator: validator,
+          keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
+          autofillHints: autofillHints,
+          textCapitalization: textCapitalization,
+        );
+      },
     );
   }
 

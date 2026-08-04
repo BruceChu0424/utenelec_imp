@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -321,6 +322,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                       _text(
                         _name,
                         l10n.employeeFieldName,
+                        required: true,
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) {
                             return l10n.employeeEditRequired;
@@ -360,9 +362,12 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                         _text(
                           _phone,
                           l10n.employeeFieldPhone,
+                          required: true,
                           validator: (v) {
                             final s = v?.trim() ?? '';
-                            if (s.isEmpty) return null;
+                            if (s.isEmpty) {
+                              return l10n.employeeOnboardPhoneRequired;
+                            }
                             if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(s)) {
                               return l10n.employeeOnboardPhoneInvalid;
                             }
@@ -494,15 +499,44 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     TextEditingController c,
     String label, {
     String? Function(String?)? validator,
+    bool required = false,
   }) {
-    return TextFormField(
-      controller: c,
-      decoration: InputDecoration(
-        labelText: label,
-        isDense: true,
-        border: const OutlineInputBorder(),
-      ),
-      validator: validator,
+    if (!required) {
+      return TextFormField(
+        controller: c,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          border: const OutlineInputBorder(),
+        ),
+        validator: validator,
+      );
+    }
+    // 必填：听控制器，为空时描红边 + 红 *。
+    return ListenableBuilder(
+      listenable: c,
+      builder: (context, _) {
+        final theme = Theme.of(context);
+        final empty = c.text.trim().isEmpty;
+        return TextFormField(
+          controller: c,
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              label: requiredLabel(
+                label,
+                theme,
+                required: true,
+                base: theme.inputDecorationTheme.labelStyle,
+              ),
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+            theme,
+            requiredEmpty: empty,
+          ),
+          validator: validator,
+        );
+      },
     );
   }
 

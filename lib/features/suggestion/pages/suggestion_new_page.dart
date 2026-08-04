@@ -81,14 +81,16 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage> {
                       children: [
                         UtenInput(
                           controller: _titleController,
-                          label: '标题 *',
+                          label: '标题',
+                          required: true,
                           hint: '一句话概括你的建议',
                           textInputAction: TextInputAction.next,
                         ),
                         const SizedBox(height: UtenSpacing.s12),
                         UtenInput(
                           controller: _contentController,
-                          label: '详细内容 *',
+                          label: '详细内容',
+                          required: true,
                           hint: '详细描述你的建议，包括问题背景、改进方案、预期效果等',
                           maxLines: 8,
                         ),

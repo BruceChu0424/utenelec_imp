@@ -33,11 +33,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../hr_profile/widgets/hr_pending_badge.dart';
-import '../../production/widgets/production_pending_badge.dart';
-import '../../purchase/widgets/purchase_task_badge.dart';
-import '../../rd_task/widgets/rd_task_badge.dart';
-import '../../visitor_approval/widgets/visitor_pending_badge.dart';
+import 'module_badge_sum.dart';
 import '../providers/workbench_layout_provider.dart';
 
 class WorkbenchModuleArea extends ConsumerWidget {
@@ -212,7 +208,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.person_search_outlined,
         label: '我的访客',
         location: RouteName.myVisitors,
-        badge: VisitorHostPendingBadge(),
+        badge: WorkbenchBadgeKind.visitorHost,
       ),
       // 基础资料 hub 按各主档查看权限过滤，与路由守卫共用权限映射。
       _ModuleItem(
@@ -267,13 +263,13 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.how_to_reg_outlined,
         label: '访客审批',
         location: RouteName.visitorApproval,
-        badge: VisitorPendingBadge(),
+        badge: WorkbenchBadgeKind.visitorApproval,
       ),
       _ModuleItem(
         icon: Icons.assignment_late_outlined,
         label: '信息变更审核',
         location: RouteName.hrProfileChanges,
-        badge: HrPendingBadge(),
+        badge: WorkbenchBadgeKind.hrReview,
       ),
     ],
   ),
@@ -288,6 +284,8 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.payments_outlined,
         label: '钱流管理',
         location: RouteName.finance,
+        // 角标 = 订货审批待办 + 超量到货审批待办（与钱流管理 hub 任务中心同源）。
+        badge: WorkbenchBadgeKind.finance,
       ),
       // 工资与报销审批均为真实后端入口，是否显示由对应权限控制。
       _ModuleItem(
@@ -319,7 +317,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.factory_outlined,
         label: '生产管理',
         location: RouteName.production,
-        badge: ProductionPendingBadge(),
+        badge: WorkbenchBadgeKind.production,
       ),
       // 空调控制：按需求置灰占位（功能规划接入中），与财税部 comingSoon 卡片同款，暂不跳转
       _ModuleItem(
@@ -345,7 +343,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.task_alt_outlined,
         label: '任务中心',
         location: RouteName.rdTaskCenter,
-        badge: RdTaskBadge(),
+        badge: WorkbenchBadgeKind.rdTask,
       ),
     ],
   ),
@@ -360,6 +358,8 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.warehouse,
         label: '仓库管理',
         location: RouteName.warehouse,
+        // 角标 = 预计到货待办 + 到货异常待办（与仓库管理 hub 任务中心同源）。
+        badge: WorkbenchBadgeKind.warehouse,
       ),
       // 采购管理 → hub：任务中心(采购任务) / 采购管理 4 单据 / 采购报表。采购任务 = hub 内入口，本组不再单列。
       // 徽标 = 采购任务中心待办任务数（UNPEGGED + WAITING_SUPPLY），与任务中心同源。
@@ -367,7 +367,7 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.shopping_cart_outlined,
         label: '采购管理',
         location: RouteName.purchase,
-        badge: PurchaseTaskBadge(),
+        badge: WorkbenchBadgeKind.purchase,
       ),
     ],
   ),
@@ -402,6 +402,8 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.precision_manufacturing_outlined,
         label: '委外管理',
         location: RouteName.subcontract,
+        // 角标 = 委外到货异常（待退回供应商）待办（与委外管理 hub 任务中心同源）。
+        badge: WorkbenchBadgeKind.subcontract,
       ),
     ],
   ),
@@ -459,7 +461,7 @@ class _ModuleItem {
     required this.icon,
     required this.label,
     required this.location,
-    this.badge,
+    this.badge = WorkbenchBadgeKind.none,
     this.comingSoon = false,
   });
 
@@ -467,8 +469,9 @@ class _ModuleItem {
   final String label;
   final String location;
 
-  /// 右上角待办徽章（如 HrPendingBadge / VisitorPendingBadge；>0 自动显示）
-  final Widget? badge;
+  /// 右上角待办徽章种类（由 WorkbenchCardBadge 统一渲染成同一款红色数字药丸；
+  /// none = 无角标）。每张卡片都声明一种，样式天然一致；后续接数据只需加枚举值。
+  final WorkbenchBadgeKind badge;
 
   /// 功能规划接入中：置灰、名字追加「（功能规划接入中）」、不跳转（对应页面待开发）。
   /// 各分组内已落地模块排前面、comingSoon 卡片排末尾。
@@ -554,13 +557,15 @@ class _ModuleTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (item.badge != null)
+            if (item.badge != WorkbenchBadgeKind.none)
               Positioned(
                 top: UtenSpacing.s4,
                 right: UtenSpacing.s4,
                 // 延迟挂载角标：首帧不构建 badge → 不 watch 计数 provider →
                 // 不在首帧发起请求 / 启动 60s 轮询；首帧绘制后再并行拉取。
-                child: UtenLazyMount(builder: (_) => item.badge!),
+                child: UtenLazyMount(
+                  builder: (_) => WorkbenchCardBadge(kind: item.badge),
+                ),
               ),
           ],
         ),

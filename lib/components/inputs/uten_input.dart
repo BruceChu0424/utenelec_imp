@@ -4,6 +4,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'required_field_decoration.dart';
+
 /// Uten 输入框
 class UtenInput extends StatefulWidget {
   const UtenInput({
@@ -26,6 +28,7 @@ class UtenInput extends StatefulWidget {
     this.autofillHints,
     this.inputFormatters,
     this.textCapitalization = TextCapitalization.none,
+    this.required = false,
   });
 
   /// 标签
@@ -81,6 +84,9 @@ class UtenInput extends StatefulWidget {
 
   final TextCapitalization textCapitalization;
 
+  /// 是否必填：标签后显红 *；内容为空且启用时输入框描红边，填好即恢复。
+  final bool required;
+
   @override
   State<UtenInput> createState() => _UtenInputState();
 }
@@ -89,6 +95,7 @@ class _UtenInputState extends State<UtenInput> {
   late final TextEditingController _controller;
   bool _isObscured = true;
   bool _wasEverInitialized = false;
+  bool _empty = true;
 
   @override
   void initState() {
@@ -96,10 +103,18 @@ class _UtenInputState extends State<UtenInput> {
     _controller = widget.controller ?? TextEditingController();
     _isObscured = widget.isPassword;
     _wasEverInitialized = widget.controller == null;
+    _empty = _controller.text.trim().isEmpty;
+    _controller.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    final e = _controller.text.trim().isEmpty;
+    if (e != _empty) setState(() => _empty = e);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTextChanged);
     if (_wasEverInitialized) {
       _controller.dispose();
     }
@@ -109,16 +124,19 @@ class _UtenInputState extends State<UtenInput> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final requiredEmpty = widget.required && widget.enabled && _empty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.label != null) ...[
-          // 标签
-          Text(
+          // 标签（必填时附红 *）
+          requiredLabel(
             widget.label!,
-            style: theme.textTheme.bodyMedium?.copyWith(
+            theme,
+            required: widget.required,
+            base: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w500,
               color: theme.colorScheme.onSurface,
             ),
@@ -141,12 +159,16 @@ class _UtenInputState extends State<UtenInput> {
           inputFormatters: widget.inputFormatters,
           textCapitalization: widget.textCapitalization,
           style: theme.textTheme.bodyLarge,
-          decoration: InputDecoration(
-            hintText: widget.hint,
-            prefixIcon: widget.prefixIcon != null
-                ? Icon(widget.prefixIcon, size: 20)
-                : null,
-            suffixIcon: _buildSuffix(),
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              hintText: widget.hint,
+              prefixIcon: widget.prefixIcon != null
+                  ? Icon(widget.prefixIcon, size: 20)
+                  : null,
+              suffixIcon: _buildSuffix(),
+            ),
+            theme,
+            requiredEmpty: requiredEmpty,
           ),
         ),
       ],

@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -243,22 +244,52 @@ class _DepartmentEditDialogState extends State<DepartmentEditDialog> {
               enabled: _canChangeParent,
             ),
             const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: _codeCtl,
-              readOnly: _isEdit,
-              decoration: InputDecoration(
-                labelText: '编码', // TODO(l10n): 补 arb
-                hintText: _isEdit
-                    ? null
-                    : '如 HR-01（创建后不可修改）', // TODO(l10n): 补 arb
-              ),
+            ListenableBuilder(
+              listenable: _codeCtl,
+              builder: (context, _) {
+                final requiredEmpty = !_isEdit && _codeCtl.text.trim().isEmpty;
+                return TextField(
+                  controller: _codeCtl,
+                  readOnly: _isEdit,
+                  decoration: applyRequiredEmpty(
+                    InputDecoration(
+                      label: requiredLabel(
+                        '编码', // TODO(l10n): 补 arb
+                        theme,
+                        required: !_isEdit,
+                        base: theme.inputDecorationTheme.labelStyle,
+                      ),
+                      hintText: _isEdit
+                          ? null
+                          : '如 HR-01（创建后不可修改）', // TODO(l10n): 补 arb
+                    ),
+                    theme,
+                    requiredEmpty: requiredEmpty,
+                  ),
+                );
+              },
             ),
             const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: _nameCtl,
-              decoration: const InputDecoration(
-                labelText: '名称', // TODO(l10n): 补 arb
-              ),
+            ListenableBuilder(
+              listenable: _nameCtl,
+              builder: (context, _) {
+                final empty = _nameCtl.text.trim().isEmpty;
+                return TextField(
+                  controller: _nameCtl,
+                  decoration: applyRequiredEmpty(
+                    InputDecoration(
+                      label: requiredLabel(
+                        '名称', // TODO(l10n): 补 arb
+                        theme,
+                        required: true,
+                        base: theme.inputDecorationTheme.labelStyle,
+                      ),
+                    ),
+                    theme,
+                    requiredEmpty: empty,
+                  ),
+                );
+              },
             ),
             if (_canAssignManager && widget.managerLoader != null) ...[
               const SizedBox(height: UtenSpacing.s12),

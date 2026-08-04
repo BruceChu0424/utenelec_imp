@@ -47,6 +47,12 @@ class OperationsWorkbenchRepository implements OperationsWorkbenchGateway {
     final json = await api.get('/operations/workbench/purchase/count');
     return (json['count'] as num?)?.toInt() ?? 0;
   }
+
+  /// 委外任务中心待办数（待分解 + 待采购完成 + 财务驳回），与委外管理角标同源。
+  Future<int> subcontractTaskCount() async {
+    final json = await api.get('/operations/workbench/subcontract/count');
+    return (json['count'] as num?)?.toInt() ?? 0;
+  }
 }
 
 final operationsWorkbenchRepositoryProvider =

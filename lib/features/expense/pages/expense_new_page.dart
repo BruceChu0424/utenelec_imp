@@ -68,6 +68,7 @@ class _ExpenseNewPageState extends ConsumerState<ExpenseNewPage> {
                         UtenInput(
                           controller: _titleController,
                           label: '报销标题',
+                          required: true,
                           hint: '如：上海客户拜访差旅',
                           textInputAction: TextInputAction.next,
                         ),

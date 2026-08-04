@@ -655,7 +655,7 @@ class _DetailPaneState extends State<_DetailPane> {
       group: '基础',
     ),
     MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
-    MasterFieldDef(key: 'mobile', label: '手机', group: '联系'),
+    MasterFieldDef(key: 'mobile', label: '手机', required: true, group: '联系'),
     MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
     MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
     MasterFieldDef(key: 'fax', label: '传真', group: '联系'),

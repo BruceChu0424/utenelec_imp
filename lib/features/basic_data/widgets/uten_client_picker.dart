@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -381,24 +382,35 @@ class _ClientPickerFieldState extends State<ClientPickerField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final requiredEmpty =
+        widget.required && _id == null && widget.errorText == null;
     return TextField(
       controller: _ctl,
       readOnly: true,
-      decoration: InputDecoration(
-        labelText: widget.required ? '${widget.label} *' : widget.label,
-        hintText: '点击选择客户',
-        errorText: widget.errorText,
-        prefixIcon: const Icon(Icons.storefront_outlined),
-        suffixIcon: _id != null
-            ? IconButton(
-                tooltip: '清除选择',
-                icon: const Icon(Icons.clear_rounded),
-                onPressed: () => _set(null),
-              )
-            : Icon(
-                Icons.unfold_more_rounded,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+      decoration: applyRequiredEmpty(
+        InputDecoration(
+          label: requiredLabel(
+            widget.label,
+            theme,
+            required: widget.required,
+            base: theme.inputDecorationTheme.labelStyle,
+          ),
+          hintText: '点击选择客户',
+          errorText: widget.errorText,
+          prefixIcon: const Icon(Icons.storefront_outlined),
+          suffixIcon: _id != null
+              ? IconButton(
+                  tooltip: '清除选择',
+                  icon: const Icon(Icons.clear_rounded),
+                  onPressed: () => _set(null),
+                )
+              : Icon(
+                  Icons.unfold_more_rounded,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+        ),
+        theme,
+        requiredEmpty: requiredEmpty,
       ),
       onTap: () async {
         final item = await widget.onPick();

@@ -406,6 +406,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       context.appError('请选择供应商');
       return;
     }
+    if (_cfg.warehouseRequired && _warehouseId == null) {
+      context.appError('请选择仓库');
+      return;
+    }
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
@@ -601,6 +605,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                                     _warehouseId,
                                     names.warehouseEntries,
                                     (v) => setState(() => _warehouseId = v),
+                                    required: _cfg.warehouseRequired,
                                   ),
                                   if (_cfg.hasCurrency) ...[
                                     _dropdown(

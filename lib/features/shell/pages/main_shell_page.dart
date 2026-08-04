@@ -172,6 +172,13 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
       }
     });
 
+    // 「通知→角标联动」：未读数上升（有新通知到达，如「采购财务通过」）即刷新全部
+    // 模块角标，用户无需手动刷新整页。prev 守卫避免 App 首次加载误触发。
+    // 联动粒度为「任意新通知→全刷」（成本仅为几次廉价 count 查询，无副作用）。
+    ref.listen(unreadNoticeCountProvider, (prev, next) {
+      if (prev != null && next > prev) refreshGlobalBadges(ref);
+    });
+
     final labels = <String>[
       l10n.navDashboard,
       l10n.navNotice,

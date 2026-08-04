@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -370,34 +371,64 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 ),
               ],
               const SizedBox(height: UtenSpacing.s16),
-              TextFormField(
-                controller: _titleController,
-                maxLength: 200,
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  labelText: l10n.noticePublishTitleLabel,
-                  hintText: l10n.noticePublishTitleHint,
-                  border: const OutlineInputBorder(),
-                ),
-                validator: (value) => value?.trim().isEmpty ?? true
-                    ? l10n.noticePublishValidateTitle
-                    : null,
+              ListenableBuilder(
+                listenable: _titleController,
+                builder: (context, _) {
+                  final empty = _titleController.text.trim().isEmpty;
+                  return TextFormField(
+                    controller: _titleController,
+                    maxLength: 200,
+                    textInputAction: TextInputAction.next,
+                    decoration: applyRequiredEmpty(
+                      InputDecoration(
+                        label: requiredLabel(
+                          l10n.noticePublishTitleLabel,
+                          theme,
+                          required: true,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
+                        hintText: l10n.noticePublishTitleHint,
+                        border: const OutlineInputBorder(),
+                      ),
+                      theme,
+                      requiredEmpty: empty,
+                    ),
+                    validator: (value) => value?.trim().isEmpty ?? true
+                        ? l10n.noticePublishValidateTitle
+                        : null,
+                  );
+                },
               ),
               const SizedBox(height: UtenSpacing.s12),
-              TextFormField(
-                controller: _contentController,
-                minLines: 10,
-                maxLines: 16,
-                maxLength: 20000,
-                decoration: InputDecoration(
-                  labelText: l10n.noticePublishContentLabel,
-                  hintText: l10n.noticePublishContentHint,
-                  alignLabelWithHint: true,
-                  border: const OutlineInputBorder(),
-                ),
-                validator: (value) => value?.trim().isEmpty ?? true
-                    ? l10n.noticePublishValidateContent
-                    : null,
+              ListenableBuilder(
+                listenable: _contentController,
+                builder: (context, _) {
+                  final empty = _contentController.text.trim().isEmpty;
+                  return TextFormField(
+                    controller: _contentController,
+                    minLines: 10,
+                    maxLines: 16,
+                    maxLength: 20000,
+                    decoration: applyRequiredEmpty(
+                      InputDecoration(
+                        label: requiredLabel(
+                          l10n.noticePublishContentLabel,
+                          theme,
+                          required: true,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
+                        hintText: l10n.noticePublishContentHint,
+                        alignLabelWithHint: true,
+                        border: const OutlineInputBorder(),
+                      ),
+                      theme,
+                      requiredEmpty: empty,
+                    ),
+                    validator: (value) => value?.trim().isEmpty ?? true
+                        ? l10n.noticePublishValidateContent
+                        : null,
+                  );
+                },
               ),
               SwitchListTile.adaptive(
                 value: _topPriority,

@@ -81,30 +81,35 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       key: 'goods',
       label: '货品',
       width: 220,
-      cellBuilder: (context, row) => InkWell(
-        onTap: row.sourceLocked ? null : () => onPickGoods(row),
-        child: InputDecorator(
-          decoration: const InputDecoration(isDense: true),
-          child: Row(
-            children: [
-              Expanded(
-                child: ValueListenableBuilder<GoodsOption?>(
-                  valueListenable: row.goodsNotifier,
-                  builder: (context, g, _) => Text(
-                    g?.name ?? '点击选择',
-                    style: TextStyle(
-                      color: g == null
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.onSurface,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.goodsNotifier,
+        isEmpty: () => row.goods == null,
+        child: InkWell(
+          onTap: row.sourceLocked ? null : () => onPickGoods(row),
+          child: InputDecorator(
+            decoration: const InputDecoration(isDense: true),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<GoodsOption?>(
+                    valueListenable: row.goodsNotifier,
+                    builder: (context, g, _) => Text(
+                      g?.name ?? '点击选择',
+                      style: TextStyle(
+                        color: g == null
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              Icon(
-                row.sourceLocked ? Icons.lock_outline : Icons.search_rounded,
-                size: 16,
-              ),
-            ],
+                Icon(
+                  row.sourceLocked ? Icons.lock_outline : Icons.search_rounded,
+                  size: 16,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -151,11 +156,16 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         label: '实盘',
         width: 96,
         numeric: true,
-        cellBuilder: (context, row) => TextField(
-          controller: row.checkQty,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        required: true,
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.checkQty,
+          isEmpty: () => row.checkQty.text.trim().isEmpty,
+          child: TextField(
+            controller: row.checkQty,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '0'),
+          ),
         ),
       ),
       EditableGridColumn<StockGridRow>(
@@ -174,11 +184,16 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         label: '数量',
         width: 96,
         numeric: true,
-        cellBuilder: (context, row) => TextField(
-          controller: row.qty,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        required: true,
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.qty,
+          isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+          child: TextField(
+            controller: row.qty,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '0'),
+          ),
         ),
       ),
   ];

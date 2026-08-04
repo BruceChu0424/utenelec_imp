@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
+import 'required_field_decoration.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
 class UtenDateField extends StatefulWidget {
@@ -63,6 +64,8 @@ class _UtenDateFieldState extends State<UtenDateField> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasValue = widget.value != null;
+    final requiredEmpty =
+        widget.enabled && widget.required && !hasValue && widget.errorText == null;
     return IgnorePointer(
       // IgnorePointer 让整框可点（含框内空白），同时禁用时不响应。
       ignoring: !widget.enabled,
@@ -70,10 +73,19 @@ class _UtenDateFieldState extends State<UtenDateField> {
         onTap: widget.enabled ? _pick : null,
         borderRadius: BorderRadius.circular(UtenSpacing.s8),
         child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: widget.required ? '${widget.label} *' : widget.label,
-            errorText: widget.errorText,
-            suffixIcon: const Icon(Icons.event_outlined, size: 18),
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              label: requiredLabel(
+                widget.label,
+                theme,
+                required: widget.required,
+                base: theme.inputDecorationTheme.labelStyle,
+              ),
+              errorText: widget.errorText,
+              suffixIcon: const Icon(Icons.event_outlined, size: 18),
+            ),
+            theme,
+            requiredEmpty: requiredEmpty,
           ),
           child: Text(
             hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',

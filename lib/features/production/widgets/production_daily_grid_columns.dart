@@ -88,27 +88,32 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'goods',
       label: '货品',
       width: 220,
-      cellBuilder: (context, row) => InkWell(
-        onTap: row.hasLinkedSource ? null : () => onPickGoods(row),
-        child: InputDecorator(
-          decoration: const InputDecoration(isDense: true),
-          child: Row(
-            children: [
-              Expanded(
-                child: ValueListenableBuilder<GoodsOption?>(
-                  valueListenable: row.goodsNotifier,
-                  builder: (context, g, _) => Text(
-                    g?.name ?? '点击选择',
-                    style: TextStyle(
-                      color: g == null
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.onSurface,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.goodsNotifier,
+        isEmpty: () => row.goods == null,
+        child: InkWell(
+          onTap: row.hasLinkedSource ? null : () => onPickGoods(row),
+          child: InputDecorator(
+            decoration: const InputDecoration(isDense: true),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<GoodsOption?>(
+                    valueListenable: row.goodsNotifier,
+                    builder: (context, g, _) => Text(
+                      g?.name ?? '点击选择',
+                      style: TextStyle(
+                        color: g == null
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Icon(Icons.search_rounded, size: 16),
-            ],
+                const Icon(Icons.search_rounded, size: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -132,11 +137,16 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       label: '合格完工量',
       width: 118,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.qty,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.qty,
+        isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+        child: TextField(
+          controller: row.qty,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
     EditableGridColumn<DailyGridRow>(

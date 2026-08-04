@@ -9,6 +9,10 @@ enum OperationsWorkbenchDepartment {
   final String label;
 }
 
+/// 采购任务台「全部」计数卡的 statusFilter 哨兵：点击该卡时清除状态筛选（显示全部）。
+/// 见 operations_workbench_page.dart 的 onMetricTap / _Overview 选中态处理。
+const String kOperationsWorkbenchAllStatus = '__ALL__';
+
 class OperationsWorkbenchSummary {
   const OperationsWorkbenchSummary({
     required this.totalTasks,
@@ -47,42 +51,58 @@ class OperationsWorkbenchSummary {
   List<OperationsWorkbenchMetric> metricsFor(
     OperationsWorkbenchDepartment department,
   ) {
-    final definitions = switch (department) {
-      OperationsWorkbenchDepartment.warehouse => const [
-        ('READY_TO_PICK', '待备料 / 待领取', 'warning'),
-        ('PARTIAL', '部分领取', 'info'),
-        ('DONE', '已领取', 'success'),
-      ],
-      OperationsWorkbenchDepartment.purchase => const [
-        ('WAITING_ORDER', '申请待分解', 'warning'),
-      ],
-      OperationsWorkbenchDepartment.subcontract => const [
-        ('WAITING_ORDER', '申请待分解', 'warning'),
-      ],
-    };
-    return [
-      for (final definition in definitions)
-        OperationsWorkbenchMetric(
-          key: definition.$1,
-          label: definition.$2,
-          value: statusCounts[definition.$1] ?? 0,
-          tone: definition.$3,
-          statusFilter: definition.$1,
-        ),
-      OperationsWorkbenchMetric(
-        key: 'overdueTasks',
-        label: '逾期 / 异常',
-        value: overdueTasks,
-        tone: overdueTasks > 0 ? 'danger' : 'neutral',
-        exceptionFilter: 'OVERDUE_ANY',
-      ),
-      OperationsWorkbenchMetric(
-        key: 'openQty',
-        label: '未完成数量',
-        value: openQty,
-        tone: 'warning',
-      ),
-    ];
+    switch (department) {
+      case OperationsWorkbenchDepartment.purchase:
+      case OperationsWorkbenchDepartment.subcontract:
+        // 采购/委外任务台设计对齐：全部 + 申请待分解(黄) + 财务已通过(蓝) + 已完成(绿)。
+        // 财务驳回(红)不单独成卡——在「全部」与状态下拉里可见。
+        final allCount = statusCounts.values.fold(0, (a, b) => a + b);
+        return [
+          OperationsWorkbenchMetric(
+            key: 'all',
+            label: '全部',
+            value: allCount,
+            statusFilter: kOperationsWorkbenchAllStatus,
+          ),
+          _statusMetric('WAITING_ORDER', '申请待分解', 'warning'),
+          _statusMetric('FINANCE_APPROVED', '财务已通过', 'info'),
+          _statusMetric('COMPLETED', '已完成', 'success'),
+        ];
+      case OperationsWorkbenchDepartment.warehouse:
+        // 仓库履约任务台（领料/备料域，与采购/委外不同）：保留状态卡 + 逾期/未完成数量。
+        return [
+          _statusMetric('READY_TO_PICK', '待备料 / 待领取', 'warning'),
+          _statusMetric('PARTIAL', '部分领取', 'info'),
+          _statusMetric('DONE', '已领取', 'success'),
+          OperationsWorkbenchMetric(
+            key: 'overdueTasks',
+            label: '逾期 / 异常',
+            value: overdueTasks,
+            tone: overdueTasks > 0 ? 'danger' : 'neutral',
+            exceptionFilter: 'OVERDUE_ANY',
+          ),
+          OperationsWorkbenchMetric(
+            key: 'openQty',
+            label: '未完成数量',
+            value: openQty,
+            tone: 'warning',
+          ),
+        ];
+    }
+  }
+
+  OperationsWorkbenchMetric _statusMetric(
+    String status,
+    String label,
+    String tone,
+  ) {
+    return OperationsWorkbenchMetric(
+      key: status,
+      label: label,
+      value: statusCounts[status] ?? 0,
+      tone: tone,
+      statusFilter: status,
+    );
   }
 }
 
@@ -277,9 +297,17 @@ class OperationsWorkbenchTask {
   String get taskNo => taskId;
   String get title => goodsName;
   String get sourceNo => planNo;
-  String get statusLabel =>
-      actionDocument?.purchaseStageLabel ??
-      operationsWorkbenchStatusLabel(taskStatus);
+  String get statusLabel {
+    // 订单级阶段（财务已通过/财务驳回/已完成）优先用任务状态标签，否则会被采购单据
+    // 标签「采购订货单财务已通过 / 在途」覆盖，无法区分已完成与驳回。
+    if (taskStatus == 'FINANCE_APPROVED' ||
+        taskStatus == 'FINANCE_REJECTED' ||
+        taskStatus == 'COMPLETED') {
+      return operationsWorkbenchStatusLabel(taskStatus);
+    }
+    return actionDocument?.purchaseStageLabel ??
+        operationsWorkbenchStatusLabel(taskStatus);
+  }
   String get exceptionLabel => exceptionCode == null
       ? '正常'
       : operationsWorkbenchExceptionLabel(exceptionCode!);
@@ -361,10 +389,16 @@ class OperationsWorkbenchData {
 
   List<OperationsWorkbenchMetric> get metrics => summary.metricsFor(department);
 
-  List<OperationsWorkbenchFilterOption> get statusOptions => _options(<String>[
-    ...summary.statusCounts.keys,
-    ...metrics.map((metric) => metric.statusFilter).whereType<String>(),
-  ], operationsWorkbenchStatusLabel);
+  List<OperationsWorkbenchFilterOption> get statusOptions => _options(
+    <String>[
+      ...summary.statusCounts.keys,
+      ...metrics
+          .map((metric) => metric.statusFilter)
+          .whereType<String>()
+          .where((status) => status != kOperationsWorkbenchAllStatus),
+    ],
+    operationsWorkbenchStatusLabel,
+  );
 
   List<OperationsWorkbenchFilterOption> get exceptionOptions =>
       _options(<String>[
@@ -428,6 +462,8 @@ String operationsWorkbenchStatusLabel(String code) =>
       'WAITING_SUPPLY' => '采购 / 委外执行中',
       'APPLICATION_PENDING_APPROVAL' => '计划申请尚未下达',
       'WAITING_ORDER' => '计划申请已下达 / 待分解',
+      'FINANCE_APPROVED' => '财务已通过',
+      'FINANCE_REJECTED' => '财务驳回',
       'ORDER_PENDING_APPROVAL' => '委外订单等待财务审核',
       'WAITING_RETURN' => '委外中 / 待回厂',
       'RECEIPT_PENDING_APPROVAL' => '回厂单待审核',

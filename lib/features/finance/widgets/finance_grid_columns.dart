@@ -117,11 +117,16 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
       label: '本次金额',
       width: 140,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.amount,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.amount,
+        isEmpty: () => (double.tryParse(row.amount.text.trim()) ?? 0) <= 0,
+        child: TextField(
+          controller: row.amount,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
   ];
@@ -193,11 +198,16 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       label: '金额',
       width: 120,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.amount,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.amount,
+        isEmpty: () => (double.tryParse(row.amount.text.trim()) ?? 0) <= 0,
+        child: TextField(
+          controller: row.amount,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
   ];
@@ -229,31 +239,36 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
       key: 'occurDate',
       label: '日期',
       width: 150,
-      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
-        valueListenable: row.occurDateNotifier,
-        builder: (context, v, _) => InkWell(
-          onTap: () async {
-            final picked = await showDatePicker(
-              context: context,
-              initialDate: v == null
-                  ? ChinaDateTime.today()
-                  : (DateTime.tryParse(v) ?? ChinaDateTime.today()),
-              firstDate: DateTime(2010),
-              lastDate: DateTime(2100),
-            );
-            if (picked != null) {
-              row.occurDate =
-                  '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
-            }
-          },
-          child: InputDecorator(
-            decoration: const InputDecoration(isDense: true),
-            child: Text(
-              v == null ? '未选择' : v.substring(0, 10),
-              style: TextStyle(
-                color: v == null
-                    ? Theme.of(context).colorScheme.onSurfaceVariant
-                    : Theme.of(context).colorScheme.onSurface,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.occurDateNotifier,
+        isEmpty: () => row.occurDate == null,
+        child: ValueListenableBuilder<String?>(
+          valueListenable: row.occurDateNotifier,
+          builder: (context, v, _) => InkWell(
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: v == null
+                    ? ChinaDateTime.today()
+                    : (DateTime.tryParse(v) ?? ChinaDateTime.today()),
+                firstDate: DateTime(2010),
+                lastDate: DateTime(2100),
+              );
+              if (picked != null) {
+                row.occurDate =
+                    '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+              }
+            },
+            child: InputDecorator(
+              decoration: const InputDecoration(isDense: true),
+              child: Text(
+                v == null ? '未选择' : v.substring(0, 10),
+                style: TextStyle(
+                  color: v == null
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : Theme.of(context).colorScheme.onSurface,
+                ),
               ),
             ),
           ),
@@ -265,11 +280,16 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
       label: '金额',
       width: 140,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.amount,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.amount,
+        isEmpty: () => (double.tryParse(row.amount.text.trim()) ?? 0) <= 0,
+        child: TextField(
+          controller: row.amount,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
   ];

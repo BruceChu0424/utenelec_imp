@@ -96,36 +96,46 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       key: 'productNo',
       label: '产品编号',
       width: 120,
-      cellBuilder: (context, row) => TextField(
-        controller: row.productNo,
-        decoration: const InputDecoration(isDense: true, hintText: '必填'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.productNo,
+        isEmpty: () => row.productNo.text.trim().isEmpty,
+        child: TextField(
+          controller: row.productNo,
+          decoration: const InputDecoration(isDense: true, hintText: '必填'),
+        ),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(
       key: 'goods',
       label: '货品',
       width: 220,
-      cellBuilder: (context, row) => InkWell(
-        onTap: () => onPickGoods(row),
-        child: InputDecorator(
-          decoration: const InputDecoration(isDense: true),
-          child: Row(
-            children: [
-              Expanded(
-                child: ValueListenableBuilder<GoodsOption?>(
-                  valueListenable: row.goodsNotifier,
-                  builder: (context, g, _) => Text(
-                    g?.name ?? '点击选择',
-                    style: TextStyle(
-                      color: g == null
-                          ? Theme.of(context).colorScheme.onSurfaceVariant
-                          : Theme.of(context).colorScheme.onSurface,
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.goodsNotifier,
+        isEmpty: () => row.goods == null,
+        child: InkWell(
+          onTap: () => onPickGoods(row),
+          child: InputDecorator(
+            decoration: const InputDecoration(isDense: true),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ValueListenableBuilder<GoodsOption?>(
+                    valueListenable: row.goodsNotifier,
+                    builder: (context, g, _) => Text(
+                      g?.name ?? '点击选择',
+                      style: TextStyle(
+                        color: g == null
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Icon(Icons.search_rounded, size: 16),
-            ],
+                const Icon(Icons.search_rounded, size: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -149,11 +159,16 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       label: '排产量',
       width: 96,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
-        controller: row.qty,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+      required: true,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.qty,
+        isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+        child: TextField(
+          controller: row.qty,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(isDense: true, hintText: '0'),
+        ),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(

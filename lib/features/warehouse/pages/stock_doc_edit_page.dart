@@ -299,6 +299,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     if (_warehouseId == null) {
       return context.appError('请选择仓库');
     }
+    if (widget.docType == StockDocType.transfer && _toWarehouseId == null) {
+      return context.appError('请选择调入仓');
+    }
     if (_isCheck && _loadingCheckBooks) {
       return context.appInfo('账面库存仍在读取，请稍候');
     }
@@ -475,6 +478,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                         unawaited(_refreshCheckBooks());
                                       }
                                     },
+                                    required: true,
                                   ),
                                   if (widget.docType == StockDocType.transfer)
                                     _dd(
@@ -482,6 +486,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                                       _toWarehouseId,
                                       names.warehouseEntries,
                                       (v) => setState(() => _toWarehouseId = v),
+                                      required: true,
                                     ),
                                   if (widget.docType == StockDocType.draw) ...[
                                     _dd(
@@ -604,10 +609,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
     String label,
     String? value,
     Map<String, String> entries,
-    ValueChanged<String?> onChanged,
-  ) {
+    ValueChanged<String?> onChanged, {
+    bool required = false,
+  }) {
     return UtenDropdownField(
       label: label,
+      required: required,
       value: value,
       items: [
         for (final e in entries.entries)

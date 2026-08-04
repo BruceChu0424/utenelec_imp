@@ -46,6 +46,7 @@ app.*.map.json
 
 # === Spring Boot 后端 (server/) ===
 server/target/
+server/logs/
 server/.env
 server/.env.*
 !server/.env.example

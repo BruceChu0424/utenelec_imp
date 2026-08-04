@@ -15,6 +15,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import 'required_field_decoration.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
 class UtenDropdownItem {
@@ -139,18 +140,32 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasValue = widget.value != null;
+    final requiredEmpty =
+        widget.enabled &&
+        widget.required &&
+        !hasValue &&
+        widget.errorText == null;
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
         onTap: _open,
         child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: widget.label == null
-                ? null
-                : (widget.required ? '${widget.label} *' : widget.label),
-            hintText: widget.hintText,
-            errorText: widget.errorText,
-            suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+          decoration: applyRequiredEmpty(
+            InputDecoration(
+              label: widget.label == null
+                  ? null
+                  : requiredLabel(
+                      widget.label!,
+                      theme,
+                      required: widget.required,
+                      base: theme.inputDecorationTheme.labelStyle,
+                    ),
+              hintText: widget.hintText,
+              errorText: widget.errorText,
+              suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+            ),
+            theme,
+            requiredEmpty: requiredEmpty,
           ),
           child: Text(
             hasValue ? _display : (widget.hintText ?? '请选择'),

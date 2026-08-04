@@ -99,8 +99,8 @@ class _FinanceArApOverviewPageState
           const ['ALL', 'ANY', 'AR_ONLY', 'AP_ONLY'].contains(dm)) {
         _displayMode = dm;
       }
-      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
-      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
+      // 日期范围不回灌：进页始终用默认日期范围（上月今日..今日），避免历史持久化
+      // 的过时日期范围把新数据滤空（销售报表已踩此坑，见 sales_report_page.dart）。
       _sortKey = p.sortKey;
       _sortAsc = p.sortAsc;
     });
@@ -109,8 +109,6 @@ class _FinanceArApOverviewPageState
   /// 当前筛选口径快照（不含关键字/分页）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
     docType: _categoryType,
-    from: _fmt(_from),
-    to: _fmt(_to),
     sortKey: _sortKey,
     sortAsc: _sortAsc,
     extra: {

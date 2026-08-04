@@ -92,11 +92,9 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     if (p.isEmpty) return;
     setState(() {
       _status = p.status;
-      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
-      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
-      _filters
-        ..clear()
-        ..addAll(p.filters);
+      // 日期范围与 facet 筛选不回灌：进页始终用默认日期范围（上月今日..今日）
+      // + 空 filters = 「时间范围内的全部」，避免历史持久化的过时日期范围或失效
+      // 筛选值把新数据滤成空白（销售报表已踩此坑，见 sales_report_page.dart）。
       _sortKey = p.sortKey;
       _sortAsc = p.sortAsc;
     });
@@ -105,9 +103,6 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   /// 当前筛选口径快照（不含关键字/分页）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
     status: _status,
-    from: _fmt(_from),
-    to: _fmt(_to),
-    filters: Map.of(_filters),
     sortKey: _sortKey,
     sortAsc: _sortAsc,
   );

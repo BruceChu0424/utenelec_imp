@@ -12,8 +12,11 @@
 // 默认日期范围 = 上月今日..今日（defaultReportFrom()，收紧默认避免一进拉十几年全量；firstDate 仍 2010 可手选更早）。
 // 列筛选（客户/仓库/是否审核/结帐方式…）走表头 autofilter（facets），左栏只放公共过滤。
 //
-// 筛选口径（单据类型/日期范围/facet/排序）按账号服务端持久化
-// （report.sales.detail|summary，ReportFilterPrefs）；关键字不持久化。
+// 仅持久化单据类型 + 列排序（report.sales.detail|summary，ReportFilterPrefs）。
+// 日期范围与 facet 筛选（客户/仓库…）**不持久化**：每次进页都用默认日期范围
+// （上月今日..今日）+ 无筛选 = 「时间范围内的全部」——避免历史持久化的过时日期
+// 范围或失效客户 UUID 把新数据滤成空白（曾发生：prefs 记了 5~7 月，8 月新单全被滤空）。
+// 关键字亦不持久化。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -88,6 +91,10 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   }
 
   /// 应用偏好快照（空快照=未存过，保留页面默认）。
+  ///
+  /// 仅回灌单据类型 + 列排序；**不回灌日期范围与 facet 筛选**——每次进页都用
+  /// 默认日期范围（上月今日..今日）+ 空 filters，保证默认展示「时间范围内的全部」，
+  /// 避免历史持久化的过时日期范围或失效客户 UUID 导致报表空白。
   void _applyPrefs(ReportFilterPrefs p) {
     if (p.isEmpty) return;
     setState(() {
@@ -97,22 +104,15 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
           orElse: () => _docType,
         );
       }
-      if (p.from != null) _from = DateTime.tryParse(p.from!) ?? _from;
-      if (p.to != null) _to = DateTime.tryParse(p.to!) ?? _to;
-      _filters
-        ..clear()
-        ..addAll(p.filters);
       _sortKey = p.sortKey;
       _sortAsc = p.sortAsc;
     });
   }
 
-  /// 当前筛选口径快照（不含关键字/分页）。
+  /// 当前筛选口径快照（仅单据类型 + 排序；不含日期/facet/关键字/分页）。
+  /// 日期范围与 facet 不持久化（见 [_applyPrefs] 说明），故不写入 from/to/filters。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
     docType: _docType.code,
-    from: _fmt(_from),
-    to: _fmt(_to),
-    filters: Map.of(_filters),
     sortKey: _sortKey,
     sortAsc: _sortAsc,
   );

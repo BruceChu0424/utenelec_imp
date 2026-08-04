@@ -3,6 +3,8 @@ package com.uten.imp.features.production.schedule;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchRequest;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchResult;
 import com.uten.imp.features.production.schedule.dto.ForwardBomGapRequest;
 import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
@@ -84,6 +86,13 @@ public class ProductionScheduleController {
     @PreAuthorize("hasAuthority('production_plan:forward_rd')")
     public Map<String, UUID> forwardRd(@Valid @RequestBody ForwardBomGapRequest req) {
         return Map.of("taskId", service.forwardToRd(req));
+    }
+
+    /** 一键批量转发 BOM 缺失（成品 + 自制组件）给工程研发部。返回 {created, reused, items:[{goodsId, taskId, isNew}]}。 */
+    @PostMapping("/forward-rd-batch")
+    @PreAuthorize("hasAuthority('production_plan:forward_rd')")
+    public ForwardBomGapBatchResult forwardRdBatch(@Valid @RequestBody ForwardBomGapBatchRequest req) {
+        return service.forwardBomGapsBatch(req);
     }
 
     /** D2 建议完工日期：body {items:[{goodsId,qty}], startDate?} → suggestedDate + 逐货品依据。 */

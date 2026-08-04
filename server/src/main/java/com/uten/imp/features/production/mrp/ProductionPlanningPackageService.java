@@ -77,6 +77,10 @@ public class ProductionPlanningPackageService {
                         : executionPlanning.propose(snapshot);
         Map<MaterialKey, BigDecimal> targetWarehouseAvailable =
                 warehouseAvailability(warehouseId, rows);
+        List<UUID> noBomGoodsIds = noBomGoodsIds(planId, snapshot.noBomPlanItemIds());
+        // 已转发工程研发部的货品（成品 + 一层自制组件）——用于前端展示「已通知·等待中」。
+        // 注意：转发态不进 fingerprint，否则研发一转发，计划员手里的预览就过期要重算。
+        List<UUID> forwardedGoodsIds = forwardedGoodsIds(rows, noBomGoodsIds);
         return new PlanningPreviewResult(
                 planId,
                 warehouseId,
@@ -86,7 +90,49 @@ public class ProductionPlanningPackageService {
                 isBalancedKitCoverage(rows, targetWarehouseAvailable),
                 true,
                 executionPlanning.toPreview(proposal),
-                snapshot.noBomPlanItemIds());
+                snapshot.noBomPlanItemIds(),
+                noBomGoodsIds,
+                forwardedGoodsIds);
+    }
+
+    /** 成品 noBom 行的货品 id（供前端判成品缺 BOM 的转发态）。noBomPlanItemIds 是计划行 id，需 join 取 goods_id。 */
+    @SuppressWarnings("unchecked")
+    private List<UUID> noBomGoodsIds(UUID planId, List<UUID> noBomPlanItemIds) {
+        if (noBomPlanItemIds == null || noBomPlanItemIds.isEmpty()) {
+            return List.of();
+        }
+        return em.createNativeQuery("""
+                SELECT goods_id FROM production_plan_items
+                WHERE id IN (:ids) AND is_deleted = false
+                """)
+                .setParameter("ids", noBomPlanItemIds)
+                .getResultStream()
+                .map(o -> (UUID) o)
+                .distinct()
+                .toList();
+    }
+
+    /** 在当前计划涉及的货品（一层自制组件 + 成品 noBom）中，哪些已有未完成 BOM 类研发任务。 */
+    @SuppressWarnings("unchecked")
+    private List<UUID> forwardedGoodsIds(List<MrpRow> rows, List<UUID> noBomGoodsIds) {
+        Set<UUID> goods = new java.util.LinkedHashSet<>();
+        rows.forEach(row -> goods.add(row.goodsId()));
+        if (noBomGoodsIds != null) {
+            goods.addAll(noBomGoodsIds);
+        }
+        goods.remove(null);
+        if (goods.isEmpty()) {
+            return List.of();
+        }
+        return em.createNativeQuery("""
+                SELECT DISTINCT goods_id FROM rd_tasks
+                WHERE category = 'BOM' AND status IN ('OPEN','IN_PROGRESS') AND is_deleted = false
+                  AND goods_id IN (:ids)
+                """)
+                .setParameter("ids", goods)
+                .getResultStream()
+                .map(o -> (UUID) o)
+                .toList();
     }
 
     @Transactional

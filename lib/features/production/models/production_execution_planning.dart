@@ -38,6 +38,8 @@ class ProductionPlanningPreview {
     this.targetWarehouseMaterials = const [],
     this.executionSegments = const [],
     this.noBomPlanItemIds = const [],
+    this.noBomGoodsIds = const [],
+    this.forwardedGoodsIds = const [],
   });
 
   final String planId;
@@ -49,6 +51,10 @@ class ProductionPlanningPreview {
   final bool executionSegmentationReady;
   final List<ProductionExecutionSegmentPreview> executionSegments;
   final List<String> noBomPlanItemIds;
+  /// 成品缺 BOM 的货品 id（供前端判成品的转发态；noBomPlanItemIds 是计划行 id）。
+  final List<String> noBomGoodsIds;
+  /// 已转发工程研发部、仍在等待维护的货品 id（成品 + 自制组件）；不进 fingerprint。
+  final List<String> forwardedGoodsIds;
 
   factory ProductionPlanningPreview.fromJson(Map<String, dynamic> json) {
     return ProductionPlanningPreview(
@@ -71,6 +77,14 @@ class ProductionPlanningPreview {
       ),
       noBomPlanItemIds: _decodeList(
         json['noBomPlanItemIds'],
+        (e) => e as String,
+      ),
+      noBomGoodsIds: _decodeList(
+        json['noBomGoodsIds'],
+        (e) => e as String,
+      ),
+      forwardedGoodsIds: _decodeList(
+        json['forwardedGoodsIds'],
         (e) => e as String,
       ),
     );

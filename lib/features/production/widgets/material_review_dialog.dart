@@ -8,11 +8,14 @@
 //
 // 自制件派生子计划、委外生成委外申请由后端 confirm 事务自动处理（前端只需对采购勾选）。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../models/production_execution_planning.dart';
+import '../repositories/production_repository.dart';
 
 enum MaterialReviewDecisionType { useSuggestedPlan, openDetailedPlanning }
 
@@ -61,7 +64,7 @@ Future<MaterialReviewDecision?> showMaterialReviewDialog(
   );
 }
 
-class _MaterialReviewDialog extends StatefulWidget {
+class _MaterialReviewDialog extends ConsumerStatefulWidget {
   const _MaterialReviewDialog({
     required this.preview,
     required this.warehouseName,
@@ -73,13 +76,16 @@ class _MaterialReviewDialog extends StatefulWidget {
   final String planBillNo;
 
   @override
-  State<_MaterialReviewDialog> createState() => _MaterialReviewDialogState();
+  ConsumerState<_MaterialReviewDialog> createState() => _MaterialReviewDialogState();
 }
 
-class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
+class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
   static const double _epsilon = kProductionPlanningQuantityEpsilon;
 
   late final _Buckets _buckets;
+  /// 本次会话内已一键转发登记的货品（避免重开前重复显示"待转发"）。
+  final Set<String> _locallyForwarded = <String>{};
+  bool _forwarding = false;
 
   @override
   void initState() {
@@ -111,6 +117,48 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
       }
     }
     return _Buckets(sufficient, buy, make, subcontract, makeNoBom);
+  }
+
+  /// 当前已转发（仍在等待研发维护）的货品集合 = 预览返回的 + 本次会话本地登记的。
+  Set<String> get _forwardedGoods =>
+      <String>{...widget.preview.forwardedGoodsIds, ..._locallyForwarded};
+
+  /// 当前仍需转发给研发的 BOM 缺失货品（自制组件 makeNoBom + 成品 noBom，去掉已转发的）。
+  List<String> get _pendingForwardGoods {
+    final all = <String>{
+      for (final m in _buckets.makeNoBom) m.goodsId,
+      ...widget.preview.noBomGoodsIds,
+    };
+    final forwarded = _forwardedGoods;
+    return all.where((g) => !forwarded.contains(g)).toList()..sort();
+  }
+
+  /// 一键转发全部缺失 BOM 给工程研发部（自制组件 + 成品）。组件无 order_item，来源填计划单。
+  Future<void> _forwardBomGaps() async {
+    final goods = _pendingForwardGoods;
+    if (goods.isEmpty || _forwarding) return;
+    setState(() => _forwarding = true);
+    try {
+      final result = await ref.read(productionPlanRepositoryProvider).forwardToRdBatch(
+            [for (final g in goods) (goodsId: g, orderItemId: null)],
+            sourcePlanId: widget.preview.planId,
+            sourcePlanNo: widget.planBillNo,
+          );
+      final created = (result['created'] as num?)?.toInt() ?? 0;
+      final reused = (result['reused'] as num?)?.toInt() ?? 0;
+      setState(() => _locallyForwarded.addAll(goods));
+      if (mounted) {
+        context.appSuccess(
+          created > 0
+              ? '已转发 $created 项给工程研发部${reused > 0 ? '（另 $reused 项已在等待）' : ''}，等待维护'
+              : '已登记等待工程研发部维护',
+        );
+      }
+    } catch (_) {
+      if (mounted) context.appWarning('转发失败，请重试');
+    } finally {
+      if (mounted) setState(() => _forwarding = false);
+    }
   }
 
   void _confirm() {
@@ -279,7 +327,10 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                   count: _buckets.makeNoBom.length,
                   materials: _buckets.makeNoBom,
                   hint: (m) => '需 ${_q(m.gross)}',
-                  note: '这些自制件未维护组成 BOM，无法派生子计划，请先到货品资料维护。',
+                  note: _buckets.makeNoBom
+                          .every((m) => _forwardedGoods.contains(m.goodsId))
+                      ? '已通知工程研发部维护，等待完成后即可派生子计划。'
+                      : '这些自制件未维护组成 BOM，无法派生子计划。可一键转发工程研发部维护。',
                 ),
               if (noBomCount > 0)
                 Padding(
@@ -288,9 +339,11 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
                     theme,
                     color: theme.colorScheme.error,
                     icon: Icons.report_problem_outlined,
-                    text:
-                        '另有 $noBomCount 个成品未维护 BOM。为保证计划完整，'
-                        '补齐全部 BOM 前不能保存预排草案或正式下达。',
+                    text: widget.preview.noBomGoodsIds
+                            .every((g) => _forwardedGoods.contains(g))
+                        ? '另有 $noBomCount 个成品未维护 BOM，已通知工程研发部维护，等待完成后即可排产。'
+                        : '另有 $noBomCount 个成品未维护 BOM。可一键转发工程研发部维护，'
+                            '维护完成前不能保存预排草案或正式下达。',
                   ),
                 ),
             ],
@@ -303,6 +356,18 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'),
         ),
+        if (_pendingForwardGoods.isNotEmpty)
+          OutlinedButton.icon(
+            onPressed: _forwarding ? null : _forwardBomGaps,
+            icon: _forwarding
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.forward_to_inbox_outlined, size: 18),
+            label: const Text('一键转发研发'),
+          ),
         OutlinedButton.icon(
           onPressed: () => _openDetailedPlanning(),
           icon: const Icon(Icons.table_view_outlined, size: 18),
@@ -311,7 +376,9 @@ class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
         FilledButton.icon(
           onPressed: hasBlockingBomGaps ? null : _confirm,
           icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-          label: Text(hasBlockingBomGaps ? '请先补齐 BOM' : '采用建议方案'),
+          label: Text(hasBlockingBomGaps
+              ? (_pendingForwardGoods.isEmpty ? '等待研发维护 BOM' : '请先补齐 BOM')
+              : '采用建议方案'),
         ),
       ],
     );

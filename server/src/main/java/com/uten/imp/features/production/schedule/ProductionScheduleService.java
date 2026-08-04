@@ -13,6 +13,8 @@ import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
 import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.features.production.plan.PlanOrderItemLink;
 import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchRequest;
+import com.uten.imp.features.production.schedule.dto.ForwardBomGapBatchResult;
 import com.uten.imp.features.production.schedule.dto.ForwardBomGapRequest;
 import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.schedule.dto.PendingPlanRow;
@@ -107,6 +109,7 @@ public class ProductionScheduleService {
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
         if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退
 
+        UUID currentEmployeeId = currentUser.employeeId().orElse(null);
         var dataQ = em.createNativeQuery("""
                 SELECT i.id, o.id, o.bill_no, o.client_id, c.name,
                        i.goods_id, g.code, g.name, g.spec,
@@ -121,10 +124,17 @@ public class ProductionScheduleService {
                        EXISTS (SELECT 1 FROM rd_tasks rt
                                WHERE rt.is_deleted = false AND rt.category = 'BOM'
                                  AND rt.status IN ('OPEN','IN_PROGRESS')
-                                 AND rt.order_item_id = i.id) AS rd_handoff
+                                 AND rt.goods_id = i.goods_id) AS rd_handoff,
+                       EXISTS (SELECT 1 FROM rd_task_forwarders f
+                               JOIN rd_tasks rt2 ON rt2.id = f.rd_task_id
+                               WHERE rt2.is_deleted = false AND rt2.category = 'BOM'
+                                 AND rt2.status IN ('OPEN','IN_PROGRESS')
+                                 AND rt2.goods_id = i.goods_id
+                                 AND f.reporter_employee_id = :empId) AS my_forward
                 """.formatted(SCHEDULING_NEED_SQL) + filters
                 + " ORDER BY deliver ASC NULLS LAST, o.bill_date LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo);
+        dataQ.setParameter("empId", currentEmployeeId);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
                 .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
@@ -142,7 +152,8 @@ public class ProductionScheduleService {
                     deliver, r[18] == null ? null : ((Number) r[18]).shortValue(),
                     Boolean.TRUE.equals(r[19]),
                     deliver != null && !deliver.isAfter(warn),
-                    Boolean.TRUE.equals(r[20])));
+                    Boolean.TRUE.equals(r[20]),
+                    Boolean.TRUE.equals(r[21])));
         }
         return new com.uten.imp.common.web.PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -167,6 +178,69 @@ public class ProductionScheduleService {
         return rdTaskService.forwardBomGap(
                 (UUID) r[0], (UUID) r[1], "SALES_ORDER_ITEM",
                 (UUID) r[2], (String) r[3], req.note(), employeeId);
+    }
+
+    /**
+     * 一键批量转发 BOM 缺失（成品 + 自制组件）给工程研发部。
+     * 每货品按 goods 去重，研发每货品只收一条通知；当前计划员登记为每个货品的等待者。
+     * 成品转发（line 有 orderItemId）来源取订单行；组件转发（无 orderItemId）来源填计划单。
+     */
+    @Transactional
+    public ForwardBomGapBatchResult forwardBomGapsBatch(ForwardBomGapBatchRequest req) {
+        tx.bind();
+        UUID employeeId = currentUser.requireEmployeeId();
+        int created = 0;
+        int reused = 0;
+        List<ForwardBomGapBatchResult.Item> items = new ArrayList<>();
+        for (ForwardBomGapBatchRequest.Line line : req.items()) {
+            UUID goodsId = line.goodsId();
+            UUID orderItemId = line.orderItemId();
+            String sourceDocType;
+            UUID sourceDocId;
+            String sourceDocNo;
+            if (orderItemId != null) {
+                Object[] row;
+                try {
+                    row = (Object[]) em.createNativeQuery("""
+                            SELECT i.order_id, o.bill_no
+                            FROM sales_order_items i
+                            JOIN sales_orders o ON o.id = i.order_id
+                            WHERE i.id = :id AND i.is_deleted = false
+                              AND o.is_deleted = false AND o.status = 1
+                            """).setParameter("id", orderItemId).getSingleResult();
+                } catch (jakarta.persistence.NoResultException e) {
+                    throw new ApiException(ErrorCode.NOT_FOUND, "订单行不存在或订单未审核: " + orderItemId);
+                }
+                sourceDocType = "SALES_ORDER_ITEM";
+                sourceDocId = (UUID) row[0]; // 来源=销售订单（与单条 forwardToRd 一致）
+                sourceDocNo = (String) row[1];
+            } else {
+                sourceDocType = "PRODUCTION_PLAN";
+                sourceDocId = req.sourcePlanId();
+                sourceDocNo = req.sourcePlanNo();
+            }
+            boolean existedBefore = openBomTaskExists(goodsId);
+            UUID taskId = rdTaskService.forwardBomGap(
+                    orderItemId, goodsId, sourceDocType, sourceDocId, sourceDocNo, req.note(), employeeId);
+            boolean isNew = !existedBefore;
+            if (isNew) {
+                created++;
+            } else {
+                reused++;
+            }
+            items.add(new ForwardBomGapBatchResult.Item(goodsId, taskId, isNew));
+        }
+        return new ForwardBomGapBatchResult(created, reused, items);
+    }
+
+    /** 该货品是否已有未完成 BOM 类研发任务（用于批量转发判定 isNew）。 */
+    private boolean openBomTaskExists(UUID goodsId) {
+        Number n = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM rd_tasks
+                WHERE is_deleted = false AND category = 'BOM'
+                  AND status IN ('OPEN','IN_PROGRESS') AND goods_id = :g
+                """).setParameter("g", goodsId).getSingleResult();
+        return n != null && n.longValue() > 0;
     }
 
     /** 绑定 pending 过滤参数（未出现的条件不绑）。 */

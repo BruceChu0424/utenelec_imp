@@ -185,57 +185,96 @@ public class RdTaskService {
     }
 
     /**
-     * 生产「待排产 BOM 缺失」转发：建一条 BOM 类任务 + 发 {@link #EVENT_FORWARDED}。
-     * 幂等：同一 order_item + goods 已有未完成 BOM 任务则复用，不重复建。由 ProductionScheduleService 调用。
+     * 生产「BOM 缺失」转发（成品或自制组件）：按 goods_id 去重，每货品只建一个未完成 BOM 任务、
+     * 只通知研发一次；所有转发人都登记进 rd_task_forwarders，研发维护好后逐个通知。
+     * 由 ProductionScheduleService（单条 forwardToRd / 批量 forwardBomGapsBatch）调用。
+     *
+     * @param orderItemId 来源销售订单行（成品转发有值；组件转发可空）
      */
     @Transactional
     public UUID forwardBomGap(UUID orderItemId, UUID goodsId, String sourceDocType,
                               UUID sourceDocId, String sourceDocNo, String note,
                               UUID reporterEmployeeId) {
+        // 按 goods_id 探测未完成 BOM 任务（每组件只一个；order_item_id 不再参与去重）。
         UUID existing = jdbc.query("""
                 SELECT id FROM rd_tasks
                 WHERE is_deleted = false AND category = 'BOM' AND status IN ('OPEN','IN_PROGRESS')
-                  AND order_item_id = ? AND goods_id = ?
+                  AND goods_id = ?
                 ORDER BY created_at DESC LIMIT 1
-                """, (rs, rn) -> rs.getObject("id", UUID.class), orderItemId, goodsId).stream().findFirst().orElse(null);
-        if (existing != null) return existing;
+                """, (rs, rn) -> rs.getObject("id", UUID.class), goodsId).stream().findFirst().orElse(null);
 
-        UUID id = UUID.randomUUID();
-        String taskNo = docNumberService.nextNumber(DocNumberPrefix.RD_TASK);
+        UUID taskId;
+        boolean isNew;
         UUID actor = currentUser.requireId();
-        try {
-            jdbc.update("""
-                    INSERT INTO rd_tasks (id, task_no, title, description, category, status, priority,
-                        goods_id, order_item_id, source_doc_type, source_doc_id, source_doc_no,
-                        reporter_employee_id, row_version, created_by, updated_by)
-                    VALUES (?, ?, ?, ?, 'BOM', 'OPEN', 'NORMAL', ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                    """,
-                    id, taskNo, "维护货品 BOM（生产转发）", note, goodsId, orderItemId,
-                    sourceDocType, sourceDocId, sourceDocNo, reporterEmployeeId, actor, actor);
-        } catch (DataIntegrityViolationException concurrent) {
-            // 并发转发：另一事务已凭 uq_rd_tasks_open_bom 建任务，复用之（不再发通知，胜出方已发）。
-            return existingOpenBomTaskId(orderItemId, goodsId);
+        if (existing != null) {
+            taskId = existing;
+            isNew = false;
+        } else {
+            taskId = UUID.randomUUID();
+            String taskNo = docNumberService.nextNumber(DocNumberPrefix.RD_TASK);
+            try {
+                jdbc.update("""
+                        INSERT INTO rd_tasks (id, task_no, title, description, category, status, priority,
+                            goods_id, order_item_id, source_doc_type, source_doc_id, source_doc_no,
+                            reporter_employee_id, row_version, created_by, updated_by)
+                        VALUES (?, ?, ?, ?, 'BOM', 'OPEN', 'NORMAL', ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                        """,
+                        taskId, taskNo, "维护货品 BOM（生产转发）", note, goodsId, orderItemId,
+                        sourceDocType, sourceDocId, sourceDocNo, reporterEmployeeId, actor, actor);
+                isNew = true;
+            } catch (DataIntegrityViolationException concurrent) {
+                // 并发：另一事务已凭 uq_rd_tasks_open_bom(goods_id) 建任务，复用之（胜出方已发通知）。
+                taskId = existingOpenBomTaskId(goodsId);
+                isNew = false;
+            }
         }
-        events.publish(EVENT_FORWARDED, "RD_TASK", id, Map.of(
-                "goodsId", goodsId.toString(),
-                "reporterEmployeeId", reporterEmployeeId.toString()));
-        return id;
+
+        // 始终把当前转发人登记进等待名单（任务新建/复用都登记；同一人同一任务不重复）。
+        jdbc.update("""
+                INSERT INTO rd_task_forwarders (rd_task_id, reporter_employee_id, order_item_id,
+                    source_doc_type, source_doc_id, source_doc_no, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (rd_task_id, reporter_employee_id) DO NOTHING
+                """,
+                taskId, reporterEmployeeId, orderItemId, sourceDocType, sourceDocId, sourceDocNo, actor);
+
+        // 仅任务首次创建时通知研发（每个组件只弹一次）。
+        if (isNew) {
+            events.publish(EVENT_FORWARDED, "RD_TASK", taskId, Map.of(
+                    "goodsId", goodsId.toString(),
+                    "reporterEmployeeId", reporterEmployeeId.toString()));
+        }
+        return taskId;
     }
 
-    private UUID existingOpenBomTaskId(UUID orderItemId, UUID goodsId) {
+    private UUID existingOpenBomTaskId(UUID goodsId) {
         return jdbc.query("""
                 SELECT id FROM rd_tasks
                 WHERE is_deleted = false AND category = 'BOM' AND status IN ('OPEN','IN_PROGRESS')
-                  AND order_item_id = ? AND goods_id = ?
+                  AND goods_id = ?
                 ORDER BY created_at DESC LIMIT 1
-                """, (rs, rn) -> rs.getObject("id", UUID.class), orderItemId, goodsId)
+                """, (rs, rn) -> rs.getObject("id", UUID.class), goodsId)
                 .stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "并发转发冲突，请重试"));
     }
 
-    /** 取某货品未完成 BOM 任务的制单人（员工档案 id），供通知用。 */
+    /**
+     * 取某货品所有「正在等待研发维护 BOM」的计划员（员工档案 id），供研发维护完成后逐个通知。
+     * 来源：rd_task_forwarders 等待名单（JOIN 未完成任务过滤）；名单为空时兜底取任务自身 reporter。
+     */
     @Transactional(readOnly = true)
     public List<UUID> openBomTaskReporters(UUID goodsId) {
+        List<UUID> forwarders = jdbc.queryForList("""
+                SELECT DISTINCT f.reporter_employee_id
+                FROM rd_task_forwarders f
+                JOIN rd_tasks t ON t.id = f.rd_task_id
+                WHERE t.is_deleted = false AND t.category = 'BOM'
+                  AND t.status IN ('OPEN','IN_PROGRESS') AND t.goods_id = ?
+                """, UUID.class, goodsId);
+        if (!forwarders.isEmpty()) {
+            return forwarders;
+        }
+        // 兜底：任务存在但无 forwarders 行（forwarders 表上线前的旧任务）。
         return jdbc.queryForList("""
                 SELECT DISTINCT reporter_employee_id FROM rd_tasks
                 WHERE is_deleted = false AND category = 'BOM'

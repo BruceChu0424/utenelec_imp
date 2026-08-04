@@ -106,6 +106,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onPageChange,
     this.toolbarActions,
     this.embedded = false,
+    this.showFullscreenToggle,
     this.rowColor,
     this.leadingGroups,
   });
@@ -135,6 +136,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 嵌入模式：用于详情页 ListView 等无界高度场景（单据明细只读表）。
   /// 不渲染翻页条、不用 Expanded 撑满，表体按内容收缩。
   final bool embedded;
+
+  /// 是否显示工具条「全屏」按钮。null 时按 [embedded] 推断：嵌入场景（滑窗/picker/弹窗内的
+  /// 明细表）默认隐藏全屏按钮，避免整屏路由在受限容器里铺满屏幕（详细排产滑窗 bug 修复）；
+  /// 非嵌入主页面默认显示。显式传 true 可在嵌入场景放开。
+  final bool? showFullscreenToggle;
 
   /// 行底色（按行数据定，如货品按状态：使用=浅蓝/禁用=浅红）；返回 null = 默认透明。
   /// 单击选中时组件自动把该色加深加亮（提高不透明度），无底色行维持原 primary 高亮。
@@ -464,6 +470,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
 
   Widget _buildTable(BuildContext context) {
     final theme = Theme.of(context);
+    // 嵌入场景（滑窗/picker/弹窗内明细表）默认不显示全屏按钮：整屏路由在受限容器里会铺满
+    // 屏幕（详细排产滑窗 bug）。显式 showFullscreenToggle 可覆盖。
+    final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
     if (widget.isLoading && widget.items.isEmpty) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
@@ -527,16 +536,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                 onToggle: _toggleColumn,
                 onToggleAll: _toggleAllColumns,
               ),
-              const SizedBox(width: UtenSpacing.s8),
-              // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），再点退出。
-              UtenButton(
-                size: UtenButtonSize.large,
-                icon: _fullscreen
-                    ? Icons.fullscreen_exit_rounded
-                    : Icons.fullscreen_rounded,
-                onPressed: _toggleFullscreen,
-                child: Text(_fullscreen ? '退出全屏' : '全屏'),
-              ),
+              if (showFullscreen) ...[
+                const SizedBox(width: UtenSpacing.s8),
+                // 全屏切换：表格放大到整屏显示（行列多时能看更多内容），再点退出。
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  icon: _fullscreen
+                      ? Icons.fullscreen_exit_rounded
+                      : Icons.fullscreen_rounded,
+                  onPressed: _toggleFullscreen,
+                  child: Text(_fullscreen ? '退出全屏' : '全屏'),
+                ),
+              ],
               if (widget.toolbarActions != null)
                 for (final a in widget.toolbarActions!) ...[
                   const SizedBox(width: UtenSpacing.s8),

@@ -473,6 +473,32 @@ class ProductionPlanRepository {
     return json['taskId'] as String;
   }
 
+  /// 一键批量转发 BOM 缺失（成品 + 自制组件）给工程研发部。
+  /// 每货品按 goods 去重（研发每件只收一条）；当前计划员登记为每个货品的等待者。
+  /// 返回 {created, reused, items:[{goodsId, taskId, isNew}]}。
+  Future<Map<String, dynamic>> forwardToRdBatch(
+    List<({String goodsId, String? orderItemId})> items, {
+    String? note,
+    String? sourcePlanId,
+    String? sourcePlanNo,
+  }) async {
+    if (items.isEmpty) {
+      return const {'created': 0, 'reused': 0, 'items': <Map<String, dynamic>>[]};
+    }
+    return Map<String, dynamic>.from(await api.post(
+      '/production/schedule/forward-rd-batch',
+      body: {
+        'items': [
+          for (final it in items)
+            {'goodsId': it.goodsId, if (it.orderItemId != null) 'orderItemId': it.orderItemId},
+        ],
+        if (note != null && note.isNotEmpty) 'note': note,
+        'sourcePlanId': ?sourcePlanId,
+        'sourcePlanNo': ?sourcePlanNo,
+      },
+    )); // ENDPOINT
+  }
+
   /// D2 建议完工日期（历史日均完工×BOM 层级缓冲）。
   Future<Map<String, dynamic>> suggestFinish(Map<String, dynamic> body) async {
     final json = await api.post(
@@ -505,6 +531,7 @@ class SchedulePendingRow {
     this.bomReady = true,
     this.urgent = false,
     this.rdForwarded = false,
+    this.myForward = false,
   });
   final String orderItemId;
   final String orderId;
@@ -524,8 +551,10 @@ class SchedulePendingRow {
   final int? chainStatus;
   final bool bomReady;
   final bool urgent;
-  /// 已转发工程研发部维护 BOM 且仍在等待（存在未完成 BOM 类 rd_task）。
+  /// 该货品已有人转发研发维护 BOM 且仍在等待（goods 级）。
   final bool rdForwarded;
+  /// 当前登录计划员已登记为该货品的等待者（在 rd_task_forwarders 中）。
+  final bool myForward;
 
   factory SchedulePendingRow.fromJson(Map<String, dynamic> j) =>
       SchedulePendingRow(
@@ -548,6 +577,7 @@ class SchedulePendingRow {
         bomReady: j['bomReady'] != false,
         urgent: j['urgent'] == true,
         rdForwarded: j['rdForwarded'] == true,
+        myForward: j['myForward'] == true,
       );
 }
 

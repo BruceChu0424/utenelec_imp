@@ -428,7 +428,9 @@ class _ExecutionPlanningSheetState
     if (!mounted) return;
     setState(() => _allowPop = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) Navigator.of(context).pop(result);
+      // 滑窗经 showGeneralDialog 推在 root navigator；关闭须对齐 rootNavigator，
+      // 否则嵌套 navigator 下会误 pop 内层路由或让全屏路由孤立留栈（详细排产关闭后变全屏 bug）。
+      if (mounted) Navigator.of(context, rootNavigator: true).pop(result);
     });
   }
 

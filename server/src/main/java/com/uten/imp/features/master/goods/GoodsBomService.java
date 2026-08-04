@@ -343,11 +343,13 @@ public class GoodsBomService {
         }
         parent.setSourceE(sum.setScale(2, RoundingMode.HALF_UP));
         goodsRepo.save(parent);
-        // BOM 变更 → 通知旁路：触发研发 BOM 任务自动完成 + 通知生产转发人
+        // BOM 变更 → 通知旁路：触发研发 BOM 任务自动完成 + 通知所有已登记等待的生产转发人
         // （ChainNoticeService.notifyBomUpdated 经 outbox 原子送达）。create/update/delete 三处共用此钩子。
-        events.publishOnce(
-                "GOODS_BOM_UPDATED", "GOODS_BOM", parent.getId(), Map.of(),
-                "GOODS_BOM_UPDATED:" + parent.getId());
+        // 用 publish（每次维护独立事件）而非 publishOnce：publishOnce 的终生去重键会让同一货品
+        // 第二次维护 BOM 时事件被静默吞掉，研发维护后不再通知计划部、rd_task 永不自动完成。
+        // 重复通知由 notifyBomUpdated 自身防御（resolveOpenBomTasksForGoods 返回 0 即早退）。
+        events.publish(
+                "GOODS_BOM_UPDATED", "GOODS_BOM", parent.getId(), Map.of());
     }
 
     private Goods requireGoods(UUID id) {

@@ -173,17 +173,19 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   /// 进行中的转发（按 orderItemId 去重，避免连点重复 POST）。
   final Set<String> _forwarding = {};
+  bool _batchForwarding = false;
 
-  /// BOM 缺失 → 转发工程研发部（建研发任务 + 通知研发）；成功后刷新徽标与本页。
+  /// BOM 缺失 → 转发/登记工程研发部（建任务或复用并登记当前计划员为等待者）；成功后刷新。
+  /// `!rdForwarded`：首次转发建任务；`rdForwarded && !myForward`：复用任务、登记我等待。
   Future<void> _forwardToRd(SchedulePendingRow r) async {
-    if (r.rdForwarded || _forwarding.contains(r.orderItemId)) return;
+    if (r.myForward || _forwarding.contains(r.orderItemId)) return;
     setState(() => _forwarding.add(r.orderItemId));
     try {
       final ok = await context.guardAction(
         () => ref
             .read(productionPlanRepositoryProvider)
             .forwardToRd(r.orderItemId),
-        success: '已转发工程研发部，待其维护 BOM',
+        success: r.rdForwarded ? '已登记等待工程研发部维护' : '已转发工程研发部，待其维护 BOM',
         errorFallback: '转发失败，请稍后重试',
       );
       if (!mounted || ok == null) return;
@@ -192,6 +194,36 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       await _load();
     } finally {
       if (mounted) setState(() => _forwarding.remove(r.orderItemId));
+    }
+  }
+
+  /// 一键批量转发当前页所有 BOM 缺失且我未登记的行（成品，按货品去重，研发每件只收一条）。
+  Future<void> _forwardAllBomGaps(List<SchedulePendingRow> rows) async {
+    if (_batchForwarding) return;
+    setState(() => _batchForwarding = true);
+    try {
+      final items = <({String goodsId, String? orderItemId})>[
+        for (final r in rows)
+          if (r.goodsId != null) (goodsId: r.goodsId!, orderItemId: r.orderItemId),
+      ];
+      final result = await ref
+          .read(productionPlanRepositoryProvider)
+          .forwardToRdBatch(items);
+      final created = (result['created'] as num?)?.toInt() ?? 0;
+      final reused = (result['reused'] as num?)?.toInt() ?? 0;
+      if (!mounted) return;
+      context.appSuccess(
+        '已登记 ${items.length} 行等待研发维护'
+        '${created > 0 ? '（新建 $created）' : ''}'
+        '${reused > 0 ? '（复用 $reused）' : ''}',
+      );
+      ref.read(productionPendingCountProvider.notifier).refresh();
+      ref.read(rdTaskCountProvider.notifier).refresh();
+      await _load();
+    } catch (_) {
+      if (mounted) context.appWarning('批量转发失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _batchForwarding = false);
     }
   }
 
@@ -571,19 +603,56 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         ),
       );
     }
-    return Stack(
+    final forwardable = _canForward
+        ? rows
+            .where((r) => !r.bomReady && !r.myForward && r.goodsId != null)
+            .toList()
+        : const <SchedulePendingRow>[];
+    return Column(
       children: [
-        ListView.separated(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          itemCount: rows.length,
-          separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s4),
-          itemBuilder: (_, i) => _pendingRow(theme, rows[i]),
-        ),
-        if (_loading)
-          const Align(
-            alignment: Alignment.topCenter,
-            child: LinearProgressIndicator(minHeight: 2),
+        if (forwardable.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Row(
+              children: [
+                Icon(Icons.forward_to_inbox_outlined,
+                    size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '当前页 ${forwardable.length} 行 BOM 缺失，一键转发工程研发部维护',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  size: UtenButtonSize.small,
+                  onPressed: _batchForwarding
+                      ? null
+                      : () => _forwardAllBomGaps(forwardable),
+                  child: Text(_batchForwarding ? '转发中…' : '一键转发研发'),
+                ),
+              ],
+            ),
           ),
+        Expanded(
+          child: Stack(
+            children: [
+              ListView.separated(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                itemCount: rows.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(height: UtenSpacing.s4),
+                itemBuilder: (_, i) => _pendingRow(theme, rows[i]),
+              ),
+              if (_loading)
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -650,9 +719,11 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              r.rdForwarded
+                              r.myForward
                                   ? 'BOM 缺失 · 已转发工程研发部，等待维护'
-                                  : 'BOM 缺失 · 请先维护组装物料资料',
+                                  : r.rdForwarded
+                                      ? 'BOM 缺失 · 他人已转发，等待维护'
+                                      : 'BOM 缺失 · 请先维护组装物料资料',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -660,7 +731,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                               ),
                             ),
                           ),
-                          if (!r.rdForwarded && _canForward)
+                          if (!r.myForward && _canForward)
                             TextButton.icon(
                               onPressed: _forwarding.contains(r.orderItemId)
                                   ? null
@@ -669,7 +740,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                               label: Text(
                                 _forwarding.contains(r.orderItemId)
                                     ? '转发中…'
-                                    : '转发研发',
+                                    : (r.rdForwarded ? '我也登记' : '转发研发'),
                                 style: const TextStyle(fontSize: 11),
                               ),
                               style: TextButton.styleFrom(

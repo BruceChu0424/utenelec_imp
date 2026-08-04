@@ -806,8 +806,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 批量操作 / 复制粘贴 工具栏（在表头之上）。
-            if (widget.enableBatchActions || widget.cloneRow != null)
+            // 批量操作 / 复制粘贴 工具栏（仅在可编辑表格显示：showAddRow=true 的编辑页）。
+            // 「从上游引入」等选择/导入弹层 showAddRow=false，不显示批量工具栏。
+            if (widget.showAddRow &&
+                (widget.enableBatchActions || widget.cloneRow != null))
               _toolbar(theme),
             // 表头占位：真正的表头在下方 Stack 覆盖层里（始终挂载，横滚 offset 不丢），
             // 流内只留同高占位撑起布局。

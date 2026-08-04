@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -30,7 +31,6 @@ class ProductionPlanningRequestValidatorTest {
     private EntityManager em;
     private ProductionExecutionPlanningService planning;
     private Query warehouseQuery;
-    private Query makeBomQuery;
     private ProductionPlanningRequestValidator validator;
 
     @BeforeEach
@@ -38,15 +38,11 @@ class ProductionPlanningRequestValidatorTest {
         em = mock(EntityManager.class);
         planning = mock(ProductionExecutionPlanningService.class);
         warehouseQuery = query();
-        makeBomQuery = query();
         when(warehouseQuery.getSingleResult()).thenReturn(1L);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("FROM warehouses")) {
                 return warehouseQuery;
-            }
-            if (sql.contains("FROM goods_bom_items")) {
-                return makeBomQuery;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
@@ -89,40 +85,38 @@ class ProductionPlanningRequestValidatorTest {
     }
 
     @Test
-    void rejectsPositivePlanItemWithoutBom() {
+    void allowsLeafProductWithoutBom() {
+        // 顶层产品无 BOM（原材料/叶子件，不能再细分）合法，不再拦截。
         GeneratePlanningPackageRequest request = request("a".repeat(64));
-        when(planning.preview(any(), any())).thenReturn(snapshot(
+        ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
                 request.getPreviewFingerprint(), List.of(),
-                List.of(UUID.randomUUID())));
+                List.of(UUID.randomUUID()));
+        when(planning.preview(any(), any())).thenReturn(snapshot);
+        when(planning.applyRequested(snapshot, request.getSegments()))
+                .thenReturn(new CompleteKitAllocator.Allocation(
+                        List.of(), Map.of()));
 
-        assertThatThrownBy(() -> validator.validateCurrent(
+        assertThatCode(() -> validator.validateCurrent(
                 UUID.randomUUID(), request))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("未维护 BOM 的成品");
-        verify(planning, never()).applyRequested(any(), any());
+                .doesNotThrowAnyException();
     }
 
     @Test
-    void rejectsMakeShortageWithoutChildBomButAllowsCoveredMakeStock() {
+    void allowsMakeShortageWithoutChildBom() {
+        // 自制叶子件（无下层 BOM）缺料合法：派生「造 N 个」裸子计划，不再拦截。
         GeneratePlanningPackageRequest request = request("a".repeat(64));
         CompleteKitAllocator.ProductLine line = productLine(
                 ProductionMaterialDemand.ROUTE_MAKE);
         ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
                 request.getPreviewFingerprint(), List.of(line), List.of());
         when(planning.preview(any(), any())).thenReturn(snapshot);
-        when(makeBomQuery.getSingleResult()).thenReturn(0L);
         when(planning.applyRequested(snapshot, request.getSegments()))
                 .thenReturn(allocation(line,
-                        ProductionMaterialDemand.ROUTE_MAKE, "1"))
-                .thenReturn(allocation(line,
-                        ProductionMaterialDemand.ROUTE_MAKE, "0"));
+                        ProductionMaterialDemand.ROUTE_MAKE, "1"));
 
-        assertThatThrownBy(() -> validator.validateCurrent(
+        assertThatCode(() -> validator.validateCurrent(
                 UUID.randomUUID(), request))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("自制物料未维护下层 BOM");
-
-        validator.validateCurrent(UUID.randomUUID(), request);
+                .doesNotThrowAnyException();
     }
 
     @Test

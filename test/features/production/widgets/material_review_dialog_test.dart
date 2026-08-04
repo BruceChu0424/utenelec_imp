@@ -94,7 +94,7 @@ void main() {
   );
 
   testWidgets(
-    'BOM gaps block quick submit but keep detailed review available',
+    'self-made leaf without BOM is not blocking and stays schedulable',
     (tester) async {
       tester.view.physicalSize = const Size(1440, 1000);
       tester.view.devicePixelRatio = 1;
@@ -142,12 +142,26 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      final blockedButton = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, '请先补齐 BOM'),
+      // 自制叶子件（无下层 BOM，原料走车间领料）不再阻断：归入「自制缺料」分类，
+      // 「采用建议方案」按钮可用，没有「请先补齐 BOM」置灰态。
+      expect(find.textContaining('自制缺料'), findsOneWidget);
+      expect(find.text('采用建议方案'), findsOneWidget);
+      final submitButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, '采用建议方案'),
       );
-      expect(blockedButton.onPressed, isNull);
-      expect(find.textContaining('补齐前只能查看详情'), findsOneWidget);
+      expect(submitButton.onPressed, isNotNull);
 
+      await tester.tap(find.text('采用建议方案'));
+      await tester.pumpAndSettle();
+
+      expect(decision?.type, MaterialReviewDecisionType.useSuggestedPlan);
+      // 自制件缺料走 MAKE 路线（后端派生子计划），不强制生成采购申请。
+      expect(decision?.request?.generatePurchaseRequest, isFalse);
+
+      // 仍可进入详细排产聚焦该物料。
+      decision = null;
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('查看对应详情').first);
       await tester.pumpAndSettle();
 

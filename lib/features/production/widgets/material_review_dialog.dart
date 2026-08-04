@@ -1,21 +1,22 @@
 // 物料需求评审对话框：生产计划「一键生成子计划」的主入口。
 //
 // 与 execution_segment_planning_sheet（执行段精细编辑抽屉）的区别：
-// 本对话框面向业务做"缺料评审 + 一键确认"——按 充足/采购缺料/自制缺料/委外缺料/无BOM
-// 五分类展示物料，用户勾选是否生成采购申请，确认后产出 ProductionPlanningConfirmRequest。
+// 本对话框面向业务做"缺料评审 + 一键确认"——按 充足/采购缺料/自制缺料/委外缺料
+// 四分类展示物料，用户勾选是否生成采购申请，确认后产出 ProductionPlanningConfirmRequest。
 // 执行段的车间/班组/日期直接采用预览建议值（不编辑），适合"一键"场景；需要精细编辑时
 // 仍可走旧 sheet（详情页保留入口）。
 //
 // 自制件派生子计划、委外生成委外申请由后端 confirm 事务自动处理（前端只需对采购勾选）。
+//
+// 关键策略：无 BOM 不再视为错误。原材料/叶子件（含自制叶子件，原料走车间领料、本就不进
+// BOM）无论作为组件还是顶层产品都合法——自制叶子件缺料由后端派生「造 N 个」裸子计划，
+// 可直接报工入库。因此本对话框不再有"BOM 缺失"拦截或转发研发的分支。
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../models/production_execution_planning.dart';
-import '../repositories/production_repository.dart';
 
 enum MaterialReviewDecisionType { useSuggestedPlan, openDetailedPlanning }
 
@@ -64,7 +65,7 @@ Future<MaterialReviewDecision?> showMaterialReviewDialog(
   );
 }
 
-class _MaterialReviewDialog extends ConsumerStatefulWidget {
+class _MaterialReviewDialog extends StatefulWidget {
   const _MaterialReviewDialog({
     required this.preview,
     required this.warehouseName,
@@ -76,16 +77,13 @@ class _MaterialReviewDialog extends ConsumerStatefulWidget {
   final String planBillNo;
 
   @override
-  ConsumerState<_MaterialReviewDialog> createState() => _MaterialReviewDialogState();
+  State<_MaterialReviewDialog> createState() => _MaterialReviewDialogState();
 }
 
-class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
+class _MaterialReviewDialogState extends State<_MaterialReviewDialog> {
   static const double _epsilon = kProductionPlanningQuantityEpsilon;
 
   late final _Buckets _buckets;
-  /// 本次会话内已一键转发登记的货品（避免重开前重复显示"待转发"）。
-  final Set<String> _locallyForwarded = <String>{};
-  bool _forwarding = false;
 
   @override
   void initState() {
@@ -98,72 +96,27 @@ class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
     final buy = <ProductionPlanningMaterial>[];
     final make = <ProductionPlanningMaterial>[];
     final subcontract = <ProductionPlanningMaterial>[];
-    final makeNoBom = <ProductionPlanningMaterial>[];
     for (final m in materials) {
       final shortage = m.timelyShortage ?? 0;
       if (shortage <= _epsilon) {
         sufficient.add(m);
         continue;
       }
-      // 缺料：按 sourceType + 是否有下层 BOM 分类
-      if (m.selfMade) {
-        make.add(m); // 有下层 BOM 的自制件 → 后端派生子生产计划
-      } else if (m.sourceType == '自制') {
-        makeNoBom.add(m); // 自制但未维护下层 BOM → 提示去货品资料维护
+      // 缺料：按 sourceType 分类。自制件（无论有无下层 BOM）统一派生子计划——
+      // 有下层 BOM 的进子计划后继续展开；叶子件（无 BOM，原料走车间领料）直接生产造 N 个。
+      if (m.sourceType == '自制') {
+        make.add(m);
       } else if (m.sourceType == '委外') {
         subcontract.add(m);
       } else {
         buy.add(m); // 采购件或来源未填（默认按采购）
       }
     }
-    return _Buckets(sufficient, buy, make, subcontract, makeNoBom);
-  }
-
-  /// 当前已转发（仍在等待研发维护）的货品集合 = 预览返回的 + 本次会话本地登记的。
-  Set<String> get _forwardedGoods =>
-      <String>{...widget.preview.forwardedGoodsIds, ..._locallyForwarded};
-
-  /// 当前仍需转发给研发的 BOM 缺失货品（自制组件 makeNoBom + 成品 noBom，去掉已转发的）。
-  List<String> get _pendingForwardGoods {
-    final all = <String>{
-      for (final m in _buckets.makeNoBom) m.goodsId,
-      ...widget.preview.noBomGoodsIds,
-    };
-    final forwarded = _forwardedGoods;
-    return all.where((g) => !forwarded.contains(g)).toList()..sort();
-  }
-
-  /// 一键转发全部缺失 BOM 给工程研发部（自制组件 + 成品）。组件无 order_item，来源填计划单。
-  Future<void> _forwardBomGaps() async {
-    final goods = _pendingForwardGoods;
-    if (goods.isEmpty || _forwarding) return;
-    setState(() => _forwarding = true);
-    try {
-      final result = await ref.read(productionPlanRepositoryProvider).forwardToRdBatch(
-            [for (final g in goods) (goodsId: g, orderItemId: null)],
-            sourcePlanId: widget.preview.planId,
-            sourcePlanNo: widget.planBillNo,
-          );
-      final created = (result['created'] as num?)?.toInt() ?? 0;
-      final reused = (result['reused'] as num?)?.toInt() ?? 0;
-      setState(() => _locallyForwarded.addAll(goods));
-      if (mounted) {
-        context.appSuccess(
-          created > 0
-              ? '已转发 $created 项给工程研发部${reused > 0 ? '（另 $reused 项已在等待）' : ''}，等待维护'
-              : '已登记等待工程研发部维护',
-        );
-      }
-    } catch (_) {
-      if (mounted) context.appWarning('转发失败，请重试');
-    } finally {
-      if (mounted) setState(() => _forwarding = false);
-    }
+    return _Buckets(sufficient, buy, make, subcontract);
   }
 
   void _confirm() {
     final preview = widget.preview;
-    if (preview.hasBlockingBomGaps) return;
     // segments 直接采用预览建议值（不编辑），天然满足"合计=计划量"与"READY 齐套"约束。
     final segments = [
       for (final seg in preview.executionSegments)
@@ -234,8 +187,12 @@ class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final noBomCount = widget.preview.noBomPlanItemIds.length;
-    final hasBlockingBomGaps = widget.preview.hasBlockingBomGaps;
+    // 顶层产品无 BOM（原材料/叶子件，不能再细分）合法，按计划行直接投产。
+    final leafProductCount = widget.preview.noBomPlanItemIds.length;
+    final hasShortage =
+        _buckets.buyShortage.isNotEmpty ||
+        _buckets.makeShortage.isNotEmpty ||
+        _buckets.subcontractShortage.isNotEmpty;
     return AlertDialog(
       title: Row(
         children: [
@@ -263,7 +220,14 @@ class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _infoBanner(theme),
+              _notice(
+                theme,
+                color: theme.colorScheme.primary,
+                icon: Icons.info_outline_rounded,
+                text: hasShortage
+                    ? '系统已按目标仓库存、在途与 BOM 形成建议方案。可直接采用，也可进入详细排产调整数量、车间、班组与日期。'
+                    : '所有本层物料库存充足。可直接采用建议方案，也可进入详细排产复核车间、班组与日期。',
+              ),
               if (_buckets.sufficient.isNotEmpty)
                 _category(
                   theme,
@@ -306,7 +270,8 @@ class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
                   count: _buckets.makeShortage.length,
                   materials: _buckets.makeShortage,
                   hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
-                  note: '确认后系统自动生成自制件子计划，进入子计划可继续展开下层。',
+                  note: '确认后系统自动生成自制件子计划：有下层 BOM 的进子计划后继续展开；'
+                      '叶子件（无 BOM，原料走车间领料）直接生产造 N 个，可报工入库。',
                 ),
               if (_buckets.subcontractShortage.isNotEmpty)
                 _category(
@@ -318,32 +283,15 @@ class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
                   materials: _buckets.subcontractShortage,
                   hint: (m) => '需 ${_q(m.gross)} · 缺 ${_q(m.timelyShortage)}',
                 ),
-              if (_buckets.makeNoBom.isNotEmpty)
-                _category(
-                  theme,
-                  icon: Icons.warning_amber_rounded,
-                  color: theme.colorScheme.error,
-                  title: '自制件但未维护下层 BOM',
-                  count: _buckets.makeNoBom.length,
-                  materials: _buckets.makeNoBom,
-                  hint: (m) => '需 ${_q(m.gross)}',
-                  note: _buckets.makeNoBom
-                          .every((m) => _forwardedGoods.contains(m.goodsId))
-                      ? '已通知工程研发部维护，等待完成后即可派生子计划。'
-                      : '这些自制件未维护组成 BOM，无法派生子计划。可一键转发工程研发部维护。',
-                ),
-              if (noBomCount > 0)
+              if (leafProductCount > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: UtenSpacing.s8),
                   child: _notice(
                     theme,
-                    color: theme.colorScheme.error,
-                    icon: Icons.report_problem_outlined,
-                    text: widget.preview.noBomGoodsIds
-                            .every((g) => _forwardedGoods.contains(g))
-                        ? '另有 $noBomCount 个成品未维护 BOM，已通知工程研发部维护，等待完成后即可排产。'
-                        : '另有 $noBomCount 个成品未维护 BOM。可一键转发工程研发部维护，'
-                            '维护完成前不能保存预排草案或正式下达。',
+                    color: theme.colorScheme.primary,
+                    icon: Icons.info_outline_rounded,
+                    text: '另有 $leafProductCount 个产品为原材料/叶子件（无组成 BOM，不能再细分），'
+                        '将按计划行直接投产报工。',
                   ),
                 ),
             ],
@@ -356,58 +304,17 @@ class _MaterialReviewDialogState extends ConsumerState<_MaterialReviewDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('取消'),
         ),
-        if (_pendingForwardGoods.isNotEmpty)
-          OutlinedButton.icon(
-            onPressed: _forwarding ? null : _forwardBomGaps,
-            icon: _forwarding
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.forward_to_inbox_outlined, size: 18),
-            label: const Text('一键转发研发'),
-          ),
         OutlinedButton.icon(
           onPressed: () => _openDetailedPlanning(),
           icon: const Icon(Icons.table_view_outlined, size: 18),
           label: const Text('详细排产'),
         ),
         FilledButton.icon(
-          onPressed: hasBlockingBomGaps ? null : _confirm,
+          onPressed: _confirm,
           icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-          label: Text(hasBlockingBomGaps
-              ? (_pendingForwardGoods.isEmpty ? '等待研发维护 BOM' : '请先补齐 BOM')
-              : '采用建议方案'),
+          label: const Text('采用建议方案'),
         ),
       ],
-    );
-  }
-
-  Widget _infoBanner(ThemeData theme) {
-    final hasBlockingBomGaps = widget.preview.hasBlockingBomGaps;
-    final hasShortage =
-        _buckets.buyShortage.isNotEmpty ||
-        _buckets.makeShortage.isNotEmpty ||
-        _buckets.subcontractShortage.isNotEmpty ||
-        _buckets.makeNoBom.isNotEmpty;
-    final text = hasBlockingBomGaps
-        ? '存在成品或本层自制组件未维护 BOM。为保证完整覆盖，补齐前只能查看详情，不能保存或下达方案。'
-        : hasShortage
-        ? '系统已按目标仓库存、在途与 BOM 形成建议方案。可直接采用，也可进入详细排产调整数量、车间、班组与日期。'
-        : '所有本层物料库存充足。可直接采用建议方案，也可进入详细排产复核车间、班组与日期。';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-      child: _notice(
-        theme,
-        color: hasBlockingBomGaps
-            ? theme.colorScheme.error
-            : theme.colorScheme.primary,
-        icon: hasBlockingBomGaps
-            ? Icons.report_problem_outlined
-            : Icons.info_outline_rounded,
-        text: text,
-      ),
     );
   }
 
@@ -544,13 +451,11 @@ class _Buckets {
   final List<ProductionPlanningMaterial> buyShortage;
   final List<ProductionPlanningMaterial> makeShortage;
   final List<ProductionPlanningMaterial> subcontractShortage;
-  final List<ProductionPlanningMaterial> makeNoBom;
 
   _Buckets(
     this.sufficient,
     this.buyShortage,
     this.makeShortage,
     this.subcontractShortage,
-    this.makeNoBom,
   );
 }

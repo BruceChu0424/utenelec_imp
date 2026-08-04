@@ -405,7 +405,8 @@ void main() {
     expect(preview.hasBlockingBomGaps, isFalse);
   });
 
-  test('unknown or missing lower MAKE BOM blocks planning', () {
+  test('MAKE leaf without lower BOM does not block planning', () {
+    // 自制叶子件（无下层 BOM，原料走车间领料）缺料合法：派生「造 N 个」裸子计划，不再拦截。
     final preview = _preview(
       recursiveMaterials: const [
         ProductionPlanningMaterial(
@@ -441,8 +442,8 @@ void main() {
       ],
     );
 
-    expect(preview.hasBlockingBomGaps, isTrue);
-    expect(unknownMake.hasBlockingBomGaps, isTrue);
+    expect(preview.hasBlockingBomGaps, isFalse);
+    expect(unknownMake.hasBlockingBomGaps, isFalse);
   });
 }
 

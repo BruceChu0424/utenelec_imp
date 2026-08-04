@@ -39,12 +39,13 @@ public class ProductionPlanningRequestValidator {
     public Validated validateAgainstSnapshot(
             GeneratePlanningPackageRequest request,
             ProductionExecutionPlanningService.Snapshot snapshot) {
-        requireCompleteBom(snapshot);
         Map<CompleteKitAllocator.MaterialKey, String> routes =
                 authoritativeRoutes(request, snapshot);
         CompleteKitAllocator.Allocation allocation =
                 planning.applyRequested(snapshot, request.getSegments());
-        requireCompleteMakeBom(allocation);
+        // 「无 BOM」不再视为错误：原材料/叶子件（含自制叶子件，原料走车间领料、本就不进
+        // BOM）无论作为组件还是顶层产品都合法。自制叶子件缺料由派生内核生成「造 N 个」
+        // 裸子计划，可直接报工入库；因此组件层与成品层均不再强制要求 BOM。
         requirePurchaseGeneration(request, allocation);
         return new Validated(snapshot, routes, allocation);
     }
@@ -110,40 +111,6 @@ public class ProductionPlanningRequestValidator {
         if (warehouse != 1) {
             throw new ApiException(
                     ErrorCode.NOT_FOUND, "目标发料仓不存在或已停用");
-        }
-    }
-
-    private static void requireCompleteBom(
-            ProductionExecutionPlanningService.Snapshot snapshot) {
-        if (snapshot.noBomPlanItemIds() != null
-                && !snapshot.noBomPlanItemIds().isEmpty()) {
-            throw conflict("存在未维护 BOM 的成品，不能形成完整排产方案，请先维护 BOM 后重新预排");
-        }
-    }
-
-    private void requireCompleteMakeBom(
-            CompleteKitAllocator.Allocation allocation) {
-        List<UUID> makeGoodsIds = allocation.segments().stream()
-                .flatMap(segment -> segment.materials().stream())
-                .filter(material -> ProductionMaterialDemand.ROUTE_MAKE.equals(
-                        material.supplyRoute()))
-                .filter(material -> material.shortageQty().signum() > 0)
-                .map(CompleteKitAllocator.MaterialAllocation::goodsId)
-                .distinct()
-                .toList();
-        if (makeGoodsIds.isEmpty()) {
-            return;
-        }
-        long withBom = ((Number) em.createNativeQuery("""
-                        SELECT COUNT(DISTINCT goods_id)
-                        FROM goods_bom_items
-                        WHERE goods_id IN (:goodsIds)
-                          AND is_deleted = FALSE
-                        """)
-                .setParameter("goodsIds", makeGoodsIds)
-                .getSingleResult()).longValue();
-        if (withBom != makeGoodsIds.size()) {
-            throw conflict("存在自制物料未维护下层 BOM，不能形成完整排产方案，请先维护 BOM");
         }
     }
 

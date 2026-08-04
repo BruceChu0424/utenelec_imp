@@ -92,15 +92,10 @@ class ProductionPlanningPreview {
 }
 
 extension ProductionPlanningPreviewIntegrity on ProductionPlanningPreview {
-  bool get hasBlockingBomGaps =>
-      noBomPlanItemIds.isNotEmpty ||
-      buildProductionDirectReviewMaterials(this).any(
-        (material) =>
-            (material.timelyShortage ?? 0) >
-                kProductionPlanningQuantityEpsilon &&
-            material.sourceType == '自制' &&
-            !material.selfMade,
-      );
+  /// 「无 BOM」不再拦截排产：原材料/叶子件（含自制叶子件，原料走车间领料、本就不进 BOM）
+  /// 无论作为组件还是顶层产品都合法——自制叶子件缺料由后端派生「造 N 个」裸子计划，
+  /// 可直接报工入库。保留此 getter 供对话框/详细排产调用处兼容，按策略恒为 false。
+  bool get hasBlockingBomGaps => false;
 }
 
 class ProductionPlanningMaterial {

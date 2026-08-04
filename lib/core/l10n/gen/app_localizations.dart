@@ -3664,6 +3664,1050 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'续签次数'**
   String get profileFieldRenewCount;
+
+  /// 未启用单据卡片上的角标
+  ///
+  /// In zh, this message translates to:
+  /// **'未启用'**
+  String get hubDisabledChip;
+
+  /// No description provided for @hubSectionTaskCenter.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务中心'**
+  String get hubSectionTaskCenter;
+
+  /// No description provided for @hubDisabledDocNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'该单据类型暂未启用（老库无数据）'**
+  String get hubDisabledDocNotice;
+
+  /// 明细报表共享副标题：一行一货品
+  ///
+  /// In zh, this message translates to:
+  /// **'一行一货品'**
+  String get hubSubDetailPerItem;
+
+  /// 汇总报表共享副标题：一行一整单
+  ///
+  /// In zh, this message translates to:
+  /// **'一行一单'**
+  String get hubSubSummaryPerDoc;
+
+  /// No description provided for @hubSubPendingReturnQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'待入库的退货量'**
+  String get hubSubPendingReturnQty;
+
+  /// No description provided for @hubSubReadOnlyPlan.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划只读'**
+  String get hubSubReadOnlyPlan;
+
+  /// No description provided for @salesHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售管理'**
+  String get salesHubTitle;
+
+  /// No description provided for @salesHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售报表'**
+  String get salesHubSectionReports;
+
+  /// No description provided for @salesHubSectionScarcity.
+  ///
+  /// In zh, this message translates to:
+  /// **'稀缺仲裁'**
+  String get salesHubSectionScarcity;
+
+  /// No description provided for @salesHubTaskOrderProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'订单进度查询'**
+  String get salesHubTaskOrderProgress;
+
+  /// No description provided for @salesHubTaskOrderProgressSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'出货与完工进度'**
+  String get salesHubTaskOrderProgressSub;
+
+  /// No description provided for @salesHubDocQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售报价单'**
+  String get salesHubDocQuote;
+
+  /// No description provided for @salesHubDocQuoteSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价·有效期'**
+  String get salesHubDocQuoteSub;
+
+  /// No description provided for @salesHubDocOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售订货单'**
+  String get salesHubDocOrder;
+
+  /// No description provided for @salesHubDocOrderSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户下单'**
+  String get salesHubDocOrderSub;
+
+  /// No description provided for @salesHubDocShipment.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售出货单'**
+  String get salesHubDocShipment;
+
+  /// No description provided for @salesHubDocShipmentSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'发货·立应收'**
+  String get salesHubDocShipmentSub;
+
+  /// No description provided for @salesHubDocOtherShipment.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它出货单'**
+  String get salesHubDocOtherShipment;
+
+  /// No description provided for @salesHubDocOtherShipmentSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接出库'**
+  String get salesHubDocOtherShipmentSub;
+
+  /// No description provided for @salesHubDocReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售退货单'**
+  String get salesHubDocReturn;
+
+  /// No description provided for @salesHubDocReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'退货·红字应收'**
+  String get salesHubDocReturnSub;
+
+  /// No description provided for @salesHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售明细报表'**
+  String get salesHubReportDetail;
+
+  /// No description provided for @salesHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售汇总报表'**
+  String get salesHubReportSummary;
+
+  /// No description provided for @salesHubScarcity.
+  ///
+  /// In zh, this message translates to:
+  /// **'稀缺库存让单'**
+  String get salesHubScarcity;
+
+  /// No description provided for @salesHubScarcitySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'释放低优先级占用'**
+  String get salesHubScarcitySub;
+
+  /// No description provided for @purchaseHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购管理'**
+  String get purchaseHubTitle;
+
+  /// No description provided for @purchaseHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购报表'**
+  String get purchaseHubSectionReports;
+
+  /// No description provided for @purchaseHubTaskCenter.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购任务中心'**
+  String get purchaseHubTaskCenter;
+
+  /// No description provided for @purchaseHubTaskCenterSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'按供应商拆订货'**
+  String get purchaseHubTaskCenterSub;
+
+  /// No description provided for @purchaseHubReturnVendor.
+  ///
+  /// In zh, this message translates to:
+  /// **'待退回供应商'**
+  String get purchaseHubReturnVendor;
+
+  /// No description provided for @purchaseHubDocRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划下达的采购申请'**
+  String get purchaseHubDocRequest;
+
+  /// No description provided for @purchaseHubDocOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购订货单'**
+  String get purchaseHubDocOrder;
+
+  /// No description provided for @purchaseHubDocOrderSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'下单·跟踪到货'**
+  String get purchaseHubDocOrderSub;
+
+  /// No description provided for @purchaseHubDocReceipt.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购收货单'**
+  String get purchaseHubDocReceipt;
+
+  /// No description provided for @purchaseHubDocReceiptSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'收货·入库'**
+  String get purchaseHubDocReceiptSub;
+
+  /// No description provided for @purchaseHubDocReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购退货单'**
+  String get purchaseHubDocReturn;
+
+  /// No description provided for @purchaseHubDocReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'退货·出库'**
+  String get purchaseHubDocReturnSub;
+
+  /// No description provided for @purchaseHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购明细报表'**
+  String get purchaseHubReportDetail;
+
+  /// No description provided for @purchaseHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购汇总报表'**
+  String get purchaseHubReportSummary;
+
+  /// No description provided for @purchaseHubReportExpediting.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购催料单'**
+  String get purchaseHubReportExpediting;
+
+  /// No description provided for @purchaseHubReportExpeditingSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货未收·库存'**
+  String get purchaseHubReportExpeditingSub;
+
+  /// No description provided for @subcontractHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外管理'**
+  String get subcontractHubTitle;
+
+  /// No description provided for @subcontractHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外报表'**
+  String get subcontractHubSectionReports;
+
+  /// No description provided for @subcontractHubTaskCenter.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外任务中心'**
+  String get subcontractHubTaskCenter;
+
+  /// No description provided for @subcontractHubTaskCenterSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'按委外商拆订货'**
+  String get subcontractHubTaskCenterSub;
+
+  /// No description provided for @subcontractHubReturnVendor.
+  ///
+  /// In zh, this message translates to:
+  /// **'待退回供应商'**
+  String get subcontractHubReturnVendor;
+
+  /// No description provided for @subcontractHubDocInquiry.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外询价单'**
+  String get subcontractHubDocInquiry;
+
+  /// No description provided for @subcontractHubDocInquirySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'询价（未启用）'**
+  String get subcontractHubDocInquirySub;
+
+  /// No description provided for @subcontractHubDocApplication.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划下达的委外申请'**
+  String get subcontractHubDocApplication;
+
+  /// No description provided for @subcontractHubDocOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外订货单'**
+  String get subcontractHubDocOrder;
+
+  /// No description provided for @subcontractHubDocOrderSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'下单·跟踪进仓'**
+  String get subcontractHubDocOrderSub;
+
+  /// No description provided for @subcontractHubDocReceipt.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外进仓单'**
+  String get subcontractHubDocReceipt;
+
+  /// No description provided for @subcontractHubDocReceiptSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品进仓·立应付'**
+  String get subcontractHubDocReceiptSub;
+
+  /// No description provided for @subcontractHubDocMaterialIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外发料单'**
+  String get subcontractHubDocMaterialIssue;
+
+  /// No description provided for @subcontractHubDocMaterialIssueSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料出仓'**
+  String get subcontractHubDocMaterialIssueSub;
+
+  /// No description provided for @subcontractHubDocReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外退货单'**
+  String get subcontractHubDocReturn;
+
+  /// No description provided for @subcontractHubDocReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品退·出库'**
+  String get subcontractHubDocReturnSub;
+
+  /// No description provided for @subcontractHubDocMaterialReturn.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外材料退货单'**
+  String get subcontractHubDocMaterialReturn;
+
+  /// No description provided for @subcontractHubDocMaterialReturnSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料退回入库'**
+  String get subcontractHubDocMaterialReturnSub;
+
+  /// No description provided for @subcontractHubDocWaste.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外材料损耗单'**
+  String get subcontractHubDocWaste;
+
+  /// No description provided for @subcontractHubDocWasteSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记供应商损耗'**
+  String get subcontractHubDocWasteSub;
+
+  /// No description provided for @subcontractHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外明细报表'**
+  String get subcontractHubReportDetail;
+
+  /// No description provided for @subcontractHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外汇总报表'**
+  String get subcontractHubReportSummary;
+
+  /// No description provided for @subcontractHubReportInOut.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外出入状况表'**
+  String get subcontractHubReportInOut;
+
+  /// No description provided for @subcontractHubReportInOutSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'进出综合状况'**
+  String get subcontractHubReportInOutSub;
+
+  /// No description provided for @productionHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产管理'**
+  String get productionHubTitle;
+
+  /// No description provided for @productionHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产报表'**
+  String get productionHubSectionReports;
+
+  /// No description provided for @productionHubSchedule.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产调度与进度'**
+  String get productionHubSchedule;
+
+  /// No description provided for @productionHubScheduleSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'待排产·在产·完工'**
+  String get productionHubScheduleSub;
+
+  /// No description provided for @productionHubPlan.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产计划单'**
+  String get productionHubPlan;
+
+  /// No description provided for @productionHubPlanSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划·明细·审核'**
+  String get productionHubPlanSub;
+
+  /// No description provided for @productionHubDaily.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产日报表'**
+  String get productionHubDaily;
+
+  /// No description provided for @productionHubDailySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'完工日报·红冲'**
+  String get productionHubDailySub;
+
+  /// No description provided for @productionHubReportPlanDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划明细'**
+  String get productionHubReportPlanDetail;
+
+  /// No description provided for @productionHubReportPlanDetailSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'日期·货品·状态'**
+  String get productionHubReportPlanDetailSub;
+
+  /// No description provided for @productionHubReportPlanSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划汇总'**
+  String get productionHubReportPlanSummary;
+
+  /// No description provided for @productionHubReportPlanSummarySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'单号·制单·审核'**
+  String get productionHubReportPlanSummarySub;
+
+  /// No description provided for @productionHubWhereUsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料反查产成品'**
+  String get productionHubWhereUsed;
+
+  /// No description provided for @productionHubWhereUsedSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料用在哪些产品'**
+  String get productionHubWhereUsedSub;
+
+  /// No description provided for @financeHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'钱流管理'**
+  String get financeHubTitle;
+
+  /// No description provided for @financeHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'钱流报表'**
+  String get financeHubSectionReports;
+
+  /// No description provided for @financeHubApprovalOwners.
+  ///
+  /// In zh, this message translates to:
+  /// **'审批负责人设置'**
+  String get financeHubApprovalOwners;
+
+  /// No description provided for @financeHubTaskApproval.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货审批任务中心'**
+  String get financeHubTaskApproval;
+
+  /// No description provided for @financeHubTaskApprovalSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'分配给我的审批'**
+  String get financeHubTaskApprovalSub;
+
+  /// No description provided for @financeHubTaskOverDelivery.
+  ///
+  /// In zh, this message translates to:
+  /// **'超量到货审批'**
+  String get financeHubTaskOverDelivery;
+
+  /// No description provided for @financeHubTaskOverDeliverySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核超量到货'**
+  String get financeHubTaskOverDeliverySub;
+
+  /// No description provided for @financeHubDocReceipt.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售收款'**
+  String get financeHubDocReceipt;
+
+  /// No description provided for @financeHubDocReceiptSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'核销应收·直接收款'**
+  String get financeHubDocReceiptSub;
+
+  /// No description provided for @financeHubDocPayment.
+  ///
+  /// In zh, this message translates to:
+  /// **'采购付款'**
+  String get financeHubDocPayment;
+
+  /// No description provided for @financeHubDocPaymentSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'核销应付·直接付款'**
+  String get financeHubDocPaymentSub;
+
+  /// No description provided for @financeHubDocExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'一般费用'**
+  String get financeHubDocExpense;
+
+  /// No description provided for @financeHubSubAllocatedByDept.
+  ///
+  /// In zh, this message translates to:
+  /// **'按部门分摊'**
+  String get financeHubSubAllocatedByDept;
+
+  /// No description provided for @financeHubDocIncome.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它收入'**
+  String get financeHubDocIncome;
+
+  /// No description provided for @financeHubDocBankTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'银行存取款'**
+  String get financeHubDocBankTransfer;
+
+  /// No description provided for @financeHubDocBankTransferSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户间转入'**
+  String get financeHubDocBankTransferSub;
+
+  /// No description provided for @financeHubDocCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'支票管理'**
+  String get financeHubDocCheck;
+
+  /// No description provided for @financeHubDocCheckSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'支票账户视图'**
+  String get financeHubDocCheckSub;
+
+  /// No description provided for @financeHubDocAssets.
+  ///
+  /// In zh, this message translates to:
+  /// **'资产与待摊'**
+  String get financeHubDocAssets;
+
+  /// No description provided for @financeHubDocAssetsSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'子账·折旧·期间'**
+  String get financeHubDocAssetsSub;
+
+  /// No description provided for @financeHubReportArAp.
+  ///
+  /// In zh, this message translates to:
+  /// **'应收应付'**
+  String get financeHubReportArAp;
+
+  /// No description provided for @financeHubReportArApSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户·供应商余额'**
+  String get financeHubReportArApSub;
+
+  /// No description provided for @financeHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细报表'**
+  String get financeHubReportDetail;
+
+  /// No description provided for @financeHubReportDetailSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'收款·付款·费用'**
+  String get financeHubReportDetailSub;
+
+  /// No description provided for @financeHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'汇总报表'**
+  String get financeHubReportSummary;
+
+  /// No description provided for @financeHubReportSummarySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'收支汇总'**
+  String get financeHubReportSummarySub;
+
+  /// No description provided for @financeHubReportStatement.
+  ///
+  /// In zh, this message translates to:
+  /// **'往来对帐单'**
+  String get financeHubReportStatement;
+
+  /// No description provided for @financeHubReportStatementSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户·供应商对账'**
+  String get financeHubReportStatementSub;
+
+  /// No description provided for @financeHubReportAccountFlow.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户流水'**
+  String get financeHubReportAccountFlow;
+
+  /// No description provided for @financeHubReportAccountFlowSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户进出流水'**
+  String get financeHubReportAccountFlowSub;
+
+  /// No description provided for @financeHubReportRecon.
+  ///
+  /// In zh, this message translates to:
+  /// **'对账单'**
+  String get financeHubReportRecon;
+
+  /// No description provided for @financeHubReportReconSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'月结对账'**
+  String get financeHubReportReconSub;
+
+  /// No description provided for @financeHubReportCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本核算'**
+  String get financeHubReportCost;
+
+  /// No description provided for @financeHubReportCostSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品·销售成本'**
+  String get financeHubReportCostSub;
+
+  /// No description provided for @financeHubReportGl.
+  ///
+  /// In zh, this message translates to:
+  /// **'总账报表'**
+  String get financeHubReportGl;
+
+  /// No description provided for @financeHubReportGlSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'科目·资产·利润'**
+  String get financeHubReportGlSub;
+
+  /// No description provided for @warehouseHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库管理'**
+  String get warehouseHubTitle;
+
+  /// No description provided for @warehouseHubSectionDocs.
+  ///
+  /// In zh, this message translates to:
+  /// **'出入库单据'**
+  String get warehouseHubSectionDocs;
+
+  /// No description provided for @warehouseHubSectionDocsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'调拨·其它出入库·领退料·产成品进出仓·盘点'**
+  String get warehouseHubSectionDocsDesc;
+
+  /// No description provided for @warehouseHubSectionInventory.
+  ///
+  /// In zh, this message translates to:
+  /// **'库存查询'**
+  String get warehouseHubSectionInventory;
+
+  /// No description provided for @warehouseHubSectionInventoryDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'即时库存·库存查询·出入库流水'**
+  String get warehouseHubSectionInventoryDesc;
+
+  /// No description provided for @warehouseHubSectionReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库报表'**
+  String get warehouseHubSectionReports;
+
+  /// No description provided for @warehouseHubSectionReportsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'明细（一行一货品）·汇总（一行一单）'**
+  String get warehouseHubSectionReportsDesc;
+
+  /// No description provided for @warehouseHubTaskExpected.
+  ///
+  /// In zh, this message translates to:
+  /// **'预计到货任务中心'**
+  String get warehouseHubTaskExpected;
+
+  /// No description provided for @warehouseHubTaskExpectedSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记实际到货'**
+  String get warehouseHubTaskExpectedSub;
+
+  /// No description provided for @warehouseHubTaskException.
+  ///
+  /// In zh, this message translates to:
+  /// **'到货异常任务中心'**
+  String get warehouseHubTaskException;
+
+  /// No description provided for @warehouseHubTaskExceptionSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'超量先隔离'**
+  String get warehouseHubTaskExceptionSub;
+
+  /// No description provided for @warehouseHubTaskPicking.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产领料任务中心'**
+  String get warehouseHubTaskPicking;
+
+  /// No description provided for @warehouseHubTaskPickingSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'备料·跟踪领取'**
+  String get warehouseHubTaskPickingSub;
+
+  /// No description provided for @warehouseHubDocTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库调拨'**
+  String get warehouseHubDocTransfer;
+
+  /// No description provided for @warehouseHubDocTransferSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库间调拨'**
+  String get warehouseHubDocTransferSub;
+
+  /// No description provided for @warehouseHubDocOtherIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它入库'**
+  String get warehouseHubDocOtherIn;
+
+  /// No description provided for @warehouseHubDocOtherInSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'无单据入库'**
+  String get warehouseHubDocOtherInSub;
+
+  /// No description provided for @warehouseHubDocOtherOut.
+  ///
+  /// In zh, this message translates to:
+  /// **'其它出库'**
+  String get warehouseHubDocOtherOut;
+
+  /// No description provided for @warehouseHubDocOtherOutSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'无单据出库'**
+  String get warehouseHubDocOtherOutSub;
+
+  /// No description provided for @warehouseHubDocDraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产领料'**
+  String get warehouseHubDocDraw;
+
+  /// No description provided for @warehouseHubDocDrawSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间领料'**
+  String get warehouseHubDocDrawSub;
+
+  /// No description provided for @warehouseHubDocWdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产退料'**
+  String get warehouseHubDocWdraw;
+
+  /// No description provided for @warehouseHubDocWdrawSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'退回车间料'**
+  String get warehouseHubDocWdrawSub;
+
+  /// No description provided for @warehouseHubDocFinishedIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'产成品进仓'**
+  String get warehouseHubDocFinishedIn;
+
+  /// No description provided for @warehouseHubDocFinishedInSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品入库'**
+  String get warehouseHubDocFinishedInSub;
+
+  /// No description provided for @warehouseHubDocFinishedOut.
+  ///
+  /// In zh, this message translates to:
+  /// **'产成品出仓'**
+  String get warehouseHubDocFinishedOut;
+
+  /// No description provided for @warehouseHubDocFinishedOutSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'成品出库'**
+  String get warehouseHubDocFinishedOutSub;
+
+  /// No description provided for @warehouseHubDocCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'盘点'**
+  String get warehouseHubDocCheck;
+
+  /// No description provided for @warehouseHubDocCheckSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'盘点盈亏'**
+  String get warehouseHubDocCheckSub;
+
+  /// No description provided for @warehouseHubInventoryLive.
+  ///
+  /// In zh, this message translates to:
+  /// **'即时库存'**
+  String get warehouseHubInventoryLive;
+
+  /// No description provided for @warehouseHubInventoryLiveSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'实时可用库存'**
+  String get warehouseHubInventoryLiveSub;
+
+  /// No description provided for @warehouseHubInventoryBalance.
+  ///
+  /// In zh, this message translates to:
+  /// **'库存查询'**
+  String get warehouseHubInventoryBalance;
+
+  /// No description provided for @warehouseHubInventoryBalanceSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'按货品查余额'**
+  String get warehouseHubInventoryBalanceSub;
+
+  /// No description provided for @warehouseHubInventoryMovement.
+  ///
+  /// In zh, this message translates to:
+  /// **'出入库流水'**
+  String get warehouseHubInventoryMovement;
+
+  /// No description provided for @warehouseHubInventoryMovementSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'进出流水明细'**
+  String get warehouseHubInventoryMovementSub;
+
+  /// No description provided for @warehouseHubReportDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库明细报表'**
+  String get warehouseHubReportDetail;
+
+  /// No description provided for @warehouseHubReportSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库汇总报表'**
+  String get warehouseHubReportSummary;
+
+  /// No description provided for @basicDataHubTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'基础资料'**
+  String get basicDataHubTitle;
+
+  /// No description provided for @basicDataHubGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品资料'**
+  String get basicDataHubGoods;
+
+  /// No description provided for @basicDataHubGoodsSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料分类树与货品主档'**
+  String get basicDataHubGoodsSub;
+
+  /// No description provided for @basicDataHubMould.
+  ///
+  /// In zh, this message translates to:
+  /// **'模具资料'**
+  String get basicDataHubMould;
+
+  /// No description provided for @basicDataHubMouldSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'模具系列分类与主档'**
+  String get basicDataHubMouldSub;
+
+  /// No description provided for @basicDataHubClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户资料'**
+  String get basicDataHubClient;
+
+  /// No description provided for @basicDataHubClientSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户分类与主档'**
+  String get basicDataHubClientSub;
+
+  /// No description provided for @basicDataHubSupplier.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商资料'**
+  String get basicDataHubSupplier;
+
+  /// No description provided for @basicDataHubSupplierSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'供应商分类与主档'**
+  String get basicDataHubSupplierSub;
+
+  /// No description provided for @basicDataHubColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色资料'**
+  String get basicDataHubColor;
+
+  /// No description provided for @basicDataHubColorSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色主档'**
+  String get basicDataHubColorSub;
+
+  /// No description provided for @basicDataHubUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本单位'**
+  String get basicDataHubUnit;
+
+  /// No description provided for @basicDataHubUnitSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'计量单位主档'**
+  String get basicDataHubUnitSub;
+
+  /// No description provided for @basicDataHubCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'币种资料'**
+  String get basicDataHubCurrency;
+
+  /// No description provided for @basicDataHubCurrencySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'币种·参考汇率'**
+  String get basicDataHubCurrencySub;
+
+  /// No description provided for @basicDataHubWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库资料'**
+  String get basicDataHubWarehouse;
+
+  /// No description provided for @basicDataHubWarehouseSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库主档'**
+  String get basicDataHubWarehouseSub;
+
+  /// No description provided for @basicDataHubAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户资料'**
+  String get basicDataHubAccount;
+
+  /// No description provided for @basicDataHubAccountSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户·期初·余额'**
+  String get basicDataHubAccountSub;
+
+  /// No description provided for @basicDataHubPaymentStyle.
+  ///
+  /// In zh, this message translates to:
+  /// **'收付款类别'**
+  String get basicDataHubPaymentStyle;
+
+  /// No description provided for @basicDataHubPaymentStyleSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'资产负债等六大类'**
+  String get basicDataHubPaymentStyleSub;
 }
 
 class _AppLocalizationsDelegate

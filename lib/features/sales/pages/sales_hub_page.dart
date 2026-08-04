@@ -14,12 +14,14 @@ import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
+import '../models/sales_doc.dart';
 import '../widgets/sales_progress_badge.dart';
 
 class SalesHubPage extends ConsumerWidget {
@@ -28,14 +30,15 @@ class SalesHubPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final perms = ref.watch(currentPermissionsProvider);
 
     // 任务中心（对齐仓库管理 hub 顶部）：订单进度查询（带完工提醒徽章）。
     final taskEntries = <_Entry>[
       _Entry(
         icon: Icons.timeline_outlined,
-        label: '订单进度查询',
-        description: '生产进度 · 分批发货 · 完工提醒',
+        label: l10n.salesHubTaskOrderProgress,
+        description: l10n.salesHubTaskOrderProgressSub,
         location: RouteName.salesOrderProgress,
         listPerm: Perm.salesOrderView,
         badge: const SalesProgressBadge(),
@@ -43,25 +46,25 @@ class SalesHubPage extends ConsumerWidget {
     ].where((e) => perms.contains(e.listPerm)).toList();
 
     final docEntries = <_Entry>[
-      _Entry.fromCfg(SalesDocConfig.quote),
-      _Entry.fromCfg(SalesDocConfig.order),
-      _Entry.fromCfg(SalesDocConfig.shipment),
-      _Entry.fromCfg(SalesDocConfig.otherShipment),
-      _Entry.fromCfg(SalesDocConfig.returnDoc),
+      _Entry.fromCfg(SalesDocConfig.quote, l10n),
+      _Entry.fromCfg(SalesDocConfig.order, l10n),
+      _Entry.fromCfg(SalesDocConfig.shipment, l10n),
+      _Entry.fromCfg(SalesDocConfig.otherShipment, l10n),
+      _Entry.fromCfg(SalesDocConfig.returnDoc, l10n),
     ].where((e) => perms.contains(e.listPerm)).toList();
 
     final reportEntries = <_Entry>[
       _Entry(
         icon: Icons.list_alt_outlined,
-        label: '销售明细报表',
-        description: '订货 / 出货 / 退货 / 其它出货',
+        label: l10n.salesHubReportDetail,
+        description: l10n.hubSubDetailPerItem,
         location: SalesRoutePath.reportDetail,
         listPerm: SalesPerm.reportView,
       ),
       _Entry(
         icon: Icons.bar_chart_outlined,
-        label: '销售汇总报表',
-        description: '订货 / 出货 / 退货 / 其它出货',
+        label: l10n.salesHubReportSummary,
+        description: l10n.hubSubSummaryPerDoc,
         location: SalesRoutePath.reportSummary,
         listPerm: SalesPerm.reportView,
       ),
@@ -71,8 +74,8 @@ class SalesHubPage extends ConsumerWidget {
     final scarcityEntries = <_Entry>[
       _Entry(
         icon: Icons.swap_horizontal_circle_outlined,
-        label: '稀缺库存让单',
-        description: '查看货品预留 · 释放低优先级占用',
+        label: l10n.salesHubScarcity,
+        description: l10n.salesHubScarcitySub,
         location: RouteName.salesScarcity,
         listPerm: Perm.salesOrderReallocate,
       ),
@@ -80,7 +83,7 @@ class SalesHubPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: UtenAppBar(
-        title: '销售管理',
+        title: l10n.salesHubTitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
@@ -97,18 +100,18 @@ class SalesHubPage extends ConsumerWidget {
             ),
             children: [
               if (taskEntries.isNotEmpty)
-                _section(context, theme, '任务中心', taskEntries),
+                _section(context, theme, l10n.hubSectionTaskCenter, taskEntries),
               if (taskEntries.isNotEmpty) const SizedBox(height: UtenSpacing.s16),
               if (docEntries.isNotEmpty)
-                _section(context, theme, '销售管理', docEntries),
+                _section(context, theme, l10n.salesHubTitle, docEntries),
               if (docEntries.isNotEmpty && reportEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (reportEntries.isNotEmpty)
-                _section(context, theme, '销售报表', reportEntries),
+                _section(context, theme, l10n.salesHubSectionReports, reportEntries),
               if (reportEntries.isNotEmpty && scarcityEntries.isNotEmpty)
                 const SizedBox(height: UtenSpacing.s16),
               if (scarcityEntries.isNotEmpty)
-                _section(context, theme, '稀缺仲裁', scarcityEntries),
+                _section(context, theme, l10n.salesHubSectionScarcity, scarcityEntries),
             ],
           ),
         ),
@@ -163,10 +166,10 @@ class _Entry {
     this.badge,
   });
 
-  _Entry.fromCfg(SalesDocConfig cfg)
+  _Entry.fromCfg(SalesDocConfig cfg, AppLocalizations l10n)
     : icon = cfg.icon,
-      label = cfg.label,
-      description = cfg.shortLabel,
+      label = _salesDocTitle(cfg.type, l10n),
+      description = _salesDocSubtitle(cfg.type, l10n),
       location = cfg.skipListOnCreate
           ? SalesRoutePath.docNew(cfg.type.pathSegment)
           : SalesRoutePath.list(cfg.type.pathSegment),
@@ -198,3 +201,21 @@ class _EntryTile extends StatelessWidget {
     );
   }
 }
+
+// 单据卡标题/副标题本地化：config 仍是中文 const（列表/编辑页在用），
+// hub 卡片经此映射按当前 locale 取标题 + 精简副标题。
+String _salesDocTitle(SalesDocType t, AppLocalizations l10n) => switch (t) {
+  SalesDocType.quote => l10n.salesHubDocQuote,
+  SalesDocType.order => l10n.salesHubDocOrder,
+  SalesDocType.shipment => l10n.salesHubDocShipment,
+  SalesDocType.otherShipment => l10n.salesHubDocOtherShipment,
+  SalesDocType.returnDoc => l10n.salesHubDocReturn,
+};
+
+String _salesDocSubtitle(SalesDocType t, AppLocalizations l10n) => switch (t) {
+  SalesDocType.quote => l10n.salesHubDocQuoteSub,
+  SalesDocType.order => l10n.salesHubDocOrderSub,
+  SalesDocType.shipment => l10n.salesHubDocShipmentSub,
+  SalesDocType.otherShipment => l10n.salesHubDocOtherShipmentSub,
+  SalesDocType.returnDoc => l10n.salesHubDocReturnSub,
+};

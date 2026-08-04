@@ -19,7 +19,6 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../components/layout/uten_grid_batch_controls.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -538,14 +537,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                             ),
                           ),
                           const Spacer(),
-                          const SizedBox(width: UtenSpacing.s8),
-                          UtenGridBatchToggle<StockGridRow>(
-                            controller: _grid,
-                          ),
                         ],
-                      ),
-                      UtenGridBatchActions<StockGridRow>(
-                        controller: _grid,
                       ),
                       UtenEditableGrid<StockGridRow>(
                         controller: _grid,

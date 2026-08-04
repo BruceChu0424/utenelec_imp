@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 
 class UtenHubCard extends StatelessWidget {
@@ -99,6 +100,8 @@ class UtenHubCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       description!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -136,7 +139,7 @@ class _DisabledChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        '未启用',
+        AppLocalizations.of(context).hubDisabledChip,
         style: theme.textTheme.labelSmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),

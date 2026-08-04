@@ -14,6 +14,7 @@ import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -26,6 +27,7 @@ import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/subcontract_doc_config.dart';
 import '../config/subcontract_report_config.dart';
+import '../models/subcontract_doc.dart';
 import '../widgets/subcontract_task_badge.dart';
 
 class SubcontractHubPage extends ConsumerWidget {
@@ -42,9 +44,10 @@ class SubcontractHubPage extends ConsumerWidget {
       );
     });
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '委外管理',
+        title: l10n.subcontractHubTitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
@@ -59,18 +62,18 @@ class SubcontractHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              _section(context, theme, '任务中心', [
+              _section(context, theme, l10n.hubSectionTaskCenter, [
                 _Entry(
                   icon: Icons.precision_manufacturing_outlined,
-                  label: '委外任务中心',
-                  description: '查看计划申请，按委外商分解为订货单',
+                  label: l10n.subcontractHubTaskCenter,
+                  description: l10n.subcontractHubTaskCenterSub,
                   location: RouteName.operationsSubcontractWorkbench,
                   badge: const SubcontractTaskBadge(showLabel: true),
                 ),
                 _Entry(
                   icon: Icons.assignment_return_outlined,
-                  label: '待退回供应商',
-                  description: '处理本人下单且财务未批准入库的数量',
+                  label: l10n.subcontractHubReturnVendor,
+                  description: l10n.hubSubPendingReturnQty,
                   location: procurementReturnTasksLocation(
                     ProcurementInboundOrderType.subcontract,
                   ),
@@ -81,23 +84,23 @@ class SubcontractHubPage extends ConsumerWidget {
                 ),
               ]),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '委外管理', [
-                _Entry.fromCfg(SubcontractDocConfig.inquiry),
-                _Entry.fromCfg(SubcontractDocConfig.application),
-                _Entry.fromCfg(SubcontractDocConfig.order),
-                _Entry.fromCfg(SubcontractDocConfig.receipt),
-                _Entry.fromCfg(SubcontractDocConfig.materialIssue),
-                _Entry.fromCfg(SubcontractDocConfig.returnDoc),
-                _Entry.fromCfg(SubcontractDocConfig.materialReturn),
-                _Entry.fromCfg(SubcontractDocConfig.waste),
+              _section(context, theme, l10n.subcontractHubTitle, [
+                _Entry.fromCfg(SubcontractDocConfig.inquiry, l10n),
+                _Entry.fromCfg(SubcontractDocConfig.application, l10n),
+                _Entry.fromCfg(SubcontractDocConfig.order, l10n),
+                _Entry.fromCfg(SubcontractDocConfig.receipt, l10n),
+                _Entry.fromCfg(SubcontractDocConfig.materialIssue, l10n),
+                _Entry.fromCfg(SubcontractDocConfig.returnDoc, l10n),
+                _Entry.fromCfg(SubcontractDocConfig.materialReturn, l10n),
+                _Entry.fromCfg(SubcontractDocConfig.waste, l10n),
               ]),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '委外报表', [
+              _section(context, theme, l10n.subcontractHubSectionReports, [
                 for (final k in SubcontractReportKind.values)
                   _Entry(
                     icon: k.icon,
-                    label: k.label,
-                    description: k.shortLabel,
+                    label: _subcontractReportTitle(k, l10n),
+                    description: _subcontractReportSubtitle(k, l10n),
                     location: k.route,
                   ),
               ]),
@@ -156,11 +159,11 @@ class _Entry {
     this.badge,
   });
 
-  _Entry.fromCfg(SubcontractDocConfig cfg)
+  _Entry.fromCfg(SubcontractDocConfig cfg, AppLocalizations l10n)
     : this(
         icon: cfg.icon,
-        label: cfg.label,
-        description: cfg.shortLabel,
+        label: _subcontractDocTitle(cfg.type, l10n),
+        description: _subcontractDocSubtitle(cfg.type, l10n),
         location: cfg.skipListOnCreate
             ? SubcontractRoute.newList(cfg.type.pathSegment)
             : SubcontractRoute.list(cfg.type.pathSegment),

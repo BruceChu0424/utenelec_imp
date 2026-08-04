@@ -252,11 +252,8 @@ class UtenEditableGridController<T extends EditableGridRow>
     notifyListeners();
   }
 
-  // ======================= 批量模式 / 复制粘贴 =======================
-  // 批量状态集中在 controller，便于编辑页在「明细」行自行放置切换钮与操作条
-  // （grid 内部不再渲染工具栏，避免被 sticky 表头覆盖）。
-  bool _batchMode = false;
-  bool get batchMode => _batchMode;
+  // ======================= 多选 / 复制粘贴 =======================
+  // grid 组件内置操作条（全选/复制/批量删除/粘贴）常驻显示，选择状态集中在 controller。
   final Set<T> _selected = <T>{};
   final List<T> _copyBuffer = <T>[];
 
@@ -265,12 +262,6 @@ class UtenEditableGridController<T extends EditableGridRow>
   bool get allSelected =>
       _rows.isNotEmpty && _rows.every(_selected.contains);
   bool get hasBuffer => _copyBuffer.isNotEmpty;
-
-  void toggleBatchMode() {
-    _batchMode = !_batchMode;
-    if (!_batchMode) _selected.clear();
-    notifyListeners();
-  }
 
   void toggleSelect(T row) {
     if (!_selected.add(row)) _selected.remove(row);
@@ -385,6 +376,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.emptyMessage = '暂无明细，点击下方按钮添加',
     this.confirmDelete = true,
     this.deleteConfirmLabel = '确认删除该行明细？',
+    this.cloneRow,
   });
 
   final UtenEditableGridController<T> controller;
@@ -408,6 +400,9 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   /// 删除行前是否弹确认框（默认开）。
   final bool confirmDelete;
   final String deleteConfirmLabel;
+
+  /// 行克隆函数（深拷贝一行）；非空时操作条显「复制/粘贴」。各 feature 注入自家行克隆实现。
+  final T Function(T)? cloneRow;
 
   @override
   State<UtenEditableGrid<T>> createState() => _UtenEditableGridState<T>();
@@ -598,7 +593,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   double get _totalWidth =>
-      (widget.controller.batchMode ? _selectColWidth : 0) +
+      (widget.showAddRow ? _selectColWidth : 0) +
       _widths.fold(0.0, (s, w) => s + w) +
       (widget.showRowDelete ? _deleteColWidth : 0);
 
@@ -649,7 +644,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
     // 首帧/数据/布局变化后，post-frame 重算 sticky 表头与钉底横滚条位置。
     _scheduleStickyUpdate();
-    return Stack(
+    final body = Stack(
       key: _gridKey,
       children: [
         Column(
@@ -688,13 +683,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             row: rows[i],
                             columns: widget.columns,
                             widths: _widths,
-                            showSelect: widget.controller.batchMode,
+                            showSelect: widget.showAddRow,
                             isSelected: widget.controller.isSelected(rows[i]),
                             onSelect: () =>
                                 widget.controller.toggleSelect(rows[i]),
-                            showDelete:
-                                widget.showRowDelete &&
-                                !widget.controller.batchMode,
+                            showDelete: widget.showRowDelete,
                             deleteColWidth: _deleteColWidth,
                             divider: divider,
                             confirmDelete: widget.confirmDelete,
@@ -771,6 +764,130 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ),
       ],
     );
+    // 操作条放在 Stack 之外（外层 Column），随页滚动且永不被 sticky 表头覆盖。
+    // 仅可编辑表格（showAddRow）显示；选择弹层（showAddRow=false）不显示。
+    if (!widget.showAddRow) return body;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [_actionsBar(theme), body],
+    );
+  }
+
+  /// 明细操作条（全选/复制选中/批量删除/粘贴），常驻显示在表体上方。
+  /// cloneRow 非空才显「复制/粘贴」。订阅 controller，选择数/缓冲变化即时刷新。
+  Widget _actionsBar(ThemeData theme) {
+    final clone = widget.cloneRow;
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) {
+        final c = widget.controller;
+        final n = c.selectedCount;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+          child: Wrap(
+            spacing: UtenSpacing.s4,
+            runSpacing: UtenSpacing.s4,
+            children: [
+              _actBtn(
+                theme,
+                c.allSelected ? '取消全选' : '全选',
+                c.selectAll,
+              ),
+              if (clone != null)
+                _actBtn(
+                  theme,
+                  '复制选中 ($n)',
+                  n > 0 ? () => c.copySelected(clone) : null,
+                ),
+              _actBtn(
+                theme,
+                '批量删除 ($n)',
+                n > 0 ? () => _confirmBatchDelete(context) : null,
+                danger: true,
+              ),
+              if (clone != null && c.hasBuffer) ...[
+                _actBtn(theme, '粘贴', () => c.paste(clone)),
+                _actBtn(
+                  theme,
+                  '粘贴多行',
+                  () => _pasteMany(context, clone),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _actBtn(
+    ThemeData theme,
+    String label,
+    VoidCallback? onPressed, {
+    bool danger = false,
+  }) {
+    final color = danger ? theme.colorScheme.error : theme.colorScheme.primary;
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        foregroundColor: color,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        minimumSize: const Size(0, 36),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+      child: Text(label),
+    );
+  }
+
+  Future<void> _confirmBatchDelete(BuildContext context) async {
+    final ok = await UtenDialog.show(
+      context,
+      title: '批量删除',
+      content: Text('确认删除选中的 ${widget.controller.selectedCount} 行明细？'),
+      confirmLabel: '删除',
+      danger: true,
+    );
+    if (ok == true) widget.controller.batchDelete();
+  }
+
+  Future<void> _pasteMany(BuildContext context, T Function(T) clone) async {
+    final n = await _showCountDialog(context);
+    if (n != null && n > 0) widget.controller.paste(clone, count: n);
+  }
+
+  Future<int?> _showCountDialog(BuildContext context) {
+    final ctrl = TextEditingController(text: '1');
+    return showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('粘贴多行'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '粘贴份数',
+            hintText: '1 - 50',
+          ),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final n = int.tryParse(ctrl.text.trim()) ?? 0;
+              Navigator.pop(ctx, n.clamp(1, 50));
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 表头单元（表头行 + 下分隔线）：常驻 Stack 覆盖层，横向跟随表体同步；
@@ -789,7 +906,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
               width: total,
               child: Row(
                 children: [
-                  if (widget.controller.batchMode) _selectAllHeader(theme),
+                  if (widget.showAddRow) _selectAllHeader(theme),
                   for (var i = 0; i < widget.columns.length; i++)
                     SizedBox(
                       width: _widths[i],

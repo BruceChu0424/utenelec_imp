@@ -1893,4 +1893,530 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileFieldRenewCount => 'Renewal count';
+
+  @override
+  String get hubDisabledChip => 'Not enabled';
+
+  @override
+  String get hubSectionTaskCenter => 'Task center';
+
+  @override
+  String get hubDisabledDocNotice =>
+      'This document type is not yet enabled (no legacy data)';
+
+  @override
+  String get hubSubDetailPerItem => 'Line-by-item details';
+
+  @override
+  String get hubSubSummaryPerDoc => 'Per-document totals';
+
+  @override
+  String get hubSubPendingReturnQty => 'Pending stock-in returns';
+
+  @override
+  String get hubSubReadOnlyPlan => 'Read-only plan';
+
+  @override
+  String get salesHubTitle => 'Sales';
+
+  @override
+  String get salesHubSectionReports => 'Sales reports';
+
+  @override
+  String get salesHubSectionScarcity => 'Stock arbitration';
+
+  @override
+  String get salesHubTaskOrderProgress => 'Order progress';
+
+  @override
+  String get salesHubTaskOrderProgressSub => 'Ship & completion status';
+
+  @override
+  String get salesHubDocQuote => 'Sales quote';
+
+  @override
+  String get salesHubDocQuoteSub => 'Pricing & validity';
+
+  @override
+  String get salesHubDocOrder => 'Sales order';
+
+  @override
+  String get salesHubDocOrderSub => 'Customer orders';
+
+  @override
+  String get salesHubDocShipment => 'Sales shipment';
+
+  @override
+  String get salesHubDocShipmentSub => 'Ship out, post A/R';
+
+  @override
+  String get salesHubDocOtherShipment => 'Other shipment';
+
+  @override
+  String get salesHubDocOtherShipmentSub => 'Direct stock-out';
+
+  @override
+  String get salesHubDocReturn => 'Sales return';
+
+  @override
+  String get salesHubDocReturnSub => 'Return & red-credit';
+
+  @override
+  String get salesHubReportDetail => 'Sales detail report';
+
+  @override
+  String get salesHubReportSummary => 'Sales summary report';
+
+  @override
+  String get salesHubScarcity => 'Scarcity reallocation';
+
+  @override
+  String get salesHubScarcitySub => 'Release low-priority holds';
+
+  @override
+  String get purchaseHubTitle => 'Purchasing';
+
+  @override
+  String get purchaseHubSectionReports => 'Purchase reports';
+
+  @override
+  String get purchaseHubTaskCenter => 'Purchasing tasks';
+
+  @override
+  String get purchaseHubTaskCenterSub => 'Split orders by supplier';
+
+  @override
+  String get purchaseHubReturnVendor => 'Returns to supplier';
+
+  @override
+  String get purchaseHubDocRequest => 'Planned purchase request';
+
+  @override
+  String get purchaseHubDocOrder => 'Purchase order';
+
+  @override
+  String get purchaseHubDocOrderSub => 'Order & track delivery';
+
+  @override
+  String get purchaseHubDocReceipt => 'Purchase receipt';
+
+  @override
+  String get purchaseHubDocReceiptSub => 'Receive into stock';
+
+  @override
+  String get purchaseHubDocReturn => 'Purchase return';
+
+  @override
+  String get purchaseHubDocReturnSub => 'Return out of stock';
+
+  @override
+  String get purchaseHubReportDetail => 'Purchase detail report';
+
+  @override
+  String get purchaseHubReportSummary => 'Purchase summary report';
+
+  @override
+  String get purchaseHubReportExpediting => 'Purchase expediting';
+
+  @override
+  String get purchaseHubReportExpeditingSub => 'Shortfalls & stock';
+
+  @override
+  String get subcontractHubTitle => 'Subcontracting';
+
+  @override
+  String get subcontractHubSectionReports => 'Subcontract reports';
+
+  @override
+  String get subcontractHubTaskCenter => 'Subcontracting tasks';
+
+  @override
+  String get subcontractHubTaskCenterSub => 'Split orders by vendor';
+
+  @override
+  String get subcontractHubReturnVendor => 'Returns to vendor';
+
+  @override
+  String get subcontractHubDocInquiry => 'Subcontract inquiry';
+
+  @override
+  String get subcontractHubDocInquirySub => 'Inquiry (not enabled)';
+
+  @override
+  String get subcontractHubDocApplication => 'Planned subcontract request';
+
+  @override
+  String get subcontractHubDocOrder => 'Subcontract order';
+
+  @override
+  String get subcontractHubDocOrderSub => 'Order & track inbound';
+
+  @override
+  String get subcontractHubDocReceipt => 'Subcontract receipt';
+
+  @override
+  String get subcontractHubDocReceiptSub => 'Inbound goods, post A/P';
+
+  @override
+  String get subcontractHubDocMaterialIssue => 'Material issue';
+
+  @override
+  String get subcontractHubDocMaterialIssueSub => 'Issue materials out';
+
+  @override
+  String get subcontractHubDocReturn => 'Subcontract return';
+
+  @override
+  String get subcontractHubDocReturnSub => 'Return goods out';
+
+  @override
+  String get subcontractHubDocMaterialReturn => 'Material return';
+
+  @override
+  String get subcontractHubDocMaterialReturnSub => 'Return materials in';
+
+  @override
+  String get subcontractHubDocWaste => 'Material loss';
+
+  @override
+  String get subcontractHubDocWasteSub => 'Log vendor material loss';
+
+  @override
+  String get subcontractHubReportDetail => 'Subcontract detail report';
+
+  @override
+  String get subcontractHubReportSummary => 'Subcontract summary report';
+
+  @override
+  String get subcontractHubReportInOut => 'In-out status';
+
+  @override
+  String get subcontractHubReportInOutSub => 'Overall in/out status';
+
+  @override
+  String get productionHubTitle => 'Production';
+
+  @override
+  String get productionHubSectionReports => 'Production reports';
+
+  @override
+  String get productionHubSchedule => 'Scheduling & progress';
+
+  @override
+  String get productionHubScheduleSub => 'Plan, WIP, completion';
+
+  @override
+  String get productionHubPlan => 'Production plan';
+
+  @override
+  String get productionHubPlanSub => 'Plan, lines, approval';
+
+  @override
+  String get productionHubDaily => 'Production daily';
+
+  @override
+  String get productionHubDailySub => 'Daily output & reversal';
+
+  @override
+  String get productionHubReportPlanDetail => 'Plan detail';
+
+  @override
+  String get productionHubReportPlanDetailSub => 'Date, item, status';
+
+  @override
+  String get productionHubReportPlanSummary => 'Plan summary';
+
+  @override
+  String get productionHubReportPlanSummarySub => 'Doc, maker, approver';
+
+  @override
+  String get productionHubWhereUsed => 'Where-used';
+
+  @override
+  String get productionHubWhereUsedSub => 'Where a material is used';
+
+  @override
+  String get financeHubTitle => 'Finance';
+
+  @override
+  String get financeHubSectionReports => 'Finance reports';
+
+  @override
+  String get financeHubApprovalOwners => 'Approval owners';
+
+  @override
+  String get financeHubTaskApproval => 'Order approval tasks';
+
+  @override
+  String get financeHubTaskApprovalSub => 'Assigned to me';
+
+  @override
+  String get financeHubTaskOverDelivery => 'Over-delivery approval';
+
+  @override
+  String get financeHubTaskOverDeliverySub => 'Approve excess arrivals';
+
+  @override
+  String get financeHubDocReceipt => 'Sales receipt';
+
+  @override
+  String get financeHubDocReceiptSub => 'Settle or direct receipt';
+
+  @override
+  String get financeHubDocPayment => 'Purchase payment';
+
+  @override
+  String get financeHubDocPaymentSub => 'Settle or direct payment';
+
+  @override
+  String get financeHubDocExpense => 'General expense';
+
+  @override
+  String get financeHubSubAllocatedByDept => 'Allocated by department';
+
+  @override
+  String get financeHubDocIncome => 'Other income';
+
+  @override
+  String get financeHubDocBankTransfer => 'Bank transfer';
+
+  @override
+  String get financeHubDocBankTransferSub => 'Between accounts';
+
+  @override
+  String get financeHubDocCheck => 'Check management';
+
+  @override
+  String get financeHubDocCheckSub => 'Check account view';
+
+  @override
+  String get financeHubDocAssets => 'Assets & prepaids';
+
+  @override
+  String get financeHubDocAssetsSub => 'Sub-ledger, depreciation';
+
+  @override
+  String get financeHubReportArAp => 'A/R & A/P';
+
+  @override
+  String get financeHubReportArApSub => 'Customer & vendor balances';
+
+  @override
+  String get financeHubReportDetail => 'Detail report';
+
+  @override
+  String get financeHubReportDetailSub => 'Receipts, payments, costs';
+
+  @override
+  String get financeHubReportSummary => 'Summary report';
+
+  @override
+  String get financeHubReportSummarySub => 'Receipt & payment totals';
+
+  @override
+  String get financeHubReportStatement => 'Account statement';
+
+  @override
+  String get financeHubReportStatementSub => 'Customer/vendor statements';
+
+  @override
+  String get financeHubReportAccountFlow => 'Account ledger';
+
+  @override
+  String get financeHubReportAccountFlowSub => 'Account in/out ledger';
+
+  @override
+  String get financeHubReportRecon => 'Reconciliation';
+
+  @override
+  String get financeHubReportReconSub => 'Monthly reconciliation';
+
+  @override
+  String get financeHubReportCost => 'Cost accounting';
+
+  @override
+  String get financeHubReportCostSub => 'Product & sales cost';
+
+  @override
+  String get financeHubReportGl => 'General ledger';
+
+  @override
+  String get financeHubReportGlSub => 'Accounts, assets, P&L';
+
+  @override
+  String get warehouseHubTitle => 'Warehouse';
+
+  @override
+  String get warehouseHubSectionDocs => 'Stock documents';
+
+  @override
+  String get warehouseHubSectionDocsDesc =>
+      'Transfer, in/out, picking, finished goods, stocktake';
+
+  @override
+  String get warehouseHubSectionInventory => 'Inventory queries';
+
+  @override
+  String get warehouseHubSectionInventoryDesc =>
+      'Live stock, balances, movements';
+
+  @override
+  String get warehouseHubSectionReports => 'Warehouse reports';
+
+  @override
+  String get warehouseHubSectionReportsDesc =>
+      'Detail (per item) & summary (per doc)';
+
+  @override
+  String get warehouseHubTaskExpected => 'Expected arrivals';
+
+  @override
+  String get warehouseHubTaskExpectedSub => 'Register actual arrivals';
+
+  @override
+  String get warehouseHubTaskException => 'Arrival exceptions';
+
+  @override
+  String get warehouseHubTaskExceptionSub => 'Quarantine over-deliveries';
+
+  @override
+  String get warehouseHubTaskPicking => 'Picking tasks';
+
+  @override
+  String get warehouseHubTaskPickingSub => 'Prep & track picking';
+
+  @override
+  String get warehouseHubDocTransfer => 'Stock transfer';
+
+  @override
+  String get warehouseHubDocTransferSub => 'Between warehouses';
+
+  @override
+  String get warehouseHubDocOtherIn => 'Other stock-in';
+
+  @override
+  String get warehouseHubDocOtherInSub => 'No-source stock-in';
+
+  @override
+  String get warehouseHubDocOtherOut => 'Other stock-out';
+
+  @override
+  String get warehouseHubDocOtherOutSub => 'No-source stock-out';
+
+  @override
+  String get warehouseHubDocDraw => 'Material picking';
+
+  @override
+  String get warehouseHubDocDrawSub => 'Picking for production';
+
+  @override
+  String get warehouseHubDocWdraw => 'Material return';
+
+  @override
+  String get warehouseHubDocWdrawSub => 'Return to stores';
+
+  @override
+  String get warehouseHubDocFinishedIn => 'Finished goods in';
+
+  @override
+  String get warehouseHubDocFinishedInSub => 'Finished goods inbound';
+
+  @override
+  String get warehouseHubDocFinishedOut => 'Finished goods out';
+
+  @override
+  String get warehouseHubDocFinishedOutSub => 'Finished goods outbound';
+
+  @override
+  String get warehouseHubDocCheck => 'Stocktake';
+
+  @override
+  String get warehouseHubDocCheckSub => 'Count & adjustment';
+
+  @override
+  String get warehouseHubInventoryLive => 'Live stock';
+
+  @override
+  String get warehouseHubInventoryLiveSub => 'Real-time on-hand';
+
+  @override
+  String get warehouseHubInventoryBalance => 'Stock balance';
+
+  @override
+  String get warehouseHubInventoryBalanceSub => 'Balances by item';
+
+  @override
+  String get warehouseHubInventoryMovement => 'Stock movements';
+
+  @override
+  String get warehouseHubInventoryMovementSub => 'In/out movement log';
+
+  @override
+  String get warehouseHubReportDetail => 'Warehouse detail report';
+
+  @override
+  String get warehouseHubReportSummary => 'Warehouse summary report';
+
+  @override
+  String get basicDataHubTitle => 'Master data';
+
+  @override
+  String get basicDataHubGoods => 'Items';
+
+  @override
+  String get basicDataHubGoodsSub => 'Item categories & master';
+
+  @override
+  String get basicDataHubMould => 'Molds';
+
+  @override
+  String get basicDataHubMouldSub => 'Mold series & master';
+
+  @override
+  String get basicDataHubClient => 'Customers';
+
+  @override
+  String get basicDataHubClientSub => 'Customer groups & master';
+
+  @override
+  String get basicDataHubSupplier => 'Suppliers';
+
+  @override
+  String get basicDataHubSupplierSub => 'Supplier groups & master';
+
+  @override
+  String get basicDataHubColor => 'Colors';
+
+  @override
+  String get basicDataHubColorSub => 'Color master';
+
+  @override
+  String get basicDataHubUnit => 'Units';
+
+  @override
+  String get basicDataHubUnitSub => 'Unit of measure master';
+
+  @override
+  String get basicDataHubCurrency => 'Currencies';
+
+  @override
+  String get basicDataHubCurrencySub => 'Currency & reference rates';
+
+  @override
+  String get basicDataHubWarehouse => 'Warehouses';
+
+  @override
+  String get basicDataHubWarehouseSub => 'Warehouse master';
+
+  @override
+  String get basicDataHubAccount => 'Accounts';
+
+  @override
+  String get basicDataHubAccountSub => 'Account & balances';
+
+  @override
+  String get basicDataHubPaymentStyle => 'Payment categories';
+
+  @override
+  String get basicDataHubPaymentStyleSub => 'Six accounting classes';
 }

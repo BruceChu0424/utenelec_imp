@@ -25,7 +25,6 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../components/layout/uten_grid_batch_controls.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -940,8 +939,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                               label: '从上游引入',
                               onPressed: _importFromUpstream,
                             ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          UtenGridBatchToggle<SalesGridRow>(controller: _grid),
                         ],
                       ),
                       if (_requiresLinkedSalesShipment)
@@ -974,10 +971,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             ],
                           ),
                         ),
-                      UtenGridBatchActions<SalesGridRow>(
-                        controller: _grid,
-                        cloneRow: (r) => r.clone(),
-                      ),
                       UtenEditableGrid<SalesGridRow>(
                         controller: _grid,
                         columns: salesGridColumns(
@@ -987,6 +980,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           unitEntries: names.unitEntries,
                         ),
                         createBlankRow: () => SalesGridRow(),
+                        cloneRow: (r) => r.clone(),
                       ),
                     ],
                   ),

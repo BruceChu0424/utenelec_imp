@@ -1858,4 +1858,526 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileFieldRenewCount => '续签次数';
+
+  @override
+  String get hubDisabledChip => '未启用';
+
+  @override
+  String get hubSectionTaskCenter => '任务中心';
+
+  @override
+  String get hubDisabledDocNotice => '该单据类型暂未启用（老库无数据）';
+
+  @override
+  String get hubSubDetailPerItem => '一行一货品';
+
+  @override
+  String get hubSubSummaryPerDoc => '一行一单';
+
+  @override
+  String get hubSubPendingReturnQty => '待入库的退货量';
+
+  @override
+  String get hubSubReadOnlyPlan => '计划只读';
+
+  @override
+  String get salesHubTitle => '销售管理';
+
+  @override
+  String get salesHubSectionReports => '销售报表';
+
+  @override
+  String get salesHubSectionScarcity => '稀缺仲裁';
+
+  @override
+  String get salesHubTaskOrderProgress => '订单进度查询';
+
+  @override
+  String get salesHubTaskOrderProgressSub => '出货与完工进度';
+
+  @override
+  String get salesHubDocQuote => '销售报价单';
+
+  @override
+  String get salesHubDocQuoteSub => '报价·有效期';
+
+  @override
+  String get salesHubDocOrder => '销售订货单';
+
+  @override
+  String get salesHubDocOrderSub => '客户下单';
+
+  @override
+  String get salesHubDocShipment => '销售出货单';
+
+  @override
+  String get salesHubDocShipmentSub => '发货·立应收';
+
+  @override
+  String get salesHubDocOtherShipment => '其它出货单';
+
+  @override
+  String get salesHubDocOtherShipmentSub => '直接出库';
+
+  @override
+  String get salesHubDocReturn => '销售退货单';
+
+  @override
+  String get salesHubDocReturnSub => '退货·红字应收';
+
+  @override
+  String get salesHubReportDetail => '销售明细报表';
+
+  @override
+  String get salesHubReportSummary => '销售汇总报表';
+
+  @override
+  String get salesHubScarcity => '稀缺库存让单';
+
+  @override
+  String get salesHubScarcitySub => '释放低优先级占用';
+
+  @override
+  String get purchaseHubTitle => '采购管理';
+
+  @override
+  String get purchaseHubSectionReports => '采购报表';
+
+  @override
+  String get purchaseHubTaskCenter => '采购任务中心';
+
+  @override
+  String get purchaseHubTaskCenterSub => '按供应商拆订货';
+
+  @override
+  String get purchaseHubReturnVendor => '待退回供应商';
+
+  @override
+  String get purchaseHubDocRequest => '计划下达的采购申请';
+
+  @override
+  String get purchaseHubDocOrder => '采购订货单';
+
+  @override
+  String get purchaseHubDocOrderSub => '下单·跟踪到货';
+
+  @override
+  String get purchaseHubDocReceipt => '采购收货单';
+
+  @override
+  String get purchaseHubDocReceiptSub => '收货·入库';
+
+  @override
+  String get purchaseHubDocReturn => '采购退货单';
+
+  @override
+  String get purchaseHubDocReturnSub => '退货·出库';
+
+  @override
+  String get purchaseHubReportDetail => '采购明细报表';
+
+  @override
+  String get purchaseHubReportSummary => '采购汇总报表';
+
+  @override
+  String get purchaseHubReportExpediting => '采购催料单';
+
+  @override
+  String get purchaseHubReportExpeditingSub => '订货未收·库存';
+
+  @override
+  String get subcontractHubTitle => '委外管理';
+
+  @override
+  String get subcontractHubSectionReports => '委外报表';
+
+  @override
+  String get subcontractHubTaskCenter => '委外任务中心';
+
+  @override
+  String get subcontractHubTaskCenterSub => '按委外商拆订货';
+
+  @override
+  String get subcontractHubReturnVendor => '待退回供应商';
+
+  @override
+  String get subcontractHubDocInquiry => '委外询价单';
+
+  @override
+  String get subcontractHubDocInquirySub => '询价（未启用）';
+
+  @override
+  String get subcontractHubDocApplication => '计划下达的委外申请';
+
+  @override
+  String get subcontractHubDocOrder => '委外订货单';
+
+  @override
+  String get subcontractHubDocOrderSub => '下单·跟踪进仓';
+
+  @override
+  String get subcontractHubDocReceipt => '委外进仓单';
+
+  @override
+  String get subcontractHubDocReceiptSub => '成品进仓·立应付';
+
+  @override
+  String get subcontractHubDocMaterialIssue => '委外发料单';
+
+  @override
+  String get subcontractHubDocMaterialIssueSub => '材料出仓';
+
+  @override
+  String get subcontractHubDocReturn => '委外退货单';
+
+  @override
+  String get subcontractHubDocReturnSub => '成品退·出库';
+
+  @override
+  String get subcontractHubDocMaterialReturn => '委外材料退货单';
+
+  @override
+  String get subcontractHubDocMaterialReturnSub => '材料退回入库';
+
+  @override
+  String get subcontractHubDocWaste => '委外材料损耗单';
+
+  @override
+  String get subcontractHubDocWasteSub => '登记供应商损耗';
+
+  @override
+  String get subcontractHubReportDetail => '委外明细报表';
+
+  @override
+  String get subcontractHubReportSummary => '委外汇总报表';
+
+  @override
+  String get subcontractHubReportInOut => '委外出入状况表';
+
+  @override
+  String get subcontractHubReportInOutSub => '进出综合状况';
+
+  @override
+  String get productionHubTitle => '生产管理';
+
+  @override
+  String get productionHubSectionReports => '生产报表';
+
+  @override
+  String get productionHubSchedule => '生产调度与进度';
+
+  @override
+  String get productionHubScheduleSub => '待排产·在产·完工';
+
+  @override
+  String get productionHubPlan => '生产计划单';
+
+  @override
+  String get productionHubPlanSub => '计划·明细·审核';
+
+  @override
+  String get productionHubDaily => '生产日报表';
+
+  @override
+  String get productionHubDailySub => '完工日报·红冲';
+
+  @override
+  String get productionHubReportPlanDetail => '计划明细';
+
+  @override
+  String get productionHubReportPlanDetailSub => '日期·货品·状态';
+
+  @override
+  String get productionHubReportPlanSummary => '计划汇总';
+
+  @override
+  String get productionHubReportPlanSummarySub => '单号·制单·审核';
+
+  @override
+  String get productionHubWhereUsed => '物料反查产成品';
+
+  @override
+  String get productionHubWhereUsedSub => '材料用在哪些产品';
+
+  @override
+  String get financeHubTitle => '钱流管理';
+
+  @override
+  String get financeHubSectionReports => '钱流报表';
+
+  @override
+  String get financeHubApprovalOwners => '审批负责人设置';
+
+  @override
+  String get financeHubTaskApproval => '订货审批任务中心';
+
+  @override
+  String get financeHubTaskApprovalSub => '分配给我的审批';
+
+  @override
+  String get financeHubTaskOverDelivery => '超量到货审批';
+
+  @override
+  String get financeHubTaskOverDeliverySub => '审核超量到货';
+
+  @override
+  String get financeHubDocReceipt => '销售收款';
+
+  @override
+  String get financeHubDocReceiptSub => '核销应收·直接收款';
+
+  @override
+  String get financeHubDocPayment => '采购付款';
+
+  @override
+  String get financeHubDocPaymentSub => '核销应付·直接付款';
+
+  @override
+  String get financeHubDocExpense => '一般费用';
+
+  @override
+  String get financeHubSubAllocatedByDept => '按部门分摊';
+
+  @override
+  String get financeHubDocIncome => '其它收入';
+
+  @override
+  String get financeHubDocBankTransfer => '银行存取款';
+
+  @override
+  String get financeHubDocBankTransferSub => '账户间转入';
+
+  @override
+  String get financeHubDocCheck => '支票管理';
+
+  @override
+  String get financeHubDocCheckSub => '支票账户视图';
+
+  @override
+  String get financeHubDocAssets => '资产与待摊';
+
+  @override
+  String get financeHubDocAssetsSub => '子账·折旧·期间';
+
+  @override
+  String get financeHubReportArAp => '应收应付';
+
+  @override
+  String get financeHubReportArApSub => '客户·供应商余额';
+
+  @override
+  String get financeHubReportDetail => '明细报表';
+
+  @override
+  String get financeHubReportDetailSub => '收款·付款·费用';
+
+  @override
+  String get financeHubReportSummary => '汇总报表';
+
+  @override
+  String get financeHubReportSummarySub => '收支汇总';
+
+  @override
+  String get financeHubReportStatement => '往来对帐单';
+
+  @override
+  String get financeHubReportStatementSub => '客户·供应商对账';
+
+  @override
+  String get financeHubReportAccountFlow => '账户流水';
+
+  @override
+  String get financeHubReportAccountFlowSub => '账户进出流水';
+
+  @override
+  String get financeHubReportRecon => '对账单';
+
+  @override
+  String get financeHubReportReconSub => '月结对账';
+
+  @override
+  String get financeHubReportCost => '成本核算';
+
+  @override
+  String get financeHubReportCostSub => '产品·销售成本';
+
+  @override
+  String get financeHubReportGl => '总账报表';
+
+  @override
+  String get financeHubReportGlSub => '科目·资产·利润';
+
+  @override
+  String get warehouseHubTitle => '仓库管理';
+
+  @override
+  String get warehouseHubSectionDocs => '出入库单据';
+
+  @override
+  String get warehouseHubSectionDocsDesc => '调拨·其它出入库·领退料·产成品进出仓·盘点';
+
+  @override
+  String get warehouseHubSectionInventory => '库存查询';
+
+  @override
+  String get warehouseHubSectionInventoryDesc => '即时库存·库存查询·出入库流水';
+
+  @override
+  String get warehouseHubSectionReports => '仓库报表';
+
+  @override
+  String get warehouseHubSectionReportsDesc => '明细（一行一货品）·汇总（一行一单）';
+
+  @override
+  String get warehouseHubTaskExpected => '预计到货任务中心';
+
+  @override
+  String get warehouseHubTaskExpectedSub => '登记实际到货';
+
+  @override
+  String get warehouseHubTaskException => '到货异常任务中心';
+
+  @override
+  String get warehouseHubTaskExceptionSub => '超量先隔离';
+
+  @override
+  String get warehouseHubTaskPicking => '生产领料任务中心';
+
+  @override
+  String get warehouseHubTaskPickingSub => '备料·跟踪领取';
+
+  @override
+  String get warehouseHubDocTransfer => '仓库调拨';
+
+  @override
+  String get warehouseHubDocTransferSub => '仓库间调拨';
+
+  @override
+  String get warehouseHubDocOtherIn => '其它入库';
+
+  @override
+  String get warehouseHubDocOtherInSub => '无单据入库';
+
+  @override
+  String get warehouseHubDocOtherOut => '其它出库';
+
+  @override
+  String get warehouseHubDocOtherOutSub => '无单据出库';
+
+  @override
+  String get warehouseHubDocDraw => '生产领料';
+
+  @override
+  String get warehouseHubDocDrawSub => '车间领料';
+
+  @override
+  String get warehouseHubDocWdraw => '生产退料';
+
+  @override
+  String get warehouseHubDocWdrawSub => '退回车间料';
+
+  @override
+  String get warehouseHubDocFinishedIn => '产成品进仓';
+
+  @override
+  String get warehouseHubDocFinishedInSub => '成品入库';
+
+  @override
+  String get warehouseHubDocFinishedOut => '产成品出仓';
+
+  @override
+  String get warehouseHubDocFinishedOutSub => '成品出库';
+
+  @override
+  String get warehouseHubDocCheck => '盘点';
+
+  @override
+  String get warehouseHubDocCheckSub => '盘点盈亏';
+
+  @override
+  String get warehouseHubInventoryLive => '即时库存';
+
+  @override
+  String get warehouseHubInventoryLiveSub => '实时可用库存';
+
+  @override
+  String get warehouseHubInventoryBalance => '库存查询';
+
+  @override
+  String get warehouseHubInventoryBalanceSub => '按货品查余额';
+
+  @override
+  String get warehouseHubInventoryMovement => '出入库流水';
+
+  @override
+  String get warehouseHubInventoryMovementSub => '进出流水明细';
+
+  @override
+  String get warehouseHubReportDetail => '仓库明细报表';
+
+  @override
+  String get warehouseHubReportSummary => '仓库汇总报表';
+
+  @override
+  String get basicDataHubTitle => '基础资料';
+
+  @override
+  String get basicDataHubGoods => '货品资料';
+
+  @override
+  String get basicDataHubGoodsSub => '物料分类树与货品主档';
+
+  @override
+  String get basicDataHubMould => '模具资料';
+
+  @override
+  String get basicDataHubMouldSub => '模具系列分类与主档';
+
+  @override
+  String get basicDataHubClient => '客户资料';
+
+  @override
+  String get basicDataHubClientSub => '客户分类与主档';
+
+  @override
+  String get basicDataHubSupplier => '供应商资料';
+
+  @override
+  String get basicDataHubSupplierSub => '供应商分类与主档';
+
+  @override
+  String get basicDataHubColor => '颜色资料';
+
+  @override
+  String get basicDataHubColorSub => '颜色主档';
+
+  @override
+  String get basicDataHubUnit => '基本单位';
+
+  @override
+  String get basicDataHubUnitSub => '计量单位主档';
+
+  @override
+  String get basicDataHubCurrency => '币种资料';
+
+  @override
+  String get basicDataHubCurrencySub => '币种·参考汇率';
+
+  @override
+  String get basicDataHubWarehouse => '仓库资料';
+
+  @override
+  String get basicDataHubWarehouseSub => '仓库主档';
+
+  @override
+  String get basicDataHubAccount => '账户资料';
+
+  @override
+  String get basicDataHubAccountSub => '账户·期初·余额';
+
+  @override
+  String get basicDataHubPaymentStyle => '收付款类别';
+
+  @override
+  String get basicDataHubPaymentStyleSub => '资产负债等六大类';
 }

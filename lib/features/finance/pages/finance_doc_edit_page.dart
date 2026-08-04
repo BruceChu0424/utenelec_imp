@@ -23,7 +23,6 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../components/layout/uten_grid_batch_controls.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -476,14 +475,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage> {
                               label: '从应收应付引入',
                               onPressed: _importFromArAp,
                             ),
-                            const SizedBox(width: UtenSpacing.s8),
-                            UtenGridBatchToggle<FinanceGridRow>(
-                              controller: _grid,
-                            ),
                         ],
-                      ),
-                      UtenGridBatchActions<FinanceGridRow>(
-                        controller: _grid,
                       ),
                       UtenEditableGrid<FinanceGridRow>(
                         controller: _grid,

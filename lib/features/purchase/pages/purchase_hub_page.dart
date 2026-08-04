@@ -10,6 +10,7 @@ import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -21,6 +22,7 @@ import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../warehouse/widgets/procurement_inbound_badges.dart';
 import '../config/purchase_doc_config.dart';
 import '../config/purchase_report_config.dart';
+import '../models/purchase_doc.dart';
 import '../widgets/purchase_task_badge.dart';
 
 class PurchaseHubPage extends ConsumerWidget {
@@ -39,9 +41,10 @@ class PurchaseHubPage extends ConsumerWidget {
       );
     });
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '采购管理',
+        title: l10n.purchaseHubTitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
@@ -58,18 +61,18 @@ class PurchaseHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              _section(context, theme, '任务中心', [
+              _section(context, theme, l10n.hubSectionTaskCenter, [
                 _Entry(
                   icon: Icons.pending_actions_rounded,
-                  label: '采购任务中心',
-                  description: '查看计划申请，按供应商分解为订货单',
+                  label: l10n.purchaseHubTaskCenter,
+                  description: l10n.purchaseHubTaskCenterSub,
                   location: RouteName.operationsPurchaseWorkbench,
                   badge: const PurchaseTaskBadge(showLabel: true),
                 ),
                 _Entry(
                   icon: Icons.assignment_return_outlined,
-                  label: '待退回供应商',
-                  description: '处理本人下单且财务未批准入库的数量',
+                  label: l10n.purchaseHubReturnVendor,
+                  description: l10n.hubSubPendingReturnQty,
                   location: procurementReturnTasksLocation(
                     ProcurementInboundOrderType.purchase,
                   ),
@@ -80,19 +83,19 @@ class PurchaseHubPage extends ConsumerWidget {
                 ),
               ]),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '采购管理', [
-                _Entry.fromCfg(PurchaseDocConfig.request),
-                _Entry.fromCfg(PurchaseDocConfig.order),
-                _Entry.fromCfg(PurchaseDocConfig.receipt),
-                _Entry.fromCfg(PurchaseDocConfig.returnDoc),
+              _section(context, theme, l10n.purchaseHubTitle, [
+                _Entry.fromCfg(PurchaseDocConfig.request, l10n),
+                _Entry.fromCfg(PurchaseDocConfig.order, l10n),
+                _Entry.fromCfg(PurchaseDocConfig.receipt, l10n),
+                _Entry.fromCfg(PurchaseDocConfig.returnDoc, l10n),
               ]),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '采购报表', [
+              _section(context, theme, l10n.purchaseHubSectionReports, [
                 for (final k in PurchaseReportKind.values)
                   _Entry(
                     icon: k.icon,
-                    label: k.label,
-                    description: k.shortLabel,
+                    label: _purchaseReportTitle(k, l10n),
+                    description: _purchaseReportSubtitle(k, l10n),
                     location: '/purchase/report/${k.name}',
                   ),
               ]),
@@ -149,10 +152,10 @@ class _Entry {
     this.badge,
   });
 
-  _Entry.fromCfg(PurchaseDocConfig cfg)
+  _Entry.fromCfg(PurchaseDocConfig cfg, AppLocalizations l10n)
     : icon = cfg.icon,
-      label = cfg.label,
-      description = cfg.shortLabel,
+      label = _purchaseDocTitle(cfg.type, l10n),
+      description = _purchaseDocSubtitle(cfg.type, l10n),
       location = cfg.skipListOnCreate
           ? RoutePath.purchaseDocNew(cfg.type.pathSegment)
           : '/purchase/${cfg.type.pathSegment}',
@@ -180,3 +183,33 @@ class _EntryTile extends StatelessWidget {
     );
   }
 }
+
+// 单据卡标题/副标题本地化（config 仍是中文 const，列表/编辑页在用）。
+String _purchaseDocTitle(PurchaseDocType t, AppLocalizations l10n) => switch (t) {
+  PurchaseDocType.request => l10n.purchaseHubDocRequest,
+  PurchaseDocType.order => l10n.purchaseHubDocOrder,
+  PurchaseDocType.receipt => l10n.purchaseHubDocReceipt,
+  PurchaseDocType.returnDoc => l10n.purchaseHubDocReturn,
+};
+
+String _purchaseDocSubtitle(PurchaseDocType t, AppLocalizations l10n) => switch (t) {
+  PurchaseDocType.request => l10n.hubSubReadOnlyPlan,
+  PurchaseDocType.order => l10n.purchaseHubDocOrderSub,
+  PurchaseDocType.receipt => l10n.purchaseHubDocReceiptSub,
+  PurchaseDocType.returnDoc => l10n.purchaseHubDocReturnSub,
+};
+
+// 报表卡标题/副标题本地化（按 PurchaseReportKind 枚举查）。
+String _purchaseReportTitle(PurchaseReportKind k, AppLocalizations l10n) =>
+    switch (k) {
+      PurchaseReportKind.detail => l10n.purchaseHubReportDetail,
+      PurchaseReportKind.summary => l10n.purchaseHubReportSummary,
+      PurchaseReportKind.expediting => l10n.purchaseHubReportExpediting,
+    };
+
+String _purchaseReportSubtitle(PurchaseReportKind k, AppLocalizations l10n) =>
+    switch (k) {
+      PurchaseReportKind.detail => l10n.hubSubDetailPerItem,
+      PurchaseReportKind.summary => l10n.hubSubSummaryPerDoc,
+      PurchaseReportKind.expediting => l10n.purchaseHubReportExpeditingSub,
+    };

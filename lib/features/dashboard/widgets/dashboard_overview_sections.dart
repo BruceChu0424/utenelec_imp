@@ -38,6 +38,7 @@ class _DashboardOverviewBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final overview = ref.watch(dashboardOverviewProvider);
     return overview.when(
       loading: () => const _DashboardOverviewSkeleton(),
@@ -50,6 +51,7 @@ class _DashboardOverviewBody extends ConsumerWidget {
             title: data.departmentName.isEmpty
                 ? '今日概览'
                 : '今日概览 · ${data.departmentName}',
+            accentColor: theme.colorScheme.primary,
             trailing: const Text('按本人权限展示'),
           ),
           const SizedBox(height: UtenSpacing.s12),
@@ -57,8 +59,9 @@ class _DashboardOverviewBody extends ConsumerWidget {
           const SizedBox(height: UtenSpacing.s24),
           UtenCollapsibleSection(
             title: '待办任务',
-            // 标题旁总数徽章 = 各待办 count 之和（无待办时徽章自身不渲染）
-            trailing: UtenNotificationBadge(
+            accentColor: theme.colorScheme.primary,
+            // 标题文字紧贴右侧的总数徽章 = 各待办 count 之和（无待办时徽章自身不渲染）
+            titleTrailing: UtenNotificationBadge(
               count: data.todos.fold<int>(0, (sum, t) => sum + t.count),
               size: 20,
               showLabel: true,
@@ -67,9 +70,10 @@ class _DashboardOverviewBody extends ConsumerWidget {
           ),
           if (data.intelligence.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s24),
-            const UtenSectionHeader(
+            UtenSectionHeader(
               title: '政策与监管动态',
-              trailing: Text('仅收录政府官网'),
+              accentColor: theme.colorScheme.primary,
+              trailing: const Text('仅收录政府官网'),
             ),
             const SizedBox(height: UtenSpacing.s12),
             _PolicyList(items: data.intelligence),

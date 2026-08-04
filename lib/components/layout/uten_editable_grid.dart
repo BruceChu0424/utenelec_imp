@@ -14,7 +14,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../feedback/uten_dialog.dart';
 
@@ -253,6 +252,72 @@ class UtenEditableGridController<T extends EditableGridRow>
     notifyListeners();
   }
 
+  // ======================= 批量模式 / 复制粘贴 =======================
+  // 批量状态集中在 controller，便于编辑页在「明细」行自行放置切换钮与操作条
+  // （grid 内部不再渲染工具栏，避免被 sticky 表头覆盖）。
+  bool _batchMode = false;
+  bool get batchMode => _batchMode;
+  final Set<T> _selected = <T>{};
+  final List<T> _copyBuffer = <T>[];
+
+  bool isSelected(T row) => _selected.contains(row);
+  int get selectedCount => _selected.length;
+  bool get allSelected =>
+      _rows.isNotEmpty && _rows.every(_selected.contains);
+  bool get hasBuffer => _copyBuffer.isNotEmpty;
+
+  void toggleBatchMode() {
+    _batchMode = !_batchMode;
+    if (!_batchMode) _selected.clear();
+    notifyListeners();
+  }
+
+  void toggleSelect(T row) {
+    if (!_selected.add(row)) _selected.remove(row);
+    notifyListeners();
+  }
+
+  void selectAll() {
+    if (_rows.every(_selected.contains)) {
+      _selected.clear();
+    } else {
+      _selected.addAll(_rows);
+    }
+    notifyListeners();
+  }
+
+  /// 复制选中行到缓冲（克隆快照；旧缓冲先 dispose）。
+  void copySelected(T Function(T) clone) {
+    if (_selected.isEmpty) return;
+    for (final r in _copyBuffer) {
+      r.dispose();
+    }
+    _copyBuffer
+      ..clear()
+      ..addAll(_selected.map(clone));
+    notifyListeners();
+  }
+
+  /// 粘贴缓冲（每条再克隆出独立行）count 份。
+  void paste(T Function(T) clone, {int count = 1}) {
+    if (_copyBuffer.isEmpty) return;
+    final pasted = <T>[];
+    for (var i = 0; i < count; i++) {
+      for (final src in _copyBuffer) {
+        pasted.add(clone(src));
+      }
+    }
+    addRows(pasted);
+  }
+
+  /// 批量删除选中行（按身份 dispose + 移除；清空选中）。
+  void batchDelete() {
+    if (_selected.isEmpty) return;
+    final victims = _selected.toList();
+    _selected.clear();
+    removeRows(victims);
+  }
+
   final _GridTotalNotifier<T> _total = _GridTotalNotifier<T>();
 
   /// 表尾合计订阅源（金额行贡献之和）。页脚用 ValueListenableBuilder 订阅。
@@ -262,6 +327,9 @@ class UtenEditableGridController<T extends EditableGridRow>
   @override
   void dispose() {
     for (final r in _rows) {
+      r.dispose();
+    }
+    for (final r in _copyBuffer) {
       r.dispose();
     }
     _total.dispose();
@@ -317,8 +385,6 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.emptyMessage = '暂无明细，点击下方按钮添加',
     this.confirmDelete = true,
     this.deleteConfirmLabel = '确认删除该行明细？',
-    this.enableBatchActions = true,
-    this.cloneRow,
   });
 
   final UtenEditableGridController<T> controller;
@@ -343,12 +409,6 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final bool confirmDelete;
   final String deleteConfirmLabel;
 
-  /// 是否启用批量操作工具栏（批量选择 + 批量删除 + 复制/粘贴）。默认开。
-  final bool enableBatchActions;
-
-  /// 行克隆函数（深拷贝一行）；非空时启用「复制/粘贴」。各 feature 注入自家行克隆实现。
-  final T Function(T)? cloneRow;
-
   @override
   State<UtenEditableGrid<T>> createState() => _UtenEditableGridState<T>();
 }
@@ -361,12 +421,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   late final ScrollController _pinnedH;
   bool _syncing = false;
 
-  // —— 批量模式 / 复制粘贴（WS5）——
-  bool _batchMode = false;
-  /// 选中行（按对象身份，避免增删行后索引漂移）。
-  final Set<T> _selected = <T>{};
-  /// 复制缓冲：存克隆快照（独立 controller），粘贴时再克隆出全新行。
-  final List<T> _copyBuffer = <T>[];
+  /// 选择列宽（批量模式行首 checkbox）。
   static const double _selectColWidth = 44;
 
   // —— sticky 表头 / 钉底横滚条 测量与位置状态 ——
@@ -417,7 +472,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         .map((c) => c.width.clamp(_minColWidth, double.infinity))
         .toList();
     // 增删行改变表体高度 → sticky 表头/钉底横滚条位置需重算。
-    widget.controller.addListener(_scheduleStickyUpdate);
+    widget.controller.addListener(_onControllerChanged);
     _scheduleStickyUpdate();
   }
 
@@ -432,8 +487,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
     // 行控制器换实例 → 重挂监听（增删行驱动 sticky 位置重算）。
     if (!identical(oldWidget.controller, widget.controller)) {
-      oldWidget.controller.removeListener(_scheduleStickyUpdate);
-      widget.controller.addListener(_scheduleStickyUpdate);
+      oldWidget.controller.removeListener(_onControllerChanged);
+      widget.controller.addListener(_onControllerChanged);
     }
   }
 
@@ -477,6 +532,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _updateSticky();
     });
+  }
+
+  /// controller 变化（增删行 / 批量模式切换 / 选择变化）→ 重建本 State
+  /// （表头全选 checkbox、_totalWidth 列宽需随之刷新）+ 重算 sticky。
+  void _onControllerChanged() {
+    if (!mounted) return;
+    _scheduleStickyUpdate();
+    setState(() {});
   }
 
   /// 量网格/表头/表体与页面视口的全局位置，算出两个覆盖层的位置：
@@ -535,205 +598,27 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   double get _totalWidth =>
-      (_batchMode ? _selectColWidth : 0) +
+      (widget.controller.batchMode ? _selectColWidth : 0) +
       _widths.fold(0.0, (s, w) => s + w) +
       (widget.showRowDelete ? _deleteColWidth : 0);
 
   @override
   void dispose() {
     _pagePos?.removeListener(_scheduleStickyUpdate);
-    widget.controller.removeListener(_scheduleStickyUpdate);
+    widget.controller.removeListener(_onControllerChanged);
     _headerY.dispose();
     _pinnedBarY.dispose();
     _headerH.dispose();
     _bodyH.dispose();
     _pinnedH.dispose();
-    for (final r in _copyBuffer) {
-      r.dispose();
-    }
     super.dispose();
   }
 
-  // ======================= 批量模式 / 复制粘贴（WS5）=======================
-
-  void _toggleSelect(T row) {
-    setState(() {
-      if (!_selected.add(row)) {
-        _selected.remove(row);
-      }
-    });
-  }
-
-  bool _allSelected() {
-    final rows = widget.controller.rows;
-    return rows.isNotEmpty && rows.every(_selected.contains);
-  }
-
-  void _toggleSelectAll() {
-    setState(() {
-      final rows = widget.controller.rows;
-      if (rows.every(_selected.contains)) {
-        _selected.clear();
-      } else {
-        _selected.addAll(rows);
-      }
-    });
-  }
-
-  Future<void> _batchDelete() async {
-    if (_selected.isEmpty) return;
-    final ok = await UtenDialog.show(
-      context,
-      title: '批量删除',
-      content: Text('确认删除选中的 ${_selected.length} 行明细？'),
-      confirmLabel: '删除',
-      danger: true,
-    );
-    if (ok != true) return;
-    final victims = _selected.toList();
-    setState(_selected.clear);
-    widget.controller.removeRows(victims);
-  }
-
-  void _copySelected() {
-    final clone = widget.cloneRow;
-    if (clone == null || _selected.isEmpty) return;
-    setState(() {
-      for (final r in _copyBuffer) {
-        r.dispose();
-      }
-      _copyBuffer
-        ..clear()
-        ..addAll(_selected.map(clone));
-    });
-  }
-
-  void _paste({int count = 1}) {
-    final clone = widget.cloneRow;
-    if (clone == null || _copyBuffer.isEmpty) return;
-    final pasted = <T>[];
-    for (var i = 0; i < count; i++) {
-      for (final src in _copyBuffer) {
-        pasted.add(clone(src));
-      }
-    }
-    widget.controller.addRows(pasted);
-  }
-
-  Future<void> _pasteMany() async {
-    final n = await _showCountDialog(
-      context,
-      title: '粘贴多行',
-      label: '粘贴份数',
-      defaultValue: '1',
-    );
-    if (n != null && n > 0) _paste(count: n);
-  }
-
-  /// 批量操作 / 复制粘贴 工具栏（表头之上）。
-  Widget _toolbar(ThemeData theme) {
-    final hasClone = widget.cloneRow != null;
-    if (!widget.enableBatchActions && !hasClone) {
-      return const SizedBox.shrink();
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-      child: Wrap(
-        spacing: UtenSpacing.s4,
-        runSpacing: UtenSpacing.s4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          _batchToggleButton(theme),
-          if (_batchMode) ...[
-            _toolButton(
-              theme,
-              label: _allSelected() ? '取消全选' : '全选',
-              onPressed: _toggleSelectAll,
-            ),
-            if (hasClone)
-              _toolButton(
-                theme,
-                label: '复制选中 (${_selected.length})',
-                onPressed: _selected.isNotEmpty ? _copySelected : null,
-              ),
-            _toolButton(
-              theme,
-              label: '批量删除 (${_selected.length})',
-              danger: true,
-              onPressed: _selected.isNotEmpty ? _batchDelete : null,
-            ),
-          ],
-          if (hasClone && _copyBuffer.isNotEmpty) ...[
-            _toolButton(theme, label: '粘贴', onPressed: () => _paste()),
-            _toolButton(theme, label: '粘贴多行', onPressed: _pasteMany),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// 「批量操作」切换按钮：深绿底白字（启用）/ 浅色（未启用）。
-  Widget _batchToggleButton(ThemeData theme) {
-    final on = _batchMode;
-    final fg = on ? Colors.white : theme.colorScheme.primary;
-    return Material(
-      color: on
-          ? UtenColors.teal800
-          : theme.colorScheme.primary.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: () => setState(() {
-          _batchMode = !_batchMode;
-          if (!_batchMode) _selected.clear();
-        }),
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.checklist_rounded, size: 18, color: fg),
-              const SizedBox(width: 6),
-              Text(
-                on ? '退出批量' : '批量操作',
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _toolButton(
-    ThemeData theme, {
-    required String label,
-    required VoidCallback? onPressed,
-    bool danger = false,
-  }) {
-    final color = danger ? theme.colorScheme.error : theme.colorScheme.primary;
-    return TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        foregroundColor: color,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        minimumSize: const Size(0, 36),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-      ),
-      child: Text(label),
-    );
-  }
-
-  /// 表头全选 checkbox（批量模式表头首列）。
+  /// 表头全选 checkbox（批量模式表头首列；读写由 controller 驱动）。
   Widget _selectAllHeader(ThemeData theme) {
-    final rows = widget.controller.rows;
-    final all = rows.isNotEmpty && rows.every(_selected.contains);
-    final some = !all && _selected.any(rows.contains);
+    final c = widget.controller;
+    final all = c.allSelected;
+    final some = !all && c.selectedCount > 0;
     return SizedBox(
       width: _selectColWidth,
       child: DecoratedBox(
@@ -744,43 +629,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
         child: Checkbox(
           value: all ? true : (some ? null : false),
           tristate: true,
-          onChanged: (_) => _toggleSelectAll(),
+          onChanged: (_) => c.selectAll(),
         ),
-      ),
-    );
-  }
-
-  Future<int?> _showCountDialog(
-    BuildContext context, {
-    required String title,
-    required String label,
-    String defaultValue = '5',
-  }) {
-    final ctrl = TextEditingController(text: defaultValue);
-    return showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: InputDecoration(labelText: label, hintText: '1 - 50'),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final n = int.tryParse(ctrl.text.trim()) ?? 0;
-              Navigator.pop(ctx, n.clamp(1, 50));
-            },
-            child: const Text('确定'),
-          ),
-        ],
       ),
     );
   }
@@ -806,11 +656,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 批量操作 / 复制粘贴 工具栏（仅在可编辑表格显示：showAddRow=true 的编辑页）。
-            // 「从上游引入」等选择/导入弹层 showAddRow=false，不显示批量工具栏。
-            if (widget.showAddRow &&
-                (widget.enableBatchActions || widget.cloneRow != null))
-              _toolbar(theme),
             // 表头占位：真正的表头在下方 Stack 覆盖层里（始终挂载，横滚 offset 不丢），
             // 流内只留同高占位撑起布局。
             SizedBox(height: _headerHeight),
@@ -843,10 +688,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             row: rows[i],
                             columns: widget.columns,
                             widths: _widths,
-                            showSelect: _batchMode,
-                            isSelected: _selected.contains(rows[i]),
-                            onSelect: () => _toggleSelect(rows[i]),
-                            showDelete: widget.showRowDelete && !_batchMode,
+                            showSelect: widget.controller.batchMode,
+                            isSelected: widget.controller.isSelected(rows[i]),
+                            onSelect: () =>
+                                widget.controller.toggleSelect(rows[i]),
+                            showDelete:
+                                widget.showRowDelete &&
+                                !widget.controller.batchMode,
                             deleteColWidth: _deleteColWidth,
                             divider: divider,
                             confirmDelete: widget.confirmDelete,
@@ -941,7 +789,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
               width: total,
               child: Row(
                 children: [
-                  if (_batchMode) _selectAllHeader(theme),
+                  if (widget.controller.batchMode) _selectAllHeader(theme),
                   for (var i = 0; i < widget.columns.length; i++)
                     SizedBox(
                       width: _widths[i],

@@ -30,7 +30,8 @@ class SalesHubPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
 
-    final docEntries = <_Entry>[
+    // 任务中心（对齐仓库管理 hub 顶部）：订单进度查询（带完工提醒徽章）。
+    final taskEntries = <_Entry>[
       _Entry(
         icon: Icons.timeline_outlined,
         label: '订单进度查询',
@@ -39,6 +40,9 @@ class SalesHubPage extends ConsumerWidget {
         listPerm: Perm.salesOrderView,
         badge: const SalesProgressBadge(),
       ),
+    ].where((e) => perms.contains(e.listPerm)).toList();
+
+    final docEntries = <_Entry>[
       _Entry.fromCfg(SalesDocConfig.quote),
       _Entry.fromCfg(SalesDocConfig.order),
       _Entry.fromCfg(SalesDocConfig.shipment),
@@ -92,6 +96,9 @@ class SalesHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
+              if (taskEntries.isNotEmpty)
+                _section(context, theme, '任务中心', taskEntries),
+              if (taskEntries.isNotEmpty) const SizedBox(height: UtenSpacing.s16),
               if (docEntries.isNotEmpty)
                 _section(context, theme, '销售管理', docEntries),
               if (docEntries.isNotEmpty && reportEntries.isNotEmpty)

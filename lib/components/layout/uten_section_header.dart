@@ -20,6 +20,7 @@ class UtenSectionHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.icon,
+    this.accentColor,
     this.trailing,
     this.subdued = false,
   });
@@ -29,6 +30,10 @@ class UtenSectionHeader extends StatelessWidget {
 
   /// 可选前缀图标（简洁线性图标，青绿色，仅 [subdued]=false 时着色）。
   final IconData? icon;
+
+  /// 可选标题左侧色条颜色（与 UtenCollapsibleSection 的色条统一：4×16 圆角条）。
+  /// null 不显示色条。
+  final Color? accentColor;
 
   /// 可选尾部控件（如"添加"按钮、计数徽章）。
   final Widget? trailing;
@@ -44,6 +49,17 @@ class UtenSectionHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
+          if (accentColor != null) ...[
+            Container(
+              width: 4,
+              height: 16,
+              decoration: BoxDecoration(
+                color: accentColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           if (icon != null) ...[
             Icon(icon, size: 16, color: UtenColors.teal600),
             const SizedBox(width: 8),

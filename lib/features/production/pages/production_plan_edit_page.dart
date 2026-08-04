@@ -21,6 +21,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_batch_controls.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -650,11 +651,22 @@ class _ProductionPlanEditPageState
                         ),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        '明细 (${_grid.length})',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            '明细 (${_grid.length})',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          UtenGridBatchToggle<ProductionGridRow>(
+                            controller: _grid,
+                          ),
+                        ],
+                      ),
+                      UtenGridBatchActions<ProductionGridRow>(
+                        controller: _grid,
                       ),
                       UtenEditableGrid<ProductionGridRow>(
                         controller: _grid,

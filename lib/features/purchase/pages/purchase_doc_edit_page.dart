@@ -21,6 +21,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_grid_batch_controls.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
@@ -780,7 +781,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                               label: '从上游引入',
                               onPressed: _importFromUpstream,
                             ),
+                            const SizedBox(width: UtenSpacing.s8),
+                            UtenGridBatchToggle<PurchaseGridRow>(
+                              controller: _grid,
+                            ),
                         ],
+                      ),
+                      UtenGridBatchActions<PurchaseGridRow>(
+                        controller: _grid,
                       ),
                       UtenEditableGrid<PurchaseGridRow>(
                         controller: _grid,

@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -11,7 +12,6 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
-import '../../../core/router/app_router.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -21,7 +21,12 @@ import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 
 class NoticeDetailPage extends ConsumerWidget {
-  const NoticeDetailPage({super.key, required this.noticeId, this.onBack});
+  const NoticeDetailPage({
+    super.key,
+    required this.noticeId,
+    this.onBack,
+    this.onActionNavigate,
+  });
 
   final String noticeId;
 
@@ -31,6 +36,11 @@ class NoticeDetailPage extends ConsumerWidget {
   /// go_router 的 pop/go 关不掉弹窗（表现为「点返回没反应」），需由弹窗传入
   /// `Navigator.pop` 来关闭自身。
   final VoidCallback? onBack;
+
+  /// 「查看详情」跳转回调：弹窗内嵌态由 showNoticeDetailDialog 在弹窗外捕获
+  /// router 后传入（先关弹窗再跳）；独立路由态为 null，本页用 GoRouter.of 跳。
+  /// 抽成回调避免本页反向 import 路由配置（app_router）形成循环依赖。
+  final void Function(String target)? onActionNavigate;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -50,7 +60,11 @@ class NoticeDetailPage extends ConsumerWidget {
         ),
         data: (notice) {
           if (notice == null) return const UtenEmpty(message: '通知不存在');
-          return _Content(notice: notice, onBack: onBack);
+          return _Content(
+            notice: notice,
+            onBack: onBack,
+            onActionNavigate: onActionNavigate,
+          );
         },
       ),
     );
@@ -58,7 +72,11 @@ class NoticeDetailPage extends ConsumerWidget {
 }
 
 class _Content extends ConsumerWidget {
-  const _Content({required this.notice, this.onBack});
+  const _Content({
+    required this.notice,
+    this.onBack,
+    this.onActionNavigate,
+  });
   final Notice notice;
 
   /// 弹窗内嵌时为关弹窗回调（Navigator.pop）；独立路由 `/notice/:id` 态为 null。
@@ -66,6 +84,9 @@ class _Content extends ConsumerWidget {
   /// 弹窗仍盖着，视觉上「点查看详情没反应」（同类坑见文档 §九、memory
   /// go-router-nested-navigator-dialog-pop）。
   final VoidCallback? onBack;
+
+  /// 弹窗外捕获 router 的跳转回调（弹窗态）；null=独立路由态用 GoRouter.of。
+  final void Function(String target)? onActionNavigate;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -271,7 +292,7 @@ class _Content extends ConsumerWidget {
                 // 只给「查看详情」跳转，不给「标记完成」——完成态是 TODO 语义专属。
                 if (notice.actionRoute != null)
                   OutlinedButton.icon(
-                    onPressed: () => _goAction(ref),
+                    onPressed: () => _goAction(context),
                     icon: const Icon(Icons.arrow_forward_rounded),
                     label: Text(
                       notice.kind == NoticeKind.todo ? '前往办理页面' : '查看详情',
@@ -323,22 +344,20 @@ class _Content extends ConsumerWidget {
     );
   }
 
-  /// 「查看详情」跳转：弹窗态先关弹窗再跳，独立路由态直接跳。
-  /// 用全局 appRouterProvider 拿 router，不依赖弹窗内 context（弹窗内
-  /// GoRouterState.of 取不到）。returnTo 统一回通知列表（/notice），
-  /// 目标页返回键回通知列表。
-  void _goAction(WidgetRef ref) {
+  /// 「查看详情」跳转：弹窗态走 onActionNavigate（由 dialog 在弹窗外捕获
+  /// router 后关弹窗再跳，避免本页 import 路由配置形成循环依赖、也避开弹窗内
+  /// GoRouterState.of 取不到的问题）；独立路由态用 GoRouter.of(context) 直接跳。
+  /// returnTo 统一回通知列表（/notice），目标页返回键回通知列表。
+  void _goAction(BuildContext context) {
     final route = notice.actionRoute!;
     final uri = Uri.parse(route);
     final params = Map<String, String>.from(uri.queryParameters)
       ..['returnTo'] = RouteName.notice;
     final target = uri.replace(queryParameters: params).toString();
-    final router = ref.read(appRouterProvider);
-    if (onBack != null) {
-      onBack!();
-      router.go(target);
+    if (onActionNavigate != null) {
+      onActionNavigate!(target);
     } else {
-      router.go(target);
+      GoRouter.of(context).go(target);
     }
   }
 

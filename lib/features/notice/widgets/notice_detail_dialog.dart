@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -10,6 +11,10 @@ Future<void> showNoticeDetailDialog(
   BuildContext context, {
   required String noticeId,
 }) {
+  // 弹窗外捕获 router：调用方（通知列表）context 在 go_router 栈内，GoRouter.of
+  // 可达；弹窗内 context 取不到 GoRouterState，故「查看详情」跳转所需的 router 在
+  // 此捕获，交 onActionNavigate 闭包携带——先关弹窗再用本 router 跳转。
+  final router = GoRouter.of(context);
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<void>(
       context: context,
@@ -21,6 +26,10 @@ Future<void> showNoticeDetailDialog(
         child: NoticeDetailPage(
           noticeId: noticeId,
           onBack: () => Navigator.of(sheetContext).pop(),
+          onActionNavigate: (target) {
+            Navigator.of(sheetContext).pop();
+            router.go(target);
+          },
         ),
       ),
     );
@@ -38,6 +47,10 @@ Future<void> showNoticeDetailDialog(
           child: NoticeDetailPage(
             noticeId: noticeId,
             onBack: () => Navigator.of(dialogContext).pop(),
+            onActionNavigate: (target) {
+              Navigator.of(dialogContext).pop();
+              router.go(target);
+            },
           ),
         ),
       );

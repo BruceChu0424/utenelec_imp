@@ -6,12 +6,14 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../providers/procurement_inbound_count_providers.dart';
@@ -31,11 +33,69 @@ class _WarehouseArrivalExceptionsPageState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+  String _keyword = '';
+  bool _history = false;
+  String? _stockingId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  Future<void> _applySearch(String value) async {
+    setState(() => _keyword = value);
+    await _load(1);
+  }
+
+  Future<void> _switchHistory(bool history) async {
+    if (_history == history) return;
+    setState(() => _history = history);
+    await _load(1);
+  }
+
+  /// 一键入库：财务已定案的到货异常，按财务接受量直接入库+立应付。
+  Future<void> _stockIn(ProcurementArrivalException task) async {
+    if (_stockingId != null || !task.canStockIn) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认一键入库'),
+        content: Text(
+          '将按财务批准的 ${procurementQty(task.acceptedQty)} ${task.unitName ?? ''} '
+          '直接入库并立应付；未批准的 ${procurementQty(task.unacceptedQty)} '
+          '${task.unitName ?? ''} 仍由采购退回供应商。',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.inbox_outlined),
+            label: const Text('只入库批准量'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _stockingId = task.id);
+    try {
+      await ref.read(procurementInboundRepositoryProvider).stockInAccepted(task.id);
+      if (!mounted) return;
+      ref.invalidate(warehouseArrivalExceptionCountProvider);
+      context.appSuccess('已按批准数量入库');
+      await _load(_result?.page ?? 1);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+      if (e.code == 'CONFLICT') await _load(_result?.page ?? 1);
+    } catch (_) {
+      if (mounted) context.appError('一键入库失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _stockingId = null);
+    }
   }
 
   Future<void> _load(int page) async {
@@ -47,7 +107,11 @@ class _WarehouseArrivalExceptionsPageState
     try {
       final result = await ref
           .read(procurementInboundRepositoryProvider)
-          .warehouseExceptions(page: page);
+          .warehouseExceptions(
+            page: page,
+            keyword: _keyword,
+            history: _history,
+          );
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _result = result;
@@ -123,7 +187,29 @@ class _WarehouseArrivalExceptionsPageState
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
           children: [
-            _WarehouseExceptionSummary(total: result.total),
+            UtenSearchBar(
+              hint: '搜索单号 / 货品 / 供应商',
+              initialValue: _keyword,
+              onChanged: _applySearch,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('进行中'),
+                  selected: !_history,
+                  onSelected: (_) => _switchHistory(false),
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                ChoiceChip(
+                  label: const Text('历史'),
+                  selected: _history,
+                  onSelected: (_) => _switchHistory(true),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s16),
+            _WarehouseExceptionSummary(total: result.total, history: _history),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(
@@ -133,12 +219,14 @@ class _WarehouseArrivalExceptionsPageState
             ],
             const SizedBox(height: UtenSpacing.s16),
             if (result.items.isEmpty)
-              const SizedBox(
+              SizedBox(
                 height: 380,
                 child: UtenEmpty(
                   icon: Icons.task_alt_rounded,
-                  message: '目前没有到货异常',
-                  description: '超出财务批准数量的到货会先隔离，不会直接入库或立应付。',
+                  message: _history ? '历史中没有已完成的到货异常' : '目前没有到货异常',
+                  description: _history
+                      ? '入库完成或取消的异常会归档到这里。'
+                      : '超出财务批准数量的到货会先隔离，不会直接入库或立应付。',
                 ),
               )
             else
@@ -146,6 +234,10 @@ class _WarehouseArrivalExceptionsPageState
                 _WarehouseExceptionCard(
                   key: Key('warehouse-arrival-exception-${result.items[i].id}'),
                   task: result.items[i],
+                  stocking: _stockingId == result.items[i].id,
+                  onStockIn: _stockingId == null
+                      ? () => _stockIn(result.items[i])
+                      : null,
                 ),
                 if (i != result.items.length - 1)
                   const SizedBox(height: UtenSpacing.s12),
@@ -191,19 +283,27 @@ class _WarehouseArrivalExceptionsPageState
 }
 
 class _WarehouseExceptionSummary extends StatelessWidget {
-  const _WarehouseExceptionSummary({required this.total});
+  const _WarehouseExceptionSummary({required this.total, this.history = false});
   final int total;
+  final bool history;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final showWarning = !history;
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer.withValues(alpha: 0.38),
+        color: (showWarning
+                ? theme.colorScheme.errorContainer
+                : theme.colorScheme.secondaryContainer)
+            .withValues(alpha: 0.38),
         borderRadius: UtenRadius.lgAll,
         border: Border.all(
-          color: theme.colorScheme.error.withValues(alpha: 0.3),
+          color: (showWarning
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.secondary)
+              .withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -212,12 +312,19 @@ class _WarehouseExceptionSummary extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: theme.colorScheme.error.withValues(alpha: 0.12),
+              color: (showWarning
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.secondary)
+                  .withValues(alpha: 0.12),
               borderRadius: UtenRadius.mdAll,
             ),
             child: Icon(
-              Icons.warning_amber_rounded,
-              color: theme.colorScheme.error,
+              showWarning
+                  ? Icons.warning_amber_rounded
+                  : Icons.history_rounded,
+              color: showWarning
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.secondary,
             ),
           ),
           const SizedBox(width: UtenSpacing.s12),
@@ -226,13 +333,15 @@ class _WarehouseExceptionSummary extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '异常任务 $total 条',
+                  history ? '历史 $total 条' : '异常任务 $total 条',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s4),
-                const Text('未明确显示“已入库”之前，异常数量都不计库存、不立应付。'),
+                Text(history
+                    ? '入库完成或取消的到货异常归档于此。'
+                    : '未明确显示“已入库”之前，异常数量都不计库存、不立应付。'),
               ],
             ),
           ),
@@ -243,8 +352,15 @@ class _WarehouseExceptionSummary extends StatelessWidget {
 }
 
 class _WarehouseExceptionCard extends StatelessWidget {
-  const _WarehouseExceptionCard({super.key, required this.task});
+  const _WarehouseExceptionCard({
+    super.key,
+    required this.task,
+    this.stocking = false,
+    this.onStockIn,
+  });
   final ProcurementArrivalException task;
+  final bool stocking;
+  final VoidCallback? onStockIn;
 
   @override
   Widget build(BuildContext context) {
@@ -324,11 +440,34 @@ class _WarehouseExceptionCard extends StatelessWidget {
               _line('决定接收', procurementQty(task.acceptedQty)),
             if (task.unacceptedQty > 0)
               _line('待退供应商', procurementQty(task.unacceptedQty)),
-            if (task.status == 'RECEIPT_ADJUSTED' ||
-                task.status == 'RETURN_REQUIRED') ...[
+            if (task.canStockIn) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              SizedBox(
+                width: double.infinity,
+                child: UtenButton(
+                  isLoading: stocking,
+                  icon: Icons.inbox_outlined,
+                  onPressed: onStockIn,
+                  child: Text(
+                    '只入库 ${procurementQty(task.acceptedQty)} ${task.unitName ?? ''}',
+                  ),
+                ),
+              ),
+            ] else if (task.status == 'RETURN_REQUIRED') ...[
               const SizedBox(height: UtenSpacing.s8),
               Text(
-                '请回到 ${task.orderType.label}收货单 ${task.receiptBillNo} 继续审核；服务端仍会再次校验数量。',
+                '财务未批准入库，全部 ${procurementQty(task.declaredQty)} '
+                '${task.unitName ?? ''} 待采购退回供应商。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ] else if (task.status == 'RECEIPT_POSTED') ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                '已按批准数量入库；余量 ${procurementQty(task.unacceptedQty)} '
+                '${task.unitName ?? ''} 待采购退回供应商后归档。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.w600,

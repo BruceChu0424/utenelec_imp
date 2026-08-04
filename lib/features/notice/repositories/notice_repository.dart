@@ -23,6 +23,12 @@ abstract interface class NoticeRepository {
   /// 未读数（Dashboard 角标）
   Future<int> unreadCount();
 
+  /// 按业务事件来源统计未读数（如销售订单完工提醒徽章）。
+  Future<int> unreadCountBySource(List<String> events);
+
+  /// 按业务事件来源批量标记已读（如打开进度页清空完工徽章）。
+  Future<void> markReadBySource(List<String> events);
+
   /// 发布新通知（需 notice:publish 权限），返回入库后的实体
   Future<Notice> publish({
     required String title,
@@ -98,6 +104,25 @@ class DioNoticeRepository implements NoticeRepository {
   Future<int> unreadCount() async {
     final json = await _api.get(ApiEndpoints.noticesUnreadCount);
     return (json['count'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
+  Future<int> unreadCountBySource(List<String> events) async {
+    if (events.isEmpty) return 0;
+    final json = await _api.get(
+      ApiEndpoints.noticesUnreadCountBySource,
+      query: {'events': events.join(',')},
+    );
+    return (json['count'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
+  Future<void> markReadBySource(List<String> events) async {
+    if (events.isEmpty) return;
+    await _api.post(
+      ApiEndpoints.noticesReadBySource,
+      query: {'events': events.join(',')},
+    );
   }
 
   @override

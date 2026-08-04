@@ -569,21 +569,73 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ArrivalExceptionTask> warehouseExceptions(int page, int size) {
+    public PageResponse<ArrivalExceptionTask> warehouseExceptions(
+            int page, int size, String keyword, boolean includeHistory) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
+        List<String> clauses = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        clauses.add(includeHistory
+                ? "exception.status IN ('CLOSED', 'CANCELED')"
+                : "exception.status NOT IN ('CLOSED', 'CANCELED')");
+        String trimmed = keyword == null ? "" : keyword.trim();
+        if (!trimmed.isEmpty()) {
+            String like = "%" + trimmed + "%";
+            clauses.add("""
+                    (CAST(exception.id AS TEXT) ILIKE ?
+                     OR exception.order_bill_no_snapshot ILIKE ?
+                     OR exception.receipt_bill_no_snapshot ILIKE ?
+                     OR goods.name ILIKE ?
+                     OR supplier.name ILIKE ?)
+                    """);
+            for (int i = 0; i < 5; i++) {
+                args.add(like);
+            }
+        }
+        String where = String.join(" AND ", clauses);
         Long total = jdbc.queryForObject("""
                 SELECT COUNT(*)
-                FROM procurement_arrival_exceptions
-                WHERE status NOT IN ('CLOSED', 'CANCELED')
-                """, Long.class);
+                FROM procurement_arrival_exceptions exception
+                JOIN goods goods ON goods.id = exception.goods_id
+                LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                WHERE """ + where, Long.class, args.toArray());
+        List<Object> queryArgs = new ArrayList<>(args);
+        queryArgs.add(safeSize);
+        queryArgs.add((safePage - 1) * safeSize);
         List<ArrivalExceptionTask> items = queryExceptions(
-                "exception.status NOT IN ('CLOSED', 'CANCELED')",
-                ActionScope.NONE,
-                "LIMIT ? OFFSET ?",
-                safeSize,
-                (safePage - 1) * safeSize);
+                where, ActionScope.NONE, "LIMIT ? OFFSET ?", queryArgs.toArray());
         return page(items, safePage, safeSize, total == null ? 0 : total);
+    }
+
+    @Transactional(readOnly = true)
+    public ArrivalExceptionTask warehouseExceptionDetail(UUID id) {
+        List<ArrivalExceptionTask> rows = queryExceptions(
+                "exception.id = ?", ActionScope.NONE, "", id);
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "到货异常任务不存在");
+        }
+        return rows.getFirst();
+    }
+
+    /**
+     * 一键入库前置校验：仅「财务已定案且有待入库量」(RECEIPT_ADJUSTED) 的异常可一键入库。
+     * 返回要审核入库的收货单定位；实际入库/立应付由各收货单 Service 的 approve 复用链路完成。
+     */
+    @Transactional
+    public StockTarget requireStockableException(UUID id) {
+        tx.bind();
+        LockedException exception = lockException(id);
+        if (!RECEIPT_ADJUSTED.equals(exception.status())) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "该到货异常当前状态不支持一键入库（需财务已定案且有待入库量）");
+        }
+        if (exception.receiptId() == null) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "到货异常未关联收货单，无法入库");
+        }
+        return new StockTarget(exception.orderType(), exception.receiptId());
     }
 
     @Transactional(readOnly = true)
@@ -1797,6 +1849,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     private record CapacityAtLine(ArrivalRow row, BigDecimal available) {
+    }
+
+    /** 一键入库目标（orderType + 收货单 id），供控制器分派到对应收货单审核链路。 */
+    public record StockTarget(String orderType, UUID receiptId) {
     }
 
     private record PostedAllowance(

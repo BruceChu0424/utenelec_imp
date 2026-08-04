@@ -190,6 +190,7 @@ abstract final class RouteName {
   // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
   static const String sales = '/sales';
   static const String salesScarcity = '/sales/scarcity';
+  static const String salesOrderProgress = '/sales/progress';
   static const String salesReport = '/sales/report';
   static const String salesReportDetail = '/sales/report/detail';
   static const String salesReportSummary = '/sales/report/summary';

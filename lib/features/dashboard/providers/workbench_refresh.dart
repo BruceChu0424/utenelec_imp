@@ -19,6 +19,7 @@ import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../finance/providers/finance_procurement_approval_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../sales/providers/sales_completion_count_provider.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import 'dashboard_overview_provider.dart';
@@ -51,6 +52,8 @@ void refreshGlobalBadges(WidgetRef ref) {
       ProcurementInboundOrderType.subcontract,
     ),
   );
+  // 销售 autoDispose 计数（订单完工提醒徽章）
+  ref.invalidate(salesCompletionCountProvider);
 }
 
 /// 回到工作台时调用：角标全刷 + 今日概览/待办重聚合。

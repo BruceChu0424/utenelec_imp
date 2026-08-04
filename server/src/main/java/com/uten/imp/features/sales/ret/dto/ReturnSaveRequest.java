@@ -33,6 +33,8 @@ public class ReturnSaveRequest {
     private Integer paymentStyleId;
     private UUID sellerId;
     private String remark;
+    /** 退货原因（销售退货专属）。 */
+    private String returnReason;
 
     @Valid
     @NotNull

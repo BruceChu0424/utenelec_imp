@@ -50,6 +50,14 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   String? get unitId => unitIdNotifier.value;
   set unitId(String? v) => unitIdNotifier.value = v;
 
+  /// 退货专属：处理方案 / 责任单位（仅 returnDoc 显列）。
+  final solutionNotifier = ValueNotifier<String?>(null);
+  String? get solution => solutionNotifier.value;
+  set solution(String? v) => solutionNotifier.value = v;
+  final responsibleNotifier = ValueNotifier<String?>(null);
+  String? get responsible => responsibleNotifier.value;
+  set responsible(String? v) => responsibleNotifier.value = v;
+
   // V66 报表补列：成本分项/包装派生/折扣。空文本不随 body 提交（后端按 nullable 处理）。
   // order：机加价/围数/进仓数量（inNo/outNo 是系统字段，不入录）。
   // shipment/other_shipment：材料价/压铸价/机加价/围数/折扣。
@@ -89,11 +97,33 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
   );
 
+  /// 深拷贝（明细复制/粘贴用）：新建行 + 拷贝各控制器文本 + 透传字段 + 自动重算金额。
+  SalesGridRow clone() {
+    final c = SalesGridRow()
+      ..goods = goods
+      ..orderItemId = orderItemId
+      ..outItemId = outItemId
+      ..colorId = colorId
+      ..unitId = unitId;
+    c.qty.text = qty.text;
+    c.price.text = price.text;
+    c.machiningPrice.text = machiningPrice.text;
+    c.circumference.text = circumference.text;
+    c.inboundQty.text = inboundQty.text;
+    c.materialPrice.text = materialPrice.text;
+    c.dieCastPrice.text = dieCastPrice.text;
+    c.discount.text = discount.text;
+    c.remark.text = remark.text;
+    return c;
+  }
+
   @override
   void dispose() {
     goodsNotifier.dispose();
     colorIdNotifier.dispose();
     unitIdNotifier.dispose();
+    solutionNotifier.dispose();
+    responsibleNotifier.dispose();
     qty.dispose();
     price.dispose();
     machiningPrice.dispose();
@@ -235,6 +265,29 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         docType == SalesDocType.otherShipment ||
         docType == SalesDocType.returnDoc)
       _extraNumericColumn('折扣', 'discount', (r) => r.discount),
+    // 退货专属：处理方案 / 责任单位（无字典端点，用预置业务选项）。
+    if (docType == SalesDocType.returnDoc) ...[
+      EditableGridColumn<SalesGridRow>(
+        key: 'solution',
+        label: '处理方案',
+        width: 124,
+        cellBuilder: (context, row) => _returnDropdown(
+          row.solutionNotifier,
+          const ['退款', '换货', '补发', '维修后返还', '其他'],
+          hint: '处理方案',
+        ),
+      ),
+      EditableGridColumn<SalesGridRow>(
+        key: 'responsible',
+        label: '责任单位',
+        width: 110,
+        cellBuilder: (context, row) => _returnDropdown(
+          row.responsibleNotifier,
+          const ['本公司', '客户', '物流', '供应商', '其他'],
+          hint: '责任单位',
+        ),
+      ),
+    ],
     // 行备注：5 类单据通用，固定放网格末列。
     EditableGridColumn<SalesGridRow>(
       key: 'remark',
@@ -289,6 +342,27 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
       textAlign: TextAlign.right,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: const InputDecoration(isDense: true, hintText: '0'),
+    ),
+  );
+}
+
+/// 退货「处理方案 / 责任单位」下拉单元格：订阅 [notifier]，预置业务选项。
+Widget _returnDropdown(
+  ValueNotifier<String?> notifier,
+  List<String> options, {
+  required String hint,
+}) {
+  return ValueListenableBuilder<String?>(
+    valueListenable: notifier,
+    builder: (context, value, _) => DropdownButtonFormField<String>(
+      initialValue: options.contains(value) ? value : null,
+      isExpanded: true,
+      decoration: InputDecoration(isDense: true, hintText: hint),
+      items: [
+        for (final o in options)
+          DropdownMenuItem(value: o, child: Text(o, overflow: TextOverflow.ellipsis)),
+      ],
+      onChanged: (v) => notifier.value = v,
     ),
   );
 }

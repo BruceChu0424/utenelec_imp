@@ -42,6 +42,8 @@ class _ProcurementReturnTasksPageState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+  final Set<String> _selected = {};
+  bool _batchSaving = false;
 
   @override
   void initState() {
@@ -81,6 +83,115 @@ class _ProcurementReturnTasksPageState
   }
 
   String get _moduleLabel => widget.orderType.label;
+
+  List<ProcurementArrivalException> get _selectedTasks =>
+      _result?.items.where((t) => _selected.contains(t.id)).toList() ??
+      const [];
+
+  void _toggle(String id) {
+    setState(() {
+      if (_selected.contains(id)) {
+        _selected.remove(id);
+      } else {
+        _selected.add(id);
+      }
+    });
+  }
+
+  void _selectAll() {
+    final items = _result?.items ?? const <ProcurementArrivalException>[];
+    setState(() {
+      _selected
+        ..clear()
+        ..addAll(items.map((t) => t.id));
+    });
+  }
+
+  void _clearSelection() => setState(_selected.clear);
+
+  /// 批量确认退回（物流凭证）：超量未入库，确认即记录实物已退并关闭任务，不冲库存/应付。
+  Future<void> _batchConfirmReturn() async {
+    final tasks = _selectedTasks
+        .where((t) => t.canCompleteReturn)
+        .toList(growable: false);
+    if (tasks.isEmpty) return;
+    final noteCtl = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('批量确认退回 ${tasks.length} 条'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('将记录以下 ${tasks.length} 条超量已实际退回供应商，'
+                '并关闭对应退回任务（超量未入库，不冲库存/应付）。'),
+            const SizedBox(height: UtenSpacing.s12),
+            TextField(
+              controller: noteCtl,
+              minLines: 2,
+              maxLines: 4,
+              maxLength: 1000,
+              decoration: const InputDecoration(
+                labelText: '退回说明（可选，批量共用）',
+                hintText: '例如：供应商司机已带回',
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, noteCtl.text.trim()),
+            icon: const Icon(Icons.assignment_return_outlined),
+            label: const Text('确认退回'),
+          ),
+        ],
+      ),
+    );
+    noteCtl.dispose();
+    if (note == null || !mounted) return;
+    setState(() {
+      _batchSaving = true;
+      _loading = true;
+    });
+    final repo = ref.read(procurementInboundRepositoryProvider);
+    var ok = 0;
+    var fail = 0;
+    for (final task in tasks) {
+      final returnTask = task.returnTask;
+      if (returnTask == null) continue;
+      try {
+        await repo.completeReturn(
+          returnTaskId: returnTask.id,
+          expectedVersion: returnTask.version,
+          completionNote: note,
+        );
+        ok++;
+      } catch (_) {
+        fail++;
+      }
+    }
+    _selected.clear();
+    if (!mounted) return;
+    ref.invalidate(
+      procurementArrivalReturnCountProvider(widget.orderType),
+    );
+    ref.invalidate(warehouseArrivalExceptionCountProvider);
+    await _load(_result?.page ?? 1);
+    if (!mounted) return;
+    if (fail == 0) {
+      context.appSuccess('已确认退回 $ok 条');
+    } else {
+      context.appWarning('已确认 $ok 条，$fail 条失败（可能已被处理，请刷新）');
+    }
+    if (mounted) setState(() => _batchSaving = false);
+  }
+
   String get _defaultBack =>
       widget.orderType == ProcurementInboundOrderType.subcontract
       ? RouteName.subcontract
@@ -120,6 +231,57 @@ class _ProcurementReturnTasksPageState
               )
             : _buildList(result),
       ),
+      bottomNavigationBar: _selected.isEmpty
+          ? null
+          : SafeArea(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s12,
+                  vertical: UtenSpacing.s8,
+                ),
+                child: Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _selectedTasks.length ==
+                              (_result?.items.length ?? 0)
+                          ? _clearSelection
+                          : _selectAll,
+                      icon: Icon(
+                        _selectedTasks.length == (_result?.items.length ?? 0)
+                            ? Icons.deselect_rounded
+                            : Icons.select_all_rounded,
+                      ),
+                      label: Text(
+                        _selectedTasks.length == (_result?.items.length ?? 0)
+                            ? '清空'
+                            : '全选本页',
+                      ),
+                    ),
+                    const Spacer(),
+                    FilledButton.icon(
+                      onPressed: _batchSaving ||
+                              _selectedTasks
+                                  .where((t) => t.canCompleteReturn)
+                                  .isEmpty
+                          ? null
+                          : _batchConfirmReturn,
+                      icon: const Icon(Icons.assignment_return_outlined),
+                      label: Text(
+                        '批量确认退回 ${_selectedTasks.where((t) => t.canCompleteReturn).length}',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 
@@ -163,6 +325,8 @@ class _ProcurementReturnTasksPageState
                 _ReturnTaskListCard(
                   key: Key('procurement-return-task-${result.items[i].id}'),
                   task: result.items[i],
+                  selected: _selected.contains(result.items[i].id),
+                  onToggle: () => _toggle(result.items[i].id),
                   onOpen: () => context.push(
                     RoutePath.procurementArrivalException(result.items[i].id),
                   ),
@@ -246,10 +410,14 @@ class _ReturnTaskListCard extends StatelessWidget {
     super.key,
     required this.task,
     required this.onOpen,
+    this.selected = false,
+    this.onToggle,
   });
 
   final ProcurementArrivalException task;
   final VoidCallback onOpen;
+  final bool selected;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -266,13 +434,22 @@ class _ReturnTaskListCard extends StatelessWidget {
           padding: const EdgeInsets.all(UtenSpacing.s16),
           decoration: BoxDecoration(
             borderRadius: UtenRadius.lgAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
+            border: Border.all(
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outlineVariant,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
+                  if (onToggle != null)
+                    Checkbox(
+                      value: selected,
+                      onChanged: (_) => onToggle!(),
+                    ),
                   UtenStatusBadge(
                     label: task.orderType.label,
                     type: task.orderType == ProcurementInboundOrderType.purchase

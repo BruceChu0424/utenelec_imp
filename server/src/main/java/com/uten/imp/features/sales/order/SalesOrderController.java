@@ -58,6 +58,15 @@ public class SalesOrderController {
         return service.stats();
     }
 
+    /** 订单进度看板（订单进度查询卡）：已审订单生产/发货进度聚合 + 派生阶段。 */
+    @GetMapping("/progress")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public PageResponse<com.uten.imp.features.sales.order.dto.OrderProgressRow> progress(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return service.progress(page, size);
+    }
+
     /** 批量发货可发行（SOP §一9）：reserved_qty>0 的订单行，归属隔离与列表同口径。 */
     @GetMapping("/shippable-lines")
     @PreAuthorize("hasAuthority('sales_order:view')")

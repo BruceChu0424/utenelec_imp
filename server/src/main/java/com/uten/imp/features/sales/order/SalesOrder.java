@@ -109,9 +109,9 @@ public class SalesOrder extends SoftDeletableEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
-    /** New orders require an explicit customer confirmation before a partial shipment. */
-    @Column(name = "shipment_policy", nullable = false)
-    private String shipmentPolicy = SHIPMENT_POLICY_CUSTOMER_CONFIRM;
+    /** 发运策略：新单默认空（销售自选 ALLOW_PARTIAL/REQUIRE_COMPLETE）；CUSTOMER_CONFIRM/LEGACY 仅供历史单只读保留。 */
+    @Column(name = "shipment_policy")
+    private String shipmentPolicy;
 
     @Column(name = "partial_shipment_confirmed_at")
     private OffsetDateTime partialShipmentConfirmedAt;

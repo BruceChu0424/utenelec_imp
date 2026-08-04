@@ -54,6 +54,12 @@ public class NoticeController {
         return Map.of("count", service.unreadCount());
     }
 
+    @GetMapping("/unread-count-by-source")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public Map<String, Object> unreadCountBySource(@RequestParam List<String> events) {
+        return Map.of("count", service.unreadCountBySourceEvents(events));
+    }
+
     @GetMapping("/todos")
     @PreAuthorize("hasAuthority('notice:read')")
     public Map<String, Object> pendingTodos(
@@ -105,6 +111,12 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public void markAllRead() {
         service.markAllRead();
+    }
+
+    @PostMapping("/read-by-source")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public void markReadBySource(@RequestParam List<String> events) {
+        service.markReadBySourceEvents(events);
     }
 
     @PostMapping("/batch-delete")

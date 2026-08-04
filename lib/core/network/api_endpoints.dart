@@ -24,6 +24,8 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions';
   static const warehouseArrivalExceptionCount =
       '/warehouse/inbound/arrival-exceptions/count';
+  static String warehouseArrivalExceptionStockIn(String id) =>
+      '/warehouse/inbound/arrival-exceptions/$id/stock-in';
   static const procurementArrivalExceptionTasks =
       '/procurement/arrival-exceptions/tasks';
   static const procurementArrivalExceptionTaskCount =
@@ -312,6 +314,8 @@ abstract final class ApiEndpoints {
   static String notice(String id) => '/notices/$id';
   static const noticesUnreadCount = '/notices/unread-count';
   static const noticesReadAll = '/notices/read-all';
+  static const noticesUnreadCountBySource = '/notices/unread-count-by-source';
+  static const noticesReadBySource = '/notices/read-by-source';
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';

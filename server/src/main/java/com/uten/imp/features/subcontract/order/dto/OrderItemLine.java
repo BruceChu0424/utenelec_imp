@@ -18,6 +18,12 @@ public class OrderItemLine {
     @NotNull
     private UUID goodsId;
 
+    /**
+     * 明细级委外商（可选）：覆盖表头供应商，用于「一张订货单录入多个委外商、保存按委外商自动拆单」。
+     * 为空时使用 {@link OrderSaveRequest#getSupplierId()}。
+     */
+    private UUID supplierId;
+
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;

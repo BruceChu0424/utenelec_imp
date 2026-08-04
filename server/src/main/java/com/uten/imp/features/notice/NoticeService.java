@@ -240,6 +240,22 @@ public class NoticeService {
         stateRepo.markAllVisibleRead(userId);
     }
 
+    /** 按业务事件来源统计当前用户未读通知数（如销售订单完工提醒徽章）。 */
+    @Transactional(readOnly = true)
+    public long unreadCountBySourceEvents(List<String> events) {
+        if (events == null || events.isEmpty()) return 0;
+        return noticeRepo.countUnreadBySourceEvents(requireStaffId(), events);
+    }
+
+    /** 按业务事件来源批量标记已读（如打开订单进度页清空完工徽章）。 */
+    @Transactional
+    public void markReadBySourceEvents(List<String> events) {
+        if (events == null || events.isEmpty()) return;
+        UUID userId = requireStaffId();
+        tx.bind();
+        stateRepo.markVisibleReadBySourceEvents(userId, events);
+    }
+
     /** 批量删除（从当前用户列表移除；他人不受影响）。返回实际删除条数。 */
     @Transactional
     public int deleteForCurrentUser(List<UUID> ids) {
@@ -299,7 +315,7 @@ public class NoticeService {
     @Transactional
     public Notice publishForUser(UUID audienceUserId, String title, String content,
                                  String type, String publisher) {
-        return publishForUser(audienceUserId, title, content, type, publisher, null);
+        return publishForUser(audienceUserId, title, content, type, publisher, null, null);
     }
 
     /**
@@ -311,6 +327,16 @@ public class NoticeService {
     @Transactional
     public Notice publishForUser(UUID audienceUserId, String title, String content,
                                  String type, String publisher, String actionRoute) {
+        return publishForUser(audienceUserId, title, content, type, publisher, actionRoute, null);
+    }
+
+    /**
+     * 系统定向通知 + 跳转入口 + 事件来源标记：[sourceEvent] 非空时写入 notices.source_event，
+     * 供按业务事件统计未读徽章（如销售订单进度完工提醒）。其余语义同 6 参重载。
+     */
+    @Transactional
+    public Notice publishForUser(UUID audienceUserId, String title, String content,
+                                 String type, String publisher, String actionRoute, String sourceEvent) {
         if (audienceUserId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "定向通知缺少接收人");
         }
@@ -332,6 +358,9 @@ public class NoticeService {
         if (actionRoute != null && !actionRoute.isBlank() && actionRoute.startsWith("/")
                 && actionRoute.length() <= 500) {
             n.setActionRoute(actionRoute.strip());
+        }
+        if (sourceEvent != null && !sourceEvent.isBlank()) {
+            n.setSourceEvent(sourceEvent.strip());
         }
         Notice saved = noticeRepo.saveAndFlush(n);
         stateRepo.save(newState(saved.getId(), audienceUserId));

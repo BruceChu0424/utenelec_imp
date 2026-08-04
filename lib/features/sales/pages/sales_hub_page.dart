@@ -20,6 +20,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../config/sales_doc_config.dart';
+import '../widgets/sales_progress_badge.dart';
 
 class SalesHubPage extends ConsumerWidget {
   const SalesHubPage({super.key});
@@ -30,6 +31,14 @@ class SalesHubPage extends ConsumerWidget {
     final perms = ref.watch(currentPermissionsProvider);
 
     final docEntries = <_Entry>[
+      _Entry(
+        icon: Icons.timeline_outlined,
+        label: '订单进度查询',
+        description: '生产进度 · 分批发货 · 完工提醒',
+        location: RouteName.salesOrderProgress,
+        listPerm: Perm.salesOrderView,
+        badge: const SalesProgressBadge(),
+      ),
       _Entry.fromCfg(SalesDocConfig.quote),
       _Entry.fromCfg(SalesDocConfig.order),
       _Entry.fromCfg(SalesDocConfig.shipment),
@@ -144,6 +153,7 @@ class _Entry {
     required this.description,
     required this.location,
     required this.listPerm,
+    this.badge,
   });
 
   _Entry.fromCfg(SalesDocConfig cfg)
@@ -153,13 +163,17 @@ class _Entry {
       location = cfg.skipListOnCreate
           ? SalesRoutePath.docNew(cfg.type.pathSegment)
           : SalesRoutePath.list(cfg.type.pathSegment),
-      listPerm = cfg.listPerm;
+      listPerm = cfg.listPerm,
+      badge = null;
 
   final IconData icon;
   final String label;
   final String description;
   final String location;
   final String listPerm;
+
+  /// 右上角徽章（如订单进度完工提醒；null=无）。
+  final Widget? badge;
 }
 
 class _EntryTile extends StatelessWidget {
@@ -173,6 +187,7 @@ class _EntryTile extends StatelessWidget {
       label: entry.label,
       description: entry.description,
       onTap: () => goFrom(context, entry.location),
+      badge: entry.badge,
     );
   }
 }

@@ -9,7 +9,7 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
-  testWidgets('new order defaults to customer-confirm shipment policy', (
+  testWidgets('new order defaults to empty shipment policy for sales to choose', (
     tester,
   ) async {
     await _pumpEditor(tester, type: SalesDocType.order);
@@ -18,9 +18,9 @@ void main() {
       find.byKey(const ValueKey('sales-order-shipment-policy')),
       findsOneWidget,
     );
-    expect(find.text('客户确认后分批'), findsOneWidget);
-    // 问题 #16：这个策略不再要求先登记客户同意依据才能部分发货，说明文案已同步改过。
-    expect(find.textContaining('不影响实际能否建立部分出货任务'), findsOneWidget);
+    // customerConfirm 不再提供给新单：默认空，由销售自选 ALLOW_PARTIAL / REQUIRE_COMPLETE。
+    expect(find.text('客户确认后分批'), findsNothing);
+    expect(find.textContaining('请选择发运策略'), findsOneWidget);
   });
 
   testWidgets('legacy order keeps shipment policy read-only', (tester) async {

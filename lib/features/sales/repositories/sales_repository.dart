@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/sales_doc.dart';
+import '../models/sales_order_progress.dart';
 
 class SalesDocFilter {
   const SalesDocFilter({
@@ -81,6 +82,18 @@ class SalesRepository {
   Future<List<OrderPlanProgressLine>> planProgress(String id) async {
     final list = await api.getList('${_doc(id)}/plan-progress'); // ENDPOINT
     return list.map(OrderPlanProgressLine.fromJson).toList();
+  }
+
+  /// 订单进度看板（仅订货单）：已审订单生产/发货进度聚合 + 派生阶段。
+  Future<PagedResult<SalesOrderProgressRow>> progress({
+    int page = 1,
+    int size = 20,
+  }) async {
+    final json = await api.get('/sales/orders/progress', query: {
+      'page': page,
+      'size': size,
+    });
+    return PagedResult.fromJson(json, SalesOrderProgressRow.fromJson);
   }
 
   Future<SalesDocDetail> create(Map<String, dynamic> body) async {

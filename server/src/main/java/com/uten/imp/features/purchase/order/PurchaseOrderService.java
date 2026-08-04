@@ -43,6 +43,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -128,6 +129,46 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         List<OrderItemDto> items = saveItems(o, req.getItems());
         applyTotals(o, items);
         return toDetail(o, items);
+    }
+
+    /**
+     * 按明细级供应商拆单创建（保留「一张订货单一个供应商」归集）：每行 supplierId 为空时回落表头
+     * supplierId，按供应商分组在同一事务内生成 N 张订货单（多数情况 1 张）。返回按分组顺序的明细。
+     */
+    @Transactional
+    public List<OrderDetail> createBatch(OrderSaveRequest req) {
+        tx.bind();
+        if (req.getItems() == null || req.getItems().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
+        }
+        Map<UUID, List<OrderItemLine>> groups = new LinkedHashMap<>();
+        for (OrderItemLine item : req.getItems()) {
+            UUID supplier = item.getSupplierId() != null
+                    ? item.getSupplierId()
+                    : req.getSupplierId();
+            if (supplier == null) {
+                throw new ApiException(
+                        ErrorCode.VALIDATION_FAILED,
+                        "每一行都必须指定供应商（明细级或表头）");
+            }
+            groups.computeIfAbsent(supplier, k -> new ArrayList<>()).add(item);
+        }
+        List<OrderDetail> created = new ArrayList<>();
+        for (Map.Entry<UUID, List<OrderItemLine>> entry : groups.entrySet()) {
+            OrderSaveRequest sub = new OrderSaveRequest();
+            sub.setBillDate(req.getBillDate());
+            sub.setSupplierId(entry.getKey());
+            sub.setWarehouseId(req.getWarehouseId());
+            sub.setCurrencyId(req.getCurrencyId());
+            sub.setExchangeRate(req.getExchangeRate());
+            sub.setTaxRate(req.getTaxRate());
+            sub.setPurchaserId(req.getPurchaserId());
+            sub.setDeliverDate(req.getDeliverDate());
+            sub.setRemark(req.getRemark());
+            sub.setItems(entry.getValue());
+            created.add(create(sub));
+        }
+        return created;
     }
 
     @Transactional

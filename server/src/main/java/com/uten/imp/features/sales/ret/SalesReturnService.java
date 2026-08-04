@@ -877,6 +877,7 @@ public class SalesReturnService {
         r.setPaymentStyleId(req.getPaymentStyleId());
         r.setSellerId(req.getSellerId());
         r.setRemark(req.getRemark());
+        r.setReturnReason(req.getReturnReason());
     }
 
     private List<ReturnItemDto> saveItems(SalesReturn r, List<ReturnItemLine> lines) {
@@ -943,7 +944,8 @@ public class SalesReturnService {
     private ReturnListItem toList(SalesReturn r, boolean writable) {
         return new ReturnListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getClientId(),
                 r.getWarehouseId(), r.getTotalLocal(), r.getStatus(), r.isClosed(), r.isArPosted(),
-                r.getLegacyId(), writable);
+                r.getLegacyId(), writable,
+                r.getCurrencyId(), r.getSellerId(), nameResolver.nameOf(r.getSellerId()));
     }
 
     private ReturnItemDto toItemDto(SalesReturnItem it) {
@@ -968,7 +970,7 @@ public class SalesReturnService {
                 r.getPaymentStyleId(), r.getSellerId(), r.getMakerId(), r.getApproverId(),
                 r.getLastDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), sourceReadable ? r.getSourceDocNo() : null, r.isArPosted(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable);
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable, r.getReturnReason());
     }
 
     private SalesReturn requireReturn(UUID id) {

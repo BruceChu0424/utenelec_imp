@@ -13,6 +13,7 @@ import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.SalesMasterReferenceValidator;
 import com.uten.imp.features.sales.order.dto.OrderCostItemDto;
 import com.uten.imp.features.sales.order.dto.OrderDetail;
+import com.uten.imp.features.sales.order.dto.OrderProgressRow;
 import com.uten.imp.features.sales.order.dto.OrderItemDto;
 import com.uten.imp.features.sales.order.dto.OrderItemLine;
 import com.uten.imp.features.sales.order.dto.OrderPriorityRequest;
@@ -242,6 +243,68 @@ public class SalesOrderService {
         return new com.uten.imp.features.sales.order.dto.OrderStats(
                 ((Number) r[0]).longValue(), ((Number) r[1]).longValue(),
                 ((Number) r[2]).longValue(), ((Number) r[3]).longValue());
+    }
+
+    /** 订单进度看板（订单进度查询卡）：已审订单按明细聚合 订货/已排/已产/已发/可发 + 派生生产进度与链路阶段。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public PageResponse<OrderProgressRow> progress(int page, int size) {
+        int safeSize = Math.max(1, Math.min(size, 100));
+        int safePage = Math.max(1, page);
+        var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
+        String base = """
+                FROM sales_orders o
+                LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN sales_order_items i ON i.order_id = o.id AND i.is_deleted = false
+                WHERE o.is_deleted = false AND o.status = 1
+                """ + " AND " + ownerScope.predicate();
+        var cq = em.createNativeQuery("SELECT COUNT(DISTINCT o.id) " + base);
+        ownerScope.bind(cq);
+        long total = ((Number) cq.getSingleResult()).longValue();
+        String rowsSql = """
+                SELECT o.id::text, o.bill_no,
+                       CAST(o.bill_date AS text), CAST(o.deliver_date AS text),
+                       c.name,
+                       COALESCE(SUM(i.qty),0), COALESCE(SUM(i.produced_qty),0),
+                       COALESCE(SUM(i.shipped_qty),0), COALESCE(SUM(i.reserved_qty),0),
+                       COALESCE(SUM(i.planned_qty),0)
+                """ + base + " GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name"
+                + " ORDER BY o.bill_date DESC NULLS LAST, o.bill_no DESC";
+        var rq = em.createNativeQuery(rowsSql);
+        ownerScope.bind(rq);
+        rq.setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = rq.getResultList();
+        List<OrderProgressRow> items = rows.stream().map(row -> {
+            double orderQty = pgNum(row, 5);
+            double producedQty = pgNum(row, 6);
+            double shippedQty = pgNum(row, 7);
+            double reservedQty = pgNum(row, 8);
+            double plannedQty = pgNum(row, 9);
+            double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
+            return new OrderProgressRow(
+                    pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
+                    orderQty, producedQty, shippedQty, reservedQty, plannedQty,
+                    pct, progressStageOf(orderQty, producedQty, shippedQty, plannedQty));
+        }).toList();
+        int totalPages = (int) Math.ceil((double) total / safeSize);
+        return new PageResponse<>(items, safePage, safeSize, total, totalPages);
+    }
+
+    private static double pgNum(Object[] r, int i) {
+        return r[i] == null ? 0.0 : ((Number) r[i]).doubleValue();
+    }
+
+    private static String pgStr(Object[] r, int i) {
+        return r[i] == null ? null : r[i].toString();
+    }
+
+    private static String progressStageOf(double orderQty, double producedQty, double shippedQty, double plannedQty) {
+        if (orderQty <= 0) return "PENDING";
+        if (shippedQty + 1e-6 >= orderQty) return "SHIPPED";
+        if (producedQty + 1e-6 >= orderQty) return "SHIPPABLE";
+        if (producedQty > 0 || plannedQty > 0) return "PRODUCING";
+        return "PENDING";
     }
 
     @Transactional(readOnly = true)
@@ -1233,9 +1296,8 @@ public class SalesOrderService {
         o.setSourceDocNo(req.getSourceDocNo());
         if (req.getShipmentPolicy() != null) {
             o.setShipmentPolicy(normalizeShipmentPolicy(req.getShipmentPolicy()));
-        } else if (o.getShipmentPolicy() == null) {
-            o.setShipmentPolicy(SalesOrder.SHIPMENT_POLICY_CUSTOMER_CONFIRM);
         }
+        // 新单未选发运策略时保留 null（销售自填），不再默认 CUSTOMER_CONFIRM。
     }
 
     private String normalizeShipmentPolicy(String raw) {

@@ -55,6 +55,10 @@ public class Notice extends BaseEntity {
     @Column(name = "action_route", length = 500)
     private String actionRoute;
 
+    /** 业务事件来源标记（如 PRODUCTION_FINISHED_INBOUND/PRODUCTION_REPORTED），供按事件类型统计未读徽章；NULL=人工/非链路通知。 */
+    @Column(name = "source_event", length = 80)
+    private String sourceEvent;
+
     /** TODO 可选截止时间。 */
     @Column(name = "due_at")
     private Instant dueAt;

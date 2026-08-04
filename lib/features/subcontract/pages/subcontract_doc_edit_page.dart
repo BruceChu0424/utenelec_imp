@@ -160,6 +160,8 @@ class _SubcontractDocEditPageState
         if (_cfg.hasWorker) _workerId = meId;
         await _preloadEmployees([meId]);
       }
+      // 币种默认人民币（订货/进仓/退货等有币种的单据）。
+      _prefillDefaultCurrency();
     }
     if (widget.id == null && widget.docType == SubcontractDocType.receipt) {
       _prefillReceiptFromExpectation();
@@ -248,6 +250,19 @@ class _SubcontractDocEditPageState
   DateTime? _parseDate(String? s) =>
       (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
 
+  /// 新建时币种默认人民币：从币种字典按名称「人民币」解析其 id。
+  /// 字典无 code，故按名称匹配；命中不到则保持空，交给用户手选。
+  void _prefillDefaultCurrency() {
+    if (!_cfg.hasCurrency || _currencyId != null) return;
+    final entries = ref.read(mn.masterNameServiceProvider).currencyEntries;
+    for (final entry in entries.entries) {
+      if (entry.value.contains('人民币')) {
+        _currencyId = entry.key;
+        return;
+      }
+    }
+  }
+
   /// 并发按 id 拉 3 个人员字段的名字（picker 的 initial 显示用）。失败静默。
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
@@ -274,11 +289,8 @@ class _SubcontractDocEditPageState
         .map((id) => id.trim())
         .where((id) => id.isNotEmpty)
         .toSet();
-    if (selectedIds.isEmpty) {
-      _orderSourceReady = false;
-      if (mounted) context.appError('请从委外任务中心选择申请明细后生成订货单');
-      return;
-    }
+    // 卡片直达新建（无任务中心带入的申请行）：留空白单，由用户「从上游引入」拉取申请明细。
+    if (selectedIds.isEmpty) return;
     try {
       final open = await ref
           .read(subcontractRepositoryProvider(SubcontractDocType.application))
@@ -370,7 +382,8 @@ class _SubcontractDocEditPageState
         ..colorId = item.colorId
         ..unitId = item.unitId
         ..unitRate = item.unitRate.toDouble()
-        ..sourceDocNo = prefill.orderBillNo;
+        ..sourceDocNo = prefill.orderBillNo
+        ..approvedQty = item.approvedRemainingQty;
       // 预填批准剩余量但不设置 maxQty；仓库必须能如实登记实到超量，
       // 是否隔离由服务端审核动作权威判定。
       row.qty.text = procurementQty(item.approvedRemainingQty);
@@ -378,6 +391,13 @@ class _SubcontractDocEditPageState
     }
     if (rows.isNotEmpty) _grid.replaceAll(rows);
   }
+
+  /// 预计到货「登记实际到货」模式：新建进仓单且带任务中心预填。
+  /// 标题/明细列/表单锁定都按到货登记场景呈现（只登记实到数量，不管价格）。
+  bool get _isArrivalMode =>
+      widget.id == null &&
+      widget.docType == SubcontractDocType.receipt &&
+      widget.receiptPrefill != null;
 
   /// 选货品范围：发料/材料退/损耗=材料；进仓/退货/订货/申请/询价=成品。
   UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
@@ -439,12 +459,6 @@ class _SubcontractDocEditPageState
   }
 
   Future<void> _save() async {
-    if (widget.id == null &&
-        widget.docType == SubcontractDocType.order &&
-        !_orderSourceReady) {
-      context.appError('请返回委外任务中心选择申请明细后生成订货单');
-      return;
-    }
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
@@ -510,6 +524,9 @@ class _SubcontractDocEditPageState
         if (_cfg.itemHasWasteFields && r.cause.text.trim().isNotEmpty)
           'cause': r.cause.text.trim(),
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
+        // 订货单：明细级委外商（为空时后端按表头委外商回落）；保存时按委外商拆单。
+        if (widget.docType == SubcontractDocType.order && r.supplierId != null)
+          'supplierId': r.supplierId,
       };
       itemsBody.add(line);
     }
@@ -538,6 +555,38 @@ class _SubcontractDocEditPageState
     setState(() => _saving = true);
     try {
       final repo = ref.read(subcontractRepositoryProvider(widget.docType));
+      // 委外订货单新建：按委外商自动拆单（createBatch），逐张提交财务。
+      if (widget.docType == SubcontractDocType.order && widget.id == null) {
+        final created = await repo.createBatch(body);
+        if (!mounted) return;
+        String? financeError;
+        for (final createdDoc in created) {
+          try {
+            await repo.submitFinance(createdDoc.id);
+          } on ApiException catch (e) {
+            financeError ??= e.message;
+          }
+        }
+        if (!mounted) return;
+        bumpListRefresh(ref, _cfg.refreshKey);
+        if (financeError != null) {
+          context.appWarning('已生成 ${created.length} 张委外订货单，部分未提交财务：$financeError');
+        } else {
+          context.appSuccess(
+            created.length > 1
+                ? '已按委外商拆分为 ${created.length} 张委外订货单并提交财务'
+                : '委外订货单已提交财务审核',
+          );
+        }
+        if (created.length == 1) {
+          context.replace(
+            SubcontractRoute.detail(_cfg.pathSegment, created.first.id),
+          );
+        } else {
+          context.go('/subcontract/${_cfg.type.pathSegment}');
+        }
+        return;
+      }
       final outcome = await saveSubcontractDocument(
         repository: repo,
         docType: widget.docType,
@@ -590,9 +639,14 @@ class _SubcontractDocEditPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final names = ref.watch(mn.masterNameServiceProvider);
     return Scaffold(
       appBar: UtenAppBar(
-        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        title: _isArrivalMode
+            ? '登记实际到货 · ${_cfg.label}'
+            : widget.id == null
+            ? '新建${_cfg.label}'
+            : '编辑${_cfg.label}',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
         ),
@@ -620,7 +674,8 @@ class _SubcontractDocEditPageState
                     padding: const EdgeInsets.all(UtenSpacing.s12),
                     children: [
                       if (widget.id == null &&
-                          widget.docType == SubcontractDocType.order) ...[
+                          widget.docType == SubcontractDocType.order &&
+                          _sourceApplicationBillNo != null) ...[
                         _orderSourceBanner(theme),
                         const SizedBox(height: UtenSpacing.s12),
                       ],
@@ -644,7 +699,8 @@ class _SubcontractDocEditPageState
                           ),
                           const Spacer(),
                           if (_cfg.hasUpstreamLink &&
-                              widget.docType != SubcontractDocType.order)
+                              // 到货登记模式：明细只能来自该预计到货任务，不允许再引入。
+                              !_isArrivalMode)
                             UtenImportButton(
                               label: '从上游引入',
                               onPressed: _importFromUpstream,
@@ -653,9 +709,27 @@ class _SubcontractDocEditPageState
                       ),
                       UtenEditableGrid<SubcontractGridRow>(
                         controller: _grid,
-                        columns: subcontractGridColumns(_pickGoods, _cfg),
+                        columns: subcontractGridColumns(
+                          _pickGoods,
+                          _cfg,
+                          arrivalMode: _isArrivalMode,
+                          // 订货单：明细可逐行选委外商，保存时按委外商自动拆单。
+                          supplierEntries:
+                              widget.docType == SubcontractDocType.order
+                              ? names.supplierEntries
+                              : const {},
+                          headerSupplierId:
+                              widget.docType == SubcontractDocType.order
+                              ? _supplierId
+                              : null,
+                          onSupplierChanged: (_) => setState(() {}),
+                        ),
                         createBlankRow: () => SubcontractGridRow(),
-                        showAddRow: widget.docType != SubcontractDocType.order,
+                        // 到货登记模式：行来自预计到货任务（带订货明细关联），
+                        // 不允许添加无来源行；行尾删除保留（部分到货=该行本次不收）。
+                        showAddRow:
+                            widget.docType != SubcontractDocType.order &&
+                            !_isArrivalMode,
                       ),
                     ],
                   ),
@@ -711,10 +785,7 @@ class _SubcontractDocEditPageState
               SubcontractSaveActionButton(
                 docType: widget.docType,
                 isLoading: _saving,
-                enabled:
-                    !(widget.id == null &&
-                        widget.docType == SubcontractDocType.order &&
-                        !_orderSourceReady),
+                enabled: true,
                 onPressed: _save,
               ),
             ],
@@ -728,7 +799,8 @@ class _SubcontractDocEditPageState
     final source = widget.receiptPrefill?.orderBillNo;
     return Semantics(
       container: true,
-      label: '请按实际到货数量登记。超出财务批准剩余量时不会直接入库。',
+      label: '请按实际到货数量登记。超出财务批准剩余量时不会直接入库，'
+          '系统会隔离并通知指定财务负责人审批。',
       child: Card(
         color: theme.colorScheme.tertiaryContainer,
         child: Padding(
@@ -755,8 +827,10 @@ class _SubcontractDocEditPageState
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
                       '${source == null ? '' : '来源订货单：$source。'}'
-                      '如果实到数量超过财务批准剩余量，仍可如实填写。保存草稿后审核时，'
-                      '服务端会先隔离异常，不入库存、不立应付，并发送财务审批。',
+                      '如果实到数量超过财务批准剩余量，仍可如实填写。'
+                      '超出部分不会入库、不会生成应付：保存后审核时系统会自动隔离，'
+                      '并通知指定财务负责人审批——财务可批准实到数量进入后续流程，'
+                      '或要求退货（生成供应商退货任务）。',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onTertiaryContainer,
                       ),
@@ -925,6 +999,8 @@ class _SubcontractDocEditPageState
                     names.supplierEntries,
                     (v) => setState(() => _supplierId = v),
                     required: _cfg.supplierRequired,
+                    // 到货登记模式：委外商来自预计到货任务，锁定防手滑改坏来源关联。
+                    enabled: !_isArrivalMode,
                   ),
                 _dropdown(
                   '仓库',
@@ -932,6 +1008,8 @@ class _SubcontractDocEditPageState
                   names.warehouseEntries,
                   (v) => setState(() => _warehouseId = v),
                   required: _cfg.warehouseRequired,
+                  // 到货登记模式：入库仓库由任务指定，锁定。
+                  enabled: !_isArrivalMode,
                 ),
                 if (_cfg.hasCurrency) ...[
                   _dropdown(
@@ -1090,11 +1168,13 @@ class _SubcontractDocEditPageState
     Map<String, String> entries,
     ValueChanged<String?> onChanged, {
     bool required = false,
+    bool enabled = true,
   }) {
     return UtenDropdownField(
       label: label,
       value: value,
       required: required,
+      enabled: enabled,
       items: [
         for (final e in entries.entries)
           UtenDropdownItem(value: e.key, label: e.value),

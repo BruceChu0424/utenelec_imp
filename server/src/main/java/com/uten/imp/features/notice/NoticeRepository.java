@@ -44,6 +44,17 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     long countVisibleUnread(@Param("userId") UUID userId);
 
     @Query("""
+            SELECT COUNT(n)
+            FROM Notice n
+            LEFT JOIN NoticeUserState s
+              ON s.id.noticeId = n.id AND s.id.userId = :userId
+            WHERE n.audienceUserId = :userId
+              AND n.sourceEvent IN :events
+              AND (s IS NULL OR (s.deletedAt IS NULL AND s.readAt IS NULL))
+            """)
+    long countUnreadBySourceEvents(@Param("userId") UUID userId, @Param("events") List<String> events);
+
+    @Query("""
             SELECT n
             FROM Notice n
             LEFT JOIN NoticeUserState s

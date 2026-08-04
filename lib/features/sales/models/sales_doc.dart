@@ -152,8 +152,8 @@ abstract final class SalesShipmentPolicy {
   static const requireComplete = 'REQUIRE_COMPLETE';
   static const customerConfirm = 'CUSTOMER_CONFIRM';
 
+  /// 新单可选的发运策略。`customerConfirm` 不再提供给新单（仅历史单只读保留）。
   static const selectable = <String>[
-    customerConfirm,
     allowPartial,
     requireComplete,
   ];
@@ -171,7 +171,7 @@ String salesShipmentPolicyLabel(String? code) => switch (code) {
 String salesShipmentPolicyDescription(String? code) => switch (code) {
   SalesShipmentPolicy.allowPartial => '有货的订单行可先建立出货任务，其余数量继续等待生产或入库。',
   SalesShipmentPolicy.requireComplete => '整张订单全部齐套前不允许建立部分出货任务。',
-  SalesShipmentPolicy.customerConfirm => '记录客户是同意分批发货的（不影响实际能否建立部分出货任务）。',
+  SalesShipmentPolicy.customerConfirm => '该订单沿用旧的「客户确认后分批」策略；新单已不再提供此选项。',
   SalesShipmentPolicy.legacyUnspecified => '迁移前订单沿用原业务规则；编辑其它字段时系统会保留该历史值。',
   null || '' => '服务端未返回发运策略；为避免误改，当前只读保留。',
   _ => '服务端返回了客户端尚未识别的策略；为避免误改，当前只读保留。',
@@ -736,6 +736,7 @@ class SalesDocDetail {
     this.arPosted = false,
     this.sourceDocNo,
     this.sourceQuoteId,
+    this.returnReason,
     this.items = const [],
     this.rejected = false,
     this.rejectReason,
@@ -796,6 +797,9 @@ class SalesDocDetail {
   final bool stopped;
   final bool arPosted;
   final String? sourceDocNo;
+
+  /// 退货原因（销售退货专属，由销售录入）。
+  final String? returnReason;
 
   /// 来源报价单 ID（报价转入的订单详情由后端回联填充；用于跳转报价详情）
   final String? sourceQuoteId;
@@ -866,6 +870,7 @@ class SalesDocDetail {
     arPosted: (json['arPosted'] as bool?) ?? false,
     sourceDocNo: json['sourceDocNo'] as String?,
     sourceQuoteId: json['sourceQuoteId'] as String?,
+    returnReason: json['returnReason'] as String?,
     items:
         (json['items'] as List?)
             ?.map((e) => SalesDocItem.fromJson(e as Map<String, dynamic>))

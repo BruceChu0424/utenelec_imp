@@ -16,9 +16,14 @@ abstract interface class ProcurementInboundRepository {
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({
     int page = 1,
     int size = 20,
+    String? keyword,
+    bool history = false,
   });
 
   Future<int> warehouseExceptionCount();
+
+  /// 一键入库：财务已定案(RECEIPT_ADJUSTED)的到货异常，按财务接受量入库+立应付。
+  Future<ProcurementArrivalException> stockInAccepted(String id);
 
   Future<PagedResult<ProcurementArrivalException>> ownerTasks({
     int page = 1,
@@ -79,10 +84,18 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({
     int page = 1,
     int size = 20,
+    String? keyword,
+    bool history = false,
   }) async {
+    final kw = keyword?.trim();
     final json = await api.get(
       ApiEndpoints.warehouseArrivalExceptions,
-      query: {'page': page, 'size': size},
+      query: {
+        'page': page,
+        'size': size,
+        if (history) 'history': true,
+        if (kw != null && kw.isNotEmpty) 'keyword': kw,
+      },
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
   }
@@ -90,6 +103,12 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   @override
   Future<int> warehouseExceptionCount() =>
       _count(ApiEndpoints.warehouseArrivalExceptionCount);
+
+  @override
+  Future<ProcurementArrivalException> stockInAccepted(String id) async {
+    final json = await api.post(ApiEndpoints.warehouseArrivalExceptionStockIn(id));
+    return ProcurementArrivalException.fromJson(json);
+  }
 
   @override
   Future<PagedResult<ProcurementArrivalException>> ownerTasks({

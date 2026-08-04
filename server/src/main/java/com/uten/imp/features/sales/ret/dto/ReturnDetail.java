@@ -41,4 +41,6 @@ public class ReturnDetail {
     private java.time.Instant createdAt;
     /** Current caller may mutate this document (functional permission + owner scope). */
     private boolean writable;
+    /** 退货原因（销售退货专属）。 */
+    private String returnReason;
 }

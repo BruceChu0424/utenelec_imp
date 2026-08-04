@@ -357,6 +357,9 @@ class ProcurementArrivalException {
       allowedActions.contains('COMPLETE_RETURN');
   num get excessQty => requestedExcessQty;
 
+  /// 一键入库可用：财务已定案且有待入库量（RECEIPT_ADJUSTED = 接受量>0、收货草稿已下调）。
+  bool get canStockIn => status == 'RECEIPT_ADJUSTED' && acceptedQty > 0;
+
   String get statusLabel => switch (status) {
     'PENDING_FINANCE' => '未入库，等待财务审批超量',
     'RECEIPT_ADJUSTED' => '已调整收货草稿，等待仓库重新审核',

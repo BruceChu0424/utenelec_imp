@@ -281,7 +281,7 @@ public class ChainNoticeService {
                                 + qty(produced) + "/已排产 " + qty(planned)
                                 + "（订单数量 " + qty(bd(r.get("order_qty"))) + "）。"
                                 + (reportedComplete ? "成品入库审核后会再次通知可发货状态。" : ""),
-                        order.route());
+                        order.route(), EVENT_PRODUCTION_REPORTED);
             }
         });
     }
@@ -310,7 +310,7 @@ public class ChainNoticeService {
                         "订单 " + o.billNo() + " 货品 " + str(r.get("goods")) + " 完工入库 " + qty(bd(r.get("qty")))
                                 + "（入库单 " + docNo + "），累计完工 " + qty(bd(r.get("produced_qty")))
                                 + "/订货 " + qty(bd(r.get("order_qty"))) + (full ? "，已可发货。" : "。"),
-                        o.route());
+                        o.route(), EVENT_FINISHED_INBOUND);
             }
         });
     }
@@ -830,7 +830,7 @@ public class ChainNoticeService {
                 notifyUser(ownerUser, TYPE_WORKFLOW,
                         "供应商退回已登记：" + orderNo,
                         orderLabel + " " + orderNo + " 的供应商退回任务已登记完成。",
-                "/procurement/arrival-exceptions");
+                        "/procurement/arrival-exceptions");
                 return;
             }
 
@@ -887,13 +887,19 @@ public class ChainNoticeService {
     }
 
     private void notifyUser(UUID userId, String type, String title, String content) {
-        notifyUser(userId, type, title, content, null);
+        notifyUser(userId, type, title, content, null, null);
     }
 
     /** 带跳转入口的定向通知（问题 #12：点排产/发货等通知能跳到对应单据）。 */
     private void notifyUser(UUID userId, String type, String title, String content, String actionRoute) {
+        notifyUser(userId, type, title, content, actionRoute, null);
+    }
+
+    /** 带事件来源标记的定向通知：sourceEvent 写入 notices.source_event，供按事件统计未读徽章。 */
+    private void notifyUser(UUID userId, String type, String title, String content,
+                            String actionRoute, String sourceEvent) {
         if (userId == null) return;
-        sendToUser(userId, type, title, content, actionRoute);
+        sendToUser(userId, type, title, content, actionRoute, sourceEvent);
     }
 
     private void notifyRoles(List<String> roleCodes, String type, String title, String content) {
@@ -951,14 +957,19 @@ public class ChainNoticeService {
     }
 
     private void sendToUser(UUID userId, String type, String title, String content) {
-        sendToUser(userId, type, title, content, null);
+        sendToUser(userId, type, title, content, null, null);
     }
 
     /** 停用/删除账号跳过；写入失败交给 Outbox 整体回滚重试。 */
     private void sendToUser(UUID userId, String type, String title, String content, String actionRoute) {
+        sendToUser(userId, type, title, content, actionRoute, null);
+    }
+
+    private void sendToUser(UUID userId, String type, String title, String content,
+                            String actionRoute, String sourceEvent) {
         UserAccount u = userRepo.findById(userId).orElse(null);
         if (u == null || !"active".equals(u.getStatus()) || u.isDeleted()) return;
-        noticeService.publishForUser(userId, title, content, type, PUBLISHER, actionRoute);
+        noticeService.publishForUser(userId, title, content, type, PUBLISHER, actionRoute, sourceEvent);
     }
 
     // ---------- 研发任务 / BOM 维护 通知 ----------

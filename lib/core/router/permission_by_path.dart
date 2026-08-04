@@ -239,6 +239,9 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.salesScarcity) {
     return const [Perm.salesOrderReallocate];
   }
+  if (location == RouteName.salesOrderProgress) {
+    return const [Perm.salesOrderView];
+  }
   if (location.startsWith('/sales/')) {
     final seg = location.split('/'); // ['', 'sales', seg, ...]
     final doc = seg.length > 2 ? seg[2] : '';

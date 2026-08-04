@@ -91,6 +91,10 @@ public class SalesReturn extends SoftDeletableEntity {
     @Column(name = "source_doc_no")
     private String sourceDocNo;
 
+    /** 退货原因（销售退货专属，由销售录入；可为空）。 */
+    @Column(name = "return_reason")
+    private String returnReason;
+
     /** 应收红字已立帐标志（审核置 true，反审校验）。 */
     @Column(name = "ar_posted", nullable = false)
     private boolean arPosted = false;

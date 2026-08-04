@@ -6,7 +6,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/procurement_supplier_cell.dart';
 import 'doc_link_picker.dart';
 
 /// 采购明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
@@ -33,6 +35,13 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
   String? upstreamItemId;
   String? colorId;
   String? unitId;
+
+  /// 明细级供应商（订货单可逐行选不同供应商，保存时按供应商自动拆单；为空回落表头）。
+  String? supplierId;
+
+  /// 预计到货登记模式（[purchaseGridColumns] arrivalMode）：该行财务批准剩余量，
+  /// 只读对照列展示；不实设 maxQty，仓库须能如实登记超量实到数。
+  num? approvedQty;
 
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory PurchaseGridRow.fromLinked(LinkedItem li, GoodsOption goods) {
@@ -62,9 +71,18 @@ class PurchaseGridRow extends EditableGridRow with AmountRowMixin {
 
 /// 采购明细列：货品（点选）/ 数量 / 单价 / 金额（自动）。
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
+/// [arrivalMode]=true（预计到货「登记实际到货」预填场景）：列改为
+/// 货品 / 批准剩余（只读对照）/ 实到数量——不显示单价/金额，仓库只关心到货数量。
+/// [supplierEntries]+[onSupplierChanged]：订货单显示「供应商」明细列（逐行选不同供应商，
+/// 保存时按供应商自动拆单）；收货/退货不传，沿用表头单一供应商。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
-  Future<void> Function(PurchaseGridRow row) onPickGoods,
-) {
+  Future<void> Function(PurchaseGridRow row) onPickGoods, {
+  bool arrivalMode = false,
+  Map<String, String> supplierEntries = const {},
+  String? headerSupplierId,
+  ValueChanged<String?>? onSupplierChanged,
+}) {
+  final showSupplier = !arrivalMode && supplierEntries.isNotEmpty;
   return [
     EditableGridColumn<PurchaseGridRow>(
       key: 'goods',
@@ -103,9 +121,35 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         ),
       ),
     ),
+    if (showSupplier)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'supplier',
+        label: '供应商',
+        width: 150,
+        cellBuilder: (context, row) => ProcurementSupplierCell(
+          value: row.supplierId,
+          fallback: headerSupplierId,
+          entries: supplierEntries,
+          onChanged: (v) {
+            row.supplierId = v;
+            onSupplierChanged?.call(v);
+          },
+        ),
+      ),
+    // 批准剩余：只读对照（财务批准还能收多少），超量实到不拦截，由服务端审核隔离。
+    if (arrivalMode)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'approvedQty',
+        label: '批准剩余',
+        width: 96,
+        numeric: true,
+        cellBuilder: (context, row) => Text(
+          row.approvedQty == null ? '—' : procurementQty(row.approvedQty!),
+        ),
+      ),
     EditableGridColumn<PurchaseGridRow>(
       key: 'qty',
-      label: '数量',
+      label: arrivalMode ? '实到数量' : '数量',
       width: 96,
       numeric: true,
       required: true,
@@ -120,34 +164,36 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         ),
       ),
     ),
-    EditableGridColumn<PurchaseGridRow>(
-      key: 'price',
-      label: '单价',
-      width: 96,
-      numeric: true,
-      required: true,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.price,
-        isEmpty: () =>
-            row.price.text.trim().isEmpty ||
-            double.tryParse(row.price.text.trim()) == null,
-        child: TextField(
-          controller: row.price,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+    if (!arrivalMode)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'price',
+        label: '单价',
+        width: 96,
+        numeric: true,
+        required: true,
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.price,
+          isEmpty: () =>
+              row.price.text.trim().isEmpty ||
+              double.tryParse(row.price.text.trim()) == null,
+          child: TextField(
+            controller: row.price,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '0'),
+          ),
         ),
       ),
-    ),
-    EditableGridColumn<PurchaseGridRow>(
-      key: 'amount',
-      label: '金额',
-      width: 110,
-      numeric: true,
-      cellBuilder: (context, row) => ValueListenableBuilder<double>(
-        valueListenable: row.amountNotifier,
-        builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
+    if (!arrivalMode)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'amount',
+        label: '金额',
+        width: 110,
+        numeric: true,
+        cellBuilder: (context, row) => ValueListenableBuilder<double>(
+          valueListenable: row.amountNotifier,
+          builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
+        ),
       ),
-    ),
   ];
 }

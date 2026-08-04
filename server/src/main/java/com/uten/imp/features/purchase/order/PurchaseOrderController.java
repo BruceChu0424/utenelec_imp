@@ -66,6 +66,13 @@ public class PurchaseOrderController {
         return service.create(req);
     }
 
+    /** 按明细级供应商自动拆单创建（一单一商归集不变），返回生成的多张订货单明细。 */
+    @PostMapping("/batch")
+    @PreAuthorize("hasAuthority('purchase_order:edit')")
+    public java.util.Map<String, Object> createBatch(@Valid @RequestBody OrderSaveRequest req) {
+        return java.util.Map.of("items", service.createBatch(req));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('purchase_order:edit')")
     public OrderDetail update(@PathVariable UUID id, @Valid @RequestBody OrderSaveRequest req) {

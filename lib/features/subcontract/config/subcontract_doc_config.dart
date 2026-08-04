@@ -212,7 +212,8 @@ class SubcontractDocConfig {
     linkToApplicationItem: true,
     showReceived: true,
     approveEffect: '财务批准后订货单生效，并生成仓库预计到货任务。',
-    allowDirectCreate: false,
+    // 管理卡片点进直达新建（与销售/采购一致）；明细经「从上游引入」从计划申请拉取。
+    skipListOnCreate: true,
   );
 
   /// 委外进仓单（收回成品；10732 行；链到订货；审核入库+立应付）。
@@ -367,6 +368,6 @@ abstract final class SubcontractRoute {
   static String edit(String pathSegment, String id) =>
       '/subcontract/$pathSegment/$id/edit';
 
-  /// 9 张委外报表之一（kind = SubcontractReportKind.name）。
+  /// 3 张委外报表之一（kind = SubcontractReportKind.name：明细/汇总/出入状况）。
   static String reportTable(String kind) => '/subcontract/report/$kind';
 }

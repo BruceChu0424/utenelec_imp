@@ -967,6 +967,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       // 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族渲染 ***
       _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
+      if (_cfg.type == SalesDocType.returnDoc &&
+          (d.returnReason?.isNotEmpty ?? false))
+        _KV('退货原因', d.returnReason),
+      if (_cfg.type == SalesDocType.returnDoc &&
+          (d.sourceDocNo?.isNotEmpty ?? false))
+        _KV('来源单号', d.sourceDocNo),
       _KV(
         '状态',
         null,
@@ -1185,6 +1191,23 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 label: '优先级',
                 width: 80,
                 value: (it) => priorityLabel(it.priority),
+              ),
+            ],
+            if (_cfg.type == SalesDocType.returnDoc) ...[
+              MasterColumnDef(
+                key: 'solution',
+                label: '处理方案',
+                width: 110,
+                value: (it) =>
+                    (it.solution?.isNotEmpty ?? false) ? it.solution : null,
+              ),
+              MasterColumnDef(
+                key: 'responsible',
+                label: '责任单位',
+                width: 100,
+                value: (it) => (it.responsible?.isNotEmpty ?? false)
+                    ? it.responsible
+                    : null,
               ),
             ],
             MasterColumnDef(

@@ -10,7 +10,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
+import '../../../shared/widgets/procurement_supplier_cell.dart';
 import '../config/subcontract_doc_config.dart';
 import 'subcontract_link_picker.dart' show LinkedItem;
 
@@ -49,6 +51,13 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
   double? unitRate;
   String? sourceDocNo;
 
+  /// 明细级委外商（订货单可逐行选不同委外商，保存时按委外商自动拆单；为空回落表头）。
+  String? supplierId;
+
+  /// 预计到货登记模式（[subcontractGridColumns] arrivalMode）：该行财务批准剩余量，
+  /// 只读对照列展示；不实设 maxQty，仓库须能如实登记超量实到数。
+  num? approvedQty;
+
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
   factory SubcontractGridRow.fromLinked(LinkedItem li, GoodsOption goods) {
     final r = SubcontractGridRow(sourceLocked: li.upstreamItemId != null)
@@ -85,10 +94,18 @@ class SubcontractGridRow extends EditableGridRow with AmountRowMixin {
 /// 委外明细列：货品（点选）/ 数量 / 单价? / 金额? / 重量? / 围数? / 胶箱数? /
 /// 损耗(标准用量?/结存数?/损耗率?/损耗原因?)，全部按 [cfg] 的 itemHas* 显隐。
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
+/// [arrivalMode]=true（预计到货「登记实际到货」预填场景）：列改为
+/// 货品 / 批准剩余（只读对照）/ 实到数量——价格/重量等列全部隐藏，仓库只登记到货数量。
 List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   Future<void> Function(SubcontractGridRow row) onPickGoods,
-  SubcontractDocConfig cfg,
-) {
+  SubcontractDocConfig cfg, {
+  bool arrivalMode = false,
+  Map<String, String> supplierEntries = const {},
+  String? headerSupplierId,
+  ValueChanged<String?>? onSupplierChanged,
+}) {
+  final showSupplier =
+      !arrivalMode && supplierEntries.isNotEmpty && cfg.hasSupplier;
   return [
     EditableGridColumn<SubcontractGridRow>(
       key: 'goods',
@@ -127,9 +144,35 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
+    if (showSupplier)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'supplier',
+        label: '委外商',
+        width: 150,
+        cellBuilder: (context, row) => ProcurementSupplierCell(
+          value: row.supplierId,
+          fallback: headerSupplierId,
+          entries: supplierEntries,
+          onChanged: (v) {
+            row.supplierId = v;
+            onSupplierChanged?.call(v);
+          },
+        ),
+      ),
+    // 批准剩余：只读对照（财务批准还能收多少），超量实到不拦截，由服务端审核隔离。
+    if (arrivalMode)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'approvedQty',
+        label: '批准剩余',
+        width: 96,
+        numeric: true,
+        cellBuilder: (context, row) => Text(
+          row.approvedQty == null ? '—' : procurementQty(row.approvedQty!),
+        ),
+      ),
     EditableGridColumn<SubcontractGridRow>(
       key: 'qty',
-      label: '数量',
+      label: arrivalMode ? '实到数量' : '数量',
       width: 96,
       numeric: true,
       required: true,
@@ -144,7 +187,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
-    if (cfg.itemHasPrice)
+    if (!arrivalMode && cfg.itemHasPrice)
       EditableGridColumn<SubcontractGridRow>(
         key: 'price',
         label: '单价',
@@ -164,7 +207,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           ),
         ),
       ),
-    if (cfg.itemHasPrice)
+    if (!arrivalMode && cfg.itemHasPrice)
       EditableGridColumn<SubcontractGridRow>(
         key: 'amount',
         label: '金额',
@@ -175,7 +218,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
         ),
       ),
-    if (cfg.itemHasWeight)
+    if (!arrivalMode && cfg.itemHasWeight)
       EditableGridColumn<SubcontractGridRow>(
         key: 'weight',
         label: '重量',
@@ -188,7 +231,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
-    if (cfg.itemHasGirth)
+    if (!arrivalMode && cfg.itemHasGirth)
       EditableGridColumn<SubcontractGridRow>(
         key: 'girth',
         label: '围数',
@@ -201,7 +244,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
-    if (cfg.itemHasBoxQty)
+    if (!arrivalMode && cfg.itemHasBoxQty)
       EditableGridColumn<SubcontractGridRow>(
         key: 'boxQty',
         label: '胶箱数',
@@ -214,7 +257,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
-    if (cfg.itemHasWasteFields) ...[
+    if (!arrivalMode && cfg.itemHasWasteFields) ...[
       EditableGridColumn<SubcontractGridRow>(
         key: 'standardQty',
         label: '标准用量',

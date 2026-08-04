@@ -79,6 +79,18 @@ class PurchaseRepository {
     return PurchaseDocDetail.fromJson(json);
   }
 
+  /// 按明细级供应商自动拆单创建（仅订货单用），返回生成的多张订货单。
+  Future<List<PurchaseDocDetail>> createBatch(
+    Map<String, dynamic> body,
+  ) async {
+    final json = await api.post('$_base/batch', body: body);
+    final List<dynamic> list = json['items'] as List? ?? const [];
+    return [
+      for (final entry in list)
+        PurchaseDocDetail.fromJson(entry as Map<String, dynamic>),
+    ];
+  }
+
   Future<PurchaseDocDetail> update(String id, Map<String, dynamic> body) async {
     final json = await api.put(
       ApiEndpoints.purchaseDoc(type.pathSegment, id),

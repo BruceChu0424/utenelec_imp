@@ -93,6 +93,18 @@ class SubcontractRepository {
     return SubcontractDocDetail.fromJson(json);
   }
 
+  /// 按明细级委外商自动拆单创建（仅订货单用），返回生成的多张订货单。
+  Future<List<SubcontractDocDetail>> createBatch(
+    Map<String, dynamic> body,
+  ) async {
+    final json = await api.post('$_base/batch', body: body);
+    final List<dynamic> list = json['items'] as List? ?? const [];
+    return [
+      for (final entry in list)
+        SubcontractDocDetail.fromJson(entry as Map<String, dynamic>),
+    ];
+  }
+
   Future<SubcontractDocDetail> update(
     String id,
     Map<String, dynamic> body,

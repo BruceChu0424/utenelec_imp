@@ -10,6 +10,7 @@ import '../../rd_task/providers/rd_task_count_provider.dart';
 import '../../subcontract/providers/subcontract_task_count_provider.dart';
 import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
+import '../../sales/providers/sales_completion_count_provider.dart';
 
 /// 工作台模块卡片角标种类。每张工作台卡片声明一种（[WorkbenchBadgeKind.none] = 无角标），
 /// 由 [WorkbenchCardBadge] 统一渲染成**同一款红色数字药丸**——样式天然一致。
@@ -28,6 +29,7 @@ enum WorkbenchBadgeKind {
   purchase, // 采购管理（待分解 + 待采购完成）
   finance, // 钱流管理（订货审批 + 超量到货审批）
   subcontract, // 委外管理（待退回供应商）
+  sales, // 销售管理（订单完工提醒）
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
@@ -84,6 +86,8 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
     case WorkbenchBadgeKind.subcontract:
       // 委外对齐采购：卡片徽标 = 委外任务台待办数（非到货退回数）。
       return ref.watch(subcontractTaskCountProvider);
+    case WorkbenchBadgeKind.sales:
+      return ref.watch(salesCompletionCountProvider).valueOrNull ?? 0;
     case WorkbenchBadgeKind.none:
       return 0;
   }

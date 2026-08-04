@@ -113,7 +113,8 @@ class PurchaseDocConfig {
     linkToRequestItem: true,
     showReceived: true,
     showReturned: true,
-    allowDirectCreate: false,
+    // 管理卡片点进直达新建（与销售/财务一致）；明细经「从上游引入」从计划申请拉取。
+    skipListOnCreate: true,
   );
 
   static const receipt = PurchaseDocConfig(

@@ -75,6 +75,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   final _shipLinkPhone = TextEditingController();
   final _parcelCount = TextEditingController();
   final _outType = TextEditingController();
+  /// 退货原因（销售退货专属）。
+  final _returnReason = TextEditingController();
 
   String? _clientId;
   String? _warehouseId;
@@ -88,7 +90,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   // 日期字段
   DateTime? _validUntil; // 报价有效期
   DateTime? _deliverDate; // 订货交货日
-  String? _shipmentPolicy = SalesShipmentPolicy.customerConfirm;
+  // 默认不填，由销售自选 ALLOW_PARTIAL / REQUIRE_COMPLETE（customerConfirm 新单不再提供）。
+  String? _shipmentPolicy;
   String? _warehouseWorkStatus;
 
   // 制单信息（服务端权威，只读展示）
@@ -124,6 +127,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _qtyListened.clear();
     _billNo.dispose();
     _remark.dispose();
+    _returnReason.dispose();
     _rate.dispose();
     _taxRate.dispose();
     _contractNo.dispose();
@@ -212,6 +216,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _shipLinkPhone.text = d.linkPhone ?? '';
         _parcelCount.text = d.parcelCount?.toString() ?? '';
         _outType.text = d.outType ?? '';
+        _returnReason.text = d.returnReason ?? '';
         _makerName = d.makerName;
         _createdAt = d.createdAt;
         final rows = <SalesGridRow>[];
@@ -228,7 +233,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             ..orderItemId = it.orderItemId
             ..outItemId = it.outItemId
             ..colorId = it.colorId
-            ..unitId = it.unitId;
+            ..unitId = it.unitId
+            ..solution = it.solution
+            ..responsible = it.responsible;
           row.qty.text = it.qty?.toString() ?? '';
           row.price.text = it.price?.toString() ?? '';
           // V66 补列回填（按 docType 仅填该单据类型对应字段；其余保持空）。
@@ -569,6 +576,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         case SalesDocType.returnDoc:
           final disc = parseExtra(r.discount);
           if (disc != null) body['discount'] = disc;
+          if (r.solution != null) body['solution'] = r.solution;
+          if (r.responsible != null) body['responsible'] = r.responsible;
           break;
         case SalesDocType.quote:
           break;
@@ -616,6 +625,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       if (_cfg.hasOutType && _outType.text.trim().isNotEmpty)
         'outType': _outType.text.trim(),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
+      if (widget.docType == SalesDocType.returnDoc &&
+          _returnReason.text.trim().isNotEmpty)
+        'returnReason': _returnReason.text.trim(),
       'items': itemsBody,
     };
     setState(() => _saving = true);
@@ -891,6 +903,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                 ],
                               ),
                               const SizedBox(height: UtenSpacing.s12),
+                              if (widget.docType == SalesDocType.returnDoc)
+                                TextField(
+                                  controller: _returnReason,
+                                  decoration: const InputDecoration(
+                                    labelText: '退货原因',
+                                  ),
+                                  maxLines: 2,
+                                ),
                               TextField(
                                 controller: _remark,
                                 decoration: const InputDecoration(
@@ -958,6 +978,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           unitEntries: names.unitEntries,
                         ),
                         createBlankRow: () => SalesGridRow(),
+                        cloneRow: (r) => r.clone(),
                       ),
                     ],
                   ),
@@ -1008,10 +1029,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
 
   Widget _shipmentPolicyField(ThemeData theme) {
     final value = _shipmentPolicy;
+    // 可编辑：未选择(null) 或 当前值仍是新单可选策略。历史 CUSTOMER_CONFIRM/LEGACY 只读保留。
     final editable =
-        widget.id == null ||
-        (value != null && SalesShipmentPolicy.selectable.contains(value));
-    final description = salesShipmentPolicyDescription(value);
+        value == null || SalesShipmentPolicy.selectable.contains(value);
+    final description = (editable && value == null)
+        ? '请选择发运策略：允许分批 或 整单齐套。'
+        : salesShipmentPolicyDescription(value);
     return Column(
       key: const ValueKey('sales-order-shipment-policy-field'),
       crossAxisAlignment: CrossAxisAlignment.start,

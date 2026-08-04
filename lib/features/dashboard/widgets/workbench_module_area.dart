@@ -395,6 +395,8 @@ const _allGroups = <_ModuleGroup>[
         icon: Icons.point_of_sale_outlined,
         label: '销售管理',
         location: RouteName.sales,
+        // 角标 = 销售订单完工提醒（未读完工通知数）。
+        badge: WorkbenchBadgeKind.sales,
       ),
       // 委外管理 → hub：任务中心(生产委外需求) / 委外管理 8 单据 / 委外报表。
       // 委外任务 = hub 内「生产委外需求」，本组不再单列。

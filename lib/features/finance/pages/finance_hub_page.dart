@@ -1,7 +1,7 @@
 // 钱流管理入口页（hub）—— 两个分组卡片：
 //  ① 钱流管理：销售收款/采购付款/一般费用/其它收入/银行存取款/支票管理 入口
 //  ② 钱流报表：应收应付台账/对账单/流水账 入口
-// 点卡片进对应列表/报表页。布局对齐采购 hub 的卡片风格（入口用 context.go，避免 push 失效）。
+// 点卡片进对应列表/报表页。卡片统一用 UtenHubCard（徽章恒在右上角，图标统一 40×40）。
 // 支票管理 = 账户 account_type=CHECK/FOREIGN_CHECK 的过滤视图（不单独模块），
 // 入口指向 /finance/checks（由用户在 app_router 接到 AccountPage(initialAccountTypeFilter:'CHECK')）。
 import 'package:flutter/material.dart';
@@ -9,9 +9,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/permission_by_path.dart';
@@ -73,7 +75,12 @@ class FinanceHubPage extends ConsumerWidget {
       body: SafeArea(
         child: UtenContentContainer(
           child: ListView(
-            padding: const EdgeInsets.only(top: UtenSpacing.s12),
+            padding: EdgeInsets.only(
+              top: UtenSpacing.s12,
+              bottom: context.breakpoint.isCompact
+                  ? UtenSpacing.s16
+                  : UtenSpacing.s40,
+            ),
             children: [
               if (canViewApprovals) ...[
                 _section(context, theme, '任务中心', const [
@@ -82,14 +89,14 @@ class FinanceHubPage extends ConsumerWidget {
                     label: '订货审批任务中心',
                     description: '只显示明确分配给我的采购 / 委外订货单',
                     location: FinanceWorkflowRoutes.approvalTasks,
-                    badge: FinanceProcurementApprovalBadge(),
+                    badge: FinanceProcurementApprovalBadge(size: 16),
                   ),
                   _Entry(
                     icon: Icons.local_shipping_outlined,
                     label: '超量到货审批',
                     description: '审核实际到货超出已批准订货数量的任务',
                     location: FinanceWorkflowRoutes.arrivalExceptionTasks,
-                    badge: FinanceArrivalExceptionBadge(),
+                    badge: FinanceArrivalExceptionBadge(showLabel: true),
                   ),
                 ]),
                 const SizedBox(height: UtenSpacing.s16),
@@ -266,61 +273,12 @@ class _EntryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = theme.colorScheme.primary;
-    return Material(
-      type: MaterialType.transparency,
-      borderRadius: UtenRadius.lgAll,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => goFrom(context, entry.location),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-            vertical: UtenSpacing.s20,
-            horizontal: UtenSpacing.s16,
-          ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
-                      borderRadius: UtenRadius.mdAll,
-                    ),
-                    child: Icon(entry.icon, color: color, size: 24),
-                  ),
-                  const Spacer(),
-                  ?entry.badge,
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                entry.label,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                entry.description,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return UtenHubCard(
+      icon: entry.icon,
+      label: entry.label,
+      description: entry.description,
+      onTap: () => goFrom(context, entry.location),
+      badge: entry.badge,
     );
   }
 }

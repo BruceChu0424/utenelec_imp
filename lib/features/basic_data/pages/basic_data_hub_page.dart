@@ -1,14 +1,17 @@
 // 基础资料入口页（hub）—— 货品资料 / 模具资料 等同级入口。
 //
 // 工作台「基础资料」卡片进入本页；再点具体资料类型进入各自的分类树+主档页。
-// 全员可见（登录即可，不设路由守卫）；卡片风格对齐工作台 _ModuleTile。
+// 全员可见（登录即可，不设路由守卫）；卡片统一用 UtenHubCard（与各模块 hub 一致），
+// labelStyle 用 titleMedium 保留原较大标题观感，color 按条目绿/青区分。
 // 新增资料类型（如颜色资料）时在 _resources 加一条即可。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/permission_by_path.dart';
 import '../../../core/router/route_names.dart';
@@ -94,6 +97,7 @@ class BasicDataHubPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final resources = _resources
         .where((resource) {
@@ -108,69 +112,25 @@ class BasicDataHubPage extends ConsumerWidget {
       ),
       body: SafeArea(
         child: UtenContentContainer(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenResponsiveGrid(
-              itemCount: resources.length,
-              spacing: UtenSpacing.s12,
-              columns: const UtenResponsiveColumns(compact: 2, medium: 3),
-              itemBuilder: (context, i, _) => _ResourceTile(item: resources[i]),
+          child: ListView(
+            padding: EdgeInsets.only(
+              top: UtenSpacing.s8,
+              bottom: context.breakpoint.isCompact
+                  ? UtenSpacing.s16
+                  : UtenSpacing.s40,
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ResourceTile extends StatelessWidget {
-  const _ResourceTile({required this.item});
-  final _BasicResource item;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      type: MaterialType.transparency,
-      borderRadius: UtenRadius.lgAll,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => goFrom(context, item.location),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-            vertical: UtenSpacing.s20,
-            horizontal: UtenSpacing.s16,
-          ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: item.color.withValues(alpha: 0.1),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(item.icon, color: item.color, size: 22),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                item.label,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                item.description,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              UtenResponsiveGrid(
+                itemCount: resources.length,
+                spacing: UtenSpacing.s12,
+                columns: const UtenResponsiveColumns(compact: 2, medium: 3),
+                itemBuilder: (context, i, _) => UtenHubCard(
+                  icon: resources[i].icon,
+                  label: resources[i].label,
+                  description: resources[i].description,
+                  color: resources[i].color,
+                  labelStyle: theme.textTheme.titleMedium,
+                  onTap: () => goFrom(context, resources[i].location),
                 ),
               ),
             ],

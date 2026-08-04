@@ -4,15 +4,17 @@
 // 点卡片进对应列表/报表页。卡片按权限显隐（无 view 权限不渲染对应入口）；
 // 销售管理卡 / 销售报表卡 若整组无可显项则整卡隐藏。
 //
-// 布局对齐基础资料 hub 与采购 hub 的卡片风格；权限来自 currentPermissionsProvider。
-// 路由用 SalesRoutePath 字面量（route_names.dart 由上层统一加 sales_*）。
+// 卡片统一用 UtenHubCard（徽章恒在右上角；销售入口暂无角标）。
+// 权限来自 currentPermissionsProvider；路由用 SalesRoutePath 字面量。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -73,7 +75,13 @@ class SalesHubPage extends ConsumerWidget {
       body: SafeArea(
         child: UtenContentContainer(
           child: ListView(
-            padding: const EdgeInsets.only(top: UtenSpacing.s12),
+            padding: EdgeInsets.only(
+              top: UtenSpacing.s12,
+              // 外壳 compact 已预留胶囊高度；medium+/桌面 Rail 不预留，取更大值。
+              bottom: context.breakpoint.isCompact
+                  ? UtenSpacing.s16
+                  : UtenSpacing.s40,
+            ),
             children: [
               if (docEntries.isNotEmpty)
                 _section(context, theme, '销售管理', docEntries),
@@ -160,55 +168,11 @@ class _EntryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = theme.colorScheme.primary;
-    return Material(
-      type: MaterialType.transparency,
-      borderRadius: UtenRadius.lgAll,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => goFrom(context, entry.location),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-            vertical: UtenSpacing.s20,
-            horizontal: UtenSpacing.s16,
-          ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(entry.icon, color: color, size: 22),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                entry.label,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                entry.description,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return UtenHubCard(
+      icon: entry.icon,
+      label: entry.label,
+      description: entry.description,
+      onTap: () => goFrom(context, entry.location),
     );
   }
 }

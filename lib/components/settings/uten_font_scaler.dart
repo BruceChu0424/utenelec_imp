@@ -20,10 +20,26 @@ class UtenFontScaler extends ConsumerWidget {
       children: [
         SegmentedButton<FontScale>(
           segments: const [
-            ButtonSegment(value: FontScale.small, label: Text('小')),
-            ButtonSegment(value: FontScale.medium, label: Text('中')),
-            ButtonSegment(value: FontScale.large, label: Text('大')),
-            ButtonSegment(value: FontScale.xLarge, label: Text('超大')),
+            ButtonSegment(
+              value: FontScale.small,
+              label: _Label('小'),
+            ),
+            ButtonSegment(
+              value: FontScale.medium,
+              label: _Label('标准'),
+            ),
+            ButtonSegment(
+              value: FontScale.large,
+              label: _Label('大'),
+            ),
+            ButtonSegment(
+              value: FontScale.xLarge,
+              label: _Label('超大'),
+            ),
+            ButtonSegment(
+              value: FontScale.xxLarge,
+              label: _Label('超超大'),
+            ),
           ],
           selected: {current},
           onSelectionChanged: (selection) => notifier.set(selection.first),
@@ -57,6 +73,23 @@ class UtenFontScaler extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 5 档在窄屏 SegmentedButton 里并排较挤，统一用 13px 标签防止最长「超超大」溢出。
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontSize: 13),
     );
   }
 }

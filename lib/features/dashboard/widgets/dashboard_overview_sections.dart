@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -53,9 +55,16 @@ class _DashboardOverviewBody extends ConsumerWidget {
           const SizedBox(height: UtenSpacing.s12),
           _MetricGrid(metrics: data.metrics),
           const SizedBox(height: UtenSpacing.s24),
-          const UtenSectionHeader(title: '待办任务'),
-          const SizedBox(height: UtenSpacing.s12),
-          _TodoList(todos: data.todos),
+          UtenCollapsibleSection(
+            title: '待办任务',
+            // 标题旁总数徽章 = 各待办 count 之和（无待办时徽章自身不渲染）
+            trailing: UtenNotificationBadge(
+              count: data.todos.fold<int>(0, (sum, t) => sum + t.count),
+              size: 20,
+              showLabel: true,
+            ),
+            child: _TodoList(todos: data.todos),
+          ),
           if (data.intelligence.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s24),
             const UtenSectionHeader(

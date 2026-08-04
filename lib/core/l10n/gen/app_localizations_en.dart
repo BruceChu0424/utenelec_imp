@@ -45,7 +45,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get connectionReconnecting => 'The network is unstable. Reconnecting…';
 
   @override
-  String get connectionDisconnected => 'The server is temporarily unavailable. Reconnecting automatically';
+  String get connectionDisconnected =>
+      'The server is temporarily unavailable. Reconnecting automatically';
 
   @override
   String get connectionRestored => 'Connection restored. You can continue.';
@@ -198,13 +199,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsFontSmall => 'Small';
 
   @override
-  String get settingsFontMedium => 'Medium';
+  String get settingsFontMedium => 'Standard';
 
   @override
   String get settingsFontLarge => 'Large';
 
   @override
   String get settingsFontXLarge => 'Extra large';
+
+  @override
+  String get settingsFontXXLarge => 'Extra extra large';
 
   @override
   String get settingsSectionPerformance => 'Performance';
@@ -310,7 +314,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get visitorIsEmployee => 'This phone is a Uten employee account, please use staff sign in';
+  String get visitorIsEmployee =>
+      'This phone is a Uten employee account, please use staff sign in';
 
   @override
   String get visitorPhoneInvalid => 'Please enter a valid phone number';
@@ -397,7 +402,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyValidateName => 'Please enter your name';
 
   @override
-  String get visitorApplyValidateIdCard => 'Please enter a valid 18-digit resident ID number';
+  String get visitorApplyValidateIdCard =>
+      'Please enter a valid 18-digit resident ID number';
 
   @override
   String get visitorApplyValidatePurpose => 'Please fill in the purpose';
@@ -409,10 +415,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyValidateVisitTime => 'Please select visit time';
 
   @override
-  String get visitorApplyValidateVisitTimeFuture => 'Visit time must be later than now';
+  String get visitorApplyValidateVisitTimeFuture =>
+      'Visit time must be later than now';
 
   @override
-  String get visitorApplyDuplicateTime => 'You already have an active visit at this time';
+  String get visitorApplyDuplicateTime =>
+      'You already have an active visit at this time';
 
   @override
   String get visitorApplySuccess => 'Submitted, awaiting approval';
@@ -854,16 +862,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardSubmit => 'Submit Onboarding';
 
   @override
-  String get employeeOnboardSuccess => 'Onboarding completed and the one-time password was delivered';
+  String get employeeOnboardSuccess =>
+      'Onboarding completed and the one-time password was delivered';
 
   @override
   String get employeeOnboardSubmitFailed => 'Submit failed, please try again';
 
   @override
-  String get employeeOnboardNote => 'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a one-time password (last 6 digits of the ID number). It must be changed at first sign-in.';
+  String get employeeOnboardNote =>
+      'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a one-time password (last 6 digits of the ID number). It must be changed at first sign-in.';
 
   @override
-  String get employeeOnboardCodeAutoNote => 'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
+  String get employeeOnboardCodeAutoNote =>
+      'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
 
   @override
   String get positionPickerTitle => 'Select or enter a position';
@@ -875,7 +886,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get positionPickerDepartmentFirst => 'Select a department first';
 
   @override
-  String get positionPickerSearchHint => 'Search by position name, code, or level';
+  String get positionPickerSearchHint =>
+      'Search by position name, code, or level';
 
   @override
   String positionPickerUseCustom(Object name) {
@@ -883,13 +895,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get positionPickerCustomDescription => 'It will be saved under the selected department after confirmation';
+  String get positionPickerCustomDescription =>
+      'It will be saved under the selected department after confirmation';
 
   @override
-  String get positionPickerNoPositions => 'This department has no positions; enter a new one directly';
+  String get positionPickerNoPositions =>
+      'This department has no positions; enter a new one directly';
 
   @override
-  String get positionPickerLoadFailed => 'Positions could not be loaded; retry or enter a new one directly';
+  String get positionPickerLoadFailed =>
+      'Positions could not be loaded; retry or enter a new one directly';
 
   @override
   String get positionPickerClear => 'Clear';
@@ -898,19 +913,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardCredentialTitle => 'Account created';
 
   @override
-  String get employeeOnboardCredentialWarning => 'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
+  String get employeeOnboardCredentialWarning =>
+      'This temporary password is shown only once. Deliver it securely now; the plaintext cannot be retrieved after closing.';
 
   @override
   String get employeeOnboardAccountLabel => 'Login account';
 
   @override
-  String get employeeOnboardTemporaryPasswordLabel => 'One-time temporary password';
+  String get employeeOnboardTemporaryPasswordLabel =>
+      'One-time temporary password';
 
   @override
   String get employeeOnboardCopyTemporaryPassword => 'Copy password';
 
   @override
-  String get employeeOnboardTemporaryPasswordCopied => 'Temporary password copied';
+  String get employeeOnboardTemporaryPasswordCopied =>
+      'Temporary password copied';
 
   @override
   String get employeeOnboardCredentialSaved => 'I saved it securely';
@@ -990,19 +1008,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOffboardFieldReason => 'Reason';
 
   @override
-  String get employeeOffboardFieldHandover => 'Handover notes (docs/projects/access)';
+  String get employeeOffboardFieldHandover =>
+      'Handover notes (docs/projects/access)';
 
   @override
   String get employeeOffboardPickDateRequired => 'Please pick the last day';
 
   @override
-  String get employeeOffboardChecksRequired => 'Please confirm all recovery items';
+  String get employeeOffboardChecksRequired =>
+      'Please confirm all recovery items';
 
   @override
   String get employeeOffboardConfirmTitle => 'Confirm offboarding?';
 
   @override
-  String get employeeOffboardConfirmBody => 'This employee account will be disabled.';
+  String get employeeOffboardConfirmBody =>
+      'This employee account will be disabled.';
 
   @override
   String get employeeOffboardConfirmAction => 'Confirm offboarding';
@@ -1068,7 +1089,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeRehireTitle => 'Confirm rehire?';
 
   @override
-  String get employeeRehireBody => 'The employee will become Active again and the login account will be re-enabled (re-login required).';
+  String get employeeRehireBody =>
+      'The employee will become Active again and the login account will be re-enabled (re-login required).';
 
   @override
   String get employeeRehireSuccess => 'Rehired';
@@ -1077,7 +1099,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeDeleteTitle => 'Delete this employee record?';
 
   @override
-  String get employeeDeleteBody => 'The login account will be disabled. This cannot be undone.';
+  String get employeeDeleteBody =>
+      'The login account will be disabled. This cannot be undone.';
 
   @override
   String get employeeDeleteSuccess => 'Employee record deleted';
@@ -1248,7 +1271,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get departmentEmployeesEmpty => 'No employees in this department (or its sub-departments)';
+  String get departmentEmployeesEmpty =>
+      'No employees in this department (or its sub-departments)';
 
   @override
   String departmentStatValue(Object label, Object value) {
@@ -1310,7 +1334,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get payrollItemTax => 'Income tax (-5%)';
 
   @override
-  String get payrollSubmitNote => 'After submission it enters finance review. Once approved, HR releases the slips to employees.';
+  String get payrollSubmitNote =>
+      'After submission it enters finance review. Once approved, HR releases the slips to employees.';
 
   @override
   String get payrollSubmitButton => 'Submit for review';
@@ -1405,7 +1430,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishFieldDept => 'Department';
 
   @override
-  String get noticePublishScopeAllHint => 'Notify every employee in the company';
+  String get noticePublishScopeAllHint =>
+      'Notify every employee in the company';
 
   @override
   String noticePublishScopeDeptHint(Object dept) {
@@ -1448,16 +1474,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishContentLabel => 'Body';
 
   @override
-  String get noticePublishUrgentHint => 'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
+  String get noticePublishUrgentHint =>
+      'Urgent notices use a high-priority alert. Use this only for items requiring immediate attention.';
 
   @override
-  String get noticePublishTopPriorityHint => 'Pinned notices appear first and alert recipients as important.';
+  String get noticePublishTopPriorityHint =>
+      'Pinned notices appear first and alert recipients as important.';
 
   @override
   String get noticePublishScopeSelected => 'Selected audience';
 
   @override
-  String get noticePublishScopeSelectedHint => 'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
+  String get noticePublishScopeSelectedHint =>
+      'Departments and people can be combined. Departments include descendants and duplicate recipients are removed.';
 
   @override
   String get noticePublishDepartmentsLabel => 'Departments (multiple)';
@@ -1492,15 +1521,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticePublishEmployeeConfirm => 'Done';
 
   @override
-  String get noticePublishValidateAudience => 'Choose at least one department or person';
+  String get noticePublishValidateAudience =>
+      'Choose at least one department or person';
 
   @override
-  String noticePublishAudienceSummary(Object departmentCount, Object employeeCount) {
+  String noticePublishAudienceSummary(
+    Object departmentCount,
+    Object employeeCount,
+  ) {
     return '$departmentCount departments and $employeeCount people selected';
   }
 
   @override
-  String get noticePublishAudienceRecalculateHint => 'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
+  String get noticePublishAudienceRecalculateHint =>
+      'The server recalculates the actual recipient count from the current organisation and account status before publishing.';
 
   @override
   String noticePublishConfirmAudience(Object summary, Object count) {
@@ -1534,16 +1568,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeEditCta => 'Edit my profile';
 
   @override
-  String get profileChangeEditHrOnlyHint => 'Please contact HR to change the fields below';
+  String get profileChangeEditHrOnlyHint =>
+      'Please contact HR to change the fields below';
 
   @override
-  String get profileChangeSectionBasic => 'Basic info (changes apply immediately)';
+  String get profileChangeSectionBasic =>
+      'Basic info (changes apply immediately)';
 
   @override
-  String get profileChangeSectionReview => 'Contact & important fields (require HR review)';
+  String get profileChangeSectionReview =>
+      'Contact & important fields (require HR review)';
 
   @override
-  String get profileChangeSectionIdentity => 'Name & emergency contacts (require HR review)';
+  String get profileChangeSectionIdentity =>
+      'Name & emergency contacts (require HR review)';
 
   @override
   String get profileChangeFieldDirect => 'Direct edit';
@@ -1555,7 +1593,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeFieldHrOnly => 'Contact HR';
 
   @override
-  String get profileChangePasswordHint => 'For your safety, please enter your current password';
+  String get profileChangePasswordHint =>
+      'For your safety, please enter your current password';
 
   @override
   String get profileChangePasswordLabel => 'Current password';
@@ -1573,10 +1612,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeSubmitFailed => 'Submit failed, please retry';
 
   @override
-  String get profileChangeConflict => 'Profile has been updated by someone else, please refresh';
+  String get profileChangeConflict =>
+      'Profile has been updated by someone else, please refresh';
 
   @override
-  String get profileChangeRateLimited => 'You already submitted a change for this field in the last 24 hours';
+  String get profileChangeRateLimited =>
+      'You already submitted a change for this field in the last 24 hours';
 
   @override
   String get profileChangeListTitle => 'My change requests';
@@ -1668,16 +1709,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileChangeRejectDialogTitle => 'Reject request';
 
   @override
-  String get profileChangeRejectReasonRequired => 'Rejection reason is required';
+  String get profileChangeRejectReasonRequired =>
+      'Rejection reason is required';
 
   @override
-  String get profileChangeRejectReasonHint => 'Explain why; the employee will see this';
+  String get profileChangeRejectReasonHint =>
+      'Explain why; the employee will see this';
 
   @override
   String get profileChangeApproveDialogTitle => 'Confirm approval?';
 
   @override
-  String get profileChangeApproveDialogBody => 'Changes will be merged into the employee profile immediately';
+  String get profileChangeApproveDialogBody =>
+      'Changes will be merged into the employee profile immediately';
 
   @override
   String get profileChangeConfirm => 'Confirm';
@@ -1718,7 +1762,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profilePendingSectionTitle => 'Pending profile change reviews';
 
   @override
-  String get profilePendingSectionEmpty => 'No pending reviews for this employee';
+  String get profilePendingSectionEmpty =>
+      'No pending reviews for this employee';
 
   @override
   String get profilePendingSectionViewAll => 'All →';

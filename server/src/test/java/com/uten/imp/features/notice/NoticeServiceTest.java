@@ -10,6 +10,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
@@ -20,7 +21,10 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -161,5 +165,52 @@ class NoticeServiceTest {
                         && state.getReadAt().isAfter(before)
                         && state.getTaskCompletedAt() != null
                         && state.getTaskCompletedAt().isAfter(before)));
+    }
+
+    @Test
+    void publishForUserPersistsValidActionRoute() {
+        UUID audienceUserId = UUID.randomUUID();
+        when(noticeRepository.saveAndFlush(any(Notice.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.publishForUser(audienceUserId, "标题", "正文", "workflow", "系统",
+                "/sales/orders/" + UUID.randomUUID());
+
+        ArgumentCaptor<Notice> captor = ArgumentCaptor.forClass(Notice.class);
+        verify(noticeRepository).saveAndFlush(captor.capture());
+        Notice saved = captor.getValue();
+        assertEquals("workflow", saved.getType());
+        assertEquals(audienceUserId, saved.getAudienceUserId());
+        assertNotNull(saved.getActionRoute());
+        assertTrue(saved.getActionRoute().startsWith("/sales/orders/"));
+    }
+
+    @Test
+    void publishForUserSilentlyDropsInvalidActionRoute() {
+        UUID audienceUserId = UUID.randomUUID();
+        when(noticeRepository.saveAndFlush(any(Notice.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // 非 / 开头 → 不抛异常，actionRoute 静默丢弃保持 null
+        service.publishForUser(audienceUserId, "标题", "正文", "workflow", "系统",
+                "finance/approvals");
+
+        ArgumentCaptor<Notice> captor = ArgumentCaptor.forClass(Notice.class);
+        verify(noticeRepository).saveAndFlush(captor.capture());
+        assertNull(captor.getValue().getActionRoute());
+    }
+
+    @Test
+    void publishForUserWithNullRouteLeavesActionRouteNull() {
+        UUID audienceUserId = UUID.randomUUID();
+        when(noticeRepository.saveAndFlush(any(Notice.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.publishForUser(audienceUserId, "标题", "正文", "task", "系统", null);
+
+        ArgumentCaptor<Notice> captor = ArgumentCaptor.forClass(Notice.class);
+        verify(noticeRepository).saveAndFlush(captor.capture());
+        assertNull(captor.getValue().getActionRoute());
+        assertEquals("task", captor.getValue().getType());
     }
 }

@@ -11,7 +11,8 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
-import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/app_router.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -49,7 +50,7 @@ class NoticeDetailPage extends ConsumerWidget {
         ),
         data: (notice) {
           if (notice == null) return const UtenEmpty(message: '通知不存在');
-          return _Content(notice: notice);
+          return _Content(notice: notice, onBack: onBack);
         },
       ),
     );
@@ -57,8 +58,14 @@ class NoticeDetailPage extends ConsumerWidget {
 }
 
 class _Content extends ConsumerWidget {
-  const _Content({required this.notice});
+  const _Content({required this.notice, this.onBack});
   final Notice notice;
+
+  /// 弹窗内嵌时为关弹窗回调（Navigator.pop）；独立路由 `/notice/:id` 态为 null。
+  /// 「查看详情」跳转前据此先关弹窗——否则 go_router 的 go 只换底层页面、
+  /// 弹窗仍盖着，视觉上「点查看详情没反应」（同类坑见文档 §九、memory
+  /// go-router-nested-navigator-dialog-pop）。
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -264,7 +271,7 @@ class _Content extends ConsumerWidget {
                 // 只给「查看详情」跳转，不给「标记完成」——完成态是 TODO 语义专属。
                 if (notice.actionRoute != null)
                   OutlinedButton.icon(
-                    onPressed: () => goFrom(context, notice.actionRoute!),
+                    onPressed: () => _goAction(ref),
                     icon: const Icon(Icons.arrow_forward_rounded),
                     label: Text(
                       notice.kind == NoticeKind.todo ? '前往办理页面' : '查看详情',
@@ -314,6 +321,25 @@ class _Content extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 「查看详情」跳转：弹窗态先关弹窗再跳，独立路由态直接跳。
+  /// 用全局 appRouterProvider 拿 router，不依赖弹窗内 context（弹窗内
+  /// GoRouterState.of 取不到）。returnTo 统一回通知列表（/notice），
+  /// 目标页返回键回通知列表。
+  void _goAction(WidgetRef ref) {
+    final route = notice.actionRoute!;
+    final uri = Uri.parse(route);
+    final params = Map<String, String>.from(uri.queryParameters)
+      ..['returnTo'] = RouteName.notice;
+    final target = uri.replace(queryParameters: params).toString();
+    final router = ref.read(appRouterProvider);
+    if (onBack != null) {
+      onBack!();
+      router.go(target);
+    } else {
+      router.go(target);
+    }
   }
 
   Widget _buildAttachment(ThemeData theme, String filename) {

@@ -29,6 +29,10 @@ import java.util.UUID;
  *
  * <p>接收人解析：订单归属销售（owner_employee_id，回退 seller_id）→ 员工账号；
  * 采购/调度按角色码（buyer/planner）广播。业务 Service 只传单据 ID，内容在此统一按 ID 自查组装。
+ *
+ * <p>每条定向业务通知都带 actionRoute（站内「查看详情」直达源单据/任务页）：归属销售类跳源单据
+ * 详情，调度/仓库/财务类跳各自任务中心。route 由各 notify* 方法硬编码（非用户输入），仅做基本
+ * sanity check（见 {@link NoticeService#publishForUser} 6 参重载）。
  */
 @Service
 public class ChainNoticeService {
@@ -445,7 +449,8 @@ public class ChainNoticeService {
                             + qty(bd(segment.get("planned_qty")))
                             + " 已转为可生产，请安排派工；计划日期 "
                             + str(segment.get("plan_begin_date")) + " 至 "
-                            + str(segment.get("plan_end_date")) + "。");
+                            + str(segment.get("plan_end_date")) + "。",
+                    "/production/schedule");
         });
     }
 
@@ -577,7 +582,9 @@ public class ChainNoticeService {
         if (o.ownerUserId() != null) targets.add(o.ownerUserId());
         targets.addAll(userRoleRepo.findUserIdsByRoleCode("planner"));
         for (UUID uid : targets) {
-            sendToUser(uid, TYPE_URGENT, title, content);
+            // owner 跳订单详情跟进；planner 跳生产调度板。
+            String route = uid.equals(o.ownerUserId()) ? o.route() : "/production/schedule";
+            sendToUser(uid, TYPE_URGENT, title, content, route);
         }
     }
 
@@ -605,7 +612,8 @@ public class ChainNoticeService {
                         "SELECT EXISTS(SELECT 1 FROM notices WHERE audience_user_id = ? AND title = ? AND published_at >= ?)",
                         Boolean.class, uid, title, startOfToday);
                 if (Boolean.TRUE.equals(sent)) continue;
-                sendToUser(uid, TYPE_URGENT, title, content);
+                String route = uid.equals(o.ownerUserId()) ? o.route() : "/production/schedule";
+                sendToUser(uid, TYPE_URGENT, title, content, route);
             }
         } catch (Exception error) {
             throw new IllegalStateException("Failed to deliver due-date warning for " + orderId, error);
@@ -656,7 +664,7 @@ public class ChainNoticeService {
                 + (overdueDays <= 0 ? "" : " " + overdueDays + " 天")
                 + "，仍未发货。请尽快安排出货；若客户暂不需要，请改量或取消以释放库存，"
                 + "或由主管做稀缺让单重排。长期不处理将影响可承诺量。";
-        sendToUser(o.ownerUserId(), TYPE_URGENT, title, content);
+        sendToUser(o.ownerUserId(), TYPE_URGENT, title, content, o.route());
     }
 
     /**
@@ -687,7 +695,8 @@ public class ChainNoticeService {
                 "订单 " + o.billNo() + " 货品 " + str(row.get("goods")) + " 的现货预留 "
                         + (qtyText == null || qtyText.isBlank() ? "" : qtyText + " ")
                         + "已被主管让单给" + (yielderOrderNo == null || yielderOrderNo.isBlank() ? "急单" : "订单 " + yielderOrderNo)
-                        + "（原因：" + why + "）。缺口已自动回到调度待排产，将转生产补足，进度会在排产后更新。");
+                        + "（原因：" + why + "）。缺口已自动回到调度待排产，将转生产补足，进度会在排产后更新。",
+                o.route());
     }
 
     private void notifyProcurementFinanceEvent(
@@ -724,7 +733,8 @@ public class ChainNoticeService {
                         "待财务审核：" + billNo,
                         orderLabel + " " + billNo + " 已提交财务审核，金额 "
                                 + str(approval.get("amount_snapshot"))
-                                + "。该任务仅分配给您，请到钱流管理任务中心处理。");
+                                + "。该任务仅分配给您，请到钱流管理任务中心处理。",
+                        "/finance/procurement-approvals");
                 return;
             }
             if (EVENT_PROCUREMENT_FINANCE_REJECTED.equals(eventType)) {
@@ -734,7 +744,8 @@ public class ChainNoticeService {
                         "财务驳回：" + billNo,
                         orderLabel + " " + billNo + " 未通过财务审核。原因："
                                 + str(approval.get("rejection_reason"))
-                                + "。请修改后重新提交。");
+                                + "。请修改后重新提交。",
+                        "/finance/procurement-approvals");
                 return;
             }
             notifyUser(
@@ -742,7 +753,8 @@ public class ChainNoticeService {
                     TYPE_WORKFLOW,
                     "财务通过：" + billNo,
                     orderLabel + " " + billNo
-                            + " 已通过财务审核并正式生效，仓储部已收到预计到货提醒。");
+                            + " 已通过财务审核并正式生效，仓储部已收到预计到货提醒。",
+                    "/finance/procurement-approvals");
             String warehouseName = str(approval.get("warehouse_name"));
             String expectedDate = str(approval.get("expected_date"));
             for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
@@ -757,7 +769,8 @@ public class ChainNoticeService {
                                 + (expectedDate.isBlank()
                                         ? ""
                                         : "，预计日期 " + expectedDate)
-                                + "。请在仓库预计到货队列跟进。");
+                                + "。请在仓库预计到货队列跟进。",
+                        "/warehouse/inbound/expectations");
             }
         });
     }
@@ -800,7 +813,8 @@ public class ChainNoticeService {
                                 + str(arrival.get("declared_qty"))
                                 + " 超过当前财务批准剩余可收量 "
                                 + str(arrival.get("approved_remaining_qty"))
-                                + "。本次未入库、未立应付；该任务只允许分配快照中的财务负责人审核。");
+                                + "。本次未入库、未立应付；该任务只允许分配快照中的财务负责人审核。",
+                        "/finance/procurement-arrival-exceptions");
                 return;
             }
             if (EVENT_PROCUREMENT_RETURN_REQUIRED.equals(eventType)) {
@@ -808,13 +822,15 @@ public class ChainNoticeService {
                         "供应商退回任务：" + orderNo,
                         orderLabel + " " + orderNo + " 的未接收数量 "
                                 + str(arrival.get("return_qty"))
-                                + " 已形成持久任务。请完成实物退回后在本人任务中确认；通知不能代替任务台账。");
+                                + " 已形成持久任务。请完成实物退回后在本人任务中确认；通知不能代替任务台账。",
+                        "/procurement/arrival-exceptions");
                 return;
             }
             if (EVENT_PROCUREMENT_RETURN_COMPLETED.equals(eventType)) {
                 notifyUser(ownerUser, TYPE_WORKFLOW,
                         "供应商退回已登记：" + orderNo,
-                        orderLabel + " " + orderNo + " 的供应商退回任务已登记完成。");
+                        orderLabel + " " + orderNo + " 的供应商退回任务已登记完成。",
+                "/procurement/arrival-exceptions");
                 return;
             }
 
@@ -827,14 +843,16 @@ public class ChainNoticeService {
                                     + "，未接收 " + str(arrival.get("unaccepted_qty"))
                                     + "，批准额外超量 "
                                     + str(arrival.get("approved_excess_qty"))
-                                    + "。收货草稿已由服务端调整，请重新核对并审核；不得按原申报量入库。");
+                                    + "。收货草稿已由服务端调整，请重新核对并审核；不得按原申报量入库。",
+                            "/warehouse/inbound/arrival-exceptions");
                 } else {
                     sendToUser(warehouseUser, TYPE_WORKFLOW,
                             "到货超量已由财务拒绝：" + orderNo,
                             "财务未批准收货单 " + receiptNo
                                     + " 的该行接收，收货草稿行已移除；未接收数量 "
                                     + str(arrival.get("unaccepted_qty"))
-                                    + " 已转原下单人处理供应商退回。");
+                                    + " 已转原下单人处理供应商退回。",
+                            "/warehouse/inbound/arrival-exceptions");
                 }
             }
         });

@@ -32,6 +32,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/widgets/goods_detail_dialog.dart';
+import '../../basic_data/repositories/goods_repository.dart';
 import '../models/rd_task.dart';
 import '../providers/rd_task_count_provider.dart';
 import '../repositories/rd_task_repository.dart';
@@ -132,12 +134,86 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   String _category = ''; // '' = 全部类别
   bool _hasLoaded = false;
   bool _resolving = false;
+  /// 桌面表格当前选中任务 id（点行触发：既打开 BOM 维护，也据此显示「标记完成」上下文条）。
+  String? _selectedTaskId;
 
   /// 是否有"标记完成"权限（rd_task:resolve 或超管）。仅用于决定是否暴露完成入口；
   /// 行级是否可完成还须看 row.allowedActions。
   bool get _canResolve =>
       ref.read(currentPermissionsProvider).contains(Perm.rdTaskResolve) ||
       ref.read(isSuperAdminProvider);
+
+  /// 是否可维护货品 BOM（rd_task 点行打开货品弹窗时的编辑开关）。
+  bool get _canEditGoods =>
+      ref.read(currentPermissionsProvider).contains(Perm.goodsEdit) ||
+      ref.read(isSuperAdminProvider);
+
+  /// 当前选中任务的最新行（从本次列表取，任务自动完成离开列表后返回 null → 上下文条自动消失）。
+  RdTaskRow? get _selectedRow {
+    final id = _selectedTaskId;
+    if (id == null || _data == null) return null;
+    for (final t in _data!.items) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  /// 点行 / 卡片：打开关联货品的 BOM 维护弹窗（组装信息 Tab）。
+  /// 保存 BOM 后后端经 GOODS_BOM_UPDATED→notifyBomUpdated 自动完成任务并通知计划员；
+  /// 故对 BOM 类任务，维护即完成，「标记完成」仅作手动兜底。
+  Future<void> _openGoodsBom(RdTaskRow row) async {
+    final goodsId = row.goodsId;
+    if (goodsId == null || goodsId.isEmpty) {
+      context.appInfo('该任务未关联货品，可直接「标记完成」');
+      return;
+    }
+    // 预取 root navigator：showDialog 默认推 root，loading/hide 要对齐（见货品页同款注释）。
+    final nav = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      final detail = await ref.read(goodsRepositoryProvider).detail(goodsId);
+      if (!mounted) return;
+      nav.pop(); // 关 loading
+      await showGoodsDetailDialog(
+        context: context,
+        detail: detail,
+        canEdit: _canEditGoods,
+        initialTab: 1, // 1=组装信息（BOM）
+        onDataChanged: () {
+          if (!mounted) return;
+          // BOM 变更可能已触发自动完成：刷新徽标与本页。
+          ref.read(rdTaskCountProvider.notifier).refresh();
+          _load();
+        },
+      );
+    } on ApiException catch (e) {
+      if (mounted) {
+        nav.pop();
+        context.appError(e.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        nav.pop();
+        context.appError('加载货品详情失败');
+      }
+    }
+    // 弹窗关闭后刷新：BOM 保存触发自动完成经 outbox ~2s，先即时刷一次，再延迟刷一次
+    // 让已维护 BOM 的任务自然离开「待完成」（研发不必手动刷新或「标记完成」）。
+    if (mounted) {
+      ref.read(rdTaskCountProvider.notifier).refresh();
+      await _load();
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted) {
+          ref.read(rdTaskCountProvider.notifier).refresh();
+          _load();
+        }
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -304,18 +380,27 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
         ];
 
         if (breakpoint.isExpanded) {
+          final sel = _selectedRow;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               ...top,
+              // 选中可完成任务时，显示「标记完成」上下文条（行点击=开 BOM；完成走这里）。
+              if (sel != null && !widget.closed && _resolveEligible(sel))
+                _ResolveBar(
+                  task: sel,
+                  resolving: _resolving,
+                  onResolve: () => _onResolve(sel),
+                ),
               Expanded(
                 child: _DesktopTaskTable(
                   key: const Key('rd-task-desktop-table'),
                   data: data,
                   items: data.items,
                   loading: _loading,
-                  onResolve: _onResolve,
-                  resolveEligible: _resolveEligible,
+                  onOpenGoods: _openGoodsBom,
+                  onSelectionChanged: (row) =>
+                      setState(() => _selectedTaskId = row.id),
                   onPageChanged: (page) {
                     setState(() => _page = page);
                     _load();
@@ -343,6 +428,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
               for (final task in data.items) ...[
                 _TaskCard(
                   task: task,
+                  onOpenGoods: () => _openGoodsBom(task),
                   onResolve:
                       _resolveEligible(task) ? () => _onResolve(task) : null,
                   resolving: _resolving,
@@ -513,16 +599,18 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.data,
     required this.items,
     required this.loading,
-    required this.onResolve,
-    required this.resolveEligible,
+    required this.onOpenGoods,
+    required this.onSelectionChanged,
     required this.onPageChanged,
   });
 
   final RdTaskData data;
   final List<RdTaskRow> items;
   final bool loading;
-  final ValueChanged<RdTaskRow> onResolve;
-  final bool Function(RdTaskRow) resolveEligible;
+  /// 点行 = 打开关联货品的 BOM 维护弹窗（不是确认完成）。
+  final ValueChanged<RdTaskRow> onOpenGoods;
+  /// 行被点选时回调（驱动上方「标记完成」上下文条）。
+  final ValueChanged<RdTaskRow> onSelectionChanged;
   final ValueChanged<int> onPageChanged;
 
   @override
@@ -592,8 +680,9 @@ class _DesktopTaskTable extends StatelessWidget {
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
-      // 行点击 = 标记完成；仅当本表存在可完成行时启用，否则（如「已完成」只读 Tab）整表无点击反馈。
-      onRowTap: items.any(resolveEligible) ? onResolve : null,
+      // 行点击 = 打开关联货品的 BOM 维护弹窗；同时回调选中（驱动上方「标记完成」上下文条）。
+      onRowTap: onOpenGoods,
+      onSelectionChanged: onSelectionChanged,
       rowColor: (item) => item.priority.toUpperCase() == 'URGENT'
           ? theme.colorScheme.error.withValues(alpha: 0.06)
           : null,
@@ -611,13 +700,17 @@ class _DesktopTaskTable extends StatelessWidget {
 class _TaskCard extends StatelessWidget {
   const _TaskCard({
     required this.task,
+    required this.onOpenGoods,
     required this.onResolve,
     required this.resolving,
   });
 
   final RdTaskRow task;
 
-  /// 非空 = 该任务可"标记完成"（卡片点击与底部按钮均触发它）；null = 不渲染完成入口。
+  /// 卡片点击 = 打开关联货品的 BOM 维护弹窗。
+  final VoidCallback onOpenGoods;
+
+  /// 非空 = 底部"标记完成"按钮可点；null = 不渲染完成按钮。
   final VoidCallback? onResolve;
 
   /// 是否有任务正在标记完成中（用于禁用按钮，避免重复提交）。
@@ -636,7 +729,7 @@ class _TaskCard extends StatelessWidget {
       borderRadius: UtenRadius.lgAll,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onResolve,
+        onTap: onOpenGoods,
         child: Container(
           padding: const EdgeInsets.all(UtenSpacing.s16),
           decoration: BoxDecoration(
@@ -715,6 +808,59 @@ class _TaskCard extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 桌面表格上方「标记完成」上下文条：点选某条可完成任务后出现。
+/// 与行点击（打开 BOM 维护）解耦——完成是手动兜底（BOM 保存即自动完成）。
+class _ResolveBar extends StatelessWidget {
+  const _ResolveBar({
+    required this.task,
+    required this.resolving,
+    required this.onResolve,
+  });
+
+  final RdTaskRow task;
+  final bool resolving;
+  final VoidCallback onResolve;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
+        ),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+          borderRadius: UtenRadius.mdAll,
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.task_alt_rounded,
+                size: 18, color: theme.colorScheme.primary),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Text(
+                '已选中 ${task.taskNo} · ${task.title}',
+                style: theme.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            UtenButton(
+              size: UtenButtonSize.small,
+              onPressed: resolving ? null : onResolve,
+              icon: Icons.check_circle_outline_rounded,
+              child: Text(resolving ? '处理中…' : '标记完成'),
+            ),
+          ],
         ),
       ),
     );

@@ -11,6 +11,7 @@ import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.ret.dto.CustomerDispositionRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnDetail;
 import com.uten.imp.features.sales.ret.dto.ReturnItemDto;
 import com.uten.imp.features.sales.ret.dto.ReturnItemLine;
@@ -18,6 +19,8 @@ import com.uten.imp.features.sales.ret.dto.ReturnListItem;
 import com.uten.imp.features.sales.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.sales.ret.dto.ReturnSaveRequest;
 import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.StockReservation;
+import com.uten.imp.features.stock.StockReservationService;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -34,10 +37,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -82,6 +88,7 @@ public class SalesReturnService {
     private final SalesReturnRepository returnRepo;
     private final SalesReturnItemRepository itemRepo;
     private final StockService stockService;
+    private final StockReservationService reservationService;
     private final ArApLedgerService arApService;
     private final TxSessionVars tx;
     private final EntityManager em;
@@ -278,6 +285,11 @@ public class SalesReturnService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        if (!"PENDING".equals(r.getDispositionStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "退货已确认客户处置（" + r.getCustomerDisposition()
+                            + "），不能直接红冲；请走受控补偿流程后再处理");
+        }
         List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireNonNegativeStoredCommercial(r, items);
         lockStoredSourceGraph(items);
@@ -313,6 +325,212 @@ public class SalesReturnService {
         r.setStatus(STATUS_REVERSED);
         returnRepo.save(r);
         return detail(id);
+    }
+
+    /**
+     * 客户处置确认（V219）：销售对已审核退货确认客户结论——退款结案/换货/补发/维修后返还。
+     *
+     * <p>确定影响（SOP：不自动补产、默认不自动加预留）：
+     * <ul>
+     *   <li>RESHIP / EXCHANGE：重开替换履约——对每条订单行的未满足 outstanding 重新软预留
+     *       （BUG-S1 修复；approve 只重算 outstanding 却从不建预留），reserved_qty↑、chain 重算。
+     *       仅让需求可见，不自动排产。</li>
+     *   <li>REFUND_CLOSED / REPAIR_RETURN：不补产、不发替换——以 flag_qty 关闭替换需求
+     *       （outstanding 回落、可能结案），红字应收即最终退款结算。</li>
+     * </ul>
+     * 处置确认后禁止整单普通红冲（须受控补偿）；决策记入追加式 sales_return_disposition_events。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_return:disposition')")
+    public ReturnDetail setDisposition(UUID id, CustomerDispositionRequest req) {
+        tx.bind();
+        SalesReturn r = requireWritableReturnForUpdate(id);
+        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核退货单可确认客户处置");
+        }
+        if (req == null || req.disposition() == null || req.reason() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户处置请求不完整");
+        }
+        String disposition = normalizeDisposition(req.disposition());
+        String reason = req.reason().trim();
+        if (reason.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户处置原因不能为空");
+        }
+        if (reason.length() > 500) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户处置原因不能超过 500 个字符");
+        }
+        String idempotencyKey = normalizeIdempotencyKey(req.idempotencyKey());
+
+        // 已决策：同决策幂等返回，不同决策拒绝（one-time，无在线改判）。
+        if (!"PENDING".equals(r.getDispositionStatus())) {
+            if (disposition.equals(r.getCustomerDisposition()) && reason.equals(r.getDispositionReason())) {
+                return detail(id);
+            }
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该退货单已确认客户处置（" + r.getCustomerDisposition()
+                            + "），如需更改请先走受控补偿流程");
+        }
+
+        List<SalesReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "明细为空，无法确认客户处置");
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        UUID actor = currentUser.requireEmployeeId();
+
+        if ("RESHIP".equals(disposition) || "EXCHANGE".equals(disposition)) {
+            reopenFulfilment(r, items);
+            r.setFulfilmentReopened(true);
+        } else {
+            // REFUND_CLOSED / REPAIR_RETURN：不补产、不发替换。
+            closeReplacementDemand(items);
+        }
+
+        r.setCustomerDisposition(disposition);
+        r.setDispositionStatus("DECIDED");
+        r.setDispositionDecidedBy(actor);
+        r.setDispositionDecidedAt(now);
+        r.setDispositionReason(reason);
+        returnRepo.save(r);
+
+        appendDispositionEvent(
+                dispositionEventId(r.getId(), idempotencyKey),
+                r.getId(), disposition, reason, actor, now);
+        return detail(id);
+    }
+
+    /**
+     * 重开替换履约预留（镜像 SalesOrderService.reserveOnApprove）：对每条订单行，把"退货重开的
+     * 未满足 outstanding"按当前全局可用量尽量软预留。同货品多行共享递减可用量池，防重复占用。
+     * 只让需求可见，不自动排产。
+     */
+    private void reopenFulfilment(SalesReturn salesReturn, List<SalesReturnItem> items) {
+        Map<UUID, List<SalesReturnItem>> byOrder = new java.util.LinkedHashMap<>();
+        for (SalesReturnItem it : items) {
+            if (it.getOrderItemId() != null) {
+                byOrder.computeIfAbsent(it.getOrderItemId(), k -> new ArrayList<>()).add(it);
+            }
+        }
+        if (byOrder.isEmpty()) return;
+        reservationService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        Map<String, BigDecimal> pool = new HashMap<>();
+        for (UUID orderItemId : byOrder.keySet()) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                            SELECT goods_id, color_id, qty, shipped_qty, returned_qty,
+                                   flag_qty, reserved_qty, unit_rate
+                            FROM sales_order_items
+                            WHERE id = :id
+                            FOR UPDATE
+                            """)
+                    .setParameter("id", orderItemId)
+                    .getResultList();
+            if (rows.size() != 1) continue;
+            Object[] row = rows.getFirst();
+            UUID goodsId = (UUID) row[0];
+            UUID colorId = (UUID) row[1];
+            BigDecimal qty = bd(row[2]), shipped = bd(row[3]), returned = bd(row[4]),
+                    flagged = bd(row[5]), reserved = bd(row[6]);
+            BigDecimal rate = bd(row[7]);
+            if (rate.signum() <= 0) rate = BigDecimal.ONE;
+            BigDecimal outstanding = qty.subtract(shipped).add(returned).subtract(flagged)
+                    .max(BigDecimal.ZERO);
+            BigDecimal gap = outstanding.subtract(reserved).max(BigDecimal.ZERO);
+            if (gap.signum() <= 0) continue;
+            BigDecimal gapBase = gap.multiply(rate);
+            String key = goodsId + "|" + (colorId == null ? "" : colorId);
+            BigDecimal avail = pool.computeIfAbsent(key,
+                    k -> reservationService.globalAvailableBase(goodsId, colorId));
+            BigDecimal take = gapBase.min(avail.max(BigDecimal.ZERO));
+            if (take.signum() <= 0) continue;
+            reservationService.reserve(orderItemId, goodsId, colorId, take,
+                    StockReservation.SOURCE_ORDER, "SALES_RETURN_RESHIP", salesReturn.getId());
+            pool.put(key, avail.subtract(take));
+            BigDecimal addDoc = take.divide(rate, 4, RoundingMode.HALF_UP);
+            em.createNativeQuery("""
+                    UPDATE sales_order_items
+                    SET reserved_qty = COALESCE(reserved_qty, 0) + :add
+                    WHERE id = :id
+                    """)
+                    .setParameter("add", addDoc)
+                    .setParameter("id", orderItemId)
+                    .executeUpdate();
+            recomputeOrderItemChain(orderItemId);
+        }
+    }
+
+    /**
+     * 关闭替换需求（REFUND_CLOSED / REPAIR_RETURN）：把退货量计入 flag_qty，使 outstanding
+     * 回落（可能结案），表示公司不补产、不发替换货。flag_qty 此前无人写入（休眠列），
+     * 此处赋予"已退款/返修不补产"的确定语义。
+     */
+    private void closeReplacementDemand(List<SalesReturnItem> items) {
+        Map<UUID, BigDecimal> flagByOrder = new java.util.LinkedHashMap<>();
+        for (SalesReturnItem it : items) {
+            if (it.getOrderItemId() != null && it.getQty() != null && it.getQty().signum() > 0) {
+                flagByOrder.merge(it.getOrderItemId(), it.getQty(), BigDecimal::add);
+            }
+        }
+        for (Map.Entry<UUID, BigDecimal> e : flagByOrder.entrySet()) {
+            em.createNativeQuery("""
+                    UPDATE sales_order_items
+                    SET flag_qty = COALESCE(flag_qty, 0) + :q
+                    WHERE id = :id
+                    """)
+                    .setParameter("q", e.getValue())
+                    .setParameter("id", e.getKey())
+                    .executeUpdate();
+            recomputeOrderItemChain(e.getKey());
+            recalcOrderClosed(e.getKey());
+        }
+    }
+
+    private void appendDispositionEvent(UUID eventId, UUID returnId, String disposition,
+                                        String reason, UUID actor, OffsetDateTime occurredAt) {
+        em.createNativeQuery("""
+                INSERT INTO sales_return_disposition_events (
+                    id, return_id, action, disposition, reason, actor_employee_id, occurred_at
+                ) VALUES (
+                    :id, :returnId, 'DISPOSITION_DECIDED', :disposition, :reason, :actor, :occurredAt
+                )
+                """)
+                .setParameter("id", eventId)
+                .setParameter("returnId", returnId)
+                .setParameter("disposition", disposition)
+                .setParameter("reason", reason)
+                .setParameter("actor", actor)
+                .setParameter("occurredAt", occurredAt)
+                .executeUpdate();
+    }
+
+    static String normalizeDisposition(String disposition) {
+        String normalized = disposition == null ? "" : disposition.trim().toUpperCase(Locale.ROOT);
+        if (!Objects.equals(normalized, "REFUND_CLOSED")
+                && !Objects.equals(normalized, "EXCHANGE")
+                && !Objects.equals(normalized, "RESHIP")
+                && !Objects.equals(normalized, "REPAIR_RETURN")) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "客户处置仅支持 REFUND_CLOSED/EXCHANGE/RESHIP/REPAIR_RETURN");
+        }
+        return normalized;
+    }
+
+    static String normalizeIdempotencyKey(String key) {
+        String normalized = key == null ? "" : key.strip();
+        if (normalized.length() < 8 || normalized.length() > 128
+                || !normalized.matches("[A-Za-z0-9._:-]+")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "客户处置幂等键必须为 8 到 128 位字母、数字或 ._:-");
+        }
+        return normalized;
+    }
+
+    static UUID dispositionEventId(UUID returnId, String idempotencyKey) {
+        String canonical = "SALES_RETURN_DISPOSITION|"
+                + returnId + "|" + normalizeIdempotencyKey(idempotencyKey);
+        return UUID.nameUUIDFromBytes(canonical.getBytes(StandardCharsets.UTF_8));
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */
@@ -970,7 +1188,9 @@ public class SalesReturnService {
                 r.getPaymentStyleId(), r.getSellerId(), r.getMakerId(), r.getApproverId(),
                 r.getLastDate(), r.getRemark(), r.getTotalOriginal(), r.getTotalLocal(), r.getStatus(),
                 r.isClosed(), sourceReadable ? r.getSourceDocNo() : null, r.isArPosted(), items,
-                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable, r.getReturnReason());
+                nameResolver.nameOf(r.getMakerId()), r.getCreatedAt(), writable, r.getReturnReason(),
+                r.getCustomerDisposition(), r.getDispositionStatus(), r.getDispositionDecidedBy(),
+                r.getDispositionDecidedAt(), r.getDispositionReason(), r.isFulfilmentReopened());
     }
 
     private SalesReturn requireReturn(UUID id) {

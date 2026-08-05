@@ -7,6 +7,7 @@ import com.uten.imp.features.sales.ret.dto.ReturnQueryFilter;
 import com.uten.imp.features.sales.ret.dto.ReturnSaveRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnQualityDispositionRequest;
 import com.uten.imp.features.sales.ret.dto.ReturnQualityItemDto;
+import com.uten.imp.features.sales.ret.dto.CustomerDispositionRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -95,6 +96,19 @@ public class SalesReturnController {
     @PreAuthorize("hasAuthority('sales_return:edit')")
     public ReturnDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    /**
+     * 客户处置确认（V219）：销售确认退款结案/换货/补发/维修后返还。
+     * RESHIP/EXCHANGE 重开替换履约预留；REFUND_CLOSED/REPAIR_RETURN 关闭替换需求（不补产）。
+     * 确认后禁止整单普通红冲。
+     */
+    @PostMapping("/{id}/disposition")
+    @PreAuthorize("hasAuthority('sales_return:disposition')")
+    public ReturnDetail disposition(
+            @PathVariable UUID id,
+            @Valid @RequestBody CustomerDispositionRequest request) {
+        return service.setDisposition(id, request);
     }
 
     /** Quality-frozen quantities are physically received but are not saleable ATP. */

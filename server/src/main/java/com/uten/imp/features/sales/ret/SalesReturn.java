@@ -98,4 +98,30 @@ public class SalesReturn extends SoftDeletableEntity {
     /** 应收红字已立帐标志（审核置 true，反审校验）。 */
     @Column(name = "ar_posted", nullable = false)
     private boolean arPosted = false;
+
+    // ---- V219 客户处置（退款结案/换货/补发/维修后返还）权威字段 ----
+
+    /** 客户处置结论；未决策为 null。 */
+    @Column(name = "customer_disposition")
+    private String customerDisposition;
+
+    /** 客户处置状态：PENDING 未决策 / DECIDED 已确认。 */
+    @Column(name = "disposition_status", nullable = false)
+    private String dispositionStatus = "PENDING";
+
+    /** 处置决策人（员工）。 */
+    @Column(name = "disposition_decided_by")
+    private UUID dispositionDecidedBy;
+
+    /** 处置决策时间。 */
+    @Column(name = "disposition_decided_at")
+    private OffsetDateTime dispositionDecidedAt;
+
+    /** 处置原因（必填）。 */
+    @Column(name = "disposition_reason")
+    private String dispositionReason;
+
+    /** RESHIP/EXCHANGE 是否已重开替换履约预留（幂等标志）。 */
+    @Column(name = "fulfilment_reopened", nullable = false)
+    private boolean fulfilmentReopened = false;
 }

@@ -71,6 +71,8 @@ server/backups/
 # 需要时用 server/legacy_migration/export_legacy.ps1 重新生成）
 server/legacy_migration/data/
 server/src/main/resources/legacy-migration/
+# HR 正式名录源表（真实 PII：141 人身份证/手机/住址，由 build_hr_roster.py 消费，绝不入库）
+/中山市优腾电器职工信息表.xls
 # 新 ERP 产品列表导出（真实业务数据/PII：货品主档 80 列 + 导入比对报告，
 # 由 server/legacy_migration/import_product_lists.py 消费，绝不入库）
 /product lists/

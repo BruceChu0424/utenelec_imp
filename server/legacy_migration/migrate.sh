@@ -18,6 +18,8 @@
 #   bash server/legacy_migration/migrate.sh --production # 只迁生产（F_Plan/F_PlanItem/F_PlanCostItem/F_DateReport，依赖 --sales 先迁）
 #   bash server/legacy_migration/migrate.sh --finance    # 只迁钱流（账户/付款方式 + AR/AP + 收支/对账）
 #   bash server/legacy_migration/migrate.sh --hr-workers # 只迁人事老库（B_Worker 全量试迁，含加密敏感信息）
+#   bash server/legacy_migration/migrate.sh --hr-cleanup # 人事清理：只留 admin（正式名录导入前执行）
+#   bash server/legacy_migration/migrate.sh --hr-roster  # 只迁 HR 正式名录（职工信息表 141 人，先 build_hr_roster.py）
 #   bash server/legacy_migration/migrate.sh --goods-owner # 只迁货品归属（外贸按人授权，V85）
 #   bash server/legacy_migration/migrate.sh --client-owner # 只迁客户归属（业务员按人授权，V86）
 #   UTEN_CONFIRM_DESTRUCTIVE_MIGRATION=RESET_uten_imp \
@@ -66,6 +68,7 @@ usage () {
   --color-data | --unit-data | --currency-data | --warehouse-data
   --purchase | --stock-docs | --sales | --sales-owner
   --subcontract | --production | --finance | --hr-workers
+  --hr-cleanup | --hr-roster
   --goods-owner
   --bootstrap-all（兼容别名：--all、-a）
 
@@ -91,6 +94,7 @@ for arg in "$@"; do
         --supplier|--supplier-data|--color-data|--unit-data|--currency-data|\
         --warehouse-data|--purchase|--stock-docs|--sales|--sales-owner|\
         --subcontract|--production|--finance|--hr-workers|\
+        --hr-cleanup|--hr-roster|\
         --bootstrap-all|--all|-a)
             if [ -n "$TARGET" ]; then
                 echo "✗ 一次只能执行一个迁移目标：$TARGET、$arg" >&2
@@ -176,27 +180,45 @@ preflight () {
     echo "→ 预检 Docker、数据库、迁移版本与并发锁..."
     local export_manifest="$HERE/data/export_manifest.json"
     local checksum_manifest="$HERE/data/export_manifest.sha256"
+    # HR 清理/正式名录不依赖老库导出快照：输入来自 build_hr_roster.py 生成的
+    # data/hr_roster.csv + hr_managers.csv，其 sha256 由构建脚本登记进 checksum 清单，
+    # copy_csv 仍逐文件校验；export_manifest.json 不存在时仅跳过老库交叉校验。
+    local legacy_export_free=0
+    case "$TARGET" in
+        --hr-cleanup|--hr-roster) legacy_export_free=1 ;;
+    esac
     if [ ! -s "$export_manifest" ] || [ ! -s "$checksum_manifest" ]; then
-        echo "✗ 缺少完整导出清单，请先用 export_legacy.ps1 重新导出一致性快照。" >&2
-        exit 66
+        if [ "$legacy_export_free" -eq 1 ] && [ -s "$checksum_manifest" ]; then
+            echo "→ HR 名录流程：无老库导出清单，改用 build_hr_roster.py 登记的 sha256 校验。"
+        else
+            echo "✗ 缺少完整导出清单，请先用 export_legacy.ps1 重新导出一致性快照。" >&2
+            exit 66
+        fi
     fi
     if ! command -v sha256sum >/dev/null 2>&1; then
         echo "✗ 缺少 sha256sum，无法校验迁移输入。" >&2
         exit 69
     fi
 
-    EXPORT_MANIFEST_SHA256=$(sha256sum "$export_manifest" | awk '{print tolower($1)}')
+    if [ -s "$export_manifest" ]; then
+        EXPORT_MANIFEST_SHA256=$(sha256sum "$export_manifest" | awk '{print tolower($1)}')
+    else
+        # 审计表要求 64-hex：用 sha256('na-hr-roster-flow') 作占位，语义见上方注释
+        EXPORT_MANIFEST_SHA256="44029600705801d0aa5663674ba5a5cdc5f6943f1d9ab6e80356f649c6e82181"
+    fi
     CHECKSUM_MANIFEST_SHA256=$(sha256sum "$checksum_manifest" | awk '{print tolower($1)}')
-    local declared_checksum_hash
-    declared_checksum_hash=$(
-        grep -m1 '"checksumManifestSha256"' "$export_manifest" \
-            | sed 's/.*:[[:space:]]*"\([0-9A-Fa-f]*\)".*/\1/' \
-            | tr 'A-F' 'a-f'
-    )
-    if [[ ! "$declared_checksum_hash" =~ ^[0-9a-f]{64}$ ]] \
-        || [ "$declared_checksum_hash" != "$CHECKSUM_MANIFEST_SHA256" ]; then
-        echo "✗ export_manifest.json 与 export_manifest.sha256 不属于同一次导出；已拒绝迁移。" >&2
-        exit 66
+    if [ -s "$export_manifest" ]; then
+        local declared_checksum_hash
+        declared_checksum_hash=$(
+            grep -m1 '"checksumManifestSha256"' "$export_manifest" \
+                | sed 's/.*:[[:space:]]*"\([0-9A-Fa-f]*\)".*/\1/' \
+                | tr 'A-F' 'a-f'
+        )
+        if [[ ! "$declared_checksum_hash" =~ ^[0-9a-f]{64}$ ]] \
+            || [ "$declared_checksum_hash" != "$CHECKSUM_MANIFEST_SHA256" ]; then
+            echo "✗ export_manifest.json 与 export_manifest.sha256 不属于同一次导出；已拒绝迁移。" >&2
+            exit 66
+        fi
     fi
 
     MIGRATION_SCRIPT_SHA256=$(sha256sum "$HERE/migrate.sh" | awk '{print tolower($1)}')
@@ -526,6 +548,50 @@ migrate_hr_workers () {
     "$DOCKER" exec "$CONTAINER" rm -f /tmp/_uten_keys.sql
 }
 
+# 人事清理：删除所有非 admin 员工（级联 users/敏感信息/任职轨迹等）+ LEG-P 遗留岗位，
+#   业务表外键 RESTRICT 保护（有引用则整体回滚）。正式名录导入前执行。
+migrate_hr_cleanup () {
+    echo "→ [人事清理] 执行清理 SQL（只留 admin）..."
+    run_sql cleanup_hr_keep_admin.sql
+}
+
+# HR 正式名录（职工信息表 141 人）：employees + 岗位建档 + 加密敏感信息 + onboard 轨迹 +
+#   部门负责人/headcount。数据来自 build_hr_roster.py 生成的 data/hr_roster.csv +
+#   hr_managers.csv（| 分隔，已登记 sha256 审计清单）。幂等（按 code upsert）。
+# 密钥注入同 --hr-workers：server/.env → 临时 \set 文件，用后两侧即删。
+migrate_hr_roster () {
+    echo "→ [人事名录] 复制 CSV（2 个：hr_roster / hr_managers）..."
+    copy_csv hr_roster.csv
+    copy_csv hr_managers.csv
+    echo "→ [人事名录] 注入加密密钥（临时文件，用后删除）..."
+    local envf="$HERE/../.env" keyf="$HERE/.uten_keys.tmp.sql"
+    local pgp_key pgp_ver hmac_key
+    if [ ! -f "$envf" ]; then
+        echo "✗ 找不到 server/.env，无法注入人事加密密钥" >&2
+        exit 66
+    fi
+    LOCAL_KEY_FILE="$keyf"
+    pgp_key=$(grep '^UTEN_PGP_MASTER_KEY=' "$envf" | cut -d= -f2-)
+    pgp_ver=$(grep '^UTEN_PGP_KEY_VERSION=' "$envf" | cut -d= -f2-)
+    hmac_key=$(grep '^UTEN_HMAC_KEY=' "$envf" | cut -d= -f2-)
+    if [ -z "$pgp_key" ] || [ -z "$hmac_key" ]; then
+        echo "✗ server/.env 缺少 UTEN_PGP_MASTER_KEY 或 UTEN_HMAC_KEY"; exit 1
+    fi
+    pgp_ver="${pgp_ver:-v1}"
+    {
+        printf "\\set pgp_key '%s'\n"  "${pgp_key//\'/\'\'}"
+        printf "\\set pgp_ver '%s'\n"  "${pgp_ver//\'/\'\'}"
+        printf "\\set hmac_key '%s'\n" "${hmac_key//\'/\'\'}"
+    } > "$keyf"
+    "$DOCKER" cp "$keyf" "$CONTAINER:/tmp/_uten_keys.sql"
+    REMOTE_TMP_FILES+=("/tmp/_uten_keys.sql")
+    rm -f "$keyf"
+    LOCAL_KEY_FILE=""
+    echo "→ [人事名录] 执行迁移 SQL（部门改名 + 岗位建档 + 员工/敏感信息 upsert + 负责人/轨迹/headcount）..."
+    run_sql migrate_hr_roster.sql
+    "$DOCKER" exec "$CONTAINER" rm -f /tmp/_uten_keys.sql
+}
+
 # 货品归属（外贸按人授权）：老库外贸子树 → goods.owner_employee_id（无 CSV，纯 UPDATE）。
 # 依赖：goods/material_categories 已迁 + employees 有 legacy_id + V85 已应用。幂等（先清零再灌）。
 migrate_goods_owner () {
@@ -573,6 +639,8 @@ case "$TARGET" in
     --production) migrate_production ;;
     --finance) migrate_finance ;;
     --hr-workers) migrate_hr_workers ;;
+    --hr-cleanup) migrate_hr_cleanup ;;
+    --hr-roster) migrate_hr_roster ;;
     --bootstrap-all|--all|-a)
         migrate_goods
         migrate_goods_data

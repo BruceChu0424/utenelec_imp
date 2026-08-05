@@ -51,6 +51,10 @@ abstract final class ApiEndpoints {
       '/org/departments/$id/workforce-overview';
   static const departments = '/org/departments';
 
+  // HR 任务中心（转正/生日/周年/新入职动态提醒）
+  static const hrTaskSummary = '/org/hr-tasks/summary';
+  static const hrTaskCount = '/org/hr-tasks/count';
+
   // 我的部门（工作台卡片，问题 #20；任意员工可用，不走 department:view/employee:view）
   static const myDepartmentTree = '/my-department/tree';
   static const myDepartmentRoster = '/my-department/roster';

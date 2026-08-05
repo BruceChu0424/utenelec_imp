@@ -50,6 +50,7 @@ import '../../features/finance/pages/finance_statement_page.dart';
 import '../../features/finance/pages/finance_account_flow_page.dart';
 import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
+import '../../features/hr_task/pages/hr_task_center_page.dart';
 import '../../features/hvac/pages/hvac_control_page.dart';
 import '../../features/hvac/pages/hvac_overview_page.dart';
 import '../../features/lab/pages/lab_test_list_page.dart';
@@ -1105,6 +1106,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.profileMyDepartment,
             name: 'profile-my-department',
             builder: (_, _) => const MyDepartmentPage(),
+          ),
+
+          // —— HR 端：任务中心（转正/生日/周年/新入职提醒） ——
+          GoRoute(
+            path: RouteName.hrTaskCenter,
+            name: 'hr-task-center',
+            builder: (_, _) => const HrTaskCenterPage(),
           ),
 
           // —— HR 端：员工个人信息修改审批 ——

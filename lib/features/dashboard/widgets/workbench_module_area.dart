@@ -239,6 +239,13 @@ const _allGroups = <_ModuleGroup>[
     title: '行政与人力资源部',
     color: UtenColors.info,
     items: [
+      // 任务中心置顶：转正/生日/周年/新入职集中提醒，徽标=今日事项+逾期转正
+      _ModuleItem(
+        icon: Icons.task_alt_outlined,
+        label: '任务中心',
+        location: RouteName.hrTaskCenter,
+        badge: WorkbenchBadgeKind.hrTask,
+      ),
       _ModuleItem(
         icon: Icons.badge_outlined,
         label: '员工档案',

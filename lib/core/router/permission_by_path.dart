@@ -110,6 +110,10 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.rdTaskCenter) {
     return const [Perm.rdTaskView];
   }
+  // HR 任务中心（转正/生日/周年/新入职提醒；权限与员工档案查看一致）。
+  if (location == RouteName.hrTaskCenter) {
+    return const [Perm.employeeView];
+  }
   // 采购管理（PMC 运营部；V44 细粒度：view 全员、edit 归 PMC）
   if (location == RouteName.purchase) {
     // hub：任一采购单据 view 即可见

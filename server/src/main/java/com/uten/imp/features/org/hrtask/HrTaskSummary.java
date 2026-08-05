@@ -1,0 +1,52 @@
+package com.uten.imp.features.org.hrtask;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * HR 任务中心汇总读模型（全部按「今天」动态计算，不落库、无任务表）。
+ *
+ * @param generatedAt            计算基准日（服务端当天）
+ * @param probationMonths        转正视窗月数（默认 3，见 HrTaskService 注释）
+ * @param confirmToday           今日到预计转正日（仍未登记转正）
+ * @param confirmUpcoming        30 天内到预计转正日（days = 剩余天数）
+ * @param confirmOverdue         已过预计转正日仍未办理（days = 逾期天数；只跟踪近 12 个月入职）
+ * @param unconfirmedLegacyCount 入职超过 12 个月仍未登记转正日期的人数（数据补录提示，不逐人列）
+ * @param birthdayToday          今日生日（days = 周岁）
+ * @param birthdayUpcoming       30 天内生日（days = 剩余天数）
+ * @param anniversaryToday       今日入职周年（days = 满年数）
+ * @param newHires               近 30 天新入职（days = 已入职天数）
+ * @param badgeCount             工作台徽标数 = 今日转正 + 逾期转正 + 今日生日 + 今日周年
+ */
+public record HrTaskSummary(
+        LocalDate generatedAt,
+        int probationMonths,
+        List<Item> confirmToday,
+        List<Item> confirmUpcoming,
+        List<Item> confirmOverdue,
+        long unconfirmedLegacyCount,
+        List<Item> birthdayToday,
+        List<Item> birthdayUpcoming,
+        List<Item> anniversaryToday,
+        List<Item> newHires,
+        long badgeCount) {
+
+    /**
+     * 单条提醒。
+     *
+     * @param date 相关日期（预计转正日 / 生日（今年或明年落在）/ 入职日期）
+     * @param days 语义随区块：剩余天数 / 逾期天数 / 周岁 / 满年数 / 已入职天数
+     * @param note 补充说明（如「入职满 1 年」），可为 null
+     */
+    public record Item(
+            UUID employeeId,
+            String code,
+            String name,
+            String deptName,
+            String positionName,
+            LocalDate date,
+            int days,
+            String note) {
+    }
+}

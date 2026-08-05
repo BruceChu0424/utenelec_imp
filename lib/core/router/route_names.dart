@@ -118,6 +118,9 @@ abstract final class RouteName {
   static const String hrProfileChanges = '/hr/profile-changes';
   static const String hrProfileChangeDetail = '/hr/profile-changes/:id';
 
+  // HR 端：任务中心（转正/生日/周年/新入职提醒）
+  static const String hrTaskCenter = '/hr/tasks';
+
   // 入口选择（登录前：内部人员 / 访客）
   static const String entry = '/entry';
 

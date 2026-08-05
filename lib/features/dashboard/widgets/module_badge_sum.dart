@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../shared/auth/pending_review_provider.dart';
 import '../../finance/providers/finance_procurement_approval_count_provider.dart';
+import '../../hr_task/providers/hr_task_count_provider.dart';
 import '../../production/providers/production_pending_provider.dart';
 import '../../purchase/providers/purchase_task_count_provider.dart';
 import '../../rd_task/providers/rd_task_count_provider.dart';
@@ -23,6 +24,7 @@ enum WorkbenchBadgeKind {
   visitorHost, // 我的访客（被访人待确认）
   visitorApproval, // 访客审批（HR 待审批）
   hrReview, // 信息变更审核
+  hrTask, // HR 任务中心（今日转正/逾期转正/今日生日/今日周年）
   production, // 生产管理（待排产）
   rdTask, // 任务中心
   warehouse, // 仓库管理（预计到货 + 到货异常）
@@ -67,6 +69,8 @@ int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
       return ref.watch(visitorPendingCountProvider);
     case WorkbenchBadgeKind.hrReview:
       return ref.watch(pendingReviewCountProvider);
+    case WorkbenchBadgeKind.hrTask:
+      return ref.watch(hrTaskCountProvider);
     case WorkbenchBadgeKind.production:
       return ref.watch(productionPendingCountProvider).count;
     case WorkbenchBadgeKind.rdTask:

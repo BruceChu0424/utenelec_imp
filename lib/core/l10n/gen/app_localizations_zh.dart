@@ -700,6 +700,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeFieldHireDate => '入职日期';
 
   @override
+  String get employeeFieldWorkYears => '工龄';
+
+  @override
+  String employeeWorkYearsYandM(int years, int months) {
+    return '$years 年 $months 个月';
+  }
+
+  @override
+  String employeeWorkYearsMonths(int months) {
+    return '$months 个月';
+  }
+
+  @override
+  String get employeeWorkYearsUnderOneMonth => '不足 1 个月';
+
+  @override
   String get employeeFieldConfirmedDate => '转正日期';
 
   @override

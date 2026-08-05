@@ -256,6 +256,21 @@
   "employeeFieldPosition": "岗位",
   "employeeFieldSupervisor": "直属上级",
   "employeeFieldHireDate": "入职日期",
+  "employeeFieldWorkYears": "工龄",
+  "employeeWorkYearsYandM": "{years} 年 {months} 个月",
+  "@employeeWorkYearsYandM": {
+    "placeholders": {
+      "years": { "type": "int" },
+      "months": { "type": "int" }
+    }
+  },
+  "employeeWorkYearsMonths": "{months} 个月",
+  "@employeeWorkYearsMonths": {
+    "placeholders": {
+      "months": { "type": "int" }
+    }
+  },
+  "employeeWorkYearsUnderOneMonth": "不足 1 个月",
   "employeeFieldConfirmedDate": "转正日期",
   "employeeFieldStatus": "工作状态",
   "employeeFieldEmploymentType": "用工形式",

@@ -18,6 +18,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/employee_api_models.dart';
+import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
 import '../widgets/employee_leadership_badge.dart';
@@ -254,6 +255,8 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
           positionLevel: e.positionLevel,
           leaderRank: e.leaderRank,
         );
+        // 工龄动态计算：每次渲染按当前日期得出，随日期自然变化
+        final workYears = workYearsText(l10n, e.hireDate);
         return UtenPersonCard(
           margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
           title: e.fullName,
@@ -265,7 +268,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
                   leaderRank: e.leaderRank,
                 ),
           subtitle:
-              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''}',
+              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''} · ${l10n.employeeFieldWorkYears} $workYears',
           avatarText: e.fullName,
           trailing: EmployeeStatusBadge(status: e.status),
           onTap: () async {

@@ -21,6 +21,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
+import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_status_badge.dart';
 import '../widgets/employee_leadership_badge.dart';
@@ -219,6 +220,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
                       UtenInfoRow(
                         label: l10n.employeeFieldHireDate,
                         value: _p.hireDate,
+                      ),
+                      UtenInfoRow(
+                        // 工龄动态计算：按当前日期得出，随日期自然变化
+                        label: l10n.employeeFieldWorkYears,
+                        value: workYearsText(l10n, _p.hireDate),
                       ),
                       UtenInfoRow(
                         label: l10n.employeeFieldConfirmedDate,

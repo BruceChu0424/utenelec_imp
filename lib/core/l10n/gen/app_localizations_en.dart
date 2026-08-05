@@ -705,6 +705,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeFieldHireDate => 'Hire date';
 
   @override
+  String get employeeFieldWorkYears => 'Seniority';
+
+  @override
+  String employeeWorkYearsYandM(int years, int months) {
+    return '$years yr $months mo';
+  }
+
+  @override
+  String employeeWorkYearsMonths(int months) {
+    return '$months mo';
+  }
+
+  @override
+  String get employeeWorkYearsUnderOneMonth => 'Under 1 month';
+
+  @override
   String get employeeFieldConfirmedDate => 'Confirmed date';
 
   @override
@@ -1971,7 +1987,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesHubScarcity => 'Scarcity reallocation';
 
   @override
-  String get salesHubScarcitySub => 'Release low-priority holds';
+  String get salesHubScarcitySub => 'Free low-priority stock';
 
   @override
   String get purchaseHubTitle => 'Purchasing';
@@ -2199,7 +2215,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get financeHubReportArAp => 'A/R & A/P';
 
   @override
-  String get financeHubReportArApSub => 'Customer & vendor balances';
+  String get financeHubReportArApSub => 'Customer/vendor balance';
 
   @override
   String get financeHubReportDetail => 'Detail report';
@@ -2217,7 +2233,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get financeHubReportStatement => 'Account statement';
 
   @override
-  String get financeHubReportStatementSub => 'Customer/vendor statements';
+  String get financeHubReportStatementSub => 'Customer/vendor account';
 
   @override
   String get financeHubReportAccountFlow => 'Account ledger';
@@ -2277,7 +2293,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseHubTaskException => 'Arrival exceptions';
 
   @override
-  String get warehouseHubTaskExceptionSub => 'Quarantine over-deliveries';
+  String get warehouseHubTaskExceptionSub => 'Hold over-deliveries';
 
   @override
   String get warehouseHubTaskPicking => 'Picking tasks';
@@ -2400,7 +2416,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get basicDataHubCurrency => 'Currencies';
 
   @override
-  String get basicDataHubCurrencySub => 'Currency & reference rates';
+  String get basicDataHubCurrencySub => 'Currency & FX rates';
 
   @override
   String get basicDataHubWarehouse => 'Warehouses';

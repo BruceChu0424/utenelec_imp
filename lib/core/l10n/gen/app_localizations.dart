@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
 import 'app_localizations_en.dart';
+import 'app_localizations_ko.dart';
 import 'app_localizations_zh.dart';
 
 // ignore_for_file: type=lint
@@ -96,6 +97,7 @@ abstract class AppLocalizations {
   static const List<Locale> supportedLocales = <Locale>[
     Locale('zh'),
     Locale('en'),
+    Locale('ko'),
   ];
 
   /// 应用标题
@@ -1459,6 +1461,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'入职日期'**
   String get employeeFieldHireDate;
+
+  /// No description provided for @employeeFieldWorkYears.
+  ///
+  /// In zh, this message translates to:
+  /// **'工龄'**
+  String get employeeFieldWorkYears;
+
+  /// No description provided for @employeeWorkYearsYandM.
+  ///
+  /// In zh, this message translates to:
+  /// **'{years} 年 {months} 个月'**
+  String employeeWorkYearsYandM(int years, int months);
+
+  /// No description provided for @employeeWorkYearsMonths.
+  ///
+  /// In zh, this message translates to:
+  /// **'{months} 个月'**
+  String employeeWorkYearsMonths(int months);
+
+  /// No description provided for @employeeWorkYearsUnderOneMonth.
+  ///
+  /// In zh, this message translates to:
+  /// **'不足 1 个月'**
+  String get employeeWorkYearsUnderOneMonth;
 
   /// No description provided for @employeeFieldConfirmedDate.
   ///
@@ -4721,7 +4747,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['en', 'zh'].contains(locale.languageCode);
+      <String>['en', 'ko', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -4732,6 +4758,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   switch (locale.languageCode) {
     case 'en':
       return AppLocalizationsEn();
+    case 'ko':
+      return AppLocalizationsKo();
     case 'zh':
       return AppLocalizationsZh();
   }

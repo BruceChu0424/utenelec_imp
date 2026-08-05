@@ -107,13 +107,15 @@ class SubcontractMaterialConservationPostgresTest {
             UUID issueId = insertIssue(c);
             try (PreparedStatement s = c.prepareStatement("""
                     INSERT INTO subcontract_material_issue_items (
-                        id, issue_id, goods_id, qty, at_supplier_qty,
+                        id, issue_id, goods_id, bill_no, bill_date, qty, at_supplier_qty,
                         returned_qty, wasted_qty, consumed_qty)
-                    VALUES (?, ?, ?, '100.0000', '100.0000', '20.0000', '10.0000', '0.0000')
+                    VALUES (?, ?, ?, ?, ?, '100.0000', '100.0000', '20.0000', '10.0000', '0.0000')
                     """)) {
                 s.setObject(1, issueItemId);
                 s.setObject(2, issueId);
                 s.setObject(3, goodsId);
+                s.setString(4, "EC-LG-" + issueItemId);
+                s.setObject(5, LocalDate.of(2026, 8, 6));
                 assertEquals(1, s.executeUpdate());
             }
             // ending = 100 − 0 − 20 − 10 = 70 (consistent; backfill made at_supplier = qty).
@@ -129,15 +131,17 @@ class SubcontractMaterialConservationPostgresTest {
             UUID issueItemId = UUID.randomUUID();
             try (PreparedStatement s = c.prepareStatement("""
                     INSERT INTO subcontract_material_issue_items (
-                        id, issue_id, goods_id, qty, at_supplier_qty, frozen_unit_qty)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        id, issue_id, goods_id, bill_no, bill_date, qty, at_supplier_qty, frozen_unit_qty)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """)) {
                 s.setObject(1, issueItemId);
                 s.setObject(2, issueId);
                 s.setObject(3, goodsId);
-                s.setBigDecimal(4, new BigDecimal(atSupplier));
-                s.setBigDecimal(5, new BigDecimal(atSupplier));
-                s.setBigDecimal(6, new BigDecimal(frozenUnitQty));
+                s.setString(4, "EC-IT-" + issueItemId);
+                s.setObject(5, LocalDate.of(2026, 8, 6));
+                s.setBigDecimal(6, new BigDecimal(atSupplier));
+                s.setBigDecimal(7, new BigDecimal(atSupplier));
+                s.setBigDecimal(8, new BigDecimal(frozenUnitQty));
                 assertEquals(1, s.executeUpdate());
             }
             return issueItemId;

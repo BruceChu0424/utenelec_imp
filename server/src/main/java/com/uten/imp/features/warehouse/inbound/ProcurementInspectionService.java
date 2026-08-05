@@ -110,7 +110,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
         String action = normalizeAction(request.action());
         String reason = request.reason().trim();
-        BigDecimal requested = normalizeQty(request.baseQty());
+        // baseQty 可空（傻瓜式）：不传 = 全部剩余待检量。
+        BigDecimal requested = request.baseQty() == null ? null : normalizeQty(request.baseQty());
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
 
         @SuppressWarnings("unchecked")
@@ -144,6 +145,9 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         BigDecimal passed = dec(row[8]);
         BigDecimal failed = dec(row[9]);
         BigDecimal remaining = received.subtract(passed).subtract(failed);
+        if (requested == null) {
+            requested = remaining; // 不传量 = 全量处置（傻瓜式一键合格/不合格）
+        }
         if (requested.signum() <= 0 || requested.compareTo(remaining) > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "质检数量必须大于 0 且不得超过待检数量 " + remaining.stripTrailingZeros().toPlainString());

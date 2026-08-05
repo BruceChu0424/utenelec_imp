@@ -69,7 +69,7 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 | **颜色** | ✅ 已实现 | `B_Color`（151 条，**实测扁平**非树；`B_Goods.MColorID` 引用） | `colors` | `migrate.sh --color-data` | [10-老库溯源](10-颜色资料-老库溯源.md) · [11-新库与迁移](11-颜色资料-新库与迁移.md) |
 | **基本单位** | ✅ 已实现 | `B_Unit`（66 条，扁平，与 B_Color 同构；`B_Goods.UnitID` 引用） | `units` | `migrate.sh --unit-data` | [12-老库溯源](12-基本单位-老库溯源.md) · [13-新库与迁移](13-基本单位-新库与迁移.md) |
 | 模具 | ✅ 见上 | — | — | — | （已拆为「模具分类 + 模具主档」两行） |
-| 员工 | 🟡 B_Worker 72 人全量试迁已实现；正式 HR 名单、任职历史和领导/负责人归类未完成 | `B_Worker` | `employees` / `employee_sensitive` / `positions` | `migrate.sh --hr-workers --confirm-destructive`；仓库/委外仍可按需补 stub | [34-人事老库迁移](34-人事老库迁移.md) |
+| 员工 | ✅ 正式名录 141 人已录入（2026-08-05）；老库 stub 融合键约定保留 | `B_Worker` + 《职工信息表.xls》 | `employees` / `employee_sensitive` / `positions` / `employment_history` | `build_hr_roster.py` → `migrate.sh --hr-cleanup --hr-roster --confirm-destructive`；老库 stub：`--hr-workers` | [34-人事老库迁移](34-人事老库迁移.md) · [53-人事正式名录迁移](53-人事正式名录迁移.md) |
 | **客户分类** | ✅ 已实现 | `SystemItem` (ItemclassID=2，10根/40节点/深3) | `client_categories` | `migrate.sh --client` | [06-老库溯源](06-客户资料-老库溯源.md) · [07-新库与迁移](07-客户资料-新库与迁移.md) |
 | **客户主档** | ✅ 已实现 | `B_Client`（260 条，34 字段） | `clients` | `migrate.sh --client-data` | （字段映射见 V36__client.sql） |
 | **供应商分类** | ✅ 已实现 | `SystemItem` (ItemclassID=3，15 扁平根) | `supplier_categories` | `migrate.sh --supplier` | [08-老库溯源](08-供应商资料-老库溯源.md) · [09-新库与迁移](09-供应商资料-新库与迁移.md) |

@@ -191,19 +191,36 @@ public class SubcontractReturnService {
             // ① 出库（DIR_OUT=-1）
             applyMovement(r, it, StockService.DIR_OUT, now, null);
             // ② 双回写：receipt_items.returned_qty + order_items.returned_qty
+            // CAS 上限：成品退货不得超过该回厂明细已收量、订货已收量（防超退/幽灵库存）
             if (it.getReceiptItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_receipt_items SET returned_qty = COALESCE(returned_qty,0) + :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_receipt_items
+                        SET returned_qty = COALESCE(returned_qty,0) + :q
+                        WHERE id = :id
+                          AND COALESCE(qty,0) >= COALESCE(returned_qty,0) + :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getReceiptItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货量超过回厂明细已收量，禁止超退");
+                }
             }
             if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET returned_qty = COALESCE(returned_qty,0) + :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_order_items
+                        SET returned_qty = COALESCE(returned_qty,0) + :q
+                        WHERE id = :id
+                          AND COALESCE(received_qty,0) >= COALESCE(returned_qty,0) + :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货量超过订货已收量，禁止超退");
+                }
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
@@ -226,28 +243,45 @@ public class SubcontractReturnService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
         List<SubcontractReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        // KS-P1-2：先取库存锁再锁 AP 行（与 approve 锁序一致）。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
+        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (SubcontractReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
             if (it.getReceiptItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_receipt_items SET returned_qty = COALESCE(returned_qty,0) - :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_receipt_items
+                        SET returned_qty = COALESCE(returned_qty,0) - :q
+                        WHERE id = :id
+                          AND COALESCE(returned_qty,0) >= :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getReceiptItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货红冲量超过回厂明细已退量（可能已被改动），禁止负数");
+                }
             }
             if (it.getOrderItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_order_items SET returned_qty = COALESCE(returned_qty,0) - :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_order_items
+                        SET returned_qty = COALESCE(returned_qty,0) - :q
+                        WHERE id = :id
+                          AND COALESCE(returned_qty,0) >= :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外成品退货红冲量超过订货已退量，禁止负数");
+                }
                 recalcOrderClosed(it.getOrderItemId());
             }
         }

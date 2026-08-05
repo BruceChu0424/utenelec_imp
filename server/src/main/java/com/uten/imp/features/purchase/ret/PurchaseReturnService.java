@@ -194,10 +194,11 @@ public class PurchaseReturnService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireNonNegativeStoredCommercial(r, items);
-        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
+        // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
+        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);

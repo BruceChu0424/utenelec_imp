@@ -9,7 +9,9 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -45,6 +47,8 @@ public class HrTaskService {
             """;
 
     private final JdbcTemplate jdbc;
+    private final HrTaskClaimService claimService;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
 
     public HrTaskSummary summary() {
         LocalDate today = LocalDate.now();
@@ -113,11 +117,37 @@ public class HrTaskService {
             }
         }
 
+        // PII 边界：生日派生信息（姓名 + 出生月日 + 年龄）属 PII，仅 employee:pii:view 可见（与
+        // EmployeeQueryService.detail 无该权限清空 birthDate 的边界一致）。本接口仅需 employee:view，
+        // 故对无 PII 权限者清空生日列表且不计入徽标，避免仅 employee:view 即批量暴露生日。
+        boolean canSeePii = currentUser.get()
+                .map(u -> u.isSuperAdmin()
+                        || u.getPermissions().contains(com.uten.imp.security.DataAccessPolicy.PII_VIEW))
+                .orElse(false);
+        if (!canSeePii) {
+            birthdayToday = new ArrayList<>();
+            birthdayUpcoming = new ArrayList<>();
+        }
+
         Comparator<HrTaskSummary.Item> byDays = Comparator.comparingInt(HrTaskSummary.Item::days);
         confirmUpcoming.sort(byDays);
         confirmOverdue.sort(byDays);
         birthdayUpcoming.sort(byDays);
         newHires.sort(Comparator.comparing(HrTaskSummary.Item::date).reversed());
+
+        // ---- 软认领装配（ADR-021：任务不隐藏，显示「XXX 处理中」） ----
+        Map<String, HrTaskClaim> claims = claimService.activeClaimsByTaskKey();
+        if (!claims.isEmpty()) {
+            UUID me = currentUser.employeeId().orElse(null);
+            Map<UUID, String> names = new HashMap<>();
+            confirmToday = attachClaims(confirmToday, "confirm", claims, names, me);
+            confirmUpcoming = attachClaims(confirmUpcoming, "confirm", claims, names, me);
+            confirmOverdue = attachClaims(confirmOverdue, "confirm", claims, names, me);
+            birthdayToday = attachClaims(birthdayToday, "birthday", claims, names, me);
+            birthdayUpcoming = attachClaims(birthdayUpcoming, "birthday", claims, names, me);
+            anniversaryToday = attachClaims(anniversaryToday, "anniversary", claims, names, me);
+            newHires = attachClaims(newHires, "newhire", claims, names, me);
+        }
 
         long badge = confirmToday.size() + confirmOverdue.size()
                 + birthdayToday.size() + anniversaryToday.size();
@@ -131,6 +161,19 @@ public class HrTaskService {
 
     public long badgeCount() {
         return summary().badgeCount();
+    }
+
+    /** 给某个区块的条目贴上有效认领信息；认领人姓名按批缓存，避免逐条查库。 */
+    private List<HrTaskSummary.Item> attachClaims(
+            List<HrTaskSummary.Item> items, String taskType,
+            Map<String, HrTaskClaim> claims, Map<UUID, String> names, UUID me) {
+        return items.stream().map(it -> {
+            HrTaskClaim claim = claims.get(taskType + ":" + it.employeeId());
+            if (claim == null) return it;
+            String name = names.computeIfAbsent(
+                    claim.getClaimedBy(), claimService::claimantName);
+            return it.withClaim(name, claim.getClaimedBy().equals(me), claim.getLeaseUntil());
+        }).toList();
     }
 
     /** 月-日在目标年的落点；2/29 在非闰年落到 2/28；今年已过则取明年。 */
@@ -157,7 +200,8 @@ public class HrTaskService {
     private record Row(UUID id, String code, String name, String deptName, String positionName,
                        LocalDate hireDate, LocalDate confirmedAt, LocalDate birthDate) {
         HrTaskSummary.Item item(LocalDate date, int days, String note) {
-            return new HrTaskSummary.Item(id, code, name, deptName, positionName, date, days, note);
+            return new HrTaskSummary.Item(id, code, name, deptName, positionName, date, days, note,
+                    null, false, null);
         }
     }
 }

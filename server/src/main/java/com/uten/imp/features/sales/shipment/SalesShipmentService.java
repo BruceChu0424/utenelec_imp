@@ -829,6 +829,16 @@ public class SalesShipmentService {
                     ErrorCode.CONFLICT,
                     "货物已出库或历史交接事实未知，不能直接红冲增加库存；请走销售退货与收货检验流程");
         }
+        // 已审核单据若仓库执行状态缺失，则无法证实货物确未出库，同样不得直接红冲。
+        // 历史迁移草稿以 WORK_LEGACY_PENDING 显式标记（且状态为草稿），不落入此分支，
+        // 兼容路径保持不变；缺失状态（NULL）不等同于"货物未出库"。
+        if (shipment.getStatus() != null
+                && shipment.getStatus() == STATUS_APPROVED
+                && shipment.getWarehouseWorkStatus() == null) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "已审核出货单缺少仓库执行状态，无法证实货物未出库，不能直接红冲增加库存；请走销售退货与收货检验流程");
+        }
     }
 
     @Transactional

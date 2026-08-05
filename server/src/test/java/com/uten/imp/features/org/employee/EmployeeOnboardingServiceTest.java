@@ -197,11 +197,12 @@ class EmployeeOnboardingServiceTest {
                         LocalDate.now(),
                         "regular",
                         "active",
+                        LocalDate.now(),
                         null,
                         null,
                         null,
                         null,
-                        null),
+                        null), // +paperArchiveNo（null）
                 null,
                 null,
                 List.of(),

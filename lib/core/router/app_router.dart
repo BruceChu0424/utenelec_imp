@@ -50,7 +50,9 @@ import '../../features/finance/pages/finance_statement_page.dart';
 import '../../features/finance/pages/finance_account_flow_page.dart';
 import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
-import '../../features/hr_task/pages/hr_task_center_page.dart';
+import '../../features/hr_task/pages/hr_task_list_page.dart';
+import '../../features/hr_task/pages/hr_workbench_page.dart';
+import '../../features/hr_task/widgets/hr_task_widgets.dart';
 import '../../features/hvac/pages/hvac_control_page.dart';
 import '../../features/hvac/pages/hvac_overview_page.dart';
 import '../../features/lab/pages/lab_test_list_page.dart';
@@ -91,6 +93,7 @@ import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
+import '../../features/profile/pages/my_vehicle_phone_page.dart';
 import '../../features/department/pages/my_department_page.dart';
 import '../../features/profile/pages/profile_edit_page.dart';
 import '../../features/profile/pages/profile_page.dart';
@@ -1107,12 +1110,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'profile-my-department',
             builder: (_, _) => const MyDepartmentPage(),
           ),
+          GoRoute(
+            path: RouteName.profileMyVehicles,
+            name: 'profile-my-vehicles',
+            builder: (_, _) => const MyVehiclePhonePage(),
+          ),
 
-          // —— HR 端：任务中心（转正/生日/周年/新入职提醒） ——
+          // —— HR 端：工作台（今日概览 + 转正/生日/周年/新入职子页，ADR-021） ——
           GoRoute(
             path: RouteName.hrTaskCenter,
             name: 'hr-task-center',
-            builder: (_, _) => const HrTaskCenterPage(),
+            builder: (_, _) => const HrWorkbenchPage(),
+            routes: [
+              GoRoute(
+                path: ':type',
+                name: 'hr-task-list',
+                builder: (_, s) {
+                  final type =
+                      HrTaskType.fromTaskType(s.pathParameters['type']) ??
+                      HrTaskType.confirm;
+                  return HrTaskListPage(type: type);
+                },
+              ),
+            ],
           ),
 
           // —— HR 端：员工个人信息修改审批 ——

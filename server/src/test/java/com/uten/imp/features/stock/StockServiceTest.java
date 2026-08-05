@@ -100,10 +100,35 @@ class StockServiceTest {
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.recordMovement(request(
-                        warehouseId, goodsId, StockService.DIR_OUT, "3")));
+                        warehouseId, goodsId, StockService.DIR_OUT, "3",
+                        StockService.TYPE_SALES_OUT)));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
         verify(movementRepo, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void reversalReturnTypeBypassesMovableButRespectsNonNegativeFloor() {
+        // KS-P1-1：红冲/退货类 DIR_OUT（如 PURCHASE_RECEIPT 反向）只守"非负底线"（在手 ≥ 本次），
+        // 不守 movable（已扣预留/安全）——撤销入库/退货不应被他人预留卡死。
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        StockBalance balance = new StockBalance();
+        balance.setWarehouseId(warehouseId);
+        balance.setGoodsId(goodsId);
+        balance.setQty(new BigDecimal("10")); // 在手 10，但 movable 被预留/安全压到 2
+        when(balanceRepo.findByWarehouseIdAndGoodsIdAndColorId(
+                warehouseId, goodsId, null)).thenReturn(Optional.of(balance));
+        StockService service =
+                new StockService(movementRepo, balanceRepo, tx, inventoryLock);
+
+        // qty 3 ≤ 在手 10 → 过非负底线；PURCHASE_RECEIPT 在 REVERSAL_RETURN_TYPES → 跳过 movable
+        service.recordMovement(request(
+                warehouseId, goodsId, StockService.DIR_OUT, "3",
+                StockService.TYPE_PURCHASE_RECEIPT));
+
+        verify(balanceRepo, never()).warehouseAvailableBase(warehouseId, goodsId, null);
+        verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test

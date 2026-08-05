@@ -7,6 +7,7 @@ import com.uten.imp.features.org.employee.EmergencyContactRepository;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeSensitive;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
+import com.uten.imp.features.org.employee.EmployeeLoginAccountSync;
 import com.uten.imp.features.org.employee.EmployeePiiWriter;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,7 @@ public class ProfileFieldApplier {
     private final EmergencyContactRepository emergencyRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
     private final EmployeePiiWriter piiWriter;
+    private final EmployeeLoginAccountSync loginAccountSync;
     private final TxSessionVars tx;
 
     private record FieldAccess(
@@ -37,16 +39,22 @@ public class ProfileFieldApplier {
 
     public ProfileFieldApplier(EmergencyContactRepository emergencyRepo,
                                EmployeeSensitiveRepository sensitiveRepo,
-                               EmployeePiiWriter piiWriter, TxSessionVars tx) {
+                               EmployeePiiWriter piiWriter,
+                               EmployeeLoginAccountSync loginAccountSync,
+                               TxSessionVars tx) {
         this.emergencyRepo = emergencyRepo;
         this.sensitiveRepo = sensitiveRepo;
         this.piiWriter = piiWriter;
+        this.loginAccountSync = loginAccountSync;
         this.tx = tx;
         BiConsumer<Employee, String> phoneWriter = (emp, newValue) -> {
             EmployeeSensitive s = sensitiveRepo.findByEmployeeId(emp.getId())
                     .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
             piiWriter.applyPhone(s, newValue);
             sensitiveRepo.save(s);
+            // ADR-021：手机号 = 登录账号，审批合并/直改手机号后同步登录账号并踢会话
+            loginAccountSync.syncLoginAccount(emp.getId(), com.uten.imp.common.util
+                    .ChinaMobileNumber.normalize(newValue).orElseThrow());
         };
         this.fields = Map.ofEntries(
                 Map.entry(ProfileFieldPolicy.Field.FULL_NAME,

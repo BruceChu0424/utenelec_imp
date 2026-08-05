@@ -18,7 +18,8 @@ class GlPostingServiceIsolationTest {
     void regeneratedSourceTypesNeverIncludeAssetSubledgerVouchers() {
         assertThat(GlPostingService.REGENERATED_SOURCE_TYPES)
                 .containsExactlyInAnyOrder(
-                        "AR_POST", "AP_POST", "RECEIPT", "PAYMENT", "EXPENSE", "INCOME", "COST_CARRY")
+                        "AR_POST", "AP_POST", "RECEIPT", "PAYMENT", "EXPENSE", "INCOME", "COST_CARRY",
+                        "BANK_TRANSFER")
                 .doesNotContain("FA_CAP", "DA_RECOGNITION", "FA_DEP", "DA_AMT", "FA_DISPOSAL");
     }
 

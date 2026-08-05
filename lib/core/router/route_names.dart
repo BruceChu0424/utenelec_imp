@@ -114,12 +114,16 @@ abstract final class RouteName {
   static const String profileMyChanges = '/profile/me/changes';
   static const String profileMyDepartment = '/profile/me/department';
 
+  /// 我的车辆与备用手机号（ADR-021 员工自助，直改即时生效）。
+  static const String profileMyVehicles = '/profile/me/vehicles';
+
   // HR 端：员工个人信息修改审批
   static const String hrProfileChanges = '/hr/profile-changes';
   static const String hrProfileChangeDetail = '/hr/profile-changes/:id';
 
-  // HR 端：任务中心（转正/生日/周年/新入职提醒）
+  // HR 端：工作台（今日概览 + 事务办理子页，ADR-021）
   static const String hrTaskCenter = '/hr/tasks';
+  static String hrTaskList(String type) => '/hr/tasks/$type';
 
   // 入口选择（登录前：内部人员 / 访客）
   static const String entry = '/entry';

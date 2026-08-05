@@ -229,10 +229,11 @@ public class PurchaseReceiptService {
             throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
         }
         productionSupply.beforePurchaseReceiptReversed(id);
-        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
+        // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致，消除并发 approve vs reverse 死锁。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
+        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (PurchaseReceiptItem it : items) {

@@ -54,7 +54,9 @@ public class EmployeeSensitiveWritePolicy {
                 && (!isBlank(request.idNumber())
                 || !isBlank(request.phone())
                 || !isBlank(request.bankAccount())
-                || !isBlank(request.bankBranch()));
+                || !isBlank(request.bankBranch())
+                // 备用手机号同属联系方式 PII（ADR-021）：写入需 employee:pii:edit
+                || request.phones() != null);
     }
 
     static boolean hasCompensationWrite(UpdateEmployeeRequest request) {

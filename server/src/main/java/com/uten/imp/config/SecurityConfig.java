@@ -8,6 +8,7 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiError;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.security.ImpersonationWriteGuardFilter;
 import com.uten.imp.security.JwtAuthFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
@@ -52,6 +53,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            AuditRequestContextFilter auditContextFilter,
                                            JwtAuthFilter jwtAuthFilter,
+                                           ImpersonationWriteGuardFilter impersonationWriteGuardFilter,
                                            SecurityProperties securityProps,
                                            ObjectMapper objectMapper,
                                            AuditService auditService) throws Exception {
@@ -88,6 +90,8 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                // 模拟身份只读守卫：主体解析（JwtAuthFilter）之后、进入控制器之前拦截写操作。
+                .addFilterAfter(impersonationWriteGuardFilter, JwtAuthFilter.class)
                 // CORS can reject an invalid Origin before JWT/MVC. The audit
                 // filter must wrap that rejection so the resulting 403 is not lost.
                 .addFilterBefore(auditContextFilter, CorsFilter.class)

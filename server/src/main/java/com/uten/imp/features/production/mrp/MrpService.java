@@ -540,7 +540,6 @@ public class MrpService {
         r.setStatus((short) 0);
         requestRepo.save(r);
 
-        BigDecimal total = BigDecimal.ZERO;
         int line = 0;
         for (MrpRow row : buy) {
             line++;
@@ -569,8 +568,9 @@ public class MrpService {
                     + "；需求日前缺口 " + row.timelyShortage().stripTrailingZeros().toPlainString());
             requestItemRepo.save(it);
         }
-        r.setTotalOriginal(total);
-        r.setTotalLocal(total);
+        // 自动生成的草稿采购申请不填单价，金额合计按业务约定保持为 0（采购员定稿后再汇总）。
+        r.setTotalOriginal(BigDecimal.ZERO);
+        r.setTotalLocal(BigDecimal.ZERO);
         requestRepo.save(r);
 
         // 联动留痕：旧联动行软删（历史可追溯），插新行
@@ -1253,13 +1253,16 @@ public class MrpService {
 
     private record PreparedLine(GenerateSubplansRequest.Line input, MrpRow mrp) {}
 
-    /** 子计划编号后缀：父计划已有子计划（含已删，防号冲突）的最大 -N + 1。 */
+    /** 子计划编号后缀：父计划已有子计划（含已删，防号冲突）的最大 -N + 1。
+     *  取末段 -N（最终短横后的连续数字），避免父号自带短横（如 SJ-26700078）
+     *  时误用中间数字段作为后缀种子导致巨大跳号或冲突。 */
     private int nextSubSuffix(String parentBillNo) {
         Object v = em.createNativeQuery("""
-                SELECT COALESCE(MAX(CAST(split_part(bill_no, '-', 2) AS int)), 0)
+                SELECT COALESCE(MAX(CAST(
+                        (regexp_match(bill_no, '-([0-9]+)$'))[1] AS int)), 0)
                 FROM production_plans
                 WHERE bill_no LIKE :p || '-%'
-                  AND split_part(bill_no, '-', 2) ~ '^[0-9]+$'
+                  AND bill_no ~ '-[0-9]+$'
                 """).setParameter("p", parentBillNo).getSingleResult();
         return ((Number) v).intValue() + 1;
     }

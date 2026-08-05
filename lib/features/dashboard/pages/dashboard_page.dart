@@ -21,9 +21,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../features/admin/widgets/impersonation_actions.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/dashboard_overview_sections.dart';
 import '../widgets/workbench_module_area.dart';
@@ -42,7 +45,7 @@ class DashboardPage extends ConsumerWidget {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildPageHeader(theme, name),
+        _buildPageHeader(context, ref, theme, name),
         const SizedBox(height: UtenSpacing.s24),
         const DashboardOverviewSections(),
         const SizedBox(height: UtenSpacing.s24),
@@ -66,8 +69,15 @@ class DashboardPage extends ConsumerWidget {
     );
   }
 
-  /// 页头：问候语 20px w600 为主层级，日期 13px 三级文字为辅
-  Widget _buildPageHeader(ThemeData theme, String name) {
+  /// 页头：问候语 20px w600 为主层级，日期 13px 三级文字为辅。
+  /// 仅超级管理员（且非模拟中）显示「切换人」入口（模拟时由横幅接管切换/退出）。
+  Widget _buildPageHeader(
+    BuildContext context,
+    WidgetRef ref,
+    ThemeData theme,
+    String name,
+  ) {
+    final isSuperAdmin = ref.watch(isSuperAdminProvider);
     return Row(
       children: [
         UtenUserAvatar(name: name),
@@ -98,6 +108,13 @@ class DashboardPage extends ConsumerWidget {
             ],
           ),
         ),
+        if (isSuperAdmin)
+          ActionChip(
+            avatar: const Icon(Icons.swap_horiz_rounded, size: 18),
+            label: Text(AppLocalizations.of(context).impersonationSwitchPerson),
+            onPressed: () => openSwitchPerson(context, ref),
+            visualDensity: VisualDensity.compact,
+          ),
       ],
     );
   }

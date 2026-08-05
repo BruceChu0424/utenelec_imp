@@ -54,6 +54,8 @@ public class EmployeeCommandService {
     private final TxSessionVars tx;
     private final EmployeeQueryService queryService;
     private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
+    private final EmployeeVehiclePhoneService vehiclePhoneService;
+    private final EmployeeLoginAccountSync loginAccountSync;
 
     // ===== 更新 =====
     @PreAuthorize("hasAuthority('employee:edit')")
@@ -110,6 +112,9 @@ public class EmployeeCommandService {
         updateCompensation(id, r);
         replaceCertificates(e, r);
         replaceEducations(e, r);
+        // 车辆 / 备用手机号（非 null 整体替换）—— ADR-021
+        if (r.vehicles() != null) vehiclePhoneService.replaceVehicles(e, r.vehicles());
+        if (r.phones() != null) vehiclePhoneService.replacePhones(e, r.phones());
         return queryService.detail(id);
     }
 
@@ -163,7 +168,12 @@ public class EmployeeCommandService {
                 employee.setGender(IdCardUtil.gender(normalized));
             }
         }
-        if (!isBlank(r.phone())) piiWriter.applyPhone(s, r.phone());
+        if (!isBlank(r.phone())) {
+            piiWriter.applyPhone(s, r.phone());
+            // 登录账号 = 手机号：HR 直改手机号必须同步登录账号并踢会话（ADR-021 §三）
+            loginAccountSync.syncLoginAccount(id, com.uten.imp.common.util.ChinaMobileNumber
+                    .normalize(r.phone()).orElseThrow());
+        }
         if (!isBlank(r.bankAccount())) s.setBankAccountEnc(tx.encrypt(r.bankAccount()));
         if (!isBlank(r.bankBranch())) s.setBankBranchEnc(tx.encrypt(r.bankBranch()));
         sensitiveRepo.save(s);
@@ -323,16 +333,65 @@ public class EmployeeCommandService {
 
     @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
-    public void confirm(UUID id) {
+    public void confirm(UUID id, LocalDate confirmedDate) {
         tx.bind();
         Employee e = queryService.requireEmployee(id);
         if (!"probation".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "仅试用期员工可转正");
         }
+        LocalDate date = confirmedDate == null ? BusinessTime.today() : confirmedDate;
+        if (date.isAfter(BusinessTime.today())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "转正日期不能晚于今天");
+        }
+        if (e.getHireDate() != null && date.isBefore(e.getHireDate())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "转正日期不能早于入职日期");
+        }
         e.setStatus("active");
-        e.setConfirmedAt(BusinessTime.today());
+        e.setConfirmedAt(date);
         e.setVersion(e.getVersion() + 1);   // 乐观锁：转正也是档案变更
         empRepo.save(e);
+
+        // 任职轨迹：转正事件（V210 新增事件类型），时间线可见
+        EmploymentHistory h = new EmploymentHistory();
+        h.setEmployee(e);
+        h.setEventType("confirm");
+        h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
+        h.setToDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
+        h.setEventDate(date);
+        h.setRemark("转正");
+        historyRepo.save(h);
+    }
+
+    /**
+     * 更换手机号（ADR-021 §三）：手机号 = 登录账号。
+     * 单事务内：格式/唯一性校验 → 加密重写 + HMAC → 登录账号同步 + 吊销 refresh（强制重登）。
+     */
+    @PreAuthorize("hasAuthority('employee:pii:edit')")
+    @Transactional
+    public void changePhone(UUID id, String newPhone) {
+        tx.bind();
+        Employee e = queryService.requireEmployee(id);
+        // 超管账号的敏感信息同样禁止经此入口修改（与 update 一致）
+        userRepo.findByEmployeeId(id).ifPresent(account -> {
+            if (account.isSuperAdmin()) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "禁止通过员工管理修改超级管理员的手机号");
+            }
+        });
+        String normalized = com.uten.imp.common.util.ChinaMobileNumber.normalize(newPhone)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.VALIDATION_FAILED, "中国大陆手机号格式不正确"));
+        String hash = tx.hmac(normalized);
+        if (hash != null && sensitiveRepo.existsByPhoneHashAndEmployeeIdNot(hash, e.getId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "该手机号已被其他员工使用");
+        }
+        EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
+        piiWriter.applyPhone(s, normalized);
+        sensitiveRepo.save(s);
+        e.setVersion(e.getVersion() + 1);
+        empRepo.save(e);
+        // 同步登录账号并吊销会话；员工无登录账号时仅改档案
+        loginAccountSync.syncLoginAccount(id, normalized);
     }
 
     /** 复职：离职员工恢复在职，写一条 rehire 任职记录并重新启用登录账号。 */

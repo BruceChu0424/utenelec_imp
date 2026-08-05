@@ -112,10 +112,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(authUser, null, authUser.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(auth);
-            AuditRequestContext.bindVerifiedActor(
-                    request,
-                    authUser.getId(),
-                    authUser.getLoginAccount());
+            // 模拟身份时把请求级审计的真实操作人绑成 admin（impersonatedBy），保证「谁在以谁身份操作」可追溯；
+            // 目标身份由显式 impersonation_switch 审计事件记录。非模拟时绑当前主体。
+            UUID auditActorId = authUser.getImpersonatedBy() != null
+                    ? authUser.getImpersonatedBy() : authUser.getId();
+            String auditActorAccount = authUser.getImpersonatedBy() != null
+                    ? null : authUser.getLoginAccount();
+            AuditRequestContext.bindVerifiedActor(request, auditActorId, auditActorAccount);
         }
         chain.doFilter(request, response);
     }
@@ -160,6 +163,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 user.isSuperAdmin(),
                 user.getAuthVersion(),
                 user.getAuthorizationEpoch());
+        // 模拟身份 token 携带 imp claim（admin userId）。非 null 即触发只读守卫；权限/数据范围仍按目标解析。
+        // imp 来自签名 token，正常必为合法 UUID；异常时按"无模拟标记"处理（不抛 503）。
+        String impClaim = stringClaim(claims, "imp");
+        UUID impersonatedBy = null;
+        if (impClaim != null) {
+            try {
+                impersonatedBy = UUID.fromString(impClaim);
+            } catch (IllegalArgumentException ex) {
+                impersonatedBy = null;
+            }
+        }
         return new AuthUser(
                 userId,
                 employeeId,
@@ -168,7 +182,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 authorities.permissions(),
                 user.isMustChangePassword(),
                 true,
-                user.isSuperAdmin());
+                user.isSuperAdmin(),
+                impersonatedBy);
     }
 
     /** Visitors are rejected when their current server-side account is not active. */

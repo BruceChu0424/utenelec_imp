@@ -12,6 +12,8 @@ import com.uten.imp.features.org.employee.dto.NestedDtos.CredentialDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EducationDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EmergencyContactDto;
 import com.uten.imp.features.org.employee.dto.NestedDtos.EmploymentHistoryDto;
+import com.uten.imp.features.org.employee.dto.NestedDtos.PhoneDto;
+import com.uten.imp.features.org.employee.dto.NestedDtos.VehicleDto;
 
 /**
  * 员工详情。基础任职字段对持档案查看权限者可见；PII 与薪酬字段由 service 按
@@ -85,4 +87,7 @@ public class EmployeeDetail {
     private List<EmploymentHistoryDto> history;
     private List<CredentialDto> certificates;
     private List<EducationDto> educations;
+    // 车辆（employee:view 可见）与备用手机号（pii:view 明文，否则掩码）—— ADR-021
+    private List<VehicleDto> vehicles;
+    private List<PhoneDto> phones;
 }

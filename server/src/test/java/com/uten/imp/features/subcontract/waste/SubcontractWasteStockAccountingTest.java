@@ -50,6 +50,7 @@ class SubcontractWasteStockAccountingTest {
         query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.executeUpdate()).thenReturn(1); // CAS 守卫要求 UPDATE 命中 1 行（发料子件有余量）
         service = new SubcontractWasteService(
                 wasteRepo,
                 itemRepo,

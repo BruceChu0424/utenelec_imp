@@ -77,8 +77,15 @@ public class EmployeeController {
 
     @PostMapping("/{id}/confirm")
     @PreAuthorize("hasAuthority('employee:edit')")
-    public void confirm(@PathVariable UUID id) {
-        commandService.confirm(id);
+    public void confirm(@PathVariable UUID id,
+                        @RequestBody(required = false) ConfirmRequest req) {
+        commandService.confirm(id, req == null ? null : req.confirmedDate());
+    }
+
+    @PostMapping("/{id}/change-phone")
+    @PreAuthorize("hasAuthority('employee:pii:edit')")
+    public void changePhone(@PathVariable UUID id, @Valid @RequestBody ChangePhoneRequest req) {
+        commandService.changePhone(id, req.newPhone());
     }
 
     @PostMapping("/{id}/rehire")

@@ -614,7 +614,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeFabOnboard => '입사';
 
   @override
-  String get employeeSearchHint => '사번 또는 이름 검색';
+  String get employeeSearchHint => '사번, 이름 또는 차량번호 검색';
 
   @override
   String get employeeEmpty => '직원이 없습니다';
@@ -2407,4 +2407,60 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get basicDataHubPaymentStyleSub => '6개 회계과목';
+
+  @override
+  String get impersonationSwitchPerson => '사용자 전환';
+
+  @override
+  String get impersonationEnterPasswordTitle => '사용자 전환 확인';
+
+  @override
+  String get impersonationEnterPasswordHint =>
+      '보안을 위해 로그인 비밀번호를 입력하세요. 통과 후 15분간 자유롭게 전환할 수 있습니다.';
+
+  @override
+  String get impersonationPasswordLabel => '로그인 비밀번호';
+
+  @override
+  String get impersonationConfirm => '확인';
+
+  @override
+  String get impersonationTargetPickerTitle => '조회할 직원 선택';
+
+  @override
+  String get impersonationSearchHint => '이름 / 사번 검색';
+
+  @override
+  String impersonationBannerTitle(String name) {
+    return '$name 신분으로 조회 중(읽기 전용)';
+  }
+
+  @override
+  String get impersonationBannerSwitch => '전환';
+
+  @override
+  String get impersonationBannerExit => '종료';
+
+  @override
+  String impersonationRemainingMinutes(int count) {
+    return '$count분 남음';
+  }
+
+  @override
+  String get impersonationWrongPassword => '비밀번호 오류';
+
+  @override
+  String get impersonationExited => '가장을 종료했습니다';
+
+  @override
+  String get impersonationWindowExpired => '가장 시간이 만료되어 종료되었습니다';
+
+  @override
+  String get impersonationRecent => '최근';
+
+  @override
+  String get impersonationNoTargets => '전환할 직원이 없습니다';
+
+  @override
+  String get impersonationStartFailed => '전환 실패';
 }

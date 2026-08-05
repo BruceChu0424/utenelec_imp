@@ -161,14 +161,19 @@ public class FinanceReceiptService {
     public FinanceReceiptDetail approve(UUID id) {
         tx.bind();
         FinanceReceipt r = require(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // M28：强制 SELECT...FOR UPDATE 重读字段，防陈旧状态绕过守卫
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         if (r.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收款单需指定收款账户");
         }
-        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        assertNoExistingPosting(r.getId()); // M19：幂等护栏，finance_reconciliations 已存在该单流水则禁止重复审核
+        UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        if (r.getMakerId() != null && r.getMakerId().equals(approver)) {
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+        }
+        r.setApproverId(approver);
         settleReceipt(r);
         r.setStatus(STATUS_APPROVED);
         r.setCancelDate(OffsetDateTime.now());
@@ -181,10 +186,11 @@ public class FinanceReceiptService {
     public FinanceReceiptDetail reverse(UUID id) {
         tx.bind();
         FinanceReceipt r = require(id);
-        em.lock(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // M28：强制 SELECT...FOR UPDATE 重读字段，防陈旧状态绕过守卫
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        assertCompletePosting(r.getId(), 1L); // M19：红冲前确认流水完整（收款每单恰 1 行）
         reverseSettlement(r);
         r.setStatus(STATUS_REVERSED);
         receiptRepo.save(r);
@@ -227,10 +233,13 @@ public class FinanceReceiptService {
                 if (origLocal.signum() != 0 && lineAmt.signum() != 0 && origLocal.signum() != lineAmt.signum()) {
                     throw new ApiException(ErrorCode.BUSINESS, "核销金额方向与应收余额方向不一致，红字应收须用同向金额核销");
                 }
-                // ②a 超核校验：累计 settled 不得超过 original。DIRECT_RECEIPT（预付款）原值=0 走 else 分支不进此循环，
-                // 这里仍防御性地排除，避免把 receipt_line 错挂到 DIRECT_RECEIPT 立帐行上。
-                if (!SRC_DIRECT_RECEIPT.equals(led.getSourceDocType())
-                        && exceedsOriginal(origLocal, newSettled)) {
+                // M9：预收立帐行（DIRECT_RECEIPT，原值=0）不得作为明细核销目标，
+                // 否则 amount_settled 会被后续单据无界累加导致余额膨胀。预收款不参与核销循环。
+                if (SRC_DIRECT_RECEIPT.equals(led.getSourceDocType())) {
+                    throw new ApiException(ErrorCode.CONFLICT, "预收不能作为核销目标");
+                }
+                // ②a 超核校验：累计 settled 不得超过 original。
+                if (exceedsOriginal(origLocal, newSettled)) {
                     throw new ApiException(ErrorCode.BUSINESS, "核销金额超过应收余额");
                 }
                 led.setAmountSettled(newSettled);
@@ -239,6 +248,10 @@ public class FinanceReceiptService {
                 ledgerRepo.save(led);
             }
         } else {
+            // M6：直接收款（无明细）金额必须大于 0，防止负数造出"客户多欠 + 现金减少"。
+            if (amountLocal.signum() <= 0) {
+                throw new ApiException(ErrorCode.BUSINESS, "直接收款金额必须大于 0");
+            }
             // 直接收款 / 客户预付：建 DIRECT_RECEIPT 立帐行（amount=0），再置 settled=amount_local、balance=-amount_local
             arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                     "AR", SRC_DIRECT_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
@@ -395,7 +408,7 @@ public class FinanceReceiptService {
                 .setParameter("chk", r.getInvoiceNo())
                 .setParameter("cpn", counterpart)
                 .setParameter("inAmt", amountLocal)
-                .setParameter("bd", OffsetDateTime.now())
+                .setParameter("bd", r.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime()) // M17：bill_date 用单据日期，settled_date 保持审核时刻
                 .setParameter("sd", OffsetDateTime.now())
                 .setParameter("sr", r.getSourceRemark())
                 .executeUpdate();
@@ -409,13 +422,42 @@ public class FinanceReceiptService {
                 .executeUpdate();
     }
 
+    private void assertNoExistingPosting(UUID receiptId) {
+        if (postingCount(receiptId) != 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "该单据已存在账户流水，禁止重复审核");
+        }
+    }
+
+    private void assertCompletePosting(UUID receiptId, long expectedRows) {
+        long actual = postingCount(receiptId);
+        if (actual != expectedRows) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "收款流水不完整，禁止红冲（期望 " + expectedRows + "，实际 " + actual + "）");
+        }
+    }
+
+    private long postingCount(UUID receiptId) {
+        return ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_reconciliations
+                        WHERE source_doc_type = :src
+                          AND source_doc_id = :id
+                          AND COALESCE(is_deleted, false) = false
+                        """)
+                .setParameter("src", RECON_SOURCE)
+                .setParameter("id", receiptId)
+                .getSingleResult()).longValue();
+    }
+
     private String lookupClientName(UUID clientId) {
         try {
             Object r = em.createNativeQuery("SELECT name FROM clients WHERE id = :id AND COALESCE(is_deleted, false) = false")
                     .setParameter("id", clientId).getSingleResult();
             return r == null ? null : r.toString();
-        } catch (Exception ignored) {
+        } catch (jakarta.persistence.NoResultException e) {
             return null;
+        } catch (jakarta.persistence.NonUniqueResultException e) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户主档存在重复：" + clientId);
         }
     }
 
@@ -446,6 +488,12 @@ public class FinanceReceiptService {
     }
 
     private List<FinanceReceiptLineDto> saveLines(FinanceReceipt r, List<FinanceReceiptLineInput> inputs) {
+        // FIN-P2-4（路线图，未实现）：exchange_diff 当前完全由前端传入，服务端零校验/零计算。
+        // 完整汇兑损益（FX gain/loss）= applied_ledger.amount_original_local（开账本币）与
+        // amount_local（本次核销本币）按汇率差轧差，需在审核（settleReceipt）时根据
+        // ar_ap_ledger.exchange_rate + receipts.exchange_rate 派生并落账到汇兑损益科目——
+        // 是独立大特性，不在本次数据完整性修复范围。当前仅原样落库，不做符号/数值校验
+        // （避免误拒历史合法行）。TODO: 排入钱流 FX 模块路线图后补服务端校验 + GL 过账。
         if (inputs == null || inputs.isEmpty()) return List.of();
         List<FinanceReceiptLineDto> out = new ArrayList<>(inputs.size());
         int auto = 1;

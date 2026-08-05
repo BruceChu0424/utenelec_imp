@@ -40,6 +40,8 @@ public record OnboardingRequest(
             UUID departmentId, UUID positionId, UUID supervisorId,
             String positionName,
             LocalDate hireDate, String employmentType, String status,
+            // ADR-021：status=active（正式入职）时必填转正日期；probation 为空（由试用期月数派生预计转正日）
+            LocalDate confirmedAt,
             String workLocation, String seatNo, String attendanceGroup, String officePhone, String paperArchiveNo
     ) {}
 

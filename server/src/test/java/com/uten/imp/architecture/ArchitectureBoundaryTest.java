@@ -72,6 +72,12 @@ class ArchitectureBoundaryTest {
             "subcontract->finance",
             "subcontract->stock",
             "suggestion->org",
+            // 2026-08-05：并行 feature 的合法跨 feature 依赖（rd_task BOM 转发涉及 notice/production；
+            // 仓库到货控制 ProcurementArrivalControl 跨 warehouse+purchase+subcontract）
+            "notice->rd_task",
+            "production->rd_task",
+            "warehouse->purchase",
+            "warehouse->subcontract",
             "visitor->admin",
             "visitor->org");
 

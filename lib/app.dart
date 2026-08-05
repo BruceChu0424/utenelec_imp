@@ -12,6 +12,7 @@ import 'core/theme/light_theme.dart';
 import 'core/theme/uten_scroll_behavior.dart';
 import 'core/ui/app_notification.dart';
 import 'core/ui/connection_recovery_banner.dart';
+import 'features/admin/widgets/impersonation_banner.dart';
 import 'features/auth/services/pending_refresh_revocation_drainer.dart';
 import 'shared/providers/font_scale_provider.dart';
 import 'shared/providers/locale_provider.dart';
@@ -69,6 +70,12 @@ class UtenApp extends ConsumerWidget {
           child: Stack(
             children: [
               child!,
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: ImpersonationBanner(),
+              ),
               const Positioned(
                 top: 0,
                 left: 0,

@@ -49,6 +49,8 @@ class _EmployeeOnboardingPageState
   final _phone = TextEditingController();
   final _email = TextEditingController();
   final _hireDate = TextEditingController();
+  // ADR-021：用工状态=正式（active）时转正日期必填；默认带入入职日期可改
+  final _confirmedDate = TextEditingController();
   final _baseSalary = TextEditingController();
   final _bankAccount = TextEditingController();
   final _bankBranch = TextEditingController();
@@ -100,6 +102,7 @@ class _EmployeeOnboardingPageState
       _phone,
       _email,
       _hireDate,
+      _confirmedDate,
       _baseSalary,
       _bankAccount,
       _bankBranch,
@@ -119,6 +122,24 @@ class _EmployeeOnboardingPageState
     );
     if (d != null) {
       _hireDate.text = DateFormat('yyyy-MM-dd').format(d);
+      // 正式员工转正日期默认=入职日期（可改）；试用员工不涉及
+      if (_status == 'active' && _confirmedDate.text.trim().isEmpty) {
+        _confirmedDate.text = _hireDate.text;
+      }
+    }
+  }
+
+  Future<void> _pickConfirmedDate() async {
+    final today = ChinaDateTime.today();
+    final hire = DateTime.tryParse(_hireDate.text.trim());
+    final d = await showDatePicker(
+      context: context,
+      initialDate: DateTime.tryParse(_confirmedDate.text.trim()) ?? hire ?? today,
+      firstDate: hire ?? DateTime(1990),
+      lastDate: today,
+    );
+    if (d != null) {
+      _confirmedDate.text = DateFormat('yyyy-MM-dd').format(d);
     }
   }
 
@@ -175,6 +196,8 @@ class _EmployeeOnboardingPageState
             : _hireDate.text.trim(),
         'employmentType': _employmentType,
         'status': _status,
+        // ADR-021：正式入职必须登记转正日期（后端 fail closed 复核）
+        if (_status == 'active') 'confirmedAt': _confirmedDate.text.trim(),
       };
       Map<String, dynamic>? compensation;
       final canEditCompensation = permissions.contains(
@@ -401,6 +424,22 @@ class _EmployeeOnboardingPageState
                           () => _employmentType = v ?? _employmentType,
                         ),
                       ),
+                      // ADR-021：正式（active）入职必须填写转正日期；试用由合同试用期派生
+                      if (_status == 'active')
+                        GestureDetector(
+                          onTap: _pickConfirmedDate,
+                          child: AbsorbPointer(
+                            child: _text(
+                              _confirmedDate,
+                              '转正日期',
+                              '正式入职必填，默认=入职日期，可按实际修改',
+                              required: true,
+                              validator: (v) => (v == null || v.isEmpty)
+                                  ? '正式入职的员工必须填写转正日期'
+                                  : null,
+                            ),
+                          ),
+                        ),
                       DropdownButtonFormField<String>(
                         initialValue: _status,
                         decoration: InputDecoration(

@@ -507,6 +507,20 @@ public class ProductionDailyReportService {
                         ErrorCode.CONFLICT,
                         "报工的销售分摊关联已失效");
             }
+            // PROD-P1-2: 分段归属红冲必须命中正向报工同一联动行；若累计 produced 不足，
+            // 说明正向可能按 FIFO 计入了其他联动行——此处加 CAS 拦截防负漂移，并抛清晰错。
+            // 精确的 FIFO 反向需要"按行持久化正向归因台账"的重构，暂以保守拦截兜底。
+            if (sign < 0) {
+                PlanOrderItemLink target = targets.get(0);
+                if (target.getProducedQty().compareTo(qty) < 0) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "红冲分摊与原报工不一致：该销售分摊累计报工 "
+                                    + target.getProducedQty().stripTrailingZeros().toPlainString()
+                                    + " 小于本次红冲量 "
+                                    + qty.stripTrailingZeros().toPlainString()
+                                    + "（可能存在跨链 FIFO 分摊），须先核对再红冲");
+                }
+            }
         } else if (orderItemId != null) {
             targets = links.stream().filter(l -> l.getOrderItemId().equals(orderItemId)).toList();
             if (targets.isEmpty()) {
@@ -757,6 +771,18 @@ public class ProductionDailyReportService {
         List<PlanOrderItemLink> links = lockedLinks;
         record Remake(UUID orderItemId, BigDecimal qty) {}
         List<Remake> remakes = new ArrayList<>();
+        // V217: 分段归属的计划行需同步镜像削减 execution_segment_sales_allocations，
+        // 否则 V157 总量等式/超分摊约束在提交时漂移。先查明各联动行的销售分摊段数。
+        Map<UUID, Long> allocationSegCount = links.isEmpty()
+                ? Map.of()
+                : countLinkAllocationSegments(links);
+        boolean segmentAttributed = !allocationSegCount.isEmpty();
+        if (segmentAttributed) {
+            em.createNativeQuery(
+                    "SELECT set_config('app.cap_segment_allocations', 'on', true)")
+                    .getSingleResult();
+        }
+        List<UUID> cappedAllocationLinkIds = new ArrayList<>();
         for (PlanOrderItemLink l : links) {
             BigDecimal linkShort = l.getAllocatedQty().subtract(l.getProducedQty());
             if (linkShort.signum() <= 0) continue;
@@ -773,7 +799,52 @@ public class ProductionDailyReportService {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "订单已排产累计小于完结封顶回退量，禁止自动吞并错账");
             }
+            // 镜像削减销售分摊：单段联动=常态（恰好 1 行命中 CAS）；多段联动暂不支持
+            // （各分段行 < linkShort 会使 CAS 落空 → 抛错防静默漂移）；无分摊=旧式计划跳过。
+            if (allocationSegCount.containsKey(l.getId())) {
+                long segs = allocationSegCount.get(l.getId());
+                if (segs != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "完结封顶暂不支持跨多执行段(" + segs + ")的订单行，须人工核对后再审核");
+                }
+                int allocationCut = em.createNativeQuery("""
+                        UPDATE execution_segment_sales_allocations
+                        SET allocated_qty = allocated_qty - :cut
+                        WHERE plan_order_item_link_id = :lid
+                          AND allocated_qty >= :cut
+                        """).setParameter("cut", linkShort)
+                        .setParameter("lid", l.getId())
+                        .executeUpdate();
+                if (allocationCut != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "完结封顶镜像削减销售分摊失败，须人工核对后再审核");
+                }
+                cappedAllocationLinkIds.add(l.getId());
+            }
             remakes.add(new Remake(l.getOrderItemId(), linkShort));
+        }
+        // 重算受影响分段 planned_qty = SUM(allocations)，保持 V157 总量等式（多联动同行分段也成立）。
+        if (!cappedAllocationLinkIds.isEmpty()) {
+            em.createNativeQuery("""
+                    UPDATE production_execution_segments seg
+                    SET planned_qty = COALESCE((
+                        SELECT SUM(a.allocated_qty)
+                        FROM execution_segment_sales_allocations a
+                        WHERE a.execution_segment_id = seg.id
+                    ), seg.planned_qty)
+                    WHERE seg.is_deleted = FALSE
+                      AND EXISTS (
+                        SELECT 1 FROM execution_segment_sales_allocations a2
+                        WHERE a2.execution_segment_id = seg.id
+                          AND a2.plan_order_item_link_id IN (:links)
+                      )
+                    """).setParameter("links", cappedAllocationLinkIds)
+                    .executeUpdate();
+        }
+        if (segmentAttributed) {
+            em.createNativeQuery(
+                    "SELECT set_config('app.cap_segment_allocations', 'off', true)")
+                    .getSingleResult();
         }
         if (remakes.isEmpty()) return;
 
@@ -812,7 +883,11 @@ public class ProductionDailyReportService {
         }
     }
 
-    /** 红冲恢复封顶：计划行/links 砍量恢复（capped_qty 置空），订单 planned_qty 回补。 */
+    /**
+     * 红冲恢复封顶：计划行/links 砍量恢复（capped_qty 置空），订单 planned_qty 回补。
+     * V217: 对分段归属计划行对称镜像恢复 execution_segment_sales_allocations，
+     * 并重算 production_execution_segments.planned_qty，保持 V157 总量等式。
+     */
     private void restoreCap(UUID planItemId, List<PlanOrderItemLink> lockedLinks) {
         Object capObj = em.createNativeQuery(
                 "SELECT capped_qty FROM production_plan_items WHERE id = :id")
@@ -826,6 +901,17 @@ public class ProductionDailyReportService {
         if (planUpdated != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "封顶生产计划行不存在，禁止自动恢复");
         }
+        // V217: 分段归属计划行对称镜像恢复 allocations（GUC 窗口仅本方法放开 UPDATE）。
+        Map<UUID, Long> allocationSegCount = lockedLinks.isEmpty()
+                ? Map.of()
+                : countLinkAllocationSegments(lockedLinks);
+        boolean segmentAttributed = !allocationSegCount.isEmpty();
+        if (segmentAttributed) {
+            em.createNativeQuery(
+                    "SELECT set_config('app.cap_segment_allocations', 'on', true)")
+                    .getSingleResult();
+        }
+        List<UUID> restoredAllocationLinkIds = new ArrayList<>();
         for (PlanOrderItemLink l : lockedLinks) {
             BigDecimal lc = l.getCappedQty() == null ? BigDecimal.ZERO : l.getCappedQty();
             if (lc.signum() <= 0) continue;
@@ -840,6 +926,48 @@ public class ProductionDailyReportService {
             if (plannedUpdated != 1) {
                 throw new ApiException(ErrorCode.CONFLICT, "封顶关联订单行不存在，禁止自动恢复");
             }
+            // 镜像恢复销售分摊：单段联动=常态；多段暂不支持（避免每行重复加回致漂移）；无分摊=旧式跳过。
+            if (allocationSegCount.containsKey(l.getId())) {
+                long segs = allocationSegCount.get(l.getId());
+                if (segs != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "红冲恢复暂不支持跨多执行段(" + segs + ")的订单行，须人工核对后再红冲");
+                }
+                int allocationRestored = em.createNativeQuery("""
+                        UPDATE execution_segment_sales_allocations
+                        SET allocated_qty = allocated_qty + :add
+                        WHERE plan_order_item_link_id = :lid
+                        """).setParameter("add", lc)
+                        .setParameter("lid", l.getId())
+                        .executeUpdate();
+                if (allocationRestored != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "红冲恢复镜像销售分摊失败，须人工核对后再红冲");
+                }
+                restoredAllocationLinkIds.add(l.getId());
+            }
+        }
+        if (!restoredAllocationLinkIds.isEmpty()) {
+            em.createNativeQuery("""
+                    UPDATE production_execution_segments seg
+                    SET planned_qty = COALESCE((
+                        SELECT SUM(a.allocated_qty)
+                        FROM execution_segment_sales_allocations a
+                        WHERE a.execution_segment_id = seg.id
+                    ), seg.planned_qty)
+                    WHERE seg.is_deleted = FALSE
+                      AND EXISTS (
+                        SELECT 1 FROM execution_segment_sales_allocations a2
+                        WHERE a2.execution_segment_id = seg.id
+                          AND a2.plan_order_item_link_id IN (:links)
+                      )
+                    """).setParameter("links", restoredAllocationLinkIds)
+                    .executeUpdate();
+        }
+        if (segmentAttributed) {
+            em.createNativeQuery(
+                    "SELECT set_config('app.cap_segment_allocations', 'off', true)")
+                    .getSingleResult();
         }
     }
 
@@ -903,6 +1031,25 @@ public class ProductionDailyReportService {
                     WHERE i.plan_id = p.id AND COALESCE(i.is_deleted, false) = false
                 ) WHERE p.id = :pid
                 """).setParameter("pid", planId).executeUpdate();
+    }
+
+    /**
+     * V217: 各联动行对应的执行分段销售分摊段数（用于判定是否分段归属，以及多段防护）。
+     * 返回 0 表示该联动行无销售分摊（旧式非分段计划），>0 表示分段归属。
+     */
+    private Map<UUID, Long> countLinkAllocationSegments(List<PlanOrderItemLink> links) {
+        List<UUID> linkIds = links.stream().map(PlanOrderItemLink::getId).toList();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT a.plan_order_item_link_id, COUNT(*) AS seg_count
+                FROM execution_segment_sales_allocations a
+                WHERE a.plan_order_item_link_id IN (:linkIds)
+                GROUP BY a.plan_order_item_link_id
+                """).setParameter("linkIds", linkIds));
+        Map<UUID, Long> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], ((Number) row[1]).longValue());
+        }
+        return result;
     }
 
     private static BigDecimal bd(Object v) {

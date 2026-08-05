@@ -45,6 +45,12 @@ public class XlsxExportService {
             headerStyle.setAlignment(HorizontalAlignment.CENTER);
             CellStyle numStyle = wb.createCellStyle();
             numStyle.setDataFormat(wb.createDataFormat().getFormat("#,##0.00"));
+            // 文本格式（DataFormat "@"）：强制 Excel/WPS 把字符串当字面文本，防 =cmd|'/c calc'!A1 / =HYPERLINK()
+            // 公式注入（安全策略 §10.1「单元格按文本写防 =CMD() 公式注入」）。POI setCellValue(String) 虽写为
+            // STRING 类型，但部分表格（WPS/旧 Excel）仍可能对前导 = + - @ \t \r 自动公式化；显式文本格式是权威防御，
+            // 且不改变显示内容（区别于加单引号前缀）。AES-256 不防此——文件被合法查看者解密后才被解释。
+            CellStyle textStyle = wb.createCellStyle();
+            textStyle.setDataFormat(wb.createDataFormat().getFormat("@"));
 
             Sheet sheet = wb.createSheet("data");
             // 表头
@@ -64,7 +70,7 @@ public class XlsxExportService {
                 for (int i = 0; i < columns.size(); i++) {
                     ExportColumn col = columns.get(i);
                     Object v = row == null ? null : row.get(col.key());
-                    writeCell(R.createCell(i), col.type(), v, numStyle);
+                    writeCell(R.createCell(i), col.type(), v, numStyle, textStyle);
                 }
             }
             sheet.createFreezePane(0, 1); // 冻结首行
@@ -75,7 +81,7 @@ public class XlsxExportService {
         }
     }
 
-    private static void writeCell(Cell cell, String type, Object v, CellStyle numStyle) {
+    private static void writeCell(Cell cell, String type, Object v, CellStyle numStyle, CellStyle textStyle) {
         if (v == null) return;
         switch (type == null ? ExportColumn.TEXT : type) {
             case ExportColumn.MONEY, ExportColumn.NUMBER -> {
@@ -84,12 +90,14 @@ public class XlsxExportService {
                     cell.setCellValue(d.doubleValue());
                     cell.setCellStyle(numStyle);
                 } else {
+                    // 非数值回退：按文本写，防公式注入
                     cell.setCellValue(Objects.toString(v));
+                    cell.setCellStyle(textStyle);
                 }
             }
-            case ExportColumn.BOOL -> cell.setCellValue(toBool(v) ? "是" : "否");
-            case ExportColumn.DATE -> cell.setCellValue(toDateStr(v));
-            default -> cell.setCellValue(Objects.toString(v));
+            case ExportColumn.BOOL -> { cell.setCellValue(toBool(v) ? "是" : "否"); cell.setCellStyle(textStyle); }
+            case ExportColumn.DATE -> { cell.setCellValue(toDateStr(v)); cell.setCellStyle(textStyle); }
+            default -> { cell.setCellValue(Objects.toString(v)); cell.setCellStyle(textStyle); }
         }
     }
 

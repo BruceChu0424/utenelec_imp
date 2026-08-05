@@ -51,6 +51,9 @@ abstract final class Perm {
   static const employeeCompensationView = 'employee:compensation:view';
   static const employeeCompensationEdit = 'employee:compensation:edit';
 
+  /// 员工资料打印与导出（花名册/部门架构图等文档下载）—— ADR-021，独立于查看权限。
+  static const employeeExport = 'employee:export';
+
   // ===== 采购管理（PMC 运营部；后端 V44 细粒度种子化）=====
   /// 采购申请单
   static const purchaseRequestView = 'purchase_request:view';

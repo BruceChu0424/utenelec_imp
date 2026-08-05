@@ -802,6 +802,12 @@ public class SalesOrderService {
             }
             BigDecimal open = outstanding(
                     newQty, it.getShippedQty(), it.getReturnedQty(), it.getFlagQty());
+            // BUG-S2：open<=0 表示该行已无可发（已发足/已退还），残余预留是孤儿——释放，避免永久占 ATP
+            // 且从稀缺仲裁 UI（按 is_closed=false 过滤）消失成不可见泄漏。
+            if (chained && open.signum() <= 0 && reserved.signum() > 0) {
+                reservationService.releaseForOrderItem(it.getId(), reserved.multiply(rate));
+                reserved = BigDecimal.ZERO;
+            }
             BigDecimal unfinishedPlan = planned.subtract(nz(it.getProducedQty()))
                     .max(BigDecimal.ZERO);
             short chain = !chained ? 0

@@ -13,7 +13,11 @@ import java.util.UUID;
 public class FinanceExpenseItemInput {
 
     private Integer lineNo;
+
+    /** 费用类别（payment_styles.category='EXPENSE'）。必填：总账借方按行科目过账，空则借贷不平衡。 */
+    @NotNull
     private UUID expenseStyleId;
+
     private UUID departmentId;
     private UUID counterpartAccountId;
     private String counterpartName;

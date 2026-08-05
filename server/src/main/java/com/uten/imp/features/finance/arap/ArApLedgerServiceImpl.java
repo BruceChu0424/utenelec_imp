@@ -95,8 +95,9 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         }
         l.setCurrencyId(req.currencyId());
         l.setExchangeRate(exchangeRate);
-        // 多币种场景下原币由调用方未传时，缺省与本币相同（单币种兼容）。
-        l.setAmountOriginal(originalLocal);
+        // 多币种：调用方传原币额 (amountOriginal) 则落原币；未传则回退到本币（单币种兼容）。
+        // 不用 exchangeRate 反推（避免精度/口径漂移）；exchangeRate 仅持久化备查。
+        l.setAmountOriginal(req.amountOriginal() != null ? req.amountOriginal() : originalLocal);
         l.setAmountOriginalLocal(originalLocal);
         l.setAmountSettled(BigDecimal.ZERO);
         l.setAmountBalance(originalLocal);

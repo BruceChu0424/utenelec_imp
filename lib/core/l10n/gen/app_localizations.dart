@@ -1291,7 +1291,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeSearchHint.
   ///
   /// In zh, this message translates to:
-  /// **'搜索工号 / 姓名'**
+  /// **'搜索工号 / 姓名 / 车牌'**
   String get employeeSearchHint;
 
   /// No description provided for @employeeEmpty.
@@ -4746,6 +4746,108 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'资产负债等六大类'**
   String get basicDataHubPaymentStyleSub;
+
+  /// No description provided for @impersonationSwitchPerson.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换人'**
+  String get impersonationSwitchPerson;
+
+  /// No description provided for @impersonationEnterPasswordTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认切换人'**
+  String get impersonationEnterPasswordTitle;
+
+  /// No description provided for @impersonationEnterPasswordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。'**
+  String get impersonationEnterPasswordHint;
+
+  /// No description provided for @impersonationPasswordLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录密码'**
+  String get impersonationPasswordLabel;
+
+  /// No description provided for @impersonationConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get impersonationConfirm;
+
+  /// No description provided for @impersonationTargetPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择要查看的员工'**
+  String get impersonationTargetPickerTitle;
+
+  /// No description provided for @impersonationSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索姓名 / 工号'**
+  String get impersonationSearchHint;
+
+  /// No description provided for @impersonationBannerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在以 {name} 身份查看（只读）'**
+  String impersonationBannerTitle(String name);
+
+  /// No description provided for @impersonationBannerSwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换'**
+  String get impersonationBannerSwitch;
+
+  /// No description provided for @impersonationBannerExit.
+  ///
+  /// In zh, this message translates to:
+  /// **'退出模拟'**
+  String get impersonationBannerExit;
+
+  /// No description provided for @impersonationRemainingMinutes.
+  ///
+  /// In zh, this message translates to:
+  /// **'剩余 {count} 分钟'**
+  String impersonationRemainingMinutes(int count);
+
+  /// No description provided for @impersonationWrongPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码错误'**
+  String get impersonationWrongPassword;
+
+  /// No description provided for @impersonationExited.
+  ///
+  /// In zh, this message translates to:
+  /// **'已退出模拟身份'**
+  String get impersonationExited;
+
+  /// No description provided for @impersonationWindowExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'模拟窗口已到期，已退出'**
+  String get impersonationWindowExpired;
+
+  /// No description provided for @impersonationRecent.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近'**
+  String get impersonationRecent;
+
+  /// No description provided for @impersonationNoTargets.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可切换的员工'**
+  String get impersonationNoTargets;
+
+  /// No description provided for @impersonationStartFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换失败'**
+  String get impersonationStartFailed;
 }
 
 class _AppLocalizationsDelegate

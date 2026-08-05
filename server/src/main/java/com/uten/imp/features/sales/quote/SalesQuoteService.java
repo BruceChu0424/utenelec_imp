@@ -162,7 +162,7 @@ public class SalesQuoteService {
     public QuoteDetail approve(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
-        em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -183,7 +183,7 @@ public class SalesQuoteService {
     public QuoteDetail reverse(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
-        em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
         if (q.getStatus() == null || q.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -203,9 +203,20 @@ public class SalesQuoteService {
     public com.uten.imp.features.sales.order.dto.OrderDetail convertToOrder(UUID id) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
-        em.lock(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 防并发重复转入
+        em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过守卫
         if (q.getStatus() == null || q.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核报价单可转订货单");
+        }
+        // 防重复/并发转入：已存在来源本报价（source_doc_no = 报价号）的未删订货单即拒。审核侧仅锁行不足以
+        // 防重复——转入不改报价状态；此查询在 em.refresh 锁行后执行，见最新提交，并发也只一笔成功。
+        Integer existingFromQuote = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM sales_orders
+                WHERE source_doc_no = :billNo AND COALESCE(is_deleted, false) = false
+                """)
+                .setParameter("billNo", q.getBillNo())
+                .getSingleResult()).intValue();
+        if (existingFromQuote != null && existingFromQuote > 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "该报价单已转入订货单，禁止重复转入");
         }
         List<SalesQuoteItem> qitems = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         if (qitems.isEmpty()) {

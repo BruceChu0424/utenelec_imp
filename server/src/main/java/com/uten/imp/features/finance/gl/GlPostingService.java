@@ -24,7 +24,7 @@ import java.util.UUID;
  * 费用 借费用科目(行)/贷账户(单头合计=行合计)；其它收入 借账户/贷收入科目(行)；
  * 销售成本结转 借041/贷123（出货行 Σqty×goods.c_total，单号+“-CB”）。</p>
  *
- * <p>幂等：generate(period) 只重建本服务明确拥有的七类 AUTO 凭证；资产子账、工资等其它模块
+ * <p>幂等：generate(period) 只重建本服务明确拥有的八类 AUTO 凭证；资产子账、工资等其它模块
  * 的自动凭证不属于本服务，禁止在这里删除。generateAll 逐期间重放。</p>
  */
 @Service
@@ -34,7 +34,7 @@ public class GlPostingService {
     /** Source types exclusively owned and rebuilt by this legacy regeneration job. */
     static final List<String> REGENERATED_SOURCE_TYPES = List.of(
             "AR_POST", "AP_POST", "RECEIPT", "PAYMENT",
-            "EXPENSE", "INCOME", "COST_CARRY");
+            "EXPENSE", "INCOME", "COST_CARRY", "BANK_TRANSFER");
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -60,6 +60,7 @@ public class GlPostingService {
         postExpenses(period);
         postIncomes(period);
         postCostCarry(period);
+        postBankTransfers(period);
 
         return ((Number) em.createNativeQuery(
                 "SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
@@ -81,6 +82,7 @@ public class GlPostingService {
                     UNION SELECT bill_date FROM finance_payments WHERE COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_expenses WHERE COALESCE(is_deleted,false)=false
                     UNION SELECT bill_date FROM finance_other_incomes WHERE COALESCE(is_deleted,false)=false
+                    UNION SELECT bill_date FROM finance_bank_transfers WHERE COALESCE(is_deleted,false)=false
                 ) t ORDER BY 1
                 """).getResultList();
         for (String p : periods) generatePeriod(p);
@@ -89,7 +91,16 @@ public class GlPostingService {
 
     // ======================== 各源单过账 ========================
 
-    /** 销售立帐：借 113 应收账款 / 贷 031 销售收入（SALES_RETURN 金额负=红字）。 */
+    /**
+     * 销售立帐：借 113 应收账款 / 贷 031 销售收入。
+     *
+     * <p><b>红字约定（FIN-P2-3，非 bug 不改值）</b>：SALES_RETURN（销售退货）立帐时
+     * {@code ar_ap_ledger.amount_original_local} 为负，本方法将其原样写入 {@code gl_entries.amount}，
+     * 与 V122 列注释「正数；负值业务用红字（同向负金额）不反向」一致——即<b>不取绝对值、不反向 direction</b>。
+     * 报表侧（{@link GlReportService}）以 {@code SUM(direction*amount)} 聚合，负 amount 同向累加
+     * 即正确抵减借/贷，构成显式的红字表达。如改为绝对值会破坏所有 SUM(direction*amount) 报表
+     * 与 opening_net/debit/credit 拆分（见 GlReportService L65-67）。
+     */
     private void postAr(String period) {
         String vouchers = """
                 INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
@@ -241,13 +252,27 @@ public class GlPostingService {
                 JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'EXPENSE'
                 JOIN LATERAL (SELECT account_style_id(t.account_id) AS style_id) acct ON TRUE
                 JOIN LATERAL (SELECT COALESCE(SUM(i.amount_local),0) AS total FROM finance_expense_items i
-                              WHERE i.expense_id = t.id AND COALESCE(i.is_deleted,false)=false) x ON TRUE
+                              WHERE i.expense_id = t.id AND COALESCE(i.is_deleted,false)=false
+                                AND i.expense_style_id IS NOT NULL) x ON TRUE
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                   AND x.total <> 0
                 """;
         run(vouchers, period);
         run(debits, period);
         run(credit, period);
+        // FIN-P1-3：重生成路径 DELETE+INSERT 用 gen_random_uuid() 建新 voucher id，
+        // 旧 finance_expenses.gl_voucher_id 指向已删 voucher → 同步到新 id（按 bill_no + EXPENSE + 期间）。
+        // 与实时路径 postExpenseDoc 返回 voucherId 由 FinanceExpenseService 落库 互补：
+        // 本重生成路径无 Java 端 voucherId 句柄，只能 SQL JOIN 回写。
+        em.createNativeQuery("""
+                UPDATE finance_expenses e
+                SET gl_voucher_id = v.id, updated_at = now()
+                FROM gl_vouchers v
+                WHERE e.bill_no = v.voucher_no
+                  AND v.source_type = 'EXPENSE' AND v.source = 'AUTO'
+                  AND e.status = 1 AND COALESCE(e.is_deleted,false) = false
+                  AND to_char(e.bill_date,'YYYY-MM') = :p
+                """).setParameter("p", period).executeUpdate();
     }
 
     /** 其它收入：借 账户(行合计) / 贷 收入科目(按行 income_style_id)。 */
@@ -278,7 +303,8 @@ public class GlPostingService {
                 JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'INCOME'
                 JOIN LATERAL (SELECT account_style_id(t.account_id) AS style_id) acct ON TRUE
                 JOIN LATERAL (SELECT COALESCE(SUM(i.amount_local),0) AS total FROM finance_other_income_items i
-                              WHERE i.income_id = t.id AND COALESCE(i.is_deleted,false)=false) x ON TRUE
+                              WHERE i.income_id = t.id AND COALESCE(i.is_deleted,false)=false
+                                AND i.income_style_id IS NOT NULL) x ON TRUE
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                   AND x.total <> 0
                 """;
@@ -324,6 +350,55 @@ public class GlPostingService {
         run(entries, period);
     }
 
+    /**
+     * 银行存取款：借 每个转入账户科目(按行) / 贷 转出账户科目(单头合计=行合计保平衡)。
+     *
+     * <p>镜像 {@link #postExpenses} 的"按行借 / 单头贷(9000)"模式。入账金额取
+     * {@code finance_bank_transfer_lines.amount_local}（本币，审核时 FinanceBankTransferService
+     * 已固化跨币种换算），借/贷都用 amount_local 故凭证平衡。0 金额跳过。
+     *
+     * <p>背景（FIN-P1-2）：审核 {@code FinanceBankTransferService.approve} 仅更新
+     * {@code accounts.balance_current}+{@code finance_reconciliations}，从未写 GL，
+     * 导致按账户聚合的 GL 银行余额与 {@code accounts.balance_current} 长期漂移。
+     */
+    private void postBankTransfers(String period) {
+        String vouchers = """
+                INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
+                SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date, 'AUTO', 'BANK_TRANSFER', '银行存取款'
+                FROM finance_bank_transfers t
+                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
+                """;
+        String debits = """
+                INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
+                                        source_doc_type, source_doc_id, source_bill_no, summary)
+                SELECT v.id, i.line_no, acct.style_id, 1, i.amount_local, i.bill_date, v.period,
+                       'BANK_TRANSFER', t.id, t.bill_no, COALESCE(i.summary, t.remark, '银行存取款')
+                FROM finance_bank_transfer_lines i
+                JOIN finance_bank_transfers t ON t.id = i.transfer_id
+                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'BANK_TRANSFER'
+                JOIN LATERAL (SELECT account_style_id(i.in_account_id) AS style_id) acct ON TRUE
+                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND COALESCE(i.is_deleted,false)=false
+                  AND to_char(t.bill_date,'YYYY-MM') = :p AND COALESCE(i.amount_local,0) <> 0
+                """;
+        String credit = """
+                INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
+                                        source_doc_type, source_doc_id, source_bill_no, summary)
+                SELECT v.id, 9000, acct.style_id, -1, x.total, t.bill_date, v.period,
+                       'BANK_TRANSFER', t.id, t.bill_no, COALESCE(t.remark,'银行存取款')
+                FROM finance_bank_transfers t
+                JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'BANK_TRANSFER'
+                JOIN LATERAL (SELECT account_style_id(t.out_account_id) AS style_id) acct ON TRUE
+                JOIN LATERAL (SELECT COALESCE(SUM(i.amount_local),0) AS total FROM finance_bank_transfer_lines i
+                              WHERE i.transfer_id = t.id AND COALESCE(i.is_deleted,false)=false
+                                AND COALESCE(i.amount_local,0) <> 0) x ON TRUE
+                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
+                  AND x.total <> 0
+                """;
+        run(vouchers, period);
+        run(debits, period);
+        run(credit, period);
+    }
+
     // ======================== C6 单张开票钩子（报销审核实时过账） ========================
 
     /** 费用单审核钩子：该单幂等过账（先删同单号 AUTO EXPENSE 凭证再重建），返回 voucher_id。 */
@@ -363,7 +438,8 @@ public class GlPostingService {
                                         source_doc_type, source_doc_id, source_bill_no, summary)
                 SELECT :v, 9000, account_style_id(:acct), -1, x.total, :bd, :p, 'EXPENSE', :doc, :no, COALESCE(:rm,'一般费用')
                 FROM (SELECT COALESCE(SUM(i.amount_local),0) AS total FROM finance_expense_items i
-                      WHERE i.expense_id = :doc AND COALESCE(i.is_deleted,false)=false) x
+                      WHERE i.expense_id = :doc AND COALESCE(i.is_deleted,false)=false
+                        AND i.expense_style_id IS NOT NULL) x
                 WHERE x.total <> 0
                 """)
                 .setParameter("v", voucherId).setParameter("acct", d[2]).setParameter("bd", billDate)

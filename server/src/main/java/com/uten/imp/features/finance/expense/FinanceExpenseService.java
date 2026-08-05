@@ -143,8 +143,12 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public FinanceExpenseDetail approve(UUID id) {
         tx.bind();
         FinanceExpense e = require(id);
-        em.lock(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
-        approveInternal(e, currentUser.requireEmployeeId());
+        em.refresh(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
+        UUID approver = currentUser.requireEmployeeId();
+        if (e.getMakerId() != null && e.getMakerId().equals(approver)) {
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+        }
+        approveInternal(e, approver);
         return detail(id);
     }
 
@@ -254,9 +258,12 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
         FinanceExpense e = require(id);
-        em.lock(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        }
+        if (e.getGlStatus() != null && e.getGlStatus() == 2) {
+            throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认（gl_status=2），须先撤销确认再红冲");
         }
         BigDecimal amountLocal = nz(e.getAmountLocal());
         if (amountLocal.signum() != 0) {
@@ -322,7 +329,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 .setParameter("sid", e.getId())
                 .setParameter("acc", e.getAccountId())
                 .setParameter("outAmt", amountLocal)
-                .setParameter("bd", OffsetDateTime.now())
+                .setParameter("bd", e.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime())
                 .setParameter("sd", OffsetDateTime.now())
                 .setParameter("sr", e.getRemark())
                 .executeUpdate();
@@ -359,6 +366,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         List<FinanceExpenseItemDto> out = new ArrayList<>(inputs.size());
         int auto = 1;
         for (FinanceExpenseItemInput l : inputs) {
+            // 总账借方按行 expense_style_id 过账，落库前强校验非空（空则借贷不平衡）
+            if (l.getExpenseStyleId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用明细必须指定费用类别（expense_style_id）");
+            }
             FinanceExpenseItem it = new FinanceExpenseItem();
             it.setExpenseId(e.getId());
             it.setBillNo(e.getBillNo());

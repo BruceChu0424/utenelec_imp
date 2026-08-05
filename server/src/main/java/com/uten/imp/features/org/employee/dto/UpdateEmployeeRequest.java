@@ -49,5 +49,12 @@ public record UpdateEmployeeRequest(
         List<OnboardingRequest.CredentialInput> certificates,
         @Valid
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<OnboardingRequest.EducationInput> educations
+        List<OnboardingRequest.EducationInput> educations,
+        // 车辆 / 备用手机号（非 null 则整体替换；空数组 = 清空）—— ADR-021
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<NestedDtos.VehicleInput> vehicles,
+        @Valid
+        @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
+        List<NestedDtos.PhoneInput> phones
 ) {}

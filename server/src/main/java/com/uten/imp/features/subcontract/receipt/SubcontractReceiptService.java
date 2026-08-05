@@ -185,6 +185,11 @@ public class SubcontractReceiptService {
                                 it.getUnitId(),
                                 it.getUnitRate()))
                         .toList());
+        // SC-P1-8：金额服务端权威重算（数量×单价×汇率）；客户端 amount_local 非会计事实，防构造伪造应付
+        // （对齐订货侧 requireFinanceCommercialAuthority 与 SOP §5.2；此前收货侧确信任任客户端金额）。
+        for (SubcontractReceiptItem it : items) {
+            recomputeReceiptAmount(it, r.getExchangeRate());
+        }
         arrivalControl.validateBeforeApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         productionSupply.lockSubcontractReceiptProductionDemands(
@@ -227,17 +232,18 @@ public class SubcontractReceiptService {
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
-        // 先反立帐（若有核销 amount_settled<>0 抛 IllegalStateException，对齐老库文案）
-        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
         List<SubcontractReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if (items.stream().anyMatch(it ->
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "委外进仓已有退货记录，请先红冲下游退货单");
         }
         productionSupply.beforeSubcontractReceiptReversed(id);
+        // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve 锁序一致，消除并发死锁窗。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
+        // 反立帐（若有核销 amount_settled<>0 抛 IllegalStateException，对齐老库文案）
+        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (SubcontractReceiptItem it : items) {
@@ -257,6 +263,27 @@ public class SubcontractReceiptService {
         arrivalControl.recordReversal(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         return detail(id);
+    }
+
+    /**
+     * SC-P1-8：服务端权威重算明细金额。amount_original = qty×price，amount_local = amount_original×汇率，
+     * 均 4 位 HALF_UP。qty 必须为正、price 不得为负；否则拒（防构造）。重算后回写实体并持久化，
+     * 使后续 totalLocalOf 与立应付金额不可被客户端篡改。
+     */
+    private void recomputeReceiptAmount(SubcontractReceiptItem it, BigDecimal exchangeRate) {
+        if (it.getQty() == null || it.getQty().signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外进仓明细数量必须大于 0");
+        }
+        if (it.getPrice() == null || it.getPrice().signum() < 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外进仓明细加工单价不得为负");
+        }
+        BigDecimal rate = exchangeRate == null || exchangeRate.signum() <= 0
+                ? BigDecimal.ONE : exchangeRate;
+        BigDecimal original = it.getQty().multiply(it.getPrice()).setScale(4, java.math.RoundingMode.HALF_UP);
+        BigDecimal local = original.multiply(rate).setScale(4, java.math.RoundingMode.HALF_UP);
+        it.setAmountOriginal(original);
+        it.setAmountLocal(local);
+        itemRepo.save(it);
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */

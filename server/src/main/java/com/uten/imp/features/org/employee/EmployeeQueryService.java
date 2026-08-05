@@ -45,6 +45,7 @@ public class EmployeeQueryService {
     private final TxSessionVars tx;
     private final DataAccessPolicy policy;
     private final SecurityContextCurrentUser currentUser;
+    private final EmployeeVehiclePhoneService vehiclePhoneService;
 
     // ===== 列表（摘要，无敏感） =====
     @Transactional(readOnly = true)
@@ -147,6 +148,14 @@ public class EmployeeQueryService {
         d.setEducations(educationRepo.findByEmployeeIdOrderByEndDateDesc(id).stream()
                 .map(x -> new NestedDtos.EducationDto(x.getId(), x.getDegree(), x.getSchool(),
                         x.getMajor(), x.getStartDate(), x.getEndDate()))
+                .toList());
+
+        // 车辆（employee:view 可见，支撑「按车牌找人」）与备用手机号（掩码规则同主手机号）—— ADR-021
+        d.setVehicles(vehiclePhoneService.listVehicles(id));
+        boolean canSeePii = policy.canSeeIdCardAndBank(perms);
+        d.setPhones(vehiclePhoneService.listPhones(id).stream()
+                .map(p -> new NestedDtos.PhoneDto(p.id(), p.label(),
+                        canSeePii ? p.phonePlain() : maskPhone(p.phonePlain())))
                 .toList());
 
         // 隐私保护（M5/PIPL）：无 employee:pii:view 时不返回人口属性、地址与出生日期。

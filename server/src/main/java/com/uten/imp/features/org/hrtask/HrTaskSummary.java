@@ -38,6 +38,9 @@ public record HrTaskSummary(
      * @param date 相关日期（预计转正日 / 生日（今年或明年落在）/ 入职日期）
      * @param days 语义随区块：剩余天数 / 逾期天数 / 周岁 / 满年数 / 已入职天数
      * @param note 补充说明（如「入职满 1 年」），可为 null
+     * @param claimedByName 软认领人姓名（ADR-021：任务不隐藏，显示「XXX 处理中」），null = 未认领
+     * @param claimedByMe   是否当前用户认领（本人可继续/释放，他人快捷操作禁用）
+     * @param claimLeaseUntil 认领租约到期时间（过期自动失效）
      */
     public record Item(
             UUID employeeId,
@@ -47,6 +50,15 @@ public record HrTaskSummary(
             String positionName,
             LocalDate date,
             int days,
-            String note) {
+            String note,
+            String claimedByName,
+            boolean claimedByMe,
+            java.time.OffsetDateTime claimLeaseUntil) {
+
+        /** 附加认领信息（summary 装配后统一贴上）。 */
+        Item withClaim(String byName, boolean byMe, java.time.OffsetDateTime leaseUntil) {
+            return new Item(employeeId, code, name, deptName, positionName, date, days, note,
+                    byName, byMe, leaseUntil);
+        }
     }
 }

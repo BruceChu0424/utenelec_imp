@@ -365,6 +365,16 @@ class _AdminDepartmentPermViewState
         permissions.map((permission) => permission.code),
         false,
       ),
+      enableAllLabel: '全部配置',
+      disableAllLabel: '全部取消配置',
+      onEnableAll: (permissions) => _setPermissions(
+        permissions.map((permission) => permission.code),
+        true,
+      ),
+      onDisableAll: (permissions) => _setPermissions(
+        permissions.map((permission) => permission.code),
+        false,
+      ),
       itemBuilder: (context, permission) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),

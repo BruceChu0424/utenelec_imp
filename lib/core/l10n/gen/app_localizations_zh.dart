@@ -613,7 +613,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeFabOnboard => '入职';
 
   @override
-  String get employeeSearchHint => '搜索工号 / 姓名';
+  String get employeeSearchHint => '搜索工号 / 姓名 / 车牌';
 
   @override
   String get employeeEmpty => '暂无员工';
@@ -2403,4 +2403,60 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get basicDataHubPaymentStyleSub => '资产负债等六大类';
+
+  @override
+  String get impersonationSwitchPerson => '切换人';
+
+  @override
+  String get impersonationEnterPasswordTitle => '确认切换人';
+
+  @override
+  String get impersonationEnterPasswordHint =>
+      '为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。';
+
+  @override
+  String get impersonationPasswordLabel => '登录密码';
+
+  @override
+  String get impersonationConfirm => '确认';
+
+  @override
+  String get impersonationTargetPickerTitle => '选择要查看的员工';
+
+  @override
+  String get impersonationSearchHint => '搜索姓名 / 工号';
+
+  @override
+  String impersonationBannerTitle(String name) {
+    return '正在以 $name 身份查看（只读）';
+  }
+
+  @override
+  String get impersonationBannerSwitch => '切换';
+
+  @override
+  String get impersonationBannerExit => '退出模拟';
+
+  @override
+  String impersonationRemainingMinutes(int count) {
+    return '剩余 $count 分钟';
+  }
+
+  @override
+  String get impersonationWrongPassword => '密码错误';
+
+  @override
+  String get impersonationExited => '已退出模拟身份';
+
+  @override
+  String get impersonationWindowExpired => '模拟窗口已到期，已退出';
+
+  @override
+  String get impersonationRecent => '最近';
+
+  @override
+  String get impersonationNoTargets => '暂无可切换的员工';
+
+  @override
+  String get impersonationStartFailed => '切换失败';
 }

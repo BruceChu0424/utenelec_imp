@@ -11,6 +11,8 @@ import com.uten.imp.security.JwtService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -63,6 +65,31 @@ public class StaffTokenResponseFactory {
     public TokenResponse.UserProfile profile(UserAccount user) {
         UUID userId = user.getId();
         return profileInternal(userId, stableAuthorizationSnapshot(userId));
+    }
+
+    /**
+     * 超级管理员「切换人」签发目标用户的模拟身份 token 响应。
+     *
+     * <p>主体是目标（sub=目标、av/ae 按目标），权限 / 数据范围全部按目标解析；不签发 refresh token
+     *（模拟窗口到期即退模拟，杜绝长留）。{@code stableAuthorizationSnapshot} 同样会拒绝未激活 / 已删账号。
+     */
+    @Transactional(readOnly = true)
+    public TokenResponse buildImpersonation(UserAccount target, UUID adminUserId, Instant expiresAt) {
+        UUID targetId = target.getId();
+        AuthorizationSnapshot snapshot = stableAuthorizationSnapshot(targetId);
+        String access = jwtService.issueImpersonationAccess(
+                targetId,
+                snapshot.authVersion(),
+                snapshot.authorizationEpoch(),
+                adminUserId,
+                expiresAt);
+        long ttlSeconds = Math.max(1, Duration.between(Instant.now(), expiresAt).getSeconds());
+        return new TokenResponse(
+                access,
+                null,
+                ttlSeconds,
+                false,
+                profileInternal(targetId, snapshot));
     }
 
     private TokenResponse.UserProfile profileInternal(

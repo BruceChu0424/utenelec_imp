@@ -148,7 +148,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
         FinanceBankTransfer t = require(id);
-        em.lock(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -157,7 +157,11 @@ public class FinanceBankTransferService {
         assertNoExistingPosting(t.getId());
         applyPosting(t, posting, 1);
         insertReconciliations(t, posting);
-        t.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        if (t.getMakerId() != null && t.getMakerId().equals(approver)) {
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+        }
+        t.setApproverId(approver);
         t.setStatus(STATUS_APPROVED);
         transferRepo.save(t);
         return detail(id);
@@ -168,7 +172,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
         FinanceBankTransfer t = require(id);
-        em.lock(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
         if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -224,18 +228,29 @@ public class FinanceBankTransferService {
 
         BigDecimal outRate = null;
         if (approval) {
-            outRate = positiveRate(transfer.getExchangeRate());
-            if (outRate == null) {
-                outRate = positiveRate(out.exchangeRate());
-            }
-            if (outRate == null) {
-                throw new ApiException(ErrorCode.BUSINESS, "转出币种汇率必须大于 0");
+            // 服务端权威：换汇分子固定取转出账户币种主档汇率（lockAccounts 已 JOIN currencies），
+            // 不再采纳前端 transfer.exchangeRate 做换算——否则前端发大汇率可凭空造钱。
+            // outRate 仅跨币种换算时才需要；同币种转账（含本位币，其币种主档 exchange_rate 常为 0/参考值，
+            // 见 V42）不触发换算，故此处不强制非空——缺失时只在真正换汇的明细行报错（见下方跨币种分支）。
+            outRate = positiveRate(out.exchangeRate());
+            // 加固：前端若传了汇率且主档也有汇率，偏差 >1% 提示数据漂移（防误用旧汇率蒙混）
+            BigDecimal clientRate = positiveRate(transfer.getExchangeRate());
+            if (outRate != null && clientRate != null) {
+                BigDecimal drift = clientRate.subtract(outRate).abs()
+                        .divide(outRate, 6, RoundingMode.HALF_UP);
+                if (drift.compareTo(new BigDecimal("0.01")) > 0) {
+                    throw new ApiException(
+                            ErrorCode.BUSINESS,
+                            "前端汇率与币种主档偏差超过 1%，请刷新币种汇率后重试");
+                }
             }
         }
 
         BigDecimal outgoing = BigDecimal.ZERO;
         BigDecimal incomingTotal = BigDecimal.ZERO;
         Map<UUID, BigDecimal> incoming = new HashMap<>();
+        // M10：一张单的转入账户必须同币种；否则各 converted 是不同货币却相加成头表 amountOriginal，语义错。
+        LinkedHashSet<UUID> distinctInCurrencies = approval ? new LinkedHashSet<>() : null;
         for (FinanceBankTransferLine line : lines) {
             AccountSnapshot in = accounts.get(line.getInAccountId());
             if (in == null) {
@@ -244,9 +259,15 @@ public class FinanceBankTransferService {
             BigDecimal sourceAmount = line.getAmountLocal();
             BigDecimal converted;
             if (approval) {
+                distinctInCurrencies.add(in.currencyId());
                 if (Objects.equals(out.currencyId(), in.currencyId())) {
                     converted = sourceAmount;
                 } else {
+                    if (outRate == null) {
+                        throw new ApiException(
+                                ErrorCode.BUSINESS,
+                                "跨币种换算要求转出币种主档汇率 > 0，请先维护币种汇率");
+                    }
                     BigDecimal inRate = positiveRate(in.exchangeRate());
                     if (inRate == null) {
                         throw new ApiException(
@@ -274,6 +295,11 @@ public class FinanceBankTransferService {
             incoming.merge(line.getInAccountId(), converted, BigDecimal::add);
         }
         if (approval) {
+            if (distinctInCurrencies.size() > 1) {
+                throw new ApiException(
+                        ErrorCode.BUSINESS,
+                        "一张银行存取款单的转入账户必须为同一币种；请拆分成多张单据");
+            }
             transfer.setExchangeRate(outRate);
             transfer.setAmountLocal(outgoing);
             transfer.setAmountOriginal(incomingTotal);
@@ -395,7 +421,7 @@ public class FinanceBankTransferService {
                 .setParameter("checkNo", transfer.getInvoiceNo())
                 .setParameter("inAmount", inAmount)
                 .setParameter("outAmount", outAmount)
-                .setParameter("billDate", OffsetDateTime.now())
+                .setParameter("billDate", transfer.getBillDate())
                 .setParameter("settledDate", OffsetDateTime.now())
                 .setParameter("sourceRemark", sourceRemark)
                 .executeUpdate();

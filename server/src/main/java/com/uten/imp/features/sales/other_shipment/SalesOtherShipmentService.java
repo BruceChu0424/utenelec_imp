@@ -189,7 +189,7 @@ public class SalesOtherShipmentService {
     public OtherShipmentDetail approve(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireWritableShipment(id);
-        em.lock(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
         if (s.getStatus() == null || s.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -221,7 +221,7 @@ public class SalesOtherShipmentService {
     public OtherShipmentDetail reverse(UUID id) {
         tx.bind();
         SalesOtherShipment s = requireWritableShipment(id);
-        em.lock(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(s, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
         if (s.getStatus() == null || s.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

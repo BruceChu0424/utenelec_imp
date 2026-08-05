@@ -178,12 +178,21 @@ public class SubcontractMaterialReturnService {
             // ① 入库（DIR_IN=+1）
             applyMovement(r, it, StockService.DIR_IN, now, null);
             // ② 只回写发料子件权威累计；不同子件量禁止汇总到成品订货行。
+            // CAS 上限：已退 + 已损耗 + 本次 ≤ 已发，原子挡超退（并发两单也只过一笔）。
             if (it.getMaterialIssueItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_material_issue_items SET returned_qty = COALESCE(returned_qty,0) + :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_material_issue_items
+                        SET returned_qty = COALESCE(returned_qty,0) + :q
+                        WHERE id = :id
+                          AND COALESCE(qty,0) >= COALESCE(returned_qty,0) + COALESCE(wasted_qty,0) + :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外退料量超过可退余量（已发 − 已退 − 已损耗），禁止超退");
+                }
             }
         }
         // 不立应付：材料退回不是加工费
@@ -209,11 +218,19 @@ public class SubcontractMaterialReturnService {
         for (SubcontractMaterialReturnItem it : items) {
             applyMovement(r, it, StockService.DIR_OUT, now, null);
             if (it.getMaterialIssueItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_material_issue_items SET returned_qty = COALESCE(returned_qty,0) - :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_material_issue_items
+                        SET returned_qty = COALESCE(returned_qty,0) - :q
+                        WHERE id = :id
+                          AND COALESCE(returned_qty,0) >= :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外退料红冲量超过已退量（可能已被其它单据改动），禁止负数");
+                }
             }
         }
         r.setStatus(STATUS_REVERSED);

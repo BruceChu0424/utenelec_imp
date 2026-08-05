@@ -36,20 +36,31 @@ public class AuthUser implements UserDetails {
     private final boolean mustChangePassword;
     private final boolean accountNonLocked;
     private final boolean superAdmin;       // 超级管理员标记
+    private final UUID impersonatedBy;      // 非 null = 当前为「模拟身份」会话，值为真实操作人（admin）的 userId
 
     /** 员工构造（含 superAdmin 标记）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
                     Set<String> roles, Set<String> permissions,
                     boolean mustChangePassword, boolean accountNonLocked,
                     boolean superAdmin) {
+        this(id, employeeId, loginAccount, roles, permissions,
+                mustChangePassword, accountNonLocked, superAdmin, null);
+    }
+
+    /** 员工构造（模拟身份：impersonatedBy 为发起模拟的 admin userId，非 null 时触发只读守卫）。 */
+    public AuthUser(UUID id, UUID employeeId, String loginAccount,
+                    Set<String> roles, Set<String> permissions,
+                    boolean mustChangePassword, boolean accountNonLocked,
+                    boolean superAdmin, UUID impersonatedBy) {
         this(id, SubjectType.STAFF, employeeId, null, loginAccount, null,
-                roles, permissions, mustChangePassword, accountNonLocked, superAdmin);
+                roles, permissions, mustChangePassword, accountNonLocked, superAdmin, impersonatedBy);
     }
 
     private AuthUser(UUID id, SubjectType subjectType, UUID employeeId, UUID visitorId,
                      String loginAccount, String visitorNo,
                      Set<String> roles, Set<String> permissions,
-                     boolean mustChangePassword, boolean accountNonLocked, boolean superAdmin) {
+                     boolean mustChangePassword, boolean accountNonLocked, boolean superAdmin,
+                     UUID impersonatedBy) {
         this.id = id;
         this.subjectType = subjectType;
         this.employeeId = employeeId;
@@ -61,12 +72,13 @@ public class AuthUser implements UserDetails {
         this.mustChangePassword = mustChangePassword;
         this.accountNonLocked = accountNonLocked;
         this.superAdmin = superAdmin;
+        this.impersonatedBy = impersonatedBy;
     }
 
     /** 访客主体工厂。 */
     public static AuthUser visitor(UUID visitorId, String visitorAccount, String visitorNo, Set<String> permissions) {
         return new AuthUser(visitorId, SubjectType.VISITOR, null, visitorId, visitorAccount, visitorNo,
-                Set.of(), permissions, false, true, false);
+                Set.of(), permissions, false, true, false, null);
     }
 
     public boolean isVisitor() {

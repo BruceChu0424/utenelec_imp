@@ -2,6 +2,7 @@
 // 全部字段为服务端按「今天」动态计算结果，前端不重算。
 
 /// 单条提醒。days 语义随区块：剩余天数 / 逾期天数 / 周岁 / 满年数 / 已入职天数。
+/// 软认领（ADR-021）：任务不隐藏，claimedByName 非空显示「XXX 处理中」。
 class HrTaskItem {
   const HrTaskItem({
     required this.employeeId,
@@ -12,6 +13,9 @@ class HrTaskItem {
     this.date,
     required this.days,
     this.note,
+    this.claimedByName,
+    this.claimedByMe = false,
+    this.claimLeaseUntil,
   });
 
   final String employeeId;
@@ -23,6 +27,18 @@ class HrTaskItem {
   final int days;
   final String? note;
 
+  /// 认领人姓名（null = 未认领）。
+  final String? claimedByName;
+
+  /// 是否我认领（本人可继续/释放；他人快捷操作禁用）。
+  final bool claimedByMe;
+
+  /// 认领租约到期时间（ISO8601）。
+  final String? claimLeaseUntil;
+
+  /// 被他人认领处理中（非我）。
+  bool get claimedByOther => claimedByName != null && !claimedByMe;
+
   factory HrTaskItem.fromJson(Map<String, dynamic> json) => HrTaskItem(
     employeeId: json['employeeId'] as String,
     code: json['code'] as String,
@@ -32,6 +48,9 @@ class HrTaskItem {
     date: json['date'] as String?,
     days: (json['days'] as num?)?.toInt() ?? 0,
     note: json['note'] as String?,
+    claimedByName: json['claimedByName'] as String?,
+    claimedByMe: json['claimedByMe'] as bool? ?? false,
+    claimLeaseUntil: json['claimLeaseUntil'] as String?,
   );
 }
 

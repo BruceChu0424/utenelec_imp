@@ -43,6 +43,18 @@ public class StockService {
     public static final short DIR_IN = 1;
     public static final short DIR_OUT = -1;
 
+    /**
+     * 红冲/纠偏/退货类出库（KS-P1-1）：这些类型的 DIR_OUT 是撤销既定入库或退供应商/委外商——
+     * 货物确实在库，只守"非负底线"（available >= qty），不守 movable（balance−预留−安全）。
+     * 原因：红冲/退货不应被"为其它订单预留的库存"卡死（预留是运营关注，由人解绑）。
+     * 新增消耗类出库（销售出货/其它出库/委外发料/生产领料）不在本集合，仍守 movable。
+     * （PURCHASE_RECEIPT/SUBCONTRACT_RECEIPT/SUBCONTRACT_MATERIAL_RETURN 的 DIR_OUT 仅出现在红冲；
+     * PURCHASE_RETURN/SUBCONTRACT_RETURN 的 DIR_OUT 是退货审核；SALES_RETURN 的 DIR_OUT 是 legacy 红冲。）
+     */
+    private static final java.util.Set<Short> REVERSAL_RETURN_TYPES = java.util.Set.of(
+            TYPE_PURCHASE_RECEIPT, TYPE_PURCHASE_RETURN, TYPE_SALES_RETURN,
+            TYPE_SUBCONTRACT_MATERIAL_RETURN, TYPE_SUBCONTRACT_RECEIPT, TYPE_SUBCONTRACT_RETURN);
+
     /** 来源单据类型（source_doc_type）。 */
     public static final String SRC_PURCHASE_RECEIPT = "PURCHASE_RECEIPT";
     public static final String SRC_PURCHASE_RETURN = "PURCHASE_RETURN";
@@ -147,7 +159,10 @@ public class StockService {
             // an operational reservation policy. Every normal outbound path,
             // including returns, transfers and subcontract issues, may only
             // consume stock left after active reservations and safety stock.
-            if (req.movementType() != TYPE_CHECK_LOSS) {
+            // KS-P1-1: 红冲/退货类 DIR_OUT 同样不守 movable（只守上方非负底线）——撤销入库/退供应商
+            // 不应被他人预留卡死；非负底线已防真实负库存。
+            if (req.movementType() != TYPE_CHECK_LOSS
+                    && !REVERSAL_RETURN_TYPES.contains(req.movementType())) {
                 BigDecimal movable = balanceRepo.warehouseAvailableBase(
                         req.warehouseId(), req.goodsId(), req.colorId());
                 if (movable == null) movable = BigDecimal.ZERO;

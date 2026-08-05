@@ -145,6 +145,58 @@ class AuthTokenClearResult {
   final AuthTokenSnapshot tombstone;
 }
 
+/// 模拟身份（admin「切换人」）会话记录：目标用户的 access token + 窗口到期 + 世系。
+///
+/// 独立于员工主令牌记录（[AuthTokenSnapshot]）：admin 的真实令牌全程不动，
+/// 模拟 token 存独立 key，[AuthInterceptor] 按请求选择凭证源。模拟不跨重启。
+class ImpersonationRecord {
+  const ImpersonationRecord({
+    required this.accessToken,
+    required this.windowExpiresAtEpochMs,
+    required this.lineage,
+    this.generation = 1,
+  });
+
+  final String accessToken;
+  final int windowExpiresAtEpochMs;
+  final String lineage;
+  final int generation;
+
+  bool get isExpired =>
+      DateTime.now().millisecondsSinceEpoch >= windowExpiresAtEpochMs;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'version': 1,
+        'accessToken': accessToken,
+        'windowExpiresAtEpochMs': windowExpiresAtEpochMs,
+        'lineage': lineage,
+        'generation': generation,
+      };
+
+  static ImpersonationRecord? tryParse(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final access = decoded['accessToken'];
+      final exp = decoded['windowExpiresAtEpochMs'];
+      final lineage = decoded['lineage'];
+      if (access is! String || access.isEmpty) return null;
+      if (exp is! num) return null;
+      if (lineage is! String || lineage.isEmpty) return null;
+      final gen = decoded['generation'];
+      return ImpersonationRecord(
+        accessToken: access,
+        windowExpiresAtEpochMs: exp.toInt(),
+        lineage: lineage,
+        generation: gen is num ? gen.toInt() : 1,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class _AuthTokenRecordRead {
   const _AuthTokenRecordRead({required this.exists, required this.snapshot});
 
@@ -169,6 +221,10 @@ class SecureStorage {
   static const _keyAccess = 'auth.access_token';
   static const _keyRefresh = 'auth.refresh_token';
   static const _keyAccount = 'auth.login_account';
+
+  // 模拟身份（独立于员工主令牌；admin 真实令牌不动）
+  static const _keyImpersonationRecord = 'auth.impersonation_record.v1';
+  static const _keyImpersonationMode = 'auth.impersonation_mode.v1';
 
   static const _keyVisitorAccess = 'visitor.access_token';
   static const _keyVisitorRefresh = 'visitor.refresh_token';
@@ -402,6 +458,39 @@ class SecureStorage {
     await _storage.delete(key: _keyVisitorAccess);
     await _storage.delete(key: _keyVisitorRefresh);
   }
+
+  // ===== 模拟身份令牌（独立 key，不与员工主令牌记录耦合）=====
+
+  /// 读取当前模拟会话记录（含可能已过期的）。
+  /// 注意：不在此处按过期自动删除——由调用方（AuthInterceptor / 横幅 / 退出）判定过期并
+  /// 触发恢复 admin，避免「读到过期记录→静默回退 admin」导致 UI 与真实身份不一致。
+  Future<ImpersonationRecord?> getImpersonationRecord() async {
+    final raw = await _storage.read(key: _keyImpersonationRecord);
+    return ImpersonationRecord.tryParse(raw);
+  }
+
+  Future<void> saveImpersonationRecord(ImpersonationRecord record) =>
+      _storage.write(
+        key: _keyImpersonationRecord,
+        value: jsonEncode(record.toJson()),
+      );
+
+  Future<String?> getImpersonationModeToken() =>
+      _storage.read(key: _keyImpersonationMode);
+
+  Future<void> saveImpersonationModeToken(String token) =>
+      _storage.write(key: _keyImpersonationMode, value: token);
+
+  /// 清除全部模拟状态（退出 / 到期 / 冷启动丢弃）。
+  Future<void> clearAllImpersonation() async {
+    await _storage.delete(key: _keyImpersonationRecord);
+    await _storage.delete(key: _keyImpersonationMode);
+  }
+
+  /// 仅清模拟会话记录（目标 token），保留 mode token。
+  /// 用于模拟 token 到期但模式窗口仍有效时——admin 可在窗口内免密切换。
+  Future<void> clearImpersonationRecord() =>
+      _storage.delete(key: _keyImpersonationRecord);
 
   Future<_AuthTokenRecordRead> _readStaffTokenRecord() async {
     final raw = await _storage.read(key: _keyTokenRecord);

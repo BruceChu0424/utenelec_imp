@@ -23,4 +23,5 @@ public class EmployeeListItem {
     private boolean departmentManager;
     private int leaderRank;
     private UUID departmentId;   // 所属部门 id（部门管理页"搜员工定位部门"用）
+    private String matchedPlates; // 搜索命中车牌时返回（「、」分隔），否则 null —— ADR-021 按车牌找人
 }

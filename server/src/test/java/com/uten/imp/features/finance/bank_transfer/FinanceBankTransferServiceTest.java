@@ -17,6 +17,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -150,6 +151,32 @@ class FinanceBankTransferServiceTest {
         verify(outgoingUpdate).setParameter("amount", new BigDecimal("-100.0000"));
         verify(incomingUpdate).setParameter("amount", new BigDecimal("-50.0000"));
         verify(reconciliationDelete).executeUpdate();
+    }
+
+    @Test
+    void approveRejectsWhenApproverIsMaker() {
+        UUID outAccount = UUID.randomUUID();
+        UUID inAccount = UUID.randomUUID();
+        UUID currency = UUID.randomUUID();
+        FinanceBankTransfer transfer = transfer((short) 0, outAccount, currency, "1.000000");
+        UUID maker = UUID.randomUUID();
+        transfer.setMakerId(maker); // 制单=审核 同一人
+        FinanceBankTransferLine line = line(transfer.getId(), inAccount, "100.0000", null);
+
+        when(transferRepo.findById(transfer.getId())).thenReturn(Optional.of(transfer));
+        when(lineRepo.findByTransferIdOrderByLineNoAsc(transfer.getId())).thenReturn(List.of(line));
+        when(accountLock.getResultList()).thenReturn(List.of(
+                new Object[] {outAccount, currency, new BigDecimal("1.000000")},
+                new Object[] {inAccount, currency, new BigDecimal("1.000000")}));
+        when(postingCount.getSingleResult()).thenReturn(0L);
+        when(currentUser.requireEmployeeId()).thenReturn(maker); // 审核人=制单人
+
+        com.uten.imp.common.web.ApiException ex = assertThrows(
+                com.uten.imp.common.web.ApiException.class,
+                () -> service.approve(transfer.getId()));
+        // 职责分离：自审自批被拒；状态仍为草稿（事务回滚，未变已审）
+        assertEquals(com.uten.imp.common.web.ErrorCode.BUSINESS, ex.getCode());
+        assertEquals((short) 0, transfer.getStatus());
     }
 
     private static FinanceBankTransfer transfer(

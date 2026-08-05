@@ -114,7 +114,9 @@ INSERT INTO employees (code, full_name, gender, political_status, birth_date, id
 SELECT s.emp_code, s.full_name,
        NULLIF(s.gender, ''), NULLIF(s.political_status, ''), NULLIF(s.birth_date, '')::date,
        CASE WHEN NULLIF(s.id_card, '') IS NOT NULL THEN '身份证' ELSE '其他' END,
-       d.id, p.id, s.hire_date::date, NULLIF(s.confirmed_at, '')::date, 'active', 'regular',
+       d.id, p.id, s.hire_date::date,
+       -- ADR-021：批注有转正日期用批注值；否则默认=入职日期（视为已转正，与 V210 回填同口径）
+       COALESCE(NULLIF(s.confirmed_at, '')::date, s.hire_date::date), 'active', 'regular',
        NULLIF(s.huji, ''), NULLIF(s.residence, ''), 'HR正式名录2026-08'
 FROM hr_roster s
 JOIN departments d ON d.code = s.dept_code
@@ -221,7 +223,7 @@ UNION ALL SELECT '敏感信息行: ' || count(*) FROM employee_sensitive s JOIN 
 UNION ALL SELECT '身份证哈希: ' || count(*) FROM employee_sensitive s JOIN employees e ON e.id = s.employee_id WHERE e.legacy_category = 'HR正式名录2026-08' AND s.id_card_hash IS NOT NULL
 UNION ALL SELECT 'onboard 轨迹: ' || count(*) FROM employment_history h JOIN employees e ON e.id = h.employee_id WHERE e.legacy_category = 'HR正式名录2026-08' AND h.event_type = 'onboard'
 UNION ALL SELECT '薪酬批注行（应 3）: ' || count(*) FROM employee_compensation c JOIN employees e ON e.id = c.employee_id WHERE e.legacy_category = 'HR正式名录2026-08'
-UNION ALL SELECT '有转正日期（应 1）: ' || count(*) FROM employees WHERE legacy_category = 'HR正式名录2026-08' AND confirmed_at IS NOT NULL
+UNION ALL SELECT '有转正日期（应全覆盖 141：批注优先，否则=入职日期）: ' || count(*) FROM employees WHERE legacy_category = 'HR正式名录2026-08' AND confirmed_at IS NOT NULL
 UNION ALL SELECT '已设负责人部门: ' || count(*) FROM departments WHERE manager_id IS NOT NULL
 UNION ALL SELECT '模板岗位已软删（应 111+）: ' || count(*) FROM positions WHERE is_deleted = true AND (code ~ '^(LEAD_[123]|GRP_[123])' OR code ~ '^MGT_(HEAD|DEPUTY|SPECIALIST)')
 UNION ALL SELECT '名册缺失（应 0）: ' || count(*) FROM hr_roster s WHERE NOT EXISTS (SELECT 1 FROM employees e WHERE e.code = s.emp_code);

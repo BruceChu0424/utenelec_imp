@@ -10,6 +10,7 @@ import com.uten.imp.features.master.materialcategory.MaterialCategory;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryService;
 import com.uten.imp.features.master.materialcategory.dto.MaterialCategoryUpdateRequest;
+import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.mouldcategory.MouldCategory;
 import com.uten.imp.features.master.mouldcategory.MouldCategoryRepository;
 import com.uten.imp.features.master.mouldcategory.MouldCategoryService;
@@ -141,13 +142,27 @@ class CategoryHierarchyMoveContractTest {
     }
 
     private static void invokeUpdate(Scenario scenario) throws Exception {
-        Object service = scenario.kind.serviceClass
-                .getConstructor(
-                        scenario.kind.repositoryClass,
-                        EntityManager.class,
-                        TxSessionVars.class,
-                        MasterCodeService.class)
-                .newInstance(scenario.repo, scenario.em, scenario.tx, scenario.masterCodeService);
+        Object service;
+        if (scenario.kind.extraRepositoryClass != null) {
+            // 模具分类服务构造函数额外注入 MouldRepository（移分类前校验模具归属）
+            service = scenario.kind.serviceClass
+                    .getConstructor(
+                            scenario.kind.repositoryClass,
+                            scenario.kind.extraRepositoryClass,
+                            EntityManager.class,
+                            TxSessionVars.class,
+                            MasterCodeService.class)
+                    .newInstance(scenario.repo, mock(scenario.kind.extraRepositoryClass),
+                            scenario.em, scenario.tx, scenario.masterCodeService);
+        } else {
+            service = scenario.kind.serviceClass
+                    .getConstructor(
+                            scenario.kind.repositoryClass,
+                            EntityManager.class,
+                            TxSessionVars.class,
+                            MasterCodeService.class)
+                    .newInstance(scenario.repo, scenario.em, scenario.tx, scenario.masterCodeService);
+        }
         Object request = scenario.kind.requestClass.getConstructor().newInstance();
         scenario.kind.requestClass.getMethod("setName", String.class)
                 .invoke(request, "修改后名称");
@@ -194,37 +209,44 @@ class CategoryHierarchyMoveContractTest {
                 MaterialCategory.class,
                 MaterialCategoryRepository.class,
                 MaterialCategoryService.class,
-                MaterialCategoryUpdateRequest.class),
+                MaterialCategoryUpdateRequest.class,
+                null),
         MOULD(
                 MouldCategory.class,
                 MouldCategoryRepository.class,
                 MouldCategoryService.class,
-                MouldCategoryUpdateRequest.class),
+                MouldCategoryUpdateRequest.class,
+                MouldRepository.class),
         CLIENT(
                 ClientCategory.class,
                 ClientCategoryRepository.class,
                 ClientCategoryService.class,
-                ClientCategoryUpdateRequest.class),
+                ClientCategoryUpdateRequest.class,
+                null),
         SUPPLIER(
                 SupplierCategory.class,
                 SupplierCategoryRepository.class,
                 SupplierCategoryService.class,
-                SupplierCategoryUpdateRequest.class);
+                SupplierCategoryUpdateRequest.class,
+                null);
 
         private final Class<?> entityClass;
         private final Class<?> repositoryClass;
         private final Class<?> serviceClass;
         private final Class<?> requestClass;
+        private final Class<?> extraRepositoryClass;
 
         CategoryKind(
                 Class<?> entityClass,
                 Class<?> repositoryClass,
                 Class<?> serviceClass,
-                Class<?> requestClass) {
+                Class<?> requestClass,
+                Class<?> extraRepositoryClass) {
             this.entityClass = entityClass;
             this.repositoryClass = repositoryClass;
             this.serviceClass = serviceClass;
             this.requestClass = requestClass;
+            this.extraRepositoryClass = extraRepositoryClass;
         }
     }
 

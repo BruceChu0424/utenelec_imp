@@ -1,10 +1,12 @@
 package com.uten.imp.features.finance.bank_transfer;
 
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferDetail;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferListItem;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferQueryFilter;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferSaveRequest;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -41,6 +43,8 @@ import java.util.UUID;
 public class FinanceBankTransferController {
 
     private final FinanceBankTransferService service;
+    private final AuditService audit;
+    private final SecurityContextCurrentUser currentUser;
 
     @GetMapping
     @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
@@ -84,12 +88,20 @@ public class FinanceBankTransferController {
     @PostMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
     public FinanceBankTransferDetail approve(@PathVariable UUID id) {
-        return service.approve(id);
+        FinanceBankTransferDetail result = service.approve(id);
+        // 审计：显式记录"谁审核了这张银行存取款单"（触发器只记 update，业务语义在这里补）。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "finance_bank_transfer_approve", "finance_bank_transfer", String.valueOf(id), "success"));
+        return result;
     }
 
     @PostMapping("/{id}/reverse")
     @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
     public FinanceBankTransferDetail reverse(@PathVariable UUID id) {
-        return service.reverse(id);
+        FinanceBankTransferDetail result = service.reverse(id);
+        // 审计：显式记录"谁红冲了这张银行存取款单"。
+        currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
+                "finance_bank_transfer_reverse", "finance_bank_transfer", String.valueOf(id), "success"));
+        return result;
     }
 }

@@ -51,9 +51,14 @@ abstract final class ApiEndpoints {
       '/org/departments/$id/workforce-overview';
   static const departments = '/org/departments';
 
-  // HR 任务中心（转正/生日/周年/新入职动态提醒）
+  // HR 任务中心（转正/生日/周年/新入职动态提醒 + 软认领 ADR-021）
   static const hrTaskSummary = '/org/hr-tasks/summary';
   static const hrTaskCount = '/org/hr-tasks/count';
+  static const hrTaskClaims = '/org/hr-tasks/claims';
+  static String hrTaskClaim(String taskType, String employeeId) =>
+      '/org/hr-tasks/claims/$taskType/$employeeId';
+  static String hrTaskClaimTakeover(String taskType, String employeeId) =>
+      '/org/hr-tasks/claims/$taskType/$employeeId/takeover';
 
   // 我的部门（工作台卡片，问题 #20；任意员工可用，不走 department:view/employee:view）
   static const myDepartmentTree = '/my-department/tree';
@@ -217,6 +222,13 @@ abstract final class ApiEndpoints {
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
   static String employeeRehire(String id) => '/org/employees/$id/rehire';
   static String employeeAccount(String id) => '/org/employees/$id/account';
+  // 更换手机号（同步登录账号 + 踢会话；employee:pii:edit）—— ADR-021
+  static String employeeChangePhone(String id) =>
+      '/org/employees/$id/change-phone';
+
+  // 员工自助：本人车辆 / 备用手机号（ADR-021；profile:edit:self，仅本人）
+  static const myVehicles = '/profile/me/vehicles';
+  static const myPhones = '/profile/me/phones';
 
   // 账号管理（HR）
   static const adminUsers = '/admin/users';
@@ -263,6 +275,13 @@ abstract final class ApiEndpoints {
 
   /// 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const adminSystemSettings = '/admin/system-settings';
+
+  /// 管理员「切换人 / 模拟身份」：enter(验密码发 modeToken) / start(签发目标 token) / end(审计)。
+  /// 仅 superAdmin；start 由 admin token 调，end 由模拟 token 调（主体=目标）。
+  static const adminImpersonationEnter = '/admin/impersonation/enter';
+  static const adminImpersonationStart = '/admin/impersonation/start';
+  static const adminImpersonationEnd = '/admin/impersonation/end';
+  static const adminImpersonationTargets = '/admin/impersonation/targets';
 
   /// 审批行为 → 唯一负责人设置（workflow_assignment:manage + 密码二次确认）。
   static const adminWorkflowResponsibilities =

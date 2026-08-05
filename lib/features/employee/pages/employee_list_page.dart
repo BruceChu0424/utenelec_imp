@@ -268,7 +268,9 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
                   leaderRank: e.leaderRank,
                 ),
           subtitle:
-              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''} · ${l10n.employeeFieldWorkYears} $workYears',
+              '${e.code} · ${e.departmentName ?? ''} · ${e.positionName ?? ''} · ${l10n.employeeFieldWorkYears} $workYears'
+              // ADR-021：搜索命中车牌时附带显示（谁的车有问题 → 按车牌秒查人）
+              '${e.matchedPlates == null ? '' : ' · 🚗 ${e.matchedPlates}'}',
           avatarText: e.fullName,
           trailing: EmployeeStatusBadge(status: e.status),
           onTap: () async {

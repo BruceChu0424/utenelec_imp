@@ -16,6 +16,7 @@ class EmployeeSummary {
     this.departmentManager = false,
     this.leaderRank = 3,
     this.departmentId,
+    this.matchedPlates,
   });
 
   final String id;
@@ -31,6 +32,7 @@ class EmployeeSummary {
   final bool departmentManager;
   final int leaderRank;
   final String? departmentId; // 所属部门 id（部门管理页"搜员工定位部门"用）
+  final String? matchedPlates; // 搜索命中车牌（「、」分隔）—— ADR-021 按车牌找人
 
   factory EmployeeSummary.fromJson(Map<String, dynamic> json) =>
       EmployeeSummary(
@@ -47,6 +49,7 @@ class EmployeeSummary {
         departmentManager: json['departmentManager'] as bool? ?? false,
         leaderRank: (json['leaderRank'] as num?)?.toInt() ?? 3,
         departmentId: json['departmentId'] as String?,
+        matchedPlates: json['matchedPlates'] as String?,
       );
 }
 
@@ -69,6 +72,62 @@ class EmergencyContactView {
         phone: json['phone'] as String?,
         relationship: json['relationship'] as String?,
       );
+}
+
+/// 员工车辆（ADR-021；全部非必填，车牌明文用于「按车牌找人」）。
+class EmployeeVehicleView {
+  const EmployeeVehicleView({
+    this.id,
+    this.plateNo,
+    this.vehicleType,
+    this.brandModel,
+    this.color,
+    this.remark,
+  });
+  final String? id;
+  final String? plateNo;
+  final String? vehicleType;
+  final String? brandModel;
+  final String? color;
+  final String? remark;
+
+  factory EmployeeVehicleView.fromJson(Map<String, dynamic> json) =>
+      EmployeeVehicleView(
+        id: json['id'] as String?,
+        plateNo: json['plateNo'] as String?,
+        vehicleType: json['vehicleType'] as String?,
+        brandModel: json['brandModel'] as String?,
+        color: json['color'] as String?,
+        remark: json['remark'] as String?,
+      );
+
+  Map<String, dynamic> toInput() => {
+    'plateNo': plateNo,
+    if (vehicleType != null) 'vehicleType': vehicleType,
+    if (brandModel != null) 'brandModel': brandModel,
+    if (color != null) 'color': color,
+    if (remark != null) 'remark': remark,
+  };
+}
+
+/// 员工备用手机号（已按权限脱敏；本人自助为明文）。
+class EmployeePhoneView {
+  const EmployeePhoneView({this.id, this.label, this.phone});
+  final String? id;
+  final String? label;
+  final String? phone;
+
+  factory EmployeePhoneView.fromJson(Map<String, dynamic> json) =>
+      EmployeePhoneView(
+        id: json['id'] as String?,
+        label: json['label'] as String?,
+        phone: json['phone'] as String?,
+      );
+
+  Map<String, dynamic> toInput() => {
+    if (label != null) 'label': label,
+    'phone': phone,
+  };
 }
 
 class EmploymentHistoryView {
@@ -150,6 +209,8 @@ class EmployeeProfile {
     this.accountStatus,
     this.emergencyContacts = const [],
     this.history = const [],
+    this.vehicles = const [],
+    this.phones = const [],
   });
 
   final String id;
@@ -210,6 +271,8 @@ class EmployeeProfile {
 
   final List<EmergencyContactView> emergencyContacts;
   final List<EmploymentHistoryView> history;
+  final List<EmployeeVehicleView> vehicles; // ADR-021
+  final List<EmployeePhoneView> phones; // 备用手机号（按权限脱敏）
 
   factory EmployeeProfile.fromJson(Map<String, dynamic> json) {
     final ec = json['emergencyContacts'] as List<dynamic>? ?? const [];
@@ -267,6 +330,12 @@ class EmployeeProfile {
           .toList(),
       history: hist
           .map((e) => EmploymentHistoryView.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      vehicles: (json['vehicles'] as List<dynamic>? ?? const [])
+          .map((e) => EmployeeVehicleView.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      phones: (json['phones'] as List<dynamic>? ?? const [])
+          .map((e) => EmployeePhoneView.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }

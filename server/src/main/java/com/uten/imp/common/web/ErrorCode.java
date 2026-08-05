@@ -27,6 +27,7 @@ public enum ErrorCode {
     PAYLOAD_TOO_LARGE(413, "请求体过大"),
     VISITOR_NOT_FOUND(404, "访客申请不存在"),
     VISITOR_BLOCKED(403, "访客账号已被限制"),
+    IMPERSONATION_READ_ONLY(403, "模拟身份为只读模式，不允许写 / 审 / 删 / 导出操作"),
     INTERNAL(500, "服务器内部错误");
 
     private final int httpStatus;

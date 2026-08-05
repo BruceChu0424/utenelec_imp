@@ -139,14 +139,18 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail approve(UUID id) {
         tx.bind();
         FinanceOtherIncome o = require(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
         if (o.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "收入单需指定收款账户");
         }
-        o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        if (o.getMakerId() != null && o.getMakerId().equals(approver)) {
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+        }
+        o.setApproverId(approver);
         BigDecimal amountLocal = nz(o.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(o.getAccountId(), amountLocal);
@@ -162,7 +166,7 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = require(id);
-        em.lock(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        em.refresh(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -209,7 +213,7 @@ public class FinanceOtherIncomeService {
                 .setParameter("sid", o.getId())
                 .setParameter("acc", o.getAccountId())
                 .setParameter("inAmt", amountLocal)
-                .setParameter("bd", OffsetDateTime.now())
+                .setParameter("bd", o.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime())
                 .setParameter("sd", OffsetDateTime.now())
                 .setParameter("sr", o.getRemark())
                 .executeUpdate();
@@ -248,6 +252,10 @@ public class FinanceOtherIncomeService {
         List<FinanceOtherIncomeItemDto> out = new ArrayList<>(inputs.size());
         int auto = 1;
         for (FinanceOtherIncomeItemInput l : inputs) {
+            // 总账贷方按行 income_style_id 过账，落库前强校验非空（空则借贷不平衡）
+            if (l.getIncomeStyleId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "收入明细必须指定收入类别（income_style_id）");
+            }
             FinanceOtherIncomeItem it = new FinanceOtherIncomeItem();
             it.setIncomeId(o.getId());
             it.setBillNo(o.getBillNo());

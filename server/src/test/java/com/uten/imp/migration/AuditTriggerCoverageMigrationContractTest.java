@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 202;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 218;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
             MIGRATION_ROOT.resolve("V202__refresh_arrival_exception_audit_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =

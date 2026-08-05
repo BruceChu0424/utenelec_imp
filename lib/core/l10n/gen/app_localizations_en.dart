@@ -618,7 +618,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeFabOnboard => 'Onboard';
 
   @override
-  String get employeeSearchHint => 'Search by code or name';
+  String get employeeSearchHint => 'Search by code, name or plate';
 
   @override
   String get employeeEmpty => 'No employees yet';
@@ -2442,4 +2442,60 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get basicDataHubPaymentStyleSub => 'Six accounting classes';
+
+  @override
+  String get impersonationSwitchPerson => 'Switch person';
+
+  @override
+  String get impersonationEnterPasswordTitle => 'Confirm switch person';
+
+  @override
+  String get impersonationEnterPasswordHint =>
+      'For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.';
+
+  @override
+  String get impersonationPasswordLabel => 'Login password';
+
+  @override
+  String get impersonationConfirm => 'Confirm';
+
+  @override
+  String get impersonationTargetPickerTitle => 'Select an employee to view';
+
+  @override
+  String get impersonationSearchHint => 'Search name / employee code';
+
+  @override
+  String impersonationBannerTitle(String name) {
+    return 'Viewing as $name (read-only)';
+  }
+
+  @override
+  String get impersonationBannerSwitch => 'Switch';
+
+  @override
+  String get impersonationBannerExit => 'Exit';
+
+  @override
+  String impersonationRemainingMinutes(int count) {
+    return '$count min left';
+  }
+
+  @override
+  String get impersonationWrongPassword => 'Wrong password';
+
+  @override
+  String get impersonationExited => 'Exited impersonation';
+
+  @override
+  String get impersonationWindowExpired => 'Impersonation window expired';
+
+  @override
+  String get impersonationRecent => 'Recent';
+
+  @override
+  String get impersonationNoTargets => 'No employees available to switch';
+
+  @override
+  String get impersonationStartFailed => 'Switch failed';
 }

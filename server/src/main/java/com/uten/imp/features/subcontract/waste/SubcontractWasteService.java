@@ -182,12 +182,21 @@ public class SubcontractWasteService {
                         .toList());
         for (SubcontractWasteItem it : items) {
             // 发料审核已经 DIR_OUT；损耗发生在供应商处，只核销在外料。
+            // 守恒上限（CAS）：已退 + 已损耗 + 本次 ≤ 已发，原子挡超损耗（并发两单也只过一笔，避免幽灵短缺）。
             if (it.getMaterialIssueItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_material_issue_items SET wasted_qty = COALESCE(wasted_qty,0) + :q WHERE id = :id")
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_material_issue_items
+                        SET wasted_qty = COALESCE(wasted_qty,0) + :q
+                        WHERE id = :id
+                          AND COALESCE(qty,0) >= COALESCE(returned_qty,0) + COALESCE(wasted_qty,0) + :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外损耗量超过可损耗余量（已发 − 已退 − 已损耗），禁止超损耗");
+                }
             }
         }
         // 不立应付：损耗是加工过程损耗
@@ -218,15 +227,26 @@ public class SubcontractWasteService {
         }
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractWasteItem it : items) {
-            if (historicalWarehouseOutItems.contains(it.getId())) {
+            // 历史(legacy)单：approve 写过公司仓 DIR_OUT 但未写 wasted_qty；红冲只补 DIR_IN，不减 wasted_qty。
+            // V189+ 单：approve 只写 wasted_qty 未动库存；红冲按 CAS 减回 wasted_qty（防负数/并发改动）。
+            boolean legacy = historicalWarehouseOutItems.contains(it.getId());
+            if (legacy) {
                 applyMovement(r, it, StockService.DIR_IN, now, null);
             }
-            if (it.getMaterialIssueItemId() != null) {
-                em.createNativeQuery(
-                        "UPDATE subcontract_material_issue_items SET wasted_qty = COALESCE(wasted_qty,0) - :q WHERE id = :id")
+            if (it.getMaterialIssueItemId() != null && !legacy) {
+                int updated = em.createNativeQuery("""
+                        UPDATE subcontract_material_issue_items
+                        SET wasted_qty = COALESCE(wasted_qty,0) - :q
+                        WHERE id = :id
+                          AND COALESCE(wasted_qty,0) >= :q
+                        """)
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getMaterialIssueItemId())
                         .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外损耗红冲量超过已损耗量（可能已被其它单据改动），禁止负数");
+                }
             }
         }
         r.setStatus(STATUS_REVERSED);

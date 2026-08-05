@@ -54,4 +54,33 @@ public final class NestedDtos {
         private LocalDate startDate;
         private LocalDate endDate;
     }
+
+    /** 员工车辆（ADR-021；车牌明文，employee:view 可见，用于「按车牌找人」）。 */
+    @Getter
+    @AllArgsConstructor
+    public static class VehicleDto {
+        private UUID id;
+        private String plateNo;
+        private String vehicleType;
+        private String brandModel;
+        private String color;
+        private String remark;
+    }
+
+    /** 备用手机号（employee:pii:view 明文，否则掩码）。 */
+    @Getter
+    @AllArgsConstructor
+    public static class PhoneDto {
+        private UUID id;
+        private String label;
+        private String phone;
+    }
+
+    /** 车辆写入项（整体替换语义；车牌必填，其余非必填）。 */
+    public record VehicleInput(
+            String plateNo, String vehicleType, String brandModel,
+            String color, String remark, Integer sortOrder) {}
+
+    /** 备用手机号写入项（整体替换语义；号码必填，标签默认「备用」）。 */
+    public record PhoneInput(String label, String phone, Integer sortOrder) {}
 }

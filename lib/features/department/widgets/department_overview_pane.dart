@@ -13,6 +13,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -367,8 +368,12 @@ class _DepartmentOverviewPaneState
                   onEdit: () => widget.onEdit(info),
                   onDelete: widget.onDelete,
                   extraActions: [
-                    // 花名册/架构图需要拉取部门员工，权限与员工列表一致
-                    if (widget.canViewEmployees) ...[
+                    // 架构图查看与员工列表一致；打印花名册属文档下载，
+                    // 按 ADR-021 独立 employee:export 权限点门控（无权限隐藏）
+                    if (widget.canViewEmployees &&
+                        ref
+                            .watch(currentPermissionsProvider)
+                            .contains(Perm.employeeExport))
                       MasterDetailCardAction(
                         icon: Icons.print_outlined,
                         label: '打印花名册',
@@ -378,6 +383,7 @@ class _DepartmentOverviewPaneState
                           node: widget.node,
                         ),
                       ),
+                    if (widget.canViewEmployees)
                       MasterDetailCardAction(
                         icon: Icons.account_tree_outlined,
                         label: '部门架构图',
@@ -386,7 +392,6 @@ class _DepartmentOverviewPaneState
                           node: widget.node,
                         ),
                       ),
-                    ],
                     if (selectable)
                       MasterDetailCardAction(
                         icon: Icons.badge_outlined,

@@ -140,7 +140,18 @@ public class EmployeeOnboardingService {
         e.setEmail(p.email());
         e.setPaperArchiveNo(em.paperArchiveNo());
         if ("active".equals(em.status())) {
-            e.setConfirmedAt(BusinessTime.today());
+            // ADR-021：新数据要求——正式入职必须登记转正日期（老数据已由 V210 按入职日期回填）
+            if (em.confirmedAt() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "正式入职的员工必须填写转正日期；试用期员工请选择「试用」状态");
+            }
+            if (em.confirmedAt().isAfter(BusinessTime.today())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "转正日期不能晚于今天");
+            }
+            if (em.confirmedAt().isBefore(em.hireDate())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "转正日期不能早于入职日期");
+            }
+            e.setConfirmedAt(em.confirmedAt());
         }
         empRepo.save(e);
 

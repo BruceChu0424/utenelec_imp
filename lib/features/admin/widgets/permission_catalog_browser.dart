@@ -31,6 +31,10 @@ class PermissionCatalogBrowser extends StatefulWidget {
     this.onDisableGroup,
     this.enableGroupLabel = '本组全部授权',
     this.disableGroupLabel = '本组全部设为未授权',
+    this.onEnableAll,
+    this.onDisableAll,
+    this.enableAllLabel = '全部授权',
+    this.disableAllLabel = '全部收回',
   });
 
   final List<PermissionCatalogGroup> groups;
@@ -44,6 +48,14 @@ class PermissionCatalogBrowser extends StatefulWidget {
   final ValueChanged<List<AdminPermission>>? onDisableGroup;
   final String enableGroupLabel;
   final String disableGroupLabel;
+
+  /// 跨分组「全部授权/全部收回」回调。批量操作始终作用于完整目录
+  /// （[groups] 的全部 permissions），不受当前搜索/状态筛选影响——与
+  /// [onEnableGroup] 的整组批量原则一致。为 null 时对应按钮不渲染。
+  final ValueChanged<List<AdminPermission>>? onEnableAll;
+  final ValueChanged<List<AdminPermission>>? onDisableAll;
+  final String enableAllLabel;
+  final String disableAllLabel;
 
   @override
   State<PermissionCatalogBrowser> createState() =>
@@ -261,6 +273,29 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
             ),
           ],
         ),
+        if ((widget.onEnableAll != null || widget.onDisableAll != null) &&
+            allPermissions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s4),
+            child: Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s4,
+              children: [
+                if (widget.onEnableAll != null)
+                  FilledButton.tonalIcon(
+                    onPressed: () => widget.onEnableAll!(allPermissions),
+                    icon: const Icon(Icons.done_all_rounded, size: 18),
+                    label: Text(widget.enableAllLabel),
+                  ),
+                if (widget.onDisableAll != null)
+                  TextButton.icon(
+                    onPressed: () => widget.onDisableAll!(allPermissions),
+                    icon: const Icon(Icons.remove_done_outlined, size: 18),
+                    label: Text(widget.disableAllLabel),
+                  ),
+              ],
+            ),
+          ),
         const SizedBox(height: UtenSpacing.s12),
         if (groups.isEmpty)
           UtenEmpty(

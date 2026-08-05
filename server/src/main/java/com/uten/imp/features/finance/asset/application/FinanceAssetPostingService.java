@@ -441,7 +441,9 @@ public class FinanceAssetPostingService {
                                    AND l.status='ACTIVE' AND l.is_deleted=false),b.start_period)
                 FROM finance_asset_books b JOIN fixed_assets a ON a.id=b.asset_id
                 WHERE b.book_type=:book AND b.status='ACTIVE' AND b.posting_enabled=true
-                  AND b.start_period<=:period AND b.accumulated_amount<b.depreciable_amount
+                  AND b.start_period<=:period
+                  AND :period <= to_char(to_date(b.start_period,'YYYY-MM') + interval '1 month'*(b.useful_months-1), 'YYYY-MM')
+                  AND b.accumulated_amount<b.depreciable_amount
                   AND a.lifecycle_status IN ('ACTIVE','DISPOSAL_PENDING')
                   AND b.is_deleted=false AND a.is_deleted=false
                   AND NOT EXISTS (SELECT 1 FROM fa_depreciation_log l WHERE l.asset_id=a.id
@@ -452,9 +454,13 @@ public class FinanceAssetPostingService {
         List<Candidate> result = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             BigDecimal original = decimal(r[4]), accumulated = decimal(r[5]), opening = decimal(r[6]);
-            BigDecimal remaining = decimal(r[7]).subtract(accumulated);
-            BigDecimal regular = decimal(r[7]).divide(BigDecimal.valueOf(number(r[8]).longValue()), 4, RoundingMode.HALF_UP);
-            BigDecimal amount = regular.min(remaining).setScale(4, RoundingMode.HALF_UP);
+            BigDecimal depreciable = decimal(r[7]);
+            long usefulMonths = number(r[8]).longValue();
+            BigDecimal remaining = depreciable.subtract(accumulated);
+            BigDecimal regular = depreciable.divide(BigDecimal.valueOf(usefulMonths), 4, RoundingMode.HALF_UP);
+            String finalPeriod = YearMonth.parse(text(r[9])).plusMonths(usefulMonths - 1L).toString();
+            BigDecimal amount = (period.equals(finalPeriod) ? remaining : regular.min(remaining))
+                    .setScale(4, RoundingMode.HALF_UP);
             result.add(new Candidate("FIXED_ASSET", uuid(r[0]), uuid(r[1]), null, null, text(r[2]), text(r[3]),
                     original, opening, amount, accumulated.add(amount), opening.subtract(amount),
                     uuid(r[12]), uuid(r[11]), uuid(r[10]), uuid(r[13]), uuid(r[14]),

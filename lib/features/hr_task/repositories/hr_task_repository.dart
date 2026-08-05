@@ -19,6 +19,22 @@ class HrTaskRepository {
     final json = await _api.get(ApiEndpoints.hrTaskCount);
     return (json['count'] as num?)?.toInt() ?? 0;
   }
+
+  // ===== 任务软认领（ADR-021） =====
+
+  /// 认领（幂等：自己已认领 = 续租；他人在租约内 = 409）。
+  Future<void> claim(String taskType, String employeeId) => _api.post(
+    ApiEndpoints.hrTaskClaims,
+    body: {'taskType': taskType, 'employeeId': employeeId},
+  );
+
+  /// 释放（本人或持 employee:edit 者；无有效认领时幂等成功）。
+  Future<void> release(String taskType, String employeeId) =>
+      _api.delete(ApiEndpoints.hrTaskClaim(taskType, employeeId));
+
+  /// 接管（employee:edit）：原认领强制释放，转由我认领。
+  Future<void> takeover(String taskType, String employeeId) =>
+      _api.post(ApiEndpoints.hrTaskClaimTakeover(taskType, employeeId));
 }
 
 final hrTaskRepositoryProvider = Provider<HrTaskRepository>(

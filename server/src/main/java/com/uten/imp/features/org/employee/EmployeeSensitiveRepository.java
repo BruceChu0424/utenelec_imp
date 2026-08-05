@@ -17,4 +17,7 @@ public interface EmployeeSensitiveRepository extends JpaRepository<EmployeeSensi
 
     /** 身份证号 HMAC 查重，排除指定员工（更新时）。 */
     boolean existsByIdCardHashAndEmployeeIdNot(String idCardHash, UUID employeeId);
+
+    /** 手机号 HMAC 查重，排除指定员工（更换手机号时）。 */
+    boolean existsByPhoneHashAndEmployeeIdNot(String phoneHash, UUID employeeId);
 }

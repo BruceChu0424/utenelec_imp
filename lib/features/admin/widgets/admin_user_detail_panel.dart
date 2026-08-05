@@ -20,6 +20,7 @@ import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../authorize_all_excluded.dart';
 import '../models/admin_models.dart';
 import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
@@ -424,6 +425,19 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       onDisableGroup: data.superAdmin
           ? null
           : (permissions) => _setPermissions(data, permissions, false),
+      onEnableAll: data.superAdmin
+          ? null
+          : (permissions) => _setPermissionCodes(
+              data,
+              permissions
+                  .where((p) => !kAuthorizeAllExcluded.contains(p.code))
+                  .map((p) => p.code),
+              true,
+            ),
+      onDisableAll: data.superAdmin
+          ? null
+          : (permissions) =>
+              _setPermissionCodes(data, permissions.map((p) => p.code), false),
       itemBuilder: (context, permission) => _permRow(data, permission),
     );
   }

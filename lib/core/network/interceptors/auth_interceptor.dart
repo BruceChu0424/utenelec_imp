@@ -24,6 +24,7 @@ class AuthInterceptor extends Interceptor {
   static const _requestLineageKey = '_utenAuthRequestLineage';
   static const _requestIntentKey = '_utenAuthRequestIntent';
   static const _autoAuthorizationKey = '_utenAuthHeaderInjected';
+  static const _usedImpersonationKey = '_utenAuthUsedImpersonation';
   static const _profileGenerationKey = '_utenAuthTokenGeneration';
   static const _profileIntentKey = '_utenAuthIntentGeneration';
   static const _profileLineageKey = '_utenAuthSessionLineage';
@@ -39,8 +40,37 @@ class AuthInterceptor extends Interceptor {
       // into these credential exchanges.
       _removeAuthorizationHeader(options);
       options.extra[_autoAuthorizationKey] = false;
+      options.extra[_usedImpersonationKey] = false;
       handler.next(options);
       return;
+    }
+
+    // 模拟身份凭证路由：enter/start/targets 是管理端点，始终用 admin 凭证；
+    // 其余请求若模拟激活（记录在且未过期）则带模拟 token（主体=目标）。
+    // end 不是管理端点：它在模拟中调用，需带模拟 token（后端按 imp 审计）。
+    final isManagement = _isImpersonationManagementPath(options.path);
+    final impersonation =
+        isManagement ? null : await storage.getImpersonationRecord();
+
+    if (impersonation != null && !impersonation.isExpired) {
+      options.extra[_requestLineageKey] = 'imp:${impersonation.lineage}';
+      options.extra[_requestIntentKey] = null;
+      options.extra[_usedImpersonationKey] = true;
+      options.extra[_autoAuthorizationKey] = false;
+      if (_authorizationHeader(options) == null) {
+        options.headers['Authorization'] =
+            'Bearer ${impersonation.accessToken}';
+        options.extra[_autoAuthorizationKey] = true;
+      }
+      handler.next(options);
+      return;
+    }
+
+    if (impersonation != null && impersonation.isExpired) {
+      // 模拟窗口已到期：主动触发恢复 admin，避免读到过期记录后静默回退 admin
+      // 导致「UI 仍显示目标、但请求以 admin 发（只读守卫失效）」的不一致。
+      // 本请求按 admin 凭证继续（不附带过期 token）；notifier 监听后清记录 + 恢复。
+      SessionEventBus.instance.impersonationExpired();
     }
 
     final current = await storage.getAuthTokenSnapshot();
@@ -52,6 +82,7 @@ class AuthInterceptor extends Interceptor {
       options.extra[_requestIntentKey] = current.intentGeneration;
       options.extra[_autoAuthorizationKey] = false;
     }
+    options.extra[_usedImpersonationKey] = false;
 
     final requestLineage = options.extra[_requestLineageKey] as String?;
     if (alreadyCaptured &&
@@ -83,7 +114,19 @@ class AuthInterceptor extends Interceptor {
     }
 
     try {
-      if (await _requestSessionMatches(options)) {
+      final usedImpersonation = options.extra[_usedImpersonationKey] == true;
+      if (usedImpersonation) {
+        // 模拟请求：当前模拟世系若已变（切换/退出）则丢弃旧响应，避免串身份。
+        // 后端只读守卫已杜绝跨账号写串，此处仅防读到上一个目标的陈旧数据。
+        final currentImp = await storage.getImpersonationRecord();
+        final requestLineage = options.extra[_requestLineageKey] as String?;
+        if (currentImp == null ||
+            'imp:${currentImp.lineage}' != requestLineage) {
+          handler.reject(_sessionChangedError(options));
+          return;
+        }
+        handler.next(response);
+      } else if (await _requestSessionMatches(options)) {
         handler.next(response);
       } else {
         handler.reject(_sessionChangedError(options));
@@ -100,6 +143,20 @@ class AuthInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     final status = err.response?.statusCode;
     final path = err.requestOptions.path;
+    final usedImpersonation =
+        err.requestOptions.extra[_usedImpersonationKey] == true;
+
+    // 模拟 token 401（到期 / 失效）：退出模拟、恢复 admin。不刷新（模拟 token 无
+    // refresh）、不登出 admin 主会话——admin 真实令牌始终有效。
+    if (status == 401 && usedImpersonation) {
+      try {
+        await storage.clearAllImpersonation();
+      } catch (_) {}
+      SessionEventBus.instance.impersonationExpired();
+      handler.next(err);
+      return;
+    }
+
     if (status != 401 ||
         _isPublicAuthExchange(path) ||
         err.requestOptions.extra['retried'] == true) {
@@ -365,6 +422,16 @@ class AuthInterceptor extends Interceptor {
       path.endsWith('/auth/login') ||
       path.endsWith('/auth/refresh') ||
       path.endsWith('/auth/logout');
+
+  /// 模拟管理端点（enter/start/targets）始终用 admin 凭证——即便正在模拟目标 A，
+  /// 切换/搜索仍以 admin 身份发请求（后端按 superAdmin 放行）。
+  /// end 不在其中：它在模拟中调用，需带模拟 token（主体=目标）。
+  /// 用显式白名单（而非子串匹配），避免将来新增路径被误判为管理端点。
+  static bool _isImpersonationManagementPath(String path) {
+    return path.endsWith('/admin/impersonation/enter') ||
+        path.endsWith('/admin/impersonation/start') ||
+        path.endsWith('/admin/impersonation/targets');
+  }
 
   static Object? _authorizationHeader(RequestOptions options) {
     for (final entry in options.headers.entries) {

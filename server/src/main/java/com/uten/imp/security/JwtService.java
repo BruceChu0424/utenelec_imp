@@ -61,6 +61,53 @@ public class JwtService {
                 .compact();
     }
 
+    /**
+     * 超级管理员「切换人」用的模拟身份 token。
+     *
+     * <p>主体仍是目标用户（sub=目标、av/ae 按目标校验），下游权限/数据范围全部按目标解析。
+     * 额外的 {@code imp} claim 记录真实操作人（admin），供只读守卫与审计区分。过期时间由调用方
+     * 按「模拟窗口」封顶，短于普通 access token 也可。
+     */
+    public String issueImpersonationAccess(UUID targetUserId, long authVersion, long authorizationEpoch,
+                                           UUID adminUserId, Instant expiresAt) {
+        Instant now = Instant.now();
+        Instant exp = expiresAt.isBefore(now) ? now.plusSeconds(1) : expiresAt;
+        return Jwts.builder()
+                .issuer(props.getIssuer())
+                .subject(targetUserId.toString())
+                .claim("av", authVersion)
+                .claim("ae", authorizationEpoch)
+                .claim("typ", "staff")
+                .claim("imp", adminUserId.toString())
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(exp))
+                .signWith(key)
+                .compact();
+    }
+
+    /**
+     * 模拟模式凭证（proof that the admin recently re-confirmed their password）。
+     * 自包含、无状态：{@code typ=impersonation-mode}、{@code sub=adminId}、签名 + 过期。
+     * 限时窗口内凭它在 /start 反复切换不同目标，无需再输密码。
+     */
+    public String issueModeToken(UUID adminUserId, Instant expiresAt) {
+        Instant now = Instant.now();
+        Instant exp = expiresAt.isBefore(now) ? now.plusSeconds(1) : expiresAt;
+        return Jwts.builder()
+                .issuer(props.getIssuer())
+                .subject(adminUserId.toString())
+                .claim("typ", "impersonation-mode")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(exp))
+                .signWith(key)
+                .compact();
+    }
+
+    /** 模拟模式窗口时长（秒），默认 15 分钟，可在 system_settings.impersonation_window_minutes 调整。 */
+    public long getImpersonationWindowSeconds() {
+        return settings.readLong("impersonation_window_minutes", 15) * 60;
+    }
+
     /** 访客访问 JWT（typ=visitor，subject=visitorId）。 */
     public String issueVisitorAccess(UUID visitorId, String visitorNo, String avatarSeed,
                                      Set<String> permissions) {

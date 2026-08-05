@@ -18,6 +18,7 @@ class UtenLocaleSwitcher extends ConsumerWidget {
     final options = <(Locale, String, String)>[
       (chinaLocale, '简体中文（中国大陆）', '中文'),
       (englishLocale, 'English', '英文'),
+      (koreanLocale, '한국어', '한국어'),
     ];
 
     return RadioGroup<String>(

@@ -793,13 +793,15 @@ class _SubcontractDocDetailPageState
           ),
         ),
         padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Center(
-          child: Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: children,
-          ),
+        // 底栏必须纵向自收缩：Center/Align 会在宽松约束下撑满整个可用高度，
+        // 把 Scaffold body 挤成 0 高（详情内容全消失）。Wrap 自身按内容取高，
+        // 用 alignment 水平居中即可。
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: children,
         ),
       ),
     );

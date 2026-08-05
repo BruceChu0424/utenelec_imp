@@ -50,6 +50,13 @@ public class EmployeeController {
         return onboardingService.onboard(req);
     }
 
+    @PostMapping("/{id}/account")
+    @PreAuthorize("hasAuthority('account:support')")
+    public EmployeeOnboardingResult provisionAccount(@PathVariable UUID id) {
+        // 给批量导入等「未开通账号」的存量员工补开登录账号（账号=手机号，初始密码=身份证后6位）。
+        return onboardingService.provisionAccount(id);
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:edit')")
     public EmployeeDetail update(@PathVariable UUID id, @Valid @RequestBody UpdateEmployeeRequest req) {

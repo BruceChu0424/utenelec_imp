@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../network/api_error.dart';
 import '../network/api_exception.dart';
+import 'uten_top_banner_card.dart';
 
 /// 通知类型。
 enum AppNotificationKind { success, error, warning, info }
@@ -258,23 +259,13 @@ class AppNotificationHost extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(appNotificationProvider);
     if (list.isEmpty) return const SizedBox.shrink();
-    final media = MediaQuery.of(context);
-    return IgnorePointer(
-      ignoring: false,
-      child: Padding(
-        padding: EdgeInsets.only(
-          top: media.padding.top + 8,
-          left: 16,
-          right: 16,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final n in list)
-              _AppNotificationBanner(key: ValueKey(n.id), notification: n),
-          ],
-        ),
-      ),
+    // 卡片自带 SafeArea（含状态栏留白）+ Center，宿主只负责纵向堆叠。
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final n in list)
+          _AppNotificationBanner(key: ValueKey(n.id), notification: n),
+      ],
     );
   }
 }
@@ -330,20 +321,22 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     final theme = Theme.of(context);
     final n = widget.notification;
     final scheme = theme.colorScheme;
+    // 柔和容器色（与连接恢复横幅同语言）。注意：本主题 primary/secondary/
+    // tertiaryContainer 同为 teal，success 与 warning 同底色，靠语义图标区分。
     final (bg, fg, icon) = switch (n.kind) {
       AppNotificationKind.success => (
-        scheme.primary,
-        scheme.onPrimary,
+        scheme.primaryContainer,
+        scheme.onPrimaryContainer,
         Icons.check_circle_outline_rounded,
       ),
       AppNotificationKind.error => (
-        scheme.error,
-        scheme.onError,
+        scheme.errorContainer,
+        scheme.onErrorContainer,
         Icons.error_outline_rounded,
       ),
       AppNotificationKind.warning => (
-        scheme.tertiary,
-        scheme.onTertiary,
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
         Icons.warning_amber_rounded,
       ),
       AppNotificationKind.info => (
@@ -367,77 +360,58 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
             onDismissed: (_) {
               ref.read(appNotificationProvider.notifier).dismiss(n.id);
             },
-            child: Semantics(
-              container: true,
-              liveRegion: true,
-              explicitChildNodes: true,
-              child: Material(
-                color: bg,
-                elevation: 6,
-                shadowColor: fg.withValues(alpha: 0.25),
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
-                  onTap: n.onTap == null
-                      ? _dismiss
-                      : () {
-                          n.onTap!();
-                          _dismiss();
-                        },
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(n.icon ?? icon, color: fg, size: 22),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (n.title != null && n.title!.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
-                                  child: Text(
-                                    n.title!,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      color: fg,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              Text(
-                                n.message,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: fg,
-                                ),
-                              ),
-                              if (n.fieldErrors != null &&
-                                  n.fieldErrors!.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: fg.withValues(alpha: 0.85),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
+            // 视觉外壳与连接横幅共用 UtenTopBannerCard（居中/maxWidth720/圆角14/
+            // elevation4/柔和容器色）。语义默认 explicitChildNodes（省略
+            // semanticLabel）让标题/正文被分别朗读。crossAxisAlignment 走默认
+            // center，图标/关闭钮与正文上下居中（与连接横幅一致；IconButton
+            // 约 40dp 高，center 才不会让内容贴顶）。
+            // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
+            child: UtenTopBannerCard(
+              background: bg,
+              foreground: fg,
+              icon: n.icon ?? icon,
+              onTap: n.onTap == null
+                  ? _dismiss
+                  : () {
+                      n.onTap!();
+                      _dismiss();
+                    },
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (n.title != null && n.title!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        n.title!,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: fg,
+                          fontWeight: FontWeight.w600,
                         ),
-                        IconButton(
-                          icon: Icon(Icons.close_rounded, color: fg, size: 18),
-                          onPressed: _dismiss,
-                          tooltip: '关闭通知',
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
+                      ),
                     ),
+                  Text(
+                    n.message,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: fg),
                   ),
-                ),
+                  if (n.fieldErrors != null && n.fieldErrors!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: fg.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              trailing: IconButton(
+                icon: Icon(Icons.close_rounded, color: fg, size: 18),
+                onPressed: _dismiss,
+                tooltip: '关闭通知',
+                visualDensity: VisualDensity.compact,
               ),
             ),
           ),

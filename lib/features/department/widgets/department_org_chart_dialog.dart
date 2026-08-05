@@ -170,7 +170,6 @@ class _DepartmentOrgChartDialogState
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   UtenButton(
-                    type: UtenButtonType.filled,
                     icon: Icons.print_outlined,
                     isLoading: _printing,
                     onPressed: (_loading || _error != null) ? null : _printPdf,

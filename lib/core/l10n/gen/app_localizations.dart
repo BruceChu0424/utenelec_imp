@@ -2128,6 +2128,18 @@ abstract class AppLocalizations {
   /// **'删除档案'**
   String get employeeActionDelete;
 
+  /// No description provided for @employeeActionProvision.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通登录账号'**
+  String get employeeActionProvision;
+
+  /// No description provided for @employeeProvisionConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？'**
+  String get employeeProvisionConfirm;
+
   /// No description provided for @employeeTransferTitle.
   ///
   /// In zh, this message translates to:

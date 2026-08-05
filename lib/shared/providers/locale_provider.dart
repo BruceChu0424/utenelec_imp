@@ -7,7 +7,8 @@ import 'shared_providers.dart';
 /// 支持的语言列表
 const chinaLocale = Locale('zh', 'CN');
 const englishLocale = Locale('en', 'US');
-const supportedLocales = [chinaLocale, englishLocale];
+const koreanLocale = Locale('ko', 'KR');
+const supportedLocales = [chinaLocale, englishLocale, koreanLocale];
 
 class LocaleNotifier extends Notifier<Locale> {
   static const _key = 'locale';
@@ -18,7 +19,8 @@ class LocaleNotifier extends Notifier<Locale> {
     final saved = prefs.getString(_key);
     final locale = switch (saved) {
       'en' || 'en_US' || 'en-US' => englishLocale,
-      // 兼容历史保存值；首次启动也固定简体中文，不被英文系统语言误导。
+      'ko' || 'ko_KR' || 'ko-KR' => koreanLocale,
+      // 兼容历史保存值；首次启动也固定简体中文，不被系统语言误导。
       _ => chinaLocale,
     };
     Intl.defaultLocale = locale.toString();
@@ -26,9 +28,11 @@ class LocaleNotifier extends Notifier<Locale> {
   }
 
   Future<void> set(Locale locale) async {
-    final normalized = locale.languageCode == 'en'
-        ? englishLocale
-        : chinaLocale;
+    final normalized = switch (locale.languageCode) {
+      'en' => englishLocale,
+      'ko' => koreanLocale,
+      _ => chinaLocale,
+    };
     await ref
         .read(sharedPreferencesProvider)
         .setString(_key, normalized.toString());

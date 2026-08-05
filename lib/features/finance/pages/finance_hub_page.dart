@@ -13,6 +13,7 @@ import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -37,6 +38,7 @@ class FinanceHubPage extends ConsumerWidget {
       ref.invalidate(financeArrivalExceptionCountProvider);
     });
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
     final canViewApprovals =
@@ -51,7 +53,7 @@ class FinanceHubPage extends ConsumerWidget {
         .toList(growable: false);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '钱流管理',
+        title: l10n.financeHubTitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
@@ -66,7 +68,7 @@ class FinanceHubPage extends ConsumerWidget {
                     icon: Icons.manage_accounts_outlined,
                     onPressed: () =>
                         goFrom(context, FinanceWorkflowRoutes.responsibilities),
-                    child: const Text('审批负责人设置'),
+                    child: Text(l10n.financeHubApprovalOwners),
                   ),
                 ),
               ]
@@ -83,20 +85,20 @@ class FinanceHubPage extends ConsumerWidget {
             ),
             children: [
               if (canViewApprovals) ...[
-                _section(context, theme, '任务中心', const [
+                _section(context, theme, l10n.hubSectionTaskCenter, [
                   _Entry(
                     icon: Icons.approval_outlined,
-                    label: '订货审批任务中心',
-                    description: '只显示明确分配给我的采购 / 委外订货单',
+                    label: l10n.financeHubTaskApproval,
+                    description: l10n.financeHubTaskApprovalSub,
                     location: FinanceWorkflowRoutes.approvalTasks,
-                    badge: FinanceProcurementApprovalBadge(size: 16),
+                    badge: const FinanceProcurementApprovalBadge(size: 16),
                   ),
                   _Entry(
                     icon: Icons.local_shipping_outlined,
-                    label: '超量到货审批',
-                    description: '审核实际到货超出已批准订货数量的任务',
+                    label: l10n.financeHubTaskOverDelivery,
+                    description: l10n.financeHubTaskOverDeliverySub,
                     location: FinanceWorkflowRoutes.arrivalExceptionTasks,
-                    badge: FinanceArrivalExceptionBadge(showLabel: true),
+                    badge: const FinanceArrivalExceptionBadge(showLabel: true),
                   ),
                 ]),
                 const SizedBox(height: UtenSpacing.s16),
@@ -104,48 +106,48 @@ class FinanceHubPage extends ConsumerWidget {
               _section(
                 context,
                 theme,
-                '钱流管理',
+                l10n.financeHubTitle,
                 visible([
                   _Entry(
                     icon: Icons.south_west_outlined,
-                    label: '销售收款',
-                    description: '核销应收 / 直接收款',
+                    label: l10n.financeHubDocReceipt,
+                    description: l10n.financeHubDocReceiptSub,
                     location: RoutePath.financeDocNew('receipts'),
                   ),
                   _Entry(
                     icon: Icons.north_east_outlined,
-                    label: '采购付款',
-                    description: '核销应付 / 直接付款',
+                    label: l10n.financeHubDocPayment,
+                    description: l10n.financeHubDocPaymentSub,
                     location: RoutePath.financeDocNew('payments'),
                   ),
                   _Entry(
                     icon: Icons.outbound_outlined,
-                    label: '一般费用',
-                    description: '按部门分摊',
+                    label: l10n.financeHubDocExpense,
+                    description: l10n.financeHubSubAllocatedByDept,
                     location: RoutePath.financeDocNew('expenses'),
                   ),
                   _Entry(
                     icon: Icons.add_circle_outline,
-                    label: '其它收入',
-                    description: '按部门分摊',
+                    label: l10n.financeHubDocIncome,
+                    description: l10n.financeHubSubAllocatedByDept,
                     location: RoutePath.financeDocNew('incomes'),
                   ),
                   _Entry(
                     icon: Icons.swap_horiz_rounded,
-                    label: '银行存取款',
-                    description: '账户间转入',
+                    label: l10n.financeHubDocBankTransfer,
+                    description: l10n.financeHubDocBankTransferSub,
                     location: RoutePath.financeDocNew('bank-transfers'),
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.receipt_long_outlined,
-                    label: '支票管理',
-                    description: '支票账户视图',
+                    label: l10n.financeHubDocCheck,
+                    description: l10n.financeHubDocCheckSub,
                     location: '/finance/checks',
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.apartment_rounded,
-                    label: '资产与待摊',
-                    description: '专业子账 / 审批 / 折旧摊销 / 期间控制',
+                    label: l10n.financeHubDocAssets,
+                    description: l10n.financeHubDocAssetsSub,
                     location: RouteName.financeAssets,
                   ),
                 ]),
@@ -154,54 +156,54 @@ class FinanceHubPage extends ConsumerWidget {
               _section(
                 context,
                 theme,
-                '钱流报表',
+                l10n.financeHubSectionReports,
                 visible([
-                  const _Entry(
+                  _Entry(
                     icon: Icons.account_balance_wallet_outlined,
-                    label: '应收应付',
-                    description: '树形分组：客户/供应商类别 AR/AP 余额',
+                    label: l10n.financeHubReportArAp,
+                    description: l10n.financeHubReportArApSub,
                     location: RouteName.financeReportOverview,
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.list_alt_outlined,
-                    label: '明细报表',
-                    description: '应收/应付/收款/付款/费用/收入/费用冲销',
+                    label: l10n.financeHubReportDetail,
+                    description: l10n.financeHubReportDetailSub,
                     location: RouteName.financeReportDetail,
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.bar_chart_outlined,
-                    label: '汇总报表',
-                    description: '应收/应付/收款/付款/费用/收入 汇总',
+                    label: l10n.financeHubReportSummary,
+                    description: l10n.financeHubReportSummarySub,
                     location: RouteName.financeReportSummary,
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.receipt_long_outlined,
-                    label: '往来对帐单',
-                    description: '客户/供应商 流水·明细·年度对帐',
+                    label: l10n.financeHubReportStatement,
+                    description: l10n.financeHubReportStatementSub,
                     location: RouteName.financeReportStatement,
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.account_balance_outlined,
-                    label: '账户流水',
-                    description: '帐户进出流水 + 银行存取款',
+                    label: l10n.financeHubReportAccountFlow,
+                    description: l10n.financeHubReportAccountFlowSub,
                     location: RouteName.financeReportAccountFlow,
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.handshake_outlined,
-                    label: '对账单',
-                    description: '委外加工/采购外放/供应商/其他应收/客户 月结对账',
+                    label: l10n.financeHubReportRecon,
+                    description: l10n.financeHubReportReconSub,
                     location: RouteName.financeReportRecon,
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.calculate_outlined,
-                    label: '成本核算',
-                    description: '产品成本/销售成本/铜柱加工费/塑料耗用',
+                    label: l10n.financeHubReportCost,
+                    description: l10n.financeHubReportCostSub,
                     location: RouteName.financeReportCost,
                   ),
-                  const _Entry(
+                  _Entry(
                     icon: Icons.menu_book_outlined,
-                    label: '总账报表',
-                    description: '科目余额表/资产负债/利润/费用明细/经营损益',
+                    label: l10n.financeHubReportGl,
+                    description: l10n.financeHubReportGlSub,
                     location: RouteName.financeReportGl,
                   ),
                 ]),

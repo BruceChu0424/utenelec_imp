@@ -386,6 +386,8 @@
   "employeeActionOffboard": "办理离职",
   "employeeActionRehire": "复职",
   "employeeActionDelete": "删除档案",
+  "employeeActionProvision": "开通登录账号",
+  "employeeProvisionConfirm": "将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？",
   "employeeTransferTitle": "员工调岗",
   "employeeTransferFieldDate": "生效日期",
   "employeeTransferPickDate": "选择日期",

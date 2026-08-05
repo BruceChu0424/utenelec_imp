@@ -164,8 +164,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     ref.listen(pageResumeProvider, (prev, next) {
       if (prev == null || prev.location.isEmpty) return; // App 启动首次落定
       if (next.location == prev.location) return; // 原地通知（路径未变）
-      refreshGlobalBadges(ref);
+      // 全局角标只在落点=工作台时刷新：这些角标仅工作台/导航栏可见，落到 list/detail
+      // 等页面时刷新全是不可见计数，且会抢返回转场帧造成卡顿。各模块 hub 自带
+      // ref.onPageResume 刷各自计数；通知徽标由 60s 轮询/切前台/新通知到达联动保持。
       if (next.location == RouteName.dashboard) {
+        refreshGlobalBadges(ref);
         ref.invalidate(dashboardOverviewProvider);
       } else if (next.location == RouteName.notice) {
         ref.invalidate(noticeListProvider);

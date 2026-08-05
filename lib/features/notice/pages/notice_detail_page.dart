@@ -12,7 +12,6 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
-import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -349,11 +348,9 @@ class _Content extends ConsumerWidget {
   /// GoRouterState.of 取不到的问题）；独立路由态用 GoRouter.of(context) 直接跳。
   /// returnTo 统一回通知列表（/notice），目标页返回键回通知列表。
   void _goAction(BuildContext context) {
-    final route = notice.actionRoute!;
-    final uri = Uri.parse(route);
-    final params = Map<String, String>.from(uri.queryParameters)
-      ..['returnTo'] = RouteName.notice;
-    final target = uri.replace(queryParameters: params).toString();
+    // 跳转目标与「通知到达横幅点击」共用 noticeActionTarget，逻辑一致。
+    final target = noticeActionTarget(notice);
+    if (target == null) return;
     if (onActionNavigate != null) {
       onActionNavigate!(target);
     } else {

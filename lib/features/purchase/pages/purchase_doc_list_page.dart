@@ -69,13 +69,16 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
       ref.read(currentPermissionsProvider).contains(_cfg.editPerm);
   bool get _canCreate => _canEdit && _cfg.allowDirectCreate;
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool silent = false}) async {
     final generation = _loadRequests.begin();
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
+    _pageNum = page;
+    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final r = await ref
           .read(purchaseRepositoryProvider(widget.docType))
@@ -92,15 +95,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
       setState(() {
         _page = r;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return;
       setState(() {
         _error = '加载列表失败'; // TODO(l10n): 补 arb
         _loading = false;
@@ -198,7 +204,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage> {
     // 返回即刷新：从详情/编辑页（或任何页面）回到本列表时重拉当前页，
     // 即便对方未 bump tick（纯查看返回）也保证看到最新数据。
     _myLocation ??= GoRouterState.of(context).matchedLocation;
-    ref.onPageResume(_myLocation!, () => _load(_pageNum));
+    ref.onPageResume(_myLocation!, () => _load(_pageNum, silent: true));
     return Scaffold(
       appBar: UtenAppBar(
         title: _cfg.label,

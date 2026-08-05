@@ -8,6 +8,7 @@ import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -29,9 +30,30 @@ class WarehouseHubPage extends ConsumerWidget {
       ref.invalidate(warehouseArrivalExceptionCountProvider);
     });
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final stockQueryEntries = <_StockQueryEntry>[
+      _StockQueryEntry(
+        Icons.inventory_rounded,
+        l10n.warehouseHubInventoryLive,
+        l10n.warehouseHubInventoryLiveSub,
+        RouteName.stockInstantInventory,
+      ),
+      _StockQueryEntry(
+        Icons.inventory_2_outlined,
+        l10n.warehouseHubInventoryBalance,
+        l10n.warehouseHubInventoryBalanceSub,
+        RouteName.stockBalance,
+      ),
+      _StockQueryEntry(
+        Icons.swap_vert_rounded,
+        l10n.warehouseHubInventoryMovement,
+        l10n.warehouseHubInventoryMovementSub,
+        RouteName.stockMovement,
+      ),
+    ];
     return Scaffold(
       appBar: UtenAppBar(
-        title: '仓库管理',
+        title: l10n.warehouseHubTitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
@@ -52,7 +74,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   bottom: UtenSpacing.s8,
                 ),
                 child: Text(
-                  '任务中心',
+                  l10n.hubSectionTaskCenter,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -66,8 +88,8 @@ class WarehouseHubPage extends ConsumerWidget {
                   return switch (index) {
                     0 => UtenHubCard(
                       icon: Icons.local_shipping_outlined,
-                      label: '预计到货任务中心',
-                      description: '查看财务已批准的采购和委外订货，登记实际到货',
+                      label: l10n.warehouseHubTaskExpected,
+                      description: l10n.warehouseHubTaskExpectedSub,
                       badge: const WarehouseInboundExpectationBadge(
                         showLabel: true,
                       ),
@@ -78,8 +100,8 @@ class WarehouseHubPage extends ConsumerWidget {
                     ),
                     1 => UtenHubCard(
                       icon: Icons.warning_amber_rounded,
-                      label: '到货异常任务中心',
-                      description: '超量先隔离，等待财务审批后再继续入库',
+                      label: l10n.warehouseHubTaskException,
+                      description: l10n.warehouseHubTaskExceptionSub,
                       badge: const WarehouseArrivalExceptionBadge(
                         showLabel: true,
                       ),
@@ -90,8 +112,8 @@ class WarehouseHubPage extends ConsumerWidget {
                     ),
                     _ => UtenHubCard(
                       icon: Icons.inventory_2_outlined,
-                      label: '生产领料任务中心',
-                      description: '提前备料并跟踪待领取、部分领取和已领取任务',
+                      label: l10n.warehouseHubTaskPicking,
+                      description: l10n.warehouseHubTaskPickingSub,
                       onTap: () => goFrom(
                         context,
                         RouteName.operationsWarehouseWorkbench,
@@ -107,7 +129,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   bottom: UtenSpacing.s4,
                 ),
                 child: Text(
-                  '出入库单据',
+                  l10n.warehouseHubSectionDocs,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -119,7 +141,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   bottom: UtenSpacing.s8,
                 ),
                 child: Text(
-                  '调拨 / 其它出入库 / 领退料 / 产成品进出仓 / 盘点',
+                  l10n.warehouseHubSectionDocsDesc,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -133,7 +155,8 @@ class WarehouseHubPage extends ConsumerWidget {
                   final t = StockDocType.values[i];
                   return UtenHubCard(
                     icon: iconFor(t),
-                    label: t.label,
+                    label: _stockDocTitle(t, l10n),
+                    description: _stockDocSubtitle(t, l10n),
                     onTap: () => goFrom(context, RoutePath.stockDocNew(t.code)),
                   );
                 },
@@ -145,7 +168,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   bottom: UtenSpacing.s4,
                 ),
                 child: Text(
-                  '库存查询',
+                  l10n.warehouseHubSectionInventory,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -157,21 +180,22 @@ class WarehouseHubPage extends ConsumerWidget {
                   bottom: UtenSpacing.s8,
                 ),
                 child: Text(
-                  '即时库存 / 库存查询 / 出入库流水',
+                  l10n.warehouseHubSectionInventoryDesc,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
               UtenResponsiveGrid(
-                itemCount: _stockQueryEntries.length,
+                itemCount: stockQueryEntries.length,
                 spacing: UtenSpacing.s12,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
-                  final e = _stockQueryEntries[i];
+                  final e = stockQueryEntries[i];
                   return UtenHubCard(
                     icon: e.icon,
                     label: e.label,
+                    description: e.description,
                     onTap: () => goFrom(context, e.location),
                   );
                 },
@@ -183,7 +207,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   bottom: UtenSpacing.s4,
                 ),
                 child: Text(
-                  '仓库报表',
+                  l10n.warehouseHubSectionReports,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -195,7 +219,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   bottom: UtenSpacing.s8,
                 ),
                 child: Text(
-                  '明细报表（一行一货品）/ 汇总报表（一行一整单）',
+                  l10n.warehouseHubSectionReportsDesc,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -209,7 +233,8 @@ class WarehouseHubPage extends ConsumerWidget {
                   final k = WarehouseReportKind.values[i];
                   return UtenHubCard(
                     icon: k.icon,
-                    label: k.label,
+                    label: _warehouseReportTitle(k, l10n),
+                    description: _warehouseReportSubtitle(k, l10n),
                     onTap: () => goFrom(context, k.route),
                   );
                 },
@@ -224,18 +249,45 @@ class WarehouseHubPage extends ConsumerWidget {
 
 /// 库存查询入口（仓库管理 hub「库存查询」分区）。
 class _StockQueryEntry {
-  const _StockQueryEntry(this.icon, this.label, this.location);
+  const _StockQueryEntry(this.icon, this.label, this.description, this.location);
   final IconData icon;
   final String label;
+  final String description;
   final String location;
 }
 
-const _stockQueryEntries = <_StockQueryEntry>[
-  _StockQueryEntry(
-    Icons.inventory_rounded,
-    '即时库存',
-    RouteName.stockInstantInventory,
-  ),
-  _StockQueryEntry(Icons.inventory_2_outlined, '库存查询', RouteName.stockBalance),
-  _StockQueryEntry(Icons.swap_vert_rounded, '出入库流水', RouteName.stockMovement),
-];
+// 出入库单据卡标题/副标题本地化（StockDocType 枚举仍是中文 label，列表/编辑页在用）。
+String _stockDocTitle(StockDocType t, AppLocalizations l10n) => switch (t) {
+  StockDocType.transfer => l10n.warehouseHubDocTransfer,
+  StockDocType.otherIn => l10n.warehouseHubDocOtherIn,
+  StockDocType.otherOut => l10n.warehouseHubDocOtherOut,
+  StockDocType.draw => l10n.warehouseHubDocDraw,
+  StockDocType.wdraw => l10n.warehouseHubDocWdraw,
+  StockDocType.finishedIn => l10n.warehouseHubDocFinishedIn,
+  StockDocType.finishedOut => l10n.warehouseHubDocFinishedOut,
+  StockDocType.check => l10n.warehouseHubDocCheck,
+};
+
+String _stockDocSubtitle(StockDocType t, AppLocalizations l10n) => switch (t) {
+  StockDocType.transfer => l10n.warehouseHubDocTransferSub,
+  StockDocType.otherIn => l10n.warehouseHubDocOtherInSub,
+  StockDocType.otherOut => l10n.warehouseHubDocOtherOutSub,
+  StockDocType.draw => l10n.warehouseHubDocDrawSub,
+  StockDocType.wdraw => l10n.warehouseHubDocWdrawSub,
+  StockDocType.finishedIn => l10n.warehouseHubDocFinishedInSub,
+  StockDocType.finishedOut => l10n.warehouseHubDocFinishedOutSub,
+  StockDocType.check => l10n.warehouseHubDocCheckSub,
+};
+
+// 仓库报表卡标题/副标题本地化（按 WarehouseReportKind 枚举查）。
+String _warehouseReportTitle(WarehouseReportKind k, AppLocalizations l10n) =>
+    switch (k) {
+      WarehouseReportKind.detail => l10n.warehouseHubReportDetail,
+      WarehouseReportKind.summary => l10n.warehouseHubReportSummary,
+    };
+
+String _warehouseReportSubtitle(WarehouseReportKind k, AppLocalizations l10n) =>
+    switch (k) {
+      WarehouseReportKind.detail => l10n.hubSubDetailPerItem,
+      WarehouseReportKind.summary => l10n.hubSubSummaryPerDoc,
+    };

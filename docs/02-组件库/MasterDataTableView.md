@@ -84,7 +84,7 @@ MasterDataTableView<T>(
 ## 五、响应式 / 性能档 / 主题 i18n
 
 - **响应式**：表格区随容器宽度横滚（列固定宽，不随断点变列数）；窄屏靠左筛选侧栏（`UtenListTwoPane`）折到顶部。
-- **性能档**：表体 `ListView.builder` 按行懒加载；超大结果集走服务端分页（默认 size 50，上限 500）。
+- **性能档**：表体 `ListView.builder` 按行懒加载；每行数据外包 `RepaintBoundary`，选中 / 列宽拖拽 / 刷新时只重绘本行、不蔓延整表与外层页面；超大结果集走服务端分页（默认 size 50，上限 500）。
 - **主题**：取色全走 `colorScheme`（表头 `surfaceContainerHigh`、筛选/排序高亮 `primaryContainer`/`primary`）。
 - **i18n**：列头菜单文案（从远到近/取消排序/所有/空值 等）当前为中文，**待补 arb**（组件内有 `TODO(l10n)` 标记）。
 
@@ -125,6 +125,7 @@ return MasterDataTableView<Map<String, dynamic>>(
 - **列头 overlay**：`CompositedTransformFollower` 锚定列头下方、限高 360、`TapRegion` 点外关闭；不全屏。
 - **排序菜单 vs 筛选菜单**：可排序列 overlay 顶部是「排序」段、下方保留 facet 桶（Excel autofilter 范式）；纯日期列无 facet → 只显排序段。
 - **服务端排序（非前端）**：报表分页，排序必须回后端（前端只发 `sort`/`order`，后端白名单 ORDER BY）；前端排序只用于极小结果集。
+- **`shrinkWrap: true` 是刻意保留，勿动**：表体 `ListView` 用 `shrinkWrap: true` + 外层 `Flexible(loose)` + `ConstrainedBox(maxHeight)`，目的是「行少时表随内容收缩、不全屏撑满」。**不要**为省冷构建的全量 extent 布局改成 `false` / `widget.embedded`——会让短表撑满高度、留大片空白（一度试过并已回退）。行少收缩是产品要的行为；冷构建成本后续用 `TextPainter` 宽度缓存 / 降采样消除，不靠动 `shrinkWrap`。
 - **后续能力落点**：导出按钮放 `UtenAppBar.actions`（Phase4）、行点击跳源头单据靠 `onRowTap` + 后端行带 `__srcId`（Phase5）——都在本组件/共享层加一次，全表生效。
 
 ---

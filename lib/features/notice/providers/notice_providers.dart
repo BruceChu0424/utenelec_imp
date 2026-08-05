@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/router/route_names.dart';
 import '../models/notice.dart';
 import '../repositories/notice_repository.dart';
 
@@ -98,11 +99,39 @@ class UnreadNoticeCountNotifier extends StateNotifier<int> {
   Future<void> refresh() => _tick();
 }
 
+/// 通知「对应页面」目标路由：[Notice.actionRoute] 附加 `returnTo=/notice`，
+/// 便于目标页返回键回到通知列表。无 actionRoute 时返回 null（回退详情弹层）。
+///
+/// 通知到达横幅点击（[dispatchNoticeArrival]）与 `NoticeDetailPage._goAction`
+/// 共用本逻辑，保证两者跳转完全一致。放在本文件以避免 notice_arrival ↔
+/// notice_detail_page 经 notice_detail_dialog 形成循环 import。
+String? noticeActionTarget(Notice notice) {
+  final route = notice.actionRoute;
+  if (route == null || route.isEmpty) return null;
+  final uri = Uri.parse(route);
+  final params = Map<String, String>.from(uri.queryParameters)
+    ..['returnTo'] = RouteName.notice;
+  return uri.replace(queryParameters: params).toString();
+}
+
 Future<void> markNoticeRead(WidgetRef ref, String id) async {
   await ref.read(noticeRepositoryProvider).markRead(id);
   ref.invalidate(noticeDetailProvider(id));
   ref.invalidate(noticeListProvider);
   ref.read(unreadNoticeCountProvider.notifier).refresh();
+}
+
+/// 与 [markNoticeRead] 等价，但取 `ProviderContainer` 而非 `WidgetRef`。
+///
+/// 用于「通知到达横幅点击」等异步延迟触发场景：横幅的 onTap 可能在来源页
+/// 已 dispose 后数分钟才触发，此时其 `WidgetRef` 已失效（再 read 会抛
+/// StateError）。`ProviderContainer` 由 `ProviderScope.containerOf` 在派发
+/// 时捕获，随 app 生命周期稳定，跨异步安全。
+Future<void> markNoticeReadContainer(ProviderContainer container, String id) async {
+  await container.read(noticeRepositoryProvider).markRead(id);
+  container.invalidate(noticeDetailProvider(id));
+  container.invalidate(noticeListProvider);
+  container.read(unreadNoticeCountProvider.notifier).refresh();
 }
 
 Future<void> completeNoticeTodo(WidgetRef ref, String id) async {

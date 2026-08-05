@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../network/connection_recovery.dart';
+import 'uten_top_banner_card.dart';
 
 /// One app-wide connection message with a single recovery action.
 ///
@@ -46,76 +47,39 @@ class ConnectionRecoveryBanner extends ConsumerWidget {
       ),
     };
 
-    return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Semantics(
-            container: true,
-            liveRegion: true,
-            label: message,
-            child: AnimatedSwitcher(
-              duration: disableAnimations
-                  ? Duration.zero
-                  : const Duration(milliseconds: 200),
-              child: Material(
-                key: ValueKey(state.phase),
-                color: background,
-                elevation: 4,
-                shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(14),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
-                      child: Row(
-                        children: [
-                          Icon(icon, color: foreground, size: 24),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              message,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: foreground,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          if (state.phase ==
-                              ConnectionRecoveryPhase.disconnected) ...[
-                            const SizedBox(width: 8),
-                            OutlinedButton(
-                              key: const ValueKey('connection-recovery-retry'),
-                              onPressed: () => ref
-                                  .read(connectionRecoveryProvider.notifier)
-                                  .retryNow(),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: foreground,
-                                side: BorderSide(color: foreground),
-                                minimumSize: const Size(0, 48),
-                              ),
-                              child: Text(l10n.connectionRetryNow),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    if (state.phase == ConnectionRecoveryPhase.reconnecting ||
-                        state.phase == ConnectionRecoveryPhase.disconnected)
-                      LinearProgressIndicator(
-                        minHeight: 3,
-                        color: foreground,
-                        backgroundColor: Colors.transparent,
-                      ),
-                  ],
-                ),
-              ),
-            ),
+    return AnimatedSwitcher(
+      duration: disableAnimations
+          ? Duration.zero
+          : const Duration(milliseconds: 200),
+      child: UtenTopBannerCard(
+        key: ValueKey(state.phase),
+        background: background,
+        foreground: foreground,
+        icon: icon,
+        semanticLabel: message,
+        progress: state.phase == ConnectionRecoveryPhase.reconnecting ||
+            state.phase == ConnectionRecoveryPhase.disconnected,
+        content: Text(
+          message,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: foreground,
+            fontWeight: FontWeight.w600,
           ),
         ),
+        trailing: state.phase == ConnectionRecoveryPhase.disconnected
+            ? OutlinedButton(
+                key: const ValueKey('connection-recovery-retry'),
+                onPressed: () => ref
+                    .read(connectionRecoveryProvider.notifier)
+                    .retryNow(),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: foreground,
+                  side: BorderSide(color: foreground),
+                  minimumSize: const Size(0, 48),
+                ),
+                child: Text(l10n.connectionRetryNow),
+              )
+            : null,
       ),
     );
   }

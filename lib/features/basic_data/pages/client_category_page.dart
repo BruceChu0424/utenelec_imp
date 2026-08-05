@@ -57,6 +57,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
 
+  // 顶部搜索命中客户时，右侧客户列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
+  // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
+  String? _treeSearchKeyword;
+
   @override
   void initState() {
     super.initState();
@@ -103,6 +107,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
+        _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
       });
       return;
     }
@@ -126,6 +131,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
         final firstCat = shallowestHit(tree, q, catHits);
         setState(() {
           _visibleFilterIds = catHits;
+          // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
+          _treeSearchKeyword = null;
           if (firstCat != null && _selectedId != firstCat) {
             _selectedId = firstCat;
           }
@@ -139,6 +146,8 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
       final target = first;
       setState(() {
         _visibleFilterIds = merged;
+        // 客户命中：右侧列表只显示本次搜索结果（按关键词过滤）。
+        _treeSearchKeyword = q;
         if (_selectedId != target) _selectedId = target;
       });
     } catch (_) {
@@ -350,6 +359,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
                 ref: ref,
                 nodeId: selected.id,
                 canEdit: canEdit,
+                externalKeyword: _treeSearchKeyword,
                 onAddChild: () => _showCreateDialog(parent: selected),
                 onEdit: (detail) => _showEditDialog(detail),
                 onDelete: () => _delete(selected),
@@ -361,7 +371,11 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
           SizedBox(
             width: 300,
             child: _buildTree(
-              onSelect: (id) => setState(() => _selectedId = id),
+              // 手动点树节点 = 进入浏览模式：解除搜索过滤，右侧显示该分类全部。
+              onSelect: (id) => setState(() {
+                _selectedId = id;
+                _treeSearchKeyword = null;
+              }),
             ),
           ),
           Container(width: 1, color: theme.colorScheme.outlineVariant),
@@ -379,6 +393,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
                     ref: ref,
                     nodeId: selected.id,
                     canEdit: canEdit,
+                    externalKeyword: _treeSearchKeyword,
                     onAddChild: () => _showCreateDialog(parent: selected),
                     onEdit: (detail) => _showEditDialog(detail),
                     onDelete: () => _delete(selected),
@@ -416,7 +431,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage> {
               child: SafeArea(
                 child: _buildTree(
                   onSelect: (id) {
-                    setState(() => _selectedId = id);
+                    setState(() {
+                      _selectedId = id;
+                      _treeSearchKeyword = null;
+                    });
                     Navigator.of(context).pop();
                   },
                 ),
@@ -434,6 +452,7 @@ class _DetailPane extends StatefulWidget {
     required this.ref,
     required this.nodeId,
     required this.canEdit,
+    required this.externalKeyword,
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
@@ -442,6 +461,10 @@ class _DetailPane extends StatefulWidget {
   final WidgetRef ref;
   final String nodeId;
   final bool canEdit;
+
+  /// 顶部树搜索命中客户时传入的过滤词：详情面板把它采纳为本地客户列表的搜索词，
+  /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该分类全部）。
+  final String? externalKeyword;
   final VoidCallback onAddChild;
   final void Function(ProductCategoryDetail detail) onEdit;
   final VoidCallback onDelete;
@@ -466,6 +489,9 @@ class _DetailPaneState extends State<_DetailPane> {
   String _keyword = '';
   ClientFacets? _facets;
 
+  // 搜索框重建种子：外部关键词（树搜索）变化时自增，驱动 UtenSearchBar 用新 initialValue 重建。
+  int _kwSeed = 0;
+
   // 列排序态（金额/数量/日期列）：null = 默认顺序（id ASC）。
   String? _sortKey;
   bool _sortAsc = true;
@@ -482,7 +508,19 @@ class _DetailPaneState extends State<_DetailPane> {
   @override
   void didUpdateWidget(_DetailPane old) {
     super.didUpdateWidget(old);
-    if (old.nodeId != widget.nodeId) _load();
+    if (old.nodeId != widget.nodeId) {
+      _load();
+      return;
+    }
+    // 同一分类下外部搜索词变化（树搜索命中/解除）：采纳为本地关键词并重查第 1 页。
+    if (old.externalKeyword != widget.externalKeyword) {
+      setState(() {
+        _kwSeed++;
+        _keyword = widget.externalKeyword ?? '';
+        _clientLoading = false; // 放掉在途旧请求，允许立即以新关键词重查
+      });
+      _loadClients(1);
+    }
   }
 
   Future<void> _load() async {
@@ -503,7 +541,9 @@ class _DetailPaneState extends State<_DetailPane> {
         _clientPageNum = 1;
         _clientError = null;
         _filters = {};
-        _keyword = '';
+        // 外部搜索词（树搜索命中）随分类切换一并带入：搜索定位时右侧只显示搜索结果。
+        _keyword = widget.externalKeyword ?? '';
+        _kwSeed++;
         _facets = null;
         _sortKey = null;
         _sortAsc = true;
@@ -987,6 +1027,8 @@ class _DetailPaneState extends State<_DetailPane> {
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
                   child: UtenSearchBar(
+                    // key 含 nodeId + _kwSeed：切分类 / 树搜索写入关键词时重建搜索框同步显示。
+                    key: ValueKey('client-search-${widget.nodeId}-$_kwSeed'),
                     hint: '搜索客户（简称/编码/全称/联系人/手机）', // TODO(l10n): 补 arb
                     initialValue: _keyword,
                     onChanged: _onKeywordChanged,

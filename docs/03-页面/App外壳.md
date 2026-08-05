@@ -2,7 +2,7 @@
 
 > 路由：`/`（ShellRoute）
 > 实现源：`lib/features/shell/pages/main_shell_page.dart`、`uten_side_nav_rail.dart`、`floating_capsule_nav_bar.dart`、`uten_sliding_tab_view.dart`；全局连接提示位于 `lib/app.dart` 与 `lib/core/ui/connection_recovery_banner.dart`
-> 最近核对：2026-08-02（响应式导航、状态保活、断网自动恢复）
+> 最近核对：2026-08-05（「返回即刷新」收敛：外壳全局角标仅落点=工作台时刷新，列表页 `_load(silent)` 静默刷新；见 §二 / [路由设计 §九](../05-架构/路由设计.md)）；2026-08-02（响应式导航、状态保活、断网自动恢复）
 
 ## 一、定位
 
@@ -21,10 +21,11 @@
 - medium+ 只允许点击 Rail 切换，不做大屏整页横移动画；
 - 深链、路由守卫和导航点击都通过 go_router 同步 URL；
 - 业务子页覆盖在保活主 Tab 之上，返回时不重建主 Tab。
+- 「返回即刷新」由外壳统一承接（详见 [路由设计 §九](../05-架构/路由设计.md)）：任何导航落定都 bump `pageResumeProvider`；外壳**仅当落点 = 工作台时**才刷新全部全局角标（生产/采购/委外/研发/访客/HR/通知未读）+ 今日概览——落到 list/detail 等不显示角标的页面不再空刷 16 个不可见计数、不再抢返回转场帧。各模块 hub 自带 `ref.onPageResume` 按粒度刷新各自任务徽标；通知徽标由 60s 轮询 / 切前台 / 新通知到达联动保持。单据列表页返回用 `_load(_pageNum, silent: true)` 静默换数据、不闪 loading。
 
 ## 三、全局连接恢复提示
 
-`MaterialApp.builder` 在所有路由上方挂载 `ConnectionRecoveryBanner`，不改变当前导航、筛选、输入内容或滚动位置：
+`MaterialApp.builder` 在所有路由上方挂载 `ConnectionRecoveryBanner`，不改变当前导航、筛选、输入内容或滚动位置（视觉外壳与普通通知 `AppNotificationHost` 同出 `lib/core/ui/uten_top_banner_card.dart` 的 `UtenTopBannerCard`，两者居中 / 最大宽 720 / 圆角 14 / 柔和容器色完全同款）：
 
 - GET/HEAD/OPTIONS 安全读遇到瞬态连接故障时最多额外重试两次（400ms、1200ms）；开始重试时显示“网络暂时不稳定，正在自动连接…”，耗尽后显示“暂时连不上服务器，系统会继续自动连接”；
 - 后台只探测同源根路径 `/actuator/health`，按 2/5/10/15 秒上限并带 0.85–1.0 抖动继续尝试；只有状态码 200、响应为 Map 且 `data['status'] == 'UP'` 才算恢复，SPA HTML、空体或空对象不能冒充健康；

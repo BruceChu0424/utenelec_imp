@@ -191,7 +191,52 @@ class _EntryTile extends StatelessWidget {
       onTap: () => goFrom(context, entry.location),
       badge: entry.badge,
       enabled: entry.enabled,
-      onDisabledTap: () => context.appInfo('该单据类型暂未启用（老库无数据）'),
+      onDisabledTap: () =>
+          context.appInfo(AppLocalizations.of(context).hubDisabledDocNotice),
     );
   }
 }
+
+// 单据卡标题/副标题本地化（config 仍是中文 const，列表/编辑页在用）。
+String _subcontractDocTitle(SubcontractDocType t, AppLocalizations l10n) =>
+    switch (t) {
+      SubcontractDocType.inquiry => l10n.subcontractHubDocInquiry,
+      SubcontractDocType.application => l10n.subcontractHubDocApplication,
+      SubcontractDocType.order => l10n.subcontractHubDocOrder,
+      SubcontractDocType.receipt => l10n.subcontractHubDocReceipt,
+      SubcontractDocType.materialIssue => l10n.subcontractHubDocMaterialIssue,
+      SubcontractDocType.returnDoc => l10n.subcontractHubDocReturn,
+      SubcontractDocType.materialReturn => l10n.subcontractHubDocMaterialReturn,
+      SubcontractDocType.waste => l10n.subcontractHubDocWaste,
+    };
+
+String _subcontractDocSubtitle(SubcontractDocType t, AppLocalizations l10n) =>
+    switch (t) {
+      SubcontractDocType.inquiry => l10n.subcontractHubDocInquirySub,
+      SubcontractDocType.application => l10n.hubSubReadOnlyPlan,
+      SubcontractDocType.order => l10n.subcontractHubDocOrderSub,
+      SubcontractDocType.receipt => l10n.subcontractHubDocReceiptSub,
+      SubcontractDocType.materialIssue =>
+        l10n.subcontractHubDocMaterialIssueSub,
+      SubcontractDocType.returnDoc => l10n.subcontractHubDocReturnSub,
+      SubcontractDocType.materialReturn =>
+        l10n.subcontractHubDocMaterialReturnSub,
+      SubcontractDocType.waste => l10n.subcontractHubDocWasteSub,
+    };
+
+// 报表卡标题/副标题本地化（按 SubcontractReportKind 枚举查）。
+String _subcontractReportTitle(SubcontractReportKind k, AppLocalizations l10n) =>
+    switch (k) {
+      SubcontractReportKind.detail => l10n.subcontractHubReportDetail,
+      SubcontractReportKind.summary => l10n.subcontractHubReportSummary,
+      SubcontractReportKind.inOutStatus => l10n.subcontractHubReportInOut,
+    };
+
+String _subcontractReportSubtitle(
+  SubcontractReportKind k,
+  AppLocalizations l10n,
+) => switch (k) {
+  SubcontractReportKind.detail => l10n.hubSubDetailPerItem,
+  SubcontractReportKind.summary => l10n.hubSubSummaryPerDoc,
+  SubcontractReportKind.inOutStatus => l10n.subcontractHubReportInOutSub,
+};

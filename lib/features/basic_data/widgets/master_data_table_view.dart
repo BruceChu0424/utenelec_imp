@@ -600,6 +600,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                       constraints: BoxConstraints(maxHeight: c.maxHeight),
                       child: ListView.builder(
                         controller: _bodyV,
+                        // shrinkWrap 保持 true：行少时连同外层 Flexible(loose) 收缩表高（见上方
+                        // 573-575 注释），勿改 false/widget.embedded——会使短表撑满高度留空白。
                         shrinkWrap: true,
                         physics: const ClampingScrollPhysics(),
                         // 底部留一点可滚余量，避免钉底的横向滚动条正好挡住最后一行
@@ -629,7 +631,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                           // 判定把 T? 提升为 T，避免对类型参数用 `!` 的告警。
                           final item = row.item;
                           if (item == null) return const SizedBox.shrink();
-                          return _buildDataRow(theme, item);
+                          // RepaintBoundary 隔离行重绘（选中/列宽/刷新时只绘本行，不蔓延整表）。
+                          return RepaintBoundary(
+                            child: _buildDataRow(theme, item),
+                          );
                         },
                       ),
                     ),

@@ -147,31 +147,40 @@ class _RequiredCellFrameState extends State<RequiredCellFrame> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_empty) return widget.child;
     final theme = Theme.of(context);
-    final errorColor = theme.colorScheme.error;
-    // 关键：把红框交给「内部输入框自己的边框」来画，而不是在外层叠一个 DecoratedBox。
-    // 旧实现在 child 外面包 DecoratedBox 画红框，但里面的 TextField / InputDecorator 自带
-    // 灰色 OutlineInputBorder 会画在前面，盖住红边中段，只剩四角露红。这里用 Theme 覆盖后代
-    // inputDecorationTheme 的各类边框为红色，让 child 自身的边框变红，消除层叠错位。
-    // 一处改，全模块 grid（销售/采购/委外/生产/钱流/仓库）必填格统一生效。
-    OutlineInputBorder redBorder({bool focused = false}) => OutlineInputBorder(
-      borderRadius: BorderRadius.circular(6),
-      borderSide: BorderSide(
-        color: errorColor,
-        width: focused ? 2 : 1.5,
-      ),
-    );
-    return Theme(
-      data: theme.copyWith(
-        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
-          enabledBorder: redBorder(),
-          focusedBorder: redBorder(focused: true),
-          border: redBorder(),
-          errorBorder: redBorder(),
-          focusedErrorBorder: redBorder(focused: true),
+    final InputDecorationThemeData idt;
+    if (_empty) {
+      final errorColor = theme.colorScheme.error;
+      // 把红框交给「内部输入框自己的边框」来画，而不是在外层叠一个 DecoratedBox：
+      // 后者会被 TextField/InputDecorator 自带的灰色 OutlineInputBorder 盖住中段，只剩四角
+      // 露红。这里覆盖后代 inputDecorationTheme 的各类边框为红色，让 child 自身边框变红。
+      OutlineInputBorder redBorder({bool focused = false}) => OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(
+          color: errorColor,
+          width: focused ? 2 : 1.5,
         ),
-      ),
+      );
+      idt = theme.inputDecorationTheme.copyWith(
+        enabledBorder: redBorder(),
+        focusedBorder: redBorder(focused: true),
+        border: redBorder(),
+        errorBorder: redBorder(),
+        focusedErrorBorder: redBorder(focused: true),
+      );
+    } else {
+      // 非空：原样透传主题（不改边框）。
+      idt = theme.inputDecorationTheme;
+    }
+    // 关键：无论是否为空，都返回「Theme > child」这一恒定结构。
+    // 早先版本在非空时 `return widget.child;`（裸）、空时才 Theme 包裹——必填数字格（数量/
+    // 单价）从空输入第一个有效字符时 _empty 由 true 翻 false，本方法根 widget 类型从 Theme
+    // 变成 TextField，Flutter 会废弃并重建 TextField 的 Element → 焦点丢失（输入一位光标就
+    // 消失，得再点一次才能继续输入）。这里两分支结构一致，_empty 翻转只改 Theme.data
+    // （InheritedWidget 更新，不重建子树 Element），TextField Element 与焦点得以保持。
+    // 一处改，全模块 grid（销售/采购/委外/生产/钱流/仓库）必填格统一生效。
+    return Theme(
+      data: theme.copyWith(inputDecorationTheme: idt),
       child: widget.child,
     );
   }
@@ -678,21 +687,24 @@ class _UtenEditableGridState<T extends EditableGridRow>
                           physics: const NeverScrollableScrollPhysics(),
                           padding: EdgeInsets.zero,
                           itemCount: rows.length,
-                          itemBuilder: (context, i) => _DataRow<T>(
-                            index: i,
-                            row: rows[i],
-                            columns: widget.columns,
-                            widths: _widths,
-                            showSelect: widget.showAddRow,
-                            isSelected: widget.controller.isSelected(rows[i]),
-                            onSelect: () =>
-                                widget.controller.toggleSelect(rows[i]),
-                            showDelete: widget.showRowDelete,
-                            deleteColWidth: _deleteColWidth,
-                            divider: divider,
-                            confirmDelete: widget.confirmDelete,
-                            deleteConfirmLabel: widget.deleteConfirmLabel,
-                            onDelete: () => widget.controller.removeAt(i),
+                          itemBuilder: (context, i) => RepaintBoundary(
+                            // 隔离行重绘：列宽拖拽/选中/粘性头重排时只绘本行，不蔓延整表与外层页面。
+                            child: _DataRow<T>(
+                              index: i,
+                              row: rows[i],
+                              columns: widget.columns,
+                              widths: _widths,
+                              showSelect: widget.showAddRow,
+                              isSelected: widget.controller.isSelected(rows[i]),
+                              onSelect: () =>
+                                  widget.controller.toggleSelect(rows[i]),
+                              showDelete: widget.showRowDelete,
+                              deleteColWidth: _deleteColWidth,
+                              divider: divider,
+                              confirmDelete: widget.confirmDelete,
+                              deleteConfirmLabel: widget.deleteConfirmLabel,
+                              onDelete: () => widget.controller.removeAt(i),
+                            ),
                           ),
                         );
                       },

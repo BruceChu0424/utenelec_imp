@@ -23,6 +23,7 @@ import '../../../shared/auth/permissions.dart';
 import '../models/employee_api_models.dart';
 import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
+import '../widgets/employee_credential_dialog.dart';
 import '../widgets/employee_status_badge.dart';
 import '../widgets/employee_leadership_badge.dart';
 import '../widgets/employee_transfer_dialog.dart';
@@ -380,9 +381,17 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
     final perms = ref.watch(currentPermissionsProvider);
     final canEdit = perms.contains(Perm.employeeEdit);
     final canDelete = perms.contains(Perm.employeeDelete);
+    // 仅「未开通账号」且具备账号支持权限时，才显示「开通登录账号」。
+    final canProvision =
+        perms.contains(Perm.accountSupport) && p.accountStatus == null;
     final resigned = p.status == 'resigned';
 
     final items = <PopupMenuEntry<String>>[
+      if (canProvision)
+        PopupMenuItem(
+          value: 'provision',
+          child: Text(l10n.employeeActionProvision),
+        ),
       if (canEdit && !resigned)
         PopupMenuItem(
           value: 'transfer',
@@ -410,6 +419,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
       tooltip: l10n.employeeActions,
       itemBuilder: (_) => items,
       onSelected: (v) => switch (v) {
+        'provision' => _onProvisionAccount(),
         'transfer' => _onTransfer(),
         'confirm' => _onConfirm(),
         'offboard' => _onOffboard(),
@@ -427,6 +437,42 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage> {
       currentDepartmentId: _p.departmentId,
     );
     if (ok) _load();
+  }
+
+  /// 给批量导入等「未开通账号」的存量员工补开登录账号：账号=手机号，初始密码=身份证后6位。
+  Future<void> _onProvisionAccount() async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.employeeActionProvision),
+        content: Text(l10n.employeeProvisionConfirm),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final result = await ref
+          .read(employeeRepositoryProvider)
+          .provisionAccount(widget.employeeId);
+      if (!mounted) return;
+      await showEmployeeCredentialDialog(context, result);
+      if (!mounted) return;
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
   }
 
   Future<void> _onOffboard() async {

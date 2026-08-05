@@ -1075,6 +1075,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeActionDelete => 'Delete record';
 
   @override
+  String get employeeActionProvision => 'Provision login account';
+
+  @override
+  String get employeeProvisionConfirm =>
+      'This creates a login account for the employee. The account defaults to the phone number, the initial password is the last 6 digits of the ID number, and it must be changed on first login. Continue?';
+
+  @override
   String get employeeTransferTitle => 'Employee transfer';
 
   @override

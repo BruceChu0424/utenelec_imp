@@ -11,6 +11,7 @@ import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/permission_by_path.dart';
@@ -22,92 +23,91 @@ import '../../../shared/auth/permissions.dart';
 class BasicDataHubPage extends ConsumerWidget {
   const BasicDataHubPage({super.key});
 
-  static const List<_BasicResource> _resources = [
-    _BasicResource(
-      icon: Icons.inventory_2_outlined,
-      label: '货品资料',
-      description: '物料分类树与货品主档',
-      location: RouteName.basicinfoGoods,
-      color: _C.green,
-    ),
-    _BasicResource(
-      icon: Icons.precision_manufacturing_outlined,
-      label: '模具资料',
-      description: '模具系列分类与模具主档',
-      location: RouteName.basicinfoMould,
-      color: _C.teal,
-    ),
-    _BasicResource(
-      icon: Icons.people_outline,
-      label: '客户资料',
-      description: '客户分类与客户主档',
-      location: RouteName.basicinfoClient,
-      color: _C.green,
-    ),
-    _BasicResource(
-      icon: Icons.local_shipping_outlined,
-      label: '供应商资料',
-      description: '供应商分类与供应商主档',
-      location: RouteName.basicinfoSupplier,
-      color: _C.teal,
-    ),
-    _BasicResource(
-      icon: Icons.palette_outlined,
-      label: '颜色资料',
-      description: '颜色主档（编号/名称/状态）',
-      location: RouteName.basicinfoColor,
-      color: _C.green,
-    ),
-    _BasicResource(
-      icon: Icons.straighten_outlined,
-      label: '基本单位',
-      description: '计量单位主档（编号/名称/状态）',
-      location: RouteName.basicinfoUnit,
-      color: _C.teal,
-    ),
-    _BasicResource(
-      icon: Icons.attach_money_rounded,
-      label: '币种资料',
-      description: '币种主档（编号/名称/参考汇率/状态）',
-      location: RouteName.basicinfoCurrency,
-      color: _C.green,
-    ),
-    _BasicResource(
-      icon: Icons.warehouse_outlined,
-      label: '仓库资料',
-      description: '仓库主档（编号/名称/位置/核算）',
-      location: RouteName.basicinfoWarehouse,
-      color: _C.teal,
-    ),
-    _BasicResource(
-      icon: Icons.account_balance_outlined,
-      label: '账户资料',
-      description: '账户主档（编号/类型/币种/期初/余额）',
-      location: RouteName.basicinfoAccount,
-      color: _C.green,
-    ),
-    _BasicResource(
-      icon: Icons.category_outlined,
-      label: '收付款类别',
-      description: '6 大类（资产负债权益费用收入方法）',
-      location: RouteName.basicinfoPaymentStyle,
-      color: _C.teal,
-    ),
-  ];
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
-    final resources = _resources
+    final resources = <_BasicResource>[
+      _BasicResource(
+        icon: Icons.inventory_2_outlined,
+        label: l10n.basicDataHubGoods,
+        description: l10n.basicDataHubGoodsSub,
+        location: RouteName.basicinfoGoods,
+        color: _C.green,
+      ),
+      _BasicResource(
+        icon: Icons.precision_manufacturing_outlined,
+        label: l10n.basicDataHubMould,
+        description: l10n.basicDataHubMouldSub,
+        location: RouteName.basicinfoMould,
+        color: _C.teal,
+      ),
+      _BasicResource(
+        icon: Icons.people_outline,
+        label: l10n.basicDataHubClient,
+        description: l10n.basicDataHubClientSub,
+        location: RouteName.basicinfoClient,
+        color: _C.green,
+      ),
+      _BasicResource(
+        icon: Icons.local_shipping_outlined,
+        label: l10n.basicDataHubSupplier,
+        description: l10n.basicDataHubSupplierSub,
+        location: RouteName.basicinfoSupplier,
+        color: _C.teal,
+      ),
+      _BasicResource(
+        icon: Icons.palette_outlined,
+        label: l10n.basicDataHubColor,
+        description: l10n.basicDataHubColorSub,
+        location: RouteName.basicinfoColor,
+        color: _C.green,
+      ),
+      _BasicResource(
+        icon: Icons.straighten_outlined,
+        label: l10n.basicDataHubUnit,
+        description: l10n.basicDataHubUnitSub,
+        location: RouteName.basicinfoUnit,
+        color: _C.teal,
+      ),
+      _BasicResource(
+        icon: Icons.attach_money_rounded,
+        label: l10n.basicDataHubCurrency,
+        description: l10n.basicDataHubCurrencySub,
+        location: RouteName.basicinfoCurrency,
+        color: _C.green,
+      ),
+      _BasicResource(
+        icon: Icons.warehouse_outlined,
+        label: l10n.basicDataHubWarehouse,
+        description: l10n.basicDataHubWarehouseSub,
+        location: RouteName.basicinfoWarehouse,
+        color: _C.teal,
+      ),
+      _BasicResource(
+        icon: Icons.account_balance_outlined,
+        label: l10n.basicDataHubAccount,
+        description: l10n.basicDataHubAccountSub,
+        location: RouteName.basicinfoAccount,
+        color: _C.green,
+      ),
+      _BasicResource(
+        icon: Icons.category_outlined,
+        label: l10n.basicDataHubPaymentStyle,
+        description: l10n.basicDataHubPaymentStyleSub,
+        location: RouteName.basicinfoPaymentStyle,
+        color: _C.teal,
+      ),
+    ]
         .where((resource) {
           final required = requiredAnyPermFor(resource.location);
           return required == null || required.any(permissions.contains);
         })
         .toList(growable: false);
     return Scaffold(
-      appBar: const UtenAppBar(
-        title: '基础资料', // TODO(l10n): 补 arb
+      appBar: UtenAppBar(
+        title: l10n.basicDataHubTitle,
         showBackButton: true,
       ),
       body: SafeArea(

@@ -71,6 +71,21 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
 
+  // 左树搜索命中货品时，把关键词写入右侧库存表格的 _keyword（只显示搜索结果，而非该分类全部）。
+  // _keywordFromTree 标记 _keyword 的所有权：右侧搜索框手动输入时置 false，
+  // 清空左树搜索 / 仅分类名命中 / 手动点分类时只在归树所有时才清除，避免误删用户手输的词。
+  bool _keywordFromTree = false;
+  int _kwSeed = 0; // 搜索框重建种子：树搜索写入关键词时自增，驱动 UtenSearchBar 重建同步显示
+
+  /// 清除归左树搜索所有的关键词；返回是否有实际清除（用于决定是否重查）。
+  bool _clearTreeKeyword() {
+    if (!_keywordFromTree) return false;
+    _keyword = '';
+    _keywordFromTree = false;
+    _kwSeed++;
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -133,7 +148,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   }
 
   void _onSelectCategory(String? id) {
-    setState(() => _categoryId = id);
+    // 手动点分类 = 进入浏览模式：解除树搜索过滤，显示该分类全部库存。
+    setState(() {
+      _categoryId = id;
+      _clearTreeKeyword();
+    });
     _load(1);
   }
 
@@ -149,6 +168,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
       });
+      // 清空左树搜索：若关键词归树搜索所有，一并清除并重查（已加载过才查，保持懒载）。
+      if (_clearTreeKeyword() && _page != null) _load(1);
       return;
     }
     _globalQuery = q;
@@ -170,13 +191,19 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       }
       if (ids.isEmpty) {
         final firstCat = shallowestHit(tree, q, catHits);
+        // 仅分类名命中：定位分类即可，右侧显示该分类全部（分类本身就是搜索结果）。
+        final cleared = _keywordFromTree;
+        var categoryChanged = false;
         setState(() {
           _visibleFilterIds = catHits;
+          _clearTreeKeyword();
           if (firstCat != null && _categoryId != firstCat) {
             _categoryId = firstCat;
-            _load(1);
+            categoryChanged = true;
           }
         });
+        // 分类切换、或解除了树搜索关键词（且已加载过）时重查。
+        if (categoryChanged || (cleared && _page != null)) _load(1);
         return;
       }
       final merged = <String>{...catHits, ...ids};
@@ -186,11 +213,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       final target = first;
       setState(() {
         _visibleFilterIds = merged;
-        if (_categoryId != target) {
-          _categoryId = target;
-          _load(1);
-        }
+        // 货品命中：右侧库存表格只显示本次搜索结果（关键词写入右侧搜索框口径）。
+        _keyword = q;
+        _keywordFromTree = true;
+        _kwSeed++;
+        _categoryId = target;
       });
+      _load(1);
     } catch (_) {
       // 搜索是辅助功能，失败静默（保留分类命中结果）。
     }
@@ -472,9 +501,16 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
               SizedBox(
                 width: 280,
                 child: UtenSearchBar(
+                  // key 含 _kwSeed：左树搜索写入关键词时重建搜索框同步显示；
+                  // 本框手动输入只改 _keyword、不动 _kwSeed，不会打断输入焦点。
+                  key: ValueKey('inventory-search-$_kwSeed'),
                   hint: '搜索（名称/编号/型号/客户型号）', // TODO(l10n): 补 arb
+                  initialValue: _keyword,
                   onChanged: (kw) {
-                    setState(() => _keyword = kw);
+                    setState(() {
+                      _keyword = kw;
+                      _keywordFromTree = false; // 手动输入：关键词所有权归用户
+                    });
                     _load(1);
                   },
                 ),

@@ -14,6 +14,7 @@ import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/permission_by_path.dart';
@@ -28,10 +29,11 @@ class ProductionHubPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '生产管理',
+        title: l10n.productionHubTitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
@@ -46,46 +48,46 @@ class ProductionHubPage extends ConsumerWidget {
                   : UtenSpacing.s40,
             ),
             children: [
-              _section(context, theme, '生产管理', const [
+              _section(context, theme, l10n.productionHubTitle, [
                 // 调度+进度已合并为一个三 Tab 页面（待排产/进行中/已完成）
                 _Entry(
                   icon: Icons.dashboard_customize_outlined,
-                  label: '生产调度与进度',
-                  description: '待排产 · 在产进度 · 已完成',
+                  label: l10n.productionHubSchedule,
+                  description: l10n.productionHubScheduleSub,
                   location: '/production/schedule',
-                  badge: ProductionPendingBadge(showLabel: true),
+                  badge: const ProductionPendingBadge(showLabel: true),
                 ),
                 _Entry(
                   icon: Icons.assignment_outlined,
-                  label: '生产计划单',
-                  description: '计划单 · 明细 · 审核',
+                  label: l10n.productionHubPlan,
+                  description: l10n.productionHubPlanSub,
                   location: RouteName.productionPlanList,
                 ),
                 _Entry(
                   icon: Icons.edit_calendar_outlined,
-                  label: '生产日报表',
-                  description: '完工日报 · 审核 · 红冲',
+                  label: l10n.productionHubDaily,
+                  description: l10n.productionHubDailySub,
                   location: RouteName.productionDailyReportList,
                 ),
               ], permissions),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '生产报表', const [
+              _section(context, theme, l10n.productionHubSectionReports, [
                 _Entry(
                   icon: Icons.list_alt_outlined,
-                  label: '计划明细',
-                  description: '日期 / 货品 / 状态',
+                  label: l10n.productionHubReportPlanDetail,
+                  description: l10n.productionHubReportPlanDetailSub,
                   location: '/production/reports/plan-detail',
                 ),
                 _Entry(
                   icon: Icons.bar_chart_outlined,
-                  label: '计划汇总',
-                  description: '单号 / 制单员 / 审核员',
+                  label: l10n.productionHubReportPlanSummary,
+                  description: l10n.productionHubReportPlanSummarySub,
                   location: '/production/reports/plan-summary',
                 ),
                 _Entry(
                   icon: Icons.find_in_page_outlined,
-                  label: '物料反查产成品',
-                  description: '查材料用在哪些产品',
+                  label: l10n.productionHubWhereUsed,
+                  description: l10n.productionHubWhereUsedSub,
                   location: '/production/where-used',
                 ),
               ], permissions),

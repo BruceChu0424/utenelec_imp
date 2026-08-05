@@ -242,6 +242,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .whereType<String>()
           .toSet();
       await ref.read(salesMasterNameServiceProvider).loadGoodsNames(goodsIds);
+      // 表头人员字段（业务员/发货人/分批确认登记人）按 id 解析为姓名展示。
+      await ref.read(salesMasterNameServiceProvider).loadEmployeeNames([
+        d.sellerId,
+        d.senderId,
+        d.partialShipmentConfirmedBy,
+      ]);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -923,9 +929,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
       if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
-      // 业务员/发货人：master_name_provider 暂未含员工 dict，先显示占位；后续可扩。
-      if (_cfg.hasSeller) _KV('业务员', _empDisplay(d.sellerId)),
-      if (_cfg.hasSender) _KV('发货人', _empDisplay(d.senderId)),
+      // 业务员/发货人：按 id 经员工字典解析姓名（_load 已预载）。
+      if (_cfg.hasSeller) _KV('业务员', names.employee(d.sellerId)),
+      if (_cfg.hasSender) _KV('发货人', names.employee(d.senderId)),
       if (_cfg.hasValidUntil) _KV('有效期', d.validUntil),
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       if (_cfg.type == SalesDocType.order)
@@ -942,7 +948,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         ),
       if (_cfg.type == SalesDocType.order &&
           d.partialShipmentConfirmedBy != null)
-        _KV('确认登记人', _empDisplay(d.partialShipmentConfirmedBy)),
+        _KV('确认登记人', names.employee(d.partialShipmentConfirmedBy)),
       if (_cfg.type == SalesDocType.order &&
           (d.partialShipmentConfirmationReason?.isNotEmpty ?? false))
         _KV('确认依据', d.partialShipmentConfirmationReason),
@@ -1060,11 +1066,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       ),
     );
   }
-
-  /// 人员 id 当前未在 Service 解析（无员工 dict），先显示 UUID 短缀或 '—'。
-  /// 后续可在 Service 增 employeeName 缓存；当前 v1 不阻塞详情展示。
-  String _empDisplay(String? id) =>
-      (id == null || id.isEmpty) ? '—' : '员工 ${id.substring(0, 8)}';
 
   Widget _kvRow(ThemeData theme, _KV r) {
     return Row(

@@ -73,11 +73,32 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
-        log.warn("Database integrity conflict: {}", ex.getMostSpecificCause().getClass().getSimpleName());
         return ResponseEntity.status(409)
-                .body(ApiError.of(
-                        ErrorCode.CONFLICT,
-                        "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试"));
+                .body(ApiError.of(ErrorCode.CONFLICT, integrityMessage(ex.getMostSpecificCause())));
+    }
+
+    // JdbcTemplate 的完整性异常由 Spring 翻译为 DataIntegrityViolationException（上一条已兜住）；
+    // 但 Service 层经 EntityManager 执行的原生 SQL（如采购到货超收触发器
+    // fn_guard_procurement_received_with_arrival_allowance）抛出的是 Hibernate 的
+    // ConstraintViolationException，@Service 不在持久化异常翻译范围内，会原样上抛。
+    // 不单独处理则落入 handleOther → 裸 500。此处补 409 兜底。
+    @ExceptionHandler(org.hibernate.exception.ConstraintViolationException.class)
+    public ResponseEntity<ApiError> handleHibernateConstraint(
+            org.hibernate.exception.ConstraintViolationException ex) {
+        return ResponseEntity.status(409)
+                .body(ApiError.of(ErrorCode.CONFLICT, integrityMessage(ex)));
+    }
+
+    /** 到货收货数量超过财务核定可收上限时给出可操作提示；其余完整性冲突给通用提示。 */
+    private String integrityMessage(Throwable root) {
+        String message = root == null ? null : root.getMessage();
+        if (message != null
+                && message.contains("received_qty exceeds finance-approved arrival capacity")) {
+            return "该订货明细的可收数量已用尽（可能已被其他收货单审核入库），无法重复入库";
+        }
+        log.warn("Database integrity conflict: {}",
+                root == null ? "unknown" : root.getClass().getSimpleName());
+        return "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
     }
 
     @ExceptionHandler(Exception.class)

@@ -157,7 +157,8 @@ final ok = await context.guardRun(
 
 ## 四、视觉规范
 
-- **顶部弹条**：status bar 下方 8dp，全宽左右各留 16dp；背景/文字/图标取 `colorScheme`（success=primary、error=error、warning=tertiary、info=surfaceContainerHighest）；滑入 220ms easeOutCubic，可滑动关闭。
+- **顶部弹条**：与「连接恢复横幅」共用 [`UtenTopBannerCard`](../../lib/core/ui/uten_top_banner_card.dart) ——居中、最大宽 720、圆角 14、elevation 4、柔和 `*Container` 容器色（success=`primaryContainer`、error=`errorContainer`、warning=`tertiaryContainer`、info=`surfaceContainerHighest`）。
+  > 本主题 `primary/secondary/tertiaryContainer` 同为 teal，故 **success 与 warning 同底色，靠语义图标区分**（✓ / ⚠）；error 浅红、info 浅灰各自独立。这是主题决定、非 bug。滑入 220ms easeOutCubic，可左/右滑关闭。
 - **居中弹窗**：最大宽 400dp、最大高 520dp，圆角 16；56dp 圆形级别图标居中置顶；内容超长可滚动；urgent 带 1.5dp 红色描边 + 加深遮罩（55%）。
 
 ## 四、响应式 / 性能档 / 主题与 i18n
@@ -173,7 +174,10 @@ final ok = await context.guardRun(
 MaterialApp.builder
 └── Stack
     ├── child（路由页面）
+    ├── ConnectionRecoveryBanner   ← 连接状态横幅（断网/重连/恢复）
     └── AppNotificationHost        ← 顶部弹条渲染层（全局 Provider 队列驱动）
+
+两者视觉外壳同出 UtenTopBannerCard（居中 / maxWidth 720 / 圆角 14 / elevation 4）。
 
 UtenNotify.alert → showGeneralDialog → _CenterAlertDialog  ← 居中弹窗（按需 push）
 ```
@@ -201,6 +205,7 @@ flowchart TD
 ```
 
 - **分派规则**：`Notice.priority`（normal/important/urgent）决定弹哪条通道——见 `lib/features/notice/providers/notice_arrival.dart`。
+- **点击行为（标注已读 + 跳对应页面）**：点击 normal 顶部弹条 → 标注已读（`markNoticeReadContainer`，同步刷新通知页与未读角标）+ 跳 `notice.actionRoute`（待办办理入口，附 `returnTo=/notice`）；无 `actionRoute` 回退通知详情弹层。urgent/important 弹窗确认 → 标注已读 + 打开详情弹层（弹层内「前往办理页面」按钮再跳）。跳转目标统一由 `noticeActionTarget(notice)` 计算，与通知详情页 `_goAction` 一致；`ProviderContainer` 与 `GoRouter` 在派发时于弹窗外捕获，避免来源页 dispose 后 `WidgetRef` 失效、及弹窗内 `GoRouter.of` 取不到的竞态。
 - **工作标识**：`NoticeType.task/approval/workflow`（任务下发/审批结果/上游完成）属于工作类，`type.isWork=true`，卡片带「工作」描边小签，与公告广播一眼可辨。
 - **已接入的业务事件**：访客审批流转（`lib/features/visitor_approval/providers/visitor_notice_bridge.dart`）——HR 批准/驳回/转接待人、被访人确认/拒绝，都会自动生成工作通知并按上述规则弹提醒（驳回=important 居中弹窗，其余 normal 顶部弹条）。发布人由后端取当前员工姓名快照；动作人无 `notice:publish` 权限时静默降级（不拖垮审批主流程）。其他模块（报销审批、任务系统）要发通知，照此模式：造一条 `Notice` → 入库 → `dispatchNoticeArrival`。
 - **接收端提醒（待接推送）**：推送/WebSocket 收到一条 Notice 后 → 仓储入库 → 列表/角标失效刷新 → 调 `dispatchNoticeArrival`。业务方不需要碰弹窗细节。
@@ -219,4 +224,4 @@ flowchart TD
 
 ---
 
-**最后更新**：2026-07-29 · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/components/feedback/uten_center_alert.dart`、`lib/core/ui/app_notification.dart` · **通知模块**：已接真后端（V92/V94 + `/api/notices`）
+**最后更新**：2026-08-05（顶部弹条与连接横幅统一为 `UtenTopBannerCard`；点击通知弹条标注已读并跳 `actionRoute`） · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/components/feedback/uten_center_alert.dart`、`lib/core/ui/app_notification.dart`、`lib/core/ui/uten_top_banner_card.dart`（横幅外壳） · **通知模块**：已接真后端（V92/V94 + `/api/notices`）

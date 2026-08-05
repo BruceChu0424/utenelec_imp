@@ -81,21 +81,25 @@ class AppNotification {
 
 ## 四、视觉规范
 
+视觉外壳与「连接恢复横幅」共用 [`UtenTopBannerCard`](../../lib/core/ui/uten_top_banner_card.dart)（居中 / 最大宽 720 / 圆角 14 / elevation 4）。配色取柔和容器色：
+
 | kind | 背景 | 文字 | 图标 |
 |---|---|---|---|
-| success | `colorScheme.primary` | `onPrimary` | `check_circle_outline_rounded` |
-| error | `colorScheme.error` | `onError` | `error_outline_rounded` |
-| warning | `colorScheme.tertiary` | `onTertiary` | `warning_amber_rounded` |
+| success | `colorScheme.primaryContainer` | `onPrimaryContainer` | `check_circle_outline_rounded` |
+| error | `colorScheme.errorContainer` | `onErrorContainer` | `error_outline_rounded` |
+| warning | `colorScheme.tertiaryContainer` | `onTertiaryContainer` | `warning_amber_rounded` |
 | info | `surfaceContainerHighest` | `onSurface` | `info_outline_rounded` |
 
-- **位置**：status bar 下方 8dp 居中靠左，全宽左右各留 16dp。
+> 本主题 `primary/secondary/tertiaryContainer` 同为 teal，故 **success 与 warning 同底色，靠语义图标区分**（✓ / ⚠）；error 浅红、info 浅灰各自独立。这是主题决定、非 bug。
+
+- **位置**：屏幕顶部居中，最大宽 720dp（卡片自带 `SafeArea` + `Center`，宿主不再加左右留白）。
 - **动画**：滑入（easeOutCubic，220ms）+ 长按或左/右滑可关闭。
 - **队列上限 3 条**：超出自动 FIFO 出队最早的。
 - **去重**：600ms 内同 `kind + message` 合并显示一次（防止“先 success 再 fail”双显）。`force: true` 时绕过去重，保证关键提示（如禁用态点击反馈）不被前一条同文案吞掉。
 
 ## 五、响应式 / 性能档
 
-- **响应式**：宽度跟随父 `Stack`（在 MaterialApp.builder 中注入），三档断点下表现相同。
+- **响应式**：卡片 `Center` + 最大宽 720dp，三档断点下均居中不超宽（不再“全宽跟随父 Stack”）。
 - **性能档**：
   - `lite` 档：仍正常显示，不开模糊/长动画。
   - `standard/rich` 档：220ms 滑入 + 自动计时消失。
@@ -139,7 +143,8 @@ ref.read(appNotificationProvider.notifier).clear();
 - **自管生命**：通知进入队列后由 host 渲染 `_AppNotificationBanner`，220ms 滑入 + `Future.delayed` 计时退出。
 - **去重策略**：比 `DateTime.now().millisecondsSinceEpoch` 简单判断；同 message 在 600ms 内合并；`force: true` 跳过此判定。
 - **可手动关闭**：IconButton + Dismissible（左滑 / 右滑），保证无障碍可达性。
+- **共享外壳**：`_AppNotificationBanner` 的视觉外壳（SafeArea / Center / maxWidth 720 / Material / 圆角 14）由 [`lib/core/ui/uten_top_banner_card.dart`](../../lib/core/ui/uten_top_banner_card.dart) 的 `UtenTopBannerCard` 提供，与 `ConnectionRecoveryBanner` 同款；host 仅做纵向堆叠（裸 `Column`），每张卡片自带 `SafeArea` 居中。
 
 ---
 
-**最后更新**：2026-08-01（加 `force` 参数） · **位置**：`lib/core/ui/app_notification.dart`
+**最后更新**：2026-08-05（视觉外壳统一为 `UtenTopBannerCard` + 柔和容器色） · **位置**：`lib/core/ui/app_notification.dart` · **外壳**：`lib/core/ui/uten_top_banner_card.dart`

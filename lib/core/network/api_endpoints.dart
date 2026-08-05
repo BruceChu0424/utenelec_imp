@@ -216,6 +216,7 @@ abstract final class ApiEndpoints {
   static String employeeOffboard(String id) => '/org/employees/$id/offboard';
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
   static String employeeRehire(String id) => '/org/employees/$id/rehire';
+  static String employeeAccount(String id) => '/org/employees/$id/account';
 
   // 账号管理（HR）
   static const adminUsers = '/admin/users';

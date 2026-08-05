@@ -134,14 +134,17 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool silent = false}) async {
     final generation = _loadRequests.begin();
     final requestedSnapshotId = _snapshotId;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _pageNum = page;
-    });
+    _pageNum = page;
+    // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final repository = ref.read(auditLogRepositoryProvider);
       final pageResult = await repository.list(
@@ -188,15 +191,18 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         _summary = summary;
         _snapshotId = pageResult.snapshotId;
         _loading = false;
+        _error = null;
       });
     } on ApiException catch (e) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return; // 静默刷新失败：保留旧数据，不弹错误（stale-while-revalidate）
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
+      if (silent) return;
       setState(() {
         _error = '加载审计日志失败';
         _loading = false;
@@ -540,7 +546,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   Widget build(BuildContext context) {
     // 返回即刷新：从其它页面回到审计中心时重拉当前页（保留筛选/页码），
     // 保证看到最新审计记录。本页路由为静态路径，直接用 RouteName 常量。
-    ref.onPageResume(RouteName.adminAuditLogs, () => _load(_pageNum));
+    ref.onPageResume(RouteName.adminAuditLogs, () => _load(_pageNum, silent: true));
     final items = _page?.items ?? const <AuditLogEntry>[];
     final hasDrillDown =
         _riskFilter != null ||

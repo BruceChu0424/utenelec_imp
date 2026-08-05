@@ -17,6 +17,7 @@ abstract interface class EmployeeRepository {
   });
   Future<EmployeeProfile> getById(String id);
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input);
+  Future<EmployeeOnboardingResult> provisionAccount(String id);
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
   Future<void> transfer(String id, Map<String, dynamic> body);
   Future<void> offboard(String id, Map<String, dynamic> body);
@@ -60,12 +61,26 @@ class DioEmployeeRepository implements EmployeeRepository {
   @override
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input) async {
     final json = await api.post(ApiEndpoints.employees, body: input.toJson());
+    return _credentialResult(json, '入职响应缺少员工资料或一次性临时密码');
+  }
+
+  @override
+  Future<EmployeeOnboardingResult> provisionAccount(String id) async {
+    final json = await api.post(ApiEndpoints.employeeAccount(id));
+    return _credentialResult(json, '开通账号响应缺少员工资料或一次性临时密码');
+  }
+
+  /// 解析入职/补开账号的统一响应：{ employee, temporaryPassword, loginAccount }。
+  EmployeeOnboardingResult _credentialResult(
+    Map<String, dynamic> json,
+    String formatError,
+  ) {
     final employee = json['employee'];
     final temporaryPassword = json['temporaryPassword'];
     if (employee is! Map<String, dynamic> ||
         temporaryPassword is! String ||
         temporaryPassword.trim().isEmpty) {
-      throw const FormatException('入职响应缺少员工资料或一次性临时密码');
+      throw FormatException(formatError);
     }
     final profile = EmployeeProfile.fromJson(employee);
     // 登录账号：优先取后端返回（=手机号）；缺失时回退手机号/工号，保证弹窗总能展示。

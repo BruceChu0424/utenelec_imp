@@ -1059,6 +1059,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeActionDelete => '删除档案';
 
   @override
+  String get employeeActionProvision => '开通登录账号';
+
+  @override
+  String get employeeProvisionConfirm =>
+      '将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？';
+
+  @override
   String get employeeTransferTitle => '员工调岗';
 
   @override

@@ -94,11 +94,24 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         }
 
         Map<UUID, ExistingException> existing = existingExceptions(orderType, receiptId);
+        // 防重复收货单：同一订货明细若已在另一张收货单上产生未结到货异常，禁止再在别处审核入库。
+        // 否则会出现「明细已被这张收货单收到满，而那张收货单的异常仍卡在 RECEIPT_ADJUSTED」的
+        // 死锁态——那张异常的一键入库会被 received_qty 超量 guard 永久拦截，且 completeReturn
+        // 不会把 RECEIPT_ADJUSTED 推进到 CLOSED，异常一直挂在任务中心。
+        Map<UUID, String> siblingOpenException =
+                siblingOpenExceptionReceipts(orderType, receiptId);
         Map<UUID, BigDecimal> baseRemaining = new HashMap<>();
         Map<UUID, BigDecimal> allocatedInReceipt = new HashMap<>();
         boolean blocked = false;
         boolean receiptBoundAllowance = false;
         for (ArrivalRow row : rows) {
+            String blockingSibling = siblingOpenException.get(row.orderItemId());
+            if (blockingSibling != null) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "该订货明细已在另一张收货单(" + blockingSibling
+                                + ")上产生到货异常，请先在那张收货单完成一键入库或作废异常，再审核本单");
+            }
             BigDecimal remaining = baseRemaining.computeIfAbsent(
                     row.orderItemId(), ignored -> approvedRemaining(row));
             BigDecimal beforeThisLine = allocatedInReceipt.getOrDefault(
@@ -598,7 +611,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 FROM procurement_arrival_exceptions exception
                 JOIN goods goods ON goods.id = exception.goods_id
                 LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
-                WHERE """ + where, Long.class, args.toArray());
+                """ + " WHERE " + where, Long.class, args.toArray());
         List<Object> queryArgs = new ArrayList<>(args);
         queryArgs.add(safeSize);
         queryArgs.add((safePage - 1) * safeSize);
@@ -1043,6 +1056,27 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                             rs.getString("status"),
                             rs.getLong("version"));
                     result.put(row.receiptItemId(), row);
+                }, orderType, receiptId);
+        return result;
+    }
+
+    /**
+     * 其它收货单上、同一订货明细的未结(非 CLOSED/CANCELED)到货异常：order_item_id → 收货单号快照。
+     * 用于审核时拦截「重复收货单」——见 {@link #validateBeforeApproval}。
+     */
+    private Map<UUID, String> siblingOpenExceptionReceipts(
+            String orderType, UUID receiptId) {
+        Map<UUID, String> result = new HashMap<>();
+        jdbc.query("""
+                SELECT order_item_id, receipt_bill_no_snapshot
+                FROM procurement_arrival_exceptions
+                WHERE order_type = ?
+                  AND receipt_id <> ?
+                  AND status NOT IN ('CLOSED', 'CANCELED')
+                """, rs -> {
+                    result.putIfAbsent(
+                            rs.getObject("order_item_id", UUID.class),
+                            rs.getString("receipt_bill_no_snapshot"));
                 }, orderType, receiptId);
         return result;
     }

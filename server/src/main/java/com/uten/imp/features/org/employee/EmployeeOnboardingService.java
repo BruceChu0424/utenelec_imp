@@ -256,6 +256,60 @@ public class EmployeeOnboardingService {
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
+    // ===== 补开登录账号（批量导入等未自带账号的存量员工） =====
+    // 与入职建账号同口径：账号=手机号、初始密码=证件号后6位、Argon2id 入库、首登强制改、授 employee 角色。
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public EmployeeOnboardingResult provisionAccount(UUID employeeId) {
+        tx.bind();
+
+        Employee e = empRepo.findById(employeeId)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
+        if ("resigned".equals(e.getStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT, "离职员工必须先完成复职流程，不能开通登录账号");
+        }
+        if (userRepo.findByEmployeeId(employeeId).isPresent()) {
+            throw new ApiException(ErrorCode.CONFLICT, "该员工已开通登录账号");
+        }
+        EmployeeSensitive s = sensitiveRepo.findByEmployeeId(employeeId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.VALIDATION_FAILED, "缺少手机号或身份证，无法开通账号"));
+
+        // 手机号存的是规范化 11 位（ChinaMobileNumber.normalize），直接作登录账号，与用户输入一致。
+        String loginAccount = tx.decrypt(s.getPhoneEnc());
+        if (isBlank(loginAccount)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号");
+        }
+        String temporaryPassword = lastSix(tx.decrypt(s.getIdCardEnc()));
+        if (isBlank(temporaryPassword)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少身份证号，无法生成初始密码");
+        }
+        if (userRepo.existsByLoginAccount(loginAccount)) {
+            throw new ApiException(ErrorCode.CONFLICT, "该手机号已被用作其他账号的登录名，请先修改员工手机号");
+        }
+
+        UserAccount user = new UserAccount();
+        user.setEmployeeId(e.getId());
+        user.setLoginAccount(loginAccount);
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        user.setMustChangePassword(true);
+        user.setStatus("active");
+        user.setFailedAttempts(0);
+        userRepo.save(user);
+
+        // 默认仅授 employee 角色；AdminGrantGuard 为防提权兜底（非 admin 无法授更高角色）。
+        List<String> roleCodes = List.of("employee");
+        AdminGrantGuard.checkAdminGrant(currentUser, roleCodes);
+        for (Role role : roleRepo.findByCodeIn(roleCodes)) {
+            UserRole ur = new UserRole();
+            ur.setId(new UserRoleId(user.getId(), role.getId()));
+            userRoleRepo.save(ur);
+        }
+
+        return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
+    }
+
     static void assertHireDateNotFuture(LocalDate hireDate) {
         if (hireDate.isAfter(BusinessTime.today())) {
             throw new ApiException(

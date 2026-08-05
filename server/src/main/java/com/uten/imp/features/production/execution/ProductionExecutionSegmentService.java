@@ -486,7 +486,7 @@ public class ProductionExecutionSegmentService {
 
     private List<ExecutionSegmentView> rows(UUID planId, UUID segmentId) {
         String segmentFilter =
-                segmentId == null ? "" : " AND s.id = :segmentId";
+                segmentId == null ? "" : " AND s.id = :segmentId\n";
         var query = em.createNativeQuery("""
                         SELECT s.id, s.package_id, s.plan_id,
                                s.source_plan_item_id, s.segment_no,

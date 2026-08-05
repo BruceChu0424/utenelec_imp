@@ -42,6 +42,10 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
 
+  // 顶部搜索命中员工时，右侧员工列表同步按该关键词过滤（只显示搜索结果，而非该部门全部）；
+  // 清空搜索 / 仅部门名命中 / 手动点树节点时复位为 null。
+  String? _employeeSearchKeyword;
+
   bool _hasPermission(String permission) =>
       ref.read(currentPermissionsProvider).contains(permission);
 
@@ -91,6 +95,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
+        _employeeSearchKeyword = null; // 同时解除右侧员工列表的搜索过滤
       });
       return;
     }
@@ -116,6 +121,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         final firstDept = shallowestHit(tree, q, catHits);
         setState(() {
           _visibleFilterIds = catHits;
+          // 仅部门名命中：定位部门即可，右侧显示该部门全部（部门本身就是搜索结果）。
+          _employeeSearchKeyword = null;
           if (firstDept != null && _selectedId != firstDept) {
             _selectedId = firstDept;
           }
@@ -129,6 +136,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       final target = first;
       setState(() {
         _visibleFilterIds = merged;
+        // 员工命中：右侧员工列表只显示本次搜索结果（按关键词过滤）。
+        _employeeSearchKeyword = q;
         if (_selectedId != target) _selectedId = target;
       });
     } catch (_) {
@@ -383,6 +392,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
       canEdit: canEdit,
       canViewEmployees: canViewEmployees,
       canCreateEmployee: canCreateEmployee,
+      employeeFilter: _employeeSearchKeyword,
       onAddChild: () => _showCreateDialog(parent: selected),
       onEdit: (detail) => _showEditDialog(detail),
       onDelete: () => _delete(selected),
@@ -446,7 +456,11 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             child: _buildTree(
               l10n,
               canEdit: canEdit,
-              onSelect: (id) => setState(() => _selectedId = id),
+              // 手动点树节点 = 进入浏览模式：解除搜索过滤，右侧显示该部门全部员工。
+              onSelect: (id) => setState(() {
+                _selectedId = id;
+                _employeeSearchKeyword = null;
+              }),
             ),
           ),
           Container(width: 1, color: theme.colorScheme.outlineVariant),
@@ -491,7 +505,10 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
                   l10n,
                   canEdit: canEdit,
                   onSelect: (id) {
-                    setState(() => _selectedId = id);
+                    setState(() {
+                      _selectedId = id;
+                      _employeeSearchKeyword = null;
+                    });
                     Navigator.of(context).pop();
                   },
                 ),

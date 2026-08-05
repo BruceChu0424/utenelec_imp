@@ -39,6 +39,7 @@ class MasterDictionaryService {
   Map<int, String> _colorByLegacy = {};
   Map<int, String> _unitByLegacy = {};
   final Map<String, String> _goods = {};
+  final Map<String, String> _employees = {};
   Future<void>? _commonLoad;
 
   Future<void> ensureCommonLoaded() =>
@@ -124,6 +125,27 @@ class MasterDictionaryService {
   String unit(String? id) => resolveName(_units, id);
   String goods(String? id) => resolveName(_goods, id);
 
+  /// 员工无字典端点，按 id 逐个查询并缓存（业务员/发货人/制单/审批等人员字段展示用）。
+  Future<void> loadEmployeeNames(Iterable<String?> ids) async {
+    final need = ids
+        .whereType<String>()
+        .where((id) => id.isNotEmpty && !_employees.containsKey(id))
+        .toSet();
+    if (need.isEmpty) return;
+    try {
+      await Future.wait(
+        need.map((id) async {
+          final employee = await api.get(ApiEndpoints.employee(id));
+          _employees[id] = (employee['fullName'] as String?) ?? '';
+        }),
+      );
+    } catch (_) {
+      // 名称解析可降级为占位符，不阻塞展示。
+    }
+  }
+
+  String employee(String? id) => resolveName(_employees, id);
+
   Map<String, String> get warehouseEntries => _warehouses;
   Map<String, String> get currencyEntries => _currencies;
   Map<String, String> get colorEntries => _colors;
@@ -151,7 +173,6 @@ class MasterNameService extends MasterDictionaryService {
 
   Map<String, String> _suppliers = {};
   Map<String, String> _departments = {};
-  final Map<String, String> _employees = {};
   Future<void>? _load;
 
   Future<void> ensureLoaded() => _load ??= Future.wait([
@@ -182,31 +203,10 @@ class MasterNameService extends MasterDictionaryService {
     }
   }
 
-  /// 员工无字典端点，按需查询并缓存。
-  Future<void> loadEmployeeNames(Iterable<String?> ids) async {
-    final need = ids
-        .whereType<String>()
-        .where((id) => id.isNotEmpty && !_employees.containsKey(id))
-        .toSet();
-    if (need.isEmpty) return;
-    try {
-      await Future.wait(
-        need.map((id) async {
-          final employee = await api.get(ApiEndpoints.employee(id));
-          _employees[id] = (employee['fullName'] as String?) ?? '';
-        }),
-      );
-    } catch (_) {
-      // 列表名称解析可降级。
-    }
-  }
-
   String supplier(String? id) =>
       MasterDictionaryService.resolveName(_suppliers, id);
   String department(String? id) =>
       MasterDictionaryService.resolveName(_departments, id);
-  String employee(String? id) =>
-      MasterDictionaryService.resolveName(_employees, id);
 
   Map<String, String> get supplierEntries => _suppliers;
   Map<String, String> get departmentEntries => _departments;

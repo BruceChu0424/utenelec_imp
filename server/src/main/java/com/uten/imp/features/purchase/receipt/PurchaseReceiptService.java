@@ -22,6 +22,7 @@ import com.uten.imp.features.purchase.receipt.dto.ReceiptQueryFilter;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -72,6 +73,7 @@ public class PurchaseReceiptService {
     private final DocNumberService docNumberService;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final ProcurementArrivalControlPort arrivalControl;
+    private final ProcurementInspectionPort inspectionService;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -182,8 +184,13 @@ public class PurchaseReceiptService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         OffsetDateTime now = OffsetDateTime.now();
+        // V222 IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
+        inspectionService.receive(ProcurementInspectionPort.PURCHASE, id, r.getWarehouseId(),
+                items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
+                        it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
+                        it.getUnitRate(), it.getQty(), it.getAmountLocal())).toList(),
+                now);
         for (PurchaseReceiptItem it : items) {
-            applyMovement(r, it, StockService.DIR_IN, now, null);
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE purchase_order_items SET received_qty = COALESCE(received_qty,0) + :q WHERE id = :id")
@@ -193,7 +200,7 @@ public class PurchaseReceiptService {
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
-        productionSupply.onPurchaseReceiptApproved(id);
+        // 生产唤醒（onPurchaseReceiptApproved）推迟到 IQC 整单结案（ProcurementInspectionService.dispose）。
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
         receiptRepo.save(r);
@@ -228,6 +235,8 @@ public class PurchaseReceiptService {
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "采购收货已有退货记录，请先红冲下游退货单");
         }
+        // V222 IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
+        inspectionService.requireResolvedForReverse(ProcurementInspectionPort.PURCHASE, id);
         productionSupply.beforePurchaseReceiptReversed(id);
         // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致，消除并发 approve vs reverse 死锁。
         stockService.lockInventory(items.stream()
@@ -235,9 +244,13 @@ public class PurchaseReceiptService {
                 .toList());
         arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
-        // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
+        boolean inspectionManaged = inspectionService.reverseResolvedStock(
+                ProcurementInspectionPort.PURCHASE, id, now);
         for (PurchaseReceiptItem it : items) {
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
+            if (!inspectionManaged) {
+                // 历史无 IQC 冻结行的单据：全量反向（兼容）。
+                applyMovement(r, it, StockService.DIR_OUT, now, null);
+            }
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE purchase_order_items SET received_qty = COALESCE(received_qty,0) - :q WHERE id = :id")

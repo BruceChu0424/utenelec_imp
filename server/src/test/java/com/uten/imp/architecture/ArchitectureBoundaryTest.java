@@ -78,6 +78,9 @@ class ArchitectureBoundaryTest {
             "production->rd_task",
             "warehouse->purchase",
             "warehouse->subcontract",
+            // 2026-08-06：IQC 待检隔离（V222）落仓库侧，PASS 放行需写库存——warehouse 依赖 stock
+            //（与 purchase/subcontract/sales/production →stock 同构，更新 ADR-017）。
+            "warehouse->stock",
             "visitor->admin",
             "visitor->org");
 

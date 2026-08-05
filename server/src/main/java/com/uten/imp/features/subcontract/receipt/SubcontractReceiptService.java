@@ -15,6 +15,7 @@ import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemDto;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine;
@@ -81,6 +82,7 @@ public class SubcontractReceiptService {
     private final DocNumberService docNumberService;
     private final ProductionSubcontractSupplyTransitionPort productionSupply;
     private final ProcurementArrivalControlPort arrivalControl;
+    private final ProcurementInspectionPort inspectionService;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
@@ -198,9 +200,13 @@ public class SubcontractReceiptService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         OffsetDateTime now = OffsetDateTime.now();
+        // V222 IQC：收货入待检隔离（不写 stock_balances）；合格处置（PASS）才进可用库存 + 唤醒生产。
+        inspectionService.receive(ProcurementInspectionPort.SUBCONTRACT, id, r.getWarehouseId(),
+                items.stream().map(it -> new ProcurementInspectionPort.ReceivedLine(
+                        it.getId(), it.getGoodsId(), it.getColorId(), it.getUnitId(),
+                        it.getUnitRate(), it.getQty(), it.getAmountLocal())).toList(),
+                now);
         for (SubcontractReceiptItem it : items) {
-            // ① 正向入库（关键：DIR_IN=+1，不照搬老库反向）
-            applyMovement(r, it, StockService.DIR_IN, now, null);
             // ② 回写订货明细 received_qty + 重算订货单 is_closed
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
@@ -216,7 +222,7 @@ public class SubcontractReceiptService {
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
         postAp(r, totalLocalOf(items), +1);
         r.setStatus(STATUS_APPROVED);
-        productionSupply.onSubcontractReceiptApproved(id);
+        // 生产唤醒（onSubcontractReceiptApproved）推迟到 IQC 整单结案（ProcurementInspectionService.dispose）。
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         r.setApPosted(true);
         receiptRepo.save(r);
@@ -239,6 +245,8 @@ public class SubcontractReceiptService {
                 it.getReturnedQty() != null && it.getReturnedQty().signum() > 0)) {
             throw new ApiException(ErrorCode.BUSINESS, "委外进仓已有退货记录，请先红冲下游退货单");
         }
+        // V222 IQC：红冲前须质检结案；反向由 inspection 服务按已放行量精确回退（无冻结行的历史单走全量）。
+        inspectionService.requireResolvedForReverse(ProcurementInspectionPort.SUBCONTRACT, id);
         productionSupply.beforeSubcontractReceiptReversed(id);
         // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve 锁序一致，消除并发死锁窗。
         stockService.lockInventory(items.stream()
@@ -247,9 +255,13 @@ public class SubcontractReceiptService {
         // 反立帐（若有核销 amount_settled<>0 抛 IllegalStateException，对齐老库文案）
         arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RECEIPT);
         OffsetDateTime now = OffsetDateTime.now();
+        boolean inspectionManaged = inspectionService.reverseResolvedStock(
+                ProcurementInspectionPort.SUBCONTRACT, id, now);
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (SubcontractReceiptItem it : items) {
-            applyMovement(r, it, StockService.DIR_OUT, now, null);
+            if (!inspectionManaged) {
+                applyMovement(r, it, StockService.DIR_OUT, now, null);
+            }
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE subcontract_order_items SET received_qty = COALESCE(received_qty,0) - :q WHERE id = :id")

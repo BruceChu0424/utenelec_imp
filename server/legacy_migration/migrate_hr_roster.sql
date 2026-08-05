@@ -49,13 +49,19 @@ BEGIN
     END IF;
 END $$;
 
--- ---------------- §0 部门改名（与名录口径对齐；code 一律不动，path 触发器自动维护） ----------------
--- 五金铜铸车间为表内笔误：老库 B_WorkShop(39=铜柱车间)/委外内部车间/成本核算附件7 均为「铜柱」，不改名。
+-- ---------------- §0 部门改名（与名录口径严格对齐；code 一律不动，path 触发器自动维护） ----------------
+-- 一切以《职工信息表》名称为准（用户钦定）。
+-- 注意：五金铜铸车间按表格执行改名；老库 B_WorkShop(39)/委外内部车间供应商/成本核算附件7
+--   等历史链路名称仍为「铜柱车间」，那是老数据口径，不受影响（code 不变，仅显示名对齐名录）。
 UPDATE departments SET name = '财税与行政管理中心' WHERE code = 'FIN_CENTER' AND name <> '财税与行政管理中心';
-UPDATE departments SET name = '财务部'           WHERE code = 'DEPT_FIN'   AND name <> '财务部';
-UPDATE departments SET name = '综合营销事业部'     WHERE code = 'DEPT_SALES' AND name <> '综合营销事业部';
-UPDATE departments SET name = '装配第一车间'       WHERE code = 'WS_ZHUANG' AND name <> '装配第一车间';
-UPDATE departments SET name = '轨道装配车间'       WHERE code = 'WS_DLGD'   AND name <> '轨道装配车间';
+UPDATE departments SET name = '财务部'           WHERE code = 'DEPT_FIN'     AND name <> '财务部';
+UPDATE departments SET name = '综合营销事业部'     WHERE code = 'DEPT_SALES'   AND name <> '综合营销事业部';
+UPDATE departments SET name = '装配第一车间'       WHERE code = 'WS_ZHUANG'   AND name <> '装配第一车间';
+UPDATE departments SET name = '轨道装配车间'       WHERE code = 'WS_DLGD'     AND name <> '轨道装配车间';
+UPDATE departments SET name = '五金铜铸车间'       WHERE code = 'WS_WJTZ'     AND name <> '五金铜铸车间';
+UPDATE departments SET name = 'PMC运营计划部'      WHERE code = 'SUB_PLAN'    AND name <> 'PMC运营计划部';
+UPDATE departments SET name = 'PMC运营采购部'      WHERE code = 'SUB_PURCHASE' AND name <> 'PMC运营采购部';
+UPDATE departments SET name = 'PMC运营仓储部'      WHERE code = 'SUB_WH'      AND name <> 'PMC运营仓储部';
 
 -- ---------------- §1 岗位：按 (岗位名称 × 部门) 建档，缺则新建（code 取实际最大 ZW 序号），有则复用 ----------------
 WITH need AS (

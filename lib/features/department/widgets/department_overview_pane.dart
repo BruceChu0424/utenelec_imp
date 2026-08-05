@@ -21,6 +21,8 @@ import '../../employee/widgets/employee_status_badge.dart';
 import '../models/department_node.dart';
 import '../models/workforce_overview.dart';
 import '../repositories/department_repository.dart';
+import 'department_org_chart_dialog.dart';
+import 'department_roster_print.dart';
 import 'organization_workforce_overview_card.dart';
 import 'position_manager_sheet.dart';
 
@@ -34,12 +36,17 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
+    this.employeeFilter,
   });
 
   final DepartmentNode node;
   final bool canEdit;
   final bool canViewEmployees;
   final bool canCreateEmployee;
+
+  /// 顶部树搜索命中员工时传入的过滤词：面板把它采纳为员工列表的搜索词，
+  /// 使右侧只显示本次搜索结果；为 null 时不过滤（显示该部门全部）。
+  final String? employeeFilter;
   final VoidCallback onAddChild;
   final void Function(DepartmentInfo detail) onEdit;
   final VoidCallback onDelete;
@@ -70,6 +77,9 @@ class _DepartmentOverviewPaneState
   String? _employeesError;
   String _keyword = '';
 
+  // 搜索框重建种子：外部过滤词（树搜索）变化时自增，驱动 UtenSearchBar 用新 initialValue 重建。
+  int _kwSeed = 0;
+
   int _scopeVersion = 0;
   int _employeeRequest = 0;
 
@@ -84,6 +94,15 @@ class _DepartmentOverviewPaneState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.node.id != widget.node.id) {
       _load();
+      return;
+    }
+    // 同一部门下外部过滤词变化（树搜索命中/解除）：采纳为本地关键词并重查员工列表。
+    if (oldWidget.employeeFilter != widget.employeeFilter) {
+      setState(() {
+        _kwSeed++;
+        _keyword = widget.employeeFilter ?? '';
+      });
+      _reloadEmployees();
       return;
     }
     if (!oldWidget.canViewEmployees && widget.canViewEmployees) {
@@ -107,7 +126,9 @@ class _DepartmentOverviewPaneState
     setState(() {
       _loading = true;
       _error = null;
-      _keyword = '';
+      // 外部过滤词（树搜索命中）随部门切换一并带入：搜索定位时右侧只显示搜索结果。
+      _keyword = widget.employeeFilter ?? '';
+      _kwSeed++;
       _info = null;
       _overview = null;
       _overviewError = null;
@@ -346,6 +367,26 @@ class _DepartmentOverviewPaneState
                   onEdit: () => widget.onEdit(info),
                   onDelete: widget.onDelete,
                   extraActions: [
+                    // 花名册/架构图需要拉取部门员工，权限与员工列表一致
+                    if (widget.canViewEmployees) ...[
+                      MasterDetailCardAction(
+                        icon: Icons.print_outlined,
+                        label: '打印花名册',
+                        onPressed: () => showDepartmentRosterPrint(
+                          context: context,
+                          ref: ref,
+                          node: widget.node,
+                        ),
+                      ),
+                      MasterDetailCardAction(
+                        icon: Icons.account_tree_outlined,
+                        label: '部门架构图',
+                        onPressed: () => showDepartmentOrgChart(
+                          context: context,
+                          node: widget.node,
+                        ),
+                      ),
+                    ],
                     if (selectable)
                       MasterDetailCardAction(
                         icon: Icons.badge_outlined,
@@ -421,7 +462,8 @@ class _DepartmentOverviewPaneState
       ],
     );
     final search = UtenSearchBar(
-      key: ValueKey('department-employee-search-${widget.node.id}'),
+      // key 含 node.id + _kwSeed：切部门 / 树搜索写入过滤词时重建搜索框同步显示。
+      key: ValueKey('department-employee-search-${widget.node.id}-$_kwSeed'),
       hint: '搜索员工（姓名/工号）',
       initialValue: _keyword,
       onChanged: _onSearchChanged,

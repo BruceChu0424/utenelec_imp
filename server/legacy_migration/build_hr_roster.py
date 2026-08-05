@@ -23,11 +23,22 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import xlrd
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data"
 DEFAULT_XLS = HERE.parent.parent / "中山市优腾电器职工信息表.xls"
 UT_START = 2  # UT0001 为已删除的测试员工，不复用；从 UT0002 起编
+
+# ---------- 单元格批注（Excel cell comments，pandas 读不到，必须 xlrd 解析） ----------
+# 名录只有姓名列 3 条批注（作者 Mayn）。结构化结论人工判读后登记在此；
+# 脚本自动抽取批注原文进 note 列，若发现未登记的新批注会告警（强制人工判读）。
+NOTE_STRUCTURED = {
+    # (序号, 姓名): confirmed_at / base_salary / allowance_standard
+    (40, "苏燕霞"): {"confirmed_at": "", "base_salary": "", "allowance_standard": "组长津贴300元/月"},
+    (46, "谢宝城"): {"confirmed_at": "2026-06-01", "base_salary": "4500", "allowance_standard": ""},
+    (55, "庞兴茂"): {"confirmed_at": "", "base_salary": "5000", "allowance_standard": ""},
+}
 
 # ---------- 组织映射（表内值 → departments.code） ----------
 CENTER_MAP = {
@@ -133,11 +144,25 @@ def main() -> int:
                   "联系电话", "身份证号", "籍贯", "现居住地址", "其它"]
     df = df[df["姓名"].notna()].reset_index(drop=True)
 
+    # --- 单元格批注抽取（pandas 不读批注，必须 xlrd；姓名列=第 1 列） ---
+    notes_by_seq: dict[int, str] = {}
+    book = xlrd.open_workbook(str(xls_path), formatting_info=True)
+    sheet = book.sheet_by_index(0)
+    for (r, _c), note in getattr(sheet, "cell_note_map", {}).items():
+        seq = int(sheet.cell_value(r, 0))
+        notes_by_seq[seq] = note.text.strip()
+
     warns: list[str] = []
     rows: list[dict] = []
     for _, r in df.iterrows():
         seq = int(r["序号"])
         name = str(r["姓名"]).strip()
+
+        # --- 批注：原文入 note 列，结构化字段取登记表；未登记的新批注告警 ---
+        raw_note = notes_by_seq.get(seq, "")
+        structured = NOTE_STRUCTURED.get((seq, name), {})
+        if raw_note and not structured:
+            warns.append(f"#{seq} {name}: 发现未登记的批注 {raw_note!r} → 仅原文入 note 列，请人工判读后登记 NOTE_STRUCTURED")
         idc = str(r["身份证号"]).strip()
         idc = idc[:-2] if idc.endswith(".0") else idc
 
@@ -209,6 +234,10 @@ def main() -> int:
             "phone": norm_phone(r["联系电话"]),
             "huji": str(r["籍贯"]).strip() if pd.notna(r["籍贯"]) else "",
             "residence": str(r["现居住地址"]).strip() if pd.notna(r["现居住地址"]) else "",
+            "note": raw_note,
+            "confirmed_at": structured.get("confirmed_at", ""),
+            "base_salary": structured.get("base_salary", ""),
+            "allowance_standard": structured.get("allowance_standard", ""),
         })
 
     # --- 部门负责人指派 ---
@@ -238,7 +267,8 @@ def main() -> int:
 
     DATA.mkdir(exist_ok=True)
     roster_cols = ["emp_code", "seq", "full_name", "gender", "political_status", "birth_date",
-                   "hire_date", "dept_code", "pos_name", "pos_level", "id_card", "phone", "huji", "residence"]
+                   "hire_date", "dept_code", "pos_name", "pos_level", "id_card", "phone", "huji",
+                   "residence", "note", "confirmed_at", "base_salary", "allowance_standard"]
     roster_path = DATA / "hr_roster.csv"
     with roster_path.open("w", encoding="utf-8", newline="") as f:
         f.write("|".join(roster_cols) + "\n")
@@ -263,6 +293,11 @@ def main() -> int:
     # --- 报告 ---
     print(f"✔ 名册 {len(rows)} 人 → {roster_path}")
     print(f"✔ 负责人指派 {len(managers)} 部门 → {mgr_path}")
+    noted = [r for r in rows if r["note"]]
+    print(f"✔ 单元格批注 {len(noted)} 条（转正/薪酬/津贴已结构化入 compensation/confirmed_at）")
+    for r in noted:
+        print(f"    #{r['seq']} {r['full_name']}: {r['note']!r} → confirmed_at={r['confirmed_at'] or '-'} "
+              f"base={r['base_salary'] or '-'} allowance={r['allowance_standard'] or '-'}")
     for dc, ec in sorted(managers.items()):
         name = next(r["full_name"] for r in rows if r["emp_code"] == ec)
         print(f"    {dc:<12} → {ec} {name}")

@@ -30,7 +30,8 @@ SET session_replication_role = replica;
 CREATE TEMP TABLE hr_roster (
     emp_code text, seq int, full_name text, gender text, political_status text,
     birth_date text, hire_date text, dept_code text, pos_name text, pos_level text,
-    id_card text, phone text, huji text, residence text);
+    id_card text, phone text, huji text, residence text,
+    note text, confirmed_at text, base_salary text, allowance_standard text);
 \copy hr_roster FROM '/tmp/hr_roster.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
 CREATE TEMP TABLE hr_mgr (dept_code text, emp_code text);
@@ -108,12 +109,12 @@ WHERE p.is_deleted = false
 
 -- ---------------- §2 员工主档 upsert（幂等键 = code） ----------------
 INSERT INTO employees (code, full_name, gender, political_status, birth_date, id_type,
-                       department_id, position_id, hire_date, status, employment_type,
+                       department_id, position_id, hire_date, confirmed_at, status, employment_type,
                        huji_address, residence_address, legacy_category)
 SELECT s.emp_code, s.full_name,
        NULLIF(s.gender, ''), NULLIF(s.political_status, ''), NULLIF(s.birth_date, '')::date,
        CASE WHEN NULLIF(s.id_card, '') IS NOT NULL THEN '身份证' ELSE '其他' END,
-       d.id, p.id, s.hire_date::date, 'active', 'regular',
+       d.id, p.id, s.hire_date::date, NULLIF(s.confirmed_at, '')::date, 'active', 'regular',
        NULLIF(s.huji, ''), NULLIF(s.residence, ''), 'HR正式名录2026-08'
 FROM hr_roster s
 JOIN departments d ON d.code = s.dept_code
@@ -127,6 +128,7 @@ ON CONFLICT (code) DO UPDATE SET
     department_id    = EXCLUDED.department_id,
     position_id      = EXCLUDED.position_id,
     hire_date        = EXCLUDED.hire_date,
+    confirmed_at     = EXCLUDED.confirmed_at,
     status           = EXCLUDED.status,
     employment_type  = EXCLUDED.employment_type,
     huji_address     = EXCLUDED.huji_address,
@@ -160,6 +162,24 @@ ON CONFLICT (employee_id) DO UPDATE
         id_card_hash  = EXCLUDED.id_card_hash,
         phone_enc     = EXCLUDED.phone_enc,
         phone_hash    = EXCLUDED.phone_hash;
+
+-- ---------------- §3.5 薪酬批注（单元格批注结构化：基本工资/补贴标准，pgcrypto 加密） ----------------
+-- 来源：姓名列 3 条批注（build_hr_roster.py NOTE_STRUCTURED 人工判读登记）：
+--   苏燕霞=组长津贴300元/月、谢宝城=6.1转正4500（转正日期写 employees.confirmed_at）、
+--   庞兴茂=6.1调整5000元/月。仅 hr+finance+admin 可见明文（employee:compensation:view）。
+INSERT INTO employee_compensation (employee_id, base_salary_enc, allowance_standard_enc)
+SELECT e.id,
+       CASE WHEN NULLIF(BTRIM(s.base_salary), '') IS NOT NULL
+            THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.base_salary), :'pgp_key'), 'base64') END,
+       CASE WHEN NULLIF(BTRIM(s.allowance_standard), '') IS NOT NULL
+            THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.allowance_standard), :'pgp_key'), 'base64') END
+FROM hr_roster s
+JOIN employees e ON e.code = s.emp_code
+WHERE NULLIF(BTRIM(s.base_salary), '') IS NOT NULL
+   OR NULLIF(BTRIM(s.allowance_standard), '') IS NOT NULL
+ON CONFLICT (employee_id) DO UPDATE
+    SET base_salary_enc      = EXCLUDED.base_salary_enc,
+        allowance_standard_enc = EXCLUDED.allowance_standard_enc;
 
 -- ---------------- §4 部门负责人（高层兼职 + 部门经理；构建脚本已定，HR 可在部门页再核验） ----------------
 UPDATE departments d
@@ -200,6 +220,8 @@ UNION ALL SELECT '有岗位: ' || count(*) FROM employees WHERE legacy_category 
 UNION ALL SELECT '敏感信息行: ' || count(*) FROM employee_sensitive s JOIN employees e ON e.id = s.employee_id WHERE e.legacy_category = 'HR正式名录2026-08'
 UNION ALL SELECT '身份证哈希: ' || count(*) FROM employee_sensitive s JOIN employees e ON e.id = s.employee_id WHERE e.legacy_category = 'HR正式名录2026-08' AND s.id_card_hash IS NOT NULL
 UNION ALL SELECT 'onboard 轨迹: ' || count(*) FROM employment_history h JOIN employees e ON e.id = h.employee_id WHERE e.legacy_category = 'HR正式名录2026-08' AND h.event_type = 'onboard'
+UNION ALL SELECT '薪酬批注行（应 3）: ' || count(*) FROM employee_compensation c JOIN employees e ON e.id = c.employee_id WHERE e.legacy_category = 'HR正式名录2026-08'
+UNION ALL SELECT '有转正日期（应 1）: ' || count(*) FROM employees WHERE legacy_category = 'HR正式名录2026-08' AND confirmed_at IS NOT NULL
 UNION ALL SELECT '已设负责人部门: ' || count(*) FROM departments WHERE manager_id IS NOT NULL
 UNION ALL SELECT '模板岗位已软删（应 111+）: ' || count(*) FROM positions WHERE is_deleted = true AND (code ~ '^(LEAD_[123]|GRP_[123])' OR code ~ '^MGT_(HEAD|DEPUTY|SPECIALIST)')
 UNION ALL SELECT '名册缺失（应 0）: ' || count(*) FROM hr_roster s WHERE NOT EXISTS (SELECT 1 FROM employees e WHERE e.code = s.emp_code);

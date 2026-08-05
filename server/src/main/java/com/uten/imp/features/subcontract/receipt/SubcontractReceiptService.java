@@ -209,6 +209,8 @@ public class SubcontractReceiptService {
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
+                // ③ V221 回厂按冻结 BOM 消费发料子件（守恒：consumed_qty += 回厂父件量×frozen_unit_qty）
+                consumeIssuedMaterials(it.getOrderItemId(), it.getQty(), +1);
             }
         }
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
@@ -255,6 +257,8 @@ public class SubcontractReceiptService {
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
+                // V221 回退回厂消费（consumed_qty -= 回厂父件量×frozen_unit_qty）
+                consumeIssuedMaterials(it.getOrderItemId(), it.getQty(), -1);
             }
         }
         r.setStatus(STATUS_REVERSED);
@@ -335,6 +339,63 @@ public class SubcontractReceiptService {
                     WHERE i.order_id = o.id AND COALESCE(i.is_deleted, false) = false
                 ) WHERE o.id = (SELECT order_id FROM subcontract_order_items WHERE id = :iid)
                 """).setParameter("iid", orderItemId).executeUpdate();
+    }
+
+    /**
+     * 委外回厂进仓按冻结 BOM 消费发料子件（V221 守恒）。
+     *
+     * <p>sign=+1 进仓消费 / -1 红冲回退。对挂接该订货明细的每条发料子件，按
+     * {@code 回厂父件量 × frozen_unit_qty} 累加/回减 {@code consumed_qty}。消费时 CAS 保证
+     * 不超 {@code supplier_ending}（DB CHECK supplier_ending≥0 为兜底），超消费抛 409。
+     * 单位口径：回厂父件量（父件单据单位）× frozen_unit_qty（子件/父件）= 子件单据单位，与
+     * at_supplier_qty / returned_qty / wasted_qty 同口径。
+     */
+    private void consumeIssuedMaterials(UUID orderItemId, BigDecimal receivedParentQty, int sign) {
+        if (orderItemId == null || receivedParentQty == null || receivedParentQty.signum() == 0) return;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT id, COALESCE(frozen_unit_qty, 0)
+                        FROM subcontract_material_issue_items
+                        WHERE order_item_id = :oid
+                          AND COALESCE(at_supplier_qty, 0) > 0
+                          AND COALESCE(frozen_unit_qty, 0) > 0
+                        ORDER BY id
+                        FOR UPDATE
+                        """)
+                .setParameter("oid", orderItemId)
+                .getResultList();
+        for (Object[] row : rows) {
+            UUID issueItemId = (UUID) row[0];
+            BigDecimal unitQty = (BigDecimal) row[1];
+            BigDecimal delta = receivedParentQty.multiply(unitQty)
+                    .setScale(4, java.math.RoundingMode.HALF_UP);
+            if (delta.signum() == 0) continue;
+            if (sign > 0) {
+                int updated = em.createNativeQuery("""
+                                UPDATE subcontract_material_issue_items
+                                SET consumed_qty = consumed_qty + :delta
+                                WHERE id = :id
+                                  AND :delta <= at_supplier_qty - consumed_qty
+                                      - COALESCE(returned_qty, 0) - COALESCE(wasted_qty, 0)
+                                """)
+                        .setParameter("delta", delta)
+                        .setParameter("id", issueItemId)
+                        .executeUpdate();
+                if (updated != 1) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "委外回厂消费超过供应商在制余量（发料−已消费−已退−已损耗），疑似超耗或错料，请人工核销");
+                }
+            } else {
+                em.createNativeQuery("""
+                                UPDATE subcontract_material_issue_items
+                                SET consumed_qty = GREATEST(consumed_qty - :delta, 0)
+                                WHERE id = :id
+                                """)
+                        .setParameter("delta", delta)
+                        .setParameter("id", issueItemId)
+                        .executeUpdate();
+            }
+        }
     }
 
     private void applyHeader(ReceiptSaveRequest req, SubcontractReceipt r) {

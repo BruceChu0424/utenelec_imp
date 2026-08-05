@@ -82,6 +82,24 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "wasted_qty", precision = 18, scale = 4)
     private BigDecimal wastedQty = BigDecimal.ZERO;
 
+    // ---- V221 委外物料守恒子账（at_supplier / consumed / frozen / supplier_ending）----
+
+    /** 已发至供应商处的子件量（审核置为发料量；单据单位）。 */
+    @Column(name = "at_supplier_qty", nullable = false, precision = 18, scale = 4)
+    private BigDecimal atSupplierQty = BigDecimal.ZERO;
+
+    /** 回厂进仓按冻结 BOM 消费的子件量（单据单位）。 */
+    @Column(name = "consumed_qty", nullable = false, precision = 18, scale = 4)
+    private BigDecimal consumedQty = BigDecimal.ZERO;
+
+    /** 审核时冻结的 BOM 版本：每单位父件耗用本子件量。 */
+    @Column(name = "frozen_unit_qty", precision = 18, scale = 6)
+    private BigDecimal frozenUnitQty;
+
+    /** 供应商期末结存（生成列，只读）。 */
+    @Column(name = "supplier_ending", insertable = false, updatable = false, precision = 18, scale = 4)
+    private BigDecimal supplierEnding;
+
     @Column(name = "parent_goods_id")
     private UUID parentGoodsId;          // MGoodsID 父件货品
 

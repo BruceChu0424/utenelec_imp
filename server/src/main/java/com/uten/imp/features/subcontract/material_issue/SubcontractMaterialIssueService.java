@@ -139,8 +139,12 @@ public class SubcontractMaterialIssueService {
     }
 
     /**
-     * 审核：0→1。当前 fail-closed：订货单尚未冻结 BOM 版本，也没有
-     * 子件级发料权威台账，不能把子件量累计到成品订货行。
+     * 审核：0→1。冻结 BOM 版本 + 建供应商处子件台账（at_supplier_qty = 发料量）+ 材料出库（type15, DIR_OUT）。
+     *
+     * <p>V221 放开原 fail-closed 门禁：发料现在有权威台账，回厂进仓可按冻结 BOM 守恒消费
+     * （supplier_ending = at_supplier − consumed − returned − wasted，DB 强制 ≥ 0）。
+     * 要求每条明细挂委外订货明细（order_item_id），以便回厂按父件 BOM 消费。
+     * 不立应付（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。
      */
     @Transactional
     public MaterialIssueDetail approve(UUID id) {
@@ -152,11 +156,53 @@ public class SubcontractMaterialIssueService {
         if (r.getWarehouseId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "发料单需指定发出仓");
         }
-        throw new ApiException(
-                ErrorCode.CONFLICT,
-                "委外订货尚未冻结 BOM 版本及子件发料台账；为避免错料、超发和"
-                        + "子件量混入成品订货量，当前禁止审核新发料单。"
-                        + "历史已审核发料仍可红冲、退料或登记损耗");
+        List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
+        if (items.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        }
+        for (SubcontractMaterialIssueItem it : items) {
+            if (it.getOrderItemId() == null) {
+                throw new ApiException(ErrorCode.BUSINESS, "委外发料明细须关联委外订货明细，以便回厂按 BOM 守恒消费");
+            }
+            if (it.getQty() == null || it.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "发料明细数量必须大于 0");
+            }
+        }
+        stockService.lockInventory(items.stream()
+                .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
+                .toList());
+        OffsetDateTime now = OffsetDateTime.now();
+        for (SubcontractMaterialIssueItem it : items) {
+            applyMovement(r, it, StockService.DIR_OUT, now, null);
+            // 冻结 BOM 版本（每单位父件耗用本子件量）+ 建供应商处子件台账（at_supplier = 发料量）
+            it.setAtSupplierQty(it.getQty());
+            it.setFrozenUnitQty(lookupFrozenUnitQty(it.getParentGoodsId(), it.getGoodsId()));
+            itemRepo.save(it);
+        }
+        r.setStatus(STATUS_APPROVED);
+        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        issueRepo.save(r);
+        return detail(id);
+    }
+
+    /**
+     * 查当前 goods_bom_items 的子件单位用量（每单位父件耗用本子件），作为本次发料的冻结 BOM 版本。
+     * 无 BOM 边返回 null（该子件不按 BOM 消费；回厂消费将跳过此子件）。
+     */
+    private BigDecimal lookupFrozenUnitQty(UUID parentGoodsId, UUID componentGoodsId) {
+        if (parentGoodsId == null || componentGoodsId == null) return null;
+        @SuppressWarnings("unchecked")
+        List<BigDecimal> rows = em.createNativeQuery("""
+                SELECT qty FROM goods_bom_items
+                WHERE goods_id = :parent AND component_goods_id = :component
+                  AND COALESCE(is_deleted, false) = false
+                ORDER BY sort_order ASC NULLS LAST, id ASC
+                LIMIT 1
+                """)
+                .setParameter("parent", parentGoodsId)
+                .setParameter("component", componentGoodsId)
+                .getResultList();
+        return rows.isEmpty() ? null : rows.getFirst();
     }
 
     /** 红冲：1→-1。反向 DIR_IN；不再改写成品行 legacy issued_qty（无 ArAp）。 */
@@ -169,8 +215,9 @@ public class SubcontractMaterialIssueService {
         }
         List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
         if (items.stream().anyMatch(it ->
-                positive(it.getReturnedQty()) || positive(it.getWastedQty()))) {
-            throw new ApiException(ErrorCode.BUSINESS, "委外发料已有退料/损耗记录，请先红冲下游单据");
+                positive(it.getReturnedQty()) || positive(it.getWastedQty())
+                        || positive(it.getConsumedQty()))) {
+            throw new ApiException(ErrorCode.BUSINESS, "委外发料已有退料/损耗/回厂消费记录，请先红冲下游单据");
         }
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
@@ -178,6 +225,9 @@ public class SubcontractMaterialIssueService {
         OffsetDateTime now = OffsetDateTime.now();
         for (SubcontractMaterialIssueItem it : items) {
             applyMovement(r, it, StockService.DIR_IN, now, null);
+            // 物料回到公司仓：清零供应商处台账（at_supplier 归零；consumed/returned/wasted 已校验为 0）
+            it.setAtSupplierQty(BigDecimal.ZERO);
+            itemRepo.save(it);
         }
         r.setStatus(STATUS_REVERSED);
         issueRepo.save(r);

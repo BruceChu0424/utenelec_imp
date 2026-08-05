@@ -95,6 +95,17 @@ SET last_seq = GREATEST(last_seq,
     (SELECT COALESCE(MAX(substring(code FROM 3)::int), 0) FROM positions WHERE code ~ '^ZW[0-9]+$'))
 WHERE prefix = 'ZW';
 
+-- ---------------- §1.5 清除调试模板岗位（V24 LEAD_*/GRP_* + V206 MGT_*，全部 0 占用） ----------------
+-- 目的：入职/调岗的岗位选择弹层只列出「这个部门现在真实存在的岗位」（名录岗位），
+--   不被 部长/副部长/主管、组长/副组长/员工、负责人/副负责人/专员 等联调模板干扰。
+-- 软删（is_deleted）保留审计痕迹；NOT EXISTS 防御：一旦某模板已被员工占用则跳过不删。
+UPDATE positions p
+SET is_deleted = true, deleted_at = now()
+WHERE p.is_deleted = false
+  AND (p.code ~ '^(LEAD_[123]|GRP_[123])(_[0-9]+)?$'
+       OR p.code ~ '^MGT_(HEAD|DEPUTY|SPECIALIST)(_[0-9]+)?$')
+  AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.position_id = p.id);
+
 -- ---------------- §2 员工主档 upsert（幂等键 = code） ----------------
 INSERT INTO employees (code, full_name, gender, political_status, birth_date, id_type,
                        department_id, position_id, hire_date, status, employment_type,
@@ -190,6 +201,7 @@ UNION ALL SELECT '敏感信息行: ' || count(*) FROM employee_sensitive s JOIN 
 UNION ALL SELECT '身份证哈希: ' || count(*) FROM employee_sensitive s JOIN employees e ON e.id = s.employee_id WHERE e.legacy_category = 'HR正式名录2026-08' AND s.id_card_hash IS NOT NULL
 UNION ALL SELECT 'onboard 轨迹: ' || count(*) FROM employment_history h JOIN employees e ON e.id = h.employee_id WHERE e.legacy_category = 'HR正式名录2026-08' AND h.event_type = 'onboard'
 UNION ALL SELECT '已设负责人部门: ' || count(*) FROM departments WHERE manager_id IS NOT NULL
+UNION ALL SELECT '模板岗位已软删（应 111+）: ' || count(*) FROM positions WHERE is_deleted = true AND (code ~ '^(LEAD_[123]|GRP_[123])' OR code ~ '^MGT_(HEAD|DEPUTY|SPECIALIST)')
 UNION ALL SELECT '名册缺失（应 0）: ' || count(*) FROM hr_roster s WHERE NOT EXISTS (SELECT 1 FROM employees e WHERE e.code = s.emp_code);
 
 -- 部门人数分布（与名录口径对照）

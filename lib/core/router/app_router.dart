@@ -440,7 +440,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   }
                 }
               }
-              return NoticePublishPage(presetType: preset);
+              return NoticePublishPage(
+                presetType: preset,
+                presetSubjectId: s.uri.queryParameters['subject'],
+              );
             },
           ),
           GoRoute(

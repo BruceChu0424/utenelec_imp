@@ -129,7 +129,9 @@ class WorkbenchModuleArea extends ConsumerWidget {
         // 折叠状态受控：由布局 Provider 驱动（持久化到服务端）
         expanded: expanded,
         onExpandedChanged: onExpandedChanged,
-        titleTrailing: badgeKinds.isEmpty
+        // 部门分区：展开时（内容可见）徽标冗余，故仅在收起时显示标题徽标。
+        // 今日概览 / 待办任务 / 常用功能不受影响（不在本组件 / 无徽标）。
+        titleTrailing: (badgeKinds.isEmpty || expanded)
             ? null
             : UtenLazyMount(
                 builder: (_) => WorkbenchGroupBadge(kinds: badgeKinds),

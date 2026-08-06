@@ -53,6 +53,15 @@ abstract interface class NoticeRepository {
     required NoticeType type,
   });
 
+  /// 当前用户今日庆典（登录弹窗 / 今日卡片；服务端按 birth/hire date + 今日庆典通知判定）。
+  Future<List<MyCelebrationToday>> myCelebrationToday();
+
+  /// 一键批量发布庆典祝福（默认模板 + 服务端派生标题，本年已发的去重跳过）。
+  Future<CelebrationBatchResult> publishCelebrationBatch({
+    required NoticeType type,
+    required List<String> employeeIds,
+  });
+
   /// 「点击收到」回执（acknowledge 模式，幂等）。返回最新计数与本人状态。
   Future<Notice> acknowledge(String id);
 
@@ -194,6 +203,26 @@ class DioNoticeRepository implements NoticeRepository {
       query: {'employeeId': employeeId, 'type': type.name},
     );
     return NoticeCelebrationPreview.fromJson(json);
+  }
+
+  @override
+  Future<List<MyCelebrationToday>> myCelebrationToday() async {
+    final json = await _api.get(ApiEndpoints.noticeCelebrationMyToday);
+    final items = (json['items'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    return [for (final m in items) MyCelebrationToday.fromJson(m)];
+  }
+
+  @override
+  Future<CelebrationBatchResult> publishCelebrationBatch({
+    required NoticeType type,
+    required List<String> employeeIds,
+  }) async {
+    final json = await _api.post(
+      ApiEndpoints.noticeCelebrationBatch,
+      body: {'type': type.name, 'employeeIds': employeeIds},
+    );
+    return CelebrationBatchResult.fromJson(json);
   }
 
   @override

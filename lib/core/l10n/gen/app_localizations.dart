@@ -2134,6 +2134,30 @@ abstract class AppLocalizations {
   /// **'开通登录账号'**
   String get employeeActionProvision;
 
+  /// No description provided for @employeeActionLockAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'锁定账号'**
+  String get employeeActionLockAccount;
+
+  /// No description provided for @employeeActionUnlockAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'解锁账号'**
+  String get employeeActionUnlockAccount;
+
+  /// No description provided for @employeeLockAccountSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已锁定'**
+  String get employeeLockAccountSuccess;
+
+  /// No description provided for @employeeUnlockAccountSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已解锁'**
+  String get employeeUnlockAccountSuccess;
+
   /// No description provided for @employeeProvisionConfirm.
   ///
   /// In zh, this message translates to:
@@ -3342,6 +3366,72 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'新生儿'**
   String get noticeQuickNewborn;
+
+  /// No description provided for @celebrationPopupBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，今天是你的生日！\n小优祝你生日快乐！'**
+  String celebrationPopupBirthday(Object name);
+
+  /// No description provided for @celebrationPopupAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，今天是你的入职周年！\n小优祝你{label}！'**
+  String celebrationPopupAnniversary(Object name, Object label);
+
+  /// No description provided for @celebrationPopupWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，新婚大喜！\n小优祝你们百年好合！'**
+  String celebrationPopupWedding(Object name);
+
+  /// No description provided for @celebrationPopupNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name}，恭喜喜添新丁！\n小优祝宝宝健康成长！'**
+  String celebrationPopupNewborn(Object name);
+
+  /// No description provided for @celebrationDismiss.
+  ///
+  /// In zh, this message translates to:
+  /// **'谢谢小优'**
+  String get celebrationDismiss;
+
+  /// No description provided for @celebrationCardBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天是 {name} 的生日'**
+  String celebrationCardBirthday(Object name);
+
+  /// No description provided for @celebrationCardAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天是 {name} 的{label}'**
+  String celebrationCardAnniversary(Object name, Object label);
+
+  /// No description provided for @celebrationCardWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天是 {name} 的新婚大喜'**
+  String celebrationCardWedding(Object name);
+
+  /// No description provided for @celebrationCardNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 喜添新丁'**
+  String celebrationCardNewborn(Object name);
+
+  /// No description provided for @celebrationCardCta.
+  ///
+  /// In zh, this message translates to:
+  /// **'送上祝福'**
+  String get celebrationCardCta;
+
+  /// No description provided for @celebrationCardWall.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看祝福墙'**
+  String get celebrationCardWall;
 
   /// No description provided for @noticeAutoCelebrationTitle.
   ///

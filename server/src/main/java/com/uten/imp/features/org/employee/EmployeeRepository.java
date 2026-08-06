@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -30,6 +31,15 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>, JpaSp
     /** 部门主管的"本部门员工"面板用：本部门（不含子部门）在册员工。 */
     @EntityGraph(attributePaths = {"position"})
     List<Employee> findByDepartmentIdAndDeletedFalseOrderByFullNameAsc(UUID departmentId);
+
+    /**
+     * "我的部门"通讯录用：某部门子树（含自身 + 所有下级部门）下全部在册员工。
+     * 用途：管理中心/一级部门等纯分组节点本身不挂人，其员工都在下层部门；
+     * 通讯录按子树聚合才能让分组节点也显示人员。
+     */
+    @EntityGraph(attributePaths = {"position", "department"})
+    List<Employee> findByDepartmentIdInAndDeletedFalseOrderByFullNameAsc(
+            Collection<UUID> departmentIds);
 
     long countByDepartmentIdAndDeletedFalseAndStatusIn(
             UUID departmentId, java.util.Collection<String> statuses);

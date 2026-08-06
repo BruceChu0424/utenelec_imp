@@ -27,6 +27,7 @@ class MyDepartmentStaffRow {
     this.code,
     this.fullName,
     this.positionName,
+    this.departmentName,
     this.officePhone,
     this.email,
     this.departmentManager = false,
@@ -37,6 +38,7 @@ class MyDepartmentStaffRow {
   final String? code;
   final String? fullName;
   final String? positionName;
+  final String? departmentName;
   final String? officePhone;
   final String? email;
   final bool departmentManager;
@@ -48,6 +50,7 @@ class MyDepartmentStaffRow {
         code: json['code'] as String?,
         fullName: json['fullName'] as String?,
         positionName: json['positionName'] as String?,
+        departmentName: json['departmentName'] as String?,
         officePhone: json['officePhone'] as String?,
         email: json['email'] as String?,
         departmentManager: json['departmentManager'] as bool? ?? false,

@@ -26,6 +26,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../features/admin/widgets/impersonation_actions.dart';
+import '../../../features/notice/widgets/celebration_popup_gate.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/dashboard_overview_sections.dart';
@@ -51,6 +52,8 @@ class DashboardPage extends ConsumerWidget {
         const SizedBox(height: UtenSpacing.s24),
         // 功能模块区：原侧边栏全部分组迁入，按权限点显隐（各组可折叠）
         const WorkbenchModuleArea(),
+        // 登录庆典弹窗触发器（每日一次；不可见）。
+        const CelebrationPopupGate(),
       ],
     );
 

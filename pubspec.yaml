@@ -80,6 +80,7 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/lottie/
+    - assets/celebration/
     # 完整字体仅在打印/导出时按需加载；Web 界面使用下方 UI 子集，并将
     # Flutter 的中文回退分片改为同源懒加载，兼顾严格 CSP 与首屏体积。
     - assets/fonts/NotoSansSCFull.ttf

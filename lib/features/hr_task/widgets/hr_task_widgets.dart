@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -189,13 +190,19 @@ class HrTaskTile extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: UtenSpacing.s8),
-          _actions(context, ref, canEdit),
+          _actions(context, ref, canEdit, perms),
         ],
       ),
     );
   }
 
-  Widget _actions(BuildContext context, WidgetRef ref, bool canEdit) {
+  Widget _actions(
+    BuildContext context,
+    WidgetRef ref,
+    bool canEdit,
+    Set<String> perms,
+  ) {
+    final theme = Theme.of(context);
     final blocked = item.claimedByOther;
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -243,6 +250,28 @@ class HrTaskTile extends ConsumerWidget {
                 ? null // 他人处理中：禁用，防重复操作
                 : () => showHrConfirmDialog(context, ref, item),
           ),
+        // 庆典祝福（生日/周年 + 有发布权限）：未祝福可单行送祝福，已祝福标记。
+        if ((type == HrTaskType.birthday ||
+                type == HrTaskType.anniversary) &&
+            perms.contains(Perm.noticePublish)) ...[
+          if (item.blessed)
+            _Chip(
+              label: '已祝福',
+              bg: theme.colorScheme.surfaceContainerHighest,
+              fg: theme.colorScheme.onSurfaceVariant,
+              icon: Icons.check_circle_outline,
+            )
+          else
+            FilledButton.tonalIcon(
+              icon: Icon(type.icon, size: 18),
+              label: const Text('送祝福'),
+              onPressed: () => context.push(
+                '${RouteName.noticePublish}?type='
+                '${type == HrTaskType.birthday ? 'birthday' : 'anniversary'}'
+                '&subject=${item.employeeId}',
+              ),
+            ),
+        ],
         if (blocked && type == HrTaskType.confirm && !canEdit)
           Tooltip(
             message: '${item.claimedByName} 正在处理该事项',

@@ -334,22 +334,46 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         );
       }
     }
+    // 账号支持（account:support，独立于 employee:edit）：开通 / 锁定 / 解锁。
+    if (perms.contains(Perm.accountSupport)) {
+      if (p.accountStatus == null && !resigned) {
+        actions.add(
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.person_add_outlined, size: 18),
+            label: Text(l10n.employeeActionProvision),
+            onPressed: _onProvisionAccount,
+          ),
+        );
+      } else if (p.accountStatus == 'active') {
+        actions.add(
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.lock_outline_rounded, size: 18),
+            label: Text(l10n.employeeActionLockAccount),
+            onPressed: _onLockAccount,
+          ),
+        );
+      } else if (p.accountStatus == 'locked') {
+        actions.add(
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.lock_open_outlined, size: 18),
+            label: Text(l10n.employeeActionUnlockAccount),
+            onPressed: _onUnlockAccount,
+          ),
+        );
+      }
+    }
     return actions;
   }
 
-  /// 次要操作（⋯）：开通账号 / 归档删除。
+  /// 次要操作（⋯）：归档删除。（开通/锁定/解锁账号已外显到顶部卡片）
   Widget _buildOverflowMenu(BuildContext context, AppLocalizations l10n) {
     final p = _profile;
     if (p == null) return const SizedBox.shrink();
     final perms = ref.watch(currentPermissionsProvider);
-    final canProvision =
-        perms.contains(Perm.accountSupport) && p.accountStatus == null;
     final canDelete = perms.contains(Perm.employeeDelete);
     final resigned = p.status == 'resigned';
 
     final items = <PopupMenuEntry<String>>[
-      if (canProvision)
-        PopupMenuItem(value: 'provision', child: Text(l10n.employeeActionProvision)),
       if (canDelete && resigned)
         PopupMenuItem(value: 'delete', child: Text(l10n.employeeActionDelete)),
     ];
@@ -359,7 +383,6 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       tooltip: l10n.employeeActions,
       itemBuilder: (_) => items,
       onSelected: (v) => switch (v) {
-        'provision' => _onProvisionAccount(),
         'delete' => _onDelete(),
         _ => null,
       },
@@ -830,6 +853,56 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       if (!mounted) return;
       await showEmployeeCredentialDialog(context, result);
       if (!mounted) return;
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
+  }
+
+  Future<void> _onLockAccount() => _toggleAccountLock(lock: true);
+
+  Future<void> _onUnlockAccount() => _toggleAccountLock(lock: false);
+
+  /// 锁定 / 解锁登录账号（account:support）。二次确认后调端点，成功刷新档案。
+  Future<void> _toggleAccountLock({required bool lock}) async {
+    final l10n = AppLocalizations.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          lock ? l10n.employeeActionLockAccount : l10n.employeeActionUnlockAccount,
+        ),
+        content: Text(
+          lock
+              ? '锁定后该员工将无法登录，所有会话立即失效，是否继续？'
+              : '解锁后该员工可正常登录，是否继续？',
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final repo = ref.read(employeeRepositoryProvider);
+      if (lock) {
+        await repo.lockAccount(widget.employeeId);
+      } else {
+        await repo.unlockAccount(widget.employeeId);
+      }
+      if (!mounted) return;
+      context.appSuccess(
+        lock ? l10n.employeeLockAccountSuccess : l10n.employeeUnlockAccountSuccess,
+      );
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;

@@ -12,6 +12,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../notice/widgets/celebration_today_card.dart';
 import '../../notice/widgets/notice_detail_dialog.dart';
 import '../models/dashboard_overview.dart';
 import '../providers/dashboard_overview_provider.dart';
@@ -55,6 +56,9 @@ class _DashboardOverviewBody extends ConsumerWidget {
             trailing: const Text('按本人权限展示'),
           ),
           const SizedBox(height: UtenSpacing.s12),
+          // 今日庆典卡片（当前用户本人生日/周年/新婚/新生儿；无则不渲染）置顶，
+          // 位于指标卡之前。数据来自 myCelebrationTodayProvider（PII 安全）。
+          const CelebrationTodayCard(),
           _MetricGrid(metrics: data.metrics),
           const SizedBox(height: UtenSpacing.s24),
           UtenCollapsibleSection(
@@ -118,7 +122,10 @@ class _MetricGridState extends State<_MetricGrid> {
         final hiddenCount = metrics.length - visible.length;
         final width =
             (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
+        // crossAxisAlignment.start：卡片不足整行时贴左，避免窄 Wrap 被默认 center 居中，
+        // 造成"右侧一大片空白、一行放不下还居中"的观感（数据稀疏时才暴露）。
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Wrap(
               spacing: UtenSpacing.s12,
@@ -251,7 +258,9 @@ class _TodoListState extends State<_TodoList> {
         final hiddenCount = todos.length - visible.length;
         final width =
             (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
+        // 同「今日概览」：卡片不足整行时贴左，避免窄 Wrap 被默认 center 居中。
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Wrap(
               spacing: UtenSpacing.s12,

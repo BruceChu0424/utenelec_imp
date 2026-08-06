@@ -5,6 +5,9 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
 import com.uten.imp.features.notice.NoticeBlessingRepository.NoticeBlessingRow;
+import com.uten.imp.features.notice.dto.CelebrationBatchRequest;
+import com.uten.imp.features.notice.dto.CelebrationBatchResult;
+import com.uten.imp.features.notice.dto.MyCelebrationTodayDto;
 import com.uten.imp.features.notice.dto.NoticeCelebrationPreviewDto;
 import com.uten.imp.features.notice.dto.NoticeDto;
 import com.uten.imp.features.notice.dto.NoticePublishRequest;
@@ -511,7 +514,148 @@ class NoticeServiceTest {
         assertEquals("人力资源部", dto.publisherName());
     }
 
+    // =========================== 庆典体验：我的今日 / 一键批量祝福 ===========================
+
+    @Test
+    void myCelebrationTodayReturnsBirthdayWhenTodayIsEmployeeBirthday() {
+        UUID empId = UUID.randomUUID();
+        Employee me = celebrationSubject(empId, "寿星", LocalDate.now().minusYears(5).minusMonths(2));
+        me.setBirthDate(LocalDate.now().minusYears(30)); // 月日 = 今天
+        when(authUser.getEmployeeId()).thenReturn(empId);
+        when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
+        UUID noticeId = UUID.randomUUID();
+        when(noticeRepository.findCelebrationNoticeIds(eq(empId), eq("birthday"), any()))
+                .thenReturn(List.of(noticeId));
+
+        List<MyCelebrationTodayDto> items = service.myCelebrationToday();
+
+        assertEquals(1, items.size());
+        assertEquals("birthday", items.get(0).type());
+        assertEquals("寿星", items.get(0).subjectName());
+        assertEquals("生日快乐", items.get(0).eventLabel());
+        assertEquals(noticeId, items.get(0).noticeId());
+    }
+
+    @Test
+    void myCelebrationTodayReturnsAnniversaryOverOneYear() {
+        UUID empId = UUID.randomUUID();
+        Employee me = celebrationSubject(empId, "老员工", LocalDate.now().minusYears(5)); // 5 年前的今天
+        me.setBirthDate(null);
+        when(authUser.getEmployeeId()).thenReturn(empId);
+        when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
+
+        List<MyCelebrationTodayDto> items = service.myCelebrationToday();
+
+        assertEquals(1, items.size());
+        assertEquals("anniversary", items.get(0).type());
+        assertEquals("入职5周年", items.get(0).eventLabel());
+    }
+
+    @Test
+    void myCelebrationTodayIncludesTodaysWeddingAndNewbornNotices() {
+        UUID empId = UUID.randomUUID();
+        Employee me = celebrationSubject(empId, "新婚", LocalDate.now().minusYears(5).minusDays(1));
+        me.setBirthDate(LocalDate.now().minusYears(30).minusDays(1)); // 非今天，避免生日命中
+        when(authUser.getEmployeeId()).thenReturn(empId);
+        when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
+        Notice wedding = new Notice();
+        wedding.setId(UUID.randomUUID());
+        wedding.setType("wedding");
+        wedding.setEventLabel("新婚快乐");
+        when(noticeRepository.findBySubjectAndTypesSince(eq(empId), any(), any()))
+                .thenReturn(List.of(wedding));
+
+        List<MyCelebrationTodayDto> items = service.myCelebrationToday();
+
+        assertEquals(1, items.size());
+        assertEquals("wedding", items.get(0).type());
+        assertEquals(wedding.getId(), items.get(0).noticeId());
+    }
+
+    @Test
+    void myCelebrationTodayEmptyWhenNothingMatches() {
+        UUID empId = UUID.randomUUID();
+        Employee me = celebrationSubject(empId, "普通", LocalDate.now().minusYears(5).minusDays(1));
+        me.setBirthDate(LocalDate.now().minusYears(30).minusDays(1));
+        when(authUser.getEmployeeId()).thenReturn(empId);
+        when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
+        when(noticeRepository.findBySubjectAndTypesSince(eq(empId), any(), any()))
+                .thenReturn(List.of());
+
+        assertTrue(service.myCelebrationToday().isEmpty());
+    }
+
+    @Test
+    void myCelebrationTodayEmptyWhenUserHasNoEmployeeId() {
+        when(authUser.getEmployeeId()).thenReturn(null);
+        assertTrue(service.myCelebrationToday().isEmpty());
+    }
+
+    @Test
+    void publishCelebrationBatchPublishesForEachEligibleEmployee() {
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        when(employeeRepository.findById(a)).thenReturn(
+                Optional.of(celebrationSubject(a, "张三", LocalDate.now().minusYears(2))));
+        when(employeeRepository.findById(b)).thenReturn(
+                Optional.of(celebrationSubject(b, "李四", LocalDate.now().minusYears(4))));
+        when(noticeRepository.existsCelebrationSince(any(), any(), any())).thenReturn(false);
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+
+        CelebrationBatchResult result = service.publishCelebrationBatch(
+                new CelebrationBatchRequest("birthday", List.of(a, b)));
+
+        assertEquals(2, result.published());
+        assertEquals(0, result.skipped());
+        verify(noticeRepository, atLeastOnce()).saveAndFlush(any());
+    }
+
+    @Test
+    void publishCelebrationBatchSkipsAlreadyCelebrated() {
+        UUID a = UUID.randomUUID();
+        when(employeeRepository.findById(a)).thenReturn(
+                Optional.of(celebrationSubject(a, "张三", LocalDate.now().minusYears(2))));
+        when(noticeRepository.existsCelebrationSince(any(), any(), any())).thenReturn(true);
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+
+        CelebrationBatchResult result = service.publishCelebrationBatch(
+                new CelebrationBatchRequest("birthday", List.of(a)));
+
+        assertEquals(0, result.published());
+        assertEquals(1, result.skipped());
+        verify(noticeRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void publishCelebrationBatchRejectsNonCelebrationType() {
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+
+        assertThrows(ApiException.class, () -> service.publishCelebrationBatch(
+                new CelebrationBatchRequest("system", List.of(UUID.randomUUID()))));
+    }
+
+    @Test
+    void publishCelebrationBatchRejectsEmptyEmployeeList() {
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+
+        assertThrows(ApiException.class, () -> service.publishCelebrationBatch(
+                new CelebrationBatchRequest("birthday", List.of())));
+    }
+
     // ---------- 测试夹具 ----------
+
+    private Employee celebrationSubject(UUID id, String name, LocalDate hireDate) {
+        Employee e = new Employee();
+        e.setId(id);
+        e.setFullName(name);
+        e.setHireDate(hireDate);
+        return e;
+    }
 
     private NoticeAcknowledgment existingAck(UUID noticeId, UUID userId) {
         NoticeAcknowledgment ack = new NoticeAcknowledgment();

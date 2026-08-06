@@ -4,6 +4,9 @@ import com.uten.imp.features.notice.NoticeService.AckResult;
 import com.uten.imp.features.notice.NoticeService.BlessResult;
 import com.uten.imp.features.notice.NoticeService.BlessingPage;
 import com.uten.imp.features.notice.NoticeService.AcknowledgerPage;
+import com.uten.imp.features.notice.dto.CelebrationBatchRequest;
+import com.uten.imp.features.notice.dto.CelebrationBatchResult;
+import com.uten.imp.features.notice.dto.MyCelebrationTodayDto;
 import com.uten.imp.features.notice.dto.NoticeAudienceEmployeeDto;
 import com.uten.imp.features.notice.dto.NoticeAudiencePreviewDto;
 import com.uten.imp.features.notice.dto.NoticeAudienceRequest;
@@ -60,6 +63,9 @@ import java.util.UUID;
  *   GET  /api/notices/celebration/preview?employeeId=&type=  发布预览（notice:publish）
  *   GET  /api/notices/celebration/settings                   庆典自动发布设置
  *   PUT  /api/notices/celebration/settings                   更新设置（authorization:manage）
+ *   -- 庆典体验（登录弹窗 / 今日卡片 / 一键批量祝福）--
+ *   GET  /api/notices/celebration/my-today                   当前用户今日庆典（notice:read，PII 安全）
+ *   POST /api/notices/celebration/batch                      一键批量发布庆典祝福（notice:publish）
  * </pre>
  */
 @RestController
@@ -203,12 +209,25 @@ public class NoticeController {
 
     // =========================== V224：庆典预览 / 设置 ===========================
 
+    @GetMapping("/celebration/my-today")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public Map<String, Object> myCelebrationToday() {
+        return Map.of("items", service.myCelebrationToday());
+    }
+
     @GetMapping("/celebration/preview")
     @PreAuthorize("hasAuthority('notice:publish')")
     public NoticeCelebrationPreviewDto celebrationPreview(
             @RequestParam UUID employeeId,
             @RequestParam String type) {
         return service.celebrationPreview(employeeId, type);
+    }
+
+    @PostMapping("/celebration/batch")
+    @PreAuthorize("hasAuthority('notice:publish')")
+    public CelebrationBatchResult publishCelebrationBatch(
+            @Valid @RequestBody CelebrationBatchRequest req) {
+        return service.publishCelebrationBatch(req);
     }
 
     @GetMapping("/celebration/settings")

@@ -51,6 +51,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     public static final String EVENT_DECIDED = "PROCUREMENT_ARRIVAL_EXCEPTION_DECIDED";
     public static final String EVENT_RETURN_REQUIRED = "PROCUREMENT_SUPPLIER_RETURN_REQUIRED";
     public static final String EVENT_RETURN_COMPLETED = "PROCUREMENT_SUPPLIER_RETURN_COMPLETED";
+    public static final String EVENT_RECEIPT_POSTED = "PROCUREMENT_ARRIVAL_RECEIPT_POSTED";
 
     private static final String PENDING_FINANCE = "PENDING_FINANCE";
     private static final String RECEIPT_ADJUSTED = "RECEIPT_ADJUSTED";
@@ -157,7 +158,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         String orderType = requireOrderType(rawOrderType);
         List<PostedAllowance> allowances = jdbc.query("""
                 SELECT id, order_item_id, expectation_item_id,
-                       COALESCE(approved_excess_qty, 0) AS approved_excess_qty
+                       COALESCE(approved_excess_qty, 0) AS approved_excess_qty,
+                       version
                 FROM procurement_arrival_exceptions
                 WHERE order_type = ? AND receipt_id = ?
                   AND status = 'RECEIPT_ADJUSTED'
@@ -167,7 +169,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getObject("id", UUID.class),
                         rs.getObject("order_item_id", UUID.class),
                         rs.getObject("expectation_item_id", UUID.class),
-                        rs.getBigDecimal("approved_excess_qty")),
+                        rs.getBigDecimal("approved_excess_qty"),
+                        rs.getLong("version")),
                 orderType, receiptId);
         UUID actorUser = currentUser.requireId();
         UUID actorEmployee = currentUser.requireEmployeeId();
@@ -204,6 +207,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     """, allowance.id()));
             appendEvent(allowance.id(), "RECEIPT_POSTED", actorUser, actorEmployee,
                     Map.of("approvedExcessQty", allowance.approvedExcessQty()));
+            // 入库后若本异常仍有待退量（状态→RECEIPT_POSTED），通知采购/委外部门跟进退回；
+            // 全部接收无需退回（状态→CLOSED）则不打扰，避免普通满额收货误发通知。
+            if (hasPendingReturnTask(allowance.id())) {
+                publish(EVENT_RECEIPT_POSTED, allowance.id(), allowance.version() + 1);
+            }
         }
         refreshExpectationAccepted(orderType, receiptId);
     }
@@ -218,7 +226,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         UUID actorEmployee = currentUser.requireEmployeeId();
         List<PostedAllowance> affected = jdbc.query("""
                 SELECT id, order_item_id, expectation_item_id,
-                       COALESCE(approved_excess_qty, 0) AS approved_excess_qty
+                       COALESCE(approved_excess_qty, 0) AS approved_excess_qty,
+                       version
                 FROM procurement_arrival_exceptions
                 WHERE order_type = ? AND receipt_id = ?
                   AND status IN ('RECEIPT_POSTED', 'CLOSED')
@@ -228,7 +237,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getObject("id", UUID.class),
                         rs.getObject("order_item_id", UUID.class),
                         rs.getObject("expectation_item_id", UUID.class),
-                        rs.getBigDecimal("approved_excess_qty")),
+                        rs.getBigDecimal("approved_excess_qty"),
+                        rs.getLong("version")),
                 orderType, receiptId);
         String orderItemTable = PURCHASE.equals(orderType)
                 ? "purchase_order_items" : "subcontract_order_items";
@@ -1617,6 +1627,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 json(snapshot));
     }
 
+    /** 本异常是否存在尚未完成的供应商退回任务（决定入库后是否需要通知采购/委外跟进退回）。 */
+    private boolean hasPendingReturnTask(UUID exceptionId) {
+        Boolean exists = jdbc.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1 FROM supplier_return_tasks
+                    WHERE arrival_exception_id = ? AND status = 'PENDING_RETURN')
+                """, Boolean.class, exceptionId);
+        return Boolean.TRUE.equals(exists);
+    }
+
     private void publish(String eventType, UUID exceptionId, long version) {
         events.publishOnce(
                 eventType,
@@ -1893,7 +1913,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             UUID id,
             UUID orderItemId,
             UUID expectationItemId,
-            BigDecimal approvedExcessQty) {
+            BigDecimal approvedExcessQty,
+            long version) {
     }
 
     private record FinanceAssignment(

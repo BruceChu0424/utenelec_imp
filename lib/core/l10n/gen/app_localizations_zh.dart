@@ -1062,6 +1062,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeActionProvision => '开通登录账号';
 
   @override
+  String get employeeActionLockAccount => '锁定账号';
+
+  @override
+  String get employeeActionUnlockAccount => '解锁账号';
+
+  @override
+  String get employeeLockAccountSuccess => '账号已锁定';
+
+  @override
+  String get employeeUnlockAccountSuccess => '账号已解锁';
+
+  @override
   String get employeeProvisionConfirm =>
       '将为该员工开通登录账号：账号默认为手机号，初始密码为身份证号后6位，首次登录需修改。是否继续？';
 
@@ -1709,6 +1721,55 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noticeQuickNewborn => '新生儿';
+
+  @override
+  String celebrationPopupBirthday(Object name) {
+    return '$name，今天是你的生日！\n小优祝你生日快乐！';
+  }
+
+  @override
+  String celebrationPopupAnniversary(Object name, Object label) {
+    return '$name，今天是你的入职周年！\n小优祝你$label！';
+  }
+
+  @override
+  String celebrationPopupWedding(Object name) {
+    return '$name，新婚大喜！\n小优祝你们百年好合！';
+  }
+
+  @override
+  String celebrationPopupNewborn(Object name) {
+    return '$name，恭喜喜添新丁！\n小优祝宝宝健康成长！';
+  }
+
+  @override
+  String get celebrationDismiss => '谢谢小优';
+
+  @override
+  String celebrationCardBirthday(Object name) {
+    return '今天是 $name 的生日';
+  }
+
+  @override
+  String celebrationCardAnniversary(Object name, Object label) {
+    return '今天是 $name 的$label';
+  }
+
+  @override
+  String celebrationCardWedding(Object name) {
+    return '今天是 $name 的新婚大喜';
+  }
+
+  @override
+  String celebrationCardNewborn(Object name) {
+    return '$name 喜添新丁';
+  }
+
+  @override
+  String get celebrationCardCta => '送上祝福';
+
+  @override
+  String get celebrationCardWall => '查看祝福墙';
 
   @override
   String get noticeAutoCelebrationTitle => '自动祝福通知';

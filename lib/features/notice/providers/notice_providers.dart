@@ -163,6 +163,13 @@ final noticeBlessingsProvider =
   },
 );
 
+/// 当前用户「今日庆典」（登录弹窗 + 今日概览庆典卡片）。
+/// 服务端按 birth/hire date + 今日庆典通知判定；不含任何日期原值（PII 安全）。
+final myCelebrationTodayProvider =
+    FutureProvider.autoDispose<List<MyCelebrationToday>>((ref) async {
+  return ref.watch(noticeRepositoryProvider).myCelebrationToday();
+});
+
 /// 「点击收到」回执（acknowledge 模式）。完成后失效详情+列表。
 Future<void> acknowledgeNotice(WidgetRef ref, String id) async {
   await ref.read(noticeRepositoryProvider).acknowledge(id);

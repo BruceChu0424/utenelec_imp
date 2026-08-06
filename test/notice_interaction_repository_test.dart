@@ -121,8 +121,15 @@ void main() {
         content: '正文',
         type: NoticeType.announcement,
       );
-      expect(captured.data.containsKey('subjectEmployeeId'), isFalse);
-      expect(captured.data.containsKey('blessingTemplates'), isFalse);
+      expect(
+        (captured.data as Map<String, dynamic>).containsKey('subjectEmployeeId'),
+        isFalse,
+      );
+      expect(
+        (captured.data as Map<String, dynamic>)
+            .containsKey('blessingTemplates'),
+        isFalse,
+      );
     });
 
     test('acknowledge POSTs /{id}/acknowledge and re-fetches', () async {

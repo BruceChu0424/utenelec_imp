@@ -6,8 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../notice/models/notice.dart';
+import '../../notice/providers/notice_providers.dart';
+import '../models/hr_task_summary.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../widgets/hr_task_widgets.dart';
 
@@ -29,6 +35,16 @@ class HrTaskListPage extends ConsumerWidget {
       ),
       data: (s) {
         final items = hrTaskItemsOf(s, type);
+        final isCelebration = type == HrTaskType.birthday ||
+            type == HrTaskType.anniversary;
+        final canPublish = ref.watch(isSuperAdminProvider) ||
+            ref
+                .watch(currentPermissionsProvider)
+                .contains(Perm.noticePublish);
+        // 待祝福 = 今日在册且本类型本年未祝福（徽标/角标据此扣减）。
+        final toBless = isCelebration
+            ? items.where((i) => !i.blessed).toList()
+            : <HrTaskItem>[];
         return RefreshIndicator(
           onRefresh: () =>
               ref.read(hrTaskSummaryProvider.notifier).refresh(),
@@ -39,6 +55,8 @@ class HrTaskListPage extends ConsumerWidget {
               if (type == HrTaskType.confirm)
                 _hint(context, '试用期 ${s.probationMonths} 个月口径；'
                     '被认领的事项显示「处理中」，他人不可重复操作。'),
+              if (isCelebration && canPublish && toBless.isNotEmpty)
+                _celebrationBatchBar(context, ref, type, toBless),
               if (items.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(UtenSpacing.s24),
@@ -93,6 +111,91 @@ class HrTaskListPage extends ConsumerWidget {
       ),
       body: body,
     );
+  }
+
+  /// 庆典一键批量送祝福条（生日/周年子页顶部）：对今日未祝福者一键发布默认模板祝福。
+  Widget _celebrationBatchBar(
+    BuildContext context,
+    WidgetRef ref,
+    HrTaskType type,
+    List<HrTaskItem> toBless,
+  ) {
+    final theme = Theme.of(context);
+    final noun = type == HrTaskType.birthday ? '生日' : '入职周年';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s8,
+        UtenSpacing.s12,
+        0,
+      ),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        color: theme.colorScheme.primaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s8,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                type == HrTaskType.birthday
+                    ? Icons.cake_rounded
+                    : Icons.emoji_events_rounded,
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  '一键为今日$noun的 ${toBless.length} 人送上祝福',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: () => _batchBless(context, ref, type, toBless),
+                icon: const Icon(Icons.send_rounded, size: 18),
+                label: const Text('一键全部'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _batchBless(
+    BuildContext context,
+    WidgetRef ref,
+    HrTaskType type,
+    List<HrTaskItem> toBless,
+  ) async {
+    final noticeType = type == HrTaskType.birthday
+        ? NoticeType.birthday
+        : NoticeType.anniversary;
+    try {
+      final result = await ref
+          .read(noticeRepositoryProvider)
+          .publishCelebrationBatch(
+            type: noticeType,
+            employeeIds: [for (final i in toBless) i.employeeId],
+          );
+      if (!context.mounted) return;
+      context.appSuccess(
+        result.skipped > 0
+            ? '已为 ${result.published} 人发布祝福（${result.skipped} 人今日已祝福）'
+            : '已为 ${result.published} 人发布祝福',
+      );
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      context.appApiError(e);
+    } finally {
+      // 重取 summary → 同步工作台/部门徽标（已祝福者不再计入，角标即减）。
+      await ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
+    }
   }
 
   Widget _hint(BuildContext context, String text) {

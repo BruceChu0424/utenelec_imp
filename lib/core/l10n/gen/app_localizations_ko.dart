@@ -1063,6 +1063,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeActionProvision => '로그인 계정 개통';
 
   @override
+  String get employeeActionLockAccount => '계정 잠금';
+
+  @override
+  String get employeeActionUnlockAccount => '계정 잠금 해제';
+
+  @override
+  String get employeeLockAccountSuccess => '계정이 잠겼습니다';
+
+  @override
+  String get employeeUnlockAccountSuccess => '계정 잠금이 해제되었습니다';
+
+  @override
   String get employeeProvisionConfirm =>
       '이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호, 초기 비밀번호는 신분증 번호 마지막 6자리이며 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?';
 
@@ -1712,6 +1724,55 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get noticeQuickNewborn => '신생아';
+
+  @override
+  String celebrationPopupBirthday(Object name) {
+    return '$name님, 오늘은 생일입니다!\n샤오유가 생일 축하를 전합니다!';
+  }
+
+  @override
+  String celebrationPopupAnniversary(Object name, Object label) {
+    return '$name님, 오늘은 입사 기념일입니다!\n샤오유가 $label을(를) 기원합니다!';
+  }
+
+  @override
+  String celebrationPopupWedding(Object name) {
+    return '$name님, 결혼을 축하드립니다!\n샤오유가 행복한 부부 생활을 기원합니다!';
+  }
+
+  @override
+  String celebrationPopupNewborn(Object name) {
+    return '$name님, 아기 탄생을 축하드립니다!\n샤오유가 아기의 건강을 기원합니다!';
+  }
+
+  @override
+  String get celebrationDismiss => '고마워, 샤오유';
+
+  @override
+  String celebrationCardBirthday(Object name) {
+    return '오늘은 $name님의 생일입니다';
+  }
+
+  @override
+  String celebrationCardAnniversary(Object name, Object label) {
+    return '오늘은 $name님의 $label입니다';
+  }
+
+  @override
+  String celebrationCardWedding(Object name) {
+    return '오늘은 $name님의 결혼 기념일입니다';
+  }
+
+  @override
+  String celebrationCardNewborn(Object name) {
+    return '$name님이 아기를 맞이했습니다';
+  }
+
+  @override
+  String get celebrationCardCta => '축복 보내기';
+
+  @override
+  String get celebrationCardWall => '축복 게시판 보기';
 
   @override
   String get noticeAutoCelebrationTitle => '자동 축하 알림';

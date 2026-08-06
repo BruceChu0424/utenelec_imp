@@ -16,6 +16,7 @@ class HrTaskItem {
     this.claimedByName,
     this.claimedByMe = false,
     this.claimLeaseUntil,
+    this.blessed = false,
   });
 
   final String employeeId;
@@ -36,6 +37,9 @@ class HrTaskItem {
   /// 认领租约到期时间（ISO8601）。
   final String? claimLeaseUntil;
 
+  /// 仅生日/周年：本类型本年是否已发布庆典祝福（已祝福不计入徽标；列表保留可见）。
+  final bool blessed;
+
   /// 被他人认领处理中（非我）。
   bool get claimedByOther => claimedByName != null && !claimedByMe;
 
@@ -51,6 +55,7 @@ class HrTaskItem {
     claimedByName: json['claimedByName'] as String?,
     claimedByMe: json['claimedByMe'] as bool? ?? false,
     claimLeaseUntil: json['claimLeaseUntil'] as String?,
+    blessed: json['blessed'] as bool? ?? false,
   );
 }
 

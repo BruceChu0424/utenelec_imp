@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -93,6 +94,187 @@ class ProcurementArrivalGuardPostgresTest {
                         "received_qty exceeds finance-approved arrival capacity"));
             } finally {
                 connection.rollback();
+            }
+        }
+    }
+
+    /**
+     * recordApproval 的入库通知触发条件：仅当异常推进后仍有 PENDING_RETURN 任务时，
+     * 状态转为 RECEIPT_POSTED（ProcurementArrivalControlService 据此 publish 入库通知）；
+     * 无待退则转 CLOSED、不打扰。此处用与 service 完全相同的 SQL 在真实 PG 上验证。
+     */
+    @Test
+    void recordApprovalSignalsReturnOnlyWhenPendingReturnTaskExists() throws Exception {
+        Identity actor;
+        ReturnFixture withReturn;
+        ReturnFixture withoutReturn;
+        try (Connection connection = connection()) {
+            actor = loadIdentity(connection);
+            // 异常 A：有未退量 + PENDING_RETURN 任务 → RECEIPT_POSTED + 触发入库通知
+            withReturn = insertAdjustedException(
+                    connection, actor, "10.0000", "5.0000", "0.0000", "REJECT_EXCESS");
+            insertPendingReturnTask(connection, withReturn, actor, "5.0000");
+            // 异常 B：全部接收、无未退量、无 return 任务 → CLOSED（不通知）
+            withoutReturn = insertAdjustedException(
+                    connection, actor, "15.0000", "0.0000", "5.0000", "APPROVE_ALL");
+        }
+
+        try (Connection connection = connection()) {
+            // hasPendingReturnTask（与 ProcurementArrivalControlService 相同 SQL）
+            assertTrue(pendingReturnExists(connection, withReturn.exceptionId()));
+            assertFalse(pendingReturnExists(connection, withoutReturn.exceptionId()));
+
+            // recordApproval 的 CASE 状态转移 UPDATE（与 service 相同 SQL）
+            assertEquals(1, applyReceiptPostedTransition(connection, withReturn.exceptionId()));
+            assertEquals(1, applyReceiptPostedTransition(connection, withoutReturn.exceptionId()));
+            assertEquals("RECEIPT_POSTED", statusOf(connection, withReturn.exceptionId()));
+            assertEquals("CLOSED", statusOf(connection, withoutReturn.exceptionId()));
+        }
+    }
+
+    /** 构造一条 status=RECEIPT_ADJUSTED 的异常（declared = accepted + unaccepted；accepted = approved_remaining + approved_excess）。 */
+    private static ReturnFixture insertAdjustedException(
+            Connection connection, Identity actor,
+            String acceptedQty, String unacceptedQty,
+            String approvedExcessQty, String decision) throws Exception {
+        UUID goodsId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID orderItemId = UUID.randomUUID();
+        UUID receiptId = UUID.randomUUID();
+        UUID receiptItemId = UUID.randomUUID();
+        UUID exceptionId = UUID.randomUUID();
+        BigDecimal accepted = new BigDecimal(acceptedQty);
+        BigDecimal approvedExcess = new BigDecimal(approvedExcessQty);
+        BigDecimal approvedRemaining = accepted.subtract(approvedExcess);
+        insertGoodsAndOrder(connection, goodsId, orderId);
+        insertOrderItem(connection, orderItemId, orderId, goodsId,
+                new BigDecimal("15.0000"), BigDecimal.ZERO);
+        try (PreparedStatement receipt = connection.prepareStatement("""
+                insert into purchase_receipts(id, bill_no, bill_date, status)
+                values (?, ?, ?, 0)
+                """)) {
+            receipt.setObject(1, receiptId);
+            receipt.setString(2, "RC-RP-" + receiptId);
+            receipt.setObject(3, LocalDate.of(2026, 8, 2));
+            assertEquals(1, receipt.executeUpdate());
+        }
+        try (PreparedStatement item = connection.prepareStatement("""
+                insert into purchase_receipt_items(
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty)
+                values (?, ?, ?, ?, ?, ?, 15.0000)
+                """)) {
+            item.setObject(1, receiptItemId);
+            item.setString(2, "RC-RP-" + receiptId);
+            item.setObject(3, LocalDate.of(2026, 8, 2));
+            item.setObject(4, receiptId);
+            item.setObject(5, orderItemId);
+            item.setObject(6, goodsId);
+            assertEquals(1, item.executeUpdate());
+        }
+        try (PreparedStatement exception = connection.prepareStatement("""
+                insert into procurement_arrival_exceptions(
+                    id, order_type, receipt_id, receipt_item_id,
+                    receipt_bill_no_snapshot, order_id, order_item_id,
+                    order_bill_no_snapshot, goods_id, declared_qty,
+                    approved_remaining_qty, approved_excess_qty,
+                    accepted_qty, unaccepted_qty,
+                    finance_assignee_user_id, finance_assignee_employee_id,
+                    finance_assignee_name_snapshot,
+                    status, decision, finance_reason,
+                    detected_by_user_id, detected_by_employee_id,
+                    decided_by_user_id, decided_by_employee_id, decided_at)
+                values (
+                    ?, 'PURCHASE', ?, ?, ?, ?, ?, ?, ?, 15.0000,
+                    ?, ?, ?, ?,
+                    ?, ?, ?, 'RECEIPT_ADJUSTED', ?, ?,
+                    ?, ?, ?, ?, now())
+                """)) {
+            int index = 1;
+            exception.setObject(index++, exceptionId);
+            exception.setObject(index++, receiptId);
+            exception.setObject(index++, receiptItemId);
+            exception.setString(index++, "RC-RP-" + receiptId);
+            exception.setObject(index++, orderId);
+            exception.setObject(index++, orderItemId);
+            exception.setString(index++, "PO-RP-" + orderId);
+            exception.setObject(index++, goodsId);
+            exception.setBigDecimal(index++, approvedRemaining);
+            exception.setBigDecimal(index++, approvedExcess);
+            exception.setBigDecimal(index++, accepted);
+            exception.setBigDecimal(index++, new BigDecimal(unacceptedQty));
+            exception.setObject(index++, actor.userId());
+            exception.setObject(index++, actor.employeeId());
+            exception.setString(index++, actor.name());
+            exception.setString(index++, decision);
+            exception.setString(index++, "db test: receipt-posted transition");
+            exception.setObject(index++, actor.userId());
+            exception.setObject(index++, actor.employeeId());
+            exception.setObject(index++, actor.userId());
+            exception.setObject(index, actor.employeeId());
+            assertEquals(1, exception.executeUpdate());
+        }
+        return new ReturnFixture(exceptionId, orderId, orderItemId, receiptId, receiptItemId);
+    }
+
+    private static void insertPendingReturnTask(
+            Connection connection, ReturnFixture fixture, Identity actor, String qty) throws Exception {
+        try (PreparedStatement task = connection.prepareStatement("""
+                insert into supplier_return_tasks(
+                    id, arrival_exception_id, order_type, order_id, order_item_id,
+                    receipt_id, receipt_item_id, owner_user_id, owner_employee_id,
+                    qty, status, version)
+                values (?, ?, 'PURCHASE', ?, ?, ?, ?, ?, ?, ?, 'PENDING_RETURN', 1)
+                """)) {
+            task.setObject(1, UUID.randomUUID());
+            task.setObject(2, fixture.exceptionId());
+            task.setObject(3, fixture.orderId());
+            task.setObject(4, fixture.orderItemId());
+            task.setObject(5, fixture.receiptId());
+            task.setObject(6, fixture.receiptItemId());
+            task.setObject(7, actor.userId());
+            task.setObject(8, actor.employeeId());
+            task.setBigDecimal(9, new BigDecimal(qty));
+            assertEquals(1, task.executeUpdate());
+        }
+    }
+
+    private static boolean pendingReturnExists(Connection connection, UUID exceptionId) throws Exception {
+        try (PreparedStatement ps = connection.prepareStatement("""
+                SELECT EXISTS(
+                    SELECT 1 FROM supplier_return_tasks
+                    WHERE arrival_exception_id = ? AND status = 'PENDING_RETURN')
+                """)) {
+            ps.setObject(1, exceptionId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                return rs.getBoolean(1);
+            }
+        }
+    }
+
+    private static int applyReceiptPostedTransition(Connection connection, UUID exceptionId) throws Exception {
+        try (PreparedStatement ps = connection.prepareStatement("""
+                UPDATE procurement_arrival_exceptions exception_row
+                SET status = CASE WHEN EXISTS (
+                        SELECT 1 FROM supplier_return_tasks return_task
+                        WHERE return_task.arrival_exception_id = exception_row.id
+                          AND return_task.status = 'PENDING_RETURN'
+                    ) THEN 'RECEIPT_POSTED' ELSE 'CLOSED' END,
+                    version = version + 1, updated_at = now()
+                WHERE id = ? AND status = 'RECEIPT_ADJUSTED'
+                """)) {
+            ps.setObject(1, exceptionId);
+            return ps.executeUpdate();
+        }
+    }
+
+    private static String statusOf(Connection connection, UUID exceptionId) throws Exception {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT status FROM procurement_arrival_exceptions WHERE id = ?")) {
+            ps.setObject(1, exceptionId);
+            try (ResultSet rs = ps.executeQuery()) {
+                assertTrue(rs.next());
+                return rs.getString(1);
             }
         }
     }
@@ -278,5 +460,9 @@ class ProcurementArrivalGuardPostgresTest {
     }
 
     private record ArrivalFixture(UUID orderItemId, UUID receiptId) {
+    }
+
+    private record ReturnFixture(
+            UUID exceptionId, UUID orderId, UUID orderItemId, UUID receiptId, UUID receiptItemId) {
     }
 }

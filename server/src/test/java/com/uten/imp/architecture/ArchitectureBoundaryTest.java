@@ -81,6 +81,11 @@ class ArchitectureBoundaryTest {
             // 2026-08-06：IQC 待检隔离（V222）落仓库侧，PASS 放行需写库存——warehouse 依赖 stock
             //（与 purchase/subcontract/sales/production →stock 同构，更新 ADR-017）。
             "warehouse->stock",
+            // 2026-08-06：庆典互动/账号锁定跨切面（V224/V226）——notice 读 system_settings、
+            // org 员工详情锁账号，均依赖 admin（admin 为账号/系统设置枢纽，与 finance/production/
+            // stock/visitor →admin 同构，已登记 ADR-017）。
+            "notice->admin",
+            "org->admin",
             "visitor->admin",
             "visitor->org");
 

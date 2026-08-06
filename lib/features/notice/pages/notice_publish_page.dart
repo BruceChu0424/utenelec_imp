@@ -21,10 +21,13 @@ import '../providers/notice_providers.dart';
 import '../widgets/notice_type_picker.dart';
 
 class NoticePublishPage extends ConsumerStatefulWidget {
-  const NoticePublishPage({super.key, this.presetType});
+  const NoticePublishPage({super.key, this.presetType, this.presetSubjectId});
 
   /// 预设类型（人事任务中心快捷入口透传，如 NoticeType.birthday）。
   final NoticeType? presetType;
+
+  /// 预设祝福对象 ID（HR 子页「送祝福」按行透传，打开即预填对象 + 模板 + 标题）。
+  final String? presetSubjectId;
 
   @override
   ConsumerState<NoticePublishPage> createState() => _NoticePublishPageState();
@@ -49,6 +52,11 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   NoticeCelebrationPreview? _celebrationPreview;
   List<String> _selectedTemplates = const [];
 
+  // 标题自动套用追踪：标记标题由系统自动套入（非人工编辑），改对象时允许覆盖、
+  // 清空时一并清空，修复「选 A→取消→选 B 标题仍为 A」的残留 bug。
+  bool _titleAutoFilled = false;
+  String? _autoFilledTitle;
+
   static const _publishableTypes = <NoticeType>[
     NoticeType.announcement,
     NoticeType.policy,
@@ -69,6 +77,31 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
       _type = preset;
       // 庆典类默认全员可见（所有人可送上祝福）。
       if (preset.isCelebratory) _audienceScope = NoticeAudienceScope.all;
+    }
+    // 预设祝福对象（HR 子页「送祝福」按行透传）：首帧后异步预填对象 + 模板 + 标题。
+    if (widget.presetSubjectId != null && _type.isCelebratory) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _seedPresetSubject());
+    }
+  }
+
+  Future<void> _seedPresetSubject() async {
+    final id = widget.presetSubjectId;
+    if (id == null) return;
+    try {
+      final preview = await ref
+          .read(noticeRepositoryProvider)
+          .previewCelebration(employeeId: id, type: _type);
+      if (!mounted) return;
+      setState(() {
+        _celebrationSubject = UtenEmployeePickerItem(id: id, name: preview.subjectName);
+        _celebrationPreview = preview;
+        _selectedTemplates = List<String>.from(preview.suggestedTemplates);
+        _titleController.text = preview.suggestedTitle;
+        _autoFilledTitle = preview.suggestedTitle;
+        _titleAutoFilled = true;
+      });
+    } catch (error) {
+      if (mounted) context.appApiError(error);
     }
   }
 
@@ -110,23 +143,43 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   Future<void> _onCelebrationSubjectChanged(
     UtenEmployeePickerItem? item,
   ) async {
+    if (item == null) {
+      // 清空：若标题是我们自动套入的（用户未手改），一并清空，避免残留旧对象姓名。
+      setState(() {
+        _celebrationSubject = null;
+        _celebrationPreview = null;
+        _selectedTemplates = const [];
+        if (_titleAutoFilled) {
+          _titleController.clear();
+          _autoFilledTitle = null;
+          _titleAutoFilled = false;
+        }
+      });
+      return;
+    }
     setState(() {
       _celebrationSubject = item;
       _celebrationPreview = null;
       _selectedTemplates = const [];
     });
-    if (item == null) return;
     try {
       final preview = await ref
           .read(noticeRepositoryProvider)
           .previewCelebration(employeeId: item.id, type: _type);
       if (!mounted) return;
+      // 标题可覆盖条件：空，或仍是我们上次自动套入的（用户未手改）。
+      // 这样「选 A→取消→选 B」会把标题正确刷新为 B；手改过的标题则保留。
+      final current = _titleController.text.trim();
+      final autoTrim = _autoFilledTitle?.trim() ?? '';
+      final canOverwriteTitle =
+          current.isEmpty || (_titleAutoFilled && current == autoTrim);
       setState(() {
         _celebrationPreview = preview;
         _selectedTemplates = List<String>.from(preview.suggestedTemplates);
-        // 标题为空时自动套用建议标题。
-        if (_titleController.text.trim().isEmpty) {
+        if (canOverwriteTitle) {
           _titleController.text = preview.suggestedTitle;
+          _autoFilledTitle = preview.suggestedTitle;
+          _titleAutoFilled = true;
         }
       });
     } catch (error) {

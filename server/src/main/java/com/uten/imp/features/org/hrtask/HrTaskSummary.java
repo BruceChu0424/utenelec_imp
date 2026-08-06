@@ -17,7 +17,7 @@ import java.util.UUID;
  * @param birthdayUpcoming       30 天内生日（days = 剩余天数）
  * @param anniversaryToday       今日入职周年（days = 满年数）
  * @param newHires               近 30 天新入职（days = 已入职天数）
- * @param badgeCount             工作台徽标数 = 今日转正 + 逾期转正 + 今日生日 + 今日周年
+ * @param badgeCount             工作台徽标数 = 今日转正 + 逾期转正 + 今日生日 + 今日周年（生日/周年中已祝福的不计入）
  */
 public record HrTaskSummary(
         LocalDate generatedAt,
@@ -41,6 +41,8 @@ public record HrTaskSummary(
      * @param claimedByName 软认领人姓名（ADR-021：任务不隐藏，显示「XXX 处理中」），null = 未认领
      * @param claimedByMe   是否当前用户认领（本人可继续/释放，他人快捷操作禁用）
      * @param claimLeaseUntil 认领租约到期时间（过期自动失效）
+     * @param blessed       仅生日/周年条目有意义：本类型本年是否已发布过庆典祝福通知；
+     *                      已祝福的不计入徽标（HR 发布祝福后角标即减），列表仍保留以便查看
      */
     public record Item(
             UUID employeeId,
@@ -53,12 +55,19 @@ public record HrTaskSummary(
             String note,
             String claimedByName,
             boolean claimedByMe,
-            java.time.OffsetDateTime claimLeaseUntil) {
+            java.time.OffsetDateTime claimLeaseUntil,
+            boolean blessed) {
 
         /** 附加认领信息（summary 装配后统一贴上）。 */
         Item withClaim(String byName, boolean byMe, java.time.OffsetDateTime leaseUntil) {
             return new Item(employeeId, code, name, deptName, positionName, date, days, note,
-                    byName, byMe, leaseUntil);
+                    byName, byMe, leaseUntil, blessed);
+        }
+
+        /** 标记本条对应的员工本类型本年是否已祝福（用于把已祝福条目从徽标剔除）。 */
+        Item withBlessed(boolean b) {
+            return new Item(employeeId, code, name, deptName, positionName, date, days, note,
+                    claimedByName, claimedByMe, claimLeaseUntil, b);
         }
     }
 }

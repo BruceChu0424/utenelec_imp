@@ -182,6 +182,34 @@ public class UserAccountAdminService {
         return temporaryPassword;
     }
 
+    /**
+     * 按员工 ID 锁定其登录账号（员工详情页顶卡按钮，account:support）。
+     * 解析 employee_id → users.id 后复用 {@link #setStatus} 的锁定逻辑。
+     */
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public void lockByEmployee(UUID employeeId) {
+        setStatus(requireUserByEmployee(employeeId).getId(), "locked");
+    }
+
+    /**
+     * 按员工 ID 解锁其登录账号（员工详情页顶卡按钮，account:support）。
+     * 解析 employee_id → users.id 后复用 {@link #unlock} 的解锁逻辑。
+     */
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public void unlockByEmployee(UUID employeeId) {
+        unlock(requireUserByEmployee(employeeId).getId());
+    }
+
+    private UserAccount requireUserByEmployee(UUID employeeId) {
+        return userRepo.findByEmployeeId(employeeId)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND,
+                        "该员工未开通账号，无法锁定/解锁"));
+    }
+
     private void invalidateAllSessions(UUID userId) {
         if (userRepo.bumpAuthVersion(userId) != 1) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);

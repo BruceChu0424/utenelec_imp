@@ -8,6 +8,9 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
 import com.uten.imp.features.notice.NoticeBlessingRepository.NoticeBlessingRow;
+import com.uten.imp.features.notice.dto.MyCelebrationTodayDto;
+import com.uten.imp.features.notice.dto.CelebrationBatchRequest;
+import com.uten.imp.features.notice.dto.CelebrationBatchResult;
 import com.uten.imp.features.notice.dto.NoticeAcknowledgerDto;
 import com.uten.imp.features.notice.dto.NoticeBlessingDto;
 import com.uten.imp.features.notice.dto.NoticeCelebrationPreviewDto;
@@ -27,10 +30,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,6 +78,9 @@ public class NoticeService {
     private static final int MAX_LIST_ITEMS = 500;
     private static final int MAX_TODO_ITEMS = 100;
     private static final int MAX_BATCH_DELETE_ITEMS = RequestLimits.BATCH_IDS;
+
+    /** 时区：庆典「今天 / 本年」按上海时区判定（与 CelebrationScheduler 一致）。 */
+    private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
 
     /** 各庆典类型的默认祝福语模板（仅用 {@code {name}} 占位符，由前端在发送时替换为 subjectName）。 */
     private static final Map<String, List<String>> CELEBRATION_TEMPLATES = Map.of(
@@ -448,6 +456,108 @@ public class NoticeService {
         n.setEventLabel(eventLabel);
         n.setBlessingTemplates(writeTemplates(suggestedTemplates(type)));
         return noticeRepo.saveAndFlush(n);
+    }
+
+    /**
+     * 当前登录员工「今日庆典」（登录弹窗 / 今日概览庆典卡片，notice:read）。
+     *
+     * <p>生日 / 周年由服务端按 birth_date / hire_date 月日判定（满 1 年才记周年）；
+     * 新婚 / 新生儿由「今日发布且本人为祝福对象」的庆典通知判定。noticeId 用于跳转祝福墙，
+     * 可能为 null（调度器关闭且 HR 未手动发）。
+     *
+     * <p><b>PII</b>：birth_date / hire_date 仅服务端读取，绝不外泄日期原值。
+     */
+    @Transactional(readOnly = true)
+    public List<MyCelebrationTodayDto> myCelebrationToday() {
+        AuthUser u = requireStaff();
+        UUID empId = u.getEmployeeId();
+        if (empId == null) {
+            return List.of();
+        }
+        Employee me = employeeRepo.findById(empId).orElse(null);
+        if (me == null) {
+            return List.of();
+        }
+        LocalDate today = LocalDate.now(SHANGHAI);
+        int year = today.getYear();
+        Instant yearStart = LocalDate.of(year, 1, 1).atStartOfDay(SHANGHAI).toInstant();
+        List<MyCelebrationTodayDto> out = new ArrayList<>();
+
+        if (me.getBirthDate() != null
+                && me.getBirthDate().getMonthValue() == today.getMonthValue()
+                && me.getBirthDate().getDayOfMonth() == today.getDayOfMonth()) {
+            out.add(new MyCelebrationTodayDto(
+                    "birthday", me.getFullName(), "生日快乐",
+                    firstNoticeId(noticeRepo.findCelebrationNoticeIds(empId, "birthday", yearStart))));
+        }
+        if (me.getHireDate() != null
+                && me.getHireDate().getMonthValue() == today.getMonthValue()
+                && me.getHireDate().getDayOfMonth() == today.getDayOfMonth()) {
+            int years = Period.between(me.getHireDate(), today).getYears();
+            if (years >= 1) {
+                out.add(new MyCelebrationTodayDto(
+                        "anniversary", me.getFullName(), "入职" + years + "周年",
+                        firstNoticeId(noticeRepo.findCelebrationNoticeIds(empId, "anniversary", yearStart))));
+            }
+        }
+        Instant dayStart = today.atStartOfDay(SHANGHAI).toInstant();
+        for (Notice n : noticeRepo.findBySubjectAndTypesSince(
+                empId, List.of("wedding", "newborn"), dayStart)) {
+            String label = n.getEventLabel() != null
+                    ? n.getEventLabel() : eventLabelFor(n.getType(), null);
+            out.add(new MyCelebrationTodayDto(n.getType(), me.getFullName(), label, n.getId()));
+        }
+        return out;
+    }
+
+    /**
+     * 一键批量发布庆典祝福（HR 任务中心子页，notice:publish）。逐人按默认模板 / 服务端派生
+     * 标题发布；本类型本年已发过者幂等跳过（与 {@link CelebrationScheduler} 同口径）。
+     * 发布人取当前 HR 姓名快照。
+     */
+    @Transactional
+    public CelebrationBatchResult publishCelebrationBatch(CelebrationBatchRequest req) {
+        AuthUser u = requireStaff();
+        tx.bind();
+        String type = req.type();
+        if (!BLESS_TYPES.contains(type)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非庆典类型: " + type);
+        }
+        if (req.employeeIds() == null || req.employeeIds().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "至少选择一位祝福对象");
+        }
+        Set<UUID> distinct = new LinkedHashSet<>(req.employeeIds());
+        if (distinct.size() > RequestLimits.BATCH_IDS) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "一次最多为 " + RequestLimits.BATCH_IDS + " 位员工送祝福");
+        }
+        String publisher = publisherName(u);
+        LocalDate today = LocalDate.now(SHANGHAI);
+        Instant yearStart = LocalDate.of(today.getYear(), 1, 1).atStartOfDay(SHANGHAI).toInstant();
+        int published = 0;
+        int skipped = 0;
+        for (UUID empId : distinct) {
+            Employee e = employeeRepo.findById(empId).orElse(null);
+            if (e == null) {
+                skipped++;
+                continue;
+            }
+            if (noticeRepo.existsCelebrationSince(empId, type, yearStart)) {
+                skipped++;
+                continue;
+            }
+            Integer years = e.getHireDate() == null
+                    ? null : Period.between(e.getHireDate(), today).getYears();
+            publishCelebrationBroadcast(
+                    type, e.getId(), e.getFullName(), eventLabelFor(type, years), publisher);
+            published++;
+        }
+        return new CelebrationBatchResult(published, skipped);
+    }
+
+    private static UUID firstNoticeId(List<UUID> ids) {
+        return ids.isEmpty() ? null : ids.get(0);
     }
 
     /** 读庆典自动发布设置（notice:read 即可读）。 */

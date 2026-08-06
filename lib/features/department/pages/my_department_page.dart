@@ -12,6 +12,7 @@
 // 花名册：负责人/管理人排最前；安全 8 字段；部门负责人额外见权限转授面板（仅本人管理的部门）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_person_card.dart';
@@ -184,7 +185,8 @@ class _MyDepartmentDetail extends ConsumerWidget {
               icon: Icons.account_tree_outlined,
               subtitle: '${node.level} · ${node.code}',
               stats: [
-                MasterDetailStat('直属在册', directCount?.toString()),
+                // 子树聚合后该值为所选节点分支内的在册人数（含下级部门），故标"在册"。
+                MasterDetailStat('在册', directCount?.toString()),
                 MasterDetailStat('子部门', '${node.children.length}'),
                 MasterDetailStat('负责人', node.managerName),
                 MasterDetailStat('编制', node.headcount?.toString()),
@@ -280,7 +282,7 @@ class _MyDepartmentDetail extends ConsumerWidget {
             padding: pad(),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, i) => _staffRow(theme, ordered[i]),
+                (context, i) => _staffRow(context, theme, ordered[i]),
                 childCount: ordered.length,
               ),
             ),
@@ -309,7 +311,7 @@ class _MyDepartmentDetail extends ConsumerWidget {
     );
   }
 
-  Widget _staffRow(ThemeData theme, MyDepartmentStaffRow r) {
+  Widget _staffRow(BuildContext context, ThemeData theme, MyDepartmentStaffRow r) {
     final parts = <String>[
       if (r.code != null && r.code!.isNotEmpty) r.code!,
       if (r.positionName != null && r.positionName!.isNotEmpty)
@@ -320,6 +322,9 @@ class _MyDepartmentDetail extends ConsumerWidget {
     ];
     return UtenPersonCard(
       margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      // 花名册只走 my-department 安全字段（普通员工无 employee:view，跳 /employee/:id 会被拦），
+      // 点击弹只读联系卡：姓名/岗位/部门/工号/电话/邮箱，不进受限路由。
+      onTap: () => _showContactCard(context, r),
       title: r.fullName ?? '—',
       subtitle: parts.isEmpty ? null : parts.join(' · '),
       titleLeading: r.departmentManager
@@ -648,6 +653,213 @@ List<String> _nameChain(List<DepartmentNode> nodes, String id) {
     if (sub.isNotEmpty) return [n.name, ...sub];
   }
   return const [];
+}
+
+/// 员工联系卡：窄屏底部弹层、宽屏居中弹窗（与政策详情同款自适应范式）。
+/// 只用花名册安全字段，不依赖 employee:view / 不进 /employee/:id，人人可看。
+Future<void> _showContactCard(
+  BuildContext context,
+  MyDepartmentStaffRow r,
+) async {
+  final content = _ContactCard(row: r);
+  if (context.breakpoint.isCompact) {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => content,
+    );
+  } else {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: content,
+        ),
+      ),
+    );
+  }
+}
+
+class _ContactCard extends StatelessWidget {
+  const _ContactCard({required this.row});
+
+  final MyDepartmentStaffRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final name = (row.fullName ?? '').isEmpty ? '—' : row.fullName!;
+    final initial = name.isEmpty ? '?' : name.characters.first;
+    final hasCode = (row.code ?? '').isNotEmpty;
+    final hasPhone = (row.officePhone ?? '').isNotEmpty;
+    final hasEmail = (row.email ?? '').isNotEmpty;
+    final subParts = <String>[
+      if ((row.positionName ?? '').isNotEmpty) row.positionName!,
+      if ((row.departmentName ?? '').isNotEmpty) row.departmentName!,
+    ];
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s20,
+        UtenSpacing.s8,
+        UtenSpacing.s20,
+        UtenSpacing.s20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  foregroundColor: theme.colorScheme.onPrimaryContainer,
+                  child: Text(initial, style: theme.textTheme.headlineSmall),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s4,
+                  children: [
+                    Text(name, style: theme.textTheme.titleLarge),
+                    if (row.departmentManager)
+                      const EmployeeLeadershipBadge(departmentManager: true),
+                    if (row.isSelf) _selfTag(theme),
+                  ],
+                ),
+                if (subParts.isNotEmpty) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    subParts.join(' · '),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          if (hasCode)
+            _ContactLine(
+              icon: Icons.badge_outlined,
+              label: '工号',
+              value: row.code!,
+            ),
+          if (hasPhone)
+            _ContactLine(
+              icon: Icons.phone_outlined,
+              label: '办公电话',
+              value: row.officePhone!,
+              onTap: () => _launchUri(context, 'tel:${row.officePhone}'),
+            ),
+          if (hasEmail)
+            _ContactLine(
+              icon: Icons.mail_outline_rounded,
+              label: '邮箱',
+              value: row.email!,
+              onTap: () => _launchUri(context, 'mailto:${row.email}'),
+            ),
+          if (!hasCode && !hasPhone && !hasEmail)
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Text(
+                '暂无其它联系方式',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContactLine extends StatelessWidget {
+  const _ContactLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(value, style: theme.textTheme.bodyMedium),
+              ],
+            ),
+          ),
+          if (onTap != null)
+            Icon(
+              Icons.chevron_right_rounded,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+        ],
+      ),
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(UtenSpacing.s8),
+      child: content,
+    );
+  }
+}
+
+Widget _selfTag(ThemeData theme) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8, vertical: 2),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.primaryContainer,
+      borderRadius: BorderRadius.circular(UtenSpacing.s8),
+    ),
+    child: Text(
+      '我',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onPrimaryContainer,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
+Future<void> _launchUri(BuildContext context, String uri) async {
+  final parsed = Uri.tryParse(uri);
+  if (parsed == null || !await launchUrl(parsed)) {
+    if (context.mounted) context.appError('无法打开链接');
+  }
 }
 
 class _InlineError extends StatelessWidget {

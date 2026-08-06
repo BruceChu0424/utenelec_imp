@@ -376,3 +376,52 @@ class NoticeCelebrationSettings {
     );
   }
 }
+
+/// 当前用户「今日庆典」条目（登录弹窗 / 今日概览庆典卡片）。
+/// 生日/周年由服务端按 birth_date / hire_date 月日判定；新婚/新生儿由今日发布的庆典通知判定。
+/// noticeId 可空（尚未发布对应通知时），用于跳转祝福墙。无任何日期原值（PII 安全）。
+class MyCelebrationToday {
+  const MyCelebrationToday({
+    required this.type,
+    required this.subjectName,
+    required this.eventLabel,
+    this.noticeId,
+  });
+
+  final NoticeType type;
+  final String subjectName;
+  final String eventLabel;
+  final String? noticeId;
+
+  factory MyCelebrationToday.fromJson(Map<String, dynamic> json) {
+    return MyCelebrationToday(
+      type: _typeFromName(json['type'] as String?),
+      subjectName: json['subjectName'] as String? ?? '',
+      eventLabel: json['eventLabel'] as String? ?? '',
+      noticeId: json['noticeId'] as String?,
+    );
+  }
+
+  static NoticeType _typeFromName(String? name) => switch (name) {
+    'birthday' => NoticeType.birthday,
+    'anniversary' => NoticeType.anniversary,
+    'wedding' => NoticeType.wedding,
+    'newborn' => NoticeType.newborn,
+    _ => NoticeType.birthday,
+  };
+}
+
+/// 一键批量发布庆典祝福结果。
+class CelebrationBatchResult {
+  const CelebrationBatchResult({required this.published, required this.skipped});
+
+  final int published;
+  final int skipped;
+
+  factory CelebrationBatchResult.fromJson(Map<String, dynamic> json) {
+    return CelebrationBatchResult(
+      published: (json['published'] as num?)?.toInt() ?? 0,
+      skipped: (json['skipped'] as num?)?.toInt() ?? 0,
+    );
+  }
+}

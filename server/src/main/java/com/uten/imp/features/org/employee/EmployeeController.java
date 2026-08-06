@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.admin.UserAccountAdminService;
 import com.uten.imp.features.org.employee.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class EmployeeController {
     private final EmployeeQueryService queryService;
     private final EmployeeOnboardingService onboardingService;
     private final EmployeeCommandService commandService;
+    private final UserAccountAdminService userAccountAdminService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('employee:view')")
@@ -55,6 +57,20 @@ public class EmployeeController {
     public EmployeeOnboardingResult provisionAccount(@PathVariable UUID id) {
         // 给批量导入等「未开通账号」的存量员工补开登录账号（账号=手机号，初始密码=身份证后6位）。
         return onboardingService.provisionAccount(id);
+    }
+
+    @PostMapping("/{id}/account/lock")
+    @PreAuthorize("hasAuthority('account:support')")
+    public void lockAccount(@PathVariable UUID id) {
+        // 员工详情顶卡：锁定已开通的登录账号（与开通账号同权限级 account:support）。
+        userAccountAdminService.lockByEmployee(id);
+    }
+
+    @PostMapping("/{id}/account/unlock")
+    @PreAuthorize("hasAuthority('account:support')")
+    public void unlockAccount(@PathVariable UUID id) {
+        // 员工详情顶卡：解锁被锁定的登录账号。
+        userAccountAdminService.unlockByEmployee(id);
     }
 
     @PutMapping("/{id}")

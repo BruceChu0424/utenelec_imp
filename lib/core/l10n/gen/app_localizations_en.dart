@@ -1078,6 +1078,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeActionProvision => 'Provision login account';
 
   @override
+  String get employeeActionLockAccount => 'Lock account';
+
+  @override
+  String get employeeActionUnlockAccount => 'Unlock account';
+
+  @override
+  String get employeeLockAccountSuccess => 'Account locked';
+
+  @override
+  String get employeeUnlockAccountSuccess => 'Account unlocked';
+
+  @override
   String get employeeProvisionConfirm =>
       'This creates a login account for the employee. The account defaults to the phone number, the initial password is the last 6 digits of the ID number, and it must be changed on first login. Continue?';
 
@@ -1743,6 +1755,55 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noticeQuickNewborn => 'Newborn';
+
+  @override
+  String celebrationPopupBirthday(Object name) {
+    return '$name, today is your birthday!\nXiao You wishes you a happy birthday!';
+  }
+
+  @override
+  String celebrationPopupAnniversary(Object name, Object label) {
+    return '$name, today is your work anniversary!\nXiao You wishes you $label!';
+  }
+
+  @override
+  String celebrationPopupWedding(Object name) {
+    return '$name, congratulations on your wedding!\nXiao You wishes you a lifetime of happiness!';
+  }
+
+  @override
+  String celebrationPopupNewborn(Object name) {
+    return '$name, congratulations on the new baby!\nXiao You wishes your little one health and joy!';
+  }
+
+  @override
+  String get celebrationDismiss => 'Thanks, Xiao You';
+
+  @override
+  String celebrationCardBirthday(Object name) {
+    return 'Today is $name\'s birthday';
+  }
+
+  @override
+  String celebrationCardAnniversary(Object name, Object label) {
+    return 'Today is $name\'s $label';
+  }
+
+  @override
+  String celebrationCardWedding(Object name) {
+    return 'Today is $name\'s wedding day';
+  }
+
+  @override
+  String celebrationCardNewborn(Object name) {
+    return '$name welcomes a new baby';
+  }
+
+  @override
+  String get celebrationCardCta => 'Send blessings';
+
+  @override
+  String get celebrationCardWall => 'View blessing wall';
 
   @override
   String get noticeAutoCelebrationTitle => 'Auto celebration notices';

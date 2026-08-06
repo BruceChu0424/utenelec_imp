@@ -18,6 +18,8 @@ abstract interface class EmployeeRepository {
   Future<EmployeeProfile> getById(String id);
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input);
   Future<EmployeeOnboardingResult> provisionAccount(String id);
+  Future<void> lockAccount(String id);
+  Future<void> unlockAccount(String id);
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
   Future<void> transfer(String id, Map<String, dynamic> body);
   Future<void> offboard(String id, Map<String, dynamic> body);
@@ -69,6 +71,16 @@ class DioEmployeeRepository implements EmployeeRepository {
   Future<EmployeeOnboardingResult> provisionAccount(String id) async {
     final json = await api.post(ApiEndpoints.employeeAccount(id));
     return _credentialResult(json, '开通账号响应缺少员工资料或一次性临时密码');
+  }
+
+  @override
+  Future<void> lockAccount(String id) async {
+    await api.post(ApiEndpoints.employeeAccountLock(id));
+  }
+
+  @override
+  Future<void> unlockAccount(String id) async {
+    await api.post(ApiEndpoints.employeeAccountUnlock(id));
   }
 
   /// 解析入职/补开账号的统一响应：{ employee, temporaryPassword, loginAccount }。

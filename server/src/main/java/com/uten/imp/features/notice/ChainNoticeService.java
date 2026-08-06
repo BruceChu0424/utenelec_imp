@@ -72,6 +72,8 @@ public class ChainNoticeService {
             "PROCUREMENT_SUPPLIER_RETURN_REQUIRED";
     static final String EVENT_PROCUREMENT_RETURN_COMPLETED =
             "PROCUREMENT_SUPPLIER_RETURN_COMPLETED";
+    static final String EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED =
+            "PROCUREMENT_ARRIVAL_RECEIPT_POSTED";
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
     static final String EVENT_RD_TASK_FORWARDED = "RD_TASK_FORWARDED";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
@@ -152,7 +154,8 @@ public class ChainNoticeService {
                 case EVENT_PROCUREMENT_ARRIVAL_DETECTED,
                      EVENT_PROCUREMENT_ARRIVAL_DECIDED,
                      EVENT_PROCUREMENT_RETURN_REQUIRED,
-                     EVENT_PROCUREMENT_RETURN_COMPLETED ->
+                     EVENT_PROCUREMENT_RETURN_COMPLETED,
+                     EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED ->
                         notifyProcurementArrivalEvent(eventType, aggregateId);
                 case EVENT_RD_TASK_FORWARDED -> notifyRdTaskForwarded(aggregateId);
                 case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
@@ -818,11 +821,33 @@ public class ChainNoticeService {
                 return;
             }
             if (EVENT_PROCUREMENT_RETURN_REQUIRED.equals(eventType)) {
+                String returnQty = str(arrival.get("return_qty"));
                 notifyUser(ownerUser, TYPE_TASK,
                         "供应商退回任务：" + orderNo,
                         orderLabel + " " + orderNo + " 的未接收数量 "
-                                + str(arrival.get("return_qty"))
+                                + returnQty
                                 + " 已形成持久任务。请完成实物退回后在本人任务中确认；通知不能代替任务台账。",
+                        "/procurement/arrival-exceptions");
+                // 部门广播：让采购/委外整组知晓有一笔退回任务已分配（委外单也归采购部管）。
+                broadcastToPurchaseDept(ownerUser, TYPE_TASK, "供应商退回任务：" + orderNo,
+                        orderLabel + " " + orderNo + " 有未接收数量 " + returnQty
+                                + " 待退回，请跟进实物退回。",
+                        "/procurement/arrival-exceptions");
+                return;
+            }
+            if (EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED.equals(eventType)) {
+                // 仓库一键入库后、本异常仍有待退量 → 通知采购/委外安排退回。
+                String acceptedQty = str(arrival.get("accepted_qty"));
+                String unacceptedQty = str(arrival.get("unaccepted_qty"));
+                String content = orderLabel + " " + orderNo + " 的收货单 " + receiptNo
+                        + " 已按财务批准量入库 " + acceptedQty
+                        + "，未接收 " + unacceptedQty
+                        + " 待退回供应商/委外商。请尽快安排实物退回。";
+                // 原下单人须在本人任务确认退回；部门内其他人广播知会（去重避免重复通知）。
+                notifyUser(ownerUser, TYPE_TASK, "到货已入库，余量待退：" + orderNo,
+                        content, "/procurement/arrival-exceptions");
+                broadcastToPurchaseDept(ownerUser, TYPE_TASK,
+                        "到货已入库，余量待退：" + orderNo, content,
                         "/procurement/arrival-exceptions");
                 return;
             }
@@ -856,6 +881,18 @@ public class ChainNoticeService {
                 }
             }
         });
+    }
+
+    /**
+     * 广播到采购部（SUB_PURCHASE，委外单也归采购部管）相关人员，跳过 excludeUser 避免与
+     * 原下单人的定向通知重复；停用/已删除账号由 sendToUser 内部跳过。
+     */
+    private void broadcastToPurchaseDept(UUID excludeUser, String type,
+                                         String title, String content, String route) {
+        for (UUID uid : departmentUserIds("SUB_PURCHASE")) {
+            if (excludeUser != null && excludeUser.equals(uid)) continue;
+            sendToUser(uid, type, title, content, route);
+        }
     }
 
     // ---------- 接收人解析与发送 ----------

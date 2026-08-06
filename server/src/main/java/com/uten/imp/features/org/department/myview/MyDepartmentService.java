@@ -59,8 +59,11 @@ public class MyDepartmentService {
         String deptName = departmentRepo.findById(departmentId)
                 .map(Department::getName)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "部门不存在"));
+        // 子树聚合：所选节点可能是纯分组节点（管理中心/一级部门），其员工都在下层；
+        // 按整棵子树取人，分组节点才不会显示"无员工"。叶子节点子树=自身，行为不变。
+        Set<UUID> subtreeIds = collectIds(departmentService.subtree(departmentId));
         List<Employee> staff = employeeRepo
-                .findByDepartmentIdAndDeletedFalseOrderByFullNameAsc(departmentId)
+                .findByDepartmentIdInAndDeletedFalseOrderByFullNameAsc(subtreeIds)
                 .stream()
                 .filter(e -> CURRENT_STATUSES.contains(e.getStatus()))
                 .toList();
@@ -70,6 +73,7 @@ public class MyDepartmentService {
                         e.getCode(),
                         e.getFullName(),
                         e.getPosition() == null ? null : e.getPosition().getName(),
+                        e.getDepartment() == null ? null : e.getDepartment().getName(),
                         e.getOfficePhone(),
                         e.getEmail(),
                         e.getDepartment() != null

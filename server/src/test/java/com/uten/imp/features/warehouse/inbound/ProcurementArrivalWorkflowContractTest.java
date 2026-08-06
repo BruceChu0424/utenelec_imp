@@ -217,6 +217,30 @@ class ProcurementArrivalWorkflowContractTest {
                 .doesNotContain("原下单人已决定接收");
     }
 
+    @Test
+    void stockInNotifiesPurchaseDeptWhenReturnStillPending() throws Exception {
+        // 修复：一键入库（recordApproval）原本不发 outbox 事件 → 采购/委外收不到「已入库、余量待退」。
+        // 锁定补全：仅当本异常仍有待退（→RECEIPT_POSTED）时发 PROCUREMENT_ARRIVAL_RECEIPT_POSTED，
+        // 并由 ChainNoticeService 把入库/退货事件广播到采购部 SUB_PURCHASE（委外单也归采购部）。
+        String service = source(
+                "src/main/java/com/uten/imp/features/warehouse/inbound/"
+                        + "ProcurementArrivalControlService.java");
+        assertThat(service)
+                .contains("EVENT_RECEIPT_POSTED = \"PROCUREMENT_ARRIVAL_RECEIPT_POSTED\"")
+                .contains("hasPendingReturnTask")
+                .contains("publish(EVENT_RECEIPT_POSTED, allowance.id(), allowance.version() + 1)");
+
+        String notices = source(
+                "src/main/java/com/uten/imp/features/notice/"
+                        + "ChainNoticeService.java");
+        assertThat(notices)
+                .contains("\"PROCUREMENT_ARRIVAL_RECEIPT_POSTED\"")
+                .contains("EVENT_PROCUREMENT_ARRIVAL_RECEIPT_POSTED ->")
+                .contains("broadcastToPurchaseDept")
+                .contains("departmentUserIds(\"SUB_PURCHASE\")")
+                .contains("到货已入库，余量待退");
+    }
+
     private static void assertCommitsBlockedException(Method method) {
         Transactional transactional =
                 method.getAnnotation(Transactional.class);

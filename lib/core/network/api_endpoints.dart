@@ -222,6 +222,11 @@ abstract final class ApiEndpoints {
   static String employeeConfirm(String id) => '/org/employees/$id/confirm';
   static String employeeRehire(String id) => '/org/employees/$id/rehire';
   static String employeeAccount(String id) => '/org/employees/$id/account';
+  /// 锁定 / 解锁员工登录账号（员工详情顶卡，account:support）。
+  static String employeeAccountLock(String id) =>
+      '/org/employees/$id/account/lock';
+  static String employeeAccountUnlock(String id) =>
+      '/org/employees/$id/account/unlock';
   // 更换手机号（同步登录账号 + 踢会话；employee:pii:edit）—— ADR-021
   static String employeeChangePhone(String id) =>
       '/org/employees/$id/change-phone';
@@ -355,6 +360,10 @@ abstract final class ApiEndpoints {
   static String noticeAcknowledgers(String id) => '/notices/$id/acknowledgers';
   static const noticeCelebrationPreview = '/notices/celebration/preview';
   static const noticeCelebrationSettings = '/notices/celebration/settings';
+  /// 当前用户今日庆典（登录弹窗 / 今日卡片；notice:read，PII 安全）。
+  static const noticeCelebrationMyToday = '/notices/celebration/my-today';
+  /// 一键批量发布庆典祝福（notice:publish）。
+  static const noticeCelebrationBatch = '/notices/celebration/batch';
 
   // 建议箱（广场/我的/提交/点赞/官方回复；后端 features/suggestion/SuggestionController）
   static const suggestions = '/suggestions';

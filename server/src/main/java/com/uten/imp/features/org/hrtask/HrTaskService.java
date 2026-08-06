@@ -10,8 +10,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -129,6 +131,29 @@ public class HrTaskService {
             birthdayUpcoming = new ArrayList<>();
         }
 
+        // 本类型本年已发布过庆典祝福的员工（与 CelebrationScheduler 同口径去重）：
+        // 已祝福的生日/周年不再计入徽标（HR 发布祝福后角标即减），但列表仍保留并标记 blessed。
+        Set<UUID> blessedBirthday = new HashSet<>();
+        Set<UUID> blessedAnniversary = new HashSet<>();
+        if (!birthdayToday.isEmpty() || !anniversaryToday.isEmpty()) {
+            List<Map<String, Object>> celeb = jdbc.queryForList("""
+                    SELECT type, subject_employee_id AS sid FROM notices
+                    WHERE type IN ('birthday','anniversary')
+                      AND subject_employee_id IS NOT NULL
+                      AND published_at >= make_date(?::int, 1, 1)
+                    """, today.getYear());
+            for (Map<String, Object> r : celeb) {
+                UUID sid = (UUID) r.get("sid");
+                if ("birthday".equals(r.get("type"))) {
+                    blessedBirthday.add(sid);
+                } else {
+                    blessedAnniversary.add(sid);
+                }
+            }
+        }
+        birthdayToday = markBlessed(birthdayToday, blessedBirthday);
+        anniversaryToday = markBlessed(anniversaryToday, blessedAnniversary);
+
         Comparator<HrTaskSummary.Item> byDays = Comparator.comparingInt(HrTaskSummary.Item::days);
         confirmUpcoming.sort(byDays);
         confirmOverdue.sort(byDays);
@@ -150,7 +175,8 @@ public class HrTaskService {
         }
 
         long badge = confirmToday.size() + confirmOverdue.size()
-                + birthdayToday.size() + anniversaryToday.size();
+                + birthdayToday.stream().filter(it -> !it.blessed()).count()
+                + anniversaryToday.stream().filter(it -> !it.blessed()).count();
 
         return new HrTaskSummary(
                 today, PROBATION_MONTHS,
@@ -161,6 +187,16 @@ public class HrTaskService {
 
     public long badgeCount() {
         return summary().badgeCount();
+    }
+
+    /** 把本类型本年已祝福的员工对应条目标记 blessed（无命中则原样返回，避免无谓重建）。 */
+    private List<HrTaskSummary.Item> markBlessed(List<HrTaskSummary.Item> items, Set<UUID> blessed) {
+        if (blessed.isEmpty()) {
+            return items;
+        }
+        return items.stream()
+                .map(it -> blessed.contains(it.employeeId()) ? it.withBlessed(true) : it)
+                .toList();
     }
 
     /** 给某个区块的条目贴上有效认领信息；认领人姓名按批缓存，避免逐条查库。 */
@@ -201,7 +237,7 @@ public class HrTaskService {
                        LocalDate hireDate, LocalDate confirmedAt, LocalDate birthDate) {
         HrTaskSummary.Item item(LocalDate date, int days, String note) {
             return new HrTaskSummary.Item(id, code, name, deptName, positionName, date, days, note,
-                    null, false, null);
+                    null, false, null, false);
         }
     }
 }

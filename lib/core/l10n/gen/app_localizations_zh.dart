@@ -1561,6 +1561,168 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeTypeUrgent => '紧急';
 
   @override
+  String get noticeTypeBirthday => '生日';
+
+  @override
+  String get noticeTypeAnniversary => '入职周年';
+
+  @override
+  String get noticeTypeWedding => '新婚';
+
+  @override
+  String get noticeTypeNewborn => '新生儿';
+
+  @override
+  String get noticeTypeAnnouncementDesc => '公司公告，全员可「点击收到」';
+
+  @override
+  String get noticeTypePolicyDesc => '制度发布，全员可「点击收到」';
+
+  @override
+  String get noticeTypeBenefitDesc => '福利通知，全员可「点击收到」';
+
+  @override
+  String get noticeTypeSystemDesc => '系统通知，全员可「点击收到」';
+
+  @override
+  String get noticeTypeUrgentDesc => '紧急通知，高优先级强提醒';
+
+  @override
+  String get noticeTypeBirthdayDesc => '为同事庆生，大家可「送上祝福」';
+
+  @override
+  String get noticeTypeAnniversaryDesc => '入职周年纪念，大家可「送上祝福」';
+
+  @override
+  String get noticeTypeWeddingDesc => '新婚祝福，大家可「送上祝福」';
+
+  @override
+  String get noticeTypeNewbornDesc => '喜添新丁，大家可「送上祝福」';
+
+  @override
+  String get noticeGroupBroadcast => '公告广播';
+
+  @override
+  String get noticeGroupCelebration => '庆典祝福';
+
+  @override
+  String get noticeInteractionReceive => '收到';
+
+  @override
+  String get noticeInteractionReceived => '已收到';
+
+  @override
+  String get noticeClickToReceive => '点击收到';
+
+  @override
+  String noticeAckCount(int count) {
+    return '$count人已收到';
+  }
+
+  @override
+  String noticeAckYouAndCount(int count) {
+    return '你已收到 · 共 $count 人收到';
+  }
+
+  @override
+  String get noticeAckRecent => '近期已收到';
+
+  @override
+  String get noticeSendBlessing => '送上祝福';
+
+  @override
+  String get noticeBlessingSent => '已送祝福';
+
+  @override
+  String noticeBlessingCount(int count) {
+    return '$count 条祝福';
+  }
+
+  @override
+  String get noticeBlessingWall => '祝福墙';
+
+  @override
+  String noticeBlessingReceivedCount(int count) {
+    return '收到 $count 条祝福';
+  }
+
+  @override
+  String get noticeBlessingWallEmpty => '还没有祝福，送上第一份祝福吧';
+
+  @override
+  String get noticeBlessingPlaceholder => '写下你的祝福…';
+
+  @override
+  String get noticeBlessingSendButton => '发送祝福';
+
+  @override
+  String get noticeBlessingSending => '发送中…';
+
+  @override
+  String get noticeBlessingWithdraw => '撤回';
+
+  @override
+  String noticeBlessingViewAll(int count) {
+    return '查看全部 $count 条';
+  }
+
+  @override
+  String get noticeBlessingTemplatesTitle => '选一句祝福';
+
+  @override
+  String get noticeBlessingValidateEmpty => '请输入祝福内容';
+
+  @override
+  String get noticeCelebrationSubjectLabel => '祝福对象';
+
+  @override
+  String get noticeCelebrationSubjectHint => '选择要祝福的同事';
+
+  @override
+  String get noticeCelebrationSubjectRequired => '请选择祝福对象';
+
+  @override
+  String get noticeCelebrationSubjectIsYou => '你';
+
+  @override
+  String noticeCelebrationFor(Object name, Object event) {
+    return '祝 $name $event';
+  }
+
+  @override
+  String get noticeQuickCelebrationTitle => '快捷发布祝福';
+
+  @override
+  String get noticeQuickCelebrationSubtitle => '选择类型，系统自动套用模板';
+
+  @override
+  String get noticeQuickPublish => '发通知';
+
+  @override
+  String get noticeQuickBirthday => '生日';
+
+  @override
+  String get noticeQuickAnniversary => '入职周年';
+
+  @override
+  String get noticeQuickWedding => '新婚';
+
+  @override
+  String get noticeQuickNewborn => '新生儿';
+
+  @override
+  String get noticeAutoCelebrationTitle => '自动祝福通知';
+
+  @override
+  String get noticeAutoCelebrationEnabled => '每日自动为当天生日 / 入职周年的员工发布全员祝福';
+
+  @override
+  String get noticeAutoCelebrationTypes => '自动类型';
+
+  @override
+  String get noticeAutoCelebrationPublisher => '发布人名称';
+
+  @override
   String get profileChangeEditTitle => '修改个人信息';
 
   @override

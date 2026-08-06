@@ -47,40 +47,48 @@ class ConnectionRecoveryBanner extends ConsumerWidget {
       ),
     };
 
-    return AnimatedSwitcher(
-      duration: disableAnimations
-          ? Duration.zero
-          : const Duration(milliseconds: 200),
-      child: UtenTopBannerCard(
-        key: ValueKey(state.phase),
-        background: background,
-        foreground: foreground,
-        icon: icon,
-        semanticLabel: message,
-        progress: state.phase == ConnectionRecoveryPhase.reconnecting ||
-            state.phase == ConnectionRecoveryPhase.disconnected,
-        content: Text(
-          message,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: foreground,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        trailing: state.phase == ConnectionRecoveryPhase.disconnected
-            ? OutlinedButton(
-                key: const ValueKey('connection-recovery-retry'),
-                onPressed: () => ref
-                    .read(connectionRecoveryProvider.notifier)
-                    .retryNow(),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: foreground,
-                  side: BorderSide(color: foreground),
-                  minimumSize: const Size(0, 48),
-                ),
-                child: Text(l10n.connectionRetryNow),
-              )
-            : null,
-      ),
-    );
+    // SafeArea + Center 由调用方负责（卡片本身不含）：Center 透明、不拦截两侧点击。
+    return SafeArea(
+      bottom: false,
+      minimum: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Center(
+        child: AnimatedSwitcher(
+          duration: disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 200),
+          child: UtenTopBannerCard(
+            key: ValueKey(state.phase),
+            background: background,
+            foreground: foreground,
+            icon: icon,
+            semanticLabel: message,
+            progress:
+                state.phase == ConnectionRecoveryPhase.reconnecting ||
+                state.phase == ConnectionRecoveryPhase.disconnected,
+            content: Text(
+              message,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: foreground,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            trailing: state.phase == ConnectionRecoveryPhase.disconnected
+                ? OutlinedButton(
+                    key: const ValueKey('connection-recovery-retry'),
+                    onPressed: () => ref
+                        .read(connectionRecoveryProvider.notifier)
+                        .retryNow(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: foreground,
+                      side: BorderSide(color: foreground),
+                      minimumSize: const Size(0, 48),
+                    ),
+                    child: Text(l10n.connectionRetryNow),
+                  )
+                : null,
+          ), // UtenTopBannerCard
+        ), // AnimatedSwitcher
+      ), // Center
+    ); // SafeArea
   }
 }

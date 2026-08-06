@@ -18,6 +18,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
+import '../widgets/notice_blessing.dart';
 
 class NoticeDetailPage extends ConsumerWidget {
   const NoticeDetailPage({
@@ -252,6 +253,11 @@ class _Content extends ConsumerWidget {
               style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),
             ),
           ),
+          // 互动区：庆典祝福（送上祝福 / 祝福墙）、公告广播（点击收到）
+          if (notice.interactionMode != NoticeInteractionMode.none) ...[
+            const SizedBox(height: UtenSpacing.s24),
+            NoticeInteractionSection(notice: notice),
+          ],
           // 附件
           if (notice.attachments.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s24),
@@ -409,6 +415,10 @@ class _Content extends ConsumerWidget {
     NoticeType.task => UtenStatusBadgeType.info,
     NoticeType.approval => UtenStatusBadgeType.accent,
     NoticeType.workflow => UtenStatusBadgeType.success,
+    NoticeType.birthday => UtenStatusBadgeType.accent,
+    NoticeType.anniversary => UtenStatusBadgeType.success,
+    NoticeType.wedding => UtenStatusBadgeType.accent,
+    NoticeType.newborn => UtenStatusBadgeType.info,
   };
 
   String _fmt(DateTime d) {

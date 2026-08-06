@@ -44,6 +44,16 @@ public class SystemSettingsService {
         return repo.findById(key).map(s -> parseLong(s.getValue(), def)).orElse(def);
     }
 
+    public boolean readBool(String key, boolean def) {
+        return repo.findById(key).map(s -> parseBoolean(s.getValue(), def)).orElse(def);
+    }
+
+    public String readString(String key, String def) {
+        return repo.findById(key)
+                .map(s -> s.getValue() == null || s.getValue().isBlank() ? def : s.getValue().trim())
+                .orElse(def);
+    }
+
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public List<SystemSettingDto> list() {
         return repo.findAll(Sort.by("category", "sortOrder")).stream()
@@ -129,5 +139,10 @@ public class SystemSettingsService {
 
     private long parseLong(String v, long def) {
         try { return Long.parseLong(v); } catch (Exception e) { return def; }
+    }
+
+    private boolean parseBoolean(String v, boolean def) {
+        if (v == null) return def;
+        return "true".equalsIgnoreCase(v.trim());
     }
 }

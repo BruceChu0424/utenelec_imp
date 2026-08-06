@@ -1081,7 +1081,7 @@ public class SalesOrderService {
                 WHERE r.is_deleted = FALSE AND r.status = 0
                   AND (r.qty - r.consumed_qty - r.released_qty) > 0
                   AND r.goods_id = :gid
-                  AND (:cid IS NULL
+                  AND (CAST(:cid AS uuid) IS NULL
                        OR r.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid))
                   AND o.status = 1
                   AND COALESCE(o.is_closed, FALSE) = FALSE

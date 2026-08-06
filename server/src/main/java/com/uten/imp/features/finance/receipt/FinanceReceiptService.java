@@ -474,8 +474,17 @@ public class FinanceReceiptService {
         r.setCounterpartAccountId(req.getCounterpartAccountId());
         r.setCurrencyId(req.getCurrencyId());
         if (req.getExchangeRate() != null) r.setExchangeRate(req.getExchangeRate());
-        if (req.getAmountOriginal() != null) r.setAmountOriginal(req.getAmountOriginal());
-        if (req.getAmountLocal() != null) r.setAmountLocal(req.getAmountLocal());
+        if (req.getAmountOriginal() != null) {
+            r.setAmountOriginal(req.getAmountOriginal());
+            // 金额服务端权威重算（4 位 HALF_UP）：本币额 = 原币额 × 汇率，忽略客户端 amountLocal，
+            // 防止篡改本币额进而影响 AR 核销与账户增减（与 M1 银行转账服务端权威同型）。
+            java.math.BigDecimal rate = r.getExchangeRate() != null
+                    ? r.getExchangeRate() : java.math.BigDecimal.ONE;
+            r.setAmountLocal(req.getAmountOriginal().multiply(rate)
+                    .setScale(4, java.math.RoundingMode.HALF_UP));
+        } else if (req.getAmountLocal() != null) {
+            r.setAmountLocal(req.getAmountLocal());
+        }
         if (req.getBankFee() != null) r.setBankFee(req.getBankFee());
         if (req.getOtherFee() != null) r.setOtherFee(req.getOtherFee());
         r.setOtherFeeStyleId(req.getOtherFeeStyleId());

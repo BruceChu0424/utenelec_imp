@@ -87,16 +87,30 @@ void dispatchNoticeArrival(
         onConfirm: openDetail,
       );
     case NoticePriority.normal:
-      UtenNotify.banner(
-        context,
-        title: notice.type.isWork
-            ? '${notice.type.label} · ${notice.publisher}'
-            : notice.publisher,
-        message: notice.title,
-        icon: notice.type.icon,
-        duration: const Duration(seconds: 4),
-        onTap: openBanner,
-      );
+      if (notice.type.isCelebratory) {
+        // 庆典通知：节庆图标 + 对象名标题，停留略久。
+        UtenNotify.banner(
+          context,
+          title: notice.subjectName != null
+              ? '${notice.type.label}祝福 · ${notice.subjectName}'
+              : '${notice.type.label}祝福',
+          message: notice.title,
+          icon: notice.type.icon,
+          duration: const Duration(seconds: 5),
+          onTap: openBanner,
+        );
+      } else {
+        UtenNotify.banner(
+          context,
+          title: notice.type.isWork
+              ? '${notice.type.label} · ${notice.publisher}'
+              : notice.publisher,
+          message: notice.title,
+          icon: notice.type.icon,
+          duration: const Duration(seconds: 4),
+          onTap: openBanner,
+        );
+      }
   }
 }
 

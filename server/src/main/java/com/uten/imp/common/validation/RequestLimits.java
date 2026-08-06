@@ -17,6 +17,7 @@ public final class RequestLimits {
     public static final int NOTICE_TITLE_LENGTH = 200;
     public static final int NOTICE_CONTENT_LENGTH = 20_000;
     public static final int NOTICE_AUDIENCE_TARGETS = 200;
+    public static final int NOTICE_BLESSING_LENGTH = 200;
     public static final int PROFILE_CHANGES = 100;
     public static final int EMPLOYEE_NESTED_ITEMS = 100;
 

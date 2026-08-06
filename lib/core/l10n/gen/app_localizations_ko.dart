@@ -1564,6 +1564,168 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeTypeUrgent => '긴급';
 
   @override
+  String get noticeTypeBirthday => '생일';
+
+  @override
+  String get noticeTypeAnniversary => '입사 기념일';
+
+  @override
+  String get noticeTypeWedding => '결혼';
+
+  @override
+  String get noticeTypeNewborn => '신생아';
+
+  @override
+  String get noticeTypeAnnouncementDesc => '사내 공지, 모두가 “확인” 가능';
+
+  @override
+  String get noticeTypePolicyDesc => '규정 게시, 모두가 “확인” 가능';
+
+  @override
+  String get noticeTypeBenefitDesc => '복지 알림, 모두가 “확인” 가능';
+
+  @override
+  String get noticeTypeSystemDesc => '시스템 알림, 모두가 “확인” 가능';
+
+  @override
+  String get noticeTypeUrgentDesc => '긴급 알림, 최우선 강조';
+
+  @override
+  String get noticeTypeBirthdayDesc => '생일 축하, 모두가 “축복 전송” 가능';
+
+  @override
+  String get noticeTypeAnniversaryDesc => '입사 기념일, 모두가 “축복 전송” 가능';
+
+  @override
+  String get noticeTypeWeddingDesc => '결혼 축복, 모두가 “축복 전송” 가능';
+
+  @override
+  String get noticeTypeNewbornDesc => '신생아 축복, 모두가 “축복 전송” 가능';
+
+  @override
+  String get noticeGroupBroadcast => '공지';
+
+  @override
+  String get noticeGroupCelebration => '축하';
+
+  @override
+  String get noticeInteractionReceive => '확인';
+
+  @override
+  String get noticeInteractionReceived => '확인됨';
+
+  @override
+  String get noticeClickToReceive => '눌러서 확인';
+
+  @override
+  String noticeAckCount(int count) {
+    return '$count명 확인';
+  }
+
+  @override
+  String noticeAckYouAndCount(int count) {
+    return '확인 완료 · 총 $count명';
+  }
+
+  @override
+  String get noticeAckRecent => '최근';
+
+  @override
+  String get noticeSendBlessing => '축복 전송';
+
+  @override
+  String get noticeBlessingSent => '축복 전송됨';
+
+  @override
+  String noticeBlessingCount(int count) {
+    return '축복 $count건';
+  }
+
+  @override
+  String get noticeBlessingWall => '축복의 벽';
+
+  @override
+  String noticeBlessingReceivedCount(int count) {
+    return '축복 $count건 수신';
+  }
+
+  @override
+  String get noticeBlessingWallEmpty => '아직 축복이 없어요 — 첫 축복을 보내보세요';
+
+  @override
+  String get noticeBlessingPlaceholder => '축복 메시지를 입력하세요…';
+
+  @override
+  String get noticeBlessingSendButton => '축복 보내기';
+
+  @override
+  String get noticeBlessingSending => '전송 중…';
+
+  @override
+  String get noticeBlessingWithdraw => '취소';
+
+  @override
+  String noticeBlessingViewAll(int count) {
+    return '전체 $count건 보기';
+  }
+
+  @override
+  String get noticeBlessingTemplatesTitle => '축복 문구 선택';
+
+  @override
+  String get noticeBlessingValidateEmpty => '축복 내용을 입력하세요';
+
+  @override
+  String get noticeCelebrationSubjectLabel => '축하 대상';
+
+  @override
+  String get noticeCelebrationSubjectHint => '축하할 동료 선택';
+
+  @override
+  String get noticeCelebrationSubjectRequired => '축하 대상을 선택하세요';
+
+  @override
+  String get noticeCelebrationSubjectIsYou => '나';
+
+  @override
+  String noticeCelebrationFor(Object name, Object event) {
+    return '$name · $event';
+  }
+
+  @override
+  String get noticeQuickCelebrationTitle => '빠른 축하 발행';
+
+  @override
+  String get noticeQuickCelebrationSubtitle => '유형을 고르면 템플릿이 자동 적용됩니다';
+
+  @override
+  String get noticeQuickPublish => '알림 작성';
+
+  @override
+  String get noticeQuickBirthday => '생일';
+
+  @override
+  String get noticeQuickAnniversary => '입사 기념일';
+
+  @override
+  String get noticeQuickWedding => '결혼';
+
+  @override
+  String get noticeQuickNewborn => '신생아';
+
+  @override
+  String get noticeAutoCelebrationTitle => '자동 축하 알림';
+
+  @override
+  String get noticeAutoCelebrationEnabled => '매일 당일 생일/입사 기념일 직원에게 축하 알림 자동 발행';
+
+  @override
+  String get noticeAutoCelebrationTypes => '자동 유형';
+
+  @override
+  String get noticeAutoCelebrationPublisher => '발행자 이름';
+
+  @override
   String get profileChangeEditTitle => '내 정보 수정';
 
   @override

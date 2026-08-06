@@ -278,7 +278,8 @@ class RequestBoundaryValidationTest {
         NoticeService service = mock(NoticeService.class);
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new NoticeController(
                         service,
-                        mock(com.uten.imp.features.notice.NoticeAudienceService.class)))
+                        mock(com.uten.imp.features.notice.NoticeAudienceService.class),
+                        mock(com.uten.imp.security.SecurityContextCurrentUser.class)))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
 

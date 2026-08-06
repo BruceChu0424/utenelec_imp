@@ -241,6 +241,9 @@ abstract final class ApiEndpoints {
   static String userResetPassword(String id) =>
       '/admin/users/$id/reset-password';
 
+  /// 设置/取消超级管理员（仅超管；允许多个超管）。
+  static String userSuperAdmin(String id) => '/admin/users/$id/super-admin';
+
   // 权限管理（超级管理员）
   /// 列全部权限点（GET /admin/permissions；与前端路由 /admin/permissions 同名，注意区分）
   static const adminPermissionList = '/admin/permissions';
@@ -346,6 +349,12 @@ abstract final class ApiEndpoints {
   static const noticesTodos = '/notices/todos';
   static String noticeRead(String id) => '/notices/$id/read';
   static String noticeComplete(String id) => '/notices/$id/complete';
+  static String noticeAcknowledge(String id) => '/notices/$id/acknowledge';
+  static String noticeBlessing(String id) => '/notices/$id/blessing';
+  static String noticeBlessings(String id) => '/notices/$id/blessings';
+  static String noticeAcknowledgers(String id) => '/notices/$id/acknowledgers';
+  static const noticeCelebrationPreview = '/notices/celebration/preview';
+  static const noticeCelebrationSettings = '/notices/celebration/settings';
 
   // 建议箱（广场/我的/提交/点赞/官方回复；后端 features/suggestion/SuggestionController）
   static const suggestions = '/suggestions';

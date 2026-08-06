@@ -18,9 +18,13 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../models/notice.dart';
 import '../models/notice_audience.dart';
 import '../providers/notice_providers.dart';
+import '../widgets/notice_type_picker.dart';
 
 class NoticePublishPage extends ConsumerStatefulWidget {
-  const NoticePublishPage({super.key});
+  const NoticePublishPage({super.key, this.presetType});
+
+  /// 预设类型（人事任务中心快捷入口透传，如 NoticeType.birthday）。
+  final NoticeType? presetType;
 
   @override
   ConsumerState<NoticePublishPage> createState() => _NoticePublishPageState();
@@ -40,13 +44,33 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   List<UtenEmployeePickerItem> _employees = const [];
   DateTime? _dueAt;
 
+  // 庆典类（生日/周年/新婚/新生儿）专属状态。
+  UtenEmployeePickerItem? _celebrationSubject;
+  NoticeCelebrationPreview? _celebrationPreview;
+  List<String> _selectedTemplates = const [];
+
   static const _publishableTypes = <NoticeType>[
     NoticeType.announcement,
     NoticeType.policy,
     NoticeType.benefit,
     NoticeType.system,
     NoticeType.urgent,
+    NoticeType.birthday,
+    NoticeType.anniversary,
+    NoticeType.wedding,
+    NoticeType.newborn,
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    final preset = widget.presetType;
+    if (preset != null && _publishableTypes.contains(preset)) {
+      _type = preset;
+      // 庆典类默认全员可见（所有人可送上祝福）。
+      if (preset.isCelebratory) _audienceScope = NoticeAudienceScope.all;
+    }
+  }
 
   @override
   void dispose() {
@@ -70,14 +94,45 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
     ];
   }
 
-  String _typeLabel(AppLocalizations l10n, NoticeType type) => switch (type) {
-    NoticeType.announcement => l10n.noticeTypeAnnouncement,
-    NoticeType.policy => l10n.noticeTypePolicy,
-    NoticeType.benefit => l10n.noticeTypeBenefit,
-    NoticeType.system => l10n.noticeTypeSystem,
-    NoticeType.urgent => l10n.noticeTypeUrgent,
-    _ => type.label,
-  };
+  void _onTypeChanged(NoticeType type) {
+    setState(() {
+      _type = type;
+      if (type.isCelebratory) {
+        // 庆典通知默认全员——所有人可送上祝福；祝福对象需重新选择。
+        _audienceScope = NoticeAudienceScope.all;
+        _celebrationSubject = null;
+        _celebrationPreview = null;
+        _selectedTemplates = const [];
+      }
+    });
+  }
+
+  Future<void> _onCelebrationSubjectChanged(
+    UtenEmployeePickerItem? item,
+  ) async {
+    setState(() {
+      _celebrationSubject = item;
+      _celebrationPreview = null;
+      _selectedTemplates = const [];
+    });
+    if (item == null) return;
+    try {
+      final preview = await ref
+          .read(noticeRepositoryProvider)
+          .previewCelebration(employeeId: item.id, type: _type);
+      if (!mounted) return;
+      setState(() {
+        _celebrationPreview = preview;
+        _selectedTemplates = List<String>.from(preview.suggestedTemplates);
+        // 标题为空时自动套用建议标题。
+        if (_titleController.text.trim().isEmpty) {
+          _titleController.text = preview.suggestedTitle;
+        }
+      });
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+    }
+  }
 
   bool get _hasSelectedAudience =>
       _departments.isNotEmpty || _employees.isNotEmpty;
@@ -85,7 +140,13 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
   Future<void> _onPublish() async {
     final l10n = AppLocalizations.of(context);
     if (_formKey.currentState?.validate() != true) return;
-    if (_audienceScope == NoticeAudienceScope.selected &&
+    final isCelebration = _kind == NoticeKind.normal && _type.isCelebratory;
+    if (isCelebration) {
+      if (_celebrationSubject == null) {
+        context.appError(l10n.noticeCelebrationSubjectRequired);
+        return;
+      }
+    } else if (_audienceScope == NoticeAudienceScope.selected &&
         !_hasSelectedAudience) {
       context.appError(l10n.noticePublishValidateAudience);
       return;
@@ -117,7 +178,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
             type: type,
             topPriority: _topPriority,
             priority: priority,
-            audienceScope: _audienceScope,
+            audienceScope:
+                isCelebration ? NoticeAudienceScope.all : _audienceScope,
             departmentIds: _departments.map((item) => item.id).toList(),
             employeeIds: _employees.map((item) => item.id).toList(),
             kind: _kind,
@@ -125,6 +187,10 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 ? null
                 : _actionRouteController.text.trim(),
             dueAt: _dueAt,
+            subjectEmployeeId:
+                isCelebration ? _celebrationSubject!.id : null,
+            blessingTemplates:
+                isCelebration ? _selectedTemplates : const [],
           );
       ref.invalidate(noticeListProvider);
       ref.read(unreadNoticeCountProvider.notifier).refresh();
@@ -278,7 +344,11 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 onSelectionChanged: (selection) {
                   setState(() {
                     _kind = selection.first;
-                    if (_kind == NoticeKind.todo) _type = NoticeType.task;
+                    if (_kind == NoticeKind.todo) {
+                      _type = NoticeType.task;
+                    } else if (_type == NoticeType.task) {
+                      _type = NoticeType.announcement;
+                    }
                   });
                 },
               ),
@@ -292,27 +362,39 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage> {
                 ),
               ),
               const SizedBox(height: UtenSpacing.s16),
-              if (_kind == NoticeKind.normal)
-                DropdownButtonFormField<NoticeType>(
-                  initialValue: _type,
-                  decoration: InputDecoration(
-                    labelText: l10n.noticePublishTypeLabel,
-                    prefixIcon: Icon(_type.icon, color: _type.color),
-                    border: const OutlineInputBorder(),
+              if (_kind == NoticeKind.normal) ...[
+                NoticeTypePicker(
+                  current: _type,
+                  available: _publishableTypes,
+                  onChanged: _onTypeChanged,
+                ),
+                if (_type.isCelebratory) ...[
+                  const SizedBox(height: UtenSpacing.s12),
+                  UtenEmployeePicker(
+                    loader: _loadEmployees,
+                    initial: _celebrationSubject,
+                    label: l10n.noticeCelebrationSubjectLabel,
+                    hint: l10n.noticeCelebrationSubjectHint,
+                    sheetTitle: l10n.noticeCelebrationSubjectHint,
+                    required: true,
+                    allowClear: true,
+                    onChanged: _onCelebrationSubjectChanged,
                   ),
-                  items: [
-                    for (final type in _publishableTypes)
-                      DropdownMenuItem(
-                        value: type,
-                        child: Text(_typeLabel(l10n, type)),
-                      ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) return;
-                    setState(() => _type = value);
-                  },
-                )
-              else ...[
+                  if (_celebrationPreview != null)
+                    _CelebrationTemplateCurator(
+                      preview: _celebrationPreview!,
+                      subjectName: _celebrationSubject?.name ?? '',
+                      selected: _selectedTemplates,
+                      onToggle: (template, sel) => setState(() {
+                        _selectedTemplates = sel
+                            ? [..._selectedTemplates, template]
+                            : _selectedTemplates
+                                .where((t) => t != template)
+                                .toList();
+                      }),
+                    ),
+                ],
+              ] else ...[
                 TextFormField(
                   controller: _actionRouteController,
                   maxLength: 500,
@@ -605,6 +687,54 @@ class _AudienceHint extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 庆典模板策展：发布者勾选要提供给送祝福者的模板（{name} 替换为对象名预览）。
+class _CelebrationTemplateCurator extends StatelessWidget {
+  const _CelebrationTemplateCurator({
+    required this.preview,
+    required this.subjectName,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final NoticeCelebrationPreview preview;
+  final String subjectName;
+  final List<String> selected;
+  final void Function(String template, bool selected) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.noticeBlessingTemplatesTitle,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              for (final template in preview.suggestedTemplates)
+                FilterChip(
+                  label: Text(template.replaceAll('{name}', subjectName)),
+                  selected: selected.contains(template),
+                  onSelected: (sel) => onToggle(template, sel),
+                ),
+            ],
           ),
         ],
       ),

@@ -84,7 +84,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             UUID orderItemId = uuid(orderItem[0]);
             UUID requestItemId = uuid(orderItem[1]);
             BigDecimal orderedBase = decimal(orderItem[2]);
-            LocalDate expectedDate = (LocalDate) orderItem[3];
+            LocalDate expectedDate = localDate(orderItem[3]);
             BigDecimal replayed = decimal(em.createNativeQuery("""
                             SELECT COALESCE(SUM(transferred_qty), 0)
                             FROM production_material_peg_transfers
@@ -1050,6 +1050,20 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         return value instanceof UUID uuid
                 ? uuid
                 : UUID.fromString(value.toString());
+    }
+
+    /**
+     * 原生 SQL 读 PG {@code date} 列时 Hibernate 返回 {@link java.sql.Date}，直接强转
+     * {@link LocalDate} 会抛 {@link ClassCastException}（明细含 deliver_date 即触发，见审批链）。
+     * 与 {@code decimal()}/{@code uuid()} 同型的安全转换。
+     */
+    private static LocalDate localDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return value instanceof LocalDate ld
+                ? ld
+                : ((java.sql.Date) value).toLocalDate();
     }
 
     private record ReceiptPackage(UUID receiptId, UUID packageId) {}

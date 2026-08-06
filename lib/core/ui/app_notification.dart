@@ -66,6 +66,23 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     return int.tryParse(first) ?? 0;
   }
 
+  /// 适老化默认停留时长：基础档（info/success/warning 3.2s、error 5s）+ 文案长度与
+  /// 字段错误加成，确保操作人员读得完再消失。调用方显式传 [Duration] 时不走本函数。
+  static int _readMs(
+    AppNotificationKind kind,
+    String message, {
+    bool hasFieldErrors = false,
+  }) {
+    var ms = switch (kind) {
+      AppNotificationKind.error => 5000,
+      _ => 3200,
+    };
+    final len = message.length;
+    if (len > 24) ms += ((len - 24) ~/ 12) * 600; // 每多约 12 字 +0.6s
+    if (hasFieldErrors) ms += 1500; // 字段错误列表需要更多阅读时间
+    return ms;
+  }
+
   void _show(AppNotification n, {bool force = false}) {
     // force=true 时跳过 600ms 去重，用于必须让用户看到的关键提示
     // （如"请先审核"、"仓库未加载"等点击反馈，避免被前一条同文案吞掉）。
@@ -118,7 +135,9 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       kind: AppNotificationKind.success,
       title: title,
       message: message,
-      durationMs: duration?.inMilliseconds ?? 3200,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(AppNotificationKind.success, message),
     ),
     force: force,
   );
@@ -135,7 +154,13 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       kind: AppNotificationKind.error,
       title: title,
       message: message,
-      durationMs: duration?.inMilliseconds ?? 5000,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(
+            AppNotificationKind.error,
+            message,
+            hasFieldErrors: fieldErrors != null,
+          ),
       fieldErrors: fieldErrors,
     ),
     force: force,
@@ -152,7 +177,9 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       kind: AppNotificationKind.warning,
       title: title,
       message: message,
-      durationMs: duration?.inMilliseconds ?? 3200,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(AppNotificationKind.warning, message),
     ),
     force: force,
   );
@@ -168,7 +195,9 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       kind: AppNotificationKind.info,
       title: title,
       message: message,
-      durationMs: duration?.inMilliseconds ?? 3200,
+      durationMs:
+          duration?.inMilliseconds ??
+          _readMs(AppNotificationKind.info, message),
     ),
     force: force,
   );
@@ -191,7 +220,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       kind: kind,
       title: title,
       message: message,
-      durationMs: duration?.inMilliseconds ?? 3200,
+      durationMs: duration?.inMilliseconds ?? _readMs(kind, message),
       icon: icon,
       onTap: onTap,
     ),
@@ -259,13 +288,19 @@ class AppNotificationHost extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(appNotificationProvider);
     if (list.isEmpty) return const SizedBox.shrink();
-    // 卡片自带 SafeArea（含状态栏留白）+ Center，宿主只负责纵向堆叠。
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final n in list)
-          _AppNotificationBanner(key: ValueKey(n.id), notification: n),
-      ],
+    // SafeArea 置于宿主层：状态栏留白整列只算一次（避免每条都加）。Column 用默认
+    // crossAxisAlignment.center 居中各条卡片——卡片本身收缩到内容宽度（≤720），
+    // 故卡片两侧空白在命中测试里不命中任何手势层，点击直接穿透到下方页面。
+    return SafeArea(
+      bottom: false,
+      minimum: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final n in list)
+            _AppNotificationBanner(key: ValueKey(n.id), notification: n),
+        ],
+      ),
     );
   }
 }
@@ -284,8 +319,10 @@ class _AppNotificationBanner extends ConsumerStatefulWidget {
 class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
-  late final Timer _autoDismissTimer;
+  Timer? _autoDismissTimer;
   bool _dismissing = false;
+  // 鼠标悬停（桌面端）暂停自动消失，让用户读得完再走；触摸端无悬停事件，恒 false。
+  bool _hovering = false;
 
   @override
   void initState() {
@@ -294,23 +331,36 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
       vsync: this,
       duration: const Duration(milliseconds: 220),
     )..forward();
+    _scheduleAutoDismiss();
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  /// 重排自动消失计时：悬停中或正在收起则暂停，否则按停留时长重新计时。
+  void _scheduleAutoDismiss() {
+    _autoDismissTimer?.cancel();
+    if (_hovering || _dismissing) return;
     _autoDismissTimer = Timer(
       Duration(milliseconds: widget.notification.durationMs),
       _dismiss,
     );
   }
 
-  @override
-  void dispose() {
-    _autoDismissTimer.cancel();
-    _ctrl.dispose();
-    super.dispose();
+  void _setHovering(bool value) {
+    if (_hovering == value) return;
+    _hovering = value;
+    _scheduleAutoDismiss();
   }
 
   Future<void> _dismiss() async {
     if (_dismissing) return;
     _dismissing = true;
-    _autoDismissTimer.cancel();
+    _autoDismissTimer?.cancel();
     await _ctrl.reverse();
     if (!mounted) return;
     ref.read(appNotificationProvider.notifier).dismiss(widget.notification.id);
@@ -347,76 +397,84 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     };
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: FadeTransition(
-        key: ValueKey('app-notification-fade-${n.id}'),
-        opacity: _ctrl,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, -0.2),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic)),
-          child: Dismissible(
-            key: ValueKey('dismiss-${n.id}'),
-            onDismissed: (_) {
-              ref.read(appNotificationProvider.notifier).dismiss(n.id);
-            },
-            // 视觉外壳与连接横幅共用 UtenTopBannerCard（居中/maxWidth720/圆角14/
-            // elevation4/柔和容器色）。语义默认 explicitChildNodes（省略
-            // semanticLabel）让标题/正文被分别朗读。crossAxisAlignment 走默认
-            // center，图标/关闭钮与正文上下居中（与连接横幅一致；IconButton
-            // 约 40dp 高，center 才不会让内容贴顶）。
-            // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
-            child: UtenTopBannerCard(
-              background: bg,
-              foreground: fg,
-              icon: n.icon ?? icon,
-              onTap: n.onTap == null
-                  ? _dismiss
-                  : () {
-                      n.onTap!();
-                      _dismiss();
-                    },
-              content: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (n.title != null && n.title!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(
-                        n.title!,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: fg,
-                          fontWeight: FontWeight.w600,
+      child: MouseRegion(
+        // 鼠标移入暂停自动消失（读得完再走），移出重新计时。触摸端不触发。
+        onEnter: (_) => _setHovering(true),
+        onExit: (_) => _setHovering(false),
+        child: FadeTransition(
+          key: ValueKey('app-notification-fade-${n.id}'),
+          opacity: _ctrl,
+          child: SlideTransition(
+            position:
+                Tween<Offset>(
+                  begin: const Offset(0, -0.2),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic),
+                ),
+            child: Dismissible(
+              key: ValueKey('dismiss-${n.id}'),
+              onDismissed: (_) {
+                ref.read(appNotificationProvider.notifier).dismiss(n.id);
+              },
+              // 视觉外壳与连接横幅共用 UtenTopBannerCard（居中/maxWidth720/圆角14/
+              // elevation4/柔和容器色）。语义默认 explicitChildNodes（省略
+              // semanticLabel）让标题/正文被分别朗读。crossAxisAlignment 走默认
+              // center，图标/关闭钮与正文上下居中（与连接横幅一致；IconButton
+              // 约 40dp 高，center 才不会让内容贴顶）。
+              // 带跳转动作的弹条：点击先执行动作再关闭（微信式点消息进详情）
+              child: UtenTopBannerCard(
+                background: bg,
+                foreground: fg,
+                icon: n.icon ?? icon,
+                onTap: n.onTap == null
+                    ? _dismiss
+                    : () {
+                        n.onTap!();
+                        _dismiss();
+                      },
+                content: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (n.title != null && n.title!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          n.title!,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: fg,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
+                    Text(
+                      n.message,
+                      style: theme.textTheme.bodyMedium?.copyWith(color: fg),
                     ),
-                  Text(
-                    n.message,
-                    style: theme.textTheme.bodyMedium?.copyWith(color: fg),
-                  ),
-                  if (n.fieldErrors != null && n.fieldErrors!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: fg.withValues(alpha: 0.85),
+                    if (n.fieldErrors != null && n.fieldErrors!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: fg.withValues(alpha: 0.85),
+                          ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              trailing: IconButton(
-                icon: Icon(Icons.close_rounded, color: fg, size: 18),
-                onPressed: _dismiss,
-                tooltip: '关闭通知',
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+                  ],
+                ),
+                trailing: IconButton(
+                  icon: Icon(Icons.close_rounded, color: fg, size: 18),
+                  onPressed: _dismiss,
+                  tooltip: '关闭通知',
+                  visualDensity: VisualDensity.compact,
+                ),
+              ), // UtenTopBannerCard
+            ), // Dismissible
+          ), // SlideTransition
+        ), // FadeTransition
+      ), // MouseRegion（悬停暂停）
+    ); // Padding
   }
 }

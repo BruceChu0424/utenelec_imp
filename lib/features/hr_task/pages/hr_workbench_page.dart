@@ -9,9 +9,11 @@ import 'package:go_router/go_router.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/hr_task_summary.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../widgets/hr_task_widgets.dart';
@@ -23,6 +25,8 @@ class HrWorkbenchPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(hrTaskSummaryProvider);
     final isCompact = context.breakpoint.isCompact;
+    final canPublish = ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.noticePublish);
 
     Widget body = async.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -42,6 +46,7 @@ class HrWorkbenchPage extends ConsumerWidget {
             _overview(context, s, isCompact),
             _myClaims(context, s),
             _entries(context, s, isCompact),
+            if (canPublish) _quickNotice(context, isCompact),
             if (s.unconfirmedLegacyCount > 0) _legacyBanner(context, s),
           ],
         ),
@@ -67,13 +72,14 @@ class HrWorkbenchPage extends ConsumerWidget {
   }
 
   // ---- 今日概览：4 张统计卡，点击进对应子页 ----
+  // 左对齐 KPI 卡：彩色图标色块（左上）+ 大数字（主）+ 说明（底）；count=0 整卡
+  // 弱化为中性灰、>0 时鲜活——一眼分清有无待办。强调色低饱和、与 teal 主题协调。
   Widget _overview(BuildContext context, HrTaskSummary s, bool isCompact) {
-    final theme = Theme.of(context);
     final cards = [
-      (HrTaskType.confirm, s.confirmToday.length + s.confirmOverdue.length, '今日/逾期'),
-      (HrTaskType.birthday, s.birthdayToday.length, '今日生日'),
-      (HrTaskType.anniversary, s.anniversaryToday.length, '今日周年'),
-      (HrTaskType.newhire, s.newHires.length, '近 30 天'),
+      (HrTaskType.confirm, s.confirmToday.length + s.confirmOverdue.length, '今日/逾期', const Color(0xFF0D9488)),
+      (HrTaskType.birthday, s.birthdayToday.length, '今日生日', const Color(0xFFDB2777)),
+      (HrTaskType.anniversary, s.anniversaryToday.length, '今日周年', const Color(0xFFD97706)),
+      (HrTaskType.newhire, s.newHires.length, '近 30 天', const Color(0xFF059669)),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -88,69 +94,108 @@ class HrWorkbenchPage extends ConsumerWidget {
         physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: UtenSpacing.s8,
         crossAxisSpacing: UtenSpacing.s8,
-        childAspectRatio: isCompact ? 1.9 : 2.2,
+        childAspectRatio: isCompact ? 1.25 : 1.55,
         children: [
-          for (final (type, count, caption) in cards)
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () =>
-                    context.push(RouteName.hrTaskList(type.taskType)),
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            type.icon,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: UtenSpacing.s4),
-                          Expanded(
-                            child: Text(
-                              type.title,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          Text(
-                            '$count',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: count > 0
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(width: UtenSpacing.s4),
-                          Expanded(
-                            child: Text(
-                              caption,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+          for (final (type, count, caption, accent) in cards)
+            _StatCard(
+              type: type,
+              count: count,
+              caption: caption,
+              accent: accent,
+              onTap: () => context.push(RouteName.hrTaskList(type.taskType)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ---- 快捷发布祝福：点类型瓦片直达通知发布页并预填对应类型模板 ----
+  Widget _quickNotice(BuildContext context, bool isCompact) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    String publishWith(String type) => '${RouteName.noticePublish}?type=$type';
+    final tiles = <(IconData, Color, String, VoidCallback)>[
+      (
+        Icons.campaign_rounded,
+        const Color(0xFF14B8A6),
+        l10n.noticeQuickPublish,
+        () => context.push(RouteName.noticePublish),
+      ),
+      (
+        Icons.cake_rounded,
+        const Color(0xFFF43F5E),
+        l10n.noticeQuickBirthday,
+        () => context.push(publishWith('birthday')),
+      ),
+      (
+        Icons.emoji_events_rounded,
+        const Color(0xFFF59E0B),
+        l10n.noticeQuickAnniversary,
+        () => context.push(publishWith('anniversary')),
+      ),
+      (
+        Icons.favorite_rounded,
+        const Color(0xFFD946EF),
+        l10n.noticeQuickWedding,
+        () => context.push(publishWith('wedding')),
+      ),
+      (
+        Icons.child_care_rounded,
+        const Color(0xFF38BDF8),
+        l10n.noticeQuickNewborn,
+        () => context.push(publishWith('newborn')),
+      ),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s20,
+        UtenSpacing.s12,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(
+              left: UtenSpacing.s4,
+              bottom: UtenSpacing.s8,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.noticeQuickCelebrationTitle,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
+                Text(
+                  l10n.noticeQuickCelebrationSubtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
+          ),
+          GridView.count(
+            crossAxisCount: isCompact ? 3 : 5,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: UtenSpacing.s8,
+            crossAxisSpacing: UtenSpacing.s8,
+            childAspectRatio: 1.05,
+            children: [
+              for (final (icon, color, label, onTap) in tiles)
+                _QuickTile(
+                  icon: icon,
+                  color: color,
+                  label: label,
+                  onTap: onTap,
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -277,6 +322,7 @@ class HrWorkbenchPage extends ConsumerWidget {
           ),
           for (final (type, headline, caption) in entries)
             Card(
+              margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
               clipBehavior: Clip.antiAlias,
               child: ListTile(
                 onTap: () =>
@@ -340,6 +386,137 @@ class HrWorkbenchPage extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 今日概览统计卡：彩色图标色块 + 大数字 + 说明。
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.type,
+    required this.count,
+    required this.caption,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final HrTaskType type;
+  final int count;
+  final String caption;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // count=0 整卡弱化为中性灰（色块更淡、数字变灰）；>0 用强调色，鲜活醒目。
+    final active = count > 0;
+    final color = active ? accent : theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      label: '${type.title}，$count，$caption',
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: active ? 0.14 : 0.08),
+                    borderRadius: UtenRadius.lgAll,
+                  ),
+                  child: Icon(type.icon, size: 20, color: color),
+                ),
+                const Spacer(),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '$count',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      height: 1.05,
+                      color: color,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickTile extends StatelessWidget {
+  const _QuickTile({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color),
+              ),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/china_datetime.dart';
 import 'notice_audience.dart';
 
 /// 通知类型
@@ -29,7 +30,19 @@ enum NoticeType {
   approval('审批', 0xFF6366F1, Icons.approval_rounded),
 
   /// 流程节点完成 / 上游完成（工作类）
-  workflow('流程', 0xFF10B981, Icons.account_tree_rounded);
+  workflow('流程', 0xFF10B981, Icons.account_tree_rounded),
+
+  /// 生日祝福（庆典类，可由系统按 birth_date 自动发布）
+  birthday('生日', 0xFFF43F5E, Icons.cake_rounded),
+
+  /// 入职周年（庆典类，可由系统按 hire_date 自动发布）
+  anniversary('周年', 0xFFF59E0B, Icons.emoji_events_rounded),
+
+  /// 新婚祝福（庆典类，仅手动发布）
+  wedding('新婚', 0xFFD946EF, Icons.favorite_rounded),
+
+  /// 新生儿祝福（庆典类，仅手动发布）
+  newborn('新生儿', 0xFF38BDF8, Icons.child_care_rounded);
 
   const NoticeType(this.label, this.colorHex, this.icon);
 
@@ -44,6 +57,41 @@ enum NoticeType {
   bool get isWork => switch (this) {
     NoticeType.task || NoticeType.approval || NoticeType.workflow => true,
     _ => false,
+  };
+
+  /// 是否庆典类（生日/周年/新婚/新生儿）——同事可「送上祝福」。
+  bool get isCelebratory => switch (this) {
+    NoticeType.birthday ||
+    NoticeType.anniversary ||
+    NoticeType.wedding ||
+    NoticeType.newborn =>
+      true,
+    _ => false,
+  };
+
+  /// 该类型支持的互动模式（与后端 interaction_mode 派生一致）。
+  NoticeInteractionMode get interactionMode => switch (this) {
+    NoticeType.birthday ||
+    NoticeType.anniversary ||
+    NoticeType.wedding ||
+    NoticeType.newborn =>
+      NoticeInteractionMode.bless,
+    NoticeType.task || NoticeType.approval || NoticeType.workflow =>
+      NoticeInteractionMode.none,
+    _ => NoticeInteractionMode.acknowledge,
+  };
+}
+
+/// 通知互动模式（按类型派生）：庆典→送上祝福；公告广播→点击收到；工作类→无。
+enum NoticeInteractionMode {
+  none,
+  acknowledge,
+  bless;
+
+  static NoticeInteractionMode fromName(String? value) => switch (value) {
+    'bless' => NoticeInteractionMode.bless,
+    'acknowledge' => NoticeInteractionMode.acknowledge,
+    _ => NoticeInteractionMode.none,
   };
 }
 
@@ -102,6 +150,16 @@ class Notice {
     this.dueAt,
     this.taskCompleted = false,
     this.taskCompletedAt,
+    this.interactionMode = NoticeInteractionMode.none,
+    this.subjectName,
+    this.eventLabel,
+    this.ackCount = 0,
+    this.blessingCount = 0,
+    this.myAcked = false,
+    this.myBlessing,
+    this.recentAckers = const [],
+    this.recentBlessings = const [],
+    this.blessingTemplates = const [],
   });
 
   final String id;
@@ -159,11 +217,47 @@ class Notice {
 
   final DateTime? taskCompletedAt;
 
+  /// 互动模式（来自后端 interaction_mode，缺省按 [type] 派生）。
+  final NoticeInteractionMode interactionMode;
+
+  /// 庆典对象姓名快照（生日/周年等「被祝福人」）。
+  final String? subjectName;
+
+  /// 事件标签快照（如「生日快乐」「入职5周年」）。
+  final String? eventLabel;
+
+  /// 已「点击收到」人数（acknowledge 模式）。
+  final int ackCount;
+
+  /// 已收到「祝福」条数（bless 模式）。
+  final int blessingCount;
+
+  /// 当前用户是否已点收到。
+  final bool myAcked;
+
+  /// 当前用户已送的祝福内容（未送为 null）。
+  final String? myBlessing;
+
+  /// 近期「已收到」人姓名（最多 8）。
+  final List<String> recentAckers;
+
+  /// 近期祝福（最多 5 条）。
+  final List<NoticeBlessing> recentBlessings;
+
+  /// 发布者勾选提供给送祝福者的模板（空=用系统默认）。
+  final List<String> blessingTemplates;
+
   Notice copyWith({
     bool? isRead,
     DateTime? readAt,
     bool? taskCompleted,
     DateTime? taskCompletedAt,
+    int? ackCount,
+    int? blessingCount,
+    bool? myAcked,
+    String? myBlessing,
+    List<String>? recentAckers,
+    List<NoticeBlessing>? recentBlessings,
   }) {
     return Notice(
       id: id,
@@ -185,6 +279,100 @@ class Notice {
       dueAt: dueAt,
       taskCompleted: taskCompleted ?? this.taskCompleted,
       taskCompletedAt: taskCompletedAt ?? this.taskCompletedAt,
+      interactionMode: interactionMode,
+      subjectName: subjectName,
+      eventLabel: eventLabel,
+      ackCount: ackCount ?? this.ackCount,
+      blessingCount: blessingCount ?? this.blessingCount,
+      myAcked: myAcked ?? this.myAcked,
+      myBlessing: myBlessing ?? this.myBlessing,
+      recentAckers: recentAckers ?? this.recentAckers,
+      recentBlessings: recentBlessings ?? this.recentBlessings,
+    );
+  }
+}
+
+/// 一条祝福（庆典通知互动）。
+class NoticeBlessing {
+  const NoticeBlessing({
+    required this.id,
+    required this.senderName,
+    required this.content,
+    required this.createdAt,
+    this.mine = false,
+  });
+
+  final String id;
+
+  /// 送祝福人姓名快照。
+  final String senderName;
+
+  /// 祝福内容。
+  final String content;
+
+  /// 送出时间。
+  final DateTime createdAt;
+
+  /// 是否当前用户所送。
+  final bool mine;
+
+  factory NoticeBlessing.fromJson(Map<String, dynamic> json) {
+    return NoticeBlessing(
+      id: json['id'] as String? ?? '',
+      senderName: json['senderName'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      createdAt:
+          ChinaDateTime.tryParse(json['createdAt'] as String?) ??
+          ChinaDateTime.now(),
+      mine: json['mine'] as bool? ?? false,
+    );
+  }
+}
+
+/// 发布页庆典预览：选对象 + 类型后，服务端返回自动填充信息。
+class NoticeCelebrationPreview {
+  const NoticeCelebrationPreview({
+    required this.subjectName,
+    required this.eventLabel,
+    required this.suggestedTitle,
+    this.suggestedTemplates = const [],
+  });
+
+  final String subjectName;
+  final String eventLabel;
+  final String suggestedTitle;
+  final List<String> suggestedTemplates;
+
+  factory NoticeCelebrationPreview.fromJson(Map<String, dynamic> json) {
+    return NoticeCelebrationPreview(
+      subjectName: json['subjectName'] as String? ?? '',
+      eventLabel: json['eventLabel'] as String? ?? '',
+      suggestedTitle: json['suggestedTitle'] as String? ?? '',
+      suggestedTemplates:
+          (json['suggestedTemplates'] as List<dynamic>? ?? const [])
+              .cast<String>(),
+    );
+  }
+}
+
+/// 自动庆典发布设置（系统设置）。
+class NoticeCelebrationSettings {
+  const NoticeCelebrationSettings({
+    this.autoEnabled = true,
+    this.autoTypes = const ['birthday', 'anniversary'],
+    this.publisherName = '公司',
+  });
+
+  final bool autoEnabled;
+  final List<String> autoTypes;
+  final String publisherName;
+
+  factory NoticeCelebrationSettings.fromJson(Map<String, dynamic> json) {
+    return NoticeCelebrationSettings(
+      autoEnabled: json['autoEnabled'] as bool? ?? true,
+      autoTypes:
+          (json['autoTypes'] as List<dynamic>? ?? const []).cast<String>(),
+      publisherName: json['publisherName'] as String? ?? '公司',
     );
   }
 }

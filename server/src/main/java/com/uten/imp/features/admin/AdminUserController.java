@@ -71,6 +71,16 @@ public class AdminUserController {
         return new TemporaryPasswordResponse(userAccountAdmin.resetPassword(id));
     }
 
+    /** 设置/取消超级管理员（仅超管；降级禁止降本人与最后一位超管）。允许多个超管。 */
+    @PutMapping("/users/{id}/super-admin")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public void setSuperAdmin(@PathVariable UUID id, @RequestBody SuperAdminBody req) {
+        userAccountAdmin.setSuperAdmin(id, req == null ? false : req.superAdmin());
+    }
+
+    public record SuperAdminBody(boolean superAdmin) {}
+
+
     // 角色体系已下线（ADR-011/V29）：角色分配相关端点（/users/{id}/roles、/roles、
     // /department-roles、/departments/{id}/roles）已移除，权限只走
     // 部门配置（AdminPermissionController）+ 个人覆盖（下方端点）。

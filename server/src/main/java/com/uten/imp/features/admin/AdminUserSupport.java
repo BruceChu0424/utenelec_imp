@@ -51,12 +51,34 @@ class AdminUserSupport {
         }
     }
 
+    /** 当前操作人（用于显式审计写入，如「设为/取消超管」）。调用方应先过超管校验。 */
+    com.uten.imp.security.AuthUser requireCurrentUser() {
+        return currentUser.get()
+                .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+    }
+
     /** Authorization changes additionally forbid self-targeting and super-admin targets. */
     void requireAuthorizationTarget(UserAccount target) {
         requireCurrentSuperAdmin();
         requireNotSuperAdmin(target);
         if (currentUser.requireId().equals(target.getId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "不能修改本人的授权策略");
+        }
+    }
+
+    /**
+     * 校验「设为/取消超级管理员」：仅超管可操作；降级时禁止降本人、禁止降最后一位超管
+     * （否则会把所有人锁在授权管理之外）。升级无额外限制。
+     */
+    void requireSuperAdminToggle(UserAccount target, boolean newFlag) {
+        requireCurrentSuperAdmin();
+        if (!newFlag && target.isSuperAdmin()) {
+            if (currentUser.requireId().equals(target.getId())) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "不能取消本人的超级管理员身份");
+            }
+            if (userRepo.countBySuperAdminTrueAndDeletedFalse() <= 1) {
+                throw new ApiException(ErrorCode.CONFLICT, "至少需保留一位超级管理员");
+            }
         }
     }
 }

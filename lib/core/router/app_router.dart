@@ -87,6 +87,7 @@ import '../../features/warehouse/pages/warehouse_hub_page.dart';
 import '../../features/warehouse/pages/warehouse_report_table_page.dart';
 import '../../features/notice/pages/notice_list_page.dart';
 import '../../features/notice/pages/notice_publish_page.dart';
+import '../../features/notice/models/notice.dart';
 import '../../features/payroll/pages/payroll_generate_page.dart';
 import '../../features/payroll/pages/payroll_review_page.dart';
 import '../../features/payroll/pages/payroll_slip_detail_page.dart';
@@ -161,9 +162,19 @@ String? _rejectUnknownFinanceDoc(BuildContext _, GoRouterState state) =>
     ? RouteName.notFound
     : null;
 
+/// 根 Navigator 的全局 key。
+///
+/// 「模拟身份横幅」等构建在 `MaterialApp.builder` 里、位于路由 Navigator 之外的组件，
+/// 拿不到路由作用域内的 context（`showDialog` / `GoRouter.of` 会取不到而静默失败）。
+/// 用 `appNavigatorKey.currentContext` 即可得到一个路由 Navigator 内的 context。
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>(
+  debugLabel: 'uten-app-root',
+);
+
 /// App 路由 Provider
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
+    navigatorKey: appNavigatorKey,
     initialLocation: RouteName.entry,
     redirect: (context, state) {
       final session = ref.read(sessionProvider);
@@ -416,9 +427,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const NoticeListPage(),
           ),
           GoRoute(
-            path: '/notice/publish',
+            path: RouteName.noticePublish,
             name: 'notice-publish',
-            builder: (_, _) => const NoticePublishPage(),
+            builder: (_, s) {
+              final typeName = s.uri.queryParameters['type'];
+              NoticeType? preset;
+              if (typeName != null) {
+                for (final t in NoticeType.values) {
+                  if (t.name == typeName) {
+                    preset = t;
+                    break;
+                  }
+                }
+              }
+              return NoticePublishPage(presetType: preset);
+            },
           ),
           GoRoute(
             path: '/notice/:id',
@@ -1182,10 +1205,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     if (routerDisposed) return;
     Future.microtask(() {
       if (routerDisposed) return;
-      bumpPageResume(
-        ref,
-        router.routerDelegate.currentConfiguration.uri.path,
-      );
+      bumpPageResume(ref, router.routerDelegate.currentConfiguration.uri.path);
     });
   });
 

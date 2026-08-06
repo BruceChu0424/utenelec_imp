@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -33,6 +34,10 @@ public class HrTaskClaimService {
 
     static final long LEASE_HOURS = 24;
 
+    /** 合法任务类型（与 HrTaskService 装配口径一致：confirm/birthday/anniversary/newhire）。 */
+    private static final Set<String> ALLOWED_TASK_TYPES =
+            Set.of("confirm", "birthday", "anniversary", "newhire");
+
     private final HrTaskClaimRepository claimRepo;
     private final EmployeeRepository empRepo;
     private final SecurityContextCurrentUser currentUser;
@@ -41,6 +46,7 @@ public class HrTaskClaimService {
     @PreAuthorize("hasAuthority('employee:view')")
     @Transactional
     public HrTaskClaimView claim(String taskType, UUID employeeId) {
+        requireTaskType(taskType);
         UUID me = currentUser.requireEmployeeId();
         HrTaskClaim existing = claimRepo
                 .findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
@@ -71,6 +77,7 @@ public class HrTaskClaimService {
     @PreAuthorize("hasAuthority('employee:view')")
     @Transactional
     public void release(String taskType, UUID employeeId) {
+        requireTaskType(taskType);
         UUID me = currentUser.requireEmployeeId();
         boolean canManage = currentUser.get()
                 .map(u -> u.getPermissions().contains("employee:edit"))
@@ -91,6 +98,7 @@ public class HrTaskClaimService {
     @PreAuthorize("hasAuthority('employee:edit')")
     @Transactional
     public HrTaskClaimView takeover(String taskType, UUID employeeId) {
+        requireTaskType(taskType);
         UUID me = currentUser.requireEmployeeId();
         claimRepo.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
                 .filter(c -> !c.getClaimedBy().equals(me))
@@ -116,6 +124,14 @@ public class HrTaskClaimService {
     /** 认领人姓名（懒查，数百人规模下成本可忽略）。 */
     String claimantName(UUID employeeId) {
         return empRepo.findById(employeeId).map(Employee::getFullName).orElse("同事");
+    }
+
+    /** 拒绝白名单外的 taskType，避免写入孤儿认领记录（summary 只装配 4 类）。 */
+    private static void requireTaskType(String taskType) {
+        if (taskType == null || !ALLOWED_TASK_TYPES.contains(taskType)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "未知任务类型: " + taskType + "（可选: " + ALLOWED_TASK_TYPES + "）");
+        }
     }
 
     private HrTaskClaimView toView(HrTaskClaim claim, UUID me) {

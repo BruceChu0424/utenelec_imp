@@ -554,7 +554,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             child: TextButton.icon(
               icon: const Icon(Icons.add_call, size: 16),
               label: const Text('管理备用手机号'),
-              onPressed: () => _editPhones(context),
+              onPressed: () => _editPhones(),
             ),
           ),
       ]),
@@ -578,7 +578,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                   TextButton.icon(
                     icon: const Icon(Icons.directions_car_outlined, size: 16),
                     label: const Text('管理车辆'),
-                    onPressed: () => _editVehicles(context),
+                    onPressed: () => _editVehicles(),
                   ),
               ],
             ),
@@ -665,7 +665,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         _p.bankAccount != null ||
         _p.socialInsuranceLocation != null;
     if (!hasAny) {
-      return Center(
+      return const Center(
         child: UtenEmpty(
           icon: Icons.lock_outline_rounded,
           message: '无薪酬查看权限或未登记薪酬信息',
@@ -706,7 +706,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   // ============================================================
   Widget _historyTab(AppLocalizations l10n) {
     if (_p.history.isEmpty) {
-      return Center(
+      return const Center(
         child: UtenEmpty(
           icon: Icons.history_rounded,
           message: '暂无任职记录',
@@ -769,7 +769,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     }
   }
 
-  Future<void> _editVehicles(BuildContext context) async {
+  Future<void> _editVehicles() async {
     final ok = await showEmployeeVehiclesDialog(context, _p.vehicles);
     if (ok == null || !mounted) return;
     try {
@@ -785,7 +785,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     }
   }
 
-  Future<void> _editPhones(BuildContext context) async {
+  Future<void> _editPhones() async {
     final ok = await showEmployeePhonesDialog(context, _p.phones);
     if (ok == null || !mounted) return;
     try {

@@ -74,9 +74,10 @@ context.notifyBanner('张经理 通过了你的请假申请', onTap: () => conte
 | `kind` | `AppNotificationKind` | `info` | 语义级别，决定配色 |
 | `icon` | `IconData?` | null | 自定义左侧图标 |
 | `onTap` | `VoidCallback?` | null | 点击动作，执行后自动关闭；null 时点击仅关闭 |
-| `duration` | `Duration?` | 3.2s（error 5s） | 自动消失时长 |
+| `duration` | `Duration?` | 3.2s（error 5s） | 自动消失时长（默认值随文案长度/字段错误自动延长，鼠标悬停时暂停） |
 
 底层行为（AppNotificationService 提供）：队列上限 3 条 FIFO、600ms 同 kind+message 合并去重（`force: true` 可绕过，见 [AppNotification](AppNotification.md)）、跨路由切换不丢失、左/右滑可关闭。
+**停留时长**（适老化）：默认 info/success/warning 3.2s、error 5s；文案每多约 12 字自动 +0.6s，带字段错误再 +1.5s，确保操作人员读得完。**桌面端鼠标悬停在弹条上时暂停倒计时**，移开重新计时；触摸端无此行为。
 
 ### 2.2 通道二：居中弹窗
 
@@ -159,6 +160,8 @@ final ok = await context.guardRun(
 
 - **顶部弹条**：与「连接恢复横幅」共用 [`UtenTopBannerCard`](../../lib/core/ui/uten_top_banner_card.dart) ——居中、最大宽 720、圆角 14、elevation 4、柔和 `*Container` 容器色（success=`primaryContainer`、error=`errorContainer`、warning=`tertiaryContainer`、info=`surfaceContainerHighest`）。
   > 本主题 `primary/secondary/tertiaryContainer` 同为 teal，故 **success 与 warning 同底色，靠语义图标区分**（✓ / ⚠）；error 浅红、info 浅灰各自独立。这是主题决定、非 bug。滑入 220ms easeOutCubic，可左/右滑关闭。
+  >
+  > **只占卡片宽度，两侧点击放行**：`UtenTopBannerCard` 是纯卡片（不含 `SafeArea`/`Center`，按内容收缩到 ≤720），居中与状态栏留白由宿主层（透明的 `Center`/`Column`）负责。透明居中层无手势监听，故**弹条两侧的空白不会拦截下方页面的点击**——只有卡片像素可交互（点、滑、关闭）。悬停/点按反馈用前景色低透明叠加，而非 Material 默认灰高亮（避免把绿/红卡片刷成灰条）。
 - **居中弹窗**：最大宽 400dp、最大高 520dp，圆角 16；56dp 圆形级别图标居中置顶；内容超长可滚动；urgent 带 1.5dp 红色描边 + 加深遮罩（55%）。
 
 ## 四、响应式 / 性能档 / 主题与 i18n
@@ -205,6 +208,7 @@ flowchart TD
 ```
 
 - **分派规则**：`Notice.priority`（normal/important/urgent）决定弹哪条通道——见 `lib/features/notice/providers/notice_arrival.dart`。
+  - **庆典通知**（V224，ADR-025）：`type.isCelebratory` 的 normal 通知走暖色 `banner`——节庆图标（cake/emoji_events/favorite/child_care）+「{类型}祝福 · {对象名}」标题，停留 5s，点击进详情祝福区。
 - **点击行为（标注已读 + 跳对应页面）**：点击 normal 顶部弹条 → 标注已读（`markNoticeReadContainer`，同步刷新通知页与未读角标）+ 跳 `notice.actionRoute`（待办办理入口，附 `returnTo=/notice`）；无 `actionRoute` 回退通知详情弹层。urgent/important 弹窗确认 → 标注已读 + 打开详情弹层（弹层内「前往办理页面」按钮再跳）。跳转目标统一由 `noticeActionTarget(notice)` 计算，与通知详情页 `_goAction` 一致；`ProviderContainer` 与 `GoRouter` 在派发时于弹窗外捕获，避免来源页 dispose 后 `WidgetRef` 失效、及弹窗内 `GoRouter.of` 取不到的竞态。
 - **工作标识**：`NoticeType.task/approval/workflow`（任务下发/审批结果/上游完成）属于工作类，`type.isWork=true`，卡片带「工作」描边小签，与公告广播一眼可辨。
 - **已接入的业务事件**：访客审批流转（`lib/features/visitor_approval/providers/visitor_notice_bridge.dart`）——HR 批准/驳回/转接待人、被访人确认/拒绝，都会自动生成工作通知并按上述规则弹提醒（驳回=important 居中弹窗，其余 normal 顶部弹条）。发布人由后端取当前员工姓名快照；动作人无 `notice:publish` 权限时静默降级（不拖垮审批主流程）。其他模块（报销审批、任务系统）要发通知，照此模式：造一条 `Notice` → 入库 → `dispatchNoticeArrival`。

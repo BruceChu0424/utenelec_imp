@@ -114,6 +114,12 @@ class WorkbenchModuleArea extends ConsumerWidget {
     required bool expanded,
     required ValueChanged<bool> onExpandedChanged,
   }) {
+    // 分组综合徽标 = 组内可见卡片的角标之和（无角标的卡片不计入；count<=0 不显示）。
+    // 延迟挂载：首帧不 watch 计数 provider，与卡片角标一致（首帧后并行拉取）。
+    final badgeKinds = [
+      for (final it in items)
+        if (it.badge != WorkbenchBadgeKind.none) it.badge,
+    ];
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
@@ -123,6 +129,11 @@ class WorkbenchModuleArea extends ConsumerWidget {
         // 折叠状态受控：由布局 Provider 驱动（持久化到服务端）
         expanded: expanded,
         onExpandedChanged: onExpandedChanged,
+        titleTrailing: badgeKinds.isEmpty
+            ? null
+            : UtenLazyMount(
+                builder: (_) => WorkbenchGroupBadge(kinds: badgeKinds),
+              ),
         trailing: _dragHandle(context, index),
         child: items.isEmpty
             // 空分组（仅超管可见）：占位文案，功能规划接入中

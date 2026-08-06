@@ -29,9 +29,34 @@ public class Notice extends BaseEntity {
     @Column(nullable = false)
     private String content;
 
-    /** announcement/policy/benefit/system/urgent/task/approval/workflow */
+    /** announcement/policy/benefit/system/urgent/task/approval/workflow + birthday/anniversary/wedding/newborn */
     @Column(nullable = false)
     private String type;
+
+    /**
+     * 互动模式：none=无互动（task/approval/workflow） /
+     * acknowledge=回执（announcement/policy/system/urgent/benefit） /
+     * bless=祝福（birthday/anniversary/wedding/newborn）。由 {@link NoticeService#interactionModeFor} 派生。
+     */
+    @Column(name = "interaction_mode", nullable = false)
+    private String interactionMode = "none";
+
+    /** 庆典对象员工 ID（仅 bless 类通知）；非庆典类为 null。改名/离职后保留快照不回溯。 */
+    @Column(name = "subject_employee_id")
+    private java.util.UUID subjectEmployeeId;
+
+    /** 庆典对象姓名快照（与 subject_employee_id 冗余，发布后改名不回溯）。 */
+    @Column(name = "subject_name", length = 100)
+    private String subjectName;
+
+    /** 节日标签快照（如 生日快乐 / 入职5周年 / 新婚快乐）；非庆典类为 null。 */
+    @Column(name = "event_label", length = 100)
+    private String eventLabel;
+
+    /** 发布时预设的祝福语模板（字符串数组，前端可一键填充）。null=未预设。 */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "blessing_templates", columnDefinition = "jsonb")
+    private String blessingTemplates;
 
     /** 发布人姓名快照（发布后改名不回溯） */
     @Column(nullable = false)

@@ -1200,22 +1200,36 @@ class _AddRowBar extends StatelessWidget {
   final String addRowLabel;
   final String addRowsLabel;
 
+  // 深色实心 + 白字白图标，紧凑不抢空间——旧版 TextButton 太淡，用户反馈"看不见"。
+  static final ButtonStyle _btnStyle = FilledButton.styleFrom(
+    padding: const EdgeInsets.symmetric(
+      horizontal: UtenSpacing.s12,
+      vertical: UtenSpacing.s4,
+    ),
+    minimumSize: const Size(0, 36),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    visualDensity: VisualDensity.compact,
+  );
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s4),
       child: Wrap(
         spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s4,
         children: [
-          TextButton.icon(
+          FilledButton.icon(
             onPressed: onAddOne,
-            icon: const Icon(Icons.add_circle_outline, size: 20),
+            icon: const Icon(Icons.add_circle_outline, size: 18),
             label: Text(addRowLabel),
+            style: _btnStyle,
           ),
-          TextButton.icon(
+          FilledButton.icon(
             onPressed: onAddMany,
-            icon: const Icon(Icons.playlist_add, size: 20),
+            icon: const Icon(Icons.playlist_add, size: 18),
             label: Text(addRowsLabel),
+            style: _btnStyle,
           ),
         ],
       ),

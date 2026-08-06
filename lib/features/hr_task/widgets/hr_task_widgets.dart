@@ -329,7 +329,7 @@ Future<void> showHrConfirmDialog(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('选择实际转正日期（默认为今天）。试用期员工将转为在职；'
+            const Text('选择实际转正日期（默认为今天）。试用期员工将转为在职；'
                 '已是正式员工的将补登转正日期。'),
             const SizedBox(height: UtenSpacing.s12),
             OutlinedButton.icon(

@@ -564,8 +564,13 @@ public class ProductionDailyReportService {
      */
     private Map<UUID, List<PlanOrderItemLink>> lockPlanLinkGraph(
             java.util.Collection<UUID> requestedPlanItemIds, boolean positiveWrite) {
-        TreeSet<UUID> planItemIds = new TreeSet<>(requestedPlanItemIds);
-        planItemIds.remove(null);
+        // 构造时即滤除 null：TreeSet 基于 TreeMap，其 add/remove null 在 Java 21 必抛 NPE
+        // （此前对含 null 的集合 new TreeSet<>() 构造或随后 remove(null) 都会崩 → 任何日报审核都 NPE，全链断）。
+        TreeSet<UUID> planItemIds = requestedPlanItemIds == null
+                ? new TreeSet<>()
+                : requestedPlanItemIds.stream()
+                        .filter(java.util.Objects::nonNull)
+                        .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
         if (planItemIds.isEmpty()) return Map.of();
 
         List<PlanOrderItemLink> snapshots = new ArrayList<>(

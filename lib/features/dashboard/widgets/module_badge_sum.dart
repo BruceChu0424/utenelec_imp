@@ -61,6 +61,36 @@ class WorkbenchCardBadge extends ConsumerWidget {
   }
 }
 
+/// 分组标题综合徽标：组内所有模块角标之和（count<=0 自动不显示）。
+/// 应放在 [UtenLazyMount] 内使用——与 [WorkbenchCardBadge] 一致，首帧不 watch
+/// 计数 provider，首帧绘制后再并行拉取（见 workbench_module_area.dart 的 _buildSection）。
+class WorkbenchGroupBadge extends ConsumerWidget {
+  const WorkbenchGroupBadge({
+    super.key,
+    required this.kinds,
+    this.size = 20,
+    this.showLabel = true,
+  });
+
+  /// 组内各模块的角标种类（[WorkbenchBadgeKind.none] 不应出现，调用方已过滤）。
+  final List<WorkbenchBadgeKind> kinds;
+  final double size;
+  final bool showLabel;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    var total = 0;
+    for (final kind in kinds) {
+      total += _resolveCount(kind, ref);
+    }
+    return UtenNotificationBadge(
+      count: total,
+      size: size,
+      showLabel: showLabel,
+    );
+  }
+}
+
 int _resolveCount(WorkbenchBadgeKind kind, WidgetRef ref) {
   switch (kind) {
     case WorkbenchBadgeKind.visitorHost:

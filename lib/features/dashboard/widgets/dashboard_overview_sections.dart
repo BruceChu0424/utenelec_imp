@@ -219,23 +219,66 @@ class _MetricContent extends StatelessWidget {
   }
 }
 
-class _TodoList extends StatelessWidget {
+class _TodoList extends StatefulWidget {
   const _TodoList({required this.todos});
 
   final List<DashboardTodo> todos;
 
   @override
+  State<_TodoList> createState() => _TodoListState();
+}
+
+class _TodoListState extends State<_TodoList> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final todos = widget.todos;
     if (todos.isEmpty) {
       return const _EmptyCard(text: '当前没有待办任务', icon: Icons.task_alt_rounded);
     }
-    return Column(
-      children: [
-        for (var index = 0; index < todos.length; index++) ...[
-          _TodoCard(todo: todos[index]),
-          if (index != todos.length - 1) const SizedBox(height: UtenSpacing.s8),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 与「今日概览」同款响应式网格：列数随容器宽度变化；默认只展示一行，
+        // 超出一行通过末尾「加载更多」展开（可收起）。
+        final columns = constraints.maxWidth >= 960
+            ? 3
+            : constraints.maxWidth >= 520
+                ? 2
+                : 1;
+        final overflow = todos.length > columns;
+        final visible = _expanded ? todos : todos.take(columns).toList();
+        final hiddenCount = todos.length - visible.length;
+        final width =
+            (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
+        return Column(
+          children: [
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s12,
+              children: [
+                for (final todo in visible)
+                  SizedBox(width: width, child: _TodoCard(todo: todo)),
+              ],
+            ),
+            if (overflow) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _expanded = !_expanded),
+                  icon: Icon(
+                    _expanded
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                  ),
+                  label: Text(_expanded ? '收起' : '加载更多（还有 $hiddenCount 项）'),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -251,30 +294,54 @@ class _TodoCard extends StatelessWidget {
     final color = _toneColor(theme, todo.tone);
     return Semantics(
       button: true,
-      label: '${todo.title}。${todo.summary}',
+      label: '${todo.title}，${todo.count} 项，${todo.summary}',
       child: UtenCard(
-        padding: EdgeInsets.zero,
         onTap: () => _open(context),
-        child: ListTile(
-          minTileHeight: 76,
-          leading: CircleAvatar(
-            backgroundColor: color.withValues(alpha: 0.12),
-            foregroundColor: color,
-            child: Icon(
-              todo.sourceType == 'NOTICE'
-                  ? Icons.notification_important_outlined
-                  : Icons.assignment_outlined,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  todo.sourceType == 'NOTICE'
+                      ? Icons.notification_important_outlined
+                      : Icons.assignment_outlined,
+                  size: 18,
+                  color: color,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    todo.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          title: Text(
-            todo.title,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s4),
-            child: Text(todo.summary),
-          ),
-          trailing: const Icon(Icons.chevron_right_rounded),
+            const SizedBox(height: UtenSpacing.s12),
+            Text(
+              '${todo.count}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              todo.summary,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -452,7 +519,7 @@ class _CategoryBadge extends StatelessWidget {
   }
 }
 
-/// 概览骨架占位：今日概览（一行指标灰卡）+ 待办任务（两行灰条）。
+/// 概览骨架占位：今日概览（一行指标灰卡）+ 待办任务（灰卡网格）。
 /// LazyMount 首帧占位 与 _DashboardOverviewBody 的 loading 分支共用，视觉连续无闪烁。
 /// 政策与监管动态段按真实数据非空才渲染，骨架省略其占位，避免无数据时「先显后隐」。
 class _DashboardOverviewSkeleton extends StatelessWidget {
@@ -510,23 +577,26 @@ class _TodoSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Wrap(
+      spacing: UtenSpacing.s12,
+      runSpacing: UtenSpacing.s12,
       children: [
-        for (var i = 0; i < 2; i++) ...[
-          const UtenCard(
-            padding: EdgeInsets.zero,
-            child: ListTile(
-              minTileHeight: 76,
-              leading: UtenSkeleton(width: 40, height: 40, borderRadius: 20),
-              title: UtenSkeleton(height: 14),
-              subtitle: Padding(
-                padding: EdgeInsets.only(top: UtenSpacing.s4),
-                child: UtenSkeleton(height: 12),
+        for (var i = 0; i < 2; i++)
+          const SizedBox(
+            width: 220,
+            child: UtenCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UtenSkeleton(width: 80, height: 12),
+                  SizedBox(height: UtenSpacing.s12),
+                  UtenSkeleton(width: 40, height: 22),
+                  SizedBox(height: UtenSpacing.s4),
+                  UtenSkeleton(height: 12),
+                ],
               ),
             ),
           ),
-          if (i != 1) const SizedBox(height: UtenSpacing.s8),
-        ],
       ],
     );
   }

@@ -19,6 +19,9 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
 
     boolean existsByLoginAccount(String loginAccount);
 
+    /** 未删除的超级管理员人数（用于「至少保留一位超管」防自锁校验）。 */
+    long countBySuperAdminTrueAndDeletedFalse();
+
     /** Serialize concurrent login-failure increments for the same account. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from UserAccount u where u.id = :id")

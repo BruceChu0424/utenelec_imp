@@ -18,6 +18,7 @@ import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../authorize_all_excluded.dart';
@@ -347,13 +348,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               height: 1.5,
             ),
           ),
-          if (data?.superAdmin ?? false) ...[
+          if (widget.canManageAuthorization) ...[
             const SizedBox(height: UtenSpacing.s8),
-            _inlineNotice(
-              '该账号是超级管理员，默认拥有全部权限，此处仅供查看。',
-              Icons.verified_user_outlined,
-              UtenColors.warning,
-            ),
+            _superAdminTile(data?.superAdmin ?? false),
           ],
           if (data?.departmentName != null) ...[
             const SizedBox(height: UtenSpacing.s8),
@@ -436,8 +433,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             ),
       onDisableAll: data.superAdmin
           ? null
-          : (permissions) =>
-              _setPermissionCodes(data, permissions.map((p) => p.code), false),
+          : (permissions) => _setPermissionCodes(
+              data,
+              permissions.map((p) => p.code),
+              false,
+            ),
       itemBuilder: (context, permission) => _permRow(data, permission),
     );
   }
@@ -1041,6 +1041,110 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         ],
       ),
     );
+  }
+
+  Widget _superAdminTile(bool isSuperAdmin) {
+    final theme = Theme.of(context);
+    final promote = !isSuperAdmin;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSuperAdmin
+              ? UtenColors.warning.withValues(alpha: 0.6)
+              : theme.colorScheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isSuperAdmin ? Icons.verified_user_rounded : Icons.shield_outlined,
+            size: 20,
+            color: isSuperAdmin
+                ? UtenColors.warning
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isSuperAdmin ? '超级管理员' : '普通账号',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  isSuperAdmin
+                      ? '默认拥有全部功能权限、可管理他人授权。'
+                      : '设为超级管理员后，该账号拥有全部功能、可管理他人授权。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          FilledButton.tonal(
+            onPressed: _acting
+                ? null
+                : () => _toggleSuperAdmin(promote: promote),
+            style: FilledButton.styleFrom(
+              foregroundColor: promote
+                  ? UtenColors.warning
+                  : theme.colorScheme.error,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: Text(isSuperAdmin ? '取消超管' : '设为超管'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleSuperAdmin({required bool promote}) async {
+    final name = widget.user.employeeName ?? widget.user.loginAccount;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: promote ? '设为超级管理员' : '取消超级管理员',
+      content: Text(
+        promote
+            ? '确定把「$name」设为超级管理员吗？\n设成后该账号拥有全部功能、可管理他人授权。'
+            : '确定取消「$name」的超级管理员吗？\n取消后该账号将失去默认全部权限与授权管理能力，'
+                  '仅保留已显式配置的权限。',
+      ),
+      confirmLabel: promote ? '设为超管' : '取消超管',
+      danger: !promote,
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _acting = true);
+    try {
+      await ref
+          .read(adminRepositoryProvider)
+          .setSuperAdmin(widget.user.id, superAdmin: promote);
+      if (!mounted) return;
+      ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
+      widget.onAccountChanged();
+      UtenToast.success(context, promote ? '已设为超级管理员' : '已取消超级管理员');
+    } on ApiException catch (e) {
+      // 透出后端具体拦截原因（不能降本人 / 至少保留一位超管 等）。
+      if (!mounted) return;
+      UtenToast.error(
+        context,
+        e.message.isNotEmpty
+            ? e.message
+            : (promote ? '设为超管失败，请稍后重试' : '取消超管失败，请稍后重试'),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      UtenToast.error(context, promote ? '设为超管失败，请稍后重试' : '取消超管失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
   }
 
   Future<void> _runAccountAction({

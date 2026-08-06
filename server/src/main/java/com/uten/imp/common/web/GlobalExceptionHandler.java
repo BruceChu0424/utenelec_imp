@@ -10,6 +10,10 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 
@@ -40,6 +44,26 @@ public class GlobalExceptionHandler {
                 .toList();
         return ResponseEntity.status(422)
                 .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "参数校验失败", fields));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiError> handleMissingParam(MissingServletRequestParameterException ex) {
+        return ResponseEntity.status(400)
+                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "缺少必需的查询参数: " + ex.getParameterName()));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(400)
+                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "参数格式错误: " + ex.getName()));
+    }
+
+    // 未匹配路由（无 controller）或静态资源不存在：Spring 6.1+ 抛 NoResourceFoundException；
+    // 启用 throw-exception-if-no-handler-found 时抛 NoHandlerFoundException。两者都应收敛为 404，
+    // 否则会被下面的 Exception 兜底吞成 500（API 后端无 SPA 转发，404 是正确语义）。
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ApiError> handleRouteNotFound(Exception ex) {
+        return ResponseEntity.status(404).body(ApiError.of(ErrorCode.NOT_FOUND, null));
     }
 
     @ExceptionHandler(JsonBodyTooLargeException.class)

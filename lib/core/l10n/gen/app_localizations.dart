@@ -3067,6 +3067,306 @@ abstract class AppLocalizations {
   /// **'紧急'**
   String get noticeTypeUrgent;
 
+  /// No description provided for @noticeTypeBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'生日'**
+  String get noticeTypeBirthday;
+
+  /// No description provided for @noticeTypeAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职周年'**
+  String get noticeTypeAnniversary;
+
+  /// No description provided for @noticeTypeWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'新婚'**
+  String get noticeTypeWedding;
+
+  /// No description provided for @noticeTypeNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'新生儿'**
+  String get noticeTypeNewborn;
+
+  /// No description provided for @noticeTypeAnnouncementDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司公告，全员可「点击收到」'**
+  String get noticeTypeAnnouncementDesc;
+
+  /// No description provided for @noticeTypePolicyDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'制度发布，全员可「点击收到」'**
+  String get noticeTypePolicyDesc;
+
+  /// No description provided for @noticeTypeBenefitDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'福利通知，全员可「点击收到」'**
+  String get noticeTypeBenefitDesc;
+
+  /// No description provided for @noticeTypeSystemDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统通知，全员可「点击收到」'**
+  String get noticeTypeSystemDesc;
+
+  /// No description provided for @noticeTypeUrgentDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急通知，高优先级强提醒'**
+  String get noticeTypeUrgentDesc;
+
+  /// No description provided for @noticeTypeBirthdayDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'为同事庆生，大家可「送上祝福」'**
+  String get noticeTypeBirthdayDesc;
+
+  /// No description provided for @noticeTypeAnniversaryDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职周年纪念，大家可「送上祝福」'**
+  String get noticeTypeAnniversaryDesc;
+
+  /// No description provided for @noticeTypeWeddingDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'新婚祝福，大家可「送上祝福」'**
+  String get noticeTypeWeddingDesc;
+
+  /// No description provided for @noticeTypeNewbornDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'喜添新丁，大家可「送上祝福」'**
+  String get noticeTypeNewbornDesc;
+
+  /// No description provided for @noticeGroupBroadcast.
+  ///
+  /// In zh, this message translates to:
+  /// **'公告广播'**
+  String get noticeGroupBroadcast;
+
+  /// No description provided for @noticeGroupCelebration.
+  ///
+  /// In zh, this message translates to:
+  /// **'庆典祝福'**
+  String get noticeGroupCelebration;
+
+  /// No description provided for @noticeInteractionReceive.
+  ///
+  /// In zh, this message translates to:
+  /// **'收到'**
+  String get noticeInteractionReceive;
+
+  /// No description provided for @noticeInteractionReceived.
+  ///
+  /// In zh, this message translates to:
+  /// **'已收到'**
+  String get noticeInteractionReceived;
+
+  /// No description provided for @noticeClickToReceive.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击收到'**
+  String get noticeClickToReceive;
+
+  /// No description provided for @noticeAckCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count}人已收到'**
+  String noticeAckCount(int count);
+
+  /// No description provided for @noticeAckYouAndCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'你已收到 · 共 {count} 人收到'**
+  String noticeAckYouAndCount(int count);
+
+  /// No description provided for @noticeAckRecent.
+  ///
+  /// In zh, this message translates to:
+  /// **'近期已收到'**
+  String get noticeAckRecent;
+
+  /// No description provided for @noticeSendBlessing.
+  ///
+  /// In zh, this message translates to:
+  /// **'送上祝福'**
+  String get noticeSendBlessing;
+
+  /// No description provided for @noticeBlessingSent.
+  ///
+  /// In zh, this message translates to:
+  /// **'已送祝福'**
+  String get noticeBlessingSent;
+
+  /// No description provided for @noticeBlessingCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条祝福'**
+  String noticeBlessingCount(int count);
+
+  /// No description provided for @noticeBlessingWall.
+  ///
+  /// In zh, this message translates to:
+  /// **'祝福墙'**
+  String get noticeBlessingWall;
+
+  /// No description provided for @noticeBlessingReceivedCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'收到 {count} 条祝福'**
+  String noticeBlessingReceivedCount(int count);
+
+  /// No description provided for @noticeBlessingWallEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有祝福，送上第一份祝福吧'**
+  String get noticeBlessingWallEmpty;
+
+  /// No description provided for @noticeBlessingPlaceholder.
+  ///
+  /// In zh, this message translates to:
+  /// **'写下你的祝福…'**
+  String get noticeBlessingPlaceholder;
+
+  /// No description provided for @noticeBlessingSendButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送祝福'**
+  String get noticeBlessingSendButton;
+
+  /// No description provided for @noticeBlessingSending.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送中…'**
+  String get noticeBlessingSending;
+
+  /// No description provided for @noticeBlessingWithdraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回'**
+  String get noticeBlessingWithdraw;
+
+  /// No description provided for @noticeBlessingViewAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看全部 {count} 条'**
+  String noticeBlessingViewAll(int count);
+
+  /// No description provided for @noticeBlessingTemplatesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选一句祝福'**
+  String get noticeBlessingTemplatesTitle;
+
+  /// No description provided for @noticeBlessingValidateEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入祝福内容'**
+  String get noticeBlessingValidateEmpty;
+
+  /// No description provided for @noticeCelebrationSubjectLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'祝福对象'**
+  String get noticeCelebrationSubjectLabel;
+
+  /// No description provided for @noticeCelebrationSubjectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择要祝福的同事'**
+  String get noticeCelebrationSubjectHint;
+
+  /// No description provided for @noticeCelebrationSubjectRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择祝福对象'**
+  String get noticeCelebrationSubjectRequired;
+
+  /// No description provided for @noticeCelebrationSubjectIsYou.
+  ///
+  /// In zh, this message translates to:
+  /// **'你'**
+  String get noticeCelebrationSubjectIsYou;
+
+  /// No description provided for @noticeCelebrationFor.
+  ///
+  /// In zh, this message translates to:
+  /// **'祝 {name} {event}'**
+  String noticeCelebrationFor(Object name, Object event);
+
+  /// No description provided for @noticeQuickCelebrationTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'快捷发布祝福'**
+  String get noticeQuickCelebrationTitle;
+
+  /// No description provided for @noticeQuickCelebrationSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择类型，系统自动套用模板'**
+  String get noticeQuickCelebrationSubtitle;
+
+  /// No description provided for @noticeQuickPublish.
+  ///
+  /// In zh, this message translates to:
+  /// **'发通知'**
+  String get noticeQuickPublish;
+
+  /// No description provided for @noticeQuickBirthday.
+  ///
+  /// In zh, this message translates to:
+  /// **'生日'**
+  String get noticeQuickBirthday;
+
+  /// No description provided for @noticeQuickAnniversary.
+  ///
+  /// In zh, this message translates to:
+  /// **'入职周年'**
+  String get noticeQuickAnniversary;
+
+  /// No description provided for @noticeQuickWedding.
+  ///
+  /// In zh, this message translates to:
+  /// **'新婚'**
+  String get noticeQuickWedding;
+
+  /// No description provided for @noticeQuickNewborn.
+  ///
+  /// In zh, this message translates to:
+  /// **'新生儿'**
+  String get noticeQuickNewborn;
+
+  /// No description provided for @noticeAutoCelebrationTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动祝福通知'**
+  String get noticeAutoCelebrationTitle;
+
+  /// No description provided for @noticeAutoCelebrationEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'每日自动为当天生日 / 入职周年的员工发布全员祝福'**
+  String get noticeAutoCelebrationEnabled;
+
+  /// No description provided for @noticeAutoCelebrationTypes.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动类型'**
+  String get noticeAutoCelebrationTypes;
+
+  /// No description provided for @noticeAutoCelebrationPublisher.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布人名称'**
+  String get noticeAutoCelebrationPublisher;
+
   /// No description provided for @profileChangeEditTitle.
   ///
   /// In zh, this message translates to:

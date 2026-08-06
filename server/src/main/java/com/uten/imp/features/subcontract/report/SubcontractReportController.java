@@ -5,7 +5,9 @@ import com.uten.imp.common.export.EncryptedWorkbookService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.DownloadContentDisposition;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -74,7 +76,8 @@ public class SubcontractReportController {
                 : f.entrySet().stream()
                     .filter(e -> e.getKey().startsWith("f."))
                     .collect(java.util.stream.Collectors.toMap(e -> e.getKey().substring(2), Map.Entry::getValue));
-        String key = doc + "/" + view;
+        // 归一化 doc：大小写不敏感 + 连字符/下划线等价（receipt|material-issue 与 RECEIPT|MATERIAL_ISSUE 均匹配）
+        String key = doc.replace('-', '_').toUpperCase(java.util.Locale.ROOT) + "/" + view;
         return switch (key) {
             case "RECEIPT/detail"        -> service.receiptDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "RECEIPT/summary"       -> service.receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
@@ -84,7 +87,7 @@ public class SubcontractReportController {
             case "MATERIAL_ISSUE/summary"-> service.materialIssueSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "MATERIAL_RETURN/detail"-> service.materialReturnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "MATERIAL_RETURN/summary"-> service.materialReturnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
-            default -> throw new IllegalArgumentException("未知报表类型：" + key);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表类型：" + key);
         };
     }
 

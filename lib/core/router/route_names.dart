@@ -98,6 +98,7 @@ abstract final class RouteName {
 
   // 通知
   static const String notice = '/notice';
+  static const String noticePublish = '/notice/publish';
   static const String noticeDetail = '/notice/:id';
 
   // 建议

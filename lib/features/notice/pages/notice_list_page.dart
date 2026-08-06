@@ -22,6 +22,7 @@ import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 import '../widgets/notice_detail_dialog.dart';
+import '../widgets/notice_interaction_footer.dart';
 
 class NoticeListPage extends ConsumerStatefulWidget {
   const NoticeListPage({super.key});
@@ -219,6 +220,8 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                       onLongPress: () {
                         if (!_selecting) _enterSelection(notice.id);
                       },
+                      onAcknowledge: () =>
+                          acknowledgeNotice(ref, notice.id),
                       onTap: () async {
                         if (_selecting) {
                           _toggle(notice.id);
@@ -307,6 +310,7 @@ class _NoticeCard extends StatelessWidget {
     this.selecting = false,
     this.checked = false,
     this.onLongPress,
+    this.onAcknowledge,
   });
 
   final Notice notice;
@@ -321,10 +325,17 @@ class _NoticeCard extends StatelessWidget {
   /// 长按进入选择模式
   final VoidCallback? onLongPress;
 
+  /// 回执模式「点击收到」（列表内一键）。
+  final VoidCallback? onAcknowledge;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final priority = notice.priority;
+    // 庆典类用类型色做强调条；其余按重要度。
+    final showStrip = priority.showBadge || notice.type.isCelebratory;
+    final stripColor =
+        notice.type.isCelebratory ? notice.type.color : priority.color;
 
     return Stack(
       children: [
@@ -336,12 +347,12 @@ class _NoticeCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 重要度强调条：重要=橙 / 紧急=红（一般无）
-                if (priority.showBadge)
+                // 强调条：庆典=类型色 / 重要=橙 / 紧急=红（一般无）
+                if (showStrip)
                   Container(
                     width: 4,
                     decoration: BoxDecoration(
-                      color: priority.color,
+                      color: stripColor,
                       borderRadius: const BorderRadius.horizontal(
                         left: Radius.circular(14),
                       ),
@@ -449,6 +460,15 @@ class _NoticeCard extends StatelessWidget {
                             ),
                           ],
                         ),
+                        if (notice.interactionMode !=
+                            NoticeInteractionMode.none) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          NoticeInteractionFooter(
+                            notice: notice,
+                            onOpenDetail: onTap,
+                            onAcknowledge: onAcknowledge,
+                          ),
+                        ],
                       ],
                     ),
                   ),

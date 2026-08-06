@@ -154,3 +154,34 @@ Future<int> deleteNotices(WidgetRef ref, List<String> ids) async {
   ref.read(unreadNoticeCountProvider.notifier).refresh();
   return deleted;
 }
+
+/// 祝福墙分页（详情页 / 全部祝福弹层用）。
+final noticeBlessingsProvider =
+    FutureProvider.autoDispose.family<List<NoticeBlessing>, String>(
+  (ref, id) async {
+    return ref.watch(noticeRepositoryProvider).listBlessings(id, size: 50);
+  },
+);
+
+/// 「点击收到」回执（acknowledge 模式）。完成后失效详情+列表。
+Future<void> acknowledgeNotice(WidgetRef ref, String id) async {
+  await ref.read(noticeRepositoryProvider).acknowledge(id);
+  ref.invalidate(noticeDetailProvider(id));
+  ref.invalidate(noticeListProvider);
+}
+
+/// 「送上祝福」（bless 模式）。完成后失效详情+列表+祝福墙。
+Future<void> blessNotice(WidgetRef ref, String id, String content) async {
+  await ref.read(noticeRepositoryProvider).bless(id, content);
+  ref.invalidate(noticeDetailProvider(id));
+  ref.invalidate(noticeListProvider);
+  ref.invalidate(noticeBlessingsProvider(id));
+}
+
+/// 撤回本人祝福。
+Future<void> withdrawNoticeBlessing(WidgetRef ref, String id) async {
+  await ref.read(noticeRepositoryProvider).withdrawBlessing(id);
+  ref.invalidate(noticeDetailProvider(id));
+  ref.invalidate(noticeListProvider);
+  ref.invalidate(noticeBlessingsProvider(id));
+}

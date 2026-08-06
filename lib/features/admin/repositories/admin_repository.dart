@@ -74,6 +74,9 @@ abstract interface class AdminRepository {
 
   /// 重置后返回仅本次响应可见的临时密码；调用方不得持久化或记录日志。
   Future<String> resetPassword(String userId);
+
+  /// 设置/取消超级管理员（仅超管可调；降级禁止降本人/最后一位超管，由后端校验）。
+  Future<void> setSuperAdmin(String userId, {required bool superAdmin});
 }
 
 class DioAdminRepository implements AdminRepository {
@@ -209,6 +212,13 @@ class DioAdminRepository implements AdminRepository {
     }
     return temporaryPassword;
   }
+
+  @override
+  Future<void> setSuperAdmin(String userId, {required bool superAdmin}) =>
+      api.put(
+        ApiEndpoints.userSuperAdmin(userId),
+        body: {'superAdmin': superAdmin},
+      );
 }
 
 final adminRepositoryProvider = Provider<AdminRepository>(

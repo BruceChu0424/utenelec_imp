@@ -1585,6 +1585,179 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeTypeUrgent => 'Urgent';
 
   @override
+  String get noticeTypeBirthday => 'Birthday';
+
+  @override
+  String get noticeTypeAnniversary => 'Anniversary';
+
+  @override
+  String get noticeTypeWedding => 'Wedding';
+
+  @override
+  String get noticeTypeNewborn => 'Newborn';
+
+  @override
+  String get noticeTypeAnnouncementDesc =>
+      'Company announcement; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypePolicyDesc =>
+      'Policy release; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypeBenefitDesc =>
+      'Benefit notice; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypeSystemDesc =>
+      'System notice; everyone can tap “Acknowledge”';
+
+  @override
+  String get noticeTypeUrgentDesc => 'Urgent notice with high-priority alert';
+
+  @override
+  String get noticeTypeBirthdayDesc =>
+      'Celebrate a birthday; everyone can “Send blessing”';
+
+  @override
+  String get noticeTypeAnniversaryDesc =>
+      'Work anniversary; everyone can “Send blessing”';
+
+  @override
+  String get noticeTypeWeddingDesc =>
+      'Wedding blessing; everyone can “Send blessing”';
+
+  @override
+  String get noticeTypeNewbornDesc =>
+      'Newborn blessing; everyone can “Send blessing”';
+
+  @override
+  String get noticeGroupBroadcast => 'Broadcast';
+
+  @override
+  String get noticeGroupCelebration => 'Celebration';
+
+  @override
+  String get noticeInteractionReceive => 'Acknowledge';
+
+  @override
+  String get noticeInteractionReceived => 'Acknowledged';
+
+  @override
+  String get noticeClickToReceive => 'Tap to acknowledge';
+
+  @override
+  String noticeAckCount(int count) {
+    return '$count acknowledged';
+  }
+
+  @override
+  String noticeAckYouAndCount(int count) {
+    return 'You acknowledged · $count total';
+  }
+
+  @override
+  String get noticeAckRecent => 'Recent';
+
+  @override
+  String get noticeSendBlessing => 'Send blessing';
+
+  @override
+  String get noticeBlessingSent => 'Blessing sent';
+
+  @override
+  String noticeBlessingCount(int count) {
+    return '$count blessings';
+  }
+
+  @override
+  String get noticeBlessingWall => 'Blessing Wall';
+
+  @override
+  String noticeBlessingReceivedCount(int count) {
+    return '$count blessings received';
+  }
+
+  @override
+  String get noticeBlessingWallEmpty => 'No blessings yet — send the first one';
+
+  @override
+  String get noticeBlessingPlaceholder => 'Write your blessing…';
+
+  @override
+  String get noticeBlessingSendButton => 'Send blessing';
+
+  @override
+  String get noticeBlessingSending => 'Sending…';
+
+  @override
+  String get noticeBlessingWithdraw => 'Withdraw';
+
+  @override
+  String noticeBlessingViewAll(int count) {
+    return 'View all $count';
+  }
+
+  @override
+  String get noticeBlessingTemplatesTitle => 'Pick a blessing';
+
+  @override
+  String get noticeBlessingValidateEmpty => 'Please enter a blessing';
+
+  @override
+  String get noticeCelebrationSubjectLabel => 'Honoree';
+
+  @override
+  String get noticeCelebrationSubjectHint =>
+      'Choose the colleague to celebrate';
+
+  @override
+  String get noticeCelebrationSubjectRequired => 'Please choose an honoree';
+
+  @override
+  String get noticeCelebrationSubjectIsYou => 'You';
+
+  @override
+  String noticeCelebrationFor(Object name, Object event) {
+    return '$name · $event';
+  }
+
+  @override
+  String get noticeQuickCelebrationTitle => 'Quick celebration';
+
+  @override
+  String get noticeQuickCelebrationSubtitle =>
+      'Pick a type; the template fills automatically';
+
+  @override
+  String get noticeQuickPublish => 'New notice';
+
+  @override
+  String get noticeQuickBirthday => 'Birthday';
+
+  @override
+  String get noticeQuickAnniversary => 'Anniversary';
+
+  @override
+  String get noticeQuickWedding => 'Wedding';
+
+  @override
+  String get noticeQuickNewborn => 'Newborn';
+
+  @override
+  String get noticeAutoCelebrationTitle => 'Auto celebration notices';
+
+  @override
+  String get noticeAutoCelebrationEnabled =>
+      'Auto-publish a company-wide blessing daily for birthdays and anniversaries';
+
+  @override
+  String get noticeAutoCelebrationTypes => 'Auto types';
+
+  @override
+  String get noticeAutoCelebrationPublisher => 'Publisher name';
+
+  @override
   String get profileChangeEditTitle => 'Edit profile';
 
   @override

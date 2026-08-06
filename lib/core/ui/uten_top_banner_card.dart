@@ -12,9 +12,17 @@ import 'package:flutter/material.dart';
 
 /// 两条顶部横幅共用的视觉外壳。
 ///
-/// 渲染：`SafeArea(minimum 12,8,12,0)` → `Center` → `ConstrainedBox(maxWidth)` →
-/// `Semantics(container + liveRegion)` → `Material(elevation 4, 圆角 14)` →
-/// `Column[ Row[图标, 正文, 尾部件], 可选底部进度条 ]`。
+/// **纯卡片**：只负责渲染「圆角 Material + 内容」，本身按内容宽度收缩（≤ [maxWidth]），
+/// **不含** `SafeArea` / `Center`。状态栏留白与水平居中由调用方（横幅宿主层）负责。
+///
+/// 这样设计的根本原因：卡片必须收缩到自身宽度，调用方在外层用**透明的** `Center` /
+/// `Column`（crossAxisAlignment.center）居中。透明的居中层没有手势监听，命中测试只命中
+/// 卡片本身——于是**卡片两侧的空白区不会拦截下方页面的点击**（只有卡片像素可交互、
+/// 可滑、可点）。若在卡片内自带 `Center`，`Center` 会撑满整行宽度，被 `Dismissible` 的
+/// 不透明手势层一包，整行就吞掉两侧点击（历史 bug）。
+///
+/// 渲染：`ConstrainedBox(maxWidth)` → `Semantics(container + liveRegion)` →
+/// `Material(elevation 4, 圆角 14)` → `Column[ Row[图标, 正文, 尾部件], 可选底部进度条 ]`。
 ///
 /// - [semanticLabel] 非 null 时整条作为一句播报（连接横幅）；为 null 时走
 ///   `explicitChildNodes`，让标题/正文子节点被分别朗读（普通通知多行文案场景）。
@@ -72,25 +80,23 @@ class UtenTopBannerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SafeArea(
-      minimum: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: Semantics(
-            container: true,
-            liveRegion: true,
-            label: semanticLabel,
-            explicitChildNodes: semanticLabel == null,
-            child: Material(
-              color: background,
-              elevation: 4,
-              shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(14),
-              clipBehavior: Clip.antiAlias,
-              child: _body(),
-            ),
-          ),
+    // 纯卡片：不含 SafeArea / Center，按内容宽度收缩（≤ maxWidth）。居中与状态栏
+    // 留白由调用方负责——这样卡片两侧的空白不会落在 Dismissible 的不透明手势层里，
+    // 也就不会拦截下方页面的点击（只有卡片像素可交互）。详见类注释。
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Semantics(
+        container: true,
+        liveRegion: true,
+        label: semanticLabel,
+        explicitChildNodes: semanticLabel == null,
+        child: Material(
+          color: background,
+          elevation: 4,
+          shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: _body(),
         ),
       ),
     );
@@ -109,10 +115,7 @@ class UtenTopBannerCard extends StatelessWidget {
               Icon(icon, color: foreground, size: iconSize),
               const SizedBox(width: 12),
               Expanded(child: content),
-              if (trailing != null) ...[
-                const SizedBox(width: 8),
-                trailing!,
-              ],
+              if (trailing != null) ...[const SizedBox(width: 8), trailing!],
             ],
           ),
         ),
@@ -128,6 +131,12 @@ class UtenTopBannerCard extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
+      // 悬停/点按反馈用「前景色低透明叠加」，而非 Material 默认的灰（黑）高亮——
+      // 否则把语义容器色（绿/红/橙）刷成一片灰，用户会以为是「灰色长条」。
+      hoverColor: foreground.withValues(alpha: 0.08),
+      focusColor: foreground.withValues(alpha: 0.10),
+      highlightColor: foreground.withValues(alpha: 0.06),
+      splashColor: foreground.withValues(alpha: 0.12),
       child: column,
     );
   }

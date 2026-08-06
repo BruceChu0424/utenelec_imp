@@ -113,7 +113,7 @@ class DioEmployeeRepository implements EmployeeRepository {
   @override
   Future<void> confirm(String id, {String? confirmedDate}) => api.post(
     ApiEndpoints.employeeConfirm(id),
-    body: {if (confirmedDate != null) 'confirmedDate': confirmedDate},
+    body: {'confirmedDate': ?confirmedDate},
   );
 
   @override

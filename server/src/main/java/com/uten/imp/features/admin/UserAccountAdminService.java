@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -42,6 +43,7 @@ public class UserAccountAdminService {
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final TxSessionVars tx;
     private final AdminUserSupport support;
+    private final AuditService auditService;
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
@@ -185,6 +187,35 @@ public class UserAccountAdminService {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
         refreshTokenRepo.revokeAllByUserId(userId);
+    }
+
+    /**
+     * 设置/取消超级管理员（允许多个超管）。仅超管可操作；降级禁止降本人与最后一位超管。
+     * 改动后 bump auth version，让目标下次请求按新标志重算权限（is_super_admin 逐请求
+     * DB 复读，bump 确保权限快照随 token 刷新更新）。
+     */
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    @Transactional
+    public void setSuperAdmin(UUID id, boolean superAdmin) {
+        tx.bind();
+        UserAccount user = support.require(id);
+        if (superAdmin == user.isSuperAdmin()) {
+            return;
+        }
+        support.requireSuperAdminToggle(user, superAdmin);
+        user.setSuperAdmin(superAdmin);
+        userRepo.save(user);
+        userRepo.bumpAuthVersion(id);
+        // 显式审计：权限升降级是安全敏感事件，单独记一条带方向的业务事件
+        // （拦截器层只记 HTTP 调用、不分授/收）。
+        var actor = support.requireCurrentUser();
+        auditService.logExplicit(
+                actor.getId(),
+                actor.getLoginAccount(),
+                superAdmin ? "super_admin_grant" : "super_admin_revoke",
+                "user",
+                id.toString(),
+                "success");
     }
 
     private void requireActiveEmployee(UserAccount account) {

@@ -2,8 +2,13 @@ package com.uten.imp.features.notice;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.notice.NoticeAcknowledgmentRepository.NoticeAcknowledgerRow;
+import com.uten.imp.features.notice.NoticeBlessingRepository.NoticeBlessingRow;
+import com.uten.imp.features.notice.dto.NoticeCelebrationPreviewDto;
 import com.uten.imp.features.notice.dto.NoticeDto;
 import com.uten.imp.features.notice.dto.NoticePublishRequest;
+import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -11,9 +16,9 @@ import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
@@ -21,13 +26,16 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -37,18 +45,27 @@ class NoticeServiceTest {
 
     private NoticeRepository noticeRepository;
     private NoticeUserStateRepository stateRepository;
+    private NoticeAcknowledgmentRepository ackRepository;
+    private NoticeBlessingRepository blessRepo;
+    private EmployeeRepository employeeRepository;
     private SecurityContextCurrentUser currentUser;
     private NoticeAudienceService audienceService;
+    private SystemSettingsService systemSettings;
     private NoticeService service;
     private UUID userId;
+    private AuthUser authUser;
 
     @BeforeEach
     void setUp() {
         noticeRepository = mock(NoticeRepository.class);
         stateRepository = mock(NoticeUserStateRepository.class);
+        ackRepository = mock(NoticeAcknowledgmentRepository.class);
+        blessRepo = mock(NoticeBlessingRepository.class);
+        employeeRepository = mock(EmployeeRepository.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         audienceService = mock(NoticeAudienceService.class);
-        AuthUser authUser = mock(AuthUser.class);
+        systemSettings = mock(SystemSettingsService.class);
+        authUser = mock(AuthUser.class);
         userId = UUID.randomUUID();
 
         when(currentUser.get()).thenReturn(Optional.of(authUser));
@@ -58,11 +75,14 @@ class NoticeServiceTest {
         service = new NoticeService(
                 noticeRepository,
                 stateRepository,
-                mock(EmployeeRepository.class),
+                ackRepository,
+                blessRepo,
+                employeeRepository,
                 currentUser,
                 new ObjectMapper(),
                 audienceService,
-                mock(TxSessionVars.class));
+                mock(TxSessionVars.class),
+                systemSettings);
     }
 
     @Test
@@ -73,10 +93,14 @@ class NoticeServiceTest {
         notice.setType("system");
         notice.setPublisher("system");
         notice.setPublishedAt(Instant.parse("2026-07-30T00:00:00Z"));
-        when(noticeRepository.findVisible(eq(userId), eq(false), any(Pageable.class)))
+        when(noticeRepository.findVisible(eq(userId), eq(false), any()))
                 .thenReturn(List.of(notice));
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
                 .thenReturn(List.of());
+        // system 类型 = acknowledge 模式 → toDto 会查回执数
+        when(ackRepository.countByIdNoticeId(any())).thenReturn(0L);
+        when(ackRepository.existsByIdNoticeIdAndIdUserId(any(), any())).thenReturn(false);
+        when(ackRepository.findRecentAcknowledgers(any(), anyInt())).thenReturn(List.of());
 
         assertEquals(1, service.list(false).size());
 
@@ -113,6 +137,8 @@ class NoticeServiceTest {
                         Set.of(departmentId),
                         Set.of(employeeId),
                         "生产部、张三"));
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
 
         NoticeDto published = service.publish(new NoticePublishRequest(
                 "停电通知",
@@ -128,6 +154,7 @@ class NoticeServiceTest {
         assertEquals("selected", published.audienceScope());
         assertEquals("生产部、张三", published.audienceSummary());
         assertEquals(2, published.audienceCount());
+        assertEquals("acknowledge", published.interactionMode());
         verify(audienceService).resolveSelected(
                 List.of(departmentId),
                 List.of(employeeId));
@@ -180,6 +207,7 @@ class NoticeServiceTest {
         verify(noticeRepository).saveAndFlush(captor.capture());
         Notice saved = captor.getValue();
         assertEquals("workflow", saved.getType());
+        assertEquals("none", saved.getInteractionMode());
         assertEquals(audienceUserId, saved.getAudienceUserId());
         assertNotNull(saved.getActionRoute());
         assertTrue(saved.getActionRoute().startsWith("/sales/orders/"));
@@ -212,5 +240,301 @@ class NoticeServiceTest {
         verify(noticeRepository).saveAndFlush(captor.capture());
         assertNull(captor.getValue().getActionRoute());
         assertEquals("task", captor.getValue().getType());
+    }
+
+    // =========================== V224：庆典发布 / 互动 ===========================
+
+    @Test
+    void publishBlessTypeRequiresSubjectEmployeeAndDerivesEventLabel() {
+        UUID subjectId = UUID.randomUUID();
+        Employee subject = new Employee();
+        subject.setId(subjectId);
+        subject.setFullName("张三");
+        subject.setHireDate(LocalDate.now().minusYears(3)); // 入职3周年
+        when(employeeRepository.findById(subjectId)).thenReturn(Optional.of(subject));
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+        when(blessRepo.countByNoticeId(any())).thenReturn(0L);
+        when(blessRepo.findTop5ByNoticeIdOrderByCreatedAtDesc(any())).thenReturn(List.of());
+
+        // 标题留空 → 由 subjectName+eventLabel 自动补全
+        NoticeDto dto = service.publish(new NoticePublishRequest(
+                null, "今日寿星", "birthday",
+                false, "normal", List.of(), "selected", null, null,
+                null, null, null, subjectId, null));
+
+        assertEquals("birthday", dto.type());
+        assertEquals("bless", dto.interactionMode());
+        assertEquals("张三", dto.subjectName());
+        assertEquals("生日快乐", dto.eventLabel());
+        assertEquals("祝 张三 生日快乐！", dto.title());
+        // 庆典通知强制 audience=all（忽略 selected）
+        assertEquals("all", dto.audienceScope());
+
+        ArgumentCaptor<Notice> captor = ArgumentCaptor.forClass(Notice.class);
+        verify(noticeRepository).saveAndFlush(captor.capture());
+        assertEquals("bless", captor.getValue().getInteractionMode());
+        assertEquals(subjectId, captor.getValue().getSubjectEmployeeId());
+    }
+
+    @Test
+    void publishAnniversaryComputesYearsInEventLabel() {
+        UUID subjectId = UUID.randomUUID();
+        Employee subject = new Employee();
+        subject.setId(subjectId);
+        subject.setFullName("李四");
+        subject.setHireDate(LocalDate.now().minusYears(5));
+        when(employeeRepository.findById(subjectId)).thenReturn(Optional.of(subject));
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+        when(blessRepo.countByNoticeId(any())).thenReturn(0L);
+        when(blessRepo.findTop5ByNoticeIdOrderByCreatedAtDesc(any())).thenReturn(List.of());
+
+        NoticeDto dto = service.publish(new NoticePublishRequest(
+                "标题", "正文", "anniversary",
+                false, "normal", List.of(), "all", null, null,
+                null, null, null, subjectId, null));
+
+        assertEquals("入职5周年", dto.eventLabel());
+    }
+
+    @Test
+    void publishBlessWithoutSubjectIsRejected() {
+        NoticePublishRequest req = new NoticePublishRequest(
+                "标题", "正文", "birthday",
+                false, "normal", List.of(), "all", null, null,
+                null, null, null, null, null);
+
+        assertThrows(ApiException.class, () -> service.publish(req));
+        verify(noticeRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void publishNonBlessUnaffectedByCelebrationLogic() {
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
+        when(ackRepository.countByIdNoticeId(any())).thenReturn(0L);
+        when(ackRepository.existsByIdNoticeIdAndIdUserId(any(), any())).thenReturn(false);
+        when(ackRepository.findRecentAcknowledgers(any(), anyInt())).thenReturn(List.of());
+
+        NoticeDto dto = service.publish(new NoticePublishRequest(
+                "通知", "正文", "system",
+                false, "normal", List.of(), "all", null, null,
+                null, null, null, null, null));
+
+        assertEquals("acknowledge", dto.interactionMode());
+        assertNull(dto.subjectName());
+        assertNull(dto.eventLabel());
+    }
+
+    @Test
+    void acknowledgeIsIdempotentAndReturnsCurrentCount() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setType("announcement");
+        notice.setInteractionMode("acknowledge");
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+        when(ackRepository.findById(new NoticeAcknowledgmentId(noticeId, userId)))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(existingAck(noticeId, userId)));
+        when(ackRepository.countByIdNoticeId(noticeId)).thenReturn(1L).thenReturn(1L);
+
+        NoticeService.AckResult first = service.acknowledge(noticeId);
+        assertEquals(1L, first.ackCount());
+        assertTrue(first.myAcked());
+
+        NoticeService.AckResult second = service.acknowledge(noticeId);
+        assertTrue(second.myAcked());
+        verify(ackRepository, atLeastOnce()).save(any());
+    }
+
+    @Test
+    void acknowledgeRejectsNoticeWithoutAckMode() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setType("birthday");
+        notice.setInteractionMode("bless");
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+
+        assertThrows(ApiException.class, () -> service.acknowledge(noticeId));
+        verify(ackRepository, never()).save(any());
+    }
+
+    @Test
+    void blessUpsertsAndWithdrawsCorrectly() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setType("birthday");
+        notice.setInteractionMode("bless");
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+
+        // 第一次发送（新增）
+        when(blessRepo.findByNoticeIdAndUserId(noticeId, userId)).thenReturn(Optional.empty());
+        when(blessRepo.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(blessRepo.countByNoticeId(noticeId)).thenReturn(1L);
+
+        NoticeService.BlessResult created = service.bless(noticeId, "生日快乐！");
+        assertEquals(1L, created.blessingCount());
+        assertEquals("生日快乐！", created.myBlessing());
+
+        // 撤回
+        when(blessRepo.countByNoticeId(noticeId)).thenReturn(0L);
+        long afterWithdraw = service.withdrawBlessing(noticeId);
+        assertEquals(0L, afterWithdraw);
+        verify(blessRepo).deleteByNoticeIdAndUserId(noticeId, userId);
+    }
+
+    @Test
+    void blessRejectsNoticeWithoutBlessMode() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setType("system");
+        notice.setInteractionMode("acknowledge");
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+
+        assertThrows(ApiException.class, () -> service.bless(noticeId, "祝福"));
+        verify(blessRepo, never()).save(any());
+    }
+
+    @Test
+    void blessRejectsBlankAndOverlongContent() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setType("birthday");
+        notice.setInteractionMode("bless");
+        notice.setAudienceScope("all");
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+
+        assertThrows(ApiException.class, () -> service.bless(noticeId, "   "));
+        assertThrows(ApiException.class, () -> service.bless(noticeId, "x".repeat(201)));
+    }
+
+    @Test
+    void listBlessingsMarksMineAndLimitsPageSize() {
+        UUID noticeId = UUID.randomUUID();
+        UUID otherUser = UUID.randomUUID();
+        UUID b1 = UUID.randomUUID();
+        UUID b2 = UUID.randomUUID();
+        when(blessRepo.findPage(eq(noticeId), anyInt(), anyInt())).thenReturn(List.of(
+                blessingRow(b1, "张三", "生日快乐", otherUser),
+                blessingRow(b2, "我", "同祝", userId)));
+        when(blessRepo.countByNoticeId(noticeId)).thenReturn(2L);
+
+        NoticeService.BlessingPage p = service.listBlessings(noticeId, 0, 50);
+        assertEquals(2L, p.count());
+        assertEquals(2, p.items().size());
+        assertFalse(p.items().get(0).mine());     // 他人
+        assertTrue(p.items().get(1).mine());       // 本人
+    }
+
+    @Test
+    void listAcknowledgersDelegatesToProjectionQuery() {
+        UUID noticeId = UUID.randomUUID();
+        Instant t = Instant.now();
+        when(ackRepository.findRecentAcknowledgers(eq(noticeId), anyInt())).thenReturn(List.of(
+                ackerRow("张三", t),
+                ackerRow("李四", t)));
+        when(ackRepository.countByIdNoticeId(noticeId)).thenReturn(2L);
+
+        NoticeService.AcknowledgerPage p = service.listAcknowledgers(noticeId, 8);
+        assertEquals(2L, p.count());
+        assertEquals(2, p.items().size());
+        assertEquals("张三", p.items().get(0).name());
+    }
+
+    @Test
+    void celebrationPreviewReturnsDerivedLabelAndTemplates() {
+        UUID subjectId = UUID.randomUUID();
+        Employee subject = new Employee();
+        subject.setId(subjectId);
+        subject.setFullName("王五");
+        subject.setHireDate(LocalDate.now().minusYears(2));
+        when(employeeRepository.findById(subjectId)).thenReturn(Optional.of(subject));
+
+        NoticeCelebrationPreviewDto dto = service.celebrationPreview(subjectId, "anniversary");
+        assertEquals("王五", dto.subjectName());
+        assertEquals("入职2周年", dto.eventLabel());
+        assertEquals("祝 王五 入职2周年！", dto.suggestedTitle());
+        assertFalse(dto.suggestedTemplates().isEmpty());
+        // 模板只用 {name} 占位符（年数在 eventLabel 里，不在模板里）
+        assertTrue(dto.suggestedTemplates().stream().noneMatch(t -> t.contains("{years}")));
+        assertTrue(dto.suggestedTemplates().stream().allMatch(t -> t.contains("{name}")));
+    }
+
+    @Test
+    void publishCelebrationBroadcastWritesBlessNoticeWithSubjectSnapshot() {
+        UUID subjectId = UUID.randomUUID();
+        when(employeeRepository.findById(subjectId)).thenReturn(Optional.empty());
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> {
+            Notice n = i.getArgument(0);
+            n.setId(UUID.randomUUID());
+            return n;
+        });
+
+        Notice n = service.publishCelebrationBroadcast(
+                "birthday", subjectId, "赵六", "生日快乐", "公司");
+
+        assertEquals("birthday", n.getType());
+        assertEquals("bless", n.getInteractionMode());
+        assertEquals("祝 赵六 生日快乐！", n.getTitle());
+        assertEquals("公司", n.getPublisher());
+        assertEquals("all", n.getAudienceScope());
+        assertEquals("赵六", n.getSubjectName());
+        assertEquals(subjectId, n.getSubjectEmployeeId());
+    }
+
+    @Test
+    void getCelebrationSettingsReadsThreeKeys() {
+        when(systemSettings.readBool("celebration.auto_enabled", true)).thenReturn(true);
+        when(systemSettings.readString("celebration.auto_types", "birthday,anniversary"))
+                .thenReturn("birthday");
+        when(systemSettings.readString("celebration.publisher_name", "公司"))
+                .thenReturn("人力资源部");
+
+        var dto = service.getCelebrationSettings();
+        assertTrue(dto.autoEnabled());
+        assertEquals(List.of("birthday"), dto.autoTypes());
+        assertEquals("人力资源部", dto.publisherName());
+    }
+
+    // ---------- 测试夹具 ----------
+
+    private NoticeAcknowledgment existingAck(UUID noticeId, UUID userId) {
+        NoticeAcknowledgment ack = new NoticeAcknowledgment();
+        ack.setId(new NoticeAcknowledgmentId(noticeId, userId));
+        ack.setAckedAt(Instant.now());
+        return ack;
+    }
+
+    private NoticeBlessingRow blessingRow(UUID id, String name, String content, UUID userId) {
+        return new NoticeBlessingRow() {
+            @Override public UUID getId() { return id; }
+            @Override public String getSenderName() { return name; }
+            @Override public String getContent() { return content; }
+            @Override public Instant getCreatedAt() { return Instant.now(); }
+            @Override public UUID getUserId() { return userId; }
+        };
+    }
+
+    private NoticeAcknowledgerRow ackerRow(String name, Instant ackedAt) {
+        return new NoticeAcknowledgerRow() {
+            @Override public UUID getUserId() { return UUID.randomUUID(); }
+            @Override public String getName() { return name; }
+            @Override public Instant getAckedAt() { return ackedAt; }
+        };
     }
 }

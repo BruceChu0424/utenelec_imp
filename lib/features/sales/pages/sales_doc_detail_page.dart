@@ -22,6 +22,8 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/repositories/task_claim_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
@@ -53,6 +55,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   bool _busy = false;
   String? _error;
   List<SalesReturnQualityItem>? _returnQualitySnapshot;
+  // 销售订单审核并发认领（SALES_ORDER_APPROVE；page-state 持有，跨 _busy 底栏切换不丢）。
+  TaskClaimSession? _approveClaim;
 
   @override
   void initState() {
@@ -60,8 +64,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  @override
+  void dispose() {
+    _approveClaim?.releaseAll();
+    super.dispose();
+  }
+
   /// 服务端已合并功能权限与负责人范围；不能仅凭前端权限常量开放对象写操作。
   bool get _canEdit => _detail?.writable ?? false;
+  bool get _approveClaimBlocked => _approveClaim?.blocked ?? false;
 
   /// 仓库驳回权限（V96，仅出货单）：PMC/销售可在草稿（待备货）态驳回。
   bool get _canReject =>
@@ -253,6 +264,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
         _detail = d;
         _loading = false;
       });
+      // 销售订单（草稿可审核）认领 SALES_ORDER_APPROVE：他人审核中则禁用审核按钮。
+      // 仅 UX/防碰撞层；后端 SalesOrderService.approve 守卫是正确性底线。认领失败 fail-open。
+      if (_cfg.type == SalesDocType.order &&
+          d.status == kSalesStatusDraft &&
+          !d.rejected) {
+        _approveClaim =
+            TaskClaimSession(ref.read(taskClaimRepositoryProvider));
+        await _approveClaim!.claimAll('SALES_ORDER_APPROVE', [widget.id]);
+        if (mounted) setState(() {});
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1299,8 +1320,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             UtenButton(
               key: const ValueKey('legacy-sales-approve'),
               icon: Icons.check_circle_outline,
-              onPressed: _approve,
-              child: const Text('审核'),
+              onPressed: _approveClaimBlocked ? null : _approve,
+              child: Text(_approveClaimBlocked ? '他人审核中' : '审核'),
             ),
           );
         }

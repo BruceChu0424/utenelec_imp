@@ -38,6 +38,8 @@ import '../models/purchase_doc.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../repositories/purchase_repository.dart';
+import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/repositories/task_claim_repository.dart';
 import '../widgets/doc_link_picker.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -92,6 +94,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
   String? _makerName;
   String? _createdAt;
   String? _sourceRequestBillNo;
+  // 采购分解订货的并发认领会话（PURCHASE_DECOMPOSE，按申请 id 认领；他人占用时禁用保存）。
+  TaskClaimSession? _decomposeClaim;
 
   @override
   void initState() {
@@ -106,6 +110,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
     _rate.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
+    _decomposeClaim?.releaseAll(); // 离开订货编辑页释放分解认领（fire-and-forget；session 自带 repo）
     super.dispose();
   }
 
@@ -296,6 +301,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
           .where((number) => number.isNotEmpty)
           .toSet()
           .join('、');
+      // 并发认领（PURCHASE_DECOMPOSE）：按所引入采购申请 id 认领，他人正在分解同一申请时禁用保存。
+      // 仅 UX/防碰撞层；后端 decompositionPreview 守卫是正确性底线。认领失败 fail-open。
+      final requestIds = open.map((e) => e.sourceDocumentId).toSet();
+      if (requestIds.isNotEmpty) {
+        _decomposeClaim =
+            TaskClaimSession(ref.read(taskClaimRepositoryProvider));
+        await _decomposeClaim!.claimAll('PURCHASE_DECOMPOSE', requestIds);
+        if (mounted) setState(() {});
+      }
     } on StateError catch (error) {
       if (mounted) context.appError(error.message);
     } on ApiException catch (error) {
@@ -769,6 +783,30 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                             ],
                           ),
                         ),
+                        if (_decomposeClaim?.blocked ?? false)
+                          Padding(
+                            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.lock_outline,
+                                  size: 18,
+                                  color: theme.colorScheme.error,
+                                ),
+                                const SizedBox(width: UtenSpacing.s8),
+                                Expanded(
+                                  child: Text(
+                                    '${_decomposeClaim?.blockedByName ?? '同事'}'
+                                    '正在分解此采购申请，保存已禁用，请稍后再试',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.error,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
@@ -848,7 +886,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
                 icon: widget.docType == PurchaseDocType.order
                     ? Icons.send_outlined
                     : Icons.save_outlined,
-                onPressed: _saving ? null : _save,
+                onPressed:
+                    (_saving || (_decomposeClaim?.blocked ?? false))
+                        ? null
+                        : _save,
                 child: Text(
                   widget.docType == PurchaseDocType.order ? '保存并提交财务' : '保存',
                 ),

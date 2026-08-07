@@ -23,6 +23,8 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/widgets/task_claim_badge.dart';
+import '../../../shared/widgets/task_claim_handle.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../stock/repositories/stock_query_repository.dart';
@@ -587,17 +589,54 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage> {
                 child: const Text('取消'),
               ),
               const SizedBox(width: UtenSpacing.s12),
-              UtenButton(
-                isLoading: _saving || _loadingCheckBooks,
-                icon: Icons.save_outlined,
-                onPressed:
-                    _saving ||
-                        _loadingCheckBooks ||
-                        (widget.id != null && !_loadedCanEdit)
-                    ? null
-                    : _save,
-                child: const Text('保存'),
-              ),
+              widget.id == null
+                  ? UtenButton(
+                      isLoading: _saving || _loadingCheckBooks,
+                      icon: Icons.save_outlined,
+                      onPressed:
+                          (_saving || _loadingCheckBooks) ? null : _save,
+                      child: const Text('保存'),
+                    )
+                  : TaskClaimHandle(
+                      key: ValueKey('fulfillment_claim_${widget.id}'),
+                      targetType: 'FULFILLMENT_TASK',
+                      targetKey: widget.id!,
+                      builder: (heldByMe, claim) {
+                        // 他人正编辑同一仓库单据 → 显示「XX 处理中」并禁用保存（UX 层；后端守卫兜底）。
+                        final blocked = !heldByMe && claim != null;
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (blocked)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    TaskClaimBadge(claim: claim),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      '他人正在编辑，保存已禁用',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            UtenButton(
+                              isLoading: _saving || _loadingCheckBooks,
+                              icon: Icons.save_outlined,
+                              onPressed: (_saving ||
+                                      _loadingCheckBooks ||
+                                      blocked ||
+                                      !_loadedCanEdit)
+                                  ? null
+                                  : _save,
+                              child: const Text('保存'),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
             ],
           ),
         ),

@@ -3,10 +3,13 @@ package com.uten.imp.features.common.taskclaim;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 /**
  * 统一任务认领 REST（ADR-023）。可见性策略 = show-as-locked：前端在列表/详情展示「XXX 处理中」
@@ -18,6 +21,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class TaskClaimController {
 
     private final TaskClaimService claimService;
+
+    /** 某类型全部有效认领视图（key=targetKey）：列表/看板装配「XX 处理中」徽标用，一次请求。 */
+    @GetMapping("/{targetType}")
+    @PreAuthorize("isAuthenticated()")
+    public Map<String, TaskClaimService.TaskClaimView> activeClaims(@PathVariable String targetType) {
+        return claimService.activeClaimViewsByTargetKey(targetType);
+    }
+
+    /** 单个目标的当前认领视图；无有效认领返回 200 + 空 body（详情页用）。 */
+    @GetMapping("/{targetType}/{targetKey}")
+    @PreAuthorize("isAuthenticated()")
+    public TaskClaimService.TaskClaimView activeClaim(
+            @PathVariable String targetType, @PathVariable String targetKey) {
+        return claimService.activeClaimView(targetType, targetKey).orElse(null);
+    }
 
     /** 认领（自己已认领=续租；他人在租约内=409）。 */
     @PostMapping("/{targetType}/{targetKey}/claim")

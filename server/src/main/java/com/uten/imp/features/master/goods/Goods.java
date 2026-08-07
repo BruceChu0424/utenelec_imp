@@ -13,6 +13,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -38,6 +39,10 @@ import java.math.BigDecimal;
 @Entity
 @Table(name = "goods")
 public class Goods extends SoftDeletableEntity {
+
+    /** 乐观锁版本（JPA @Version，每次写自增；编辑表单回传比对防丢失更新，V231）。 */
+    @Version
+    private long version;
 
     /** 老库 B_Goods.ID（迁移溯源+重跑幂等）；手工新建的为 null。 */
     @Column(name = "legacy_id", unique = true)

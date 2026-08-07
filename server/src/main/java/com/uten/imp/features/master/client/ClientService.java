@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.client;
 
+import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
@@ -371,6 +372,8 @@ public class ClientService {
         tx.bind();
         Client m = requireClient(id);
         requireVisible(m);
+        // 乐观锁：编辑回传的版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
+        OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
         apply(req, m);
         repo.save(m);
         return toDetail(m);
@@ -428,7 +431,8 @@ public class ClientService {
                 m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(), m.getAddress(),
                 m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getCredit(),
-                m.getInitTotal(), m.getTday(), m.getCreditFloor(), m.getRemark());
+                m.getInitTotal(), m.getTday(), m.getCreditFloor(), m.getRemark(),
+                m.getVersion());
     }
 
     private ClientListItem toList(Client m) {

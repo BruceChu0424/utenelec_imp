@@ -35,6 +35,7 @@ class ExpenseClaimServiceTest {
     private ExpenseApplicantQuery applicantQuery;
     private EmployeeClaimPostingPort postingPort;
     private SecurityContextCurrentUser currentUser;
+    private com.uten.imp.features.common.taskclaim.TaskClaimService taskClaim;
     private ExpenseClaimService service;
     private AuthUser authUser;
     private UUID actorId;
@@ -46,6 +47,7 @@ class ExpenseClaimServiceTest {
         applicantQuery = mock(ExpenseApplicantQuery.class);
         postingPort = mock(EmployeeClaimPostingPort.class);
         currentUser = mock(SecurityContextCurrentUser.class);
+        taskClaim = mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class);
         authUser = mock(AuthUser.class);
         actorId = UUID.randomUUID();
 
@@ -60,7 +62,8 @@ class ExpenseClaimServiceTest {
                 applicantQuery,
                 postingPort,
                 currentUser,
-                mock(TxSessionVars.class));
+                mock(TxSessionVars.class),
+                taskClaim);
     }
 
     @Test

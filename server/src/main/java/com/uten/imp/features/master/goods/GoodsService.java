@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
@@ -536,6 +537,8 @@ public class GoodsService {
         tx.bind();
         Goods g = requireGoods(id);
         requireVisible(g);
+        // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
+        OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
         apply(req, g);
         repo.save(g);
@@ -762,7 +765,7 @@ public class GoodsService {
                 g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
                 g.getCTotal(), g.getGTotal(), g.getSourceType(),
                 g.getThicknessUnitLegacyId(), g.getMWeightUnitLegacyId(),
-                false, false, stock.getTotalQty(), stock.getRows());
+                false, false, stock.getTotalQty(), stock.getRows(), g.getVersion());
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);

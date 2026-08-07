@@ -9,6 +9,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem;
 import com.uten.imp.features.purchase.request.dto.RequestDetail;
@@ -62,6 +63,7 @@ public class PurchaseRequestService {
     private final jakarta.persistence.EntityManager em;
     private final ProductionSupplySourceGuard productionSourceGuard;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
+    private final TaskClaimService taskClaim;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -138,6 +140,12 @@ public class PurchaseRequestService {
                                 ORDER BY i.id
                                 """)
                         .setParameter("itemIds", itemIds));
+
+        // 并发认领守卫（PURCHASE_DECOMPOSE，最高双工风险）：他人正分解同一申请时拒绝重复操作。
+        // request_id 直接复用本查询结果行 row[0]，不发额外 query（保持 DecompositionPreviewTest 的单次 createNativeQuery 校验）。
+        // 认领只是 UX/防碰撞层；下游 createBatch/财务审核的 ordered_qty 回写与状态守卫仍是正确性底线。
+        rows.stream().map(r -> uuid(r[0])).distinct().forEach(rid ->
+                taskClaim.requireNoActiveClaimByOther("PURCHASE_DECOMPOSE", rid.toString()));
 
         Map<UUID, Object[]> rowsByItemId = new LinkedHashMap<>();
         for (Object[] row : rows) {

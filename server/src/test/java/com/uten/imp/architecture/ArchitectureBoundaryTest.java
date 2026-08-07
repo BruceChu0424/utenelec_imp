@@ -87,7 +87,14 @@ class ArchitectureBoundaryTest {
             "notice->admin",
             "org->admin",
             "visitor->admin",
-            "visitor->org");
+            "visitor->org",
+            // 2026-08-07：统一任务并发认领（ADR-023）show-as-locked 守卫接入协作 feature——
+            // 费用审批/销售审核/采购分解/仓库单据编辑依赖 features.common.taskclaim 的
+            // TaskClaimService 做重复操作服务端兜底（UX 层；正确性底线仍是各 feature 的悲观锁+状态守卫）。
+            "expenseclaim->common",
+            "purchase->common",
+            "sales->common",
+            "stock->common");
 
     @Test
     void controllersDoNotDependDirectlyOnRepositories() throws IOException {

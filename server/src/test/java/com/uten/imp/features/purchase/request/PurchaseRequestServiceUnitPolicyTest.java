@@ -117,6 +117,7 @@ class PurchaseRequestServiceUnitPolicyTest {
                 docNumberService,
                 em,
                 sourceGuard,
-                lineUnitPolicy);
+                lineUnitPolicy,
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
     }
 }

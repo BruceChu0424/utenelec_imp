@@ -60,6 +60,15 @@ abstract final class ApiEndpoints {
   static String hrTaskClaimTakeover(String taskType, String employeeId) =>
       '/org/hr-tasks/claims/$taskType/$employeeId/takeover';
 
+  // 统一任务软认领（ADR-023，show-as-locked；池化审批/分解防重复操作）
+  static String taskClaims(String targetType) => '/task-claims/$targetType';
+  static String taskClaim(String targetType, String targetKey) =>
+      '/task-claims/$targetType/$targetKey';
+  static String taskClaimClaim(String targetType, String targetKey) =>
+      '/task-claims/$targetType/$targetKey/claim';
+  static String taskClaimHeartbeat(String targetType, String targetKey) =>
+      '/task-claims/$targetType/$targetKey/heartbeat';
+
   // 我的部门（工作台卡片，问题 #20；任意员工可用，不走 department:view/employee:view）
   static const myDepartmentTree = '/my-department/tree';
   static const myDepartmentRoster = '/my-department/roster';

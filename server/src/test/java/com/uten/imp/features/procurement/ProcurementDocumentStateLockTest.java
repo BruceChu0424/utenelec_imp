@@ -87,7 +87,8 @@ class ProcurementDocumentStateLockTest {
                 em,
                 mock(com.uten.imp.common.integrity
                         .ProductionSupplySourceGuard.class),
-                mock(PurchaseLineUnitPolicy.class));
+                mock(PurchaseLineUnitPolicy.class),
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
         UUID id = UUID.randomUUID();
         PurchaseRequest committed = new PurchaseRequest();
         committed.setStatus((short) 1);

@@ -113,6 +113,17 @@ public class GlobalExceptionHandler {
                 .body(ApiError.of(ErrorCode.CONFLICT, integrityMessage(ex)));
     }
 
+    // 乐观锁冲突（JPA @Version 在 flush 时发现版本不符，或显式版本校验失败经持久化层抛出）。
+    // 不单独处理会落入 handleOther → 裸 500。统一收敛为 409 + 可操作提示。
+    // 服务层显式版本校验直接抛 ApiException(CONFLICT)（已被 handleApi 兜住），此处兜底 JPA 自动机制。
+    @ExceptionHandler({
+            org.springframework.dao.OptimisticLockingFailureException.class,
+            jakarta.persistence.OptimisticLockException.class})
+    public ResponseEntity<ApiError> handleOptimisticLock(Exception ex) {
+        return ResponseEntity.status(409)
+                .body(ApiError.of(ErrorCode.CONFLICT, "该记录已被他人修改，请刷新后重试"));
+    }
+
     /** 到货收货数量超过财务核定可收上限时给出可操作提示；其余完整性冲突给通用提示。 */
     private String integrityMessage(Throwable root) {
         String message = root == null ? null : root.getMessage();

@@ -107,6 +107,7 @@ class AuthorizedBalanceAdjustmentProtectionTest {
                 mock(EmployeeNameResolver.class),
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
-                mock(ProductionCompletionReversePort.class));
+                mock(ProductionCompletionReversePort.class),
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
     }
 }

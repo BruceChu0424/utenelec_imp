@@ -23,6 +23,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/task_claim_badge.dart';
+import '../../../shared/widgets/task_claim_handle.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_payment.dart';
 import '../providers/expense_providers.dart';
@@ -130,26 +132,55 @@ class _ExpenseApprovalDetailPageState
       appBar: const UtenAppBar(title: '审批详情', showBackButton: true),
       bottomNavigationBar: _canApprove
           ? UtenBottomActionBar(
-              child: Row(
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.ghost,
-                    isLoading: _acting,
-                    icon: Icons.close_rounded,
-                    onPressed: _acting ? null : _reject,
-                    child: const Text('驳回'),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: UtenButton(
-                      isLoading: _acting,
-                      isExpanded: true,
-                      icon: Icons.check_rounded,
-                      onPressed: _acting ? null : _approve,
-                      child: const Text('通过'),
-                    ),
-                  ),
-                ],
+              child: TaskClaimHandle(
+                targetType: 'EXPENSE_APPROVE',
+                targetKey: widget.claimId,
+                builder: (heldByMe, claim) {
+                  final blocked = !heldByMe && claim != null;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (blocked)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            children: [
+                              TaskClaimBadge(claim: claim),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  '他人正在审批此单，请稍后再试',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      Row(
+                        children: [
+                          UtenButton(
+                            type: UtenButtonType.ghost,
+                            isLoading: _acting,
+                            icon: Icons.close_rounded,
+                            onPressed: (_acting || blocked) ? null : _reject,
+                            child: const Text('驳回'),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: UtenButton(
+                              isLoading: _acting,
+                              isExpanded: true,
+                              icon: Icons.check_rounded,
+                              onPressed: (_acting || blocked) ? null : _approve,
+                              child: const Text('通过'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
               ),
             )
           : _canPay

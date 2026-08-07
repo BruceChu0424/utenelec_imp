@@ -44,4 +44,5 @@ public class SupplierDetail {
     private BigDecimal initTotal;    // 期初应付
     private Integer tday;            // 结算天数
     private String remark;           // 备注
+    private Long version;            // 乐观锁版本（编辑回传，V231）
 }

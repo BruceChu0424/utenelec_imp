@@ -132,7 +132,8 @@ class PurchaseRequestDecompositionPreviewTest {
                     mock(DocNumberService.class),
                     em,
                     mock(ProductionSupplySourceGuard.class),
-                    mock(PurchaseLineUnitPolicy.class));
+                    mock(PurchaseLineUnitPolicy.class),
+                    mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
         }
     }
 }

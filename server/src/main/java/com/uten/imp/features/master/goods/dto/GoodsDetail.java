@@ -98,4 +98,6 @@ public class GoodsDetail {
     // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
     private BigDecimal stockQty;                 // 各参与核算仓库余量合计
     private List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
+
+    private Long version;                        // 乐观锁版本（编辑回传，V231）
 }

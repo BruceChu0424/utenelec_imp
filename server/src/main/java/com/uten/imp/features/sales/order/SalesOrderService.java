@@ -9,6 +9,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.SalesMasterReferenceValidator;
 import com.uten.imp.features.sales.order.dto.OrderCostItemDto;
@@ -68,6 +69,8 @@ public class SalesOrderService {
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
+    /** 并发认领目标类型（与 TaskClaimPolicy 登记的 SALES_ORDER_APPROVE 对齐）。 */
+    private static final String TASK_TYPE_APPROVE = "SALES_ORDER_APPROVE";
 
     /** 链路行状态（V90 chain_status；本类只用审核/改量落点，其余由下游 Service 推进）。 */
     private static final short CHAIN_PARTIAL_RESERVED = 1;  // 部分预留
@@ -97,6 +100,7 @@ public class SalesOrderService {
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final AuditService auditService;
     private final SalesMasterReferenceValidator referenceValidator;
+    private final TaskClaimService taskClaim;
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
@@ -585,6 +589,8 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:edit')")
     public OrderDetail approve(UUID id) {
         tx.bind();
+        // 并发认领守卫：他人正审核同一单时拒绝重复操作（UX 层；下方悲观锁+状态前置仍是底线）。
+        taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE, id.toString());
         SalesOrder o = requireWritableOrderForUpdate(id);
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");

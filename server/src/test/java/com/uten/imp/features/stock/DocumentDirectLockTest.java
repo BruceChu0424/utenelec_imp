@@ -54,7 +54,8 @@ class DocumentDirectLockTest {
                 mock(EmployeeNameResolver.class),
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
-                mock(ProductionCompletionReversePort.class));
+                mock(ProductionCompletionReversePort.class),
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
         UUID id = UUID.randomUUID();
         StockDocument document = new StockDocument();
         document.setId(id);
@@ -120,7 +121,8 @@ class DocumentDirectLockTest {
                 mock(EmployeeNameResolver.class),
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
-                completion);
+                completion,
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
 
         service.reverse(id);
 
@@ -179,7 +181,8 @@ class DocumentDirectLockTest {
                 mock(EmployeeNameResolver.class),
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
-                completion);
+                completion,
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
 
         assertThrows(ApiException.class, () -> service.reverse(id));
 

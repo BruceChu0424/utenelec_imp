@@ -4,6 +4,7 @@ import com.uten.imp.common.finance.EmployeeClaimPostingPort;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
@@ -44,6 +45,8 @@ public class ExpenseClaimService {
 
     private static final Set<String> STATUSES =
             Set.of("DRAFT", "SUBMITTED", "REVIEWING", "APPROVED", "REJECTED", "PAID");
+    /** 并发认领目标类型（与 TaskClaimPolicy 登记的 EXPENSE_APPROVE 对齐）。 */
+    private static final String TASK_TYPE_APPROVE = "EXPENSE_APPROVE";
     private static final Set<String> CATEGORIES = Set.of(
             "TRANSPORT", "TRAVEL", "MEAL", "OFFICE",
             "COMMUNICATION", "ENTERTAINMENT", "TRAINING", "OTHER");
@@ -54,6 +57,7 @@ public class ExpenseClaimService {
     private final EmployeeClaimPostingPort postingPort;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    private final TaskClaimService taskClaim;
 
     @Transactional(readOnly = true)
     public PageResponse<ExpenseClaimDto> listMine(
@@ -263,6 +267,9 @@ public class ExpenseClaimService {
         tx.bind();
         AuthUser user = requireStaff();
         require(user, "expense:approve");
+        // 并发认领守卫（show-as-locked 的服务端兜底）：若他人正认领该报销单审批，拒绝重复操作。
+        // 认领只是 UX/防碰撞层，下方 requireClaimForUpdate 的悲观锁 + 状态前置条件仍是正确性底线。
+        taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE, id.toString());
         ExpenseClaim claim = requireClaimForUpdate(id);
         if (claim.getApplicantId().equals(user.getEmployeeId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "申请人不能审批自己的报销单");
@@ -282,6 +289,7 @@ public class ExpenseClaimService {
         tx.bind();
         AuthUser user = requireStaff();
         require(user, "expense:approve");
+        taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE, id.toString());
         ExpenseClaim claim = requireClaimForUpdate(id);
         if (claim.getApplicantId().equals(user.getEmployeeId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "申请人不能驳回自己的报销单");

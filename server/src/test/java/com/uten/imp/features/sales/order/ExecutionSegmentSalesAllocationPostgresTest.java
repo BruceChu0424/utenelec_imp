@@ -216,7 +216,8 @@ class ExecutionSegmentSalesAllocationPostgresTest {
 
         SalesOrderService service = new SalesOrderService(
                 null, null, null, null, null, null, null, null, null,
-                null, null, null, null, em, null, null, null);
+                null, null, null, null, em, null, null, null,
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
         UUID orderItemId = UUID.randomUUID();
         SalesOrderItem item = new SalesOrderItem();
         item.setQty(new BigDecimal("10"));

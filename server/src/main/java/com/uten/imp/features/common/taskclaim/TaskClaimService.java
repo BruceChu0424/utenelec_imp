@@ -160,6 +160,24 @@ public class TaskClaimService {
                 .collect(Collectors.toMap(TaskClaim::getTargetKey, Function.identity(), (a, b) -> a));
     }
 
+    /** 列表/详情装配：某类型全部有效认领的视图（key=targetKey），供 DTO 回填 claimView 给前端显示「XX 处理中」。 */
+    @Transactional(readOnly = true)
+    public Map<String, TaskClaimView> activeClaimViewsByTargetKey(String targetType) {
+        UUID me = currentUser.employeeId().orElse(null);
+        return claimRepo.findAllByTargetTypeAndReleasedAtIsNull(targetType).stream()
+                .filter(TaskClaim::isActive)
+                .collect(Collectors.toMap(TaskClaim::getTargetKey, c -> toView(c, me), (a, b) -> a));
+    }
+
+    /** 单个目标的当前认领视图（详情页用）；无有效认领返回 empty。 */
+    @Transactional(readOnly = true)
+    public java.util.Optional<TaskClaimView> activeClaimView(String targetType, String targetKey) {
+        UUID me = currentUser.employeeId().orElse(null);
+        return claimRepo.findFirstByTargetTypeAndTargetKeyAndReleasedAtIsNull(targetType, targetKey)
+                .filter(TaskClaim::isActive)
+                .map(c -> toView(c, me));
+    }
+
     String claimantName(UUID employeeId) {
         String name = nameResolver.nameOf(employeeId);
         return name == null || name.isBlank() ? "同事" : name;

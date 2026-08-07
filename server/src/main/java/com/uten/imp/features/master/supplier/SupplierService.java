@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.supplier;
 
+import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
@@ -307,6 +308,8 @@ public class SupplierService {
     public SupplierDetail update(UUID id, SupplierSaveRequest req) {
         tx.bind();
         Supplier m = requireSupplier(id);
+        // 乐观锁：编辑回传版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
+        OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
         apply(req, m);
         repo.save(m);
         return toDetail(m);
@@ -358,7 +361,7 @@ public class SupplierService {
                 m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(), m.getPostcode(),
                 m.getAddress(), m.getEmail(), m.getWebsite(), m.getShipVia(), m.getShipAddress(),
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getInitTotal(), m.getTday(),
-                m.getRemark());
+                m.getRemark(), m.getVersion());
     }
 
     private SupplierListItem toList(Supplier m) {

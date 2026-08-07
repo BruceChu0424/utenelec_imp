@@ -10,6 +10,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.stock.dto.StockDocDetail;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocItemDto;
@@ -107,6 +108,7 @@ public class StockDocService {
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final ProductionMaterialStockLedgerService productionMaterialLedger;
     private final ProductionCompletionReversePort productionCompletionReverse;
+    private final TaskClaimService taskClaim;
 
     // ===== 列表 =====
 
@@ -197,6 +199,8 @@ public class StockDocService {
     @Transactional
     public StockDocDetail update(UUID id, StockDocSaveRequest req) {
         tx.bind();
+        // 并发认领守卫（FULFILLMENT_TASK）：他人正编辑同一仓库单据时拒绝重复操作（UX 层；下方悲观锁+状态守卫仍是底线）。
+        taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK", id.toString());
         StockDocument d = requireDocForUpdate(id);
         requireBalanceAdjustmentPermission(d);
         rejectGenericMutationOfProductionDocument(d);

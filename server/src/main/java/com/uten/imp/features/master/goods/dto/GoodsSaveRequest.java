@@ -176,4 +176,7 @@ public class GoodsSaveRequest {
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 
     private String sourceType;   // 来源（自制/采购/委外；V128）
+
+    /** 乐观锁版本（编辑时回传详情读到的 version；新建忽略。不符即 409，V231）。 */
+    private Long version;
 }

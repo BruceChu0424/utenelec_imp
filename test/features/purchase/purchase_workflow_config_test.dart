@@ -3,14 +3,16 @@ import 'package:uten_imp/features/purchase/config/purchase_doc_config.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 
 void main() {
-  test('planning request is read-only and orders can only start from tasks', () {
+  // 订货单支持从管理卡片直达新建（与销售/财务一致，见 purchase_doc_config.dart 注释），
+  // 但明细仍必须经「从上游引入」来自计划申请（linkToRequestItem）；申请单本身只读。
+  test('planning request is read-only; orders may be created directly but source lines from planning', () {
     expect(PurchaseDocConfig.request.allowDirectCreate, isFalse);
     expect(PurchaseDocConfig.request.skipListOnCreate, isFalse);
     expect(PurchaseDocConfig.request.hasSupplier, isFalse);
     expect(PurchaseDocConfig.request.hasCurrency, isFalse);
 
-    expect(PurchaseDocConfig.order.allowDirectCreate, isFalse);
-    expect(PurchaseDocConfig.order.skipListOnCreate, isFalse);
+    expect(PurchaseDocConfig.order.allowDirectCreate, isTrue);
+    expect(PurchaseDocConfig.order.skipListOnCreate, isTrue);
     expect(PurchaseDocConfig.order.supplierRequired, isTrue);
     expect(PurchaseDocConfig.order.linkToRequestItem, isTrue);
   });

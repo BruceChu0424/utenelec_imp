@@ -354,8 +354,7 @@ class _SubcontractDocDetailPageState
   String _orderStatusText(SubcontractDocDetail detail) {
     final approval = detail.financeApproval;
     if (approval?.isPending == true) {
-      final assignee = approval?.assigneeName?.trim();
-      return '等待${assignee?.isNotEmpty == true ? assignee : '财务负责人'}审核';
+      return '等待财务审核组审核';
     }
     if (approval?.isRejected == true) return '财务已退回，等待修改后重提';
     if (detail.status == kSubcontractStatusApproved ||
@@ -578,16 +577,15 @@ class _SubcontractDocDetailPageState
         _detail!.status == kSubcontractStatusApproved ||
         approval?.isApproved == true;
     final title = pending
-        ? '等待指定财务负责人审核'
+        ? '等待财务审核组处理'
         : rejected
         ? '财务已退回，请修改后重新提交'
         : approved
         ? '财务审核已通过'
         : '订货单尚未生效';
-    final assignee = approval?.assigneeName?.trim();
     final reason = approval?.rejectionReason?.trim();
     final message = pending
-        ? '本单只由${assignee?.isNotEmpty == true ? assignee : '已设置的财务负责人'}审核，其他人不能代审。'
+        ? '本单已提交财务审核组，财务部门持权人员及被点名授权者均可审核。'
         : rejected
         ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}。制单人修改后可再次提交。'
         : approved

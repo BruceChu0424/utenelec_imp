@@ -928,7 +928,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       _KV('客户', names.client(d.clientId)),
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
-      if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
+      if (_cfg.hasCurrency && d.exchangeRate != null)
+        _KV('汇率', d.exchangeRate?.toString()),
       // 业务员/发货人：按 id 经员工字典解析姓名（_load 已预载）。
       if (_cfg.hasSeller) _KV('业务员', names.employee(d.sellerId)),
       if (_cfg.hasSender) _KV('发货人', names.employee(d.senderId)),

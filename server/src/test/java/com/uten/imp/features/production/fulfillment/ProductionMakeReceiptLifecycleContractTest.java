@@ -68,7 +68,7 @@ class ProductionMakeReceiptLifecycleContractTest {
                 "production/mrp/ProductionPlanningPackageService.java");
         int lifecycle = source.indexOf("private PlanningPackageLifecycleResult lifecycle(");
         int release = source.indexOf("ledger.releaseLocked(", lifecycle);
-        int closeSubplans = source.indexOf("closeSubplans(documents, action)", release);
+        int closeSubplans = source.indexOf("closeSubplans(documents, action, request)", release);
 
         assertThat(lifecycle).isGreaterThanOrEqualTo(0);
         assertThat(release).isGreaterThan(lifecycle);

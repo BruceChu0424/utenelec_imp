@@ -1339,7 +1339,7 @@ public class SalesOrderService {
         for (OrderItemLine l : lines) {
             requireSafeCommercialLine(l);
             BigDecimal amountOriginal = authoritativeOrderAmount(
-                    l.getQty(), l.getPrice());
+                    l.getQty(), l.getPrice(), l.getDiscount());
             BigDecimal amountLocal = authoritativeLocalAmount(
                     amountOriginal, o.getExchangeRate());
             SalesOrderItem it = new SalesOrderItem();
@@ -1401,13 +1401,25 @@ public class SalesOrderService {
 
     static BigDecimal authoritativeOrderAmount(
             BigDecimal quantity, BigDecimal unitPrice) {
+        return authoritativeOrderAmount(quantity, unitPrice, null);
+    }
+
+    /**
+     * 订单行权威金额 = 数量 × 单价 × 折扣倍率。折扣（货品主档 zk 倍率，1=原价、0.9=9折）为
+     * null/0 视为不打折（倍率 1）——兼容历史订单行（discount 默认 0/未填，金额仍=数量×单价）
+     * 与无折扣行，避免历史数据被重新解释为免费。
+     */
+    static BigDecimal authoritativeOrderAmount(
+            BigDecimal quantity, BigDecimal unitPrice, BigDecimal discount) {
         if (quantity == null || quantity.signum() <= 0
                 || unitPrice == null || unitPrice.signum() < 0) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "订单数量必须大于 0 且价格不得为负数");
         }
-        return quantity.multiply(unitPrice)
+        BigDecimal multiplier = (discount == null || discount.signum() == 0)
+                ? BigDecimal.ONE : discount;
+        return quantity.multiply(unitPrice).multiply(multiplier)
                 .setScale(4, RoundingMode.HALF_UP);
     }
 
@@ -1438,6 +1450,10 @@ public class SalesOrderService {
                     || item.getPrice() == null
                     ? null
                     : item.getQty().multiply(item.getPrice())
+                            .multiply(item.getDiscount() == null
+                                    || item.getDiscount().signum() == 0
+                                            ? BigDecimal.ONE
+                                            : item.getDiscount())
                             .setScale(4, RoundingMode.HALF_UP);
             BigDecimal expectedLocal = expectedOriginal == null
                     ? null

@@ -11,17 +11,6 @@ abstract interface class FinanceProcurementWorkflowRepository {
   });
 
   Future<int> pendingApprovalCount();
-
-  Future<List<FinanceWorkflowResponsibility>> responsibilities();
-
-  Future<List<FinanceWorkflowReviewer>> reviewers();
-
-  Future<FinanceWorkflowResponsibility> updateResponsibility({
-    required String behaviorCode,
-    required String assigneeUserId,
-    required int expectedVersion,
-    required String password,
-  });
 }
 
 class DioFinanceProcurementWorkflowRepository
@@ -57,69 +46,6 @@ class DioFinanceProcurementWorkflowRepository
         ? value.toInt()
         : int.tryParse(value?.toString() ?? '') ?? 0;
     return parsed < 0 ? 0 : parsed;
-  }
-
-  @override
-  Future<List<FinanceWorkflowResponsibility>> responsibilities() async {
-    final rows = await api.getList(ApiEndpoints.adminWorkflowResponsibilities);
-    final byCode = <String, FinanceWorkflowResponsibility>{};
-    for (final row in rows) {
-      final parsed = FinanceWorkflowResponsibility.fromJson(row);
-      if (parsed.behaviorCode.isNotEmpty) byCode[parsed.behaviorCode] = parsed;
-    }
-    return byCode.values.toList(growable: false);
-  }
-
-  @override
-  Future<List<FinanceWorkflowReviewer>> reviewers() async {
-    final rows = await api.getList(
-      ApiEndpoints.adminWorkflowResponsibilityReviewers,
-    );
-    final byId = <String, FinanceWorkflowReviewer>{};
-    for (final row in rows) {
-      final parsed = FinanceWorkflowReviewer.fromJson(row);
-      if (parsed.userId.isNotEmpty && parsed.active) {
-        byId[parsed.userId] = parsed;
-      }
-    }
-    final result = byId.values.toList(growable: false)
-      ..sort((a, b) {
-        final byDepartment = (a.departmentName ?? '').compareTo(
-          b.departmentName ?? '',
-        );
-        return byDepartment != 0
-            ? byDepartment
-            : a.employeeName.compareTo(b.employeeName);
-      });
-    return result;
-  }
-
-  @override
-  Future<FinanceWorkflowResponsibility> updateResponsibility({
-    required String behaviorCode,
-    required String assigneeUserId,
-    required int expectedVersion,
-    required String password,
-  }) async {
-    final json = await api.put(
-      ApiEndpoints.adminWorkflowResponsibility(behaviorCode),
-      body: <String, dynamic>{
-        'assigneeUserId': assigneeUserId,
-        'expectedVersion': expectedVersion,
-        'password': password,
-      },
-    );
-    if (json.isEmpty) {
-      return FinanceWorkflowResponsibility(
-        behaviorCode: behaviorCode,
-        assigneeUserId: assigneeUserId,
-        version: expectedVersion + 1,
-      );
-    }
-    return FinanceWorkflowResponsibility.fromJson(
-      json,
-      fallbackBehaviorCode: behaviorCode,
-    );
   }
 }
 

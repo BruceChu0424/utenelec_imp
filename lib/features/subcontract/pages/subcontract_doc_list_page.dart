@@ -129,8 +129,7 @@ class _SubcontractDocListPageState
     if (widget.docType == SubcontractDocType.order) {
       final approval = item.financeApproval;
       if (approval?.isPending == true) {
-        final assignee = approval?.assigneeName?.trim();
-        return '等待${assignee?.isNotEmpty == true ? assignee : '财务负责人'}审核';
+        return '等待财务审核组审核';
       }
       if (approval?.isRejected == true) return '财务已退回';
       if (item.status == kSubcontractStatusApproved ||

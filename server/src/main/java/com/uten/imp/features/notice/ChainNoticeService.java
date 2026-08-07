@@ -2,6 +2,7 @@ package com.uten.imp.features.notice;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -87,19 +88,22 @@ public class ChainNoticeService {
     private final JdbcTemplate jdbc;
     private final BusinessEventPublisher outbox;
     private final RdTaskService rdTaskService;
+    private final FinanceReviewerEligibilityPort financeReviewerEligibility;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
                               UserRoleRepository userRoleRepo,
                               JdbcTemplate jdbc,
                               BusinessEventPublisher outbox,
-                              RdTaskService rdTaskService) {
+                              RdTaskService rdTaskService,
+                              FinanceReviewerEligibilityPort financeReviewerEligibility) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.userRoleRepo = userRoleRepo;
         this.jdbc = jdbc;
         this.outbox = outbox;
         this.rdTaskService = rdTaskService;
+        this.financeReviewerEligibility = financeReviewerEligibility;
     }
 
     /** Called only by the locked outbox processor inside its delivery transaction. */
@@ -730,14 +734,14 @@ public class ChainNoticeService {
                     ? "委外订货单"
                     : "采购订货单";
             if (EVENT_PROCUREMENT_FINANCE_SUBMITTED.equals(eventType)) {
-                notifyUser(
-                        (UUID) approval.get("assignee_user_id"),
-                        TYPE_APPROVAL,
-                        "待财务审核：" + billNo,
-                        orderLabel + " " + billNo + " 已提交财务审核，金额 "
-                                + str(approval.get("amount_snapshot"))
-                                + "。该任务仅分配给您，请到钱流管理任务中心处理。",
-                        "/finance/procurement-approvals");
+                String title = "待财务审核：" + billNo;
+                String content = orderLabel + " " + billNo + " 已提交财务审核，金额 "
+                        + str(approval.get("amount_snapshot"))
+                        + "。请到钱流管理任务中心处理。";
+                for (UUID reviewer : financeReviewerUserIds()) {
+                    sendToUser(reviewer, TYPE_APPROVAL, title, content,
+                            "/finance/procurement-approvals");
+                }
                 return;
             }
             if (EVENT_PROCUREMENT_FINANCE_REJECTED.equals(eventType)) {
@@ -803,21 +807,22 @@ public class ChainNoticeService {
                     """, exceptionId);
             if (arrival == null) return;
             UUID ownerUser = (UUID) arrival.get("owner_user_id");
-            UUID financeUser = (UUID) arrival.get("finance_assignee_user_id");
             String orderNo = str(arrival.get("order_bill_no_snapshot"));
             String receiptNo = str(arrival.get("receipt_bill_no_snapshot"));
             String orderLabel = "SUBCONTRACT".equals(str(arrival.get("order_type")))
                     ? "委外订货单" : "采购订货单";
 
             if (EVENT_PROCUREMENT_ARRIVAL_DETECTED.equals(eventType)) {
-                notifyUser(financeUser, TYPE_URGENT,
-                        "到货超量待财务审核：" + orderNo,
-                        "收货单 " + receiptNo + " 的实际到货量 "
-                                + str(arrival.get("declared_qty"))
-                                + " 超过当前财务批准剩余可收量 "
-                                + str(arrival.get("approved_remaining_qty"))
-                                + "。本次未入库、未立应付；该任务只允许分配快照中的财务负责人审核。",
-                        "/finance/procurement-arrival-exceptions");
+                String title = "到货超量待财务审核：" + orderNo;
+                String content = "收货单 " + receiptNo + " 的实际到货量 "
+                        + str(arrival.get("declared_qty"))
+                        + " 超过当前财务批准剩余可收量 "
+                        + str(arrival.get("approved_remaining_qty"))
+                        + "。本次未入库、未立应付；请财务持权人员到仓库到货异常任务中心审核。";
+                for (UUID reviewer : financeReviewerUserIds()) {
+                    sendToUser(reviewer, TYPE_URGENT, title, content,
+                            "/finance/procurement-arrival-exceptions");
+                }
                 return;
             }
             if (EVENT_PROCUREMENT_RETURN_REQUIRED.equals(eventType)) {
@@ -991,6 +996,16 @@ public class ChainNoticeService {
                   AND user_account.status = 'active'
                 ORDER BY user_account.id
                 """, UUID.class, departmentCode);
+    }
+
+    /**
+     * 当前可审批财务任务的接收人池：财务部门树内在职、账号启用且持有
+     * finance_order_approval:review 的全部用户（V229 / ADR-027 审核组模型）。
+     */
+    private List<UUID> financeReviewerUserIds() {
+        return financeReviewerEligibility.allEligible().stream()
+                .map(FinanceReviewerEligibilityPort.EligibleFinanceReviewer::userId)
+                .toList();
     }
 
     private void sendToUser(UUID userId, String type, String title, String content) {

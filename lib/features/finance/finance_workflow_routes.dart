@@ -6,7 +6,6 @@ abstract final class FinanceWorkflowRoutes {
   static const approvalTasks = '/finance/procurement-approvals';
   static const arrivalExceptionTasks =
       '/finance/procurement-arrival-exceptions';
-  static const responsibilities = '/finance/workflow-responsibilities';
 
   static String arrivalException(String id) =>
       '$arrivalExceptionTasks/${Uri.encodeComponent(id)}';

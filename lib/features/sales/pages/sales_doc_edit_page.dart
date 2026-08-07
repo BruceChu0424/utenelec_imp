@@ -58,6 +58,9 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
 
 class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
+
+  /// 订单：金额 = 数量 × 单价 × 折扣（折扣由货品主档带入、锁定）；其它单据仍 = 数量 × 单价。
+  bool get _amountUsesDiscount => widget.docType == SalesDocType.order;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
@@ -100,6 +103,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
 
   final _grid = UtenEditableGridController<SalesGridRow>();
   final _scrollCtl = ScrollController();
+  /// 网格底部「总数量」实时汇总（行增删/数量改动时刷新）。
+  final _totalQtyNotifier = ValueNotifier<double>(0);
   bool _saving = false;
   bool _loading = false;
 
@@ -123,6 +128,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _grid.removeListener(_onGridRowsChanged);
     for (final c in _qtyListened) {
       c.removeListener(_recalcParcelCount);
+      c.removeListener(_recalcQtyTotal);
     }
     _qtyListened.clear();
     _billNo.dispose();
@@ -140,6 +146,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     _outType.dispose();
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
+    _totalQtyNotifier.dispose();
     super.dispose();
   }
 
@@ -221,7 +228,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         _createdAt = d.createdAt;
         final rows = <SalesGridRow>[];
         for (final it in d.items) {
-          final row = SalesGridRow()
+          final row = SalesGridRow(amountUsesDiscount: _amountUsesDiscount)
             ..goods = it.goodsId == null
                 ? null
                 : GoodsOption(
@@ -267,7 +274,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         // 静默降级
       }
     }
-    if (_grid.isEmpty) _grid.addRow(SalesGridRow());
+    if (_grid.isEmpty) _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
     if (mounted) setState(() => _loading = false);
   }
 
@@ -318,13 +325,23 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         // 颜色/单位按货品主档自动回填（legacy id → 新库 UUID），单元格只读显示。
         ..colorId = names.colorIdByLegacy(g.colorLegacyId)
         ..unitId = names.unitIdByLegacy(g.unitLegacyId);
+      // 订单/出货：单价由货品主档自动带入、锁定（出货亦可由来源订货单引入；金额=数量×单价）。
+      if (widget.docType == SalesDocType.order ||
+          widget.docType == SalesDocType.shipment) {
+        if (g.price != null) target.price.text = g.price.toString();
+      }
+      // 订单折扣：货品 zk 倍率（1=原价；空/0→1）自动带入、锁定。
+      if (widget.docType == SalesDocType.order) {
+        final disc = (g.discount == null || g.discount == 0) ? 1.0 : g.discount;
+        target.discount.text = disc.toString();
+      }
     }
 
     fill(row, picked.first);
     if (picked.length > 1) {
       final extraRows = <SalesGridRow>[];
       for (final g in picked.skip(1)) {
-        final r = SalesGridRow();
+        final r = SalesGridRow(amountUsesDiscount: _amountUsesDiscount);
         fill(r, g);
         extraRows.add(r);
       }
@@ -364,8 +381,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         id: li.goodsId,
         name: ref.read(salesMasterNameServiceProvider).goods(li.goodsId),
       );
-      rows.add(SalesGridRow.fromLinked(li, goods));
+      rows.add(SalesGridRow.fromLinked(li, goods,
+          amountUsesDiscount: _amountUsesDiscount));
     }
+    // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
+    _grid.removeWhere(
+      (r) =>
+          r.goods == null &&
+          r.qty.text.trim().isEmpty &&
+          r.price.text.trim().isEmpty &&
+          r.remark.text.trim().isEmpty,
+    );
     _grid.addRows(rows);
     // 表头未选客户 → 以上游单据客户回填，并联动收货地址/联系电话。
     final cid = result.clientId;
@@ -406,14 +432,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     final current = _grid.rows.map((r) => r.qty).toSet();
     for (final c in _qtyListened.difference(current)) {
       c.removeListener(_recalcParcelCount);
+      c.removeListener(_recalcQtyTotal);
     }
     for (final c in current.difference(_qtyListened)) {
       c.addListener(_recalcParcelCount);
+      c.addListener(_recalcQtyTotal);
     }
     _qtyListened
       ..clear()
       ..addAll(current);
     _recalcParcelCount();
+    _recalcQtyTotal();
   }
 
   /// 件数 = 明细各行（已选货品）数量之和，四舍五入取整；无有效行返回 null。
@@ -434,6 +463,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     final n = _computedParcelCount();
     final text = n == null ? '' : n.toString();
     if (_parcelCount.text != text) _parcelCount.text = text;
+  }
+
+  /// 网格底部「总数量」= 各行数量之和（行增删/数量改动时实时刷新 footer）。
+  void _recalcQtyTotal() {
+    var sum = 0.0;
+    for (final r in _grid.rows) {
+      sum += double.tryParse(r.qty.text.trim()) ?? 0;
+    }
+    _totalQtyNotifier.value = sum;
   }
 
   /// 必填校验：返回第一条错误文案；并把未填的表头字段记入 [_errors]（红框）、
@@ -556,9 +594,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           final mp = parseExtra(r.machiningPrice);
           final circ = parseExtra(r.circumference);
           final inb = parseExtra(r.inboundQty);
+          final disc = parseExtra(r.discount);
           if (mp != null) body['machiningPrice'] = mp;
           if (circ != null) body['circumference'] = circ;
           if (inb != null) body['inboundQty'] = inb;
+          if (disc != null) body['discount'] = disc;
           break;
         case SalesDocType.shipment:
         case SalesDocType.otherShipment:
@@ -979,8 +1019,29 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           colorEntries: names.colorEntries,
                           unitEntries: names.unitEntries,
                         ),
-                        createBlankRow: () => SalesGridRow(),
+                        createBlankRow: () =>
+                            SalesGridRow(amountUsesDiscount: _amountUsesDiscount),
                         cloneRow: (r) => r.clone(),
+                        // 网格底部「添加行」上方：总数量 + 总金额（右对齐实时汇总）。
+                        footer: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            ValueListenableBuilder<double>(
+                              valueListenable: _totalQtyNotifier,
+                              builder: (_, q, _) =>
+                                  Text('总数量 ${q.toStringAsFixed(2)}'),
+                            ),
+                            const SizedBox(width: UtenSpacing.s16),
+                            ValueListenableBuilder<double>(
+                              valueListenable: _grid.totalListenable,
+                              builder: (_, t, _) => Text(
+                                '总金额 ¥${t.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),

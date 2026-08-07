@@ -45,6 +45,14 @@ public class DepartmentPermissionAdminService {
             "audit_log:view",
             "audit_log:export");
 
+    /**
+     * 一级模块的固定显示顺序（V228）。未列出的模块（如兜底「其他」）排在最后并按名字稳定排序，
+     * 保证权限目录始终以业务主干顺序呈现、新增模块不会随机穿插。
+     */
+    private static final List<String> MODULE_ORDER = List.of(
+            "基础资料", "销售管理", "采购管理", "委外管理", "生产管理",
+            "仓库管理", "财税管理", "工程研发", "人事行政", "品质检测", "系统管理");
+
     private final PermissionRepository permissionRepo;
     private final DepartmentRepository departmentRepo;
     private final DepartmentPermissionRepository departmentPermissionRepo;
@@ -56,19 +64,23 @@ public class DepartmentPermissionAdminService {
     private final RefreshTokenRepository refreshTokenRepo;
 
     /**
-     * 完整权限目录：按 category 分组，组内 sort_order + code 升序；
-     * 组间按"组内最小 sort_order → category 名"排序，保证新分组（财税部等）排在默认 0 的老分组之后仍稳定。
+     * 完整权限目录（两级：module → category → 权限项）。
+     * 按 (module, category) 分组；module 为空归「其他」。组内权限按 sort_order → code 升序；
+     * 组间按「模块在 {@link #MODULE_ORDER} 中的序号（未列出者排最后）→ 组内最小 sort_order → 子类名」稳定排序。
      */
     @Transactional(readOnly = true)
     public List<PermissionCatalogDto> catalog() {
         support.requireCurrentSuperAdmin();
-        Map<String, List<Permission>> byCategory = permissionRepo.findAll().stream()
+        record GroupKey(String module, String category) {}
+        Map<GroupKey, List<Permission>> byGroup = permissionRepo.findAll().stream()
                 .collect(Collectors.groupingBy(
-                        p -> p.getCategory() == null ? "" : p.getCategory(),
+                        p -> new GroupKey(
+                                (p.getModule() == null || p.getModule().isBlank()) ? "其他" : p.getModule(),
+                                p.getCategory() == null ? "" : p.getCategory()),
                         LinkedHashMap::new, Collectors.toList()));
-        record Group(String category, int minSort, List<PermissionCatalogDto.Item> items) {}
+        record Group(GroupKey key, int minSort, List<PermissionCatalogDto.Item> items) {}
         List<Group> groups = new ArrayList<>();
-        for (Map.Entry<String, List<Permission>> entry : byCategory.entrySet()) {
+        for (Map.Entry<GroupKey, List<Permission>> entry : byGroup.entrySet()) {
             List<Permission> perms = entry.getValue().stream()
                     .sorted(Comparator.comparingInt((Permission p) -> p.getSortOrder() == null ? 0 : p.getSortOrder())
                             .thenComparing(Permission::getCode))
@@ -78,8 +90,16 @@ public class DepartmentPermissionAdminService {
             groups.add(new Group(entry.getKey(), minSort,
                     perms.stream().map(p -> new PermissionCatalogDto.Item(p.getCode(), p.getName())).toList()));
         }
-        groups.sort(Comparator.comparingInt(Group::minSort).thenComparing(Group::category));
-        return groups.stream().map(g -> new PermissionCatalogDto(g.category(), g.items())).toList();
+        groups.sort(Comparator
+                .comparingInt((Group g) -> {
+                    int idx = MODULE_ORDER.indexOf(g.key().module());
+                    return idx < 0 ? MODULE_ORDER.size() : idx;
+                })
+                .thenComparingInt(Group::minSort)
+                .thenComparing(g -> g.key().category()));
+        return groups.stream()
+                .map(g -> new PermissionCatalogDto(g.key().module(), g.key().category(), g.items()))
+                .toList();
     }
 
     /** 某部门已直配的权限点 code 列表。 */

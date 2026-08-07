@@ -12,11 +12,12 @@ typedef PermissionPredicate = bool Function(AdminPermission permission);
 typedef PermissionItemBuilder =
     Widget Function(BuildContext context, AdminPermission permission);
 
-/// 高密度权限目录的统一浏览器。
+/// 高密度权限目录的统一浏览器（两级：功能模块 → 子类 → 权限项）。
 ///
-/// 权限仍按后端动态目录完整保留，但默认只展示分组摘要。管理员可以按名称、编码或
-/// 分组搜索，也可以按状态筛选；命中的分组自动展开。批量操作始终作用于完整分组，
-/// 不会因当前搜索隐藏了部分权限而产生歧义。
+/// 权限仍按后端动态目录完整保留。前端按 [PermissionCatalogGroup.module] 聚合成「模块段」，
+/// 段内再按 [PermissionCatalogGroup.category]（子类）折叠。管理员可按名称、子类或模块搜索，
+/// 或按状态筛选；命中的模块与子类自动展开。批量操作分三档（全部 / 本模块 / 本组），
+/// 始终作用于完整集合，不会因当前搜索隐藏了部分权限而产生歧义。
 class PermissionCatalogBrowser extends StatefulWidget {
   const PermissionCatalogBrowser({
     super.key,
@@ -31,6 +32,8 @@ class PermissionCatalogBrowser extends StatefulWidget {
     this.onDisableGroup,
     this.enableGroupLabel = '本组全部授权',
     this.disableGroupLabel = '本组全部设为未授权',
+    this.enableModuleLabel = '本模块全部授权',
+    this.disableModuleLabel = '本模块全部设为未授权',
     this.onEnableAll,
     this.onDisableAll,
     this.enableAllLabel = '全部授权',
@@ -49,9 +52,12 @@ class PermissionCatalogBrowser extends StatefulWidget {
   final String enableGroupLabel;
   final String disableGroupLabel;
 
+  /// 本模块（一级）整段批量授权/收回；作用于该模块全部权限，复用整组回调。
+  final String enableModuleLabel;
+  final String disableModuleLabel;
+
   /// 跨分组「全部授权/全部收回」回调。批量操作始终作用于完整目录
-  /// （[groups] 的全部 permissions），不受当前搜索/状态筛选影响——与
-  /// [onEnableGroup] 的整组批量原则一致。为 null 时对应按钮不渲染。
+  /// （[groups] 的全部 permissions），不受当前搜索/状态筛选影响。为 null 时按钮不渲染。
   final ValueChanged<List<AdminPermission>>? onEnableAll;
   final ValueChanged<List<AdminPermission>>? onDisableAll;
   final String enableAllLabel;
@@ -64,8 +70,8 @@ class PermissionCatalogBrowser extends StatefulWidget {
 
 class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
   final _searchController = TextEditingController();
+  final Set<String> _expandedModules = {};
   final Set<String> _expandedCategories = {};
-  final Set<String> _collapsedWhileFiltering = {};
   PermissionCatalogFilter _filter = PermissionCatalogFilter.all;
   String _query = '';
 
@@ -89,52 +95,76 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
       widget.isChanged?.call(permission) ?? false,
   };
 
-  List<_VisiblePermissionGroup> _visibleGroups() {
+  /// 按输入顺序聚合模块（后端已按 MODULE_ORDER 排序，故输入即模块主序）。
+  List<_ModuleGroup> _allModules() {
+    final order = <String>[];
+    final map = <String, List<PermissionCatalogGroup>>{};
+    for (final g in widget.groups) {
+      final m = g.module.isEmpty ? '其他' : g.module;
+      (map[m] ??= <PermissionCatalogGroup>[]).add(g);
+      if (!order.contains(m)) order.add(m);
+    }
+    return [for (final m in order) _ModuleGroup(m, map[m]!)];
+  }
+
+  List<_VisibleModule> _visibleModules() {
     final query = _query.trim().toLowerCase();
-    final visible = <_VisiblePermissionGroup>[];
-    for (final group in widget.groups) {
-      final groupMatches = group.category.toLowerCase().contains(query);
-      final permissions = group.permissions
-          .where((permission) {
-            if (!_matchesState(permission)) return false;
-            if (query.isEmpty || groupMatches) return true;
-            return permission.name.toLowerCase().contains(query) ||
-                permission.code.toLowerCase().contains(query);
-          })
-          .toList(growable: false);
-      if (permissions.isNotEmpty) {
-        visible.add(_VisiblePermissionGroup(group, permissions));
+    final result = <_VisibleModule>[];
+    for (final mod in _allModules()) {
+      final moduleMatches = mod.module.toLowerCase().contains(query);
+      final fullPerms = <AdminPermission>[];
+      final visibleSubcats = <_VisibleSubcat>[];
+      for (final g in mod.groups) {
+        fullPerms.addAll(g.permissions);
+        final catMatches = g.category.toLowerCase().contains(query);
+        final visible = g.permissions.where((p) {
+          if (!_matchesState(p)) return false;
+          if (query.isEmpty || moduleMatches || catMatches) return true;
+          return p.name.toLowerCase().contains(query) ||
+              p.code.toLowerCase().contains(query);
+        }).toList(growable: false);
+        if (visible.isNotEmpty) {
+          visibleSubcats.add(_VisibleSubcat(g, visible));
+        }
+      }
+      if (visibleSubcats.isNotEmpty) {
+        result.add(_VisibleModule(mod.module, fullPerms, visibleSubcats));
       }
     }
-    return visible;
+    return result;
   }
 
-  bool _isExpanded(String category) {
-    if (_isFiltering) {
-      return !_collapsedWhileFiltering.contains(category);
-    }
-    return _expandedCategories.contains(category);
-  }
+  bool _isModuleExpanded(String module) =>
+      _isFiltering ? true : _expandedModules.contains(module);
 
-  void _setExpanded(String category, bool expanded) {
+  void _setModuleExpanded(String module, bool expanded) {
+    if (_isFiltering) return;
     setState(() {
-      final target = _isFiltering
-          ? _collapsedWhileFiltering
-          : _expandedCategories;
-      if (_isFiltering) {
-        expanded ? target.remove(category) : target.add(category);
+      if (expanded) {
+        _expandedModules.add(module);
       } else {
-        expanded ? target.add(category) : target.remove(category);
+        _expandedModules.remove(module);
+      }
+    });
+  }
+
+  bool _isCategoryExpanded(String category) =>
+      _isFiltering ? true : _expandedCategories.contains(category);
+
+  void _setCategoryExpanded(String category, bool expanded) {
+    if (_isFiltering) return;
+    setState(() {
+      if (expanded) {
+        _expandedCategories.add(category);
+      } else {
+        _expandedCategories.remove(category);
       }
     });
   }
 
   void _setFilter(PermissionCatalogFilter filter) {
     if (_filter == filter) return;
-    setState(() {
-      _filter = filter;
-      _collapsedWhileFiltering.clear();
-    });
+    setState(() => _filter = filter);
   }
 
   void _resetFilters() {
@@ -142,23 +172,23 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     setState(() {
       _query = '';
       _filter = PermissionCatalogFilter.all;
-      _collapsedWhileFiltering.clear();
     });
   }
 
-  void _toggleAllGroups(List<_VisiblePermissionGroup> groups) {
-    final categories = groups.map((group) => group.group.category).toSet();
-    final allExpanded = categories.every(_isExpanded);
+  void _toggleAllModules(List<_VisibleModule> modules) {
+    final categories = <String>[];
+    final allExpanded = modules.every((m) {
+      categories.addAll(m.subcats.map((s) => s.full.category));
+      return _expandedModules.contains(m.module);
+    });
     setState(() {
-      if (_isFiltering) {
-        if (allExpanded) {
-          _collapsedWhileFiltering.addAll(categories);
-        } else {
-          _collapsedWhileFiltering.removeAll(categories);
-        }
-      } else if (allExpanded) {
+      if (allExpanded) {
+        _expandedModules.clear();
         _expandedCategories.removeAll(categories);
       } else {
+        for (final m in modules) {
+          _expandedModules.add(m.module);
+        }
         _expandedCategories.addAll(categories);
       }
     });
@@ -175,14 +205,12 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     final changedCount = widget.isChanged == null
         ? 0
         : allPermissions.where(widget.isChanged!).length;
-    final groups = _visibleGroups();
-    final visibleCount = groups.fold<int>(
+    final modules = _visibleModules();
+    final visibleCount = modules.fold<int>(
       0,
-      (sum, group) => sum + group.permissions.length,
+      (sum, m) =>
+          sum + m.subcats.fold<int>(0, (s, sc) => s + sc.visible.length),
     );
-    final allExpanded =
-        groups.isNotEmpty &&
-        groups.every((group) => _isExpanded(group.group.category));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,12 +220,9 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
             final search = UtenSearchBar(
               key: const ValueKey('permission-catalog-search'),
               controller: _searchController,
-              hint: '搜索权限名称、代码或分组',
+              hint: '搜索权限名称、子类或模块',
               debounce: const Duration(milliseconds: 180),
-              onChanged: (value) => setState(() {
-                _query = value;
-                _collapsedWhileFiltering.clear();
-              }),
+              onChanged: (value) => setState(() => _query = value),
             );
             final summary = Text(
               '显示 $visibleCount / $total 项 · '
@@ -260,17 +285,22 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               ),
             ),
             const SizedBox(width: UtenSpacing.s8),
-            TextButton.icon(
-              key: const ValueKey('permission-toggle-all-groups'),
-              onPressed: groups.isEmpty ? null : () => _toggleAllGroups(groups),
-              icon: Icon(
-                allExpanded
-                    ? Icons.unfold_less_rounded
-                    : Icons.unfold_more_rounded,
-                size: 18,
+            if (!_isFiltering)
+              TextButton.icon(
+                key: const ValueKey('permission-toggle-all-groups'),
+                onPressed: modules.isEmpty
+                    ? null
+                    : () => _toggleAllModules(modules),
+                icon: Icon(
+                  _allModulesExpanded(modules)
+                      ? Icons.unfold_less_rounded
+                      : Icons.unfold_more_rounded,
+                  size: 18,
+                ),
+                label: Text(
+                  _allModulesExpanded(modules) ? '全部折叠' : '全部展开',
+                ),
               ),
-              label: Text(allExpanded ? '全部折叠' : '全部展开'),
-            ),
           ],
         ),
         if ((widget.onEnableAll != null || widget.onDisableAll != null) &&
@@ -297,20 +327,24 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
             ),
           ),
         const SizedBox(height: UtenSpacing.s12),
-        if (groups.isEmpty)
+        if (modules.isEmpty)
           UtenEmpty(
             key: const ValueKey('permission-catalog-empty'),
             icon: Icons.search_off_rounded,
             message: '没有匹配的权限',
-            description: '可尝试搜索权限名称、代码或分组，或切换上方状态筛选。',
+            description: '可尝试搜索权限名称、子类或模块，或切换上方状态筛选。',
             actionLabel: '查看全部权限',
             onAction: _resetFilters,
           )
         else
-          for (final visibleGroup in groups) _groupSection(visibleGroup),
+          for (final module in modules) _moduleSection(module),
       ],
     );
   }
+
+  bool _allModulesExpanded(List<_VisibleModule> modules) =>
+      modules.isNotEmpty &&
+      modules.every((m) => _expandedModules.contains(m.module));
 
   Widget _filterChip({
     required Key key,
@@ -326,21 +360,74 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     );
   }
 
-  Widget _groupSection(_VisiblePermissionGroup visibleGroup) {
-    final group = visibleGroup.group;
+  Widget _moduleSection(_VisibleModule module) {
+    final moduleTotal = module.fullPerms.length;
+    final moduleEnabled =
+        module.fullPerms.where(widget.isEnabled).length;
+    final countLabel = _isFiltering
+        ? '${module.subcats.fold<int>(0, (s, sc) => s + sc.visible.length)} 项匹配'
+        : '$moduleEnabled/$moduleTotal';
+    final canBatch =
+        widget.onEnableGroup != null || widget.onDisableGroup != null;
+
+    return PermCatalogGroupSection(
+      key: ValueKey('permission-module-${module.module}'),
+      level: PermCatalogLevel.module,
+      title: module.module,
+      countLabel: countLabel,
+      expanded: _isModuleExpanded(module.module),
+      onExpandedChanged: (expanded) =>
+          _setModuleExpanded(module.module, expanded),
+      trailing: canBatch
+          ? PopupMenuButton<_PermissionGroupAction>(
+              tooltip: '批量设置${module.module}',
+              icon: const Icon(Icons.more_horiz_rounded),
+              onSelected: (action) {
+                switch (action) {
+                  case _PermissionGroupAction.enable:
+                    widget.onEnableGroup?.call(module.fullPerms);
+                    break;
+                  case _PermissionGroupAction.disable:
+                    widget.onDisableGroup?.call(module.fullPerms);
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                if (widget.onEnableGroup != null)
+                  PopupMenuItem(
+                    value: _PermissionGroupAction.enable,
+                    child: Text(widget.enableModuleLabel),
+                  ),
+                if (widget.onDisableGroup != null)
+                  PopupMenuItem(
+                    value: _PermissionGroupAction.disable,
+                    child: Text(widget.disableModuleLabel),
+                  ),
+              ],
+            )
+          : null,
+      children: [
+        for (final subcat in module.subcats) _categorySection(subcat),
+      ],
+    );
+  }
+
+  Widget _categorySection(_VisibleSubcat subcat) {
+    final group = subcat.full;
     final enabledCount = group.permissions.where(widget.isEnabled).length;
     final countLabel = _isFiltering
-        ? '${visibleGroup.permissions.length} 项匹配'
+        ? '${subcat.visible.length} 项匹配'
         : '$enabledCount/${group.permissions.length}';
     final canBatch =
         widget.onEnableGroup != null || widget.onDisableGroup != null;
 
     return PermCatalogGroupSection(
-      key: ValueKey('permission-group-${group.category}'),
+      key: ValueKey('permission-category-${group.category}'),
       title: group.category,
       countLabel: countLabel,
-      expanded: _isExpanded(group.category),
-      onExpandedChanged: (expanded) => _setExpanded(group.category, expanded),
+      expanded: _isCategoryExpanded(group.category),
+      onExpandedChanged: (expanded) =>
+          _setCategoryExpanded(group.category, expanded),
       trailing: canBatch
           ? PopupMenuButton<_PermissionGroupAction>(
               tooltip: '批量设置${group.category}',
@@ -370,7 +457,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
             )
           : null,
       children: [
-        for (final permission in visibleGroup.permissions)
+        for (final permission in subcat.visible)
           KeyedSubtree(
             key: ValueKey('permission-${permission.code}'),
             child: widget.itemBuilder(context, permission),
@@ -380,11 +467,23 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
   }
 }
 
-class _VisiblePermissionGroup {
-  const _VisiblePermissionGroup(this.group, this.permissions);
+class _ModuleGroup {
+  const _ModuleGroup(this.module, this.groups);
+  final String module;
+  final List<PermissionCatalogGroup> groups;
+}
 
-  final PermissionCatalogGroup group;
-  final List<AdminPermission> permissions;
+class _VisibleSubcat {
+  const _VisibleSubcat(this.full, this.visible);
+  final PermissionCatalogGroup full;
+  final List<AdminPermission> visible;
+}
+
+class _VisibleModule {
+  const _VisibleModule(this.module, this.fullPerms, this.subcats);
+  final String module;
+  final List<AdminPermission> fullPerms;
+  final List<_VisibleSubcat> subcats;
 }
 
 enum _PermissionGroupAction { enable, disable }

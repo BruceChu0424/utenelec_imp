@@ -291,14 +291,6 @@ abstract final class ApiEndpoints {
   static const adminImpersonationEnd = '/admin/impersonation/end';
   static const adminImpersonationTargets = '/admin/impersonation/targets';
 
-  /// 审批行为 → 唯一负责人设置（workflow_assignment:manage + 密码二次确认）。
-  static const adminWorkflowResponsibilities =
-      '/admin/workflow-responsibilities';
-  static const adminWorkflowResponsibilityReviewers =
-      '$adminWorkflowResponsibilities/reviewers';
-  static String adminWorkflowResponsibility(String behaviorCode) =>
-      '$adminWorkflowResponsibilities/${Uri.encodeComponent(behaviorCode)}';
-
   /// 公共运行时设置（仅需登录，前端读会话空闲超时阈值等）
   static const publicSettings = '/settings/public';
 

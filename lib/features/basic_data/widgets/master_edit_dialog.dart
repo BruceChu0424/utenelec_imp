@@ -130,11 +130,17 @@ class MasterEditForm extends StatefulWidget {
     required this.fields,
     this.initialValues = const <String, String>{},
     this.fixedValues = const <String, dynamic>{},
+    this.readOnlyKeys,
   });
 
   final List<MasterFieldDef> fields;
   final Map<String, String> initialValues;
   final Map<String, dynamic> fixedValues;
+
+  /// 运行期只读字段 key 集合（如无 goods:price:edit 时锁定 price/discount）：
+  /// 仅 UI 禁用展示，buildBody 仍照常上送控制器现有值（与 MasterFieldDef.readOnly 不同——
+  /// 后者整段跳过不上送，用于编号等系统生成字段）。故锁定字段以原值回传，后端判定「未改」放行。
+  final Set<String>? readOnlyKeys;
 
   @override
   State<MasterEditForm> createState() => MasterEditFormState();
@@ -337,7 +343,8 @@ class MasterEditFormState extends State<MasterEditForm> {
   }
 
   Widget _field(MasterFieldDef f) {
-    if (f.readOnly) return _readOnlyField(f);
+    final locked = widget.readOnlyKeys?.contains(f.key) ?? false;
+    if (f.readOnly || locked) return _readOnlyField(f);
     if (f.type == MasterFieldType.select) return _selectField(f);
     if (f.type == MasterFieldType.custom) {
       return f.customBuilder!(

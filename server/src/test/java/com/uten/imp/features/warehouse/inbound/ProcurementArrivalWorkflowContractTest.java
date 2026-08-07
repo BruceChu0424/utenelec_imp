@@ -209,8 +209,8 @@ class ProcurementArrivalWorkflowContractTest {
                 "src/main/java/com/uten/imp/features/notice/"
                         + "ChainNoticeService.java");
         assertThat(notices)
-                .contains("UUID financeUser =")
-                .contains("notifyUser(financeUser, TYPE_URGENT")
+                .contains("financeReviewerUserIds()")
+                .contains("sendToUser(reviewer, TYPE_URGENT")
                 .contains("departmentUserIds(\"SUB_WH\")")
                 .contains("notifyUser(ownerUser, TYPE_TASK")
                 .doesNotContain("到货超量待决定")

@@ -120,10 +120,10 @@ void main() {
     // 表头信息
     expect(find.text('WO-2026-001'), findsOneWidget);
     expect(find.text('单据号'), findsOneWidget);
-    expect(find.text('等待财务负责人审核'), findsOneWidget);
+    expect(find.text('等待财务审核组审核'), findsOneWidget);
 
     // 财务审批横幅
-    expect(find.text('等待指定财务负责人审核'), findsOneWidget);
+    expect(find.text('等待财务审核组处理'), findsOneWidget);
 
     // 明细表
     expect(find.text('明细 (1)'), findsOneWidget);

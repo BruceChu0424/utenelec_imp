@@ -18,9 +18,14 @@ import 'sales_doc_link_picker.dart';
 /// 保存时随行写回，UI 单元格只读/下拉同步到 row 字段）。V66 报表补列（ machiningPrice 等）
 /// 按 docType 在列定义中显隐对应列。
 class SalesGridRow extends EditableGridRow with AmountRowMixin {
-  SalesGridRow() {
+  /// 订单：金额 = 数量 × 单价 × 折扣（折扣由货品主档带入、锁定）；其它单据类型仍 = 数量 × 单价。
+  /// 标志隔离订单折扣语义，避免出货/退货等单据的折扣列影响其金额（与各自后端口径一致）。
+  final bool amountUsesDiscount;
+
+  SalesGridRow({this.amountUsesDiscount = false}) {
     qty.addListener(_recalc);
     price.addListener(_recalc);
+    discount.addListener(_recalc);
     // 校验红标（保存时标记，用户改动任一必填内容即自动消除）。
     goodsNotifier.addListener(_clearInvalid);
     qty.addListener(_clearInvalid);
@@ -60,7 +65,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 
   // V66 报表补列：成本分项/包装派生/折扣。空文本不随 body 提交（后端按 nullable 处理）。
   // order：机加价/围数/进仓数量（inNo/outNo 是系统字段，不入录）。
-  // shipment/other_shipment：材料价/压铸价/机加价/围数/折扣。
+  // other_shipment：材料价/压铸价/机加价/围数/折扣；shipment 已精简，不展示这些补列。
   // return：折扣。
   final machiningPrice = TextEditingController();
   final circumference = TextEditingController();
@@ -81,8 +86,9 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   }
 
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
-  factory SalesGridRow.fromLinked(SalesLinkedItem li, GoodsOption goods) {
-    final r = SalesGridRow()
+  factory SalesGridRow.fromLinked(SalesLinkedItem li, GoodsOption goods,
+      {bool amountUsesDiscount = false}) {
+    final r = SalesGridRow(amountUsesDiscount: amountUsesDiscount)
       ..goods = goods
       ..orderItemId = li.orderItemId
       ..outItemId = li.outItemId
@@ -93,13 +99,19 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     return r;
   }
 
-  void _recalc() => recalcAmount(
-    () => (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
-  );
+  void _recalc() => recalcAmount(() {
+    final q = double.tryParse(qty.text) ?? 0;
+    final p = double.tryParse(price.text) ?? 0;
+    if (!amountUsesDiscount) return q * p;
+    // 订单：金额 = 数量 × 单价 × 折扣倍率；折扣空/0 → 不打折（倍率 1，兼容无折扣行）。
+    final d = double.tryParse(discount.text);
+    final mult = (d == null || d == 0) ? 1.0 : d;
+    return q * p * mult;
+  });
 
   /// 深拷贝（明细复制/粘贴用）：新建行 + 拷贝各控制器文本 + 透传字段 + 自动重算金额。
   SalesGridRow clone() {
-    final c = SalesGridRow()
+    final c = SalesGridRow(amountUsesDiscount: amountUsesDiscount)
       ..goods = goods
       ..orderItemId = orderItemId
       ..outItemId = outItemId
@@ -226,14 +238,26 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             priceRequired &&
             (row.price.text.trim().isEmpty ||
                 double.tryParse(row.price.text.trim()) == null),
-        child: TextField(
-          controller: row.price,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
-        ),
+        // 订单/出货：单价由货品主档（出货亦可由来源订货单引入）带入、锁定不可改。
+        child: (docType == SalesDocType.order || docType == SalesDocType.shipment)
+            ? _lockedCell(context, row.price)
+            : TextField(
+                controller: row.price,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(isDense: true, hintText: '0'),
+              ),
       ),
     ),
+    // 订单折扣：紧跟单价，由货品主档（zk 倍率，1=原价）自动带入、锁定。
+    if (docType == SalesDocType.order)
+      EditableGridColumn<SalesGridRow>(
+        key: 'discount',
+        label: '折扣',
+        width: 80,
+        numeric: true,
+        cellBuilder: (context, row) => _lockedCell(context, row.discount),
+      ),
     EditableGridColumn<SalesGridRow>(
       key: 'amount',
       label: '金额',
@@ -245,24 +269,22 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       ),
     ),
     // V66 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
+    // 出货单(shipment)只留 货品/颜色/单位/数量/单价/金额/备注：成本分项/折扣等补列不展示
+    //（出货是发货履约，价格/折扣沿用订货单）。隐藏列的字段仍在行模型里，编辑既有出货单时
+    // 回填并随保存回写，不丢数据。
     if (docType == SalesDocType.order ||
-        docType == SalesDocType.shipment ||
         docType == SalesDocType.otherShipment)
       _extraNumericColumn('机加价', 'machiningPrice', (r) => r.machiningPrice),
     if (docType == SalesDocType.order ||
-        docType == SalesDocType.shipment ||
         docType == SalesDocType.otherShipment)
       _extraNumericColumn('围数', 'circumference', (r) => r.circumference),
     if (docType == SalesDocType.order)
       _extraNumericColumn('进仓数量', 'inboundQty', (r) => r.inboundQty),
-    if (docType == SalesDocType.shipment ||
-        docType == SalesDocType.otherShipment)
+    if (docType == SalesDocType.otherShipment)
       _extraNumericColumn('材料价', 'materialPrice', (r) => r.materialPrice),
-    if (docType == SalesDocType.shipment ||
-        docType == SalesDocType.otherShipment)
+    if (docType == SalesDocType.otherShipment)
       _extraNumericColumn('压铸价', 'dieCastPrice', (r) => r.dieCastPrice),
-    if (docType == SalesDocType.shipment ||
-        docType == SalesDocType.otherShipment ||
+    if (docType == SalesDocType.otherShipment ||
         docType == SalesDocType.returnDoc)
       _extraNumericColumn('折扣', 'discount', (r) => r.discount),
     // 退货专属：处理方案 / 责任单位（无字典端点，用预置业务选项）。
@@ -323,6 +345,17 @@ Widget _readOnlyMasterCell(
         ),
       );
     },
+  );
+}
+
+/// 锁定单元格（订单单价/折扣由货品主档带入、不可改）：禁用输入框显既有值，
+/// 控制器值仍随保存提交（后端按主档价/折扣计算金额）。
+Widget _lockedCell(BuildContext context, TextEditingController ctl) {
+  return TextField(
+    controller: ctl,
+    enabled: false,
+    textAlign: TextAlign.right,
+    decoration: const InputDecoration(isDense: true),
   );
 }
 

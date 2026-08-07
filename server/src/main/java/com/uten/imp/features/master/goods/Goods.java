@@ -212,7 +212,9 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "g_style")
     private Integer gStyle;             // GStyle
     private Integer ck;                 // ck
-    private BigDecimal zk;              // zk
+    /** 折扣倍率 1.00=原价、0.90=9折（有效售价 = 单价 × 折扣）。复用老库 B_Goods.zk 列，不改 DB 列名。 */
+    @Column(name = "zk", precision = 18, scale = 4)
+    private BigDecimal discount;        // zk（折扣）
 
     // ===== 图片（bytea，本次建列不迁二进制，结构留位，后续 bcp 灌图） =====
     @Column(name = "ground_graph")

@@ -37,6 +37,8 @@ public class GoodsSaveRequest {
     private String spec;         // Standard 规格
     @Digits(integer = 14, fraction = 4)
     private BigDecimal price;    // Price（NUMERIC(18,4)）
+    @Digits(integer = 14, fraction = 4)
+    private BigDecimal discount; // 折扣倍率 1.00=原价 0.90=9折（复用老库 B_Goods.zk；改需 goods:price:edit 权限）
     private String material;     // Material 材质
     private BigDecimal thickness;
     private Integer thicknessUnitLegacyId; // 厚度单位（→ units.legacy_id；V203）

@@ -77,7 +77,7 @@ class AuditTriggerCoverageMigrationContractTest {
             "production_planning_drafts", "production_goods_workshop_preferences",
             "production_material_make_receipt_allocations",
             // Finance-assigned procurement approval and warehouse expectation ledgers.
-            "workflow_responsibility_assignments", "procurement_order_approval_cases",
+            "procurement_order_approval_cases",
             "procurement_order_approval_events", "inbound_expectations",
             "inbound_expectation_items",
             // Finance-controlled over-arrival and exact-owner supplier-return ledgers.

@@ -301,18 +301,26 @@ V190 不修改业务数据、不扫描回填历史 `audit_log`，也不能证明
 
 > 版本边界：公司目标库只读证据仍只到 V190。V191–V202 均为源码候选；空库 Testcontainers、编译和静态契约通过不是目标库部署证据，也不能替代 V190→V202 备份、非空数据对账、恢复演练和真实岗位 UAT。
 
-- `V196` 新建 `workflow_responsibility_assignments`、`procurement_order_approval_cases/events`、`inbound_expectations/items`。计划链下达采购/委外申请，业务端只读并跨申请选行、部分分解；一张订货单限一个供应商/委外商和一个仓库。订货保存草稿后提交精确财务负责人，只有负责人通过才令订单 `status=1`、回写申请累计并生成预计到货。
+- `V196` 新建 `procurement_order_approval_cases/events`、`inbound_expectations/items`（原建 `workflow_responsibility_assignments` 已于 V229 删除，见 ADR-027）。计划链下达采购/委外申请，业务端只读并跨申请选行、部分分解；一张订货单限一个供应商/委外商和一个仓库。订货保存草稿后提交，由财务部门持 `finance_order_approval:review` 的审核组（含跨部门点名加授者）审批，通过才令订单 `status=1`、回写申请累计并生成预计到货。
 - `V197` 对 V196 新表重跑完整审计覆盖；`V198` 消除父部门授权向计划泄漏商业单据；`V199` 以 `v_procurement_decomposition_tasks` 统一扣除已生效量和其它 `PENDING` 财务订单占用；`V200` 继续阻断计划继承委外商业字段及供应商主档。
-- `V201` 新建 `procurement_arrival_exceptions`、`supplier_return_tasks`、`procurement_arrival_exception_events`，并以数据库守卫把财务追加额度绑定到具体收货单。发现超量时只提交异常/Outbox 后返回 409；库存、AP、订单累计和收货状态都不改变。精确财务负责人可全批、自定义批准或不批超量；服务端收窄草稿数量/金额，未批准量只交原下单账号完成供应商退回，批准量仍须仓库再审。
+- `V201` 新建 `procurement_arrival_exceptions`、`supplier_return_tasks`、`procurement_arrival_exception_events`，并以数据库守卫把财务追加额度绑定到具体收货单。发现超量时只提交异常/Outbox 后返回 409；库存、AP、订单累计和收货状态都不改变。由财务部门持 `finance_order_approval:review` 的审核组（含个人加授者）决定全批、自定义批准或不批超量；服务端收窄草稿数量/金额，未批准量只交原下单账号完成供应商退回，批准量仍须仓库再审。
 - `V202` 不是“仅给上述三表挂触发器”的定向脚本，而是再次遍历全部 `public` 业务表：缺触发器才补 `fn_audit()`，重复、禁用、非 AFTER ROW、I/U/D 不全或函数不受信均 fail-closed。它只记录 V202 应用后的未来操作，不补造历史审计。
 
 数量基准示例：订单财务已批 10 吨且尚未收退，本次草稿到货 100 吨，则批准余量 10、请求超量 90。`APPROVE_ALL` 接受 100/退回 0；`APPROVE_CUSTOM(customApprovedExcessQty=5)` 接受 15/退回 85；`REJECT_EXCESS` 接受 10/退回 90。三种情况在财务决定后仍未写库存/AP；接受量只有仓库再审成功才过账。若决定时批准余量已因并发变为 0，不批将删除该草稿行并直接形成 100 吨退回任务。
 
 Flyway 已应用迁移必须保持原字节、文件名和顺序；任何共享环境一旦执行 V196–V202，修正只能新增 V203+。API、权限、状态与委外 `check_qty/girth_qty` 调整见 [Java 后端契约 §十](28-Java后端契约.md#十计划需求分解订货财务审批与超量到货专用契约v196v202)。
 
+### V230 生产计划自底向上整树确认迁移门禁
+
+`V230__production_plan_bom_depth_and_auto.sql` 是纯加法迁移：给 `production_plans` 加 `bom_depth INT NULL`（MAKE 树距根深度，0=根）和 `auto_generated BOOLEAN NOT NULL DEFAULT FALSE`（标记 orchestrator 自动建的子计划）+ 两个 partial 索引。**不修改任何业务数据、不回填历史行、不增删约束/触发器**，旧行两列保持 NULL/FALSE。
+
+- 目标库执行前后必须满足：`production_plans` 行数与历史 `status/bill_no/source_doc_no` 等不变；`auto_generated` 全库为 FALSE（仅新 orchestrator 调用才写 TRUE）；`bom_depth` 全库为 NULL（仅自动子计划写值）。
+- 该两列只服务 [ADR-028](../99-决策记录-ADR/ADR-028-计划部自底向上整树确认.md) 的自底向上整树确认（`BottomUpPlanOrchestrator.confirmFullTree`，能力开关 `production.bottom-up-orchestrator.enabled` **默认关**）：`bom_depth` 驱动「最深层可开工优先」UI 排序，`auto_generated` 使级联回退只作用于自动子。迁移本身不开启该能力，历史计划绝不自动展开或重排。
+- 无 BOM 的自制叶子件不被 confirm 展开（其 snapshot 内联 goods_bom_items 会得空产品行）；它由应用层报工 + 成品入库直接生产，与人工流程一致。本迁移不改变该语义。
+
 ---
 
-**最后更新**：2026-08-02。补充采购单位确定性回填、V168 事务演练、V181 BOM 占位隔离门禁、V187 销售发运/仓库状态、V188 不可变事件、V189 销售退货质量冻结和 V190 审计完整 sweep 的历史安全迁移规则，并增加 V191–V195 生产计划及 V196–V202 采购/委外财务审批候选的零回填、职责分离、收货单绑定额度、全表审计和未来写入边界。
+**最后更新**：2026-08-07。补充采购单位确定性回填、V168 事务演练、V181 BOM 占位隔离门禁、V187 销售发运/仓库状态、V188 不可变事件、V189 销售退货质量冻结和 V190 审计完整 sweep 的历史安全迁移规则，并增加 V191–V195 生产计划及 V196–V202 采购/委外财务审批候选的零回填、职责分离、收货单绑定额度、全表审计和未来写入边界。
 迁移脚本和多数业务映射已经形成，但当前发布结论仍为
 **NO-GO**：BOM 20,798 条拒绝行、委外发料 49,889 条历史数量、客户归属计数、
 总账开账/材料结转，以及全模块增量追平/回滚尚未关闭。财务 API/UI 已实现不等于财务数据已签字验收；

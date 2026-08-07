@@ -1,7 +1,8 @@
-// 财务订货审批任务与审批负责人配置模型。
+// 财务订货审批任务模型。
 //
-// 这些接口属于新工作流，后端演进期间允许常见字段别名；但关键身份字段
-// （orderId / assigneeUserId）缺失时前端保持 fail-closed，不猜测可办理对象。
+// V229/ADR-027 起：审批人为「财务部门持 finance_order_approval:review 的审核组」，
+// 不再单点指定负责人。后端演进期间允许常见字段别名；但关键身份字段
+// （orderId）缺失时前端保持 fail-closed，不猜测可办理对象。
 
 enum FinanceProcurementOrderType { purchase, subcontract, unknown }
 
@@ -219,160 +220,6 @@ class FinanceProcurementApprovalPage {
   }
 }
 
-class FinanceWorkflowBehavior {
-  const FinanceWorkflowBehavior({
-    required this.code,
-    required this.label,
-    required this.description,
-    required this.iconKey,
-  });
-
-  final String code;
-  final String label;
-  final String description;
-
-  /// 模型不依赖 Flutter；页面据此映射 Material 图标。
-  final String iconKey;
-
-  static const purchaseOrderFinanceApproval = FinanceWorkflowBehavior(
-    code: 'PURCHASE_ORDER_FINANCE_APPROVAL',
-    label: '采购订货单财务审核',
-    description: '这里指定的人同时审核采购订货单及其超量到货，其他人不能办理。',
-    iconKey: 'purchase',
-  );
-
-  static const subcontractOrderFinanceApproval = FinanceWorkflowBehavior(
-    code: 'SUBCONTRACT_ORDER_FINANCE_APPROVAL',
-    label: '委外订货单财务审核',
-    description: '这里指定的人同时审核委外订货单及其超量到货，其他人不能办理。',
-    iconKey: 'subcontract',
-  );
-
-  static const values = <FinanceWorkflowBehavior>[
-    purchaseOrderFinanceApproval,
-    subcontractOrderFinanceApproval,
-  ];
-}
-
-class FinanceWorkflowResponsibility {
-  const FinanceWorkflowResponsibility({
-    required this.behaviorCode,
-    required this.version,
-    this.assigneeUserId,
-    this.assigneeName,
-    this.assigneeDepartmentName,
-    this.updatedAt,
-    this.updatedByName,
-  });
-
-  final String behaviorCode;
-  final String? assigneeUserId;
-  final String? assigneeName;
-  final String? assigneeDepartmentName;
-  final int version;
-  final String? updatedAt;
-  final String? updatedByName;
-
-  bool get configured => assigneeUserId?.isNotEmpty == true;
-
-  factory FinanceWorkflowResponsibility.empty(String behaviorCode) =>
-      FinanceWorkflowResponsibility(behaviorCode: behaviorCode, version: 0);
-
-  factory FinanceWorkflowResponsibility.fromJson(
-    Map<String, dynamic> json, {
-    String? fallbackBehaviorCode,
-  }) {
-    final root = _map(json['data']) ?? json;
-    final assignee = _map(root['assignee']) ?? _map(root['reviewer']);
-    final updater = _map(root['updatedBy']);
-    return FinanceWorkflowResponsibility(
-      behaviorCode: _firstString([
-        root['behaviorCode'],
-        root['code'],
-        root['behavior'],
-        fallbackBehaviorCode,
-      ]),
-      assigneeUserId: _firstNullableString([
-        root['assigneeUserId'],
-        root['reviewerUserId'],
-        root['userId'],
-        assignee?['userId'],
-        assignee?['id'],
-      ]),
-      assigneeName: _firstNullableString([
-        root['assigneeName'],
-        root['reviewerName'],
-        assignee?['name'],
-        assignee?['displayName'],
-      ]),
-      assigneeDepartmentName: _firstNullableString([
-        root['assigneeDepartmentName'],
-        root['departmentName'],
-        assignee?['departmentName'],
-      ]),
-      version: _firstInt([root['version'], root['rowVersion']]) ?? 0,
-      updatedAt: _firstNullableString([root['updatedAt'], root['modifiedAt']]),
-      updatedByName: _firstNullableString([
-        root['updatedByName'],
-        root['modifiedByName'],
-        updater?['name'],
-      ]),
-    );
-  }
-}
-
-class FinanceWorkflowReviewer {
-  const FinanceWorkflowReviewer({
-    required this.userId,
-    required this.employeeId,
-    required this.employeeName,
-    this.departmentId,
-    this.departmentName,
-    this.loginAccount,
-    this.active = true,
-  });
-
-  final String userId;
-  final String employeeId;
-  final String employeeName;
-  final String? departmentId;
-  final String? departmentName;
-  final String? loginAccount;
-  final bool active;
-
-  factory FinanceWorkflowReviewer.fromJson(Map<String, dynamic> json) {
-    final root = _map(json['data']) ?? json;
-    final employee = _map(root['employee']);
-    return FinanceWorkflowReviewer(
-      userId: _firstString([
-        root['userId'],
-        root['assigneeUserId'],
-        root['accountId'],
-        root['id'],
-      ]),
-      employeeId: _string(root['employeeId']) ?? '',
-      employeeName: _firstString([
-        root['employeeName'],
-        root['displayName'],
-        root['name'],
-        employee?['name'],
-      ], fallback: '未命名人员'),
-      departmentId: _string(root['departmentId']),
-      departmentName: _firstNullableString([
-        root['departmentName'],
-        root['deptName'],
-        employee?['departmentName'],
-      ]),
-      loginAccount: _firstNullableString([
-        root['loginAccount'],
-        root['account'],
-        root['username'],
-      ]),
-      active: _bool(root['active'] ?? root['enabled'], fallback: true),
-    );
-  }
-}
-
 Map<String, dynamic>? _map(Object? value) {
   if (value is Map<String, dynamic>) return value;
   if (value is Map) return value.cast<String, dynamic>();
@@ -411,16 +258,6 @@ int? _firstInt(Iterable<Object?> values) {
     if (parsed != null) return parsed;
   }
   return null;
-}
-
-bool _bool(Object? value, {required bool fallback}) {
-  if (value is bool) return value;
-  if (value is num) return value != 0;
-  return switch (value?.toString().trim().toLowerCase()) {
-    'true' || '1' || 'yes' => true,
-    'false' || '0' || 'no' => false,
-    _ => fallback,
-  };
 }
 
 Set<String> _stringSet(Object? value) {

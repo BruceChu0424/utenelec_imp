@@ -28,7 +28,6 @@ A4 生产执行工卡是上述确认事实的只读投影，不新增 ER 实体�
 erDiagram
     PURCHASE_REQUEST_ITEM ||--o{ PURCHASE_ORDER_ITEM : "采购分解来源"
     SUBCONTRACT_APPLICATION_ITEM ||--o{ SUBCONTRACT_ORDER_ITEM : "委外分解来源"
-    WORKFLOW_RESPONSIBILITY_ASSIGNMENT ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "提交时冻结负责人"
     PURCHASE_ORDER ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "多次提交历史"
     SUBCONTRACT_ORDER ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "多次提交历史"
     PROCUREMENT_ORDER_APPROVAL_CASE ||--o{ PROCUREMENT_ORDER_APPROVAL_EVENT : "追加式事件"
@@ -39,7 +38,7 @@ erDiagram
     PROCUREMENT_ARRIVAL_EXCEPTION ||--o| SUPPLIER_RETURN_TASK : "未批准量"
 ```
 
-申请明细是计划下达、业务端只读的需求事实；订货行必须保留来源，可跨申请选择和部分分解，但一张订货单只有一个供应商/委外商和一个仓库。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有精确负责人批准才把订单置 `status=1` 并产生预计到货。
+申请明细是计划下达、业务端只读的需求事实；订货行必须保留来源，可跨申请选择和部分分解，但一张订货单只有一个供应商/委外商和一个仓库。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有财务审核组（财务部门持 `finance_order_approval:review` 者，含跨部门点名加授）批准才把订单置 `status=1` 并产生预计到货。
 
 `procurement_arrival_exceptions` 只隔离“超财务批准余量”的数量：异常待决期间不写库存/AP；财务决定后的批准量仍由仓库再次审核，未批准量才产生原下单人的 `supplier_return_tasks`。它不等于 IQC、质检合格或生产可用。
 

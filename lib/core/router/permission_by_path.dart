@@ -61,9 +61,6 @@ List<String>? requiredAnyPermFor(String location) {
       location.startsWith('${RouteName.financeArrivalExceptions}/')) {
     return const [Perm.financeOrderApprovalView];
   }
-  if (location == '/finance/workflow-responsibilities') {
-    return const [Perm.workflowAssignmentManage];
-  }
   if (location == RouteName.financeAssets ||
       location.startsWith('${RouteName.financeAssets}/')) {
     return const [Perm.financeAssetView];
@@ -377,7 +374,6 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.financeReconciliationView,
       Perm.accountView,
       Perm.financeOrderApprovalView,
-      Perm.workflowAssignmentManage,
     ];
   }
   if (location == RouteName.financeArAp) {

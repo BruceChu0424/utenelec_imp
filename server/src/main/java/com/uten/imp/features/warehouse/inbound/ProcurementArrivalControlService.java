@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
-import com.uten.imp.application.port.FinanceReviewerEligibilityPort.EligibleFinanceReviewer;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.web.ApiException;
@@ -406,13 +405,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     public PageResponse<ArrivalExceptionTask> financeTasks(int page, int size) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
-        UUID actor = currentUser.requireId();
-        long total = countFinanceTasks(actor);
+        long total = countFinanceTasks();
         List<ArrivalExceptionTask> items = queryExceptions(
-                "exception.finance_assignee_user_id = ? AND exception.status = 'PENDING_FINANCE'",
+                "exception.status = 'PENDING_FINANCE'",
                 ActionScope.FINANCE,
                 "LIMIT ? OFFSET ?",
-                actor,
                 safeSize,
                 (safePage - 1) * safeSize);
         return page(items, safePage, safeSize, total);
@@ -420,22 +417,22 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public long countFinanceTasks() {
-        return countFinanceTasks(currentUser.requireId());
+        Long count = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM procurement_arrival_exceptions
+                WHERE status = 'PENDING_FINANCE'
+                """, Long.class);
+        return count == null ? 0 : count;
     }
 
     @Transactional(readOnly = true)
     public ArrivalExceptionTask financeDetail(UUID id) {
-        UUID actor = currentUser.requireId();
         List<ArrivalExceptionTask> rows = queryExceptions(
-                "exception.id = ? AND exception.finance_assignee_user_id = ?",
+                "exception.id = ?",
                 ActionScope.FINANCE,
                 "",
-                id,
-                actor);
+                id);
         if (rows.isEmpty()) {
-            if (existsException(id)) {
-                throw new ApiException(ErrorCode.FORBIDDEN, "该到货异常未分配给当前财务用户");
-            }
             throw new ApiException(ErrorCode.NOT_FOUND, "到货异常任务不存在");
         }
         return rows.getFirst();
@@ -446,9 +443,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             UUID id, ArrivalDecisionRequest request) {
         tx.bind();
         LockedException exception = lockException(id);
-        requireExactFinanceAssignee(
-                exception.financeAssigneeUserId(),
-                exception.financeAssigneeEmployeeId());
+        requireEligibleReviewer();
         requireVersion(exception.version(), request.expectedVersion());
         if (!PENDING_FINANCE.equals(exception.status())) {
             throw concurrentChange();
@@ -1098,7 +1093,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         UUID actorUser = currentUser.requireId();
         UUID actorEmployee = currentUser.requireEmployeeId();
         String orderType = requireOrderTypeFromRow(row);
-        FinanceAssignment finance = requireFinanceAssignment(orderType);
+        requireReviewerPoolAvailable();
         BigDecimal excessQty =
                 nonNegative(row.declaredQty().subtract(approvedRemaining));
         BigDecimal excessAmountLocal = proportionalAmount(
@@ -1151,9 +1146,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     row.ownerUserId(),
                     row.ownerEmployeeId(),
                     row.ownerName(),
-                    finance.userId(),
-                    finance.employeeId(),
-                    finance.employeeName(),
+                    null,
+                    null,
+                    null,
                     actorUser,
                     actorEmployee);
             Map<String, Object> snapshot = new LinkedHashMap<>();
@@ -1164,9 +1159,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             putIfNotNull(snapshot, "declaredAmountOriginal", row.amountOriginal());
             putIfNotNull(snapshot, "declaredAmountLocal", row.amountLocal());
             putIfNotNull(snapshot, "excessAmountLocal", excessAmountLocal);
-            snapshot.put("financeAssigneeUserId", finance.userId());
-            snapshot.put("financeAssigneeEmployeeId", finance.employeeId());
-            snapshot.put("financeAssigneeName", finance.employeeName());
             appendEvent(id, "DETECTED", actorUser, actorEmployee, snapshot);
             publish(EVENT_DETECTED, id, 1);
             return new ExistingException(
@@ -1216,9 +1208,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 row.ownerUserId(),
                 row.ownerEmployeeId(),
                 row.ownerName(),
-                finance.userId(),
-                finance.employeeId(),
-                finance.employeeName(),
+                null,
+                null,
+                null,
                 actorUser,
                 actorEmployee,
                 existing.id());
@@ -1226,7 +1218,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         snapshot.put("declaredQty", row.declaredQty());
         snapshot.put("approvedRemainingQty", approvedRemaining);
         snapshot.put("requestedExcessQty", excessQty);
-        snapshot.put("financeAssigneeUserId", finance.userId());
         appendEvent(existing.id(), "REDETECTED", actorUser, actorEmployee, snapshot);
         publish(EVENT_DETECTED, existing.id(), existing.version() + 1);
         return new ExistingException(
@@ -1514,27 +1505,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         }
     }
 
-    private void requireExactFinanceAssignee(
-            UUID assigneeUser, UUID assigneeEmployee) {
-        if (assigneeUser == null
-                || assigneeEmployee == null
-                || !assigneeUser.equals(currentUser.requireId())
-                || !assigneeEmployee.equals(currentUser.requireEmployeeId())) {
-            throw new ApiException(
-                    ErrorCode.FORBIDDEN,
-                    "该到货异常仅允许任务快照中的财务负责人处理");
-        }
-        EligibleFinanceReviewer eligible = reviewerEligibility
-                .findEligible(assigneeUser)
-                .filter(candidate -> assigneeEmployee.equals(candidate.employeeId()))
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.FORBIDDEN,
-                        "该财务任务的负责人账号已停用、离职、调离财务部门或权限失效"));
-        if (!eligible.userId().equals(assigneeUser)) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "财务负责人身份不一致");
-        }
-    }
-
     private void requireReturnOwner(UUID ownerUser, UUID ownerEmployee) {
         if (ownerUser == null || ownerEmployee == null) {
             throw new ApiException(
@@ -1562,38 +1532,19 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         }
     }
 
-    private FinanceAssignment requireFinanceAssignment(String orderType) {
-        String behavior = PURCHASE.equals(orderType)
-                ? "PURCHASE_ORDER_FINANCE_APPROVAL"
-                : "SUBCONTRACT_ORDER_FINANCE_APPROVAL";
-        List<FinanceAssignment> configured = jdbc.query("""
-                SELECT assignee_user_id, assignee_employee_id,
-                       assignee_name_snapshot
-                FROM workflow_responsibility_assignments
-                WHERE behavior_code = ?
-                FOR SHARE
-                """, (rs, rowNum) -> new FinanceAssignment(
-                        rs.getObject("assignee_user_id", UUID.class),
-                        rs.getObject("assignee_employee_id", UUID.class),
-                        rs.getString("assignee_name_snapshot")),
-                behavior);
-        if (configured.size() != 1) {
+    private void requireReviewerPoolAvailable() {
+        if (reviewerEligibility.allEligible().isEmpty()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "未配置到货异常对应的财务负责人，禁止生成无人审批任务");
+                    "暂无持有审批权限的在职财务人员，禁止生成无人审批的到货异常");
         }
-        FinanceAssignment assignment = configured.getFirst();
-        EligibleFinanceReviewer reviewer = reviewerEligibility
-                .findEligible(assignment.userId())
-                .filter(candidate -> assignment.employeeId()
-                        .equals(candidate.employeeId()))
-                .orElseThrow(() -> new ApiException(
-                        ErrorCode.CONFLICT,
-                        "当前配置的财务负责人身份已变化、不可用或缺少审核权限"));
-        return new FinanceAssignment(
-                assignment.userId(),
-                assignment.employeeId(),
-                assignment.employeeName());
+    }
+
+    private void requireEligibleReviewer() {
+        UUID actor = currentUser.requireId();
+        reviewerEligibility.findEligible(actor).orElseThrow(() -> new ApiException(
+                ErrorCode.FORBIDDEN,
+                "仅财务部门在职且持有 finance_order_approval:review 的人员可处理到货超量审批"));
     }
 
     private void bindReceiptAllowance(String orderType, UUID receiptId) {
@@ -1915,12 +1866,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             UUID expectationItemId,
             BigDecimal approvedExcessQty,
             long version) {
-    }
-
-    private record FinanceAssignment(
-            UUID userId,
-            UUID employeeId,
-            String employeeName) {
     }
 
     private enum ActionScope {

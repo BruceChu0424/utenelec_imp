@@ -3,8 +3,10 @@ package com.uten.imp.features.master.goods.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -19,6 +21,7 @@ import java.util.UUID;
  * 成本价 cTotal / 出厂价 gTotal。
  */
 @Getter
+@Setter
 @AllArgsConstructor
 public class GoodsDetail {
     // ===== 列表核心 =====
@@ -28,6 +31,7 @@ public class GoodsDetail {
     private String spec;
     private String model;
     private BigDecimal price;
+    private BigDecimal discount;   // 折扣倍率 1.00=原价 0.90=9折（复用老库 B_Goods.zk）
     private String status;
     private Integer legacyId;
 
@@ -84,4 +88,14 @@ public class GoodsDetail {
     // ===== 规格单位（V203：厚度/单重的计量单位，桥接 units.legacy_id） =====
     private Integer thicknessUnitLegacyId;
     private Integer mWeightUnitLegacyId;
+
+    // ===== 成本可见性（goods:cost:view；未授权时成本字段置 null 且 costMasked=true） =====
+    private boolean costMasked;
+
+    // ===== 折扣可见性（goods:discount:view；未授权时 discount 置 null 且 discountMasked=true，前端隐藏折扣字段） =====
+    private boolean discountMasked;
+
+    // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
+    private BigDecimal stockQty;                 // 各参与核算仓库余量合计
+    private List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
 }

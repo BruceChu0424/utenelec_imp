@@ -142,8 +142,8 @@ class _FinanceArrivalExceptionTasksPageState
                 height: 380,
                 child: UtenEmpty(
                   icon: Icons.task_alt_rounded,
-                  message: '目前没有待您审批的超量到货',
-                  description: '只有明确分配给您的任务才会显示；其他财务人员和超级管理员都不能代办。',
+                  message: '目前没有待审批的超量到货',
+                  description: '财务部门持权人员及被点名授权的员工均可在此处理到货超量审批。',
                 ),
               )
             else
@@ -701,7 +701,7 @@ class _ArrivalFactsCard extends StatelessWidget {
             _Fact(label: '到货原币金额快照', value: task.declaredAmountOriginal ?? '—'),
             _Fact(label: '到货本币金额快照', value: task.declaredAmountLocal ?? '—'),
             _Fact(label: '超量本币金额快照', value: task.excessAmountLocal ?? '—'),
-            _Fact(label: '财务负责人', value: task.financeAssigneeName ?? '—'),
+            _Fact(label: '财务审核组', value: task.financeAssigneeName ?? '—'),
             _Fact(label: '仓库登记人', value: task.detectedByEmployeeName ?? '—'),
             _Fact(label: '发现时间', value: detected),
           ],

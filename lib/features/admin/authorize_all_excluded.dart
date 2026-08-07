@@ -22,7 +22,6 @@ const Set<String> kAuthorizeAllExcluded = {
   Perm.financeAssetDispose,
   Perm.financeAssetExport,
   Perm.financeAssetPeriodManage,
-  Perm.workflowAssignmentManage,
   Perm.salesOrderPriority,
   Perm.salesOrderReallocate,
   Perm.procurementArrivalExceptionHandle, // supplier_return_task:handle

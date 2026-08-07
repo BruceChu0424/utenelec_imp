@@ -853,16 +853,24 @@ class _DetailPaneState extends State<_DetailPane> {
           excludeStub: true,
         );
     return UtenPrintTable(
-      headers: [for (final c in _goodsColumns) c.label],
+      headers: [for (final c in _visibleGoodsColumns) c.label],
       rows: [
         for (final a in result.items)
-          [for (final c in _goodsColumns) c.value(a) ?? ''],
+          [for (final c in _visibleGoodsColumns) c.value(a) ?? ''],
       ],
     );
   }
 
   bool get _canEditMaster =>
       widget.ref.read(currentPermissionsProvider).contains(Perm.goodsEdit);
+
+  /// 无 goods:discount:view 权限者：列表折扣列整列移除（表头设置也不再列出，符合权限语义）。
+  bool get _canViewDiscount =>
+      widget.ref.read(currentPermissionsProvider).contains(Perm.goodsDiscountView);
+
+  List<MasterColumnDef<GoodsListItem>> get _visibleGoodsColumns => _canViewDiscount
+      ? _goodsColumns
+      : [for (final c in _goodsColumns) if (c.key != 'discount') c];
 
   // ---- 货品 新建/编辑/删除 ------------------------------------------------
 
@@ -1081,7 +1089,7 @@ class _DetailPaneState extends State<_DetailPane> {
           // 表格（搜索 + 横排 autofilter 筛选 + 逐行数据 + 分页，一体；Excel 风格）
           Expanded(
             child: MasterDataTableView<GoodsListItem>(
-              columns: _goodsColumns,
+              columns: _visibleGoodsColumns,
               items: _goodsPage?.items ?? const [],
               // 表头下前导分组：禁用货品（浅红）/ 不明货品（仅未分类节点）；展开后按本表
               // 同款列渲染，且「表头设置」列显隐对它同样生效。
@@ -1217,6 +1225,19 @@ class _DetailPaneState extends State<_DetailPane> {
       type: 'money',
       sortable: true,
       value: (g) => g.price?.toStringAsFixed(2),
+    ),
+    MasterColumnDef(
+      key: 'discount',
+      label: '折扣',
+      width: 80,
+      value: (g) => g.discount?.toStringAsFixed(2),
+    ),
+    MasterColumnDef(
+      key: 'stockQty',
+      label: '库存量',
+      width: 100,
+      type: 'money',
+      value: (g) => g.stockQty?.toStringAsFixed(2),
     ),
   ];
 }

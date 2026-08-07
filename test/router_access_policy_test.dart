@@ -122,12 +122,9 @@ void main() {
       );
     });
 
-    test('finance procurement workflow routes use exact permissions', () {
+    test('finance procurement approval route uses view permission', () {
       expect(requiredAnyPermFor('/finance/procurement-approvals'), const [
         Perm.financeOrderApprovalView,
-      ]);
-      expect(requiredAnyPermFor('/finance/workflow-responsibilities'), const [
-        Perm.workflowAssignmentManage,
       ]);
     });
 

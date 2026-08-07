@@ -240,6 +240,12 @@ class UtenEditableGridController<T extends EditableGridRow>
     notifyListeners();
   }
 
+  /// 移除所有满足 [test] 的行（删前 dispose）。「从上游引入」前清掉占位空白行用：
+  /// 用户点引入时，新建态预填的那条空行（无货品、各字段空）应自动消失，直接显示引入项。
+  void removeWhere(bool Function(T) test) {
+    removeRows(_rows.where(test).toList());
+  }
+
   /// 替换全部行（旧行逐个 dispose）。用于"从上游引入"整体覆盖。
   void replaceAll(Iterable<T> rows) {
     for (final r in _rows) {

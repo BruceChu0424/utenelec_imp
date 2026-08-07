@@ -172,8 +172,8 @@ class _FinanceProcurementApprovalTasksPageState
                 height: 420,
                 child: UtenEmpty(
                   icon: Icons.task_alt_rounded,
-                  message: '目前没有待您审核的订货单',
-                  description: '只有明确分配给您的采购或委外订货单才会出现在这里。',
+                  message: '目前没有待审核的订货单',
+                  description: '财务部门持权人员及被点名授权的员工均可在此处理采购或委外订货单。',
                 ),
               )
             else

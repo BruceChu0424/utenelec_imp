@@ -6,14 +6,16 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 
 void main() {
-  test('planning applications are read-only and orders start from tasks', () {
+  // 订货单支持从管理卡片直达新建（与销售/采购一致，见 subcontract_doc_config.dart 注释），
+  // 但明细仍必须经「从上游引入」来自计划申请（linkToApplicationItem）；申请单本身只读。
+  test('planning applications are read-only; orders may be created directly but source lines from planning', () {
     expect(SubcontractDocConfig.application.allowDirectCreate, isFalse);
     expect(SubcontractDocConfig.application.skipListOnCreate, isFalse);
     expect(SubcontractDocConfig.application.hasSupplier, isFalse);
     expect(SubcontractDocConfig.application.itemHasPrice, isFalse);
 
-    expect(SubcontractDocConfig.order.allowDirectCreate, isFalse);
-    expect(SubcontractDocConfig.order.skipListOnCreate, isFalse);
+    expect(SubcontractDocConfig.order.allowDirectCreate, isTrue);
+    expect(SubcontractDocConfig.order.skipListOnCreate, isTrue);
     expect(SubcontractDocConfig.order.supplierRequired, isTrue);
     expect(SubcontractDocConfig.order.linkToApplicationItem, isTrue);
   });

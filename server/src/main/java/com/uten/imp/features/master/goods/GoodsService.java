@@ -19,10 +19,14 @@ import com.uten.imp.features.master.goods.dto.GoodsFacets;
 import com.uten.imp.features.master.goods.dto.GoodsListItem;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
+import com.uten.imp.features.master.goods.dto.GoodsStockSummary;
+import com.uten.imp.features.master.goods.dto.GoodsStockRow;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
+import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -104,6 +108,8 @@ public class GoodsService {
     private final EntityManager em;
     private final MasterCodeService masterCodeService;
     private final com.uten.imp.security.OwnerVisibility ownerVisibility;
+    private final SecurityContextCurrentUser currentUser;
+    private final GoodsCostMasker costMasker;            // goods:cost:view 成本可见性
 
     /**
      * 货品归属隔离总开关（uten.features.goods-owner-scope-enabled，默认 false）。
@@ -210,8 +216,10 @@ public class GoodsService {
                 content.stream().map(Goods::getColorLegacyId).toList());
         Map<Integer, String> unitNames = unitNamesFor(
                 content.stream().map(Goods::getUnitLegacyId).toList());
+        Map<UUID, BigDecimal> stockByGoods = stockQuantitiesFor(
+                content.stream().map(Goods::getId).toList());
         List<GoodsListItem> items = content.stream()
-                .map(g -> toList(g, colorNames, unitNames))
+                .map(g -> toList(g, colorNames, unitNames, stockByGoods))
                 .toList();
         return new PageResponse<>(items, page, size, p.getTotalElements(), p.getTotalPages());
     }
@@ -251,6 +259,83 @@ public class GoodsService {
         return unitRepo.findByLegacyIdInAndDeletedFalse(distinct).stream()
                 .filter(u -> u.getLegacyId() != null && u.getName() != null)
                 .collect(Collectors.toMap(Unit::getLegacyId, Unit::getName, (a, b) -> a));
+    }
+
+    /**
+     * 批量按 goods_id 聚合即时库存（仅参与核算仓库 is_accountable），列表「库存量」列用。
+     * 口径同即时库存/货品详情。空集合返回空 map（toList 对缺省键回落 BigDecimal.ZERO）。
+     */
+    private Map<UUID, BigDecimal> stockQuantitiesFor(Collection<UUID> goodsIds) {
+        Set<UUID> distinct = goodsIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
+        if (distinct.isEmpty()) return Map.of();
+        String sql = """
+                SELECT b.goods_id, SUM(b.qty) AS qty
+                FROM stock_balances b
+                JOIN warehouses w ON w.id = b.warehouse_id
+                WHERE w.is_accountable AND b.goods_id IN (:ids)
+                GROUP BY b.goods_id
+                """;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(sql)
+                .setParameter("ids", distinct)
+                .getResultList();
+        Map<UUID, BigDecimal> out = new java.util.HashMap<>();
+        for (Object[] r : rows) {
+            Object gid = r[0];
+            UUID id = gid instanceof UUID u ? u : UUID.fromString(gid.toString());
+            Object q = r[1];
+            BigDecimal qty = q == null ? BigDecimal.ZERO
+                    : (q instanceof BigDecimal bd ? bd : new BigDecimal(q.toString()));
+            out.put(id, qty);
+        }
+        return out;
+    }
+
+    /**
+     * 单货品即时库存汇总（货品详情「库存量」用）：聚合 stock_balances（仅 warehouses.is_accountable
+     * 参与核算仓库），返回合计数量/重量 + 按仓库（×颜色）明细。口径同即时库存。
+     * 直接查 stock_balances 表（表访问非跨特性 Java 依赖，规避 master→stock 架构边界）。
+     */
+    private GoodsStockSummary stockSummaryForGoods(UUID goodsId) {
+        String sql = """
+                SELECT b.warehouse_id, w.code AS warehouse_code, w.name AS warehouse_name,
+                       c.name AS color_name,
+                       SUM(b.qty) AS qty, SUM(b.weight) AS weight
+                FROM stock_balances b
+                JOIN warehouses w ON w.id = b.warehouse_id
+                LEFT JOIN colors c ON c.id = b.color_id
+                WHERE b.goods_id = :goodsId AND w.is_accountable
+                GROUP BY b.warehouse_id, w.code, w.name, c.name
+                ORDER BY w.code
+                """;
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(sql)
+                .setParameter("goodsId", goodsId)
+                .getResultList();
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalWeight = BigDecimal.ZERO;
+        List<GoodsStockRow> out = new ArrayList<>();
+        for (Object[] r : rows) {
+            BigDecimal qty = toBd(r[4]);
+            BigDecimal weight = toBd(r[5]);
+            totalQty = totalQty.add(qty);
+            totalWeight = totalWeight.add(weight);
+            out.add(new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
+                    (String) r[3], qty, weight));
+        }
+        return new GoodsStockSummary(totalQty, totalWeight, out);
+    }
+
+    private static BigDecimal toBd(Object o) {
+        if (o == null) return BigDecimal.ZERO;
+        if (o instanceof BigDecimal bd) return bd;
+        return new BigDecimal(o.toString());
+    }
+
+    private static UUID toUuid(Object o) {
+        if (o == null) return null;
+        if (o instanceof UUID u) return u;
+        return UUID.fromString(o.toString());
     }
 
     // ===== 加密 Excel 导出（服务端权威列定义） =====
@@ -437,6 +522,7 @@ public class GoodsService {
     @Transactional
     public GoodsDetail create(GoodsSaveRequest req) {
         tx.bind();
+        ensurePriceEditIfTouched(null, req);   // 新建：oldGoods=null，提交了价/折扣即视为触碰
         Goods g = new Goods();
         apply(req, g);
         g.setCode(masterCodeService.nextCode(CODE_PREFIX));
@@ -450,9 +536,52 @@ public class GoodsService {
         tx.bind();
         Goods g = requireGoods(id);
         requireVisible(g);
+        ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
         apply(req, g);
         repo.save(g);
         return toDetail(g, colorNameOf(g), unitNameOf(g));
+    }
+
+    /**
+     * 售价/折扣仅在持有 {@code goods:price:edit} 时可改（写侧字段级权限，仿 V141 employee:pii:edit）。
+     * 新建 oldGoods=null：提交了非空价/折扣即视为触碰；编辑则与既有值比对。未触碰（含原样回传）放行。
+     */
+    private void ensurePriceEditIfTouched(Goods oldGoods, GoodsSaveRequest req) {
+        if (hasPriceEdit()) return;
+        BigDecimal oldPrice = oldGoods == null ? null : oldGoods.getPrice();
+        BigDecimal oldDiscount = oldGoods == null ? null : oldGoods.getDiscount();
+        // 售价人人可见，触碰恒判。
+        if (bigDecimalChanged(oldPrice, req.getPrice())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限（goods:price:edit）");
+        }
+        // 折扣仅可查看者（goods:discount:view）才参与触碰判定——不可查看者前端隐藏折扣字段、
+        // 不提交折扣（req.discount=null 是脱敏产物而非改价意图），若仍判触碰会把他们改名字等
+        // 正常编辑一并 403。apply 同步对不可查看者保留原折扣（见 apply）。
+        if (canViewDiscount() && bigDecimalChanged(oldDiscount, req.getDiscount())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "无编辑货品售价/折扣权限（goods:price:edit）");
+        }
+    }
+
+    private boolean hasPriceEdit() {
+        return currentUser.get()
+                .map(AuthUser::getPermissions)
+                .map(p -> p.contains("goods:price:edit"))
+                .orElse(false);
+    }
+
+    /** 折扣可见性（goods:discount:view）：未授权者后端折扣置 null、前端隐藏字段/列。 */
+    private boolean canViewDiscount() {
+        return currentUser.get()
+                .map(AuthUser::getPermissions)
+                .map(p -> p.contains("goods:discount:view"))
+                .orElse(false);
+    }
+
+    /** BigDecimal 变更判定用 compareTo，避免 1.0 vs 1.00 的 scale 差异误判触碰。 */
+    private static boolean bigDecimalChanged(BigDecimal a, BigDecimal b) {
+        if (a == null && b == null) return false;
+        if (a == null || b == null) return true;
+        return a.compareTo(b) != 0;
     }
 
     @Transactional
@@ -518,6 +647,12 @@ public class GoodsService {
         g.setModel(req.getModel());
         g.setSpec(req.getSpec());
         g.setPrice(req.getPrice());
+        // 折扣（goods.zk）：仅可查看折扣者（goods:discount:view）提交的折扣才落库。
+        // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防 V226 遗漏 setDiscount
+        // 导致折扣任何人都存不进。
+        if (canViewDiscount()) {
+            g.setDiscount(req.getDiscount());
+        }
         g.setMaterial(req.getMaterial());
         g.setThickness(req.getThickness());
         g.setThicknessUnitLegacyId(req.getThicknessUnitLegacyId());
@@ -602,9 +737,10 @@ public class GoodsService {
     private GoodsDetail toDetail(Goods g, String colorName, String unitName) {
         UUID categoryId = g.getCategory() == null ? null : g.getCategory().getId();
         String categoryName = g.getCategory() == null ? null : g.getCategory().getName();
-        return new GoodsDetail(
+        GoodsStockSummary stock = stockSummaryForGoods(g.getId());
+        GoodsDetail d = new GoodsDetail(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
-                g.getPrice(), g.getStatus(), g.getLegacyId(),
+                g.getPrice(), g.getDiscount(), g.getStatus(), g.getLegacyId(),
                 g.getShortName(), categoryId, categoryName, g.getPack(),
                 g.getMaterial(), g.getThickness(),
                 g.getUnit() == null ? null : g.getUnit().getId(),
@@ -625,13 +761,30 @@ public class GoodsService {
                 g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
                 g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
                 g.getCTotal(), g.getGTotal(), g.getSourceType(),
-                g.getThicknessUnitLegacyId(), g.getMWeightUnitLegacyId());
+                g.getThicknessUnitLegacyId(), g.getMWeightUnitLegacyId(),
+                false, false, stock.getTotalQty(), stock.getRows());
+        // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
+        if (!costMasker.canView()) {
+            d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);
+            d.setPlatingE(null); d.setCasingE(null); d.setPolishE(null); d.setTotal(null);
+            d.setWorkRate(null); d.setWorkE(null); d.setLostRate(null); d.setLostE(null);
+            d.setRentRate(null); d.setRentE(null); d.setMakeRate(null); d.setMakeE(null);
+            d.setCTotal(null); d.setGTotal(null);
+            d.setCostMasked(true);
+        }
+        // 折扣可见性（goods:discount:view）：未授权 discount 置 null + 置 discountMasked（前端隐藏折扣字段/列）
+        if (!canViewDiscount()) {
+            d.setDiscount(null);
+            d.setDiscountMasked(true);
+        }
+        return d;
     }
 
-    private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames) {
+    private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames,
+                                 Map<UUID, BigDecimal> stockByGoods) {
         return new GoodsListItem(
                 g.getId(), g.getCode(), g.getName(), g.getSpec(), g.getModel(),
-                g.getPrice(), g.getStatus(), g.getLegacyId(),
+                g.getPrice(), canViewDiscount() ? g.getDiscount() : null, g.getStatus(), g.getLegacyId(),
                 g.getSeries(), g.getMaterial(), g.getCNumber(), g.getRequireRemark(),
                 g.getColor() == null ? g.getColorLegacyId() : g.getColor().getLegacyId(),
                 g.getUnit() == null ? g.getUnitLegacyId() : g.getUnit().getLegacyId(),
@@ -643,7 +796,8 @@ public class GoodsService {
                         : (g.getUnit().isDeleted() ? null : g.getUnit().getName()),
                 g.getSourceType(),
                 g.getCategory() == null ? null : g.getCategory().getId(),
-                g.isAutoCreated());
+                g.isAutoCreated(),
+                stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO));
     }
 
     private MaterialCategory requireCategory(UUID id) {

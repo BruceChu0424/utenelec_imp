@@ -69,6 +69,50 @@ public class MrpService {
         return PLANNING_WRITE_READY;
     }
 
+    /**
+     * MAKE 树距根最大深度（自底向上 orchestrator / 傻瓜式 UI 用）。复用 MRP {@code exp} CTE 形状：
+     * path 防环 + depth&lt;10 双保险。仅计入 {@code source_type='自制'} 的节点（V1 执行段按 source_type
+     * 定路由：自制→MAKE；故无 BOM 的自制叶子件也算一层 MAKE）。返回 0=无自制下层。
+     * 调用前应先 {@link #preview(UUID)} 触发 {@code validateBomGraph}（环/超 10 层硬错）。
+     */
+    public int makeTreeDepth(UUID planId) {
+        Object r = em.createNativeQuery("""
+                WITH RECURSIVE make_tree(goods_id, depth, path) AS (
+                    SELECT i.goods_id, 0, ARRAY[]::uuid[]
+                    FROM production_plan_items i
+                    WHERE i.plan_id = :planId AND i.is_deleted = FALSE
+                    UNION ALL
+                    SELECT b.component_goods_id, mt.depth + 1, mt.path || b.id
+                    FROM make_tree mt
+                    JOIN goods_bom_items b
+                      ON b.goods_id = mt.goods_id AND b.is_deleted = FALSE
+                    JOIN goods component
+                      ON component.id = b.component_goods_id AND component.is_deleted = FALSE
+                    WHERE mt.depth < 10
+                      AND NOT b.id = ANY(mt.path)
+                      AND component.source_type = '自制'
+                )
+                SELECT COALESCE(MAX(depth), 0) FROM make_tree
+                """).setParameter("planId", planId).getSingleResult();
+        return r == null ? 0 : ((Number) r).intValue();
+    }
+
+    /**
+     * 该计划的货品是否有 BOM 子件（即 confirm 能否展开）。
+     * <p>自制叶子件（source_type='自制' 但无 BOM）是合法的最深 MAKE 节点——它没有可展开的子件，
+     * 故 orchestrator 只自动审核它（使其可报工/入库），<b>不</b>对它调 confirm
+     * （confirm 的 snapshot 内联 goods_bom_items，无 BOM 会得到空产品行而抛错）。
+     * 这与当前人工流程一致：无 BOM 的自制件直接报工+成品入库，不走 confirm 展开。
+     */
+    public boolean planGoodsHasBom(UUID planId) {
+        Object n = em.createNativeQuery("""
+                SELECT COUNT(*) FROM goods_bom_items b
+                JOIN production_plan_items i ON i.goods_id = b.goods_id
+                WHERE i.plan_id = :planId AND b.is_deleted = FALSE AND i.is_deleted = FALSE
+                """).setParameter("planId", planId).getSingleResult();
+        return n instanceof Number num && num.longValue() > 0;
+    }
+
     /** 生产计划需求源：开工日优先，未排开工日时回落计划交货日。 */
     private static final String MRP_SQL = buildMrpSql("""
             SELECT b.component_goods_id AS goods_id,

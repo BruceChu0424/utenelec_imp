@@ -7,7 +7,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -43,8 +42,6 @@ class FinanceHubPage extends ConsumerWidget {
     final superAdmin = ref.watch(isSuperAdminProvider);
     final canViewApprovals =
         superAdmin || permissions.contains(Perm.financeOrderApprovalView);
-    final canManageResponsibilities =
-        superAdmin || permissions.contains(Perm.workflowAssignmentManage);
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) {
           final required = requiredAnyPermFor(entry.location);
@@ -57,22 +54,6 @@ class FinanceHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: canManageResponsibilities
-            ? [
-                Padding(
-                  padding: const EdgeInsets.only(right: UtenSpacing.s8),
-                  child: UtenButton(
-                    key: const Key('finance-workflow-responsibilities'),
-                    size: UtenButtonSize.large,
-                    type: UtenButtonType.tonal,
-                    icon: Icons.manage_accounts_outlined,
-                    onPressed: () =>
-                        goFrom(context, FinanceWorkflowRoutes.responsibilities),
-                    child: Text(l10n.financeHubApprovalOwners),
-                  ),
-                ),
-              ]
-            : null,
       ),
       body: SafeArea(
         child: UtenContentContainer(

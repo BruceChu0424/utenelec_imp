@@ -17,6 +17,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/goods_node.dart';
 import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
@@ -175,7 +176,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     ];
   }
 
-  List<MasterFieldDef> _goodsFields() {
+  List<MasterFieldDef> _goodsFields({required bool canViewDiscount}) {
     return [
       const MasterFieldDef(
         key: 'name',
@@ -260,6 +261,14 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
         type: MasterFieldType.money,
         group: '商务',
       ),
+      if (canViewDiscount)
+        const MasterFieldDef(
+          key: 'discount',
+          label: '折扣',
+          type: MasterFieldType.money,
+          group: '商务',
+          hint: '倍率 1=原价 0.9=9折',
+        ),
       MasterFieldDef(
         key: 'pack',
         label: '包装',
@@ -315,6 +324,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       'mWeight': s(d.mWeight),
       'colorLegacyId': d.colorLegacyId == null ? '' : '${d.colorLegacyId}',
       'price': s(d.price),
+      'discount': s(d.discount),
       'pack': d.pack ?? '',
       'unitLegacyId': d.unitLegacyId == null ? '' : '${d.unitLegacyId}',
       'pieces': s(d.pieces),
@@ -394,10 +404,18 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     final title = _detail?.name?.isNotEmpty == true
         ? _detail!.name!
         : (_detail?.code ?? (_mode == _GoodsDialogMode.create ? '新增货品' : '货品详情'));
+    // 成本预算 Tab 仅 goods:cost:view 持有者可见（无授权直接隐藏，非打码）。
+    final canViewCost = ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView);
+    final tabs = <Tab>[
+      const Tab(text: '基本信息'),
+      const Tab(text: '组装信息'),
+      if (canViewCost) const Tab(text: '成本预算'),
+    ];
     return SafeArea(
       child: DefaultTabController(
-        length: 3,
-        initialIndex: widget.initialTab,
+        length: tabs.length,
+        initialIndex: widget.initialTab.clamp(0, tabs.length - 1),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -407,11 +425,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
               labelColor: theme.colorScheme.primary,
               unselectedLabelColor: theme.colorScheme.onSurfaceVariant,
               indicatorColor: theme.colorScheme.primary,
-              tabs: const [
-                Tab(text: '基本信息'),
-                Tab(text: '组装信息'),
-                Tab(text: '成本预算'),
-              ],
+              tabs: tabs,
             ),
             const Divider(height: 1),
             Flexible(
@@ -419,7 +433,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
                 children: [
                   _buildBasicTab(theme),
                   _buildBomTab(),
-                  _buildCostTab(theme),
+                  if (canViewCost) _buildCostTab(theme),
                 ],
               ),
             ),
@@ -474,14 +488,23 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
   // ---- 基本信息 Tab ----
   Widget _buildBasicTab(ThemeData theme) {
     if (_mode == _GoodsDialogMode.view) return _buildBasicView(theme);
+    final canEditPrice = ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsPriceEdit);
+    // 无 goods:discount:view 权限者：折扣字段整段不渲染（也不提交），后端保留原值。
+    final canViewDiscount = ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsDiscountView);
     return Column(
       children: [
         Expanded(
           child: MasterEditForm(
             key: _formKey,
-            fields: _goodsFields(),
+            fields: _goodsFields(canViewDiscount: canViewDiscount),
             initialValues: _initialValues(),
             fixedValues: _costFixedValues(),
+            // 无 goods:price:edit 权限者：售价 UI 锁定（折扣字段仅可查看者才在表里，故一并锁定）。
+            readOnlyKeys: canEditPrice
+                ? null
+                : (canViewDiscount ? const {'price', 'discount'} : const {'price'}),
           ),
         ),
         const Divider(height: 1),
@@ -614,6 +637,9 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
   List<MasterDetailRow> _detailRows() {
     final d = _detail;
     if (d == null) return const [];
+    // 无 goods:discount:view 权限者：查看态不显示折扣行（后端已置 discount=null）。
+    final canViewDiscount = ref.watch(isSuperAdminProvider) ||
+        ref.watch(currentPermissionsProvider).contains(Perm.goodsDiscountView);
     String s(Object? v) => v == null ? '' : '$v';
     String withUnit(Object? v, int? unitLegacyId) {
       if (v == null) return '';
@@ -635,8 +661,16 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       MasterDetailRow('主颜色', d.colorName),
       MasterDetailRow('单位', d.unitName),
       MasterDetailRow('价格', s(d.price)),
+      if (canViewDiscount)
+        MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
       MasterDetailRow('包装', d.pack),
       MasterDetailRow('件数', s(d.pieces)),
+      MasterDetailRow('库存量(合计)', s(d.stockQty)),
+      for (final w in d.stockByWarehouse)
+        MasterDetailRow(
+          '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}${w.colorName != null ? '·${w.colorName}' : ''}',
+          '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}',
+        ),
     ];
   }
 

@@ -10,7 +10,6 @@ import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.admin.workflow.WorkflowResponsibilityService;
 import com.uten.imp.features.admin.workflow.WorkflowReviewerEligibility;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.ApprovalTask;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
@@ -76,14 +75,7 @@ public class ProcurementFinanceApprovalService {
         OrderSnapshot snapshot = port.lockAndValidateFinanceSubmission(orderId);
         requireNoPendingCase(orderType, orderId);
 
-        Assignment assignment = lockAssignment(orderType);
-        WorkflowReviewerEligibility.EligibleReviewer eligible =
-                reviewerEligibility.requireEligible(assignment.assigneeUserId());
-        if (!eligible.employeeId().equals(assignment.assigneeEmployeeId())) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "审批负责人账号与员工快照不一致，请管理员重新保存负责人配置");
-        }
+        requireReviewerPoolAvailable();
 
         int attempt = nextAttempt(orderType, orderId);
         UUID caseId = UUID.randomUUID();
@@ -112,16 +104,16 @@ public class ProcurementFinanceApprovalService {
                 snapshotHash,
                 actorUser,
                 actorEmployee,
-                assignment.assigneeUserId(),
-                assignment.assigneeEmployeeId(),
-                assignment.assigneeName());
+                null,
+                null,
+                null);
         appendEvent(
                 caseId,
                 "SUBMITTED",
                 actorUser,
                 actorEmployee,
                 null,
-                assignment.assigneeUserId(),
+                null,
                 null,
                 Map.of("attempt", attempt, "snapshotHash", snapshotHash));
         publish(EVENT_SUBMITTED, caseId, orderType, "PENDING", 1);
@@ -137,7 +129,7 @@ public class ProcurementFinanceApprovalService {
         OrderSnapshot currentSnapshot =
                 port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
-        requireAssignedActor(approvalCase);
+        requireEligibleReviewer();
         requireVersion(approvalCase, expectedVersion);
         requireUnchangedSnapshot(approvalCase, currentSnapshot);
 
@@ -166,8 +158,8 @@ public class ProcurementFinanceApprovalService {
                 "APPROVED",
                 actorUser,
                 actorEmployee,
-                approvalCase.assigneeUserId(),
-                approvalCase.assigneeUserId(),
+                null,
+                null,
                 null,
                 Map.of("snapshotHash", approvalCase.snapshotHash()));
         createInboundExpectation(approvalCase.caseId(), currentSnapshot, actorUser);
@@ -193,7 +185,7 @@ public class ProcurementFinanceApprovalService {
         OrderSnapshot currentSnapshot =
                 port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
-        requireAssignedActor(approvalCase);
+        requireEligibleReviewer();
         requireVersion(approvalCase, expectedVersion);
         requireUnchangedSnapshot(approvalCase, currentSnapshot);
 
@@ -223,8 +215,8 @@ public class ProcurementFinanceApprovalService {
                 "REJECTED",
                 actorUser,
                 actorEmployee,
-                approvalCase.assigneeUserId(),
-                approvalCase.assigneeUserId(),
+                null,
+                null,
                 reason,
                 Map.of("snapshotHash", approvalCase.snapshotHash()));
         publish(
@@ -240,8 +232,7 @@ public class ProcurementFinanceApprovalService {
     public PageResponse<ApprovalTask> tasks(int page, int size) {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(size, 200));
-        UUID actor = currentUser.requireId();
-        long total = countTasks(actor);
+        long total = countTasks();
         List<ApprovalTask> items = jdbc.query("""
                 SELECT c.id AS case_id,
                        c.order_type,
@@ -267,7 +258,7 @@ public class ProcurementFinanceApprovalService {
                   ON warehouse.id = COALESCE(po.warehouse_id, so.warehouse_id)
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
-                WHERE c.assignee_user_id = ? AND c.status = 'PENDING'
+                WHERE c.status = 'PENDING'
                 ORDER BY c.submitted_at, c.id
                 LIMIT ? OFFSET ?
                 """,
@@ -286,7 +277,6 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("submitted_by_name"),
                         rs.getObject("submitted_at", OffsetDateTime.class),
                         List.of("APPROVE", "REJECT")),
-                actor,
                 safeSize,
                 (safePage - 1) * safeSize);
         int totalPages = total == 0
@@ -298,40 +288,27 @@ public class ProcurementFinanceApprovalService {
 
     @Transactional(readOnly = true)
     public long countTasks() {
-        return countTasks(currentUser.requireId());
-    }
-
-    private long countTasks(UUID actor) {
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
                 FROM procurement_order_approval_cases
-                WHERE assignee_user_id = ? AND status = 'PENDING'
-                """, Long.class, actor);
+                WHERE status = 'PENDING'
+                """, Long.class);
         return count == null ? 0 : count;
     }
 
-    private Assignment lockAssignment(String orderType) {
-        String behaviorCode = "PURCHASE".equals(orderType)
-                ? WorkflowResponsibilityService.PURCHASE_BEHAVIOR
-                : WorkflowResponsibilityService.SUBCONTRACT_BEHAVIOR;
-        List<Assignment> rows = jdbc.query("""
-                SELECT assignee_user_id, assignee_employee_id,
-                       assignee_name_snapshot
-                FROM workflow_responsibility_assignments
-                WHERE behavior_code = ?
-                FOR SHARE
-                """,
-                (rs, rowNum) -> new Assignment(
-                        rs.getObject("assignee_user_id", UUID.class),
-                        rs.getObject("assignee_employee_id", UUID.class),
-                        rs.getString("assignee_name_snapshot")),
-                behaviorCode);
-        if (rows.isEmpty()) {
+    private void requireReviewerPoolAvailable() {
+        if (reviewerEligibility.allEligible().isEmpty()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "尚未配置该类订货单的财务审批负责人");
+                    "暂无持有审批权限的在职财务人员，请先在权限管理中授权 finance_order_approval:review");
         }
-        return rows.getFirst();
+    }
+
+    private void requireEligibleReviewer() {
+        UUID actor = currentUser.requireId();
+        reviewerEligibility.findEligible(actor).orElseThrow(() -> new ApiException(
+                ErrorCode.FORBIDDEN,
+                "仅财务部门在职且持有 finance_order_approval:review 的人员可审批"));
     }
 
     private void requireNoPendingCase(String orderType, UUID orderId) {
@@ -358,8 +335,7 @@ public class ProcurementFinanceApprovalService {
 
     private ApprovalCase lockPendingCase(String orderType, UUID orderId) {
         List<ApprovalCase> rows = jdbc.query("""
-                SELECT id, order_id, version, assignee_user_id,
-                       assignee_employee_id, snapshot_hash
+                SELECT id, order_id, version, snapshot_hash
                 FROM procurement_order_approval_cases
                 WHERE order_type = ? AND order_id = ? AND status = 'PENDING'
                 FOR UPDATE
@@ -368,8 +344,6 @@ public class ProcurementFinanceApprovalService {
                         rs.getObject("id", UUID.class),
                         rs.getObject("order_id", UUID.class),
                         rs.getLong("version"),
-                        rs.getObject("assignee_user_id", UUID.class),
-                        rs.getObject("assignee_employee_id", UUID.class),
                         rs.getString("snapshot_hash")),
                 orderType,
                 orderId);
@@ -377,14 +351,6 @@ public class ProcurementFinanceApprovalService {
             throw new ApiException(ErrorCode.CONFLICT, "订货单当前没有待处理的财务审批");
         }
         return rows.getFirst();
-    }
-
-    private void requireAssignedActor(ApprovalCase approvalCase) {
-        if (!currentUser.requireId().equals(approvalCase.assigneeUserId())) {
-            throw new ApiException(
-                    ErrorCode.FORBIDDEN,
-                    "该审批任务未分配给当前用户");
-        }
     }
 
     private static void requireVersion(
@@ -586,18 +552,10 @@ public class ProcurementFinanceApprovalService {
                 "审批任务已被处理或版本已变化，请刷新后重试");
     }
 
-    private record Assignment(
-            UUID assigneeUserId,
-            UUID assigneeEmployeeId,
-            String assigneeName) {
-    }
-
     private record ApprovalCase(
             UUID caseId,
             UUID orderId,
             long version,
-            UUID assigneeUserId,
-            UUID assigneeEmployeeId,
             String snapshotHash) {
     }
 }

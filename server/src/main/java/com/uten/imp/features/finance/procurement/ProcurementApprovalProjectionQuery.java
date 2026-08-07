@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.procurement;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -22,10 +23,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ProcurementApprovalProjectionQuery {
 
-    private static final String REVIEW_PERMISSION = "finance_order_approval:review";
-
     private final NamedParameterJdbcTemplate jdbc;
     private final SecurityContextCurrentUser currentUser;
+    private final FinanceReviewerEligibilityPort reviewerEligibility;
 
     @Transactional(readOnly = true)
     public FinanceApproval latestForOrder(
@@ -126,8 +126,7 @@ public class ProcurementApprovalProjectionQuery {
         if ("PENDING".equals(row.status())) {
             AuthUser actor = currentUser.get().orElse(null);
             if (actor != null
-                    && actor.getId().equals(row.assigneeUserId())
-                    && actor.getPermissions().contains(REVIEW_PERMISSION)) {
+                    && reviewerEligibility.findEligible(actor.getId()).isPresent()) {
                 return List.of("APPROVE", "REJECT");
             }
             return List.of();

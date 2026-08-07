@@ -519,7 +519,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     if (approval == null) return '未获取审批状态';
     return switch (approval.status) {
       'DRAFT' => '未提交财务',
-      'PENDING' => '等待${approval.assigneeName ?? '指定负责人'}审核',
+      'PENDING' => '等待财务审核组审核',
       'REJECTED' => '财务已退回，等待采购修改',
       'APPROVED' => '财务已通过',
       'CANCELED' => '审批已取消',
@@ -538,10 +538,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
     final foreground = rejected
         ? theme.colorScheme.onErrorContainer
         : theme.colorScheme.onSecondaryContainer;
-    final title = rejected ? '财务已退回，请修改后重新提交' : '等待财务负责人审核';
+    final title = rejected ? '财务已退回，请修改后重新提交' : '等待财务审核组处理';
     final detail = rejected
         ? (approval.rejectionReason ?? '财务未填写退回原因')
-        : '当前负责人：${approval.assigneeName ?? '未命名'}。审核期间订货单不能修改或删除。';
+        : '已提交财务审核组，审核期间订货单不能修改或删除。';
     return Semantics(
       container: true,
       label: '$title。$detail',

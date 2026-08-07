@@ -331,6 +331,7 @@ class _AdminDepartmentPermViewState
     final groups = rawGroups
         .map(
           (group) => PermissionCatalogGroup(
+            module: group.module,
             category: group.category,
             permissions: group.permissions
                 .where(
@@ -356,6 +357,8 @@ class _AdminDepartmentPermViewState
       disabledFilterLabel: '未配置',
       enableGroupLabel: '本组全部配置',
       disableGroupLabel: '本组全部取消配置',
+      enableModuleLabel: '本模块全部配置',
+      disableModuleLabel: '本模块全部取消配置',
       isEnabled: (permission) => checked.contains(permission.code),
       onEnableGroup: (permissions) => _setPermissions(
         permissions.map((permission) => permission.code),
@@ -381,23 +384,11 @@ class _AdminDepartmentPermViewState
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      permission.name,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      permission.code,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  permission.name,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s8),

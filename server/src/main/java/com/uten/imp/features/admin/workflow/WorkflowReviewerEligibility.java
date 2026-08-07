@@ -56,6 +56,15 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
                         row.userId(), row.employeeId(), row.employeeName()));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<EligibleFinanceReviewer> allEligible() {
+        return eligibleReviewers().stream()
+                .map(row -> new EligibleFinanceReviewer(
+                        row.userId(), row.employeeId(), row.employeeName()))
+                .toList();
+    }
+
     @Transactional(readOnly = true)
     public List<EligibleReviewer> eligibleReviewers() {
         return eligibleRows(null).stream()
@@ -87,7 +96,16 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
                 FROM users u
                 JOIN employees e ON e.id = u.employee_id
                 JOIN departments d ON d.id = e.department_id
-                WHERE e.department_id IN (SELECT id FROM finance_departments)
+                WHERE (
+                        e.department_id IN (SELECT id FROM finance_departments)
+                        OR u.id IN (
+                            SELECT po.user_id
+                            FROM user_permission_overrides po
+                            JOIN permissions perm ON perm.id = po.permission_id
+                            WHERE perm.code = 'finance_order_approval:review'
+                              AND po.effect = 'grant'
+                        )
+                    )
                   AND u.is_deleted = FALSE
                   AND u.status = 'active'
                   AND e.is_deleted = FALSE

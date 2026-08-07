@@ -400,6 +400,13 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage> {
       );
       rows.add(PurchaseGridRow.fromLinked(li, goods));
     }
+    // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
+    _grid.removeWhere(
+      (r) =>
+          r.goods == null &&
+          r.qty.text.trim().isEmpty &&
+          r.price.text.trim().isEmpty,
+    );
     _grid.addRows(rows);
     // 表头未选供应商 → 以上游单据供应商回填。
     final sid = result.supplierId;

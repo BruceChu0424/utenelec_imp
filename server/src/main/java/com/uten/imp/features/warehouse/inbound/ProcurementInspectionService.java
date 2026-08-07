@@ -342,7 +342,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         Object[] ex = events.getFirst();
         if (Objects.equals(ex[0], inspectionItemId)
                 && Objects.equals(ex[1], action)
-                && dec(ex[2]).compareTo(requested) == 0
+                // requested == null means a full-quantity ("一键合格") disposition; the stored
+                // event was itself full at its moment, so a retried full disposition is a replay
+                // regardless of the (since-changed) stored base_qty. Skip the qty compare to avoid
+                // NPE'ing on the null and to keep the retry idempotent.
+                && (requested == null || dec(ex[2]).compareTo(requested) == 0)
                 && Objects.equals(ex[3], reason)) {
             return true;
         }

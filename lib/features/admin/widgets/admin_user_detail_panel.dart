@@ -513,13 +513,6 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             decoration: revoked ? TextDecoration.lineThrough : null,
           ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          permission.code,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
         const SizedBox(height: UtenSpacing.s4),
         Wrap(
           spacing: UtenSpacing.s4,

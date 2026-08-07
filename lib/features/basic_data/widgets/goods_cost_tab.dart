@@ -226,6 +226,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       'model': d.model,
       'spec': d.spec,
       'price': d.price,
+      'discount': d.discount,
       'material': d.material,
       'thickness': d.thickness,
       'mWeight': d.mWeight,

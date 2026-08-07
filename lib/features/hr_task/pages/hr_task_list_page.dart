@@ -41,9 +41,17 @@ class HrTaskListPage extends ConsumerWidget {
             ref
                 .watch(currentPermissionsProvider)
                 .contains(Perm.noticePublish);
-        // 待祝福 = 今日在册且本类型本年未祝福（徽标/角标据此扣减）。
+        // 一键祝福只针对「今日」在册且本类型本年未祝福者。
+        // 注意：生日列表 hrTaskItemsOf 把 birthdayToday 与未来 30 天的
+        // birthdayUpcoming 合并展示了，不能拿合并后的 items 整列发，否则会把
+        // 还没到的生日也提前祝福掉。这里只取今日列表（周年列表本身就是今日全量）。
+        final todayItems = switch (type) {
+          HrTaskType.birthday => s.birthdayToday,
+          HrTaskType.anniversary => s.anniversaryToday,
+          _ => const <HrTaskItem>[],
+        };
         final toBless = isCelebration
-            ? items.where((i) => !i.blessed).toList()
+            ? todayItems.where((i) => !i.blessed).toList()
             : <HrTaskItem>[];
         return RefreshIndicator(
           onRefresh: () =>

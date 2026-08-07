@@ -15,6 +15,7 @@ class GoodsListItem {
     this.spec,
     this.model,
     this.price,
+    this.discount,
     this.status,
     this.legacyId,
     this.series,
@@ -28,6 +29,7 @@ class GoodsListItem {
     this.sourceType,
     this.categoryId,
     this.autoCreated = false,
+    this.stockQty,
   });
 
   final String id;
@@ -36,6 +38,7 @@ class GoodsListItem {
   final String? spec;
   final String? model;
   final double? price;
+  final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? status;
   final int? legacyId;
   final String? series;
@@ -52,6 +55,8 @@ class GoodsListItem {
 
   final bool autoCreated; // 迁移兜底占位货品标记（V177；auto_created 列）
 
+  final double? stockQty; // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
+
   factory GoodsListItem.fromJson(Map<String, dynamic> json) => GoodsListItem(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -59,6 +64,7 @@ class GoodsListItem {
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),
+    discount: (json['discount'] as num?)?.toDouble(),
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     series: json['series'] as String?,
@@ -73,6 +79,7 @@ class GoodsListItem {
     sourceType: json['sourceType'] as String?,
     categoryId: json['categoryId'] as String?,
     autoCreated: json['autoCreated'] as bool? ?? false,
+    stockQty: (json['stockQty'] as num?)?.toDouble(),
   );
 }
 
@@ -85,6 +92,7 @@ class GoodsDetail {
     this.spec,
     this.model,
     this.price,
+    this.discount,
     this.status,
     this.legacyId,
     this.shortName,
@@ -120,6 +128,10 @@ class GoodsDetail {
     this.cTotal,
     this.gTotal,
     this.sourceType,
+    this.costMasked = false,
+    this.discountMasked = false,
+    this.stockQty,
+    this.stockByWarehouse = const [],
   });
 
   final String id;
@@ -128,6 +140,7 @@ class GoodsDetail {
   final String? spec;
   final String? model;
   final double? price;
+  final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? status;
   final int? legacyId;
   final String? shortName;
@@ -167,6 +180,16 @@ class GoodsDetail {
 
   final String? sourceType; // 来源（自制/采购/委外；V128）
 
+  // ===== 成本可见性（goods:cost:view；未授权时后端清空成本字段并置 costMasked=true） =====
+  final bool costMasked;
+
+  // ===== 折扣可见性（goods:discount:view；未授权时 discount 置 null 且 discountMasked=true） =====
+  final bool discountMasked;
+
+  // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
+  final double? stockQty; // 各参与核算仓库余量合计
+  final List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
+
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -174,6 +197,7 @@ class GoodsDetail {
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),
+    discount: (json['discount'] as num?)?.toDouble(),
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     shortName: json['shortName'] as String?,
@@ -212,7 +236,42 @@ class GoodsDetail {
     cTotal: ((json['cTotal'] ?? json['ctotal']) as num?)?.toDouble(),
     gTotal: ((json['gTotal'] ?? json['gtotal']) as num?)?.toDouble(),
     sourceType: json['sourceType'] as String?,
+    costMasked: json['costMasked'] as bool? ?? false,
+    discountMasked: json['discountMasked'] as bool? ?? false,
+    stockQty: (json['stockQty'] as num?)?.toDouble(),
+    stockByWarehouse: (json['stockByWarehouse'] as List?)
+            ?.map((e) => GoodsStockRow.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
   );
+}
+
+/// 货品在某仓库（×颜色）的即时库存行（聚合 stock_balances，仅参与核算仓库）。
+class GoodsStockRow {
+  const GoodsStockRow({
+    this.warehouseId,
+    this.warehouseCode,
+    this.warehouseName,
+    this.colorName,
+    this.qty,
+    this.weight,
+  });
+
+  final String? warehouseId;
+  final String? warehouseCode;
+  final String? warehouseName;
+  final String? colorName; // 颜色名（无色货品为 null）
+  final double? qty; // 当前余量（基本单位）
+  final double? weight; // 当前库存重量
+
+  factory GoodsStockRow.fromJson(Map<String, dynamic> json) => GoodsStockRow(
+        warehouseId: json['warehouseId'] as String?,
+        warehouseCode: json['warehouseCode'] as String?,
+        warehouseName: json['warehouseName'] as String?,
+        colorName: json['colorName'] as String?,
+        qty: (json['qty'] as num?)?.toDouble(),
+        weight: (json['weight'] as num?)?.toDouble(),
+      );
 }
 
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。

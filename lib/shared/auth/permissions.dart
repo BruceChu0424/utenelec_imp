@@ -93,6 +93,12 @@ abstract final class Perm {
   static const goodsEdit = 'goods:edit';
   static const goodsExport = 'goods:export';
   static const goodsViewAll = 'goods:view:all';
+  /// 编辑货品售价/折扣（V226；默认仅财务部，可在权限管理页授权他人）。
+  static const goodsPriceEdit = 'goods:price:edit';
+  /// 查看货品成本（V226；默认仅财务部，未授权时详情隐藏「成本预算」Tab）。
+  static const goodsCostView = 'goods:cost:view';
+  /// 查看货品折扣（V227；默认仅销售部+财务部，未授权时详情/列表隐藏折扣字段）。
+  static const goodsDiscountView = 'goods:discount:view';
 
   /// 模具资料分类（基础资料）
   static const mouldCategoryView = 'mould_category:view';
@@ -242,12 +248,10 @@ abstract final class Perm {
   static const financePostExecute = 'finance_post:execute';
   static const financeShipmentAudit = 'finance_shipment_audit';
 
-  /// 采购/委外订货单的财务审批任务；review 仍需同时满足服务端当前 assignee 校验。
+  /// 采购/委外订货单财务审批任务（V229/ADR-027：财务部门持 review 权限的审核组均可审）。
   static const financeOrderApprovalView = 'finance_order_approval:view';
   static const financeOrderApprovalReview = 'finance_order_approval:review';
 
-  /// 配置每类审批行为的唯一负责人。
-  static const workflowAssignmentManage = 'workflow_assignment:manage';
   static const arApLedgerView = 'ar_ap_ledger:view';
   static const financeReconciliationView = 'finance_reconciliation:view';
 
@@ -420,7 +424,6 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.financeShipmentAudit,
       Perm.financeOrderApprovalView,
       Perm.financeOrderApprovalReview,
-      Perm.workflowAssignmentManage,
       Perm.arApLedgerView,
       Perm.financeReconciliationView,
       Perm.paymentStyleView,

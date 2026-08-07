@@ -1,5 +1,6 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.notice.outbox.BusinessOutboxPublisher;
 import com.uten.imp.features.rbac.UserRoleRepository;
@@ -24,7 +25,8 @@ class ChainNoticeReadyEventTest {
                 mock(UserRoleRepository.class),
                 mock(JdbcTemplate.class),
                 outbox,
-                mock(com.uten.imp.features.rd_task.RdTaskService.class));
+                mock(com.uten.imp.features.rd_task.RdTaskService.class),
+                mock(FinanceReviewerEligibilityPort.class));
         UUID segmentId = UUID.randomUUID();
         UUID receiptId = UUID.randomUUID();
 

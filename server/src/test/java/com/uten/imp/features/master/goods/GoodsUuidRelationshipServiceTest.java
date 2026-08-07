@@ -13,17 +13,22 @@ import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.security.OwnerVisibility;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,9 +44,14 @@ class GoodsUuidRelationshipServiceTest {
         TxSessionVars tx = mock(TxSessionVars.class);
         MasterCodeService codes = mock(MasterCodeService.class);
         GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
+        EntityManager em = stubbedEm();
+        SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+        when(currentUser.get()).thenReturn(Optional.empty());
+        GoodsCostMasker costMasker = mock(GoodsCostMasker.class);
+        when(costMasker.canView()).thenReturn(true);
         GoodsService service = new GoodsService(
                 goodsRepo, categoryRepo, colorRepo, unitRepo, tx,
-                mock(EntityManager.class), codes, mock(OwnerVisibility.class), relationships);
+                em, codes, mock(OwnerVisibility.class), currentUser, costMasker, relationships);
 
         MaterialCategory category = new MaterialCategory();
         Color color = new Color();
@@ -108,5 +118,15 @@ class GoodsUuidRelationshipServiceTest {
         assertSame(color, saved.getValue().getColor());
         assertEquals(color.getId(), view.getColorId());
         assertEquals(201, view.getColorLegacyId());
+    }
+
+    /** 货品详情即时库存聚合走原生查询：mock 成空结果（本测试不关心库存，仅避免 NPE）。 */
+    private static EntityManager stubbedEm() {
+        EntityManager em = mock(EntityManager.class);
+        Query q = mock(Query.class);
+        when(q.setParameter(anyString(), any())).thenReturn(q);
+        when(q.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(q);
+        return em;
     }
 }

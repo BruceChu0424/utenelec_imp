@@ -42,7 +42,6 @@ import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
-import '../../features/finance/pages/finance_workflow_responsibilities_page.dart';
 import '../../features/finance/pages/finance_reconciliation_page.dart';
 import '../../features/finance/pages/finance_report_table_page.dart';
 import '../../features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -989,11 +988,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => FinanceArrivalExceptionDetailPage(
               id: state.pathParameters['id']!,
             ),
-          ),
-          GoRoute(
-            path: '/finance/workflow-responsibilities',
-            name: 'finance-workflow-responsibilities',
-            builder: (_, _) => const FinanceWorkflowResponsibilitiesPage(),
           ),
           GoRoute(
             path: RouteName.financeReport,

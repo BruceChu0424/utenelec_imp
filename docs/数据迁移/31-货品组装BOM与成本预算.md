@@ -238,3 +238,35 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 - API 冒烟：`GET /api/master/goods/{id}/bom` 未带 token 返回 401（端点已注册，非 404）。
 - **运行验收待做**（须重启后端应用颜色/单位/BOM Java 改动 + 重建前端）：自签 token 测 color 同名 409 / goods POST 返 detail /
   bom 加组件后 goods.sourceE 聚合更新 / 造环 409；profile web 测全流程。
+
+## 八、2026-08-07 折扣字段 + 成本可见性 + 即时库存展示（V226）
+
+### 1. 折扣 = 复用老库 `goods.zk`（零迁移）
+
+老库 `B_Goods.zk`（拼音「折扣」首字母）随货品主档 V32 一并迁入 `goods.zk`（`NUMERIC(18,4)`），但此前**从未被任何 DTO/service/UI 启用**。全 36,226 行均有值：32,003 行 `1.00`（原价）、3,681 行 `0.17~0.37`（真实折扣）、64 行 `0`、2 行 `>1`。
+
+本次将其暴露为折扣字段：
+
+- `Goods.java` 字段 `zk` → `discount`，`@Column(name = "zk", precision = 18, scale = 4)` 保留 DB 列名 → **不加列、不改 checksum、不改迁移**。
+- **倍率语义**：`1.00` = 原价、`0.90` = 9 折（优惠 10%），有效售价 = 单价 × 折扣。
+- 接入 `GoodsSaveRequest`/`GoodsDetail`/`GoodsListItem` + `GoodsService.apply/toDetail/toList`；前端基本信息 Tab「价格」旁加「折扣」列、详情行、成本 Tab 保存体回传、货品资料列表「折扣」列。
+- 销售订货单选品时自动带入货品折扣并锁定（见 [20-销售管理](20-销售管理-新库与迁移.md)）。
+
+### 2. 售价/折扣编辑授权 + 成本可见性（两新权限点）
+
+详见 [54-部门默认权限矩阵 §V226](54-部门默认权限矩阵.md)。要点：
+
+- **`goods:price:edit`（写侧字段级）**：未持权者改 `price`/`discount` → 后端 403；前端对无权者锁定售价/折扣只读（`MasterEditForm.readOnlyKeys`，仅禁 UI、仍以原值回传，后端判「未改」放行）。
+- **`goods:cost:view`（读侧脱敏）**：未持权时 `GoodsDetail` 的 18 个成本字段置 null + `costMasked=true`，前端**隐藏「成本预算」Tab**（非打码）。列表/导出本就不含成本。
+- 两者默认授 `DEPT_FIN`，并在 V226 给财务部补 `goods:edit`（改价须走 `PUT /master/goods/{id}`）。
+
+### 3. 即时库存展示（关联仓库，不加列）
+
+库存数据**早已迁移**：老库 `StockGoods.FactQTY`（取最新年）→ `stock_balances`（按 `仓库×货品×颜色`，仅 `warehouses.is_accountable` 参与核算），口径见 [32-即时库存](32-即时库存.md)。`goods` 表无实时库存列（只有静态 `init_stock`）。
+
+本次在货品页**展示**即时库存（不加冗余列、不产生第二数据源）：
+
+- 详情：合计数量 + 按仓库（×颜色）展开的明细行。
+- 列表：「库存量」列（合计）。
+- 实现位置在 `GoodsService`（原生 SQL 直查 `stock_balances` 表）——**架构边界测试禁止 `master→stock` 的 Java 依赖**，故不注入 `StockQueryService`，改用 `EntityManager` 表访问（与即时库存页同口径）。
+

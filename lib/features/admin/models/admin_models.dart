@@ -57,14 +57,18 @@ class AdminPermission {
     required this.code,
     required this.name,
     required this.category,
+    this.module,
   });
 
   final String id;
   final String code;
   final String name;
 
-  /// 分组名（矩阵按此折叠分组）
+  /// 二级子类（矩阵按此折叠二级分组）
   final String category;
+
+  /// 一级功能模块（如「基础资料」）；驱动权限目录一级分组。目录项可能不带回传，由组名兜底。
+  final String? module;
 
   factory AdminPermission.fromJson(Map<String, dynamic> json) =>
       AdminPermission(
@@ -72,6 +76,7 @@ class AdminPermission {
         code: json['code'] as String? ?? '',
         name: json['name'] as String? ?? '',
         category: json['category'] as String? ?? '其他',
+        module: json['module'] as String?,
       );
 }
 
@@ -98,13 +103,18 @@ class UserPermOverrides {
 
 /// 权限目录分组（GET /admin/permission-catalog 的数组项）。
 /// 目录是动态的：后端返回什么前端显示什么，不硬编码权限清单。
+/// 两级：[module] 一级功能模块 → [category] 二级子类 → permissions。
 class PermissionCatalogGroup {
   const PermissionCatalogGroup({
+    required this.module,
     required this.category,
     required this.permissions,
   });
 
-  /// 分组名（如「财税部·客户资料」）
+  /// 一级模块（如「基础资料」「销售管理」）。
+  final String module;
+
+  /// 二级子类（如「货品资料」「销售订货」）。
   final String category;
 
   /// 该分组下的权限点（已按后端排序）
@@ -112,17 +122,20 @@ class PermissionCatalogGroup {
 
   factory PermissionCatalogGroup.fromJson(Map<String, dynamic> json) {
     final category = json['category'] as String? ?? '其他';
+    final module = json['module'] as String? ?? '其他';
     return PermissionCatalogGroup(
+      module: module,
       category: category,
       permissions: (json['permissions'] as List<dynamic>? ?? const []).map((e) {
         final p = e as Map<String, dynamic>;
         final code = p['code'] as String? ?? '';
-        // 目录项可能不带 id/category，用 code 兜底 id、组名兜底 category
+        // 目录项可能不带 id/module/category，用 code 兜底 id、组名兜底 module/category
         return AdminPermission(
           id: p['id'] as String? ?? code,
           code: code,
           name: p['name'] as String? ?? '',
           category: p['category'] as String? ?? category,
+          module: p['module'] as String? ?? module,
         );
       }).toList(),
     );

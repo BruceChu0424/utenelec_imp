@@ -75,7 +75,8 @@ class ProcurementRejectedOrderEditTest {
                 sourceGuard,
                 unitPolicy,
                 projection,
-                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class));
+                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
+                mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class));
 
         com.uten.imp.features.purchase.order.dto.OrderSaveRequest request =
                 new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
@@ -138,7 +139,8 @@ class ProcurementRejectedOrderEditTest {
                 mock(ProductionSubcontractSupplyTransitionPort.class),
                 sourceGuard,
                 projection,
-                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class));
+                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
+                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
 
         var request =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();

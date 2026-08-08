@@ -109,16 +109,19 @@ public class StockDocService {
     private final ProductionMaterialStockLedgerService productionMaterialLedger;
     private final ProductionCompletionReversePort productionCompletionReverse;
     private final TaskClaimService taskClaim;
+    private final StockDocAccessPolicy access;
 
     // ===== 列表 =====
 
     @Transactional(readOnly = true)
     public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<StockDocument> spec = (Root<StockDocument> root,
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.docType() != null && !f.docType().isBlank()) {
                 ps.add(cb.equal(root.get("docType"), f.docType()));
             }
@@ -145,6 +148,7 @@ public class StockDocService {
     @Transactional(readOnly = true)
     public StockDocDetail detail(UUID id) {
         StockDocument d = requireDoc(id);
+        access.requireReadable(d.getMakerId(), "仓库单据不存在");
         List<StockDocItemDto> items = itemRepo.findByDocIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(d, items);
@@ -202,6 +206,7 @@ public class StockDocService {
         // 并发认领守卫（FULFILLMENT_TASK）：他人正编辑同一仓库单据时拒绝重复操作（UX 层；下方悲观锁+状态守卫仍是底线）。
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK", id.toString());
         StockDocument d = requireDocForUpdate(id);
+        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
         requireBalanceAdjustmentPermission(d);
         rejectGenericMutationOfProductionDocument(d);
         if (d.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -217,6 +222,7 @@ public class StockDocService {
     public void delete(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
         if (isAuthorizedBalanceAdjustment(d)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -237,6 +243,7 @@ public class StockDocService {
     public StockDocDetail approve(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
         requireBalanceAdjustmentPermission(d);
         if (d.getStatus() == null || d.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -282,6 +289,7 @@ public class StockDocService {
     public StockDocDetail reverse(UUID id) {
         tx.bind();
         StockDocument d = requireDocForUpdate(id);
+        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
         requireBalanceAdjustmentPermission(d);
         if ("DRAW".equals(d.getDocType()) && isProductionLinked(d.getId())) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -324,6 +332,7 @@ public class StockDocService {
     public StockDocDetail issue(UUID id, StockDocIssueRequest req) {
         tx.bind();
         StockDocument d = requireDrawForIssue(id);
+        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
         requireApprovedLinkedProductionPlan(d);
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         lockInventory(items);
@@ -350,6 +359,7 @@ public class StockDocService {
     public StockDocDetail reverseIssue(UUID id, StockDocIssueRequest req) {
         tx.bind();
         StockDocument d = requireDrawForIssue(id);
+        access.requireWritable(d.getMakerId(), "只能操作本人负责的仓库单据");
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         lockInventory(items);
         ProductionMaterialStockLedgerService.PreparedReverse prepared =

@@ -139,7 +139,8 @@ class ProductionPlanServiceTest {
 
         service = new ProductionPlanService(
                 planRepo, itemRepo, linkRepo, mrpService, planningDraftService,
-                tx, currentUser, nameResolver, em, docNumbers, chainNotice);
+                tx, currentUser, nameResolver, em, docNumbers, chainNotice,
+                mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class));
     }
 
     @Test

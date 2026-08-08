@@ -11,6 +11,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.ret.dto.ReturnDetail;
 import com.uten.imp.features.purchase.ret.dto.ReturnItemDto;
@@ -67,13 +68,16 @@ public class PurchaseReturnService {
     private final DocNumberService docNumberService;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final ProcurementArrivalControlPort arrivalControl;
+    private final PurchaseDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<ReturnListItem> list(ReturnQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<PurchaseReturn> spec = (Root<PurchaseReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -95,6 +99,7 @@ public class PurchaseReturnService {
     @Transactional(readOnly = true)
     public ReturnDetail detail(UUID id) {
         PurchaseReturn r = requireReturn(id);
+        access.requireReadable(r.getMakerId(), "采购退货单不存在");
         List<ReturnItemDto> items = itemRepo.findByReturnIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(r, items);
     }
@@ -116,6 +121,7 @@ public class PurchaseReturnService {
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
         PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         applyHeader(req, r);
         itemRepo.deleteByReturnId(id);
@@ -129,6 +135,7 @@ public class PurchaseReturnService {
     public void delete(UUID id) {
         tx.bind();
         PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -140,6 +147,7 @@ public class PurchaseReturnService {
     public ReturnDetail approve(UUID id) {
         tx.bind();
         PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (r.getWarehouseId() == null) throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
@@ -190,6 +198,7 @@ public class PurchaseReturnService {
     public ReturnDetail reverse(UUID id) {
         tx.bind();
         PurchaseReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);

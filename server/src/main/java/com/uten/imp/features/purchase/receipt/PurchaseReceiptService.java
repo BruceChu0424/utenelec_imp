@@ -13,6 +13,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.common.integrity.NonNegativeCommercialSignGuard;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.purchase.receipt.dto.ReceiptItemDto;
@@ -74,13 +75,16 @@ public class PurchaseReceiptService {
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final ProcurementArrivalControlPort arrivalControl;
     private final ProcurementInspectionPort inspectionService;
+    private final PurchaseDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<PurchaseReceipt> spec = (Root<PurchaseReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -102,6 +106,7 @@ public class PurchaseReceiptService {
     @Transactional(readOnly = true)
     public ReceiptDetail detail(UUID id) {
         PurchaseReceipt r = requireReceipt(id);
+        access.requireReadable(r.getMakerId(), "采购收货单不存在");
         List<ReceiptItemDto> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -124,6 +129,7 @@ public class PurchaseReceiptService {
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -139,6 +145,7 @@ public class PurchaseReceiptService {
     public void delete(UUID id) {
         tx.bind();
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -154,6 +161,7 @@ public class PurchaseReceiptService {
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -226,6 +234,7 @@ public class PurchaseReceiptService {
         productionSupply.lockPurchaseReceiptMutationDimensions(
                 id);
         PurchaseReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

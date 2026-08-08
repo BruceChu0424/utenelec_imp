@@ -9,6 +9,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueDetail;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemDto;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine;
@@ -66,14 +67,17 @@ public class SubcontractMaterialIssueService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<MaterialIssueListItem> list(MaterialIssueQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractMaterialIssue> spec = (Root<SubcontractMaterialIssue> root,
                                                         jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -93,6 +97,7 @@ public class SubcontractMaterialIssueService {
     @Transactional(readOnly = true)
     public MaterialIssueDetail detail(UUID id) {
         SubcontractMaterialIssue r = requireIssue(id);
+        access.requireReadable(r.getMakerId(), "委外材料出仓单不存在");
         List<MaterialIssueItemDto> items = itemRepo.findByIssueIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -115,6 +120,7 @@ public class SubcontractMaterialIssueService {
     public MaterialIssueDetail update(UUID id, MaterialIssueSaveRequest req) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -130,6 +136,7 @@ public class SubcontractMaterialIssueService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -150,6 +157,7 @@ public class SubcontractMaterialIssueService {
     public MaterialIssueDetail approve(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -210,6 +218,7 @@ public class SubcontractMaterialIssueService {
     public MaterialIssueDetail reverse(UUID id) {
         tx.bind();
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料出仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

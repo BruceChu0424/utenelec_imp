@@ -61,7 +61,8 @@ class ProcurementOrderSourceRequirementTest {
                 mock(ProductionSupplySourceGuard.class),
                 mock(PurchaseLineUnitPolicy.class),
                 mock(ProcurementApprovalProjectionQuery.class),
-                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class));
+                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
+                mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class));
 
         ApiException error =
                 assertThrows(ApiException.class, () -> service.create(request));
@@ -96,7 +97,8 @@ class ProcurementOrderSourceRequirementTest {
                         mock(ProductionSubcontractSupplyTransitionPort.class),
                         mock(ProductionSupplySourceGuard.class),
                         mock(ProcurementApprovalProjectionQuery.class),
-                        mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class));
+                        mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
+                        mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
 
         ApiException error =
                 assertThrows(ApiException.class, () -> service.create(request));

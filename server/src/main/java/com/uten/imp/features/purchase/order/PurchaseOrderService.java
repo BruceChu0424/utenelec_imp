@@ -17,6 +17,7 @@ import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery;
+import com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
 import com.uten.imp.features.purchase.order.dto.OrderDetail;
 import com.uten.imp.features.purchase.order.dto.OrderItemDto;
@@ -79,13 +80,16 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final ProcurementApprovalProjectionQuery approvalProjection;
     private final ProcurementArrivalControlPort arrivalControl;
+    private final PurchaseDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<PurchaseOrder> spec = (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -114,6 +118,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(readOnly = true)
     public OrderDetail detail(UUID id) {
         PurchaseOrder o = requireOrder(id);
+        access.requireReadable(o.getMakerId(), "采购订货单不存在");
         List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(o, items);
     }
@@ -175,6 +180,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
+        access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
         if (o.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         approvalProjection.requireMutable(orderType(), id);
         applyHeader(req, o);
@@ -189,6 +195,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     public void delete(UUID id) {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
+        access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
         if (o.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         approvalProjection.requireMutable(orderType(), id);
         o.setDeleted(true);
@@ -264,6 +271,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail reverse(UUID id) {
         tx.bind();
         PurchaseOrder o = requireOrderForUpdate(id);
+        access.requireWritable(o.getMakerId(), "只能操作本人负责的采购订货单");
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);

@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemDto;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine;
@@ -68,14 +69,17 @@ public class SubcontractMaterialReturnService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<MaterialReturnListItem> list(MaterialReturnQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractMaterialReturn> spec = (Root<SubcontractMaterialReturn> root,
                                                          jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                          CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -95,6 +99,7 @@ public class SubcontractMaterialReturnService {
     @Transactional(readOnly = true)
     public MaterialReturnDetail detail(UUID id) {
         SubcontractMaterialReturn r = requireReturn(id);
+        access.requireReadable(r.getMakerId(), "委外材料退货单不存在");
         List<MaterialReturnItemDto> items = itemRepo.findByMaterialReturnIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -117,6 +122,7 @@ public class SubcontractMaterialReturnService {
     public MaterialReturnDetail update(UUID id, MaterialReturnSaveRequest req) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -132,6 +138,7 @@ public class SubcontractMaterialReturnService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -147,6 +154,7 @@ public class SubcontractMaterialReturnService {
     public MaterialReturnDetail approve(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -207,6 +215,7 @@ public class SubcontractMaterialReturnService {
     public MaterialReturnDetail reverse(UUID id) {
         tx.bind();
         SubcontractMaterialReturn r = requireReturnForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外材料退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

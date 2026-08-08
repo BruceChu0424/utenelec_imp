@@ -17,6 +17,7 @@ import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQuery;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.order.dto.OrderCostItemDto;
 import com.uten.imp.features.subcontract.order.dto.OrderDetail;
 import com.uten.imp.features.subcontract.order.dto.OrderItemDto;
@@ -85,14 +86,17 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private final ProductionSupplySourceGuard productionSourceGuard;
     private final ProcurementApprovalProjectionQuery approvalProjection;
     private final ProcurementArrivalControlPort arrivalControl;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractOrder> spec = (Root<SubcontractOrder> root,
                                                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -122,6 +126,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Transactional(readOnly = true)
     public OrderDetail detail(UUID id) {
         SubcontractOrder r = requireOrder(id);
+        access.requireReadable(r.getMakerId(), "委外订货单不存在");
         List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -130,7 +135,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     /** 查询订货单的 BOM 成本子表（只读；前端按 bom_level + parent_cost_item_id 渲染树）。 */
     @Transactional(readOnly = true)
     public List<OrderCostItemDto> listCostItems(UUID orderId) {
-        requireOrder(orderId);
+        SubcontractOrder o = requireOrder(orderId);
+        access.requireReadable(o.getMakerId(), "委外订货单不存在");
         return costItemRepo.findByOrderIdOrderByBomLevelAsc(orderId).stream()
                 .map(this::toCostItemDto).toList();
     }
@@ -192,6 +198,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail update(UUID id, OrderSaveRequest req) {
         tx.bind();
         SubcontractOrder r = requireOrderForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -208,6 +215,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public void delete(UUID id) {
         tx.bind();
         SubcontractOrder r = requireOrderForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -279,6 +287,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public OrderDetail reverse(UUID id) {
         tx.bind();
         SubcontractOrder r = requireOrderForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外订货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

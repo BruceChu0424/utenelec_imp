@@ -9,6 +9,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
@@ -94,14 +95,17 @@ public class ProductionDailyReportService {
     private final DocNumberService docNumberService;
     private final EntityManager em;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
+    private final ProductionDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<ProductionDailyReport> spec = (Root<ProductionDailyReport> root,
                                                      jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -122,6 +126,7 @@ public class ProductionDailyReportService {
     @Transactional(readOnly = true)
     public DailyReportDetail detail(UUID id) {
         ProductionDailyReport r = requireReport(id);
+        access.requireReadable(r.getMakerId(), "生产日报单不存在");
         List<DailyReportItemDto> items = itemRepo.findByReportIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(r, items);
     }
@@ -131,6 +136,7 @@ public class ProductionDailyReportService {
         tx.bind();
         ProductionDailyReport r = new ProductionDailyReport();
         applyHeader(req, r);
+        r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（对象级归属，V233）
         r.setStatus(STATUS_DRAFT);
         reportRepo.save(r);
         saveItems(r, req.getItems());
@@ -141,6 +147,7 @@ public class ProductionDailyReportService {
     public DailyReportDetail update(UUID id, DailyReportSaveRequest req) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         applyHeader(req, r);
         itemRepo.deleteByReportId(id);
@@ -153,6 +160,7 @@ public class ProductionDailyReportService {
     public void delete(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
         if (r.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
@@ -164,6 +172,7 @@ public class ProductionDailyReportService {
     public DailyReportDetail approve(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
@@ -249,6 +258,7 @@ public class ProductionDailyReportService {
     public DailyReportDetail reverse(UUID id) {
         tx.bind();
         ProductionDailyReport r = requireReportForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);

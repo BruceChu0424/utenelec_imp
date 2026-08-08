@@ -55,7 +55,8 @@ class DocumentDirectLockTest {
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
                 mock(ProductionCompletionReversePort.class),
-                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class));
         UUID id = UUID.randomUUID();
         StockDocument document = new StockDocument();
         document.setId(id);
@@ -122,7 +123,8 @@ class DocumentDirectLockTest {
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
                 completion,
-                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class));
 
         service.reverse(id);
 
@@ -182,7 +184,8 @@ class DocumentDirectLockTest {
                 mock(ChainNoticeService.class),
                 mock(com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService.class),
                 completion,
-                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class));
+                mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
+                mock(com.uten.imp.features.stock.StockDocAccessPolicy.class));
 
         assertThrows(ApiException.class, () -> service.reverse(id));
 
@@ -211,7 +214,8 @@ class DocumentDirectLockTest {
                 tx,
                 mock(DocNumberService.class),
                 em,
-                mock(ChainNoticeService.class));
+                mock(ChainNoticeService.class),
+                mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class));
         UUID id = UUID.randomUUID();
         ProductionDailyReport report = new ProductionDailyReport();
         report.setId(id);

@@ -9,6 +9,7 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.notice.ChainNoticeService;
+import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemDto;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
@@ -86,13 +87,16 @@ public class ProductionPlanService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final ChainNoticeService chainNotice;
+    private final ProductionDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<ProductionPlan> spec = (Root<ProductionPlan> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -112,6 +116,7 @@ public class ProductionPlanService {
     @Transactional(readOnly = true)
     public PlanDetail detail(UUID id) {
         ProductionPlan p = requirePlan(id);
+        access.requireReadable(p.getMakerId(), "生产计划不存在");
         List<PlanItemDto> items = itemRepo.findByPlanIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(p, items);
     }
@@ -133,6 +138,7 @@ public class ProductionPlanService {
     public PlanDetail update(UUID id, PlanSaveRequest req) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         if (p.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         planningDraftService.supersedeActive(id, "生产计划已编辑，原预排草案失效");
         applyHeader(req, p);
@@ -147,6 +153,7 @@ public class ProductionPlanService {
     public void delete(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         rejectDirectLifecycleOfExecutionV1Subplan(id, "删除");
         if (p.getStatus() == STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         planningDraftService.supersedeActive(id, "生产计划已删除，原预排草案失效");
@@ -166,6 +173,7 @@ public class ProductionPlanService {
     public PlanDetail approve(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (p.isStopped() || p.isCanceled())
@@ -752,6 +760,7 @@ public class ProductionPlanService {
     public PlanDetail reverse(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         rejectDirectLifecycleOfExecutionV1Subplan(id, "红冲");
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
@@ -808,7 +817,8 @@ public class ProductionPlanService {
      * 可选条件按参数非空拼入，值全部走绑定参数。
      */
     private static String progressFilters(String kw, String ws,
-                                          java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
+                                          java.time.LocalDate dateFrom, java.time.LocalDate dateTo,
+                                          String ownerPredicate) {
         return """
                 FROM production_plans p
                 LEFT JOIN production_plan_items i ON i.plan_id = p.id AND i.is_deleted = false
@@ -817,6 +827,7 @@ public class ProductionPlanService {
                   AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)
                   AND p.is_closed = :closed
                 """
+                + "  AND " + ownerPredicate + "\n"
                 + (kw.isEmpty() ? ""
                         : "  AND (LOWER(p.bill_no) LIKE :kw OR LOWER(COALESCE(p.workshop_name,'')) LIKE :kw)\n")
                 + (ws.isEmpty() ? "" : "  AND p.workshop_name = :ws\n")
@@ -853,11 +864,13 @@ public class ProductionPlanService {
         int sz = Math.min(Math.max(1, size), 100);
         String kw = keyword == null ? "" : keyword.trim().toLowerCase();
         String ws = workshop == null ? "" : workshop.trim();
-        String filters = progressFilters(kw, ws, dateFrom, dateTo);
+        var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");
+        String filters = progressFilters(kw, ws, dateFrom, dateTo, ownerScope.predicate());
 
         // 总数（跨全部页）
         var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (SELECT p.id " + filters + ") t");
         bindProgressFilters(countQ, closed, kw, ws, dateFrom, dateTo);
+        ownerScope.bind(countQ);
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
         if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退（过滤后总数变少）
@@ -871,6 +884,7 @@ public class ProductionPlanService {
                        p.is_pinned, p.is_important
                 """ + filters + " ORDER BY p.is_pinned DESC, " + orderBy + " LIMIT :lim OFFSET :off");
         bindProgressFilters(dataQ, closed, kw, ws, dateFrom, dateTo);
+        ownerScope.bind(dataQ);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
                 .setParameter("lim", sz).setParameter("off", (p - 1) * sz)
@@ -959,12 +973,14 @@ public class ProductionPlanService {
                                                java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
         String kw = keyword == null ? "" : keyword.trim().toLowerCase();
         String ws = workshop == null ? "" : workshop.trim();
-        String filters = progressFilters(kw, ws, dateFrom, dateTo);
+        var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");
+        String filters = progressFilters(kw, ws, dateFrom, dateTo, ownerScope.predicate());
         var q = em.createNativeQuery("""
                 SELECT COUNT(*), COALESCE(SUM(s.sq),0), COALESCE(SUM(s.si),0)
                 FROM (SELECT COALESCE(SUM(i.qty),0) AS sq, COALESCE(SUM(i.iqty),0) AS si
                 """ + filters + ") s");
         bindProgressFilters(q, closed, kw, ws, dateFrom, dateTo);
+        ownerScope.bind(q);
         Object[] r = (Object[]) q.getSingleResult();
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("count", ((Number) r[0]).longValue());
@@ -976,11 +992,13 @@ public class ProductionPlanService {
     /** 进度看板车间筛选选项（同进行中/已完成口径的去重车间名，不受当前筛选影响）。 */
     @Transactional(readOnly = true)
     public List<Map<String, String>> progressWorkshops(boolean closed) {
-        String filters = progressFilters("", "", null, null);
+        var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");
+        String filters = progressFilters("", "", null, null, ownerScope.predicate());
         var q = em.createNativeQuery(
                 "SELECT DISTINCT s.ws FROM (SELECT p.workshop_name AS ws " + filters
                         + ") s WHERE s.ws IS NOT NULL AND s.ws <> '' ORDER BY s.ws");
         bindProgressFilters(q, closed, "", "", null, null);
+        ownerScope.bind(q);
         @SuppressWarnings("unchecked")
         List<String> names = (List<String>) q.getResultList();
         return names.stream().map(n -> Map.of("name", n)).toList();
@@ -991,6 +1009,7 @@ public class ProductionPlanService {
     public void updateFlags(UUID id, com.uten.imp.features.production.plan.dto.PlanFlagsRequest req) {
         tx.bind();
         ProductionPlan p = requirePlan(id);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         if (req.pinned() != null) p.setPinned(req.pinned());
         if (req.important() != null) p.setImportant(req.important());
         planRepo.save(p);

@@ -117,7 +117,8 @@ class ProcurementDocumentStateLockTest {
                 em,
                 mock(SecurityContextCurrentUser.class),
                 mock(EmployeeNameResolver.class),
-                mock(DocNumberService.class));
+                mock(DocNumberService.class),
+                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
         UUID id = UUID.randomUUID();
         SubcontractMaterialIssue committed = new SubcontractMaterialIssue();
         committed.setStatus((short) 1);

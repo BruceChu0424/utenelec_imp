@@ -18,10 +18,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 数据范围授权管理（V89 user_data_scopes）：按人配置「能看哪些业务员的客户/外贸货品」。
+ * 数据范围授权管理（V89 user_data_scopes）：按人配置「能看哪些归属人的某模块单据」。
  *
  * <p>三档可见性的中间档：自己（+公共）/ <b>自己+授权归属人</b> / 全部（*:view:all）。
- * scope：goods（外贸货品）/ client（客户资料）。整体替换语义，同权限覆盖管理。
+ * scope：goods / client / sales（owner_employee_id 归属）+ purchase / subcontract /
+ * production_plan / stock_doc（maker_id 归属，V233）。整体替换语义，同权限覆盖管理。
+ * user_data_scopes 的 visibleOwners 同时影响 canRead 和 canWrite，即授权同事看+改。
  */
 @Service
 @RequiredArgsConstructor
@@ -29,7 +31,9 @@ import java.util.UUID;
 public class DataScopeAdminService {
 
     /** 合法业务范围（与 user_data_scopes.scope CHECK 一致）。 */
-    private static final List<String> SCOPES = List.of("goods", "client", "sales");
+    private static final List<String> SCOPES = List.of(
+            "goods", "client", "sales",
+            "purchase", "subcontract", "production_plan", "stock_doc");
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -86,6 +90,27 @@ public class DataScopeAdminService {
                      UNION ALL SELECT owner_employee_id FROM sales_shipments WHERE owner_employee_id IS NOT NULL
                      UNION ALL SELECT owner_employee_id FROM sales_other_shipments WHERE owner_employee_id IS NOT NULL
                      UNION ALL SELECT owner_employee_id FROM sales_returns WHERE owner_employee_id IS NOT NULL) t""";
+            // 采购单据归属列 = maker_id（申请单不隔离，不含 purchase_requests）
+            case "purchase" -> """
+                    (SELECT maker_id AS owner_employee_id FROM purchase_orders WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM purchase_receipts WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM purchase_returns WHERE maker_id IS NOT NULL) t""";
+            // 委外单据归属列 = maker_id（申请单不隔离，不含 subcontract_applications）
+            case "subcontract" -> """
+                    (SELECT maker_id AS owner_employee_id FROM subcontract_orders WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM subcontract_inquiries WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM subcontract_material_issues WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM subcontract_material_returns WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM subcontract_receipts WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM subcontract_returns WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM subcontract_wastes WHERE maker_id IS NOT NULL) t""";
+            // 生产单据归属列 = maker_id（计划 + 日报）
+            case "production_plan" -> """
+                    (SELECT maker_id AS owner_employee_id FROM production_plans WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM production_daily_reports WHERE maker_id IS NOT NULL) t""";
+            // 仓库单据归属列 = maker_id
+            case "stock_doc" -> """
+                    (SELECT maker_id AS owner_employee_id FROM stock_documents WHERE maker_id IS NOT NULL) t""";
             default -> throw new IllegalStateException();
         };
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(

@@ -70,6 +70,26 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       label: '销售单据可见业务员',
       description: '加看所选业务员名下的销售单据',
     ),
+    _DataScopeDefinition(
+      scope: 'purchase',
+      label: '采购单据可见制单人',
+      description: '加看所选制单人名下的采购单据（可看可改）',
+    ),
+    _DataScopeDefinition(
+      scope: 'subcontract',
+      label: '委外单据可见制单人',
+      description: '加看所选制单人名下的委外单据（可看可改）',
+    ),
+    _DataScopeDefinition(
+      scope: 'production_plan',
+      label: '生产单据可见制单人',
+      description: '加看所选制单人名下的生产计划/日报（可看可改）',
+    ),
+    _DataScopeDefinition(
+      scope: 'stock_doc',
+      label: '仓库单据可见制单人',
+      description: '加看所选制单人名下的仓库单据（可看可改）',
+    ),
   ];
 
   _UserDetailSection _section = _UserDetailSection.permissions;

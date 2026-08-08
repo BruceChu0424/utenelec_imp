@@ -120,7 +120,8 @@ class PurchaseOrderPendingCapacityTest {
                 mock(ProductionSupplySourceGuard.class),
                 unitPolicy,
                 mock(ProcurementApprovalProjectionQuery.class),
-                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class));
+                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
+                mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class));
 
         ApiException error = assertThrows(
                 ApiException.class,

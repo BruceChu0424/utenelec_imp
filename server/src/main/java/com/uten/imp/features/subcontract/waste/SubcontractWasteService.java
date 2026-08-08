@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.integrity.LinkedDocumentIntegrityService;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.waste.dto.WasteDetail;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemDto;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemLine;
@@ -76,14 +77,17 @@ public class SubcontractWasteService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<WasteListItem> list(WasteQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractWaste> spec = (Root<SubcontractWaste> root,
                                                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -103,6 +107,7 @@ public class SubcontractWasteService {
     @Transactional(readOnly = true)
     public WasteDetail detail(UUID id) {
         SubcontractWaste r = requireWaste(id);
+        access.requireReadable(r.getMakerId(), "委外损耗单不存在");
         List<WasteItemDto> items = itemRepo.findByWasteIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -125,6 +130,7 @@ public class SubcontractWasteService {
     public WasteDetail update(UUID id, WasteSaveRequest req) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -140,6 +146,7 @@ public class SubcontractWasteService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -157,6 +164,7 @@ public class SubcontractWasteService {
     public WasteDetail approve(UUID id) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -214,6 +222,7 @@ public class SubcontractWasteService {
     public WasteDetail reverse(UUID id) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外损耗单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

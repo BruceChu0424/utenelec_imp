@@ -56,7 +56,8 @@ class SubcontractMaterialReturnAuthorityTest {
                         em,
                         currentUser,
                         mock(EmployeeNameResolver.class),
-                        mock(DocNumberService.class));
+                        mock(DocNumberService.class),
+                        mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
 
         UUID id = UUID.randomUUID();
         SubcontractMaterialReturn document = document(id);

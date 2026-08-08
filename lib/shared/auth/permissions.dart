@@ -74,6 +74,9 @@ abstract final class Perm {
   /// 采购报表
   static const purchaseReportView = 'purchase_report:view';
 
+  /// 查看全部采购单据（对象级授权 V233；按制单人 maker_id 隔离，持此权限看全部）。
+  static const purchaseViewAll = 'purchase:view:all';
+
   // ===== 财税部主数据入口（复用基础资料真实页面）=====
   /// 供应商资料
   static const supplierView = 'supplier:view';
@@ -150,6 +153,9 @@ abstract final class Perm {
   static const stockDocView = 'stock_doc:view';
   static const stockDocEdit = 'stock_doc:edit';
 
+  /// 查看全部仓库单据（对象级授权 V233；按制单人 maker_id 隔离，持此权限看全部）。
+  static const stockDocViewAll = 'stock_doc:view:all';
+
   /// 仓库报表（V67 种子化）
   static const stockReportView = 'stock_report:view';
   static const stockReportExport = 'stock_report:export';
@@ -216,6 +222,9 @@ abstract final class Perm {
   static const subcontractReportView = 'subcontract_report:view';
   static const subcontractReportExport = 'subcontract_report:export';
 
+  /// 查看全部委外单据（对象级授权 V233；按制单人 maker_id 隔离，持此权限看全部）。
+  static const subcontractViewAll = 'subcontract:view:all';
+
   // ===== 生产管理（生产部；V55 seed 细粒度）=====
   static const productionPlanView = 'production_plan:view';
   static const productionPlanEdit = 'production_plan:edit';
@@ -224,6 +233,9 @@ abstract final class Perm {
   static const productionReportView = 'production_report:view';
   static const productionReportExport = 'production_report:export';
   static const productionWhereUsedView = 'production_where_used:view';
+
+  /// 查看全部生产单据（对象级授权 V233；生产计划/日报按制单人 maker_id 隔离，持此权限看全部）。
+  static const productionPlanViewAll = 'production_plan:view:all';
 
   // ===== 钱流管理（财税部；V57 seed）=====
   static const financeReceiptView = 'finance_receipt:view';
@@ -332,6 +344,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.purchaseReturnEdit,
       Perm.purchaseReportView,
       Perm.purchaseReportExport,
+      Perm.purchaseViewAll,
       Perm.currencyView,
       Perm.currencyEdit,
       Perm.currencyExport,
@@ -341,6 +354,7 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.stockBalanceAdjust,
       Perm.stockDocView,
       Perm.stockDocEdit,
+      Perm.stockDocViewAll,
       Perm.stockReportView,
       Perm.stockReportExport,
       Perm.warehouseInboundView,
@@ -398,11 +412,13 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractMaterialReturnView, Perm.subcontractMaterialReturnEdit,
       Perm.subcontractWasteView, Perm.subcontractWasteEdit,
       Perm.subcontractReportView, Perm.subcontractReportExport,
+      Perm.subcontractViewAll,
       // 生产管理（V55）
       Perm.productionPlanView, Perm.productionPlanEdit,
       Perm.productionDailyReportView, Perm.productionDailyReportEdit,
       Perm.productionReportView, Perm.productionReportExport,
       Perm.productionWhereUsedView,
+      Perm.productionPlanViewAll,
       Perm.productionPlanForwardRd,
       // 工程研发部任务中心
       Perm.rdTaskView, Perm.rdTaskEdit, Perm.rdTaskResolve,

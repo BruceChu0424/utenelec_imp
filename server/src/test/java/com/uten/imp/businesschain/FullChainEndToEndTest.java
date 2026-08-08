@@ -45,6 +45,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -1239,6 +1240,252 @@ class FullChainEndToEndTest {
                 () -> shipmentService.detail(shipmentId));
         assertEquals(ErrorCode.NOT_FOUND, ex.getCode(),
                 "反ID探测：非归属者读既有出货单 → NOT_FOUND(404)，非 FORBIDDEN(403)");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #34 (purchase object-level auth — maker_id isolation, V233) A purchase order is isolated by
+    // its maker: a DIFFERENT purchaser (no purchase:view:all) cannot list/read/update/delete it
+    // (read → NOT_FOUND anti-probing; write → FORBIDDEN). The maker, a view:all supervisor, and
+    // super-admin can. A NULL-maker legacy order stays public-readable but ordinary-not-writable.
+    // Finance approval is intentionally NOT gated — exercised by #22/#30 where a non-maker reviewer
+    // approves the order through the ProcurementOrderApprovalPort.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void purchaseObjectScope_isolatesByMakerWithViewAllAndNullOwnerSemantics() {
+        World w = seedWorld("pauth");
+        UUID g = UUID.randomUUID(), h = UUID.randomUUID();
+        insertGoods(g, "G-pauth", "成品G-pauth", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(h, "H-pauth", "原料H-pauth", "采购", w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?", w.supplierId(), h);
+        insertBom(g, h, "2"); // G -> H direct BUY; order G 10 -> H demand 20
+
+        UUID purchaserA = createUserWithPerms(w, "purchA-pauth",
+                "purchase_order:view", "purchase_order:edit", "purchase_request:view");
+        UUID purchaserB = createUserWithPerms(w, "purchB-pauth",
+                "purchase_order:view", "purchase_order:edit", "purchase_request:view");
+        UUID supervisor = createUserWithPerms(w, "sup-pauth",
+                "purchase_order:view", "purchase_order:edit", "purchase_request:view", "purchase:view:all");
+
+        // DRAFT purchase order owned by A (maker = A's employee) via the procurement chain
+        UUID orderId = draftPurchaseOrderOwnedBy(w, purchaserA, g, h, "10");
+        assertEquals(employeeIdOf(purchaserA),
+                jdbc.queryForObject("select maker_id from purchase_orders where id = ?", UUID.class, orderId),
+                "前置：采购单 maker = A");
+
+        // (1) purchaserB (no view:all) — list excludes, detail NOT_FOUND, write/delete FORBIDDEN
+        loginAs(purchaserB);
+        var bPage = purchaseOrderService.list(emptyOrderFilter(), 1, 50, null, null);
+        assertTrue(bPage.getItems().stream().noneMatch(i -> i.getId().equals(orderId)),
+                "对象隔离：B 的列表不含 A 的采购单");
+        ApiException nf = assertThrows(ApiException.class,
+                () -> purchaseOrderService.detail(orderId));
+        assertEquals(ErrorCode.NOT_FOUND, nf.getCode(),
+                "反ID探测：B 读 A 的采购单 → NOT_FOUND(404)，不泄露存在性");
+        assertEquals(ErrorCode.FORBIDDEN,
+                assertThrows(ApiException.class,
+                        () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
+                "对象隔离：B 改 A 的采购单 → FORBIDDEN(403)");
+        assertEquals(ErrorCode.FORBIDDEN,
+                assertThrows(ApiException.class,
+                        () -> purchaseOrderService.delete(orderId)).getCode(),
+                "对象隔离：B 删 A 的采购单 → FORBIDDEN(403)");
+
+        // (2) supervisor (purchase:view:all) — list includes, detail ok
+        loginAs(supervisor);
+        var sPage = purchaseOrderService.list(emptyOrderFilter(), 1, 50, null, null);
+        assertTrue(sPage.getItems().stream().anyMatch(i -> i.getId().equals(orderId)),
+                "view:all：主管列表含 A 的采购单");
+        assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
+                "view:all：主管可读 A 的采购单");
+
+        // (3) super-admin — detail ok
+        loginAs(w.superAdminUserId());
+        assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
+                "超管可读任意采购单");
+
+        // (4) owner A — detail ok, write ok (owner gate passes)
+        loginAs(purchaserA);
+        assertDoesNotThrow(() -> purchaseOrderService.detail(orderId));
+        assertDoesNotThrow(() -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w)),
+                "owner：A 可改自己的采购单（归属 gate 放行）");
+
+        // (5) NULL-maker legacy order: public-readable, ordinary-not-writable, view:all-writable
+        jdbc.update("update purchase_orders set maker_id = null where id = ?", orderId);
+        loginAs(purchaserB);
+        assertDoesNotThrow(() -> purchaseOrderService.detail(orderId),
+                "NULL owner：老数据公共可读（B 可读）");
+        assertEquals(ErrorCode.FORBIDDEN,
+                assertThrows(ApiException.class,
+                        () -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w))).getCode(),
+                "NULL owner：老数据普通用户不可写（B → FORBIDDEN）");
+        loginAs(supervisor);
+        assertDoesNotThrow(() -> purchaseOrderService.update(orderId, headerOnlyOrderReq(w)),
+                "NULL owner：持 view:all 可写（管理员兜底/指派）");
+    }
+
+    private com.uten.imp.features.purchase.order.dto.OrderQueryFilter emptyOrderFilter() {
+        return new com.uten.imp.features.purchase.order.dto.OrderQueryFilter(
+                null, null, null, null, null, null);
+    }
+
+    /** Header-only purchase-order save request (no item lines) — enough to pass the owner gate and
+     *  header apply; used solely to prove the write-gate decision (it clears lines + zeroes totals). */
+    private com.uten.imp.features.purchase.order.dto.OrderSaveRequest headerOnlyOrderReq(World w) {
+        com.uten.imp.features.purchase.order.dto.OrderSaveRequest req =
+                new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        req.setBillDate(LocalDate.of(2026, 1, 15));
+        req.setSupplierId(w.supplierId());
+        req.setWarehouseId(w.warehouseId());
+        req.setCurrencyId(w.currencyId());
+        req.setExchangeRate(BigDecimal.ONE);
+        req.setTaxRate(BigDecimal.ZERO);
+        req.setItems(List.of());
+        return req;
+    }
+
+    /** Drive plan→confirm→createBatch as ownerUserId so the resulting DRAFT purchase order has
+     *  maker_id = ownerUserId's employee (object-level auth fixture). */
+    private UUID draftPurchaseOrderOwnedBy(World w, UUID ownerUserId,
+                                            UUID finished, UUID buy, String orderQty) {
+        loginAs(w.superAdminUserId());
+        UUID planId = approvedPlan(w, finished, orderQty, orderQty);
+        PlanningPreviewResult preview = planningPackageService.preview(planId, w.warehouseId());
+        GeneratePlanningPackageRequest req = new GeneratePlanningPackageRequest();
+        req.setWarehouseId(w.warehouseId());
+        req.setIdempotencyKey("idem-pauth-" + planId);
+        req.setPreviewFingerprint(preview.fingerprint());
+        req.setGeneratePurchaseRequest(true);
+        planningPackageService.confirm(planId, req);
+        String planNo = strFor("select bill_no from production_plans where id = ?", planId);
+        UUID requestItemId = jdbc.queryForObject(
+                "select pri.id from purchase_request_items pri "
+                        + "join purchase_requests pr on pr.id = pri.request_id "
+                        + "where pr.source_doc_no = ? and pri.goods_id = ?",
+                UUID.class, planNo, buy);
+        BigDecimal reqQty = jdbc.queryForObject(
+                "select qty from purchase_request_items where id = ?", BigDecimal.class, requestItemId);
+
+        loginAs(ownerUserId); // createBatch as the owner → maker = owner's employee
+        com.uten.imp.features.purchase.order.dto.OrderSaveRequest orderReq =
+                new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        orderReq.setBillDate(LocalDate.of(2026, 1, 15));
+        orderReq.setSupplierId(w.supplierId());
+        orderReq.setWarehouseId(w.warehouseId());
+        orderReq.setCurrencyId(w.currencyId());
+        orderReq.setExchangeRate(BigDecimal.ONE);
+        orderReq.setTaxRate(BigDecimal.ZERO);
+        com.uten.imp.features.purchase.order.dto.OrderItemLine line =
+                new com.uten.imp.features.purchase.order.dto.OrderItemLine();
+        line.setGoodsId(buy);
+        line.setRequestItemId(requestItemId);
+        line.setUnitId(w.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(reqQty);
+        line.setPrice(new BigDecimal("50"));
+        line.setAmountOriginal(reqQty.multiply(new BigDecimal("50")));
+        line.setAmountLocal(reqQty.multiply(new BigDecimal("50")));
+        orderReq.setItems(List.of(line));
+        purchaseOrderService.createBatch(orderReq);
+        return jdbc.queryForObject(
+                "select id from purchase_orders where is_deleted = false and supplier_id = ? "
+                        + "order by created_at desc limit 1",
+                UUID.class, w.supplierId());
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #35 (production plan object-level auth + progress board nativeReadScope, V233) A plan is
+    // isolated by maker; the read-side progress board (native SQL) MUST apply the same scope so a
+    // non-owner cannot see aggregate progress of plans they cannot list. This also proves the
+    // progress nativeReadScope SQL is valid in both the seeAll (1=1) and filtered (IN) paths.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void productionPlanObjectScope_isolatesByMakerAndProgressBoardRespectsScope() {
+        World w = seedWorld("pauthp");
+        UUID planId = approvedPlan(w, w.goodsA(), "10", "10"); // maker = super-admin
+        UUID plannerA = createUserWithPerms(w, "planA-p", "production_plan:view", "production_plan:edit");
+        UUID other = createUserWithPerms(w, "planB-p", "production_plan:view");
+        jdbc.update("update production_plans set maker_id = ? where id = ?",
+                employeeIdOf(plannerA), planId);
+
+        // non-owner (no view:all) — detail NOT_FOUND, list excludes, progress board empty (filtered)
+        loginAs(other);
+        assertEquals(ErrorCode.NOT_FOUND,
+                assertThrows(ApiException.class, () -> planService.detail(planId)).getCode(),
+                "生产计划对象隔离：非归属者 detail → NOT_FOUND");
+        assertTrue(planService.list(emptyPlanFilter(), 1, 50, null, null).getItems().stream()
+                        .noneMatch(i -> i.getId().equals(planId)),
+                "生产计划 list 不含非归属计划");
+        assertEquals(0,
+                planService.progress(false, "billDate", 1, 10, "", "", null, null).getTotal(),
+                "进度看板 nativeReadScope：非归属者见 0 条（SQL 有效 + 按归属过滤，与 list 同口径）");
+
+        // super-admin — detail ok, progress board includes the plan (seeAll → 1=1, SQL valid)
+        loginAs(w.superAdminUserId());
+        assertDoesNotThrow(() -> planService.detail(planId));
+        assertTrue(planService.progress(false, "billDate", 1, 10, "", "", null, null).getTotal() >= 1,
+                "超管进度看板含该计划（seeAll → 1=1，SQL 有效）");
+    }
+
+    private com.uten.imp.features.production.plan.dto.PlanQueryFilter emptyPlanFilter() {
+        return new com.uten.imp.features.production.plan.dto.PlanQueryFilter(
+                null, null, null, null, null, null);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #36 (stock doc object-level auth, V233) A manual stock doc (OTHER_IN) is isolated by maker.
+    // (Production-linked DRAW/FINISHED_IN are blocked from generic CRUD by isProductionLinked, so
+    // the owner gate is exercised here via a manual doc which IS generic-CRUD-eligible.)
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void stockDocObjectScope_isolatesByMaker() {
+        World w = seedWorld("pauths");
+        UUID keeperA = createUserWithPerms(w, "keepA-s", "stock_doc:view", "stock_doc:edit");
+        UUID keeperB = createUserWithPerms(w, "keepB-s", "stock_doc:view", "stock_doc:edit");
+        UUID supervisor = createUserWithPerms(w, "keepSup-s",
+                "stock_doc:view", "stock_doc:edit", "stock_doc:view:all");
+
+        loginAs(keeperA);
+        UUID docId = createOtherInDraft(w); // OTHER_IN draft, maker = keeperA
+        assertEquals(employeeIdOf(keeperA),
+                jdbc.queryForObject("select maker_id from stock_documents where id = ?", UUID.class, docId),
+                "前置：仓库单据 maker = keeperA");
+
+        loginAs(keeperB);
+        assertEquals(ErrorCode.NOT_FOUND,
+                assertThrows(ApiException.class, () -> stockDocService.detail(docId)).getCode(),
+                "仓库单据对象隔离：非归属者 detail → NOT_FOUND");
+        assertTrue(stockDocService.list(stockDocFilter("OTHER_IN"), 1, 50, null, null).getItems().stream()
+                        .noneMatch(i -> i.getId().equals(docId)),
+                "仓库单据 list 不含非归属单据");
+
+        loginAs(supervisor);
+        assertDoesNotThrow(() -> stockDocService.detail(docId), "view:all：主管可读");
+        loginAs(w.superAdminUserId());
+        assertDoesNotThrow(() -> stockDocService.detail(docId), "超管可读");
+    }
+
+    private com.uten.imp.features.stock.dto.StockDocQueryFilter stockDocFilter(String docType) {
+        return new com.uten.imp.features.stock.dto.StockDocQueryFilter(
+                docType, null, null, null, null, null, null, null);
+    }
+
+    private UUID createOtherInDraft(World w) {
+        com.uten.imp.features.stock.dto.StockDocSaveRequest req =
+                new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+        req.setDocType("OTHER_IN");
+        req.setBillDate(LocalDate.of(2026, 1, 15));
+        req.setWarehouseId(w.warehouseId());
+        com.uten.imp.features.stock.dto.StockDocItemLine line =
+                new com.uten.imp.features.stock.dto.StockDocItemLine();
+        line.setGoodsId(w.goodsA());
+        line.setUnitId(w.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal("5"));
+        line.setPrice(new BigDecimal("10"));
+        line.setAmountOriginal(new BigDecimal("50"));
+        line.setAmountLocal(new BigDecimal("50"));
+        req.setItems(List.of(line));
+        return stockDocService.create(req).getId();
     }
 
     // ---------------------------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.application.port.ProcurementInspectionPort;
+import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemDto;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine;
@@ -83,14 +84,17 @@ public class SubcontractReceiptService {
     private final ProductionSubcontractSupplyTransitionPort productionSupply;
     private final ProcurementArrivalControlPort arrivalControl;
     private final ProcurementInspectionPort inspectionService;
+    private final SubcontractDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<SubcontractReceipt> spec = (Root<SubcontractReceipt> root,
                                                   jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -110,6 +114,7 @@ public class SubcontractReceiptService {
     @Transactional(readOnly = true)
     public ReceiptDetail detail(UUID id) {
         SubcontractReceipt r = requireReceipt(id);
+        access.requireReadable(r.getMakerId(), "委外进仓单不存在");
         List<ReceiptItemDto> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
@@ -132,6 +137,7 @@ public class SubcontractReceiptService {
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -147,6 +153,7 @@ public class SubcontractReceiptService {
     public void delete(UUID id) {
         tx.bind();
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         if (r.getStatus() == STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
         }
@@ -164,6 +171,7 @@ public class SubcontractReceiptService {
         tx.bind();
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -237,6 +245,7 @@ public class SubcontractReceiptService {
         tx.bind();
         productionSupply.lockSubcontractReceiptMutationDimensions(id);
         SubcontractReceipt r = requireReceiptForUpdate(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }

@@ -62,7 +62,8 @@ class SubcontractOrderMaterialAuthorityTest {
                 productionSupply,
                 mock(ProductionSupplySourceGuard.class),
                 mock(ProcurementApprovalProjectionQuery.class),
-                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class));
+                mock(com.uten.imp.application.port.ProcurementArrivalControlPort.class),
+                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
     }
 
     @Test

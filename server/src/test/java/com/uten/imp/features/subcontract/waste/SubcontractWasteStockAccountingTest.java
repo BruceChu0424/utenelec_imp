@@ -60,7 +60,8 @@ class SubcontractWasteStockAccountingTest {
                 em,
                 currentUser,
                 nameResolver,
-                mock(DocNumberService.class));
+                mock(DocNumberService.class),
+                mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class));
     }
 
     @Test

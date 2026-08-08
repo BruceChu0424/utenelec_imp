@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
@@ -9,19 +10,26 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
-  testWidgets('new order defaults to empty shipment policy for sales to choose', (
-    tester,
-  ) async {
-    await _pumpEditor(tester, type: SalesDocType.order);
+  testWidgets(
+    'new order defaults to empty shipment policy for sales to choose',
+    (tester) async {
+      await _pumpEditor(tester, type: SalesDocType.order);
 
-    expect(
-      find.byKey(const ValueKey('sales-order-shipment-policy')),
-      findsOneWidget,
-    );
-    // customerConfirm 不再提供给新单：默认空，由销售自选 ALLOW_PARTIAL / REQUIRE_COMPLETE。
-    expect(find.text('客户确认后分批'), findsNothing);
-    expect(find.textContaining('请选择发运策略'), findsOneWidget);
-  });
+      expect(
+        find.byKey(const ValueKey('sales-order-shipment-policy')),
+        findsOneWidget,
+      );
+      // customerConfirm 不再提供给新单：默认空，由销售自选 ALLOW_PARTIAL / REQUIRE_COMPLETE。
+      expect(find.text('客户确认后分批'), findsNothing);
+      expect(find.textContaining('请选择发运策略'), findsNothing);
+      expect(_dropdownWithLabel('发运策略'), findsOneWidget);
+
+      // 销售订单仍需选择币种、填写税率，但汇率改由财务维护。
+      expect(_dropdownWithLabel('币种'), findsOneWidget);
+      expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
+      expect(_textFieldWithLabel('汇率'), findsNothing);
+    },
+  );
 
   testWidgets('legacy order keeps shipment policy read-only', (tester) async {
     await _pumpEditor(
@@ -42,8 +50,60 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('历史订单（未指定）'), findsOneWidget);
-    expect(find.textContaining('编辑其它字段时系统会保留'), findsOneWidget);
+    expect(find.textContaining('编辑其它字段时系统会保留'), findsNothing);
   });
+
+  testWidgets('non-order currency document keeps exchange rate editor', (
+    tester,
+  ) async {
+    await _pumpEditor(tester, type: SalesDocType.otherShipment);
+
+    expect(_dropdownWithLabel('币种'), findsOneWidget);
+    expect(_textFieldWithLabel('汇率'), findsOneWidget);
+    expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
+  });
+
+  testWidgets(
+    'order save omits exchange rate but keeps currency and tax rate',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.order,
+        id: 'order-rate-hidden',
+        detail: const {
+          'id': 'order-rate-hidden',
+          'billNo': 'XD202608080001',
+          'billDate': '2026-08-08',
+          'status': 0,
+          'writable': true,
+          'clientId': 'client-1',
+          'currencyId': 'currency-usd',
+          'exchangeRate': 7.2,
+          'taxRate': 13,
+          'sellerId': 'seller-1',
+          'deliverDate': '2026-08-20',
+          'shipmentPolicy': 'ALLOW_PARTIAL',
+          'items': [
+            {
+              'id': 'order-item-1',
+              'goodsId': 'goods-1',
+              'qty': 2,
+              'price': 10,
+              'discount': 1,
+            },
+          ],
+        },
+      );
+
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
+      expect(api.lastPutBody, isNotNull);
+      expect(api.lastPutBody!['currencyId'], 'currency-usd');
+      expect(api.lastPutBody!['taxRate'], 13);
+      expect(api.lastPutBody!.containsKey('exchangeRate'), isFalse);
+    },
+  );
 
   testWidgets('new sales shipment explains mandatory order linkage', (
     tester,
@@ -58,7 +118,15 @@ void main() {
   });
 }
 
-Future<void> _pumpEditor(
+Finder _dropdownWithLabel(String label) => find.byWidgetPredicate(
+  (widget) => widget is UtenDropdownField && widget.label == label,
+);
+
+Finder _textFieldWithLabel(String label) => find.byWidgetPredicate(
+  (widget) => widget is TextField && widget.decoration?.labelText == label,
+);
+
+Future<_EditorApi> _pumpEditor(
   WidgetTester tester, {
   required SalesDocType type,
   String? id,
@@ -83,6 +151,7 @@ Future<void> _pumpEditor(
     ),
   );
   await tester.pumpAndSettle();
+  return api;
 }
 
 class _TestSessionNotifier extends SessionNotifier {
@@ -94,6 +163,7 @@ class _EditorApi extends ApiClient {
   _EditorApi(this.detail) : super(Dio());
 
   final Map<String, dynamic>? detail;
+  Map<String, dynamic>? lastPutBody;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -118,5 +188,11 @@ class _EditorApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     return const [];
+  }
+
+  @override
+  Future<Map<String, dynamic>> put(String path, {Object? body}) async {
+    lastPutBody = Map<String, dynamic>.from(body! as Map);
+    return detail ?? const {'id': 'saved-order', 'items': <Object>[]};
   }
 }

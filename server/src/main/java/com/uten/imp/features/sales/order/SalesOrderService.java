@@ -97,6 +97,7 @@ public class SalesOrderService {
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
     private final EntityManager em;
+    private final SalesOrderPlanProgressQuery planProgressQuery;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final AuditService auditService;
     private final SalesMasterReferenceValidator referenceValidator;
@@ -349,6 +350,8 @@ public class SalesOrderService {
                 ORDER BY i.line_no NULLS LAST, i.id
                 """).setParameter("oid", id).getResultList();
         List<UUID> itemIds = rows.stream().map(r -> (UUID) r[0]).toList();
+        Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.MaterialAnalysisProgress>>
+                analysesByItem = planProgressQuery.load(itemIds);
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.ExecutionSegmentProgress>>
                 segmentsByLink = new HashMap<>();
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.PlanLink>> byItem =
@@ -434,19 +437,65 @@ public class SalesOrderService {
 
             @SuppressWarnings("unchecked")
             List<Object[]> links = em.createNativeQuery("""
-                    SELECT l.id, l.order_item_id, p.id, p.bill_no, p.status, p.is_closed, p.bill_date,
-                           l.allocated_qty, COALESCE(l.produced_qty,0), COALESCE(l.inbound_qty,0)
-                    FROM plan_order_item_links l
-                    JOIN production_plan_items pi ON pi.id = l.plan_item_id
-                    JOIN production_plans p ON p.id = pi.plan_id
-                    WHERE l.order_item_id IN (:ids) AND l.is_deleted = false AND p.is_deleted = false
-                    ORDER BY p.bill_date DESC NULLS LAST, p.bill_no
+                    SELECT child.formal_link_id, child.order_item_id,
+                           child.plan_id, child.plan_no, child.plan_status,
+                           child.plan_closed, child.bill_date,
+                           child.allocated_qty, child.produced_qty,
+                           child.inbound_qty, child.allocation_status
+                    FROM (
+                        SELECT l.id AS formal_link_id, l.order_item_id,
+                               p.id AS plan_id, p.bill_no AS plan_no,
+                               p.status AS plan_status, p.is_closed AS plan_closed,
+                               p.bill_date, l.allocated_qty,
+                               COALESCE(l.produced_qty,0) AS produced_qty,
+                               COALESCE(l.inbound_qty,0) AS inbound_qty,
+                               analysis_link.allocation_status
+                        FROM plan_order_item_links l
+                        JOIN production_plan_items pi ON pi.id = l.plan_item_id
+                        JOIN production_plans p ON p.id = pi.plan_id
+                        LEFT JOIN production_material_analysis_plan_links analysis_link
+                          ON analysis_link.plan_id = p.id
+                        WHERE l.order_item_id IN (:ids)
+                          AND l.is_deleted = FALSE
+                          AND p.is_deleted = FALSE
+
+                        UNION ALL
+
+                        SELECT NULL::uuid AS formal_link_id,
+                               analysis_item.sales_order_item_id AS order_item_id,
+                               p.id AS plan_id, p.bill_no AS plan_no,
+                               p.status AS plan_status, p.is_closed AS plan_closed,
+                               p.bill_date, analysis_link.submitted_qty AS allocated_qty,
+                               0::numeric AS produced_qty,
+                               0::numeric AS inbound_qty,
+                               analysis_link.allocation_status
+                        FROM production_material_analysis_plan_links analysis_link
+                        JOIN production_material_analysis_items analysis_item
+                          ON analysis_item.id = analysis_link.analysis_item_id
+                         AND analysis_item.analysis_id = analysis_link.analysis_id
+                        JOIN production_plans p ON p.id = analysis_link.plan_id
+                        WHERE analysis_item.sales_order_item_id IN (:ids)
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM production_plan_items formal_item
+                              JOIN plan_order_item_links formal_link
+                                ON formal_link.plan_item_id = formal_item.id
+                               AND formal_link.order_item_id =
+                                   analysis_item.sales_order_item_id
+                               AND formal_link.is_deleted = FALSE
+                              WHERE formal_item.plan_id = p.id
+                                AND p.is_deleted = FALSE
+                          )
+                    ) child
+                    ORDER BY child.bill_date DESC NULLS LAST,
+                             child.plan_no, child.plan_id
                     """).setParameter("ids", itemIds).getResultList();
             for (Object[] l : links) {
                 byItem.computeIfAbsent((UUID) l[1], k -> new ArrayList<>())
                         .add(new com.uten.imp.features.sales.order.dto.PlanProgressLine.PlanLink(
                                 (UUID) l[2], (String) l[3],
                                 l[4] == null ? null : ((Number) l[4]).shortValue(),
+                                (String) l[10],
                                 Boolean.TRUE.equals(l[5]),
                                 localDate(l[6]),
                                 nz((BigDecimal) l[7]), nz((BigDecimal) l[8]),
@@ -463,6 +512,7 @@ public class SalesOrderService {
                     nz((BigDecimal) r[7]), nz((BigDecimal) r[8]), nz((BigDecimal) r[9]),
                     nz((BigDecimal) r[10]), nz((BigDecimal) r[11]),
                     r[12] == null ? null : ((Number) r[12]).shortValue(),
+                    analysesByItem.getOrDefault((UUID) r[0], List.of()),
                     byItem.getOrDefault((UUID) r[0], List.of())));
         }
         return out;
@@ -513,8 +563,12 @@ public class SalesOrderService {
     private OrderDetail createInternal(OrderSaveRequest req, UUID expectedQuoteOwner) {
         tx.bind();
         referenceValidator.validate(req);
+        if (expectedQuoteOwner != null && req.getCurrencyId() == null) {
+            // 报价单本身没有币种字段；一键转订单只能使用唯一、明确的启用人民币主档，禁止按汇率猜测。
+            req.setCurrencyId(resolveQuoteConversionCurrencyId());
+        }
         SalesOrder o = new SalesOrder();
-        applyHeader(req, o);
+        applyHeader(req, o, false);
         UUID sourceOwner = resolveSourceQuoteOwner(req.getSourceDocNo(), expectedQuoteOwner);
         o.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(sourceOwner));
         o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -562,7 +616,7 @@ public class SalesOrderService {
         if (sourceOwner != null && !sourceOwner.equals(o.getOwnerEmployeeId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源报价与订货单归属不一致");
         }
-        applyHeader(req, o);
+        applyHeader(req, o, true);
         costItemRepo.deleteByOrderId(id);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -600,6 +654,8 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         referenceValidator.validateStoredOrder(o.getClientId(), items);
+        // 审核时重验币种仍为启用主档且参考汇率有效，但不重写草稿已保存的汇率快照。
+        requireActiveCurrencyReferenceRate(o.getCurrencyId(), ErrorCode.CONFLICT);
         requireSafeStoredCommercialOrder(o, items);
         reserveOnApprove(o, items);
         o.setStatus(STATUS_APPROVED);
@@ -821,16 +877,22 @@ public class SalesOrderService {
                     : reserved.compareTo(open) >= 0 ? CHAIN_SHIPPABLE
                     : unfinishedPlan.signum() > 0 ? CHAIN_PLANNED
                     : reserved.signum() > 0 ? CHAIN_PARTIAL_RESERVED : CHAIN_PENDING_PLAN;
+            BigDecimal amountOriginal = it.getPrice() == null
+                    ? it.getAmountOriginal()
+                    : authoritativeOrderAmount(newQty, it.getPrice(), it.getDiscount());
+            BigDecimal amountLocal = it.getPrice() == null
+                    ? it.getAmountLocal()
+                    : authoritativeLocalAmount(amountOriginal, orderExchangeRate);
             em.createNativeQuery("""
                     UPDATE sales_order_items
                     SET qty = :q,
-                        amount_original = CASE WHEN price IS NULL THEN amount_original ELSE :q * price END,
-                        amount_local    = CASE WHEN price IS NULL THEN amount_local
-                                               ELSE :q * price * :exchangeRate END,
+                        amount_original = :amountOriginal,
+                        amount_local    = :amountLocal,
                         reserved_qty = :r, planned_qty = :p, chain_status = :cs, updated_at = now()
                     WHERE id = :id
                     """).setParameter("q", newQty)
-                    .setParameter("exchangeRate", orderExchangeRate)
+                    .setParameter("amountOriginal", amountOriginal)
+                    .setParameter("amountLocal", amountLocal)
                     .setParameter("r", reserved)
                     .setParameter("p", planned).setParameter("cs", chain)
                     .setParameter("id", it.getId()).executeUpdate();
@@ -1276,22 +1338,34 @@ public class SalesOrderService {
         return detail(id);
     }
 
-    private void applyHeader(OrderSaveRequest req, SalesOrder o) {
+    private void applyHeader(
+            OrderSaveRequest req, SalesOrder o, boolean preserveSameCurrencySnapshot) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (o.getBillNo() == null || o.getBillNo().isBlank()) {
             o.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER));
         }
         o.setBillDate(req.getBillDate());
         o.setClientId(req.getClientId());
-        BigDecimal exchangeRate = req.getExchangeRate() == null
-                ? BigDecimal.ONE : req.getExchangeRate();
+        BigDecimal exchangeRate;
+        if (preserveSameCurrencySnapshot
+                && java.util.Objects.equals(o.getCurrencyId(), req.getCurrencyId())) {
+            exchangeRate = o.getExchangeRate();
+            if (exchangeRate == null || exchangeRate.signum() <= 0) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "订单已存汇率快照无效，不能用销售编辑请求覆盖；请先核查币种资料");
+            }
+        } else {
+            // 销售请求中的 exchangeRate 仅为旧客户端兼容字段，永不作为订单金额事实。
+            exchangeRate = requireActiveCurrencyReferenceRate(
+                    req.getCurrencyId(), ErrorCode.VALIDATION_FAILED);
+        }
         BigDecimal taxRate = req.getTaxRate() == null
                 ? BigDecimal.ZERO : req.getTaxRate();
-        if (exchangeRate.signum() <= 0 || taxRate.signum() < 0
-                || isNegative(req.getDeposit())) {
+        if (taxRate.signum() < 0 || isNegative(req.getDeposit())) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "订单汇率必须大于 0，税率和订金不得为负数");
+                    "订单税率和订金不得为负数");
         }
         o.setCurrencyId(req.getCurrencyId());
         o.setExchangeRate(exchangeRate);
@@ -1310,6 +1384,88 @@ public class SalesOrderService {
             o.setShipmentPolicy(normalizeShipmentPolicy(req.getShipmentPolicy()));
         }
         // 新单未选发运策略时保留 null（销售自填），不再默认 CUSTOMER_CONFIRM。
+    }
+
+    /**
+     * 订单新建、切换币种和审核的财务主档守卫。只有未软删且状态为“使用”的币种可用，
+     * 订单汇率快照只取主档正数参考汇率；调用方提交的 exchangeRate 不参与选择。
+     */
+    private BigDecimal requireActiveCurrencyReferenceRate(
+            UUID currencyId, ErrorCode errorCode) {
+        if (currencyId == null) {
+            throw new ApiException(errorCode, "订单币种不能为空");
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+                        SELECT currency.exchange_rate
+                        FROM currencies currency
+                        WHERE currency.id = :currencyId
+                          AND COALESCE(currency.is_deleted, false) = false
+                          AND currency.status = '使用'
+                        FOR SHARE
+                        """)
+                .setParameter("currencyId", currencyId)
+                .getResultList();
+        if (rows.size() != 1) {
+            throw new ApiException(errorCode, "订单币种不存在、已禁用或已删除");
+        }
+        Object rawRate = rows.getFirst();
+        BigDecimal referenceRate = rawRate instanceof BigDecimal decimal
+                ? decimal
+                : rawRate == null ? null : new BigDecimal(rawRate.toString());
+        if (referenceRate == null || referenceRate.signum() <= 0) {
+            throw new ApiException(
+                    errorCode,
+                    "币种参考汇率必须大于 0，请先由财务维护币种资料");
+        }
+        return referenceRate;
+    }
+
+    /**
+     * 报价转订单的默认币种解析。项目当前没有本位币 system setting，因此先认标准 code=CNY；
+     * 没有标准编码时才兼容唯一 name=人民币。候选为 0 或多条都失败关闭，绝不按 rate=1 或排序取首条。
+     */
+    private UUID resolveQuoteConversionCurrencyId() {
+        List<UUID> standardCny = com.uten.imp.common.util.NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT id
+                        FROM currencies
+                        WHERE COALESCE(is_deleted, false) = false
+                          AND status = '使用'
+                          AND UPPER(BTRIM(COALESCE(code, ''))) = 'CNY'
+                        ORDER BY id
+                        LIMIT 2
+                        """), UUID.class);
+        if (standardCny.size() == 1) {
+            return standardCny.get(0);
+        }
+        if (standardCny.size() > 1) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "报价转订货无法确定默认币种：存在多条启用的 CNY 币种主档");
+        }
+
+        List<UUID> namedRenminbi = com.uten.imp.common.util.NativeQueryResults.typedRows(
+                em.createNativeQuery("""
+                        SELECT id
+                        FROM currencies
+                        WHERE COALESCE(is_deleted, false) = false
+                          AND status = '使用'
+                          AND BTRIM(COALESCE(name, '')) = '人民币'
+                        ORDER BY id
+                        LIMIT 2
+                        """), UUID.class);
+        if (namedRenminbi.size() == 1) {
+            return namedRenminbi.get(0);
+        }
+        if (namedRenminbi.size() > 1) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "报价转订货无法确定默认币种：存在多条启用的人民币币种主档");
+        }
+        throw new ApiException(
+                ErrorCode.CONFLICT,
+                "报价转订货前请先维护唯一启用的人民币币种（标准编码 CNY）");
     }
 
     private String normalizeShipmentPolicy(String raw) {

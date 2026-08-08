@@ -232,7 +232,8 @@ public class ProductionExecutionPlanningService {
                                        ) AS component_has_bom,
                                        i.updated_at,
                                        b.updated_at,
-                                       component.source_type
+                                       component.source_type,
+                                       analysis_material.confirmed_route
                                 FROM production_plan_items i
                                 JOIN production_plans p
                                   ON p.id = i.plan_id
@@ -266,6 +267,14 @@ public class ProductionExecutionPlanningService {
                                 JOIN goods_bom_items b
                                   ON b.goods_id = i.goods_id
                                  AND b.is_deleted = FALSE
+                                LEFT JOIN production_material_analysis_materials
+                                      analysis_material
+                                  ON analysis_material.analysis_id = p.material_analysis_id
+                                 AND analysis_material.analysis_item_id =
+                                     p.material_analysis_item_id
+                                 AND analysis_material.bom_item_id = b.id
+                                 AND analysis_material.depth = 1
+                                 AND analysis_material.active = TRUE
                                 JOIN goods component
                                   ON component.id = b.component_goods_id
                                  AND component.is_deleted = FALSE
@@ -317,7 +326,10 @@ public class ProductionExecutionPlanningService {
             }
             String componentSourceType =
                     normalizeSourceType((String) row[22]);
-            String authoritativeRoute = supportedSupplyRoute(componentSourceType);
+            String analysisRoute = row[23] == null ? null
+                    : row[23].toString().strip().toUpperCase(java.util.Locale.ROOT);
+            String authoritativeRoute = analysisRoute == null
+                    ? supportedSupplyRoute(componentSourceType) : analysisRoute;
             // 自制/多层 BOM 组件不再拒绝：route=MAKE 时参与齐套（消耗半成品现货），
             // 缺口由自制件派生内核生成子生产计划供给。
             BigDecimal perProduct = productRate.multiply(bomQty)
@@ -350,17 +362,25 @@ public class ProductionExecutionPlanningService {
                             componentUnitId.toString(),
                             decimalText(perProduct),
                             componentSourceType,
-                            Objects.toString(row[21], "")));
+                            Objects.toString(row[21], ""),
+                            authoritativeRoute));
         }
         // 收集所有未维护 BOM 的正数量成品行；即使全部缺 BOM，也返回快照供前端精确提示。
         // 正式保存草案/审核下达由共享校验器 fail-closed，禁止形成不完整排产方案。
-        List<UUID> noBomPlanItemIds = allSourceItemIds.stream()
+        List<UUID> rawNoBomPlanItemIds = allSourceItemIds.stream()
                 .filter(id -> !lines.containsKey(id))
                 .toList();
-        List<CompleteKitAllocator.ProductLine> productLines = lines.values()
-                .stream()
-                .map(LineAccumulator::toProductLine)
-                .toList();
+        List<CompleteKitAllocator.ProductLine> zeroMaterialLines =
+                authorizedZeroMaterialLines(planId, rawNoBomPlanItemIds, lock);
+        Set<UUID> authorizedZeroIds = zeroMaterialLines.stream()
+                .map(CompleteKitAllocator.ProductLine::sourcePlanItemId)
+                .collect(java.util.stream.Collectors.toSet());
+        List<UUID> noBomPlanItemIds = rawNoBomPlanItemIds.stream()
+                .filter(id -> !authorizedZeroIds.contains(id)).toList();
+        List<CompleteKitAllocator.ProductLine> productLines = new ArrayList<>();
+        lines.values().stream().map(LineAccumulator::toProductLine)
+                .forEach(productLines::add);
+        productLines.addAll(zeroMaterialLines);
         Map<CompleteKitAllocator.MaterialKey, BigDecimal> availability =
                 warehouseAvailability(warehouseId, productLines);
 
@@ -396,6 +416,68 @@ public class ProductionExecutionPlanningService {
                 List.copyOf(noBomPlanItemIds));
     }
 
+    private List<CompleteKitAllocator.ProductLine> authorizedZeroMaterialLines(
+            UUID planId, List<UUID> noBomPlanItemIds, boolean lock) {
+        if (noBomPlanItemIds.isEmpty()) return List.of();
+        String lockClause = lock ? " FOR UPDATE OF i" : "";
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT i.id, COALESCE(i.line_no,0), i.goods_id, i.color_id,
+                       i.unit_id, COALESCE(i.unit_rate,1), i.qty,
+                       i.plan_begin_date, i.plan_end_date, p.worker_id,
+                       g.code, g.name, i.updated_at, g.production_bom_policy,
+                       p.material_analysis_id, p.bom_override_reason,
+                       p.bom_override_by
+                FROM production_plan_items i
+                JOIN production_plans p ON p.id = i.plan_id
+                                       AND p.is_deleted = FALSE
+                JOIN goods g ON g.id = i.goods_id AND g.is_deleted = FALSE
+                WHERE i.plan_id = :planId AND i.id IN (:ids)
+                  AND i.is_deleted = FALSE AND COALESCE(i.qty,0) > 0
+                ORDER BY COALESCE(i.plan_begin_date,p.delivery_date) NULLS LAST,
+                         COALESCE(i.line_no,0), i.id
+                """ + lockClause)
+                .setParameter("planId", planId)
+                .setParameter("ids", noBomPlanItemIds));
+        List<CompleteKitAllocator.ProductLine> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            if (row[14] == null) {
+                continue; // legacy/history remains visible as unresolved no-BOM.
+            }
+            String policy = Objects.toString(row[13], "BOM_REQUIRED");
+            boolean explicitOverride = "BOM_REQUIRED".equals(policy)
+                    && row[15] != null && row[16] != null;
+            if ("NOT_PRODUCED".equals(policy)) {
+                throw conflict("明确标记为不生产的货品不能形成执行分段");
+            }
+            if (!"DIRECT_MAKE".equals(policy) && !explicitOverride) {
+                throw conflict("货品要求 BOM 但当前缺失，且没有有效的逐计划例外放行");
+            }
+            UUID itemId = (UUID) row[0];
+            BigDecimal unitRate = decimal(row[5]);
+            BigDecimal plannedQty = decimal(row[6]);
+            if (row[4] == null || unitRate.signum() <= 0 || plannedQty.signum() <= 0) {
+                throw conflict("无物料生产行缺少有效单位、换算率或数量");
+            }
+            LocalDate begin = date(row[7]);
+            String fingerprint = PlanningPackageFingerprint.sha256(List.of(
+                    "ZERO-MATERIAL-PRODUCT-V1", itemId.toString(), row[2].toString(),
+                    Objects.toString(row[3], ""), row[4].toString(),
+                    decimalText(unitRate), decimalText(plannedQty), policy,
+                    Objects.toString(row[15], ""), Objects.toString(row[16], ""),
+                    Objects.toString(row[12], "")));
+            result.add(new CompleteKitAllocator.ProductLine(
+                    itemId, ((Number) row[1]).intValue(), (UUID) row[2], (UUID) row[3],
+                    (UUID) row[4], unitRate.setScale(6, RoundingMode.UNNECESSARY),
+                    plannedQty.setScale(4, RoundingMode.UNNECESSARY), begin, date(row[8]),
+                    null, null, (UUID) row[9], Objects.toString(row[10], null),
+                    Objects.toString(row[11], null),
+                    new CompleteKitAllocator.Priority(
+                            begin, ((Number) row[1]).intValue(), itemId),
+                    List.of(), fingerprint));
+        }
+        return List.copyOf(result);
+    }
+
     private Map<CompleteKitAllocator.MaterialKey, BigDecimal>
             warehouseAvailability(
                     UUID warehouseId,
@@ -409,6 +491,9 @@ public class ProductionExecutionPlanningService {
                 .distinct()
                 .sorted()
                 .toList();
+        if (goodsIds.isEmpty()) {
+            return Map.of();
+        }
         List<Object[]> values = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT a.goods_id, a.color_id,

@@ -23,6 +23,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -35,6 +36,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../sales/widgets/sales_order_picker.dart';
 import '../providers/production_department_provider.dart';
+import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/plan_order_import_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -52,8 +54,19 @@ class ProductionPlanEditPage extends ConsumerStatefulWidget {
 
 class _ProductionPlanEditPageState
     extends ConsumerState<ProductionPlanEditPage> {
+  static const _manualSourceOptions = <String, String>{
+    'REWORK': '返工',
+    'TRIAL': '试制',
+    'SAMPLE': '样品',
+    'STOCK': '备库',
+    'OTHER': '其他',
+  };
+
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
+  final _manualSourceRef = TextEditingController();
+  final _manualSourceReason = TextEditingController();
+  String? _manualSourceType;
   DateTime _billDate = ChinaDateTime.today();
   DateTime? _deliveryDate;
 
@@ -98,6 +111,8 @@ class _ProductionPlanEditPageState
   void dispose() {
     _billNo.dispose();
     _remark.dispose();
+    _manualSourceRef.dispose();
+    _manualSourceReason.dispose();
     _grid.removeListener(_refreshSourceDoc);
     _grid.dispose(); // 自动 dispose 各行控制器
     _scrollCtl.dispose();
@@ -390,8 +405,35 @@ class _ProductionPlanEditPageState
         context.appError('第 ${i + 1} 行缺少产品编号');
         return;
       }
-      if (double.tryParse(r.qty.text) == null) {
+      final qty = double.tryParse(r.qty.text);
+      if (qty == null || !qty.isFinite || qty <= 0) {
         context.appError('第 ${i + 1} 行排产量无效');
+        return;
+      }
+    }
+    final effectiveRows = rows.where((row) => row.goods != null).toList();
+    final manualRows = effectiveRows
+        .where((row) => row.salesOrderItemId == null)
+        .toList(growable: false);
+    if (widget.id == null && manualRows.isNotEmpty) {
+      if (manualRows.length > 1) {
+        context.appWarning('多个手工产品需求请从物料分析准备页逐项填写不同的需求编号');
+        return;
+      }
+      if (_manualSourceType == null) {
+        context.appWarning('手工计划必须选择返工、试制、样品、备库或其他来源');
+        return;
+      }
+      if (_manualSourceRef.text.trim().isEmpty) {
+        context.appWarning('手工计划必须填写稳定的需求编号');
+        return;
+      }
+      if (_manualSourceRef.text.trim().length > 200) {
+        context.appWarning('手工计划需求编号不能超过 200 个字符');
+        return;
+      }
+      if (_manualSourceReason.text.trim().isEmpty) {
+        context.appWarning('手工计划必须填写来源原因');
         return;
       }
     }
@@ -430,14 +472,49 @@ class _ProductionPlanEditPageState
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
       'items': itemsBody,
     };
+    if (widget.id == null) {
+      final sources = <MaterialAnalysisSourceInput>[
+        for (final row in effectiveRows)
+          MaterialAnalysisSourceInput(
+            salesOrderItemId: row.salesOrderItemId,
+            sourceType: row.salesOrderItemId == null ? _manualSourceType : null,
+            sourceRef: row.salesOrderItemId == null
+                ? _manualSourceRef.text.trim()
+                : null,
+            goodsId: row.salesOrderItemId == null ? row.goods!.id : null,
+            colorId: row.salesOrderItemId == null ? row.colorId : null,
+            unitId: row.salesOrderItemId == null ? row.unitId : null,
+            requestedQty: double.parse(row.qty.text),
+            sourceReason: row.salesOrderItemId == null
+                ? _manualSourceReason.text.trim()
+                : null,
+            deliveryDate: row.outboundDate?.trim().isNotEmpty == true
+                ? row.outboundDate
+                : _deliveryDate == null
+                ? null
+                : _fmt(_deliveryDate!),
+          ),
+      ];
+      await context.push(
+        RouteName.productionMaterialAnalysis,
+        extra: ProductionMaterialAnalysisSeed(
+          billDate: _fmt(_billDate),
+          deliveryDate: _deliveryDate == null ? null : _fmt(_deliveryDate!),
+          departmentId: _departmentId,
+          workshopName: _workshopName,
+          workerId: _workerId,
+          sources: sources,
+        ),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       final repo = ref.read(productionPlanRepositoryProvider);
-      final d = widget.id == null
-          ? await repo.create(body)
-          : await repo.update(widget.id!, body);
+      final d = await repo.update(widget.id!, body);
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      context.appSuccess('已保存');
       context.replace('/production/plans/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -635,6 +712,56 @@ class _ProductionPlanEditPageState
                                         setState(() => _workerId = id),
                                   ),
                                   _sourceDocField(theme),
+                                  if (widget.id == null)
+                                    DropdownButtonFormField<String>(
+                                      key: const Key(
+                                        'production-manual-source-type',
+                                      ),
+                                      initialValue: _manualSourceType,
+                                      isExpanded: true,
+                                      decoration: const InputDecoration(
+                                        labelText: '手工计划来源',
+                                        helperText: '仅手工添加的货品行必填',
+                                      ),
+                                      items: [
+                                        for (final entry
+                                            in _manualSourceOptions.entries)
+                                          DropdownMenuItem(
+                                            value: entry.key,
+                                            child: Text(entry.value),
+                                          ),
+                                      ],
+                                      onChanged: _saving
+                                          ? null
+                                          : (value) => setState(
+                                              () => _manualSourceType = value,
+                                            ),
+                                    ),
+                                  if (widget.id == null)
+                                    TextFormField(
+                                      key: const Key(
+                                        'production-manual-source-ref',
+                                      ),
+                                      controller: _manualSourceRef,
+                                      maxLength: 200,
+                                      decoration: const InputDecoration(
+                                        labelText: '手工计划需求编号',
+                                        helperText: '同一需求后续处理必须沿用同一个编号',
+                                      ),
+                                    ),
+                                  if (widget.id == null)
+                                    TextFormField(
+                                      key: const Key(
+                                        'production-manual-source-reason',
+                                      ),
+                                      controller: _manualSourceReason,
+                                      decoration: const InputDecoration(
+                                        labelText: '手工计划原因',
+                                        helperText: '返工、试制、样品、备库或其他计划不得绕过物料分析',
+                                      ),
+                                      minLines: 1,
+                                      maxLines: 2,
+                                    ),
                                 ],
                               ),
                               const SizedBox(height: UtenSpacing.s12),
@@ -705,9 +832,11 @@ class _ProductionPlanEditPageState
               const SizedBox(width: UtenSpacing.s12),
               UtenButton(
                 isLoading: _saving,
-                icon: Icons.save_outlined,
+                icon: widget.id == null
+                    ? Icons.insights_outlined
+                    : Icons.save_outlined,
                 onPressed: _saving ? null : _save,
-                child: const Text('保存'),
+                child: Text(widget.id == null ? '进入物料分析' : '保存'),
               ),
             ],
           ),

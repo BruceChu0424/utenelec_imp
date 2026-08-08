@@ -9,7 +9,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 应收应付台账 Service 实现（跨模块枢纽，钱流模块独家实现）。
@@ -30,6 +32,7 @@ import java.util.List;
 public class ArApLedgerServiceImpl implements ArApLedgerService {
 
     private final ArApLedgerRepository repo;
+    private final ArApSourceRefRepository sourceRefRepo;
     private final TxSessionVars tx;
 
     /**
@@ -78,6 +81,10 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
                             + req.sourceDocType() + "/" + req.sourceDocId());
         }
         BigDecimal originalLocal = nz(req.amountOriginalLocal());
+        BigDecimal original = req.amountOriginal() != null
+                ? req.amountOriginal()
+                : originalLocal;
+        validateSourceRefs(req.sourceRefs(), original, originalLocal);
 
         ArApLedger l = new ArApLedger();
         l.setDirection(req.direction());
@@ -97,9 +104,14 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setExchangeRate(exchangeRate);
         // 多币种：调用方传原币额 (amountOriginal) 则落原币；未传则回退到本币（单币种兼容）。
         // 不用 exchangeRate 反推（避免精度/口径漂移）；exchangeRate 仅持久化备查。
-        l.setAmountOriginal(req.amountOriginal() != null ? req.amountOriginal() : originalLocal);
+        l.setAmountOriginal(original);
         l.setAmountOriginalLocal(originalLocal);
         l.setAmountSettled(BigDecimal.ZERO);
+        l.setAmountReceivedOriginal(BigDecimal.ZERO);
+        l.setAmountReceivedLocal(BigDecimal.ZERO);
+        l.setAmountWriteOffOriginal(BigDecimal.ZERO);
+        l.setAmountWriteOffLocal(BigDecimal.ZERO);
+        l.setAmountBalanceOriginal(original);
         l.setAmountBalance(originalLocal);
         boolean settled = originalLocal.signum() == 0;
         l.setSettled(settled);
@@ -108,8 +120,14 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         }
         l.setStatus((short) 1);
         l.setLegacyBstyle(req.legacyBstyle());
+        l.setDueDate(req.dueDate());
+        l.setSettlementStyleLegacy(req.settlementStyleLegacy());
         l.setRemark(req.remark());
         repo.save(l);
+        // sourceRefs 只保存 ledgerId（不建 JPA 双向关联）。项目开启了
+        // hibernate.order_inserts，因此先 flush 父行，避免批处理重排时触发 FK。
+        repo.flush();
+        saveSourceRefs(l, req.sourceRefs());
     }
 
     /**
@@ -144,5 +162,54 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
 
     private static BigDecimal nz(BigDecimal x) {
         return x == null ? BigDecimal.ZERO : x;
+    }
+
+    private static void validateSourceRefs(
+            List<SourceRef> refs, BigDecimal amountOriginal, BigDecimal amountLocal) {
+        if (refs == null || refs.isEmpty()) {
+            return;
+        }
+        Set<String> sourceKeys = new HashSet<>();
+        BigDecimal sourceOriginal = BigDecimal.ZERO;
+        BigDecimal sourceLocal = BigDecimal.ZERO;
+        for (SourceRef ref : refs) {
+            if (ref == null || ref.sourceId() == null || ref.sourceType() == null
+                    || ref.sourceType().isBlank() || ref.sourceNo() == null
+                    || ref.sourceNo().isBlank()) {
+                throw new IllegalArgumentException("postArAp: source ref identity is required");
+            }
+            if (!ArApSourceRef.SALES_ORDER.equals(ref.sourceType())) {
+                throw new IllegalArgumentException(
+                        "postArAp: unsupported source ref type " + ref.sourceType());
+            }
+            if (!sourceKeys.add(ref.sourceType() + "/" + ref.sourceId())) {
+                throw new IllegalArgumentException(
+                        "postArAp: duplicated source ref " + ref.sourceType() + "/" + ref.sourceId());
+            }
+            sourceOriginal = sourceOriginal.add(nz(ref.amountOriginal()));
+            sourceLocal = sourceLocal.add(nz(ref.amountLocal()));
+        }
+        if (sourceOriginal.compareTo(amountOriginal) != 0
+                || sourceLocal.compareTo(amountLocal) != 0) {
+            throw new IllegalArgumentException(
+                    "postArAp: source ref amounts must equal posting amounts");
+        }
+    }
+
+    private void saveSourceRefs(ArApLedger ledger, List<SourceRef> refs) {
+        if (refs == null || refs.isEmpty()) {
+            return;
+        }
+        List<ArApSourceRef> rows = refs.stream().map(ref -> {
+            ArApSourceRef row = new ArApSourceRef();
+            row.setLedgerId(ledger.getId());
+            row.setSourceType(ref.sourceType());
+            row.setSourceId(ref.sourceId());
+            row.setSourceNo(ref.sourceNo().trim());
+            row.setAmountOriginal(nz(ref.amountOriginal()));
+            row.setAmountLocal(nz(ref.amountLocal()));
+            return row;
+        }).toList();
+        sourceRefRepo.saveAll(rows);
     }
 }

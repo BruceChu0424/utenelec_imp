@@ -107,6 +107,15 @@ class _OperationsWorkbenchPageState
     });
   }
 
+  /// 桌面表多选集合回写（组件勾选/表头三态都走这里；就地同步进 final 集合）。
+  void _setSelectedIds(Set<String> next) {
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(next);
+    });
+  }
+
   List<OperationsWorkbenchTask> get _selectedTasks {
     final selected = _selectedIds;
     return _data?.items
@@ -255,7 +264,8 @@ class _OperationsWorkbenchPageState
                   items: data.items,
                   selectedIds: _selectedIds,
                   loading: _loading,
-                  onToggle: _toggleSelected,
+                  onSelectedIdsChanged: _setSelectedIds,
+                  onOpenTask: _openAction,
                   onPageChanged: (page) {
                     setState(() => _page = page);
                     _load();
@@ -797,7 +807,8 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.items,
     required this.selectedIds,
     required this.loading,
-    required this.onToggle,
+    required this.onSelectedIdsChanged,
+    required this.onOpenTask,
     required this.onPageChanged,
   });
 
@@ -805,22 +816,18 @@ class _DesktopTaskTable extends StatelessWidget {
   final List<OperationsWorkbenchTask> items;
   final Set<String> selectedIds;
   final bool loading;
-  final ValueChanged<OperationsWorkbenchTask> onToggle;
+  final ValueChanged<Set<String>> onSelectedIdsChanged;
+  final ValueChanged<OperationsWorkbenchTask> onOpenTask;
   final ValueChanged<int> onPageChanged;
 
   @override
   Widget build(BuildContext context) {
-    final selectedColor = Theme.of(
-      context,
-    ).colorScheme.primary.withValues(alpha: 0.1);
     return MasterDataTableView<OperationsWorkbenchTask>(
+      selectable: true,
+      idOf: (item) => item.id,
+      selectedIds: selectedIds,
+      onSelectedIdsChanged: onSelectedIdsChanged,
       columns: [
-        MasterColumnDef(
-          key: 'selected',
-          label: '选择',
-          width: 76,
-          value: (item) => selectedIds.contains(item.id) ? '已选' : '',
-        ),
         MasterColumnDef(
           key: 'planNo',
           label: '计划号',
@@ -928,9 +935,9 @@ class _DesktopTaskTable extends StatelessWidget {
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
-      onRowTap: onToggle,
+      onRowTap: onOpenTask,
       rowColor: (item) {
-        if (selectedIds.contains(item.id)) return selectedColor;
+        // 选中行由组件勾选列 + 深绿高亮接管；这里只保留未选行的状态/异常着色。
         // 采购/委外任务台：行按状态着色（全部视图下绿/蓝/黄/红一眼可辨）；
         // 仓库履约部门保留异常行高亮。
         if (data.department == OperationsWorkbenchDepartment.purchase ||

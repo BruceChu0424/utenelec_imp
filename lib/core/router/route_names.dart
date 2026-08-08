@@ -212,6 +212,10 @@ abstract final class RouteName {
   static const String production = '/production';
   static const String productionSchedule = '/production/schedule';
   static const String productionProgress = '/production/progress';
+  static const String productionMaterialAnalysis =
+      '/production/material-analysis';
+  static const String productionMaterialAnalysisHistory =
+      '/production/material-analyses';
   static const String productionPlanList = '/production/plans';
   static const String productionDailyReportList = '/production/daily-reports';
   static const String productionWhereUsed = '/production/where-used';

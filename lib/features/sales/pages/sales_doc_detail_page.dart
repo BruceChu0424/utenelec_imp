@@ -269,8 +269,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       if (_cfg.type == SalesDocType.order &&
           d.status == kSalesStatusDraft &&
           !d.rejected) {
-        _approveClaim =
-            TaskClaimSession(ref.read(taskClaimRepositoryProvider));
+        _approveClaim = TaskClaimSession(ref.read(taskClaimRepositoryProvider));
         await _approveClaim!.claimAll('SALES_ORDER_APPROVE', [widget.id]);
         if (mounted) setState(() {});
       }
@@ -921,8 +920,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                         returnId: widget.id,
                         canHandle: _canHandleReturnQuality,
                         onSnapshotChanged: _onReturnQualitySnapshot,
-                        onSnapshotInvalidated:
-                            _invalidateReturnQualitySnapshot,
+                        onSnapshotInvalidated: _invalidateReturnQualitySnapshot,
                       ),
                     ],
                   ],
@@ -949,7 +947,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       _KV('客户', names.client(d.clientId)),
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
-      if (_cfg.hasCurrency && d.exchangeRate != null)
+      if (_cfg.hasCurrency && _cfg.hasExchangeRate && d.exchangeRate != null)
         _KV('汇率', d.exchangeRate?.toString()),
       // 业务员/发货人：按 id 经员工字典解析姓名（_load 已预载）。
       if (_cfg.hasSeller) _KV('业务员', names.employee(d.sellerId)),
@@ -958,8 +956,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       if (_cfg.type == SalesDocType.order)
         _KV('发运策略', salesShipmentPolicyLabel(d.shipmentPolicy)),
-      if (_cfg.type == SalesDocType.order)
-        _KV('策略说明', salesShipmentPolicyDescription(d.shipmentPolicy)),
       if (_cfg.type == SalesDocType.order &&
           d.shipmentPolicy == SalesShipmentPolicy.customerConfirm)
         _KV(

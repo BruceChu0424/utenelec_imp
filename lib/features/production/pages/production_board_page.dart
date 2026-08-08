@@ -16,6 +16,8 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -24,6 +26,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../rd_task/providers/rd_task_count_provider.dart';
+import '../models/production_material_analysis.dart';
 import '../providers/production_board_sort_provider.dart';
 import '../providers/production_pending_provider.dart';
 import '../repositories/production_repository.dart';
@@ -119,20 +122,30 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   bool _submitting = false;
 
   int _pageNo = 1;
-  int _pageSize = 20;
+  final int _pageSize = 20;
 
   /// 勾选状态：orderItemId → 本次排产量（跨页保留，勾选时默认=缺口，可改）。
   final Map<String, double> _selected = {};
+  final Map<String, SchedulePendingRow> _selectedRows = {};
 
   DateTime? _beginDate;
   DateTime? _endDate;
   DateTime? _deliverFrom; // 交货日期范围筛选（从）
   DateTime? _deliverTo; // 交货日期范围筛选（至）
-  final _workerCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
   String _keyword = '';
   Timer? _debounce;
   bool _hasLoaded = false;
+
+  /// 表头值筛选（当前仅 status：BOM缺失/紧急/正常）。
+  Map<String, String?> _filters = {};
+
+  /// 表头值筛选 facets（status 三桶 + 计数）。
+  SchedulePendingFacets? _facets;
+
+  /// 表头排序：列 key（deliverDate/qty/needQty/orderBillNo），null=后端默认（交货升序）。
+  String? _sortKey = 'deliverDate';
+  bool _sortAsc = true;
 
   List<SchedulePendingRow> get _rows => _page?.items ?? const [];
 
@@ -159,43 +172,22 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   @override
   void dispose() {
     _debounce?.cancel();
-    _workerCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
+  bool get _canEdit {
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.productionMaterialAnalysisManage);
+  }
 
   bool get _canForward =>
-      ref.read(currentPermissionsProvider).contains(Perm.productionPlanForwardRd) ||
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.productionPlanForwardRd) ||
       ref.read(isSuperAdminProvider);
 
-  /// 进行中的转发（按 orderItemId 去重，避免连点重复 POST）。
-  final Set<String> _forwarding = {};
   bool _batchForwarding = false;
-
-  /// BOM 缺失 → 转发/登记工程研发部（建任务或复用并登记当前计划员为等待者）；成功后刷新。
-  /// `!rdForwarded`：首次转发建任务；`rdForwarded && !myForward`：复用任务、登记我等待。
-  Future<void> _forwardToRd(SchedulePendingRow r) async {
-    if (r.myForward || _forwarding.contains(r.orderItemId)) return;
-    setState(() => _forwarding.add(r.orderItemId));
-    try {
-      final ok = await context.guardAction(
-        () => ref
-            .read(productionPlanRepositoryProvider)
-            .forwardToRd(r.orderItemId),
-        success: r.rdForwarded ? '已登记等待工程研发部维护' : '已转发工程研发部，待其维护 BOM',
-        errorFallback: '转发失败，请稍后重试',
-      );
-      if (!mounted || ok == null) return;
-      ref.read(productionPendingCountProvider.notifier).refresh();
-      ref.read(rdTaskCountProvider.notifier).refresh();
-      await _load();
-    } finally {
-      if (mounted) setState(() => _forwarding.remove(r.orderItemId));
-    }
-  }
 
   /// 一键批量转发当前页所有 BOM 缺失且我未登记的行（成品，按货品去重，研发每件只收一条）。
   Future<void> _forwardAllBomGaps(List<SchedulePendingRow> rows) async {
@@ -204,7 +196,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     try {
       final items = <({String goodsId, String? orderItemId})>[
         for (final r in rows)
-          if (r.goodsId != null) (goodsId: r.goodsId!, orderItemId: r.orderItemId),
+          if (r.goodsId != null)
+            (goodsId: r.goodsId!, orderItemId: r.orderItemId),
       ];
       final result = await ref
           .read(productionPlanRepositoryProvider)
@@ -241,21 +234,41 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       _loading = true;
       _error = null;
     });
+    final repo = ref.read(productionPlanRepositoryProvider);
+    final kw = _keyword;
+    final dateFrom = _deliverFrom == null ? null : _fmtDate(_deliverFrom!);
+    final dateTo = _deliverTo == null ? null : _fmtDate(_deliverTo!);
     try {
-      final page = await ref
-          .read(productionPlanRepositoryProvider)
-          .schedulePending(
-            page: _pageNo,
-            size: _pageSize,
-            keyword: _keyword,
-            dateFrom: _deliverFrom == null ? null : _fmtDate(_deliverFrom!),
-            dateTo: _deliverTo == null ? null : _fmtDate(_deliverTo!),
-          );
+      // 并行：列表（带排序/状态筛选）+ facets（仅随 keyword/日期变；服务端忽略 status/sort）
+      final results = await Future.wait<dynamic>([
+        repo.schedulePending(
+          page: _pageNo,
+          size: _pageSize,
+          keyword: kw,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+          sort: _sortKey,
+          order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
+          status: _filters['status'],
+        ),
+        repo.schedulePendingFacets(
+          keyword: kw,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
+        ),
+      ]);
       if (!mounted) return;
+      final page = results[0] as PagedResult<SchedulePendingRow>;
       // 服务端已把越界页码回退到最后一页；与本地页码对齐
       if (page.page != _pageNo) _pageNo = page.page;
       setState(() {
         _page = page;
+        _facets = results[1] as SchedulePendingFacets;
+        for (final row in page.items) {
+          if (_selected.containsKey(row.orderItemId)) {
+            _selectedRows[row.orderItemId] = row;
+          }
+        }
         _loading = false;
       });
     } catch (e) {
@@ -265,6 +278,29 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         _loading = false;
       });
     }
+  }
+
+  /// 表头值筛选变化（拷贝 map → set/remove key → 回第 1 页重载）。
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      final next = Map<String, String?>.from(_filters);
+      if (value == null) {
+        next.remove(key);
+      } else {
+        next[key] = value;
+      }
+      _filters = next;
+    });
+    _reload();
+  }
+
+  /// 表头排序变化（set sortKey/方向 → 回第 1 页重载）。
+  void _onSortChange(String? column, bool ascending) {
+    setState(() {
+      _sortKey = column;
+      _sortAsc = ascending;
+    });
+    _reload();
   }
 
   Future<void> _pickDate(bool begin) async {
@@ -298,30 +334,27 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     _reload();
   }
 
-  /// 建议计划单：一键采纳本页全部待排产行（按缺口量合并排产，生成草稿计划）。
+  /// 建议计划：选中本页全部行后进入联合物料分析。
   Future<void> _suggestAllAndSubmit() async {
     final rows = _rows;
     if (rows.isEmpty || _submitting) return;
-    final missingBom = rows.where((row) => !row.bomReady).length;
-    if (missingBom > 0) {
-      context.appWarning(
-        '当前页有 $missingBom 条产品缺少 BOM，建议计划未生成；'
-        '请先维护组装物料资料，或手动选择其它可排产品。',
-      );
-      return;
-    }
     setState(() {
       for (final r in rows) {
-        _selected[r.orderItemId] = r.needQty ?? 0;
+        final quantity = r.needQty ?? 0;
+        if (quantity > 0) {
+          _selected[r.orderItemId] = quantity;
+          _selectedRows[r.orderItemId] = r;
+        }
       }
     });
-    await _submit();
+    await _openMaterialAnalysis();
   }
 
   Future<void> _suggestFinish() async {
     final byGoods = <String, double>{};
-    for (final r in _rows) {
-      final v = _selected[r.orderItemId];
+    for (final entry in _selectedRows.entries) {
+      final r = entry.value;
+      final v = _selected[entry.key];
       if (v != null && r.goodsId != null) {
         byGoods[r.goodsId!] = (byGoods[r.goodsId!] ?? 0) + v;
       }
@@ -348,19 +381,22 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     );
   }
 
-  Future<void> _submit() async {
-    if (_selected.isEmpty || _submitting) return;
-    // 本页勾选的行先做前端校验；其它页勾选量=勾选时的缺口，由服务端硬校验兜底
-    for (final r in _rows) {
-      final v = _selected[r.orderItemId];
-      if (v != null && !r.bomReady) {
-        context.appWarning(
-          '产品 ${r.goodsCode ?? r.goodsName ?? '未编码货品'} 缺少有效 BOM，'
-          '请先维护组装物料资料。',
-        );
+  Future<void> _openMaterialAnalysis({bool allowEmpty = false}) async {
+    if (_submitting) return;
+    if (_selected.isEmpty) {
+      if (allowEmpty) {
+        await context.push(RouteName.productionMaterialAnalysis);
+      }
+      return;
+    }
+    for (final entry in _selected.entries) {
+      final r = _selectedRows[entry.key];
+      final v = entry.value;
+      if (r == null) {
+        context.appWarning('所选行数据已变化，请刷新后重新选择');
         return;
       }
-      if (v != null && (v <= 0 || v > (r.needQty ?? 0) + 1e-6)) {
+      if (v <= 0 || v > (r.needQty ?? 0) + 1e-6) {
         context.appWarning(
           '订单 ${r.orderBillNo} 排产量需在 0 ~ 缺口 '
           '${(r.needQty ?? 0).toStringAsFixed(2)} 之间',
@@ -369,43 +405,54 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       }
     }
     setState(() => _submitting = true);
-    final planId = await context.guardAction(
-      () => ref.read(productionPlanRepositoryProvider).createMergePlan({
-        'items': [
-          for (final e in _selected.entries)
-            {'orderItemId': e.key, 'qty': e.value},
-        ],
-        if (_beginDate != null) 'planBeginDate': _fmtDate(_beginDate!),
-        if (_endDate != null) 'planEndDate': _fmtDate(_endDate!),
-
-        if (_workerCtrl.text.trim().isNotEmpty)
-          'workerName': _workerCtrl.text.trim(),
-      }),
-      success: '已生成计划草稿，请先物料评审与预排，再审核下达',
-      errorFallback: '合并排产失败，请稍后重试',
-    );
-    if (!mounted) return;
-    setState(() => _submitting = false);
-    if (planId != null) {
-      _selected.clear();
-      ref.read(productionPendingCountProvider.notifier).refresh();
-      context.push(RoutePath.productionPlanDetail(planId));
+    try {
+      final selectedRows = [
+        for (final id in _selected.keys) _selectedRows[id]!,
+      ];
+      final analysisIds = selectedRows
+          .map((row) => row.materialAnalysisId)
+          .whereType<String>()
+          .toSet();
+      final canResumeSingle =
+          selectedRows.length == 1 && analysisIds.length == 1;
+      if (analysisIds.isNotEmpty && !canResumeSingle) {
+        context.appWarning('已有物料分析的产品只能单独“继续分析”；联合分析请只选择全部未分析的产品。');
+        return;
+      }
+      await context.push(
+        RouteName.productionMaterialAnalysis,
+        extra: ProductionMaterialAnalysisSeed(
+          analysisId: canResumeSingle ? analysisIds.single : null,
+          analysisVersion: canResumeSingle
+              ? selectedRows.single.materialAnalysisVersion
+              : null,
+          billDate: _fmtDate(ChinaDateTime.today()),
+          deliveryDate: _endDate == null ? null : _fmtDate(_endDate!),
+          sources: canResumeSingle
+              ? const []
+              : [
+                  for (final row in selectedRows)
+                    MaterialAnalysisSourceInput(
+                      salesOrderItemId: row.orderItemId,
+                      requestedQty: _selected[row.orderItemId]!,
+                      deliveryDate: row.deliverDate,
+                    ),
+                ],
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
   void _toggle(SchedulePendingRow r, bool on) {
-    if (on && !r.bomReady) {
-      context.appWarning(
-        '产品 ${r.goodsCode ?? r.goodsName ?? '未编码货品'} 缺少有效 BOM，'
-        '请先维护组装物料资料。',
-      );
-      return;
-    }
     setState(() {
       if (on) {
         _selected[r.orderItemId] = r.needQty ?? 0;
+        _selectedRows[r.orderItemId] = r;
       } else {
         _selected.remove(r.orderItemId);
+        _selectedRows.remove(r.orderItemId);
       }
     });
   }
@@ -483,7 +530,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
                 if (_canEdit)
                   TextButton.icon(
                     icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                    label: Text('建议计划（本页 ${_rows.length} 行）'),
+                    label: Text('建议联合分析（本页 ${_rows.length} 行）'),
                     onPressed: _rows.isEmpty || _submitting
                         ? null
                         : _suggestAllAndSubmit,
@@ -497,117 +544,22 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             ),
           ),
           Expanded(child: _list(theme)),
-          _pager(theme),
           if (_canEdit) _footer(theme),
         ],
       ),
     );
   }
 
-  /// 分页条：总数 + 每页条数 + 翻页（勾选跨页保留）。
-  Widget _pager(ThemeData theme) {
-    final p = _page;
-    final total = p?.total ?? 0;
-    final pages = p?.totalPages ?? 0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-      child: Row(
-        children: [
-          Text(
-            '共 $total 行',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          if (_selected.isNotEmpty) ...[
-            const SizedBox(width: UtenSpacing.s8),
-            Text(
-              '已选 ${_selected.length} 行',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const Spacer(),
-          DropdownButton<int>(
-            value: _pageSize,
-            underline: const SizedBox.shrink(),
-            items: const [
-              DropdownMenuItem(value: 20, child: Text('20 条/页')),
-              DropdownMenuItem(value: 50, child: Text('50 条/页')),
-              DropdownMenuItem(value: 100, child: Text('100 条/页')),
-            ],
-            onChanged: (v) {
-              if (v == null || v == _pageSize) return;
-              _pageSize = v;
-              _reload();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_left_rounded),
-            tooltip: '上一页',
-            onPressed: _pageNo > 1 && !_loading
-                ? () {
-                    _pageNo--;
-                    _load();
-                  }
-                : null,
-          ),
-          Text(
-            pages == 0 ? '0 / 0' : '$_pageNo / $pages',
-            style: theme.textTheme.bodySmall,
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right_rounded),
-            tooltip: '下一页',
-            onPressed: _pageNo < pages && !_loading
-                ? () {
-                    _pageNo++;
-                    _load();
-                  }
-                : null,
-          ),
-        ],
-      ),
-    );
-  }
+  /// 分页条已改用 MasterDataTableView 内置分页（见 _list）。
 
   Widget _list(ThemeData theme) {
-    if (_loading && _page == null) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (_error != null && _page == null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenButton(
-              type: UtenButtonType.tonal,
-              onPressed: _load,
-              child: const Text('重试'),
-            ),
-          ],
-        ),
-      );
-    }
     final rows = _rows;
-    if (rows.isEmpty) {
-      return Center(
-        child: Text(
-          _keyword.isEmpty && _deliverFrom == null && _deliverTo == null
-              ? '暂无待排产的订单行'
-              : '没有匹配的待排产行',
-        ),
-      );
-    }
     final forwardable = _canForward
         ? rows
-            .where((r) => !r.bomReady && !r.myForward && r.goodsId != null)
-            .toList()
+              .where((r) => !r.bomReady && !r.myForward && r.goodsId != null)
+              .toList()
         : const <SchedulePendingRow>[];
+    // 空态/错误/加载三态交给 MasterDataTableView 渲染。
     return Column(
       children: [
         if (forwardable.isNotEmpty)
@@ -615,8 +567,11 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: Row(
               children: [
-                Icon(Icons.forward_to_inbox_outlined,
-                    size: 16, color: theme.colorScheme.primary),
+                Icon(
+                  Icons.forward_to_inbox_outlined,
+                  size: 16,
+                  color: theme.colorScheme.primary,
+                ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -636,203 +591,376 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             ),
           ),
         Expanded(
-          child: Stack(
-            children: [
-              ListView.separated(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                itemCount: rows.length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(height: UtenSpacing.s4),
-                itemBuilder: (_, i) => _pendingRow(theme, rows[i]),
-              ),
-              if (_loading)
-                const Align(
-                  alignment: Alignment.topCenter,
-                  child: LinearProgressIndicator(minHeight: 2),
+          child: context.breakpoint.isCompact
+              ? _pendingMobileList(theme, rows)
+              : MasterDataTableView<SchedulePendingRow>(
+                  columns: _pendingColumns,
+                  items: rows,
+                  facets: _facets?.fields ?? const {},
+                  nullCounts: const {},
+                  filters: _filters,
+                  onFilterChanged: _onFilterChanged,
+                  onRowTap: (r) => _canEdit
+                      ? _toggle(r, !_selected.containsKey(r.orderItemId))
+                      : null,
+                  isSelected: (r) => _selected.containsKey(r.orderItemId),
+                  rowColor: (r) {
+                    if (!r.bomReady) {
+                      return theme.colorScheme.errorContainer.withValues(
+                        alpha: 0.45,
+                      );
+                    }
+                    if (r.materialAnalysisId != null &&
+                        (r.readyNowQty ?? 0) <= 0) {
+                      return theme.colorScheme.errorContainer.withValues(
+                        alpha: 0.32,
+                      );
+                    }
+                    if (r.urgent) {
+                      return theme.colorScheme.error.withValues(alpha: 0.06);
+                    }
+                    return null;
+                  },
+                  sortColumn: _sortKey,
+                  sortAscending: _sortAsc,
+                  onSortChange: _onSortChange,
+                  isLoading: _loading,
+                  error: (_error != null && rows.isEmpty) ? _error : null,
+                  onRetry: _load,
+                  emptyMessage:
+                      _keyword.isEmpty &&
+                          _deliverFrom == null &&
+                          _deliverTo == null &&
+                          _filters.isEmpty
+                      ? '暂无待排产的订单行'
+                      : '没有匹配的待排产行',
+                  currentPage: _page?.page ?? _pageNo,
+                  totalPages: _page?.totalPages ?? 1,
+                  onPageChange: (p) {
+                    _pageNo = p;
+                    _load();
+                  },
                 ),
-            ],
-          ),
         ),
       ],
     );
   }
 
-  Widget _pendingRow(ThemeData theme, SchedulePendingRow r) {
-    final checked = _selected.containsKey(r.orderItemId);
-    final deliver = r.deliverDate == null
-        ? '—'
-        : r.deliverDate!.substring(0, 10);
-    final color = r.urgent ? theme.colorScheme.error : null;
-    return Material(
-      color: !r.bomReady
-          ? theme.colorScheme.errorContainer.withValues(alpha: 0.3)
-          : r.urgent
-          ? theme.colorScheme.error.withValues(alpha: 0.06)
-          : theme.colorScheme.surface,
-      borderRadius: UtenRadius.mdAll,
-      child: InkWell(
-        borderRadius: UtenRadius.mdAll,
-        onTap: _canEdit && r.bomReady ? () => _toggle(r, !checked) : null,
+  Widget _pendingMobileList(ThemeData theme, List<SchedulePendingRow> rows) {
+    if (_loading && rows.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null && rows.isEmpty) {
+      return Center(
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s8,
-            vertical: UtenSpacing.s8,
-          ),
-          child: Row(
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (_canEdit)
-                Checkbox(
-                  value: checked,
-                  onChanged: r.bomReady ? (v) => _toggle(r, v ?? false) : null,
-                ),
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${r.goodsName ?? r.goodsCode ?? '—'}'
-                      '${r.spec != null && r.spec!.isNotEmpty ? ' · ${r.spec}' : ''}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${r.orderBillNo ?? ''} · ${r.clientName ?? '—'}'
-                      '${r.colorName != null ? ' · ${r.colorName}' : ''}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (!r.bomReady) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            size: 14,
-                            color: theme.colorScheme.error,
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              r.myForward
-                                  ? 'BOM 缺失 · 已转发工程研发部，等待维护'
-                                  : r.rdForwarded
-                                      ? 'BOM 缺失 · 他人已转发，等待维护'
-                                      : 'BOM 缺失 · 请先维护组装物料资料',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: theme.colorScheme.error,
-                              ),
-                            ),
-                          ),
-                          if (!r.myForward && _canForward)
-                            TextButton.icon(
-                              onPressed: _forwarding.contains(r.orderItemId)
-                                  ? null
-                                  : () => _forwardToRd(r),
-                              icon: const Icon(Icons.send_outlined, size: 14),
-                              label: Text(
-                                _forwarding.contains(r.orderItemId)
-                                    ? '转发中…'
-                                    : (r.rdForwarded ? '我也登记' : '转发研发'),
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                              style: TextButton.styleFrom(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 6),
-                                minimumSize: const Size(0, 28),
-                                tapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              _num(theme, '订货', r.qty),
-              _num(theme, '缺口', r.needQty, highlight: true),
-              if (checked)
-                SizedBox(
-                  width: 96,
-                  child: TextFormField(
-                    initialValue: _selected[r.orderItemId]!.toStringAsFixed(2),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      labelText: '本次排产',
-                    ),
-                    onChanged: (v) {
-                      final parsed = double.tryParse(v);
-                      if (parsed != null) {
-                        _selected[r.orderItemId] = parsed;
-                      }
-                    },
-                  ),
-                )
-              else
-                const SizedBox(width: 96),
-              const SizedBox(width: UtenSpacing.s8),
-              SizedBox(
-                width: 92,
-                child: Text(
-                  deliver,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: r.urgent ? FontWeight.w700 : FontWeight.normal,
-                    color: color,
-                  ),
-                ),
+              Icon(Icons.error_outline, color: theme.colorScheme.error),
+              const SizedBox(height: UtenSpacing.s8),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: UtenSpacing.s8),
+              UtenButton(
+                type: UtenButtonType.tonal,
+                onPressed: _load,
+                child: const Text('重试'),
               ),
             ],
           ),
         ),
-      ),
+      );
+    }
+    if (rows.isEmpty) {
+      return const Center(child: Text('暂无待排产的订单行'));
+    }
+    return ListView.separated(
+      key: const Key('production-pending-mobile-list'),
+      itemCount: rows.length,
+      separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),
+      itemBuilder: (_, index) {
+        final row = rows[index];
+        final selected = _selected.containsKey(row.orderItemId);
+        final analyzed =
+            row.materialAnalysisId != null || row.readyNowQty != null;
+        final ready = row.readyNowQty ?? 0;
+        final awaitingApproval =
+            (row.submittedPlanQty ?? 0) > (row.approvedPlannedQty ?? 0);
+        final statusColor = !row.bomReady || (analyzed && ready <= 0)
+            ? theme.colorScheme.error
+            : awaitingApproval
+            ? theme.colorScheme.tertiary
+            : analyzed
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurfaceVariant;
+        return Card(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          color: !row.bomReady || (analyzed && ready <= 0)
+              ? theme.colorScheme.errorContainer.withValues(alpha: 0.32)
+              : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: UtenRadius.mdAll,
+            side: BorderSide(color: theme.colorScheme.outlineVariant),
+          ),
+          child: InkWell(
+            onTap: _canEdit ? () => _toggle(row, !selected) : null,
+            borderRadius: UtenRadius.mdAll,
+            child: Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Checkbox(
+                          value: selected,
+                          onChanged: !_canEdit
+                              ? null
+                              : (value) => _toggle(row, value ?? false),
+                        ),
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              row.goodsName ?? row.goodsCode ?? '未命名产品',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              [
+                                row.orderBillNo,
+                                row.goodsCode,
+                                row.spec,
+                              ].whereType<String>().join(' · '),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  Wrap(
+                    spacing: UtenSpacing.s12,
+                    runSpacing: UtenSpacing.s4,
+                    children: [
+                      Text('订货 ${_qtyText(row.qty)}'),
+                      Text('待排 ${_qtyText(row.needQty)}'),
+                      Text('交货 ${_shortDate(row.deliverDate)}'),
+                    ],
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  Row(
+                    children: [
+                      Icon(
+                        analyzed
+                            ? ready > 0
+                                  ? Icons.check_circle_outline
+                                  : Icons.error_outline
+                            : Icons.help_outline,
+                        size: 18,
+                        color: statusColor,
+                      ),
+                      const SizedBox(width: UtenSpacing.s4),
+                      Expanded(
+                        child: Text(
+                          analyzed
+                              ? '可立即生产 ${_qtyText(row.readyNowQty)} · '
+                                    '预计 ${_qtyText(row.readyByDateQty)} · '
+                                    '齐套 ${_ratioText(row.readinessRatio)}'
+                              : '未分析 · 进入物料分析获取可生产数量',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: statusColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (row.materialAnalyzedAt != null)
+                    Text(
+                      '最后分析 ${_shortDateTime(row.materialAnalyzedAt)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (awaitingApproval)
+                    Text(
+                      '已提交 ${_qtyText(row.submittedPlanQty)} · '
+                      '已批准 ${_qtyText(row.approvedPlannedQty)} · 待审批',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.tertiary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  if (selected) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    _selectedQtyField(row),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _num(
-    ThemeData theme,
-    String label,
-    double? v, {
-    bool highlight = false,
-  }) {
-    return SizedBox(
-      width: 76,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            v?.toStringAsFixed(2) ?? '—',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: highlight ? FontWeight.w700 : FontWeight.normal,
-              color: highlight ? theme.colorScheme.primary : null,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
+  /// 待排产表格列（**无客户列**——生产只看生产相关信息）。
+  /// status 列 key 与后端 /pending?status= 及 /pending/facets 三桶对齐（值即桶 value）。
+  List<MasterColumnDef<SchedulePendingRow>> get _pendingColumns => [
+    MasterColumnDef(
+      key: 'orderBillNo',
+      label: '销售单号',
+      width: 140,
+      sortable: true,
+      value: (r) => r.orderBillNo,
+    ),
+    MasterColumnDef(
+      key: 'goodsName',
+      label: '货品名称',
+      width: 200,
+      value: (r) {
+        final name = r.goodsName ?? r.goodsCode ?? '—';
+        return (r.spec != null && r.spec!.isNotEmpty)
+            ? '$name · ${r.spec}'
+            : name;
+      },
+    ),
+    MasterColumnDef(
+      key: 'qty',
+      label: '订货量',
+      width: 100,
+      type: 'number',
+      sortable: true,
+      value: (r) => r.qty?.toStringAsFixed(2) ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'needQty',
+      label: '缺口',
+      width: 100,
+      type: 'number',
+      sortable: true,
+      value: (r) => r.needQty?.toStringAsFixed(2) ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'readyNowQty',
+      label: '可生产几个',
+      width: 150,
+      type: 'number',
+      value: (r) => r.readyNowQty == null && r.materialAnalysisId == null
+          ? '未分析'
+          : '${_qtyText(r.readyNowQty)}（${_ratioText(r.readinessRatio)}）',
+    ),
+    MasterColumnDef(
+      key: 'readyByDateQty',
+      label: '预计可生产',
+      width: 130,
+      type: 'number',
+      value: (r) => r.readyByDateQty == null ? '—' : _qtyText(r.readyByDateQty),
+    ),
+    MasterColumnDef(
+      key: 'deliverDate',
+      label: '交货日期',
+      width: 120,
+      type: 'date',
+      sortable: true,
+      value: (r) =>
+          r.deliverDate == null ? '—' : r.deliverDate!.substring(0, 10),
+    ),
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 110,
+      value: (r) {
+        if (!r.bomReady) return 'BOM资料异常';
+        if ((r.submittedPlanQty ?? 0) > (r.approvedPlannedQty ?? 0)) {
+          return '已提交·待审批';
+        }
+        if (r.readyNowQty == null && r.materialAnalysisId == null) {
+          return '未分析';
+        }
+        if ((r.readyNowQty ?? 0) <= 0) return '已分析·暂不可生产';
+        if (r.urgent) return '紧急';
+        return '已分析';
+      },
+    ),
+  ];
+
+  Widget _selectedQtyField(SchedulePendingRow row) => TextFormField(
+    key: ValueKey('pending-qty-${row.orderItemId}'),
+    initialValue: _selected[row.orderItemId]?.toString(),
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: InputDecoration(
+      labelText: '本次联合分析数量',
+      helperText: '待排上限 ${_qtyText(row.needQty)}；最终可生产量由服务端预览确认',
+    ),
+    onChanged: (value) {
+      final parsed = double.tryParse(value.trim());
+      if (parsed != null) _selected[row.orderItemId] = parsed;
+    },
+  );
+
+  String _qtyText(double? value) {
+    if (value == null) return '—';
+    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    return value
+        .toStringAsFixed(4)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
+
+  String _ratioText(double? value) {
+    if (value == null) return '—';
+    final ratio = value > 1 ? value / 100 : value;
+    return '${(ratio.clamp(0, 1) * 100).toStringAsFixed(0)}%';
+  }
+
+  String _shortDate(String? value) {
+    if (value == null || value.isEmpty) return '—';
+    return value.length >= 10 ? value.substring(0, 10) : value;
+  }
+
+  String _shortDateTime(String? value) {
+    if (value == null || value.isEmpty) return '—';
+    return value.replaceFirst('T', ' ').split('.').first;
+  }
+
+  // 旧的待排产卡片行（_pendingRow/_num，含勾选框+手填排产量）已由 MasterDataTableView 取代（见 _list）。
 
   Widget _footer(ThemeData theme) {
+    final compact = context.breakpoint.isCompact;
+    final analysisButton = UtenButton(
+      type: UtenButtonType.tonal,
+      size: UtenButtonSize.large,
+      icon: Icons.insights_rounded,
+      isLoading: _submitting,
+      onPressed: _submitting
+          ? null
+          : () => _openMaterialAnalysis(allowEmpty: true),
+      child: const Text('物料分析'),
+    );
+    final generateButton = UtenButton(
+      key: const Key('pending-enter-analysis-to-generate'),
+      size: UtenButtonSize.large,
+      icon: Icons.playlist_add_check_rounded,
+      isLoading: _submitting,
+      onPressed: _selected.isEmpty || _submitting
+          ? null
+          : _openMaterialAnalysis,
+      onDisabledTap: _selected.isEmpty
+          ? () => context.appWarning('请先选择待排产产品')
+          : null,
+      child: Text('进入分析并生成计划（${_selected.length}）'),
+    );
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s8),
       decoration: BoxDecoration(
@@ -841,43 +969,59 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
           top: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s4,
-              crossAxisAlignment: WrapCrossAlignment.center,
+          if (!compact && _selected.isNotEmpty) ...[
+            SizedBox(
+              height: 86,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _selectedRows.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: UtenSpacing.s8),
+                itemBuilder: (_, index) {
+                  final row = _selectedRows.values.elementAt(index);
+                  return SizedBox(width: 310, child: _selectedQtyField(row));
+                },
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
+          if (compact) ...[
+            SizedBox(width: double.infinity, child: analysisButton),
+            const SizedBox(height: UtenSpacing.s8),
+            SizedBox(width: double.infinity, child: generateButton),
+          ] else
+            Row(
               children: [
-                _dateBtn('开工', _beginDate, () => _pickDate(true)),
-                _dateBtn('完工', _endDate, () => _pickDate(false)),
-                IconButton(
-                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                  tooltip: '建议完工日期',
-                  onPressed: _selected.isEmpty ? null : _suggestFinish,
-                ),
-
-                SizedBox(
-                  width: 120,
-                  child: TextField(
-                    controller: _workerCtrl,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      labelText: '负责人',
-                    ),
+                Expanded(
+                  child: Wrap(
+                    spacing: UtenSpacing.s8,
+                    runSpacing: UtenSpacing.s4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _dateBtn('开工', _beginDate, () => _pickDate(true)),
+                      _dateBtn('完工', _endDate, () => _pickDate(false)),
+                      IconButton(
+                        constraints: const BoxConstraints(
+                          minWidth: 48,
+                          minHeight: 48,
+                        ),
+                        icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                        tooltip: '建议完工日期',
+                        onPressed: _selected.isEmpty ? null : _suggestFinish,
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: UtenSpacing.s8),
+                analysisButton,
+                const SizedBox(width: UtenSpacing.s8),
+                generateButton,
               ],
             ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          UtenButton(
-            icon: Icons.playlist_add_check_rounded,
-            onPressed: _selected.isEmpty || _submitting ? null : _submit,
-            child: Text(
-              _submitting ? '生成中…' : '生成生产计划（${_selected.length} 个订单行）',
-            ),
-          ),
         ],
       ),
     );
@@ -885,6 +1029,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   Widget _dateBtn(String label, DateTime? d, VoidCallback onTap) {
     return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48)),
       onPressed: onTap,
       icon: const Icon(Icons.date_range_rounded, size: 16),
       label: Text(

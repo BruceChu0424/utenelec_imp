@@ -97,6 +97,20 @@ class ProductionLinkedStockDocumentGuardPostgresTest {
                             connection,
                             "select issued_qty::int from stock_document_items where id = ?",
                             fixture.itemId()));
+
+            // V232: is_closed 是 recomputeIssueStatus 派生的生命周期字段（领料全出完=true/反出库=false），
+            // 非身份列，必须允许翻转——否则生产链领料单无法完成出库（曾抛 23514 identity is immutable）。
+            execute(
+                    connection,
+                    "update stock_documents set is_closed = true where id = ?",
+                    fixture.documentId());
+            assertEquals(
+                    1,
+                    scalarInt(
+                            connection,
+                            "select case when is_closed then 1 else 0 end"
+                                    + " from stock_documents where id = ?",
+                            fixture.documentId()));
         }
     }
 

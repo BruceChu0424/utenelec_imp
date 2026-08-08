@@ -84,6 +84,7 @@ public class GoodsDetail {
 
     // ===== 来源 =====
     private String sourceType;       // 来源（自制/采购/委外；V128）
+    private String productionBomPolicy;
 
     // ===== 规格单位（V203：厚度/单重的计量单位，桥接 units.legacy_id） =====
     private Integer thicknessUnitLegacyId;

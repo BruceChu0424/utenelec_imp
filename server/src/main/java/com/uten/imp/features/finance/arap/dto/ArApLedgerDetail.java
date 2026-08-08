@@ -5,6 +5,7 @@ import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 /** 应收应付台账详情（含到期日/结算方式等运行字段）。 */
@@ -35,4 +36,17 @@ public class ArApLedgerDetail {
     private Integer legacyId;
     private Short legacyBstyle;
     private String remark;
+
+    // V236：名称/币种及到账、冲销、订单来源快照。
+    private String clientName;
+    private String supplierName;
+    private String currencyCode;
+    private String currencyName;
+    private BigDecimal amountReceivedOriginal;
+    private BigDecimal amountReceivedLocal;
+    private BigDecimal amountWriteOffOriginal;
+    private BigDecimal amountWriteOffLocal;
+    private BigDecimal amountBalanceOriginal;
+    private Short settlementStyleLegacy;
+    private List<String> salesOrderNos;
 }

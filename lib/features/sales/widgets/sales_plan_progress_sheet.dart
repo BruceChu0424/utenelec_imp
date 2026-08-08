@@ -154,13 +154,20 @@ class _ProgressList extends ConsumerWidget {
                 _num(theme, '剩余', _remaining(l.qty, l.shippedQty)),
               ],
             ),
+            const SizedBox(height: UtenSpacing.s8),
+            _materialAnalysisProgress(theme, l),
             if (l.links.isNotEmpty) ...[
               const Divider(height: UtenSpacing.s16),
               for (final p in l.links) _planRow(context, theme, p, canViewPlan),
             ] else ...[
               const Divider(height: UtenSpacing.s16),
               Text(
-                '尚未排产',
+                (l.submittedPlanQty ?? 0) > (l.approvedPlannedQty ?? 0)
+                    ? '生产计划已提交待批准，批准后在此显示下达计划'
+                    : l.materialAnalysisId != null ||
+                          l.materialAnalysisStatus != null
+                    ? '已进入物料分析，尚未生成生产计划'
+                    : '待物料分析',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -170,6 +177,105 @@ class _ProgressList extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Widget _materialAnalysisProgress(
+    ThemeData theme,
+    OrderPlanProgressLine line,
+  ) {
+    final submitted = line.submittedPlanQty ?? 0;
+    final approved = line.approvedPlannedQty ?? line.plannedQty ?? 0;
+    final hasAnalysis =
+        line.materialAnalysisId != null ||
+        line.materialAnalysisStatus != null ||
+        line.analyzedQty != null ||
+        line.readyNowQty != null ||
+        line.readyByDateQty != null ||
+        line.readinessRatio != null ||
+        line.submittedPlanQty != null ||
+        line.materialAnalyzedAt != null;
+    final (label, icon, color) = submitted > approved
+        ? ('已提交待批准', Icons.approval_outlined, theme.colorScheme.tertiary)
+        : approved > 0
+        ? ('已批准下达', Icons.verified_outlined, theme.colorScheme.primary)
+        : !hasAnalysis
+        ? (
+            '待分析',
+            Icons.pending_actions_outlined,
+            theme.colorScheme.onSurfaceVariant,
+          )
+        : switch (line.materialAnalysisStatus?.toUpperCase()) {
+            'READY' || 'CONFIRMED' => (
+              '已齐套，待生成计划',
+              Icons.inventory_2_outlined,
+              theme.colorScheme.primary,
+            ),
+            'STALE' => (
+              '分析已过期，待刷新',
+              Icons.sync_problem_outlined,
+              theme.colorScheme.error,
+            ),
+            _ => (
+              '备料中',
+              Icons.hourglass_bottom_outlined,
+              theme.colorScheme.secondary,
+            ),
+          };
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(UtenSpacing.s8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(UtenRadius.sm),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: UtenSpacing.s4),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (hasAnalysis)
+            Text(
+              '分析 ${_fmt(line.analyzedQty)} · '
+              '当前可生产 ${_fmt(line.readyNowQty)} · '
+              '预计可生产 ${_fmt(line.readyByDateQty)} · '
+              '齐套 ${_ratio(line.readinessRatio)} · '
+              '已提交 ${_fmt(line.submittedPlanQty)} · '
+              '已批准 ${_fmt(line.approvedPlannedQty ?? line.plannedQty)}',
+              style: theme.textTheme.bodySmall,
+            ),
+          if (line.materialAnalyzedAt != null)
+            Text(
+              '最后分析 ${_dateTime(line.materialAnalyzedAt!)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _dateTime(String value) =>
+      value.replaceFirst('T', ' ').split('.').first;
+
+  String _ratio(double? value) {
+    if (value == null) return '—';
+    final normalized = value > 1 ? value / 100 : value;
+    return '${(normalized.clamp(0, 1) * 100).toStringAsFixed(0)}%';
   }
 
   Widget _planRow(

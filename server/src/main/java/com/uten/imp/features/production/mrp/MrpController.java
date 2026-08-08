@@ -25,13 +25,6 @@ public class MrpController {
     private final MrpService mrpService;
     private final ProductionPlanningPackageService planningPackageService;
     private final ProductionPlanningDraftService planningDraftService;
-    private final BottomUpPlanOrchestrator orchestrator;
-
-    /** #13 自底向上整树确认能力开关，默认关（可逆发布：出问题关 flag 即回退到逐层手动）。
-     *  非 final，由 Spring @Value 反射注入；harness 直调服务不受此限。 */
-    @org.springframework.beans.factory.annotation.Value(
-            "${production.bottom-up-orchestrator.enabled:false}")
-    private boolean bottomUpOrchestratorEnabled;
 
     /** 物料需求预览（毛需求/库存/在途/净需求，自制件标记）。 */
     @GetMapping("/{id}/mrp")
@@ -105,7 +98,7 @@ public class MrpController {
     /**
      * #13 自底向上整树确认：对顶层成品计划一次确认即递归建出整棵 MAKE 子计划树（A→B→C），
      * 最深自制叶先就绪，下层完工经既有 V194 钩子自动释放上层。复用逐层 confirm，不改其语义。
-     * 能力开关 {@code production.bottom-up-orchestrator.enabled} 默认关。
+     * ADR-029 已用计划前物料分析取代此 HTTP 写入口；服务保留作历史兼容审计。
      */
     @PostMapping("/{id}/mrp/generate-planning-package-full-tree")
     @PreAuthorize("hasAuthority('production_plan:edit')")
@@ -113,12 +106,9 @@ public class MrpController {
             @PathVariable UUID id,
             @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
             GeneratePlanningPackageRequest req) {
-        if (!bottomUpOrchestratorEnabled) {
-            throw new com.uten.imp.common.web.ApiException(
-                    com.uten.imp.common.web.ErrorCode.BUSINESS,
-                    "自底向上整树确认未启用（production.bottom-up-orchestrator.enabled）");
-        }
-        return orchestrator.confirmFullTree(id, req);
+        throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT,
+                "整树直接确认入口已停用，请先使用生产物料分析并按齐套批次生成计划");
     }
 
     /** 生成领料单请求体。 */

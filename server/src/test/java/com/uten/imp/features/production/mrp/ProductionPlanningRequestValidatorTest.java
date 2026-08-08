@@ -85,19 +85,31 @@ class ProductionPlanningRequestValidatorTest {
     }
 
     @Test
-    void allowsLeafProductWithoutBom() {
-        // 顶层产品无 BOM（原材料/叶子件，不能再细分）合法，不再拦截。
+    void rejectsLeafProductWithoutDirectMakePolicyOrExplicitOverride() {
+        // 无 BOM 不再按“叶子件”自动放行；preview 只把未获 DIRECT_MAKE/例外的行列入此集合。
         GeneratePlanningPackageRequest request = request("a".repeat(64));
         ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
                 request.getPreviewFingerprint(), List.of(),
                 List.of(UUID.randomUUID()));
         when(planning.preview(any(), any())).thenReturn(snapshot);
-        when(planning.applyRequested(snapshot, request.getSegments()))
-                .thenReturn(new CompleteKitAllocator.Allocation(
-                        List.of(), Map.of()));
 
-        assertThatCode(() -> validator.validateCurrent(
+        assertThatThrownBy(() -> validator.validateCurrent(
                 UUID.randomUUID(), request))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("DIRECT_MAKE");
+        verify(planning, never()).applyRequested(any(), any());
+    }
+
+    @Test
+    void allowsNoBomWhenPreviewAlreadyAppliedDirectMakePolicyOrExplicitOverride() {
+        GeneratePlanningPackageRequest request = request("a".repeat(64));
+        ProductionExecutionPlanningService.Snapshot snapshot = snapshot(
+                request.getPreviewFingerprint(), List.of(), List.of());
+        when(planning.preview(any(), any())).thenReturn(snapshot);
+        when(planning.applyRequested(snapshot, request.getSegments()))
+                .thenReturn(new CompleteKitAllocator.Allocation(List.of(), Map.of()));
+
+        assertThatCode(() -> validator.validateCurrent(UUID.randomUUID(), request))
                 .doesNotThrowAnyException();
     }
 

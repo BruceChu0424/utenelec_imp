@@ -254,6 +254,9 @@ public class SalesReturnService {
         // 主表 totalLocal 为正数（与明细同号），ar_ap_ledger 端取负。
         if (!r.isArPosted()) {
             BigDecimal negAmount = r.getTotalLocal() == null ? BigDecimal.ZERO : r.getTotalLocal().negate();
+            BigDecimal negOriginal = r.getTotalOriginal() == null
+                    ? negAmount
+                    : r.getTotalOriginal().negate();
             arApService.postArAp(new ArApPostingRequest(
                     "AR",
                     StockService.SRC_SALES_RETURN,
@@ -262,7 +265,8 @@ public class SalesReturnService {
                     r.getCurrencyId(), r.getExchangeRate(),
                     negAmount,
                     BSTYLE_SALES_RETURN,
-                    r.getRemark()));
+                    r.getRemark(),
+                    negOriginal));
             r.setArPosted(true);
         }
 

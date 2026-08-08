@@ -111,7 +111,9 @@ public class ProductionPlanController {
     @PostMapping
     @PreAuthorize("hasAuthority('production_plan:edit')")
     public PlanDetail create(@Valid @RequestBody PlanSaveRequest req) {
-        return service.create(req);
+        throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT,
+                "新增生产计划必须先完成物料分析，请使用 /api/production/material-analyses");
     }
 
     @PutMapping("/{id}")
@@ -127,7 +129,7 @@ public class ProductionPlanController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_plan:approve')")
     public PlanDetail approve(@PathVariable UUID id) {
         return service.approve(id);
     }

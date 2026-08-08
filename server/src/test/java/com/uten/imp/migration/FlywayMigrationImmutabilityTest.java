@@ -40,4 +40,32 @@ class FlywayMigrationImmutabilityTest {
                 "V169 is the trusted full-table audit sweep; keep its applied bytes immutable "
                         + "and add a later migration for changes");
     }
+
+    @Test
+    void v219RetainsTheChecksumAlreadyRecordedByLocalDatabases() {
+        LoadableResource migration = new ClassPathResource(
+                new Location("classpath:db/migration"),
+                "db/migration/V219__finance_object_scope.sql",
+                getClass().getClassLoader(),
+                StandardCharsets.UTF_8);
+
+        assertEquals(
+                377101663,
+                ChecksumCalculator.calculate(migration),
+                "V219 is deployed history; restore its exact bytes and add later migrations instead");
+    }
+
+    @Test
+    void v236RetainsTheChecksumAlreadyRecordedByLocalDatabases() {
+        LoadableResource migration = new ClassPathResource(
+                new Location("classpath:db/migration"),
+                "db/migration/V236__receivable_settlement_metadata.sql",
+                getClass().getClassLoader(),
+                StandardCharsets.UTF_8);
+
+        assertEquals(
+                -2024018731,
+                ChecksumCalculator.calculate(migration),
+                "V236 is deployed history; carry later finance safeguards in V238+");
+    }
 }

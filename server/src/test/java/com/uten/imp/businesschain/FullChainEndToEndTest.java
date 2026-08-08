@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.sales.order.SalesOrderService;
 import com.uten.imp.features.sales.order.dto.OrderDetail;
+import com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest;
 import com.uten.imp.features.sales.order.dto.OrderItemLine;
 import com.uten.imp.features.sales.order.dto.OrderSaveRequest;
 import com.uten.imp.features.sales.shipment.SalesShipmentService;
@@ -14,6 +15,8 @@ import com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest;
 import com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest;
 import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.production.plan.ProductionPlanService;
+import com.uten.imp.features.production.plan.dto.PlanItemLine;
+import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.production.mrp.MrpRow;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.features.production.mrp.GeneratePlanningPackageRequest;
@@ -21,13 +24,14 @@ import com.uten.imp.features.production.mrp.PlanningPackageResult;
 import com.uten.imp.features.production.mrp.PlanningPreviewResult;
 import com.uten.imp.features.production.mrp.ProductionPlanningPackageService;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
-import com.uten.imp.features.production.schedule.dto.MergePlanRequest;
 import com.uten.imp.features.production.dailyreport.ProductionDailyReportService;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.AuthUser;
+
+import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +47,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -125,6 +130,9 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.admin.UserAccountAdminService userAccountAdmin;
     @Autowired private com.uten.imp.features.admin.PermissionOverrideAdminService permissionOverrideAdmin;
     @Autowired private com.uten.imp.features.production.mrp.BottomUpPlanOrchestrator orchestrator;
+    @Autowired private com.uten.imp.features.production.analysis.MaterialAnalysisService analysisService;
+    @Autowired private com.uten.imp.features.production.analysis.MaterialAnalysisCommandService analysisCommandService;
+    @Autowired private com.uten.imp.features.finance.receipt.FinanceReceiptService receiptService;
 
     // ---------------------------------------------------------------------------------------------
     // Smoke: full context boots and the entire schema migrates cleanly.
@@ -136,6 +144,51 @@ class FullChainEndToEndTest {
                 Integer.class);
         assertTrue(publicTables != null && publicTables > 100,
                 "full Flyway migration expected >100 public tables, got " + publicTables);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Regression: 待排产 /pending 改 Excel 表格后加了 sort/order/status + /pending/facets。
+    // Hibernate 6 原生查询 setParameter 会校验参数是否存在——status=null 时 SQL 不含 :warn，
+    // 误绑会抛 UnknownParameterException（曾导致一打开生产页就 500）。用真实 SQL 守住。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void schedulePending_sortAndStatusFiltersBindParamsWithoutError() {
+        World w = seedWorld("sched");
+        loginAs(w.superAdminUserId());
+        createApprovedOrder(w, w.goodsA(), "10", "100"); // 产生一条 chain_status=2 待排产行
+
+        // 默认调用（status=null, sort=deliverDate）——正是线上崩溃的那次
+        assertDoesNotThrow(() -> scheduleService.pending(
+                1, 20, null, null, null, "deliverDate", "asc", null));
+        // 三种状态筛选：urgent/normal 进 :warn，bom_missing 不进
+        for (String status : List.of("urgent", "normal", "bom_missing")) {
+            assertDoesNotThrow(() -> scheduleService.pending(
+                    1, 20, null, null, null, "deliverDate", "asc", status));
+        }
+        // 各可排序列 + 降序
+        for (String sort : List.of("deliverDate", "qty", "needQty", "orderBillNo")) {
+            assertDoesNotThrow(() -> scheduleService.pending(
+                    1, 20, null, null, null, sort, "desc", null));
+        }
+        // facets 聚合（恒含 :warn）
+        assertDoesNotThrow(() -> scheduleService.pendingFacets(null, null, null));
+        // 组合：keyword + 交货日期范围 + 状态 + 排序同时存在（验多条件 SQL 拼装 + 全参数绑定）
+        assertDoesNotThrow(() -> scheduleService.pending(
+                1, 20, "A",
+                LocalDate.of(2020, 1, 1), LocalDate.of(2099, 12, 31),
+                "qty", "desc", "urgent"));
+        assertDoesNotThrow(() -> scheduleService.pendingFacets(
+                "A", LocalDate.of(2020, 1, 1), LocalDate.of(2099, 12, 31)));
+
+        // 基本正确性：刚创建的待排产行确实出现在默认列表里
+        var page = scheduleService.pending(1, 20, null, null, null, "deliverDate", "asc", null);
+        assertNotNull(page);
+        assertFalse(page.getItems().isEmpty(),
+                "approved out-of-stock order line should appear in pending list");
+        // facets 返回 status 三桶（BOM缺失/紧急/正常）
+        var facets = scheduleService.pendingFacets(null, null, null);
+        assertNotNull(facets.get("status"));
+        assertEquals(3, facets.get("status").size(), "status facets should have 3 buckets");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -202,18 +255,20 @@ class FullChainEndToEndTest {
     // write back planned_qty, advancing chain_status out of 待排产(2) into 待物料(3)/已排产(4).
     // ---------------------------------------------------------------------------------------------
     @Test
-    void planner_createMergePlanAndApprove_writesPlannedQtyAndPegsOrder() {
+    void planner_createDraftAndApprove_writesPlannedQtyAndPegsOrder() {
         World w = seedWorld("s20");
         UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100"); // A has a BOM; out-of-stock
         UUID orderItemId = orderItemId(orderId);
 
-        UUID planId = scheduleService.createMergePlan(mergePlanRequest(orderItemId, "10"));
+        UUID planId = createLegacyTestDraft(orderItemId, w.goodsA(), "10");
         assertEquals(0, planStatus(planId), "new plan is DRAFT (status=0)");
-        assertTrue(planLinkCount(orderItemId) >= 1,
-                "plan_order_item_links pre-built on create (batch pegged to order)");
+        assertEquals(0, planLinkCount(orderItemId),
+                "legacy test fixture does not pre-build sales links");
 
         planService.approve(planId);
         assertEquals(1, planStatus(planId), "approved plan is status=1");
+        assertTrue(planLinkCount(orderItemId) >= 1,
+                "approval pegs the plan batch to the sales order");
         assertEquals(0, plannedQty(orderId).compareTo(new BigDecimal("10")),
                 "sales_order_items.planned_qty += allocated 10");
         int chain = itemChainStatus(orderId);
@@ -231,15 +286,6 @@ class FullChainEndToEndTest {
     private UUID orderItemId(UUID orderId) {
         return jdbc.queryForObject(
                 "select id from sales_order_items where order_id = ?", UUID.class, orderId);
-    }
-
-    private MergePlanRequest mergePlanRequest(UUID orderItemId, String qty) {
-        MergePlanRequest req = new MergePlanRequest();
-        MergePlanRequest.Line line = new MergePlanRequest.Line();
-        line.setOrderItemId(orderItemId);
-        line.setQty(new BigDecimal(qty));
-        req.setItems(List.of(line));
-        return req;
     }
 
     private int planStatus(UUID planId) {
@@ -290,9 +336,38 @@ class FullChainEndToEndTest {
     private UUID approvedPlan(World w, UUID goodsId, String orderQty, String planQty) {
         UUID orderId = createApprovedOrder(w, goodsId, orderQty, "100");
         UUID orderItemId = orderItemId(orderId);
-        UUID planId = scheduleService.createMergePlan(mergePlanRequest(orderItemId, planQty));
+        UUID planId = createLegacyTestDraft(orderItemId, goodsId, planQty);
         planService.approve(planId);
         return planId;
+    }
+
+    /**
+     * Test-only fixture for downstream legacy scenarios. Production HTTP writes are intentionally
+     * closed; new functional tests must use the material-analysis generate flow.
+     */
+    private UUID createLegacyTestDraft(UUID orderItemId, UUID goodsId, String qty) {
+        Map<String, Object> source = jdbc.queryForMap("""
+                SELECT i.color_id,i.unit_id,COALESCE(i.unit_rate,1) AS unit_rate,
+                       o.bill_no,COALESCE(i.qty,0) AS order_qty
+                FROM sales_order_items i
+                JOIN sales_orders o ON o.id=i.order_id
+                WHERE i.id=?
+                """, orderItemId);
+        PlanItemLine line = new PlanItemLine();
+        line.setProductNo("TEST-" + UUID.randomUUID());
+        line.setGoodsId(goodsId);
+        line.setColorId((UUID) source.get("color_id"));
+        line.setUnitId((UUID) source.get("unit_id"));
+        line.setUnitRate((BigDecimal) source.get("unit_rate"));
+        line.setSalesOrderItemId(orderItemId);
+        line.setSalesOrderNo((String) source.get("bill_no"));
+        line.setOqty((BigDecimal) source.get("order_qty"));
+        line.setQty(new BigDecimal(qty));
+
+        PlanSaveRequest request = new PlanSaveRequest();
+        request.setBillDate(LocalDate.of(2026, 8, 8));
+        request.setItems(List.of(line));
+        return planService.create(request).getId();
     }
 
     private MrpRow rowByGoods(java.util.List<MrpRow> rows, UUID goodsId) {
@@ -346,6 +421,236 @@ class FullChainEndToEndTest {
                         + "where pkg.plan_id = ? and pkg.id = dmd.package_id)",
                 planId) >= 2,
                 "直层物料需求建立 (B + E)");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V234 material-analysis path (analysis-first, the NEW pre-plan flow). Drives the real
+    // Controller→Service→DB chain: preview builds the full BOM tree with shortages, routes are
+    // confirmed, a MAKE-shortage notify spawns a MAKE_COMPONENT child demand, and generate-plan
+    // correctly refuses until the batch is fully kitted. The plan-first confirm path is s21w above.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void materialAnalysis_previewBuildsTreeNotifySpawnsMakeChildAndBlocksUntilKitted() {
+        World w = seedWorld("sMA1");
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(w, "planner-ma1",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:route", "production_material_analysis:notify",
+                "production_material_analysis:generate", "production_plan:approve");
+        loginAs(planner);
+
+        // (1) preview a NEW analysis from the approved sales line. For a SALES_ORDER_ITEM source
+        //     the server resolves goods/color/unit from the order line, so only the item id + qty
+        //     (+ optional delivery date) may be submitted.
+        PreviewItem src = new PreviewItem("SALES_ORDER_ITEM", orderItemId,
+                null, null, null, null, null, LocalDate.of(2026, 9, 1), new BigDecimal("10"));
+        AnalysisView view = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(), "idem-ma1-" + orderItemId, List.of(src)));
+        UUID analysisId = view.analysisId();
+        UUID productLineId = view.products().getFirst().analysisLineId();
+
+        // (2) flat tree: depth-1 actionable nodes are B (自制→MAKE) and E (委外→SUBCONTRACT);
+        //     deeper C/D appear as dependency hints. No stock → every actionable node is a shortage.
+        MaterialView b = view.flatMaterials().stream()
+                .filter(m -> m.goodsId().equals(w.goodsB()) && m.actionable()).findFirst().orElse(null);
+        MaterialView e = view.flatMaterials().stream()
+                .filter(m -> m.goodsId().equals(w.goodsE()) && m.actionable()).findFirst().orElse(null);
+        assertNotNull(b, "自制半成品 B 是 A 的直接层组件，应在分析树中可操作");
+        assertNotNull(e, "委外件 E 是 A 的直接层组件，应在分析树中可操作");
+        assertEquals("MAKE", b.sourceSuggestion(), "B 自制 → 建议路线 MAKE");
+        assertEquals("SUBCONTRACT", e.sourceSuggestion(), "E 委外 → 建议路线 SUBCONTRACT");
+        assertTrue(b.shortageQty().signum() > 0, "无库存 → B 缺料");
+
+        // (3) confirm routes (B=MAKE, E=SUBCONTRACT) — matching the suggestion, no override reason
+        analysisService.saveRoutes(analysisId, new RouteRequest(view.version(), view.fingerprint(),
+                "routes-ma1-" + analysisId, List.of(
+                        new RouteDecision(b.materialLineId(), b.actionGroupKey(), "MAKE", null),
+                        new RouteDecision(e.materialLineId(), e.actionGroupKey(), "SUBCONTRACT", null))));
+        AnalysisView routed = analysisService.detail(analysisId);
+        assertTrue(routed.flatMaterials().stream().anyMatch(m ->
+                m.goodsId().equals(w.goodsB()) && m.routeConfirmed()), "B 路线已确认");
+
+        // (4) notify MAKE (B shortage) → spawns a MAKE_COMPONENT child demand for B's own analysis
+        analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
+                routed.fingerprint(), "notify-make-" + analysisId, "MAKE",
+                List.of(b.materialLineId()), List.of()));
+        assertTrue(count("select count(*) from production_material_analysis_items "
+                        + "where analysis_id = ? and source_type = 'MAKE_COMPONENT' and is_deleted = false",
+                analysisId) >= 1, "MAKE 缺料通知 → 生成 MAKE_COMPONENT 子需求");
+
+        // (5) plan preview reports NOT ready (direct components B & E have no stock); generation refuses.
+        //     planPreview refreshes the snapshot (bumping version/fingerprint), so re-read the header
+        //     before generate-plan to satisfy requireCurrent.
+        AnalysisView afterMake = analysisService.detail(analysisId);
+        PlanPreview plan = analysisService.planPreview(analysisId, new PlanPreviewRequest(
+                afterMake.version(), afterMake.fingerprint(), w.warehouseId(),
+                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null));
+        assertFalse(plan.allReady(), "无库存 → 不可立即生产");
+        AnalysisView refreshed = analysisService.detail(analysisId);
+        ApiException blocked = assertThrows(ApiException.class, () -> analysisCommandService.generatePlan(
+                analysisId, new GeneratePlanRequest(refreshed.version(), refreshed.fingerprint(),
+                        plan.previewFingerprint(), "gen-ma1-" + analysisId, w.warehouseId(),
+                        LocalDate.of(2026, 8, 8), null, w.departmentId(), null, null, true,
+                        List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null)));
+        assertTrue(blocked.getMessage().contains("齐套"),
+                "未齐套生成应被拒（实际：" + blocked.getMessage() + "）");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V234 material-analysis HAPPY PATH (analysis-first → one-step generate+approve). Seeds stock for
+    // A's direct components (B 自制 sitting in stock as a sub-assembly, E 委外 in stock) so the batch is
+    // fully kitted, then generate-plan with approveNow=true must ATOMICALLY produce an APPROVED/READY
+    // plan + DRAW picking slip + sales planned_qty. This is the core generation chain, never exercised
+    // against real data before (Test A above covers the not-ready rejection path).
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void materialAnalysis_readyBatchGenerateAndApproveAtomicallyProducesReadyPlanAndDraw() {
+        World w = seedWorld("sMA2");
+        // A's DIRECT components are B (自制, 2/A) and E (委外, 1/A). 10 A needs B=20, E=10. Colorless
+        // (the sales line carries no color), so stock is seeded with color_id NULL.
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsB(), new BigDecimal("20"));
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsE(), new BigDecimal("10"));
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(w, "planner-ma2",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:generate", "production_plan:approve");
+        loginAs(planner);
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(null, null, null,
+                w.warehouseId(), "idem-ma2-" + orderItemId, List.of(new PreviewItem(
+                        "SALES_ORDER_ITEM", orderItemId, null, null, null, null, null,
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        UUID productLineId = view.products().getFirst().analysisLineId();
+        assertEquals(0, new BigDecimal("10").compareTo(view.products().getFirst().readyNowQty()),
+                "B=20 + E=10 在库 → 可立即生产 10（实际：" + view.products().getFirst().readyNowQty() + "）");
+
+        AnalysisView refreshed = analysisService.detail(analysisId);
+        PlanPreview plan = analysisService.planPreview(analysisId, new PlanPreviewRequest(
+                refreshed.version(), refreshed.fingerprint(), w.warehouseId(),
+                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null));
+        assertTrue(plan.allReady(), "齐套 → 计划预览通过");
+        AnalysisView preGen = analysisService.detail(analysisId);
+
+        GenerateResult result = analysisCommandService.generatePlan(analysisId, new GeneratePlanRequest(
+                preGen.version(), preGen.fingerprint(), plan.previewFingerprint(),
+                "gen-ma2-" + analysisId, w.warehouseId(), LocalDate.of(2026, 8, 8), null,
+                null, null, null, true,
+                List.of(new PlanQuantity(productLineId, new BigDecimal("10"))), null, null));
+        assertFalse(result.plans().isEmpty(), "生成了一张生产计划");
+        GeneratedPlan g = result.plans().getFirst();
+        assertEquals("APPROVED", g.status(), "approveNow=true → 计划已批准");
+        assertEquals(1, planStatus(g.planId()), "production_plans.status=1（已审核）");
+        assertTrue(hasSegmentStatus(g.planId(), "READY"), "生成 READY 执行分段");
+        assertFalse(g.drawIds().isEmpty(), "approveNow → 同事务生成 DRAW 领料单");
+        assertEquals(0, new BigDecimal("10").compareTo(plannedQty(orderId)),
+                "销售订单行 planned_qty=10");
+        assertEquals("COMPLETED",
+                strFor("select status from production_material_analyses where id=?", analysisId),
+                "全量分批下达 → 分析头 COMPLETED");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V234 material-analysis NOTIFY path for BUY + SUBCONTRACT shortages (the "缺料处理" step). MAKE
+    // notify is covered by Test A; this proves the BUY and SUBCONTRACT routes really create their
+    // authoritative downstream documents (purchase request / subcontract application) — the facades
+    // were never exercised against real data, so this catches the same class of bug as createDraftPlan.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void materialAnalysis_notifyBuyAndSubcontractCreatesRealDownstreamDocuments() {
+        World w = seedWorld("sMA3");
+        // 产品 F(自制) 直接组件：Gb(采购) + Gs(委外)，均无库存(缺料)，各挂默认供应商。
+        UUID f = UUID.randomUUID(), gb = UUID.randomUUID(), gs = UUID.randomUUID();
+        insertGoods(f, "F-sMA3", "成品F-sMA3", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(gb, "GB-sMA3", "采购件GB-sMA3", "采购", w.unitId(), w.unitLegacy());
+        insertGoods(gs, "GS-sMA3", "委外件GS-sMA3", "委外", w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id in (?, ?)",
+                w.supplierId(), gb, gs);
+        insertBom(f, gb, "2");
+        insertBom(f, gs, "1");
+        UUID orderId = createApprovedOrder(w, f, "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(w, "planner-ma3",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:route", "production_material_analysis:notify");
+        loginAs(planner);
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(null, null, null,
+                w.warehouseId(), "idem-ma3-" + orderItemId, List.of(new PreviewItem(
+                        "SALES_ORDER_ITEM", orderItemId, null, null, null, null, null,
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        MaterialView buyRow = view.flatMaterials().stream()
+                .filter(m -> m.goodsId().equals(gb) && m.actionable()).findFirst().orElse(null);
+        MaterialView subRow = view.flatMaterials().stream()
+                .filter(m -> m.goodsId().equals(gs) && m.actionable()).findFirst().orElse(null);
+        assertNotNull(buyRow, "采购件 Gb 是 F 的直接层组件");
+        assertNotNull(subRow, "委外件 Gs 是 F 的直接层组件");
+        assertEquals("BUY", buyRow.sourceSuggestion());
+        assertEquals("SUBCONTRACT", subRow.sourceSuggestion());
+        assertTrue(buyRow.shortageQty().signum() > 0, "无库存 → Gb 缺料");
+
+        analysisService.saveRoutes(analysisId, new RouteRequest(view.version(), view.fingerprint(),
+                "routes-ma3-" + analysisId, List.of(
+                        new RouteDecision(buyRow.materialLineId(), buyRow.actionGroupKey(), "BUY", null),
+                        new RouteDecision(subRow.materialLineId(), subRow.actionGroupKey(), "SUBCONTRACT", null))));
+        AnalysisView routed = analysisService.detail(analysisId);
+
+        analysisCommandService.notifySupply(analysisId, new NotifyRequest(routed.version(),
+                routed.fingerprint(), "notify-buy-" + analysisId, "BUY",
+                List.of(buyRow.materialLineId()), List.of()));
+        assertEquals(1, count("select count(*) from preplan_supply_actions "
+                        + "where analysis_id = ? and route = 'BUY' and status = 'CREATED' "
+                        + "and external_document_type = 'PURCHASE_REQUEST' and external_document_id is not null",
+                analysisId), "BUY 通知 → 落真实采购申请");
+
+        AnalysisView afterBuy = analysisService.detail(analysisId);
+        analysisCommandService.notifySupply(analysisId, new NotifyRequest(afterBuy.version(),
+                afterBuy.fingerprint(), "notify-sub-" + analysisId, "SUBCONTRACT",
+                List.of(subRow.materialLineId()), List.of()));
+        assertEquals(1, count("select count(*) from preplan_supply_actions "
+                        + "where analysis_id = ? and route = 'SUBCONTRACT' and status = 'CREATED' "
+                        + "and external_document_type = 'SUBCONTRACT_APPLICATION' and external_document_id is not null",
+                analysisId), "SUBCONTRACT 通知 → 落真实委外申请");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V234 material-analysis OBJECT-SCOPE (maker) isolation. @PreAuthorize lives on the Controller
+    // (every endpoint has it), so direct service calls bypass it; the service-level guard here is the
+    // object scope — a DIFFERENT account that DOES hold :manage cannot write to an analysis it does
+    // not own. Proves V233's object-level maker isolation covers the V234 analysis aggregate.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void materialAnalysis_objectScopeBlocksNonMaker() {
+        World w = seedWorld("sMA4");
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        PreviewItem src = new PreviewItem("SALES_ORDER_ITEM", orderItemId,
+                null, null, null, null, null, LocalDate.of(2026, 9, 1), new BigDecimal("10"));
+        UUID owner = createUserWithPerms(w, "owner-ma4",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:route", "production_material_analysis:notify");
+        UUID other = createUserWithPerms(w, "other-ma4",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:route", "production_material_analysis:notify");
+
+        // 归属人创建分析
+        loginAs(owner);
+        AnalysisView view = analysisService.preview(new PreviewRequest(null, null, null,
+                w.warehouseId(), "idem-ma4-" + orderItemId, List.of(src)));
+        UUID analysisId = view.analysisId();
+
+        // 另一个有同等权限但非归属人的账号 → 写操作被拒（对象级 maker 隔离）
+        loginAs(other);
+        ApiException denied = assertThrows(ApiException.class, () -> analysisCommandService.cancelAnalysis(
+                analysisId, new CancelRequest(view.version(), view.fingerprint(),
+                        "cancel-other-" + analysisId, "越权尝试")));
+        assertTrue(denied.getMessage().contains("本人") || denied.getMessage().contains("无权"),
+                "非归属人不能操作他人物料分析（实际：" + denied.getMessage() + "）");
     }
 
     private int count(String sql, Object... args) {
@@ -937,46 +1242,399 @@ class FullChainEndToEndTest {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // #27 (amount correctness — AR) Shipping posts an AR row whose amount equals the shipment's
-    // total = Σ(qty × price × discount). BigDecimal NUMERIC(18,4) — no float drift. On posting the
-    // row is unsettled: amount_balance = amount_original_local, amount_settled = 0. Exchange rate is
-    // persisted but NOT used to derive the amount (caller supplies local amount verbatim — avoids
-    // precision drift). The qty×price×discount decomposition is client-asserted; the server treats
-    // amount_local as authoritative, so we verify amount_balance arithmetic instead.
+    // #27 (amount correctness — AR) Shipping posts original currency from the shipment snapshot,
+    // while SHIPPED revalues local currency using finance's current active master rate. The AR starts
+    // wholly outstanding and carries an immutable per-order source snapshot for later receipt/report
+    // traceability. BigDecimal NUMERIC arithmetic keeps both currency lanes deterministic.
     // ---------------------------------------------------------------------------------------------
     @Test
     void amounts_arFromShipmentMatchesTotalAndStartsUnsettled() {
         World w = seedWorld("s27ar");
         UUID orderItemId = produceFinished(w, w.goodsA(), "10", "10").orderItemId();
+        UUID orderId = orderIdOfItem(orderItemId);
+        String orderNo = strFor("select bill_no from sales_orders where id = ?", orderId);
         loginAs(w.superAdminUserId());
         // ship 10 @ price 100, discount 1 → line amount 1000 (set in shipmentRequest)
         UUID shipmentId = createShipment(w, orderItemId, w.goodsA(), "10");
+        // SHIPPED snapshots current active client defaults when the shipment has no override.
+        jdbc.update("update clients set price_style = 6, tday = 30 where id = ?", w.clientId());
+        // Draft snapshots rate 1. Finance changes the maintained master rate before SHIPPED.
+        BigDecimal financeRate = new BigDecimal("1.250000");
+        jdbc.update("update currencies set exchange_rate = ? where id = ?", financeRate, w.currencyId());
         shipThroughWarehouse(shipmentId);
 
-        BigDecimal expected = new BigDecimal("10").multiply(new BigDecimal("100")); // qty × price × discount(1)
+        BigDecimal expectedOriginal = new BigDecimal("1000.0000");
+        BigDecimal expectedLocal = new BigDecimal("1250.0000");
+        assertEquals(0, bigDecimalFor(
+                "select total_original from sales_shipments where id = ?", shipmentId)
+                .compareTo(expectedOriginal),
+                "发运原币 = 量×价×折扣 = " + expectedOriginal);
+        assertEquals(0, bigDecimalFor(
+                "select exchange_rate from sales_shipments where id = ?", shipmentId)
+                .compareTo(financeRate),
+                "SHIPPED 快照财务维护的有效汇率");
+        assertEquals(0, bigDecimalFor(
+                "select total_local from sales_shipments where id = ?", shipmentId)
+                .compareTo(expectedLocal),
+                "SHIPPED 按财务主档汇率重算本币 = 原币×1.25");
+
         BigDecimal arOriginalLocal = bigDecimalFor(
                 "select amount_original_local from ar_ap_ledger "
                         + "where direction = 'AR' and source_doc_type = 'SALES_SHIPMENT' "
                         + "and source_doc_id = ?", shipmentId);
-        assertEquals(0, arOriginalLocal.compareTo(expected),
-                "AR 金额 = 量×价×折扣 = " + expected + "（BigDecimal 无漂移）");
-        // original (foreign) falls back to local when not supplied → equal
+        assertEquals(0, arOriginalLocal.compareTo(expectedLocal),
+                "AR 本币金额采用 SHIPPED 时的财务汇率重算结果");
         BigDecimal arOriginal = bigDecimalFor(
                 "select amount_original from ar_ap_ledger where source_doc_id = ?", shipmentId);
-        assertEquals(0, arOriginal.compareTo(arOriginalLocal),
-                "未传原币额时 amount_original 回退 = amount_original_local");
-        // unsettled at posting: balance = original, settled = 0
+        assertEquals(0, arOriginal.compareTo(expectedOriginal),
+                "AR 原币金额 = shipment.total_original，不回退为本币");
+        // unsettled at posting: both local and original balances start wholly outstanding
         assertEquals(0, bigDecimalFor(
                 "select amount_balance from ar_ap_ledger where source_doc_id = ?", shipmentId)
                 .compareTo(arOriginalLocal),
                 "立账时 amount_balance = amount_original_local（未核销）");
         assertEquals(0, bigDecimalFor(
+                "select amount_balance_original from ar_ap_ledger where source_doc_id = ?", shipmentId)
+                .compareTo(arOriginal),
+                "立账时原币未收 = 原币应收");
+        assertEquals(0, bigDecimalFor(
                 "select amount_settled from ar_ap_ledger where source_doc_id = ?", shipmentId)
                 .compareTo(BigDecimal.ZERO),
                 "立账时 amount_settled = 0");
+        assertEquals(0, bigDecimalFor(
+                "select amount_received_original from ar_ap_ledger where source_doc_id = ?", shipmentId)
+                .compareTo(BigDecimal.ZERO),
+                "立账时原币已收 = 0");
+        assertEquals(1, count(
+                "select count(*) from ar_ap_source_refs r "
+                        + "join ar_ap_ledger l on l.id = r.ledger_id "
+                        + "where l.source_doc_id = ? and r.source_type = 'SALES_ORDER' "
+                        + "and r.source_id = ? and r.source_no = ?",
+                shipmentId, orderId, orderNo),
+                "AR 保存对应销售订单 ID/单号来源快照");
+        assertEquals(0, bigDecimalFor(
+                "select r.amount_original from ar_ap_source_refs r "
+                        + "join ar_ap_ledger l on l.id = r.ledger_id where l.source_doc_id = ?",
+                shipmentId).compareTo(expectedOriginal),
+                "订单来源快照原币金额 = 本次发运该订单原币金额");
+        assertEquals(0, bigDecimalFor(
+                "select r.amount_local from ar_ap_source_refs r "
+                        + "join ar_ap_ledger l on l.id = r.ledger_id where l.source_doc_id = ?",
+                shipmentId).compareTo(expectedLocal),
+                "订单来源快照本币金额使用相同财务汇率");
+        assertEquals(6, intFor(
+                "select settlement_style_legacy from ar_ap_ledger where source_doc_id = ?", shipmentId),
+                "出货单未覆盖时，AR 结账方式快照取客户 price_style");
+        assertEquals(LocalDate.of(2026, 2, 1).plusDays(30), jdbc.queryForObject(
+                "select due_date from ar_ap_ledger where source_doc_id = ?",
+                LocalDate.class, shipmentId),
+                "AR 到期日 = 发运单据日 + 客户正数账期，不使用最后操作日");
         assertEquals(3, intFor(
                 "select legacy_bstyle from ar_ap_ledger where source_doc_id = ?", shipmentId),
                 "销售出货 AR 的 legacy_bstyle = 3");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #27 (receivable settlement — V236 收款核销, real DB) Ship posts AR, then a sales receipt
+    // references that AR with a cash amount + a fee write-off. Approval must, inside the pessimistic
+    // lock, recompute everything server-side and update the AR cumulative received/write-off/original
+    // balance, snapshot the line before/after balances, increase the receipt account by the CASH
+    // actually received (fees only offset AR, never masquerade as cash), write one reconciliation row,
+    // and enforce header fees == Σ line write-off-local. A second receipt settles the remainder
+    // (is_settled); red-flushing the first receipt symmetrically restores every cumulative. This is
+    // the V236 path the mock FinanceReceiptSettlementTest cannot exercise against a real shipment→AR.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void receivableSettlement_appliesCashAndWriteOffUpdatesArAccountAndReconThenReverses() {
+        World w = seedWorld("recv");
+        // (1) ship 10 @ ¥100 (CNY rate 1) → AR original=1000 / local=1000, wholly outstanding.
+        UUID orderItemId = produceFinished(w, w.goodsA(), "10", "10").orderItemId();
+        loginAs(w.superAdminUserId());
+        UUID shipmentId = createShipment(w, orderItemId, w.goodsA(), "10");
+        shipThroughWarehouse(shipmentId);
+        UUID arId = jdbc.queryForObject(
+                "select id from ar_ap_ledger where source_doc_type='SALES_SHIPMENT' and source_doc_id=?",
+                UUID.class, shipmentId);
+        assertEquals(0, bigDecimalFor("select amount_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("1000")), "AR 原币应收 = 10×100");
+        assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("1000")), "立账时原币未收 = 原币应收");
+        assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
+                .compareTo(BigDecimal.ZERO), "立账时原币已收 = 0");
+
+        // (2) seed a CNY receipt account + an active EXPENSE style for 其它费用.
+        UUID accountId = UUID.randomUUID();
+        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status) "
+                        + "values (?, 'BANK-recv', '测试收款账户', 'BANK', ?, '使用')", accountId, w.currencyId());
+        UUID expenseStyleId = UUID.randomUUID();
+        jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
+                        + "values (?, 'TEST-FEE-recv', '测试费用项目', 'EXPENSE', 0, '使用')", expenseStyleId);
+        UUID approver = createUserWithPerms(w, "fin-approver", "finance_receipt:edit");
+
+        // (3) receipt #1 (maker=superAdmin): collect ¥600 cash + ¥40 fee write-off.
+        //     手续费 25 + 其它费用 15 = 40 == Σ writeOffLocal (40×到账汇率1).
+        loginAs(w.superAdminUserId());
+        UUID receiptId = receiptService.create(receiptRequest(w, arId, accountId, expenseStyleId,
+                "600", "40", "25", "15", BigDecimal.ONE, LocalDate.of(2026, 3, 5))).getId();
+        // (4) approve as a different user (maker≠approver 职责分离).
+        loginAs(approver);
+        receiptService.approve(receiptId);
+
+        // AR cumulative updated server-side: 原币到账 600 / 冲销 40 / 未收 360.
+        assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("600")), "审核后 AR 原币累计到账 += 600");
+        assertEquals(0, bigDecimalFor("select amount_received_local from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("600")), "审核后 AR 本币累计到账 += 600");
+        assertEquals(0, bigDecimalFor("select amount_write_off_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("40")), "审核后 AR 原币累计冲销 += 40");
+        assertEquals(0, bigDecimalFor("select amount_write_off_local from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("40")), "审核后 AR 本币累计冲销 += 40");
+        assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("360")), "原币未收 = 1000 − 600 − 40 = 360");
+        assertEquals(0, bigDecimalFor("select amount_settled from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("640")), "本币累计已核销 = (600+40)×开账汇率1 = 640");
+        assertFalse(jdbc.queryForObject("select is_settled from ar_ap_ledger where id=?", Boolean.class, arId),
+                "未收完 → is_settled=false");
+        // line before/after balance snapshots
+        assertEquals(0, bigDecimalFor(
+                "select balance_before_original from finance_receipt_lines where receipt_id=?", receiptId)
+                .compareTo(new BigDecimal("1000")), "明细审核前余额快照 = 1000");
+        assertEquals(0, bigDecimalFor(
+                "select balance_after_original from finance_receipt_lines where receipt_id=?", receiptId)
+                .compareTo(new BigDecimal("360")), "明细审核后余额快照 = 360");
+        // account increased by CASH only (600); fees do NOT masquerade as cash
+        assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
+                .compareTo(new BigDecimal("600")), "账户只增实际到账 600（费用不冒充现金）");
+        assertEquals(0, bigDecimalFor("select receipts_total from accounts where id=?", accountId)
+                .compareTo(new BigDecimal("600")), "账户 receipts_total += 600");
+        // one reconciliation row, in_amount = cash (600)
+        assertEquals(1, count("select count(*) from finance_reconciliations "
+                        + "where source_doc_type='RECEIPT' and source_doc_id=?", receiptId),
+                "收款审核写 1 条账户流水");
+        assertEquals(0, bigDecimalFor("select in_amount from finance_reconciliations where source_doc_id=?", receiptId)
+                .compareTo(new BigDecimal("600")), "流水 in_amount = 实际到账 600");
+        assertEquals(1, intFor("select status from finance_receipts where id=?", receiptId), "收款单 status 0→1 已审");
+        assertEquals(0, bigDecimalFor("select amount_local from finance_receipts where id=?", receiptId)
+                .compareTo(new BigDecimal("600")), "收款单头本币 = 现金合计 600（不含费用）");
+
+        // (5) receipt #2: collect the remaining ¥360, no fees → AR fully settled.
+        loginAs(w.superAdminUserId());
+        UUID receipt2Id = receiptService.create(receiptRequest(w, arId, accountId, null,
+                "360", "0", "0", "0", BigDecimal.ONE, LocalDate.of(2026, 3, 10))).getId();
+        loginAs(approver);
+        receiptService.approve(receipt2Id);
+        assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
+                .compareTo(BigDecimal.ZERO), "二笔收完 → 原币未收 = 0");
+        assertTrue(jdbc.queryForObject("select is_settled from ar_ap_ledger where id=?", Boolean.class, arId),
+                "收完 → is_settled=true");
+        assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
+                .compareTo(new BigDecimal("960")), "账户累加 600+360=960");
+
+        // (6) red-flush receipt #1 → symmetric restore of AR cumulative, account, recon.
+        receiptService.reverse(receiptId);
+        assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("360")), "红冲receipt1 → 原币到账 960−600=360");
+        assertEquals(0, bigDecimalFor("select amount_write_off_original from ar_ap_ledger where id=?", arId)
+                .compareTo(BigDecimal.ZERO), "红冲receipt1 → 原币冲销 40−40=0");
+        assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("640")), "红冲receipt1 → 原币未收 1000−360=640");
+        assertFalse(jdbc.queryForObject("select is_settled from ar_ap_ledger where id=?", Boolean.class, arId),
+                "红冲后未清 → is_settled=false");
+        assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
+                .compareTo(new BigDecimal("360")), "红冲receipt1 → 账户 960−600=360");
+        assertEquals(-1, intFor("select status from finance_receipts where id=?", receiptId), "红冲 → status=−1");
+        assertEquals(0, count("select count(*) from finance_reconciliations "
+                        + "where source_doc_type='RECEIPT' and source_doc_id=?", receiptId),
+                "红冲receipt1 → 删除其账户流水");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #27 (receivable settlement guards) Cross-currency line, over-collect and fee mismatch must each
+    // be rejected at approval (inside the pessimistic lock), leaving the AR untouched. Proves the
+    // V236 settlement cannot be abused to write off more than owed, settle in the wrong currency, or
+    // post fees that don't reconcile to the line write-off.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void receivableSettlement_rejectsCrossCurrencyOvercollectAndFeeMismatch() {
+        World w = seedWorld("recvguard");
+        UUID orderItemId = produceFinished(w, w.goodsA(), "10", "10").orderItemId();
+        loginAs(w.superAdminUserId());
+        UUID shipmentId = createShipment(w, orderItemId, w.goodsA(), "10");
+        shipThroughWarehouse(shipmentId);
+        UUID arId = jdbc.queryForObject(
+                "select id from ar_ap_ledger where source_doc_type='SALES_SHIPMENT' and source_doc_id=?",
+                UUID.class, shipmentId);
+        UUID accountId = UUID.randomUUID();
+        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status) "
+                        + "values (?, 'BANK-recvg', '测试收款账户', 'BANK', ?, '使用')", accountId, w.currencyId());
+        UUID expenseStyleId = UUID.randomUUID();
+        jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
+                        + "values (?, 'TEST-FEE-recvg', '测试费用项目', 'EXPENSE', 0, '使用')", expenseStyleId);
+        UUID usdId = UUID.randomUUID();
+        jdbc.update("insert into currencies(id, code, name, exchange_rate, status) "
+                        + "values (?, 'USD-recvg', '美元', 7, '使用')", usdId);
+        UUID approver = createUserWithPerms(w, "fin-approver-g", "finance_receipt:edit");
+
+        // (a) cross-currency: line currency ≠ AR currency → rejected at SAVE (saveLines enforces
+        //     same-currency-as-AR before the receipt is even persisted; approve is never reached).
+        loginAs(w.superAdminUserId());
+        com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest crossReq = receiptRequest(
+                w, arId, accountId, null, "100", "0", "0", "0", BigDecimal.ONE, LocalDate.of(2026, 3, 5));
+        crossReq.getItems().get(0).setCurrencyId(usdId);
+        ApiException cross = assertThrows(ApiException.class, () -> receiptService.create(crossReq));
+        assertTrue(cross.getMessage().contains("跨币种"), "跨币种核销在保存时即被拒: " + cross.getMessage());
+
+        // (b) over-collect: cash 900 + write-off 200 = 1100 > 未收 1000 → rejected (fees match 200).
+        loginAs(w.superAdminUserId());
+        UUID rOver = receiptService.create(receiptRequest(w, arId, accountId, expenseStyleId,
+                "900", "200", "120", "80", BigDecimal.ONE, LocalDate.of(2026, 3, 5))).getId();
+        loginAs(approver);
+        ApiException over = assertThrows(ApiException.class, () -> receiptService.approve(rOver));
+        assertTrue(over.getMessage().contains("超过应收未收"), "超收被拒: " + over.getMessage());
+
+        // (c) fee mismatch: write-off-local 50 ≠ header fees 999 → rejected.
+        loginAs(w.superAdminUserId());
+        UUID rMis = receiptService.create(receiptRequest(w, arId, accountId, null,
+                "100", "50", "999", "0", BigDecimal.ONE, LocalDate.of(2026, 3, 5))).getId();
+        loginAs(approver);
+        ApiException mis = assertThrows(ApiException.class, () -> receiptService.approve(rMis));
+        assertTrue(mis.getMessage().contains("冲销人民币合计必须等于"), "费用不平被拒: " + mis.getMessage());
+
+        // all three rejections left the AR untouched (still wholly outstanding).
+        assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
+                .compareTo(BigDecimal.ZERO), "三次拒绝均未改 AR 累计到账");
+        assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("1000")), "AR 原币未收仍为 1000");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // #27 (receivable settlement — V236 外币收款 + 汇兑差, real DB) A foreign-currency AR posted at the
+    // 开账汇率 is settled by a receipt whose 到账汇率 differs. The server must keep BOTH currency lanes
+    // authoritative and distinct: 累计到账本币 uses the 到账汇率, 累计已核销(账面) uses the 开账汇率, and the
+    // row-level 汇兑差额 is their difference. This is the FX path the CNY settlement test above and the
+    // mock FinanceReceiptSettlementTest do not exercise against a real shipment→AR chain.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void receivableSettlement_foreignCurrencyAppliesArrivalRateAndRecognizesExchangeDiff() {
+        World w = seedWorld("recvfx");
+        // turn the seeded currency into a foreign currency (USD) at posting rate 7.0
+        jdbc.update("update currencies set code='USD-fx', name='美元', exchange_rate=7 where id=?", w.currencyId());
+        // ship 10 @ $100 → AR posted at 开账汇率 7.0: original $1000 / local ¥7000
+        UUID orderItemId = produceFinished(w, w.goodsA(), "10", "10").orderItemId();
+        loginAs(w.superAdminUserId());
+        UUID shipmentId = createShipment(w, orderItemId, w.goodsA(), "10");
+        shipThroughWarehouse(shipmentId); // SHIPPED re-locks the maintained 7.0 rate
+        UUID arId = jdbc.queryForObject(
+                "select id from ar_ap_ledger where source_doc_type='SALES_SHIPMENT' and source_doc_id=?",
+                UUID.class, shipmentId);
+        assertEquals(0, bigDecimalFor("select amount_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("1000")), "AR 原币应收 $1000");
+        assertEquals(0, bigDecimalFor("select amount_original_local from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("7000")), "AR 本币 = 1000×开账汇率7 = 7000");
+        assertEquals(0, bigDecimalFor("select exchange_rate from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("7")), "AR 开账汇率 = 7.0");
+
+        // USD receipt account (same currency → adjustAccount records 原币) + a distinct approver.
+        UUID accountId = UUID.randomUUID();
+        jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status) "
+                        + "values (?, 'BANK-fx', '美元账户', 'BANK', ?, '使用')", accountId, w.currencyId());
+        UUID approver = createUserWithPerms(w, "fin-fx", "finance_receipt:edit");
+
+        // receipt: collect $600 at 到账汇率 7.2 (≠ 开账 7.0) → 汇兑收益 120, no fees.
+        loginAs(w.superAdminUserId());
+        UUID receiptId = receiptService.create(receiptRequest(w, arId, accountId, null,
+                "600", "0", "0", "0", new BigDecimal("7.2"), LocalDate.of(2026, 3, 5))).getId();
+        loginAs(approver);
+        receiptService.approve(receiptId);
+
+        // server-authoritative dual-currency settlement:
+        //   到账本币 = 600 × 7.2 = 4320 ; 账面冲减 = 600 × 7.0 = 4200 ; 汇兑差额 = 120 (收益)
+        assertEquals(0, bigDecimalFor("select amount_received_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("600")), "原币累计到账 $600");
+        assertEquals(0, bigDecimalFor("select amount_received_local from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("4320")), "本币累计到账 = 600×到账汇率7.2 = 4320");
+        assertEquals(0, bigDecimalFor("select amount_settled from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("4200")), "本币累计已核销(账面) = 600×开账汇率7.0 = 4200");
+        assertEquals(0, bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("400")), "原币未收 = 1000−600 = $400");
+        assertEquals(0, bigDecimalFor("select amount_balance from ar_ap_ledger where id=?", arId)
+                .compareTo(new BigDecimal("2800")), "本币未收 = 7000−4200 = 2800");
+        // line-level authoritative recomputation matches the ledger
+        assertEquals(0, bigDecimalFor("select amount_local from finance_receipt_lines where receipt_id=?", receiptId)
+                .compareTo(new BigDecimal("4320")), "明细到账本币 = 4320");
+        assertEquals(0, bigDecimalFor("select applied_amount_local from finance_receipt_lines where receipt_id=?", receiptId)
+                .compareTo(new BigDecimal("4200")), "明细账面冲减 = 4200");
+        assertEquals(0, bigDecimalFor("select exchange_diff from finance_receipt_lines where receipt_id=?", receiptId)
+                .compareTo(new BigDecimal("120")), "明细汇兑差额 = 120（收益）");
+        // USD account (same currency as 到账) accumulates the 原币 actually received, not the local
+        assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
+                .compareTo(new BigDecimal("600")), "美元账户按原币累加 $600（非本币4320）");
+    }
+
+    /** Build a single-line sales-receipt save request referencing one AR. */
+    private com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest receiptRequest(
+            World w, UUID arId, UUID accountId, UUID expenseStyleId,
+            String cash, String writeOff, String bankFee, String otherFee,
+            BigDecimal rate, LocalDate billDate) {
+        com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest req =
+                new com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest();
+        req.setBillDate(billDate);
+        req.setClientId(w.clientId());
+        req.setAccountId(accountId);
+        req.setBankFee(new BigDecimal(bankFee));
+        req.setOtherFee(new BigDecimal(otherFee));
+        req.setOtherFeeStyleId(expenseStyleId);
+        com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput line =
+                new com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput();
+        line.setAppliedLedgerId(arId);
+        line.setCurrencyId(w.currencyId());
+        line.setExchangeRate(rate);
+        line.setAmountOriginal(new BigDecimal(cash));
+        line.setWriteOffAmount(new BigDecimal(writeOff));
+        req.setItems(List.of(line));
+        return req;
+    }
+
+    @Test
+    void amounts_discountedApprovedOrderChangeQtyKeepsDiscountInBothCurrencies() {
+        World w = seedWorld("s27discount-change");
+        loginAs(w.superAdminUserId());
+        OrderSaveRequest request = orderRequest(w, w.goodsA(), "10", "100");
+        request.getItems().get(0).setDiscount(new BigDecimal("0.8"));
+        UUID orderId = salesOrderService.create(request).getId();
+        salesOrderService.approve(orderId);
+        UUID orderItemId = orderItemId(orderId);
+
+        OrderChangeQtyRequest.Line line = new OrderChangeQtyRequest.Line();
+        line.setOrderItemId(orderItemId);
+        line.setNewQty(new BigDecimal("20"));
+        OrderChangeQtyRequest change = new OrderChangeQtyRequest();
+        change.setItems(List.of(line));
+        salesOrderService.changeQty(orderId, change);
+
+        assertEquals(0, bigDecimalFor(
+                "select amount_original from sales_order_items where id = ?", orderItemId)
+                .compareTo(new BigDecimal("1600.0000")),
+                "改量原币金额仍为 20×100×0.8");
+        assertEquals(0, bigDecimalFor(
+                "select amount_local from sales_order_items where id = ?", orderItemId)
+                .compareTo(new BigDecimal("1600.0000")),
+                "汇率 1 下改量本币金额仍包含折扣");
+    }
+
+    @Test
+    void salesOrderApprovalRejectsCurrencyDisabledAfterDraftSave() {
+        World w = seedWorld("order-currency-audit");
+        loginAs(w.superAdminUserId());
+        UUID orderId = salesOrderService.create(
+                orderRequest(w, w.goodsA(), "10", "100")).getId();
+        jdbc.update("update currencies set status = '禁用' where id = ?", w.currencyId());
+
+        ApiException error = assertThrows(
+                ApiException.class, () -> salesOrderService.approve(orderId));
+
+        assertTrue(error.getMessage().contains("币种"));
+        assertEquals(0, orderStatus(orderId), "币种审核失败后订单仍为草稿");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -2217,7 +2875,8 @@ class FullChainEndToEndTest {
         // through the legacy int lane (MRP_SQL: units u ON u.legacy_id = g.unit_legacy_id).
         jdbc.update("insert into units(id, legacy_id, code, name, status) values (?, ?, ?, ?, '使用')",
                 unitId, unitLegacy, "PCS-" + tag, "个");
-        jdbc.update("insert into currencies(id, code, name, status) values (?, ?, ?, '使用')",
+        jdbc.update("insert into currencies(id, code, name, exchange_rate, status) "
+                        + "values (?, ?, ?, 1, '使用')",
                 currencyId, "CNY-" + tag, "人民币");
         jdbc.update("insert into colors(id, code, name, status) values (?, ?, ?, '使用')",
                 colorId, "CLR-" + tag, "默认色");

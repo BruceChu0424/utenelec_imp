@@ -27,9 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * soft-delete semantics plus row minimization, V190 covers the V188/V189
  * business tables, V193 covers V191/V192 planning tables, V195 covers the V194
  * MAKE receipt-allocation ledger, V197 covers V196 procurement approval and
- * expected-inbound ledgers, V202 covers V201 arrival-exception ledgers, and
- * V225 covers the V224 celebration-interaction tables (notice_acknowledgments,
- * notice_blessings).
+ * expected-inbound ledgers, V202 covers V201 arrival-exception ledgers, V225
+ * covers the V224 celebration-interaction tables, and V237 refreshes coverage
+ * after V234 production analysis plus the V236 receivable source-reference ledger.
  * This test deliberately
  * does not pretend to execute PostgreSQL trigger DDL. Instead it verifies the
  * part that can be proven without Docker: critical tables existed before the
@@ -40,9 +40,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AuditTriggerCoverageMigrationContractTest {
 
     private static final Path MIGRATION_ROOT = Path.of("src/main/resources/db/migration");
-    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 225;
+    private static final int LATEST_FULL_AUDIT_SWEEP_VERSION = 237;
     private static final Path LATEST_FULL_AUDIT_SWEEP =
-            MIGRATION_ROOT.resolve("V225__refresh_audit_trigger_coverage.sql");
+            MIGRATION_ROOT.resolve("V237__refresh_audit_trigger_coverage.sql");
     private static final Path LATEST_AUDIT_HARDENING =
             MIGRATION_ROOT.resolve("V185__audit_soft_delete_and_redaction_hardening.sql");
     private static final Pattern MIGRATION_FILE =
@@ -82,7 +82,9 @@ class AuditTriggerCoverageMigrationContractTest {
             "inbound_expectation_items",
             // Finance-controlled over-arrival and exact-owner supplier-return ledgers.
             "procurement_arrival_exceptions", "supplier_return_tasks",
-            "procurement_arrival_exception_events");
+            "procurement_arrival_exception_events",
+            // Immutable one-to-many AR/AP business-source snapshots.
+            "ar_ap_source_refs");
 
     /** Tables intentionally excluded from row-image auditing, with reviewable reasons. */
     private static final Map<String, String> TECHNICAL_TABLE_ALLOWLIST = Map.ofEntries(

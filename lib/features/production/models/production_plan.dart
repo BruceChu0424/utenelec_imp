@@ -291,6 +291,9 @@ class ProductionPlanDetail {
     this.stopped = false,
     this.canceled = false,
     this.sourceDocNo,
+    this.materialAnalysisId,
+    this.materialAnalysisItemId,
+    this.allowedActions = const [],
     this.items = const [],
   });
 
@@ -322,6 +325,9 @@ class ProductionPlanDetail {
   final bool stopped;
   final bool canceled;
   final String? sourceDocNo;
+  final String? materialAnalysisId;
+  final String? materialAnalysisItemId;
+  final List<String> allowedActions;
   final List<ProductionPlanItem> items;
 
   factory ProductionPlanDetail.fromJson(Map<String, dynamic> json) =>
@@ -350,6 +356,12 @@ class ProductionPlanDetail {
         stopped: (json['stopped'] as bool?) ?? false,
         canceled: (json['canceled'] as bool?) ?? false,
         sourceDocNo: json['sourceDocNo'] as String?,
+        materialAnalysisId: json['materialAnalysisId'] as String?,
+        materialAnalysisItemId: json['materialAnalysisItemId'] as String?,
+        allowedActions: [
+          for (final value in (json['allowedActions'] as List? ?? const []))
+            value.toString(),
+        ],
         items:
             (json['items'] as List?)
                 ?.map(

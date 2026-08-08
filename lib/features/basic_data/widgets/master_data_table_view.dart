@@ -109,6 +109,10 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.showFullscreenToggle,
     this.rowColor,
     this.leadingGroups,
+    this.selectable = false,
+    this.idOf,
+    this.selectedIds = const <String>{},
+    this.onSelectedIdsChanged,
   });
 
   final List<MasterColumnDef<T>> columns;
@@ -128,6 +132,23 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 外部受控选中判定：非空时优先用它判定高亮（按业务键比较，不受 item 引用变化影响），
   /// 供每次 build 重建 item 对象的场景（如 BOM 的 _BomRow）——否则默认内部 _selectedItem 走引用相等。
   final bool Function(T item)? isSelected;
+
+  /// 多选模式开关：true 时在最前列渲染勾选框 + 表头三态全选，行高亮改由 [selectedIds] 驱动
+  /// （此时单选 [isSelected]/[onSelectionChanged]/内部 _selectedItem 全部失效）。仅用于列表页；
+  /// embedded（picker/明细表）勿开（initState 断言拦截）。勾选框与"点行打开详情"互不影响。
+  final bool selectable;
+
+  /// 行→业务 id 提取器（[selectable]:true 时必填）。用于把行键进 [selectedIds] 集合，避免依赖
+  /// item 引用相等（列表每次 build 重建对象；_BomRow / InstantInventoryRow 无 id 都会踩坑）。
+  /// 无 id 的行传复合键，如 `(r) => '${r.goodsId}|${r.colorId}'`。
+  final String? Function(T)? idOf;
+
+  /// 多选选中集合（调用方拥有，单一真值源）。组件只读它判定勾选/高亮、只通过
+  /// [onSelectedIdsChanged] 把"新集合"回交调用方，从不自行清空——故跨页天然保留。
+  final Set<String> selectedIds;
+
+  /// 选中集合变化回调：行勾选与表头三态全选共用这一个（传入新的 Set）。
+  final void Function(Set<String> next)? onSelectedIdsChanged;
 
   /// 表头上方工具条的追加按钮（预览打印 / 下载表格等），排在「表头设置」右侧、
   /// 左对齐挨在一起。调用方通常传深绿大号款（UtenButtonType.primary + large）。
@@ -197,6 +218,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   /// 列宽待重算标记：列集合或数据变化时置 true，[_ensureWidths] 算完清掉。
   bool _widthsDirty = true;
 
+  /// 上次量宽时生效的字号系数（textScaler.scale(1)）。用户在系统设置改字号档后，
+  /// 渲染文字按新字号铺，但列宽缓存不会自动失效——[_ensureWidths] 据此比较触发重算，
+  /// 保证字号变大列也跟着变宽（与 floating_capsule_nav_bar 同款 textScaler 处理）。
+  double? _lastScale;
+
   /// 当前选中（单击高亮）的行：滚动不刷新数据故高亮常驻，翻页/重查换对象后自然失效。
   T? _selectedItem;
 
@@ -231,9 +257,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   static const double _sortIconAllowance = 20; // 可排序列表头排序图标 + 间距
   static const double _autoFitBuffer = 6; // 防贴边 ellipsis 富余
 
+  /// 多选前导勾选列宽（合成单元格，不计入 widget.columns / 列宽自动适配 / 列显隐）。
+  static const double _selectionColWidth = 48;
+
   @override
   void initState() {
     super.initState();
+    assert(
+      !widget.selectable || widget.idOf != null,
+      'MasterDataTableView: selectable:true 需提供 idOf（行→业务 id 提取器）。',
+    );
+    assert(
+      !widget.embedded || !widget.selectable,
+      'MasterDataTableView: selectable 仅用于列表页，勿用在 embedded picker/明细表。',
+    );
     _headerH = ScrollController();
     _bodyH = ScrollController();
     _bodyV = ScrollController();
@@ -341,8 +378,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   /// 按当前列与已加载数据自动测算各列宽度：取表头标签与单元格值的最大文本宽，加内边距/图标富余。
   /// 用户已手动拖拽的列（[_manualResized]）保留原宽度不重算。仅在 [_widthsDirty] 时执行。
   void _ensureWidths(BuildContext context) {
+    // 字号档（textScaler）变化也要重算：渲染时文字按放大字号铺，但量宽用的 TextPainter
+    // 必须显式带上同一 textScaler 才量得准（否则按 1.0 量偏窄，大字号下要拖才显示全）。
+    final textScaler = MediaQuery.textScalerOf(context);
+    final scale = textScaler.scale(1);
+    if (_lastScale != null && _lastScale != scale) {
+      _widthsDirty = true;
+    }
     if (!_widthsDirty) return;
     _widthsDirty = false;
+    _lastScale = scale;
     final theme = Theme.of(context);
     final headerStyle = (theme.textTheme.labelMedium ?? const TextStyle())
         .copyWith(fontWeight: FontWeight.w700);
@@ -368,9 +413,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
         continue;
       }
       final def = widget.columns[i];
-      double w = _measureText(def.label, headerStyle);
+      double w = _measureText(def.label, headerStyle, textScaler);
       for (var r = 0; r < sampleCount; r++) {
-        final tw = _measureText(def.value(pool[r]) ?? '', bodyStyle);
+        final tw = _measureText(def.value(pool[r]) ?? '', bodyStyle, textScaler);
         if (tw > w) w = tw;
       }
       next[i] =
@@ -385,11 +430,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   }
 
   /// 测量单行文本渲染宽度（TextPainter，maxLines:1）。测完 dispose 防泄漏。
-  double _measureText(String text, TextStyle style) {
+  ///
+  /// [textScaler] 必须传当前生效的字号系数（来自 MediaQuery.textScalerOf）——单元格里
+  /// 的 Text 在渲染时会自动吃这个缩放，量宽若不带它就会按未放大字号量、列偏窄。
+  double _measureText(String text, TextStyle style, TextScaler textScaler) {
     if (text.isEmpty) return 0;
     final tp = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
+      textScaler: textScaler,
       maxLines: 1,
     )..layout();
     final w = tp.width;
@@ -408,7 +457,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   }
 
   double get _totalWidth {
-    var s = 0.0;
+    var s = widget.selectable ? _selectionColWidth : 0.0;
     for (final i in _visibleIndices) {
       if (i < _widths.length) s += _widths[i];
     }
@@ -445,6 +494,91 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
       }
     });
     _fsTick.value++;
+  }
+
+  // —— 多选（selectable 模式）——
+
+  /// 多选模式下表头/表体行的交叉轴对齐：stretch 让所有单元格同高、网格竖线贯通，
+  /// 文字垂直居中；非多选沿用默认 center（行为不变）。
+  CrossAxisAlignment get _selectableCross => widget.selectable
+      ? CrossAxisAlignment.stretch
+      : CrossAxisAlignment.center;
+
+  /// 当前页可勾选的行 id 集合（主数据行 + 已展开的前导分组 items；过滤空 id）。
+  /// 内联计算、勿缓存到实例字段——全屏 post-frame 间隙会读到旧值。
+  Set<String> _pageSelectableIds() {
+    final ids = <String>{};
+    void add(T it) {
+      final id = widget.idOf?.call(it);
+      if (id != null && id.isNotEmpty) ids.add(id);
+    }
+
+    for (final it in widget.items) {
+      add(it);
+    }
+    final leading = widget.leadingGroups;
+    if (leading != null) {
+      for (final g in leading) {
+        if (_expandedGroups.contains(g.id)) {
+          for (final it in g.items) {
+            add(it);
+          }
+        }
+      }
+    }
+    return ids;
+  }
+
+  /// 表头三态值：false=本页全未选 / true=本页全选 / null=部分选。
+  bool? get _headerCheckValue {
+    final pageIds = _pageSelectableIds();
+    if (pageIds.isEmpty) return false;
+    final hit = pageIds.where(widget.selectedIds.contains).length;
+    if (hit == 0) return false;
+    if (hit == pageIds.length) return true;
+    return null;
+  }
+
+  /// 表头三态切换：旧值 true（全选）→ 取消本页；否则（无/部分）→ 全选本页。
+  /// 拷贝调用方集合后回交，从不就地改 widget.selectedIds。
+  void _onToggleAllPage(bool? oldValue) {
+    final pageIds = _pageSelectableIds();
+    if (pageIds.isEmpty) return;
+    final next = Set<String>.of(widget.selectedIds);
+    if (oldValue == true) {
+      next.removeAll(pageIds);
+    } else {
+      next.addAll(pageIds);
+    }
+    widget.onSelectedIdsChanged?.call(next);
+    _fsTick.value++; // 全屏路由随 selectedIds 重建（三态/勾选刷新）。
+  }
+
+  /// 单行勾选切换。
+  void _toggleRow(T item, bool checked) {
+    final id = widget.idOf?.call(item);
+    if (id == null || id.isEmpty) return;
+    final next = Set<String>.of(widget.selectedIds);
+    if (checked) {
+      next.add(id);
+    } else {
+      next.remove(id);
+    }
+    widget.onSelectedIdsChanged?.call(next);
+    _fsTick.value++;
+  }
+
+  /// selectable 模式下数据单元格文本：整行 stretch 时垂直居中；非 selectable 不走此方法。
+  Widget _dataCellText(String value, TextStyle style) {
+    final text = Text(
+      value,
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    return widget.selectable
+        ? Align(alignment: Alignment.centerLeft, child: text)
+        : text;
   }
 
   @override
@@ -745,7 +879,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
 
   Widget _buildHeaderRow(ThemeData theme) {
     return Row(
+      crossAxisAlignment: _selectableCross,
       children: [
+        // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
+        if (widget.selectable)
+          SizedBox(
+            width: _selectionColWidth,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHigh,
+                border: Border(
+                  right: BorderSide(color: theme.colorScheme.outline),
+                ),
+              ),
+              child: Center(
+                child: Checkbox(
+                  tristate: true,
+                  value: _headerCheckValue,
+                  onChanged: _onToggleAllPage,
+                ),
+              ),
+            ),
+          ),
         for (final i in _visibleIndices)
           Container(
             width: _widths[i],
@@ -808,39 +963,68 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
   }
 
   Widget _buildDataRow(ThemeData theme, T item) {
-    // 优先用外部 isSelected 谓词（按业务键比较）；否则内部 _selectedItem 引用相等。
-    final selected = widget.isSelected != null
-        ? widget.isSelected!(item)
-        : identical(item, _selectedItem);
-    // 行底色：调用方可按行数据着色（货品按状态）；单击选中把当前色加深加亮。
-    final base = widget.rowColor?.call(item);
-    final Color rowBg;
-    if (selected) {
-      rowBg = base != null
-          ? base.withValues(alpha: (base.a + 0.22).clamp(0.0, 0.5))
-          : theme.colorScheme.primary.withValues(alpha: 0.10);
+    // selectable 多选：选中由 selectedIds（业务键）驱动，单选 _selectedItem 失效。
+    // 否则沿用单选：外部 isSelected 谓词优先，回落内部 _selectedItem 引用相等。
+    final String? multiId = widget.selectable ? widget.idOf?.call(item) : null;
+    final bool selected;
+    if (widget.selectable) {
+      selected = multiId != null &&
+          multiId.isNotEmpty &&
+          widget.selectedIds.contains(multiId);
+    } else if (widget.isSelected != null) {
+      selected = widget.isSelected!(item);
     } else {
-      rowBg = base ?? Colors.transparent;
+      selected = identical(item, _selectedItem);
     }
+    // 行底色：调用方可按行数据着色（货品按状态）；选中统一高亮为深绿底 + 白字 + 白线。
+    final base = widget.rowColor?.call(item);
+    final Color rowBg =
+        selected ? UtenColors.deepGreen : (base ?? Colors.transparent);
+    // 选中行的网格线/字体统一改白，保证在深绿底上清晰可读。
+    final lineColor = selected ? Colors.white : theme.colorScheme.outline;
+    final textStyle = (theme.textTheme.bodySmall ?? const TextStyle())
+        .copyWith(color: selected ? Colors.white : null);
     final row = DecoratedBox(
-      // 行间横线：逐行分隔（与表头竖线同 outline 色，网格更深、单元格边界清晰）。
+      // 行间横线：逐行分隔；选中行用白色横线与深绿底搭配。
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: theme.colorScheme.outline, width: 0.5),
+          bottom: BorderSide(color: lineColor, width: 0.5),
         ),
       ),
       child: ColoredBox(
         color: rowBg,
         child: Row(
+          crossAxisAlignment: _selectableCross,
           children: [
+            // 多选前导勾选格（合成单元格，不进列宽机制）。
+            if (widget.selectable)
+              SizedBox(
+                width: _selectionColWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: lineColor, width: 0.5),
+                    ),
+                  ),
+                  child: Center(
+                    child: Checkbox(
+                      value: selected,
+                      // 无业务 id 的行禁用勾选（不计入全选）。
+                      onChanged: (multiId == null || multiId.isEmpty)
+                          ? null
+                          : (v) => _toggleRow(item, v ?? false),
+                    ),
+                  ),
+                ),
+              ),
             for (final i in _visibleIndices)
               Container(
                 width: _widths[i],
-                // 列间竖线：与表头竖线同位置同色，逐格勾勒单元格右边界。
+                // 列间竖线：逐格勾勒单元格右边界；选中行用白色竖线。
                 decoration: BoxDecoration(
                   border: Border(
                     right: BorderSide(
-                      color: theme.colorScheme.outline,
+                      color: lineColor,
                       width: 0.5,
                     ),
                   ),
@@ -850,11 +1034,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
                     horizontal: UtenSpacing.s12,
                     vertical: UtenSpacing.s8,
                   ),
-                  child: Text(
+                  child: _dataCellText(
                     widget.columns[i].value(item) ?? '',
-                    style: theme.textTheme.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    textStyle,
                   ),
                 ),
               ),
@@ -866,6 +1048,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>> {
     if (onRowTap == null) return row;
     return InkWell(
       onTap: () {
+        if (widget.selectable) {
+          // 多选模式：点行体只打开详情，不改选中（选中只由勾选框切）。
+          onRowTap(item);
+          return;
+        }
         // 单击高亮该行：滚动时常驻（数据不刷新），翻页/重查换对象后自然失效。
         // 同时照常触发调用方 onRowTap（详情/跳源头单据等），不抢占既有交互。
         setState(() => _selectedItem = item);
@@ -1040,7 +1227,8 @@ class _FilterCellState extends State<_FilterCell> {
     final interactive = hasFacets || s != null || widget.sortable;
     if (!interactive) {
       return Container(
-        height: 44,
+        // minHeight（非固定 height）：字号放大后表头标签能撑高，不被裁切。
+        constraints: const BoxConstraints(minHeight: 44),
         padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
         alignment: Alignment.centerLeft,
         child: Text(
@@ -1078,7 +1266,8 @@ class _FilterCellState extends State<_FilterCell> {
       child: InkWell(
         onTap: _open,
         child: Container(
-          height: 44,
+          // minHeight（非固定 height）：字号放大后表头标签能撑高，不被裁切。
+          constraints: const BoxConstraints(minHeight: 44),
           padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
           color: highlighted ? theme.colorScheme.primaryContainer : null,
           child: Row(

@@ -3,11 +3,14 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_names.dart';
 import 'config/production_report_config.dart';
+import 'models/production_material_analysis.dart';
 import 'pages/production_board_page.dart';
 import 'pages/production_daily_report_detail_page.dart';
 import 'pages/production_daily_report_edit_page.dart';
 import 'pages/production_daily_report_list_page.dart';
 import 'pages/production_hub_page.dart';
+import 'pages/production_material_analysis_page.dart';
+import 'pages/production_material_analysis_history_page.dart';
 import 'pages/production_plan_detail_page.dart';
 import 'pages/production_plan_edit_page.dart';
 import 'pages/production_plan_list_page.dart';
@@ -34,9 +37,23 @@ final List<RouteBase> productionRoutes = [
     builder: (_, _) => const ProductionBoardPage(initialTab: 1),
   ),
   GoRoute(
+    path: RouteName.productionMaterialAnalysis,
+    name: 'production-material-analysis',
+    builder: (_, state) => ProductionMaterialAnalysisPage(
+      seed: state.extra is ProductionMaterialAnalysisSeed
+          ? state.extra! as ProductionMaterialAnalysisSeed
+          : const ProductionMaterialAnalysisSeed(),
+    ),
+  ),
+  GoRoute(
+    path: RouteName.productionMaterialAnalysisHistory,
+    name: 'production-material-analysis-history',
+    builder: (_, _) => const ProductionMaterialAnalysisHistoryPage(),
+  ),
+  GoRoute(
     path: '/production/plans/new',
     name: 'production-plan-new',
-    builder: (_, _) => const ProductionPlanEditPage(),
+    redirect: (_, _) => RouteName.productionMaterialAnalysis,
   ),
   GoRoute(
     path: '/production/plans/:id/edit',

@@ -169,6 +169,48 @@ void main() {
       expect(find.text('红冲'), findsNothing);
     },
   );
+
+  testWidgets('order detail hides exchange rate and policy explanation', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      type: SalesDocType.order,
+      detail: const {
+        'id': 'order-rate-hidden',
+        'status': 0,
+        'writable': true,
+        'currencyId': 'currency-usd',
+        'exchangeRate': 7.2,
+        'shipmentPolicy': 'ALLOW_PARTIAL',
+        'items': <Map<String, dynamic>>[],
+      },
+    );
+
+    expect(find.text('币种'), findsOneWidget);
+    expect(find.text('汇率'), findsNothing);
+    expect(find.text('发运策略'), findsOneWidget);
+    expect(find.text('策略说明'), findsNothing);
+    expect(find.textContaining('允许按可用库存分批发运'), findsNothing);
+  });
+
+  testWidgets('non-order currency detail keeps exchange rate', (tester) async {
+    await _pumpDetail(
+      tester,
+      type: SalesDocType.otherShipment,
+      detail: const {
+        'id': 'other-shipment-rate',
+        'status': 0,
+        'writable': true,
+        'currencyId': 'currency-usd',
+        'exchangeRate': 7.2,
+        'items': <Map<String, dynamic>>[],
+      },
+    );
+
+    expect(find.text('币种'), findsOneWidget);
+    expect(find.text('汇率'), findsOneWidget);
+  });
 }
 
 Future<void> _pumpDetail(

@@ -1,5 +1,7 @@
 package com.uten.imp.features.finance.gl;
 
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +50,8 @@ public class GlPostingService {
     }
 
     private int generatePeriod(String period) {
+        assertArPostingConfiguration(period);
+        assertReceiptPostingConfiguration(period);
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
                 .setParameter("p", period)
                 .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
@@ -61,6 +65,7 @@ public class GlPostingService {
         postIncomes(period);
         postCostCarry(period);
         postBankTransfers(period);
+        assertPeriodBalanced(period);
 
         return ((Number) em.createNativeQuery(
                 "SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
@@ -117,7 +122,12 @@ public class GlPostingService {
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'销售立帐')
                 FROM ar_ap_ledger l
                 JOIN gl_vouchers v ON v.voucher_no = l.bill_no AND v.source_type = 'AR_POST'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/113/') s113
+                CROSS JOIN (
+                  SELECT id FROM payment_styles
+                  WHERE path='/113/' AND status='使用'
+                    AND COALESCE(is_deleted,false)=false
+                  LIMIT 1
+                ) s113
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
                   AND to_char(l.bill_date,'YYYY-MM') = :p
                 UNION ALL
@@ -125,12 +135,50 @@ public class GlPostingService {
                        l.source_doc_type, l.source_doc_id, l.bill_no, COALESCE(l.remark,'销售立帐')
                 FROM ar_ap_ledger l
                 JOIN gl_vouchers v ON v.voucher_no = l.bill_no AND v.source_type = 'AR_POST'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/031/') s031
+                CROSS JOIN (
+                  SELECT id FROM payment_styles
+                  WHERE path='/031/' AND status='使用'
+                    AND COALESCE(is_deleted,false)=false
+                  LIMIT 1
+                ) s031
                 WHERE l.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN') AND l.status=1 AND l.is_deleted=false
                   AND to_char(l.bill_date,'YYYY-MM') = :p
                 """;
         run(vouchers, period);
         run(entries, period);
+    }
+
+    /** 正式销售 AR 存在时，应收与销售收入科目必须在任何重建写入前可用。 */
+    private void assertArPostingConfiguration(String period) {
+        long invalid = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM ar_ap_ledger ledger
+                        WHERE ledger.source_doc_type IN ('SALES_SHIPMENT','SALES_RETURN')
+                          AND ledger.status=1
+                          AND COALESCE(ledger.is_deleted,false)=false
+                          AND to_char(ledger.bill_date,'YYYY-MM')=:p
+                          AND (
+                              NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.path='/113/'
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              )
+                              OR
+                              NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.path='/031/'
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              )
+                          )
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (invalid > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "销售立账总账科目缺失或已停用，请先启用应收账款与销售收入科目");
+        }
     }
 
     /** 采购/委外立帐：借 123 库存商品 / 贷 203 应付账款（PURCHASE_RETURN 负=红字）。 */
@@ -181,18 +229,166 @@ public class GlPostingService {
                        'RECEIPT', t.id, t.bill_no, COALESCE(t.remark,'销售收款')
                 FROM finance_receipts t
                 JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'RECEIPT'
-                JOIN LATERAL (SELECT account_style_id(t.account_id) AS style_id) acct ON TRUE
+                JOIN LATERAL (
+                  SELECT style.id AS style_id
+                  FROM payment_styles style
+                  WHERE style.id=account_style_id(t.account_id)
+                    AND style.status='使用'
+                    AND COALESCE(style.is_deleted,false)=false
+                  LIMIT 1
+                ) acct ON TRUE
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 UNION ALL
-                SELECT v.id, 2, s113.id, -1, t.amount_local, t.bill_date, v.period,
+                SELECT v.id, 2, s113.id, -1,
+                       CASE WHEN EXISTS (SELECT 1 FROM finance_receipt_lines i
+                                         WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false)
+                            THEN (SELECT COALESCE(SUM(i.applied_amount_local),0)
+                                  FROM finance_receipt_lines i
+                                  WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false)
+                            ELSE t.amount_local END,
+                       t.bill_date, v.period,
                        'RECEIPT', t.id, t.bill_no, COALESCE(t.remark,'销售收款')
                 FROM finance_receipts t
                 JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'RECEIPT'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/113/') s113
+                CROSS JOIN (
+                  SELECT id FROM payment_styles
+                  WHERE path='/113/' AND status='使用'
+                    AND COALESCE(is_deleted,false)=false
+                  LIMIT 1
+                ) s113
                 WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
+                UNION ALL
+                SELECT v.id, 3, fee.id, 1, t.bank_fee, t.bill_date, v.period,
+                       'RECEIPT', t.id, t.bill_no, '收款手续费'
+                FROM finance_receipts t
+                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='RECEIPT'
+                CROSS JOIN LATERAL (
+                  SELECT id FROM payment_styles
+                  WHERE category='EXPENSE' AND name='手续费' AND COALESCE(is_deleted,false)=false
+                    AND status='使用'
+                  ORDER BY auto_created DESC, created_at LIMIT 1
+                ) fee
+                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false
+                  AND to_char(t.bill_date,'YYYY-MM')=:p AND COALESCE(t.bank_fee,0)<>0
+                UNION ALL
+                SELECT v.id, 4, t.other_fee_style_id, 1, t.other_fee, t.bill_date, v.period,
+                       'RECEIPT', t.id, t.bill_no, '收款其它费用冲销'
+                FROM finance_receipts t
+                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='RECEIPT'
+                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false
+                  AND to_char(t.bill_date,'YYYY-MM')=:p AND COALESCE(t.other_fee,0)<>0
+                  AND t.other_fee_style_id IS NOT NULL
+                UNION ALL
+                SELECT v.id, 5, fx.id,
+                       CASE WHEN x.diff>0 THEN -1 ELSE 1 END,
+                       ABS(x.diff), t.bill_date, v.period,
+                       'RECEIPT', t.id, t.bill_no, '收款汇兑损益'
+                FROM finance_receipts t
+                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='RECEIPT'
+                JOIN LATERAL (
+                  SELECT COALESCE(SUM(i.exchange_diff),0) AS diff
+                  FROM finance_receipt_lines i
+                  WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
+                ) x ON TRUE
+                CROSS JOIN LATERAL (
+                  SELECT id FROM payment_styles
+                  WHERE category='EXPENSE' AND name='汇兑损益' AND COALESCE(is_deleted,false)=false
+                    AND status='使用'
+                  ORDER BY auto_created DESC, created_at LIMIT 1
+                ) fx
+                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false
+                  AND to_char(t.bill_date,'YYYY-MM')=:p AND x.diff<>0
                 """;
         run(vouchers, period);
         run(entries, period);
+    }
+
+    /**
+     * Receipt entry joins intentionally produce no row when a configured
+     * accounting style is missing or inactive. Detect that situation before
+     * inserting a partial voucher, so a disabled account/AR/fee/FX style
+     * cannot silently drop a required debit or credit line.
+     */
+    private void assertReceiptPostingConfiguration(String period) {
+        long invalid = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_receipts receipt
+                        WHERE receipt.status=1
+                          AND COALESCE(receipt.is_deleted,false)=false
+                          AND to_char(receipt.bill_date,'YYYY-MM')=:p
+                          AND (
+                              NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.id=account_style_id(receipt.account_id)
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              )
+                              OR
+                              NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.path='/113/'
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              )
+                              OR
+                              (COALESCE(receipt.bank_fee,0)<>0 AND NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.category='EXPENSE' AND style.name='手续费'
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              ))
+                              OR
+                              (COALESCE(receipt.other_fee,0)<>0 AND NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.id=receipt.other_fee_style_id
+                                    AND style.category='EXPENSE' AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              ))
+                              OR
+                              (COALESCE((
+                                  SELECT SUM(line.exchange_diff)
+                                  FROM finance_receipt_lines line
+                                  WHERE line.receipt_id=receipt.id
+                                    AND COALESCE(line.is_deleted,false)=false
+                              ),0)<>0 AND NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.category='EXPENSE' AND style.name='汇兑损益'
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              ))
+                          )
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (invalid > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "销售收款总账科目缺失或已停用，请先启用收款账户、应收账款、手续费、其它费用或汇兑损益科目");
+        }
+    }
+
+    /** 每个本服务重建的凭证必须至少有借贷两行且方向金额净额为零。 */
+    private void assertPeriodBalanced(String period) {
+        long invalid = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM (
+                            SELECT voucher.id
+                            FROM gl_vouchers voucher
+                            LEFT JOIN gl_entries entry ON entry.voucher_id=voucher.id
+                            WHERE voucher.source='AUTO'
+                              AND voucher.period=:p
+                              AND voucher.source_type IN (:sourceTypes)
+                            GROUP BY voucher.id
+                            HAVING COUNT(entry.id)<2
+                               OR ROUND(COALESCE(SUM(entry.direction*entry.amount),0),4)<>0
+                        ) invalid_voucher
+                        """)
+                .setParameter("p", period)
+                .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
+                .getSingleResult()).longValue();
+        if (invalid > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "总账重生成发现 " + invalid + " 张缺行或借贷不平凭证，已回滚本期间过账");
+        }
     }
 
     /** 付款：借 203 应付账款 / 贷 付款账户科目。 */

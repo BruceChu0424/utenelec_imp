@@ -126,6 +126,13 @@ class FinanceDocItem {
     this.price,
     this.amountOriginal,
     this.amountLocal,
+    this.currencyId,
+    this.exchangeRate,
+    this.writeOffAmount,
+    this.writeOffLocal,
+    this.appliedAmountLocal,
+    this.balanceBeforeOriginal,
+    this.balanceAfterOriginal,
     this.exchangeDiff,
     this.summary,
     this.remark,
@@ -151,6 +158,13 @@ class FinanceDocItem {
   final double? price;
   final double? amountOriginal;
   final double? amountLocal;
+  final String? currencyId;
+  final double? exchangeRate;
+  final double? writeOffAmount;
+  final double? writeOffLocal;
+  final double? appliedAmountLocal;
+  final double? balanceBeforeOriginal;
+  final double? balanceAfterOriginal;
   final double? exchangeDiff;
   final String? summary;
   final String? remark;
@@ -172,6 +186,13 @@ class FinanceDocItem {
     price: (json['price'] as num?)?.toDouble(),
     amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    currencyId: json['currencyId'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    writeOffAmount: (json['writeOffAmount'] as num?)?.toDouble(),
+    writeOffLocal: (json['writeOffLocal'] as num?)?.toDouble(),
+    appliedAmountLocal: (json['appliedAmountLocal'] as num?)?.toDouble(),
+    balanceBeforeOriginal: (json['balanceBeforeOriginal'] as num?)?.toDouble(),
+    balanceAfterOriginal: (json['balanceAfterOriginal'] as num?)?.toDouble(),
     exchangeDiff: (json['exchangeDiff'] as num?)?.toDouble(),
     summary: json['summary'] as String?,
     remark: json['remark'] as String?,
@@ -197,6 +218,7 @@ class FinanceDocDetail {
     this.amountLocal,
     this.bankFee,
     this.otherFee,
+    this.otherFeeStyleId,
     this.receiptMethodId,
     this.invoiceNo,
     this.operatorId,
@@ -226,6 +248,7 @@ class FinanceDocDetail {
   final double? amountLocal;
   final double? bankFee;
   final double? otherFee;
+  final String? otherFeeStyleId;
   final String? receiptMethodId;
   final String? invoiceNo;
   final String? operatorId;
@@ -262,6 +285,7 @@ class FinanceDocDetail {
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),
         bankFee: (json['bankFee'] as num?)?.toDouble(),
         otherFee: (json['otherFee'] as num?)?.toDouble(),
+        otherFeeStyleId: json['otherFeeStyleId'] as String?,
         receiptMethodId: json['receiptMethodId'] as String?,
         invoiceNo: json['invoiceNo'] as String?,
         operatorId: json['operatorId'] as String?,
@@ -294,10 +318,24 @@ class ArApLedgerItem {
     this.billDate,
     this.clientId,
     this.supplierId,
+    this.clientName,
+    this.supplierName,
     this.currencyId,
+    this.currencyCode,
+    this.currencyName,
+    this.exchangeRate,
+    this.amountOriginal,
     this.amountOriginalLocal,
+    this.amountReceivedOriginal,
+    this.amountReceivedLocal,
+    this.amountWriteOffOriginal,
+    this.amountWriteOffLocal,
+    this.amountBalanceOriginal,
     this.amountSettled,
     this.amountBalance,
+    this.dueDate,
+    this.settlementStyleLegacy,
+    this.salesOrderNos = const [],
     this.settled = false,
     this.settledDate,
     this.status,
@@ -313,10 +351,24 @@ class ArApLedgerItem {
   final String? billDate;
   final String? clientId;
   final String? supplierId;
+  final String? clientName;
+  final String? supplierName;
   final String? currencyId;
+  final String? currencyCode;
+  final String? currencyName;
+  final double? exchangeRate;
+  final double? amountOriginal;
   final double? amountOriginalLocal;
+  final double? amountReceivedOriginal;
+  final double? amountReceivedLocal;
+  final double? amountWriteOffOriginal;
+  final double? amountWriteOffLocal;
+  final double? amountBalanceOriginal;
   final double? amountSettled;
   final double? amountBalance;
+  final String? dueDate;
+  final int? settlementStyleLegacy;
+  final List<String> salesOrderNos;
   final bool settled;
   final String? settledDate;
   final int? status;
@@ -335,10 +387,28 @@ class ArApLedgerItem {
     billDate: json['billDate'] as String?,
     clientId: json['clientId'] as String?,
     supplierId: json['supplierId'] as String?,
+    clientName: json['clientName'] as String?,
+    supplierName: json['supplierName'] as String?,
     currencyId: json['currencyId'] as String?,
+    currencyCode: json['currencyCode'] as String?,
+    currencyName: json['currencyName'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
     amountOriginalLocal: (json['amountOriginalLocal'] as num?)?.toDouble(),
+    amountReceivedOriginal: (json['amountReceivedOriginal'] as num?)
+        ?.toDouble(),
+    amountReceivedLocal: (json['amountReceivedLocal'] as num?)?.toDouble(),
+    amountWriteOffOriginal: (json['amountWriteOffOriginal'] as num?)
+        ?.toDouble(),
+    amountWriteOffLocal: (json['amountWriteOffLocal'] as num?)?.toDouble(),
+    amountBalanceOriginal: (json['amountBalanceOriginal'] as num?)?.toDouble(),
     amountSettled: (json['amountSettled'] as num?)?.toDouble(),
     amountBalance: (json['amountBalance'] as num?)?.toDouble(),
+    dueDate: json['dueDate'] as String?,
+    settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
+    salesOrderNos:
+        (json['salesOrderNos'] as List?)?.whereType<String>().toList() ??
+        const [],
     settled: (json['settled'] as bool?) ?? false,
     settledDate: json['settledDate'] as String?,
     status: (json['status'] as num?)?.toInt(),

@@ -24,13 +24,49 @@ public record PlanProgressLine(
         BigDecimal producedQty,
         BigDecimal shippedQty,
         Short chainStatus,
+        List<MaterialAnalysisProgress> materialAnalyses,
         List<PlanLink> links) {
 
-    /** 关联生产计划（plan_order_item_links 溯源）。 */
+    /**
+     * Sales-safe pre-plan snapshot. A sales line can appear in more than one
+     * analysis over its lifetime, so analyses remain child records.
+     */
+    public record MaterialAnalysisProgress(
+            UUID analysisId,
+            String status,
+            OffsetDateTime analyzedAt,
+            BigDecimal requestedQty,
+            BigDecimal submittedQty,
+            BigDecimal approvedQty,
+            BigDecimal remainingQty,
+            BigDecimal readyNowQty,
+            BigDecimal readyByDateQty,
+            LocalDate expectedReadyDate,
+            List<SupplyActionProgress> supplyActions) {
+    }
+
+    /**
+     * Downstream preparation status intentionally omits supplier, price,
+     * document number and employee identities.
+     */
+    public record SupplyActionProgress(
+            UUID actionId,
+            String route,
+            String status,
+            BigDecimal allocatedQty,
+            LocalDate needDate) {
+    }
+
+    /**
+     * Formal production batch, including append-only analysis lifecycle
+     * history when the legacy sales allocation link does not yet exist or was
+     * reversed. allocationStatus is null for legacy non-analysis plans.
+     */
     public record PlanLink(
             UUID planId,
             String planNo,
             Short planStatus,
+            String allocationStatus,
             boolean planClosed,
             LocalDate billDate,
             BigDecimal allocatedQty,

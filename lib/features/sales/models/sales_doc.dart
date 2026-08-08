@@ -153,10 +153,7 @@ abstract final class SalesShipmentPolicy {
   static const customerConfirm = 'CUSTOMER_CONFIRM';
 
   /// 新单可选的发运策略。`customerConfirm` 不再提供给新单（仅历史单只读保留）。
-  static const selectable = <String>[
-    allowPartial,
-    requireComplete,
-  ];
+  static const selectable = <String>[allowPartial, requireComplete];
 }
 
 String salesShipmentPolicyLabel(String? code) => switch (code) {
@@ -166,15 +163,6 @@ String salesShipmentPolicyLabel(String? code) => switch (code) {
   SalesShipmentPolicy.legacyUnspecified => '历史订单（未指定）',
   null || '' => '未返回',
   _ => '未知策略（$code）',
-};
-
-String salesShipmentPolicyDescription(String? code) => switch (code) {
-  SalesShipmentPolicy.allowPartial => '有货的订单行可先建立出货任务，其余数量继续等待生产或入库。',
-  SalesShipmentPolicy.requireComplete => '整张订单全部齐套前不允许建立部分出货任务。',
-  SalesShipmentPolicy.customerConfirm => '该订单沿用旧的「客户确认后分批」策略；新单已不再提供此选项。',
-  SalesShipmentPolicy.legacyUnspecified => '迁移前订单沿用原业务规则；编辑其它字段时系统会保留该历史值。',
-  null || '' => '服务端未返回发运策略；为避免误改，当前只读保留。',
-  _ => '服务端返回了客户端尚未识别的策略；为避免误改，当前只读保留。',
 };
 
 /// 仓库出货作业状态（V187）。
@@ -915,6 +903,17 @@ class OrderPlanProgressLine {
     this.producedQty,
     this.shippedQty,
     this.chainStatus,
+    this.materialAnalysisId,
+    this.materialAnalysisLineId,
+    this.materialAnalysisStatus,
+    this.materialAnalysisVersion,
+    this.analyzedQty,
+    this.readyNowQty,
+    this.readyByDateQty,
+    this.readinessRatio,
+    this.submittedPlanQty,
+    this.approvedPlannedQty,
+    this.materialAnalyzedAt,
     this.links = const [],
   });
   final String orderItemId;
@@ -930,28 +929,77 @@ class OrderPlanProgressLine {
   final double? producedQty;
   final double? shippedQty;
   final int? chainStatus;
+  final String? materialAnalysisId;
+  final String? materialAnalysisLineId;
+  final String? materialAnalysisStatus;
+  final int? materialAnalysisVersion;
+  final double? analyzedQty;
+  final double? readyNowQty;
+  final double? readyByDateQty;
+  final double? readinessRatio;
+  final double? submittedPlanQty;
+  final double? approvedPlannedQty;
+  final String? materialAnalyzedAt;
   final List<OrderPlanLink> links;
 
-  factory OrderPlanProgressLine.fromJson(Map<String, dynamic> j) =>
-      OrderPlanProgressLine(
-        orderItemId: j['orderItemId'] as String,
-        lineNo: (j['lineNo'] as num?)?.toInt(),
-        goodsCode: j['goodsCode'] as String?,
-        goodsName: j['goodsName'] as String?,
-        spec: j['spec'] as String?,
-        colorName: j['colorName'] as String?,
-        unitName: j['unitName'] as String?,
-        qty: (j['qty'] as num?)?.toDouble(),
-        reservedQty: (j['reservedQty'] as num?)?.toDouble(),
-        plannedQty: (j['plannedQty'] as num?)?.toDouble(),
-        producedQty: (j['producedQty'] as num?)?.toDouble(),
-        shippedQty: (j['shippedQty'] as num?)?.toDouble(),
-        chainStatus: (j['chainStatus'] as num?)?.toInt(),
-        links: [
-          for (final l in (j['links'] as List? ?? const []))
-            OrderPlanLink.fromJson(l as Map<String, dynamic>),
-        ],
-      );
+  factory OrderPlanProgressLine.fromJson(Map<String, dynamic> j) {
+    final analysis = (j['materialAnalysis'] as Map?)?.cast<String, dynamic>();
+    Object? fact(String key) => j[key] ?? analysis?[key];
+    double? quantityFact(List<String> keys) {
+      for (final key in keys) {
+        final value = fact(key);
+        if (value is num) return value.toDouble();
+        if (value is String) {
+          final parsed = double.tryParse(value);
+          if (parsed != null) return parsed;
+        }
+      }
+      return null;
+    }
+
+    return OrderPlanProgressLine(
+      orderItemId: j['orderItemId'] as String,
+      lineNo: (j['lineNo'] as num?)?.toInt(),
+      goodsCode: j['goodsCode'] as String?,
+      goodsName: j['goodsName'] as String?,
+      spec: j['spec'] as String?,
+      colorName: j['colorName'] as String?,
+      unitName: j['unitName'] as String?,
+      qty: (j['qty'] as num?)?.toDouble(),
+      reservedQty: (j['reservedQty'] as num?)?.toDouble(),
+      plannedQty: (j['plannedQty'] as num?)?.toDouble(),
+      producedQty: (j['producedQty'] as num?)?.toDouble(),
+      shippedQty: (j['shippedQty'] as num?)?.toDouble(),
+      chainStatus: (j['chainStatus'] as num?)?.toInt(),
+      materialAnalysisId:
+          (fact('materialAnalysisId') ?? fact('analysisId')) as String?,
+      materialAnalysisLineId: fact('materialAnalysisLineId') as String?,
+      materialAnalysisStatus:
+          (fact('materialAnalysisStatus') ?? fact('analysisStatus')) as String?,
+      materialAnalysisVersion:
+          (fact('materialAnalysisVersion') as num?)?.toInt(),
+      analyzedQty: quantityFact([
+        'analyzedQty',
+        'analysisRequestedQty',
+        'requestedQty',
+      ]),
+      readyNowQty: quantityFact(['readyNowQty']),
+      readyByDateQty: quantityFact(['readyByDateQty']),
+      readinessRatio: quantityFact(['readinessRatio']),
+      submittedPlanQty: quantityFact(['submittedPlanQty', 'submittedQty']),
+      approvedPlannedQty: quantityFact([
+        'approvedPlannedQty',
+        'approvedPlanQty',
+        'approvedQty',
+      ]),
+      materialAnalyzedAt:
+          (fact('materialAnalyzedAt') ?? fact('analyzedAt')) as String?,
+      links: [
+        for (final l in (j['links'] as List? ?? const []))
+          OrderPlanLink.fromJson(l as Map<String, dynamic>),
+      ],
+    );
+  }
 }
 
 /// 关联生产计划（plan_order_item_links 溯源）。

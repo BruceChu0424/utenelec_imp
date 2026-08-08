@@ -25,8 +25,8 @@ import java.util.UUID;
  * <p>整树单事务（all-or-nothing，符合「整包确认」）；每层 confirm 的 idempotencyKey 确定性派生
  * （root:L{depth}:{childPlanId}），整树重放幂等。
  *
- * <p>能力开关在控制器层（{@code production.bottom-up-orchestrator.enabled}，默认关）门控 HTTP 入口；
- * 本服务本身始终可用，便于服务级 E2E 验证。
+ * <p>ADR-029 已永久关闭旧 HTTP 写入口；本服务仅保留给历史兼容审计和服务级回归，
+ * 不得重新暴露为可配置的外部写入口。
  */
 @Service
 @RequiredArgsConstructor

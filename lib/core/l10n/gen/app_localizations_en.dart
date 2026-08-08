@@ -2363,10 +2363,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionHubScheduleSub => 'Plan, WIP, completion';
 
   @override
-  String get productionHubPlan => 'Production plan';
+  String get productionHubPlan => 'New production plan';
 
   @override
-  String get productionHubPlanSub => 'Plan, lines, approval';
+  String get productionHubPlanSub =>
+      'Reference a sales order or create manually; history';
+
+  @override
+  String get productionHubPlanHistory => 'Production plan history';
+
+  @override
+  String get productionHubPlanHistorySub =>
+      'View plans, approvals, and batch records';
+
+  @override
+  String get productionHubMaterialAnalysis => 'Material readiness analysis';
+
+  @override
+  String get productionHubMaterialAnalysisSub =>
+      'Readiness, route confirmation, batch planning';
 
   @override
   String get productionHubDaily => 'Production daily';

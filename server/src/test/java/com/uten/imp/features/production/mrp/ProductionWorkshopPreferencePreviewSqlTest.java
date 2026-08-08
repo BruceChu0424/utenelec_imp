@@ -58,7 +58,7 @@ class ProductionWorkshopPreferencePreviewSqlTest {
     }
 
     private static Object[] executionRow(UUID workshopId) {
-        Object[] row = new Object[23];
+        Object[] row = new Object[24];
         row[0] = UUID.randomUUID();
         row[1] = 1;
         row[2] = UUID.randomUUID();
@@ -82,6 +82,7 @@ class ProductionWorkshopPreferencePreviewSqlTest {
         row[20] = null;
         row[21] = null;
         row[22] = "\u91c7\u8d2d";
+        row[23] = null; // no analysis route override; master source remains authoritative
         return row;
     }
 

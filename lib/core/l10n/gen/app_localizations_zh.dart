@@ -2316,10 +2316,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubScheduleSub => '待排产·在产·完工';
 
   @override
-  String get productionHubPlan => '生产计划单';
+  String get productionHubPlan => '新建生产计划单';
 
   @override
-  String get productionHubPlanSub => '计划·明细·审核';
+  String get productionHubPlanSub => '引用销售订单或手工新建·历史记录';
+
+  @override
+  String get productionHubPlanHistory => '生产计划历史';
+
+  @override
+  String get productionHubPlanHistorySub => '查看计划、审批与分批记录';
+
+  @override
+  String get productionHubMaterialAnalysis => '物料分析准备';
+
+  @override
+  String get productionHubMaterialAnalysisSub => '齐套分析·路线确认·分批生成';
 
   @override
   String get productionHubDaily => '生产日报表';

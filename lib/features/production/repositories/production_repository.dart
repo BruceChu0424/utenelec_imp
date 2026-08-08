@@ -32,8 +32,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_execution_planning.dart';
+import '../models/production_material_analysis.dart';
 import '../models/production_plan.dart';
 import '../models/production_report.dart';
 import '../models/production_work_card.dart';
@@ -73,6 +75,8 @@ class ProductionPlanFilter {
 class ProductionPlanRepository {
   ProductionPlanRepository(this.api);
   final ApiClient api;
+
+  static const _materialAnalysesBase = '/production/material-analyses';
 
   Future<PagedResult<ProductionPlanListItem>> list({
     int page = 1,
@@ -408,6 +412,215 @@ class ProductionPlanRepository {
     return PlanningPackageResult.fromJson(json);
   }
 
+  // ───────────────────────── 计划前物料分析 ─────────────────────────
+
+  /// Object-scoped analysis task/history list. Server-side scope decides
+  /// which owners are visible to the current employee.
+  Future<PagedResult<MaterialAnalysisListItem>> materialAnalysisList({
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+    String? status,
+    String? sourceType,
+  }) async {
+    final json = await api.get(
+      _materialAnalysesBase,
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (status?.trim().isNotEmpty == true) 'status': status!.trim(),
+        if (sourceType?.trim().isNotEmpty == true)
+          'sourceType': sourceType!.trim(),
+      },
+    ); // ENDPOINT
+    return PagedResult.fromJson(json, MaterialAnalysisListItem.fromJson);
+  }
+
+  /// Production-scoped approved sales-order candidates. This endpoint omits
+  /// price data and does not require broad sales module visibility.
+  Future<MaterialAnalysisSalesCandidatePage> materialAnalysisSalesCandidates({
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/sales-candidates',
+      query: {
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    ); // ENDPOINT
+    return MaterialAnalysisSalesCandidatePage.fromJson(json);
+  }
+
+  /// Loads the complete persisted joint analysis. Resume flows must not POST a
+  /// subset of sources because that could change requested quantities or fail
+  /// the server's source-set CAS validation.
+  Future<ProductionMaterialAnalysisView> materialAnalysisDetail(
+    String analysisId,
+  ) async {
+    final json = await api.get(
+      '$_materialAnalysesBase/$analysisId',
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// Creates or CAS-refreshes one joint analysis. BOM expansion, warehouse
+  /// availability and readiness quantities are all server-owned facts.
+  Future<ProductionMaterialAnalysisView> previewMaterialAnalysis({
+    String? analysisId,
+    int? expectedVersion,
+    String? analysisFingerprint,
+    required String warehouseId,
+    required String idempotencyKey,
+    required List<MaterialAnalysisSourceInput> sources,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/preview',
+      body: {
+        'analysisId': ?analysisId,
+        'version': ?expectedVersion,
+        'fingerprint': ?analysisFingerprint,
+        'warehouseId': warehouseId,
+        'idempotencyKey': idempotencyKey,
+        'sources': [for (final source in sources) source.toJson()],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  Future<ProductionMaterialAnalysisView> updateMaterialAnalysisRoutes({
+    required ProductionMaterialAnalysisView analysis,
+    required String idempotencyKey,
+    required List<MaterialRouteDecision> decisions,
+  }) async {
+    final json = await api.put(
+      '$_materialAnalysesBase/${analysis.analysisId}/routes',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'decisions': [for (final decision in decisions) decision.toJson()],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// Changes only the pre-plan simulation order for shared free stock. The
+  /// server recalculates readiness and does not create formal reservations.
+  Future<ProductionMaterialAnalysisView> updateMaterialAllocationPriorities({
+    required ProductionMaterialAnalysisView analysis,
+    required String idempotencyKey,
+    required List<MaterialAllocationPriorityInput> items,
+  }) async {
+    final json = await api.put(
+      '$_materialAnalysesBase/${analysis.analysisId}/allocation-priorities',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'items': [for (final item in items) item.toJson()],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  Future<ProductionMaterialAnalysisView> notifyMaterialAnalysis({
+    required ProductionMaterialAnalysisView analysis,
+    required String idempotencyKey,
+    required MaterialSupplyRoute target,
+    List<String> actionGroupKeys = const [],
+    List<String> materialLineIds = const [],
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/notify',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'target': target.wireName,
+        if (actionGroupKeys.isNotEmpty) 'actionGroupKeys': actionGroupKeys,
+        if (materialLineIds.isNotEmpty) 'materialLineIds': materialLineIds,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// Server-side final validation before plan generation. The returned
+  /// preview fingerprint, not the analysis fingerprint, authorises generate.
+  Future<ProductionMaterialPlanPreview> previewMaterialAnalysisPlan({
+    required ProductionMaterialAnalysisView analysis,
+    required String warehouseId,
+    required List<MaterialAnalysisPlanItemInput> items,
+    List<MaterialRouteDecision> routes = const [],
+    List<MaterialBomOverride> bomOverrides = const [],
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/plan-preview',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'warehouseId': warehouseId,
+        'items': [for (final item in items) item.toJson()],
+        if (routes.isNotEmpty)
+          'routes': [for (final route in routes) route.toJson()],
+        if (bomOverrides.isNotEmpty)
+          'bomOverrides': [
+            for (final override in bomOverrides) override.toJson(),
+          ],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialPlanPreview.fromJson(json);
+  }
+
+  /// Atomically generates the selected batches after a successful server plan
+  /// preview. Inventory changes between preview and submit fail with 409.
+  Future<ProductionMaterialGenerateResult> generateMaterialAnalysisPlan({
+    required ProductionMaterialPlanPreview preview,
+    required String warehouseId,
+    required String idempotencyKey,
+    required String billDate,
+    required List<MaterialAnalysisPlanItemInput> items,
+    String? deliveryDate,
+    String? departmentId,
+    String? workshopName,
+    String? workerId,
+    bool approveNow = false,
+    List<MaterialRouteDecision> routes = const [],
+    List<MaterialBomOverride> bomOverrides = const [],
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${preview.analysisId}/generate-plan',
+      body: {
+        'version': preview.version,
+        'fingerprint': preview.analysisFingerprint,
+        'previewFingerprint': preview.previewFingerprint,
+        'warehouseId': warehouseId,
+        'idempotencyKey': idempotencyKey,
+        'billDate': billDate,
+        'deliveryDate': ?deliveryDate,
+        'departmentId': ?departmentId,
+        'workshopName': ?workshopName,
+        'workerId': ?workerId,
+        'approveNow': approveNow,
+        'items': [for (final item in items) item.toJson()],
+        if (routes.isNotEmpty)
+          'routes': [for (final route in routes) route.toJson()],
+        if (bomOverrides.isNotEmpty)
+          'bomOverrides': [
+            for (final override in bomOverrides) override.toJson(),
+          ],
+      },
+    ); // ENDPOINT
+    return ProductionMaterialGenerateResult.fromJson(json);
+  }
+
   // ───────────────────────── 调度工作台（业务链 · 排产段 V90） ─────────────────────────
 
   /// 待排产订单行（服务端分页；交货升序，urgent=距交货 ≤3 天；dateFrom/dateTo 交货日期范围）。
@@ -417,6 +630,9 @@ class ProductionPlanRepository {
     String keyword = '',
     String? dateFrom,
     String? dateTo,
+    String? sort,
+    String? order,
+    String? status,
   }) async {
     final json = await api.get(
       '/production/schedule/pending',
@@ -426,9 +642,29 @@ class ProductionPlanRepository {
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,
+        'sort': ?sort,
+        'order': ?order,
+        'status': ?status,
       },
     ); // ENDPOINT
     return PagedResult.fromJson(json, SchedulePendingRow.fromJson);
+  }
+
+  /// 待排产状态 facets（表头值筛选用）：{status:[MasterFacetBucket]}（BOM缺失/紧急/正常）。
+  Future<SchedulePendingFacets> schedulePendingFacets({
+    String keyword = '',
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    final json = await api.get(
+      '/production/schedule/pending/facets',
+      query: {
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
+      },
+    ); // ENDPOINT
+    return SchedulePendingFacets.fromJson(json);
   }
 
   /// 待排产计数（生产部工作台徽标）：{'count': n, 'urgent': m, 'overdue': k}。
@@ -450,15 +686,6 @@ class ProductionPlanRepository {
       query: {'orderId': orderId},
     ); // ENDPOINT
     return list.map(ScheduleOrderLine.fromJson).toList();
-  }
-
-  /// 合并排产：勾选订单行 → 草稿计划（同货合并行 + 预建 links）；返回计划 id。
-  Future<String> createMergePlan(Map<String, dynamic> body) async {
-    final json = await api.post(
-      '/production/schedule/merge-plan',
-      body: body,
-    ); // ENDPOINT
-    return json['planId'] as String;
   }
 
   /// 待排产 BOM 缺失 → 转发工程研发部（建研发任务 + 通知）。返回任务 id。
@@ -483,20 +710,29 @@ class ProductionPlanRepository {
     String? sourcePlanNo,
   }) async {
     if (items.isEmpty) {
-      return const {'created': 0, 'reused': 0, 'items': <Map<String, dynamic>>[]};
+      return const {
+        'created': 0,
+        'reused': 0,
+        'items': <Map<String, dynamic>>[],
+      };
     }
-    return Map<String, dynamic>.from(await api.post(
-      '/production/schedule/forward-rd-batch',
-      body: {
-        'items': [
-          for (final it in items)
-            {'goodsId': it.goodsId, if (it.orderItemId != null) 'orderItemId': it.orderItemId},
-        ],
-        if (note != null && note.isNotEmpty) 'note': note,
-        'sourcePlanId': ?sourcePlanId,
-        'sourcePlanNo': ?sourcePlanNo,
-      },
-    )); // ENDPOINT
+    return Map<String, dynamic>.from(
+      await api.post(
+        '/production/schedule/forward-rd-batch',
+        body: {
+          'items': [
+            for (final it in items)
+              {
+                'goodsId': it.goodsId,
+                if (it.orderItemId != null) 'orderItemId': it.orderItemId,
+              },
+          ],
+          if (note != null && note.isNotEmpty) 'note': note,
+          'sourcePlanId': ?sourcePlanId,
+          'sourcePlanNo': ?sourcePlanNo,
+        },
+      ),
+    ); // ENDPOINT
   }
 
   /// D2 建议完工日期（历史日均完工×BOM 层级缓冲）。
@@ -526,6 +762,17 @@ class SchedulePendingRow {
     this.reservedQty,
     this.plannedQty,
     this.needQty,
+    this.readyNowQty,
+    this.readyByDateQty,
+    this.readinessRatio,
+    this.materialAnalysisId,
+    this.materialAnalysisLineId,
+    this.materialAnalysisStatus,
+    this.materialAnalysisVersion,
+    this.materialAnalyzedAt,
+    this.analyzedQty,
+    this.submittedPlanQty,
+    this.approvedPlannedQty,
     this.deliverDate,
     this.chainStatus,
     this.bomReady = true,
@@ -547,38 +794,91 @@ class SchedulePendingRow {
   final double? reservedQty;
   final double? plannedQty;
   final double? needQty;
+
+  /// Server-authoritative readiness facts. Nullable for older pending APIs.
+  final double? readyNowQty;
+  final double? readyByDateQty;
+  final double? readinessRatio;
+  final String? materialAnalysisId;
+  final String? materialAnalysisLineId;
+  final String? materialAnalysisStatus;
+  final int? materialAnalysisVersion;
+  final String? materialAnalyzedAt;
+  final double? analyzedQty;
+  final double? submittedPlanQty;
+  final double? approvedPlannedQty;
   final String? deliverDate;
   final int? chainStatus;
   final bool bomReady;
   final bool urgent;
+
   /// 该货品已有人转发研发维护 BOM 且仍在等待（goods 级）。
   final bool rdForwarded;
+
   /// 当前登录计划员已登记为该货品的等待者（在 rd_task_forwarders 中）。
   final bool myForward;
 
-  factory SchedulePendingRow.fromJson(Map<String, dynamic> j) =>
-      SchedulePendingRow(
-        orderItemId: j['orderItemId'] as String,
-        orderId: j['orderId'] as String,
-        orderBillNo: j['orderBillNo'] as String?,
-        clientName: j['clientName'] as String?,
-        goodsId: j['goodsId'] as String?,
-        goodsCode: j['goodsCode'] as String?,
-        goodsName: j['goodsName'] as String?,
-        spec: j['spec'] as String?,
-        colorName: j['colorName'] as String?,
-        unitName: j['unitName'] as String?,
-        qty: (j['qty'] as num?)?.toDouble(),
-        reservedQty: (j['reservedQty'] as num?)?.toDouble(),
-        plannedQty: (j['plannedQty'] as num?)?.toDouble(),
-        needQty: (j['needQty'] as num?)?.toDouble(),
-        deliverDate: j['deliverDate'] as String?,
-        chainStatus: (j['chainStatus'] as num?)?.toInt(),
-        bomReady: j['bomReady'] != false,
-        urgent: j['urgent'] == true,
-        rdForwarded: j['rdForwarded'] == true,
-        myForward: j['myForward'] == true,
-      );
+  factory SchedulePendingRow.fromJson(
+    Map<String, dynamic> j,
+  ) => SchedulePendingRow(
+    orderItemId: j['orderItemId'] as String,
+    orderId: j['orderId'] as String,
+    orderBillNo: j['orderBillNo'] as String?,
+    clientName: j['clientName'] as String?,
+    goodsId: j['goodsId'] as String?,
+    goodsCode: j['goodsCode'] as String?,
+    goodsName: j['goodsName'] as String?,
+    spec: j['spec'] as String?,
+    colorName: j['colorName'] as String?,
+    unitName: j['unitName'] as String?,
+    qty: (j['qty'] as num?)?.toDouble(),
+    reservedQty: (j['reservedQty'] as num?)?.toDouble(),
+    plannedQty: (j['plannedQty'] as num?)?.toDouble(),
+    needQty: (j['needQty'] as num?)?.toDouble(),
+    readyNowQty: (j['readyNowQty'] as num?)?.toDouble(),
+    readyByDateQty: (j['readyByDateQty'] as num?)?.toDouble(),
+    readinessRatio: _scheduleRatio(j['readinessRatio']),
+    materialAnalysisId: j['materialAnalysisId'] as String?,
+    materialAnalysisLineId: j['materialAnalysisLineId'] as String?,
+    materialAnalysisStatus: j['materialAnalysisStatus'] as String?,
+    materialAnalysisVersion: (j['materialAnalysisVersion'] as num?)?.toInt(),
+    materialAnalyzedAt: (j['materialAnalyzedAt'] ?? j['analyzedAt']) as String?,
+    analyzedQty: (j['analyzedQty'] as num?)?.toDouble(),
+    submittedPlanQty: (j['submittedPlanQty'] as num?)?.toDouble(),
+    approvedPlannedQty: (j['approvedPlannedQty'] as num?)?.toDouble(),
+    deliverDate: j['deliverDate'] as String?,
+    chainStatus: (j['chainStatus'] as num?)?.toInt(),
+    bomReady: j['bomReady'] != false,
+    urgent: j['urgent'] == true,
+    rdForwarded: j['rdForwarded'] == true,
+    myForward: j['myForward'] == true,
+  );
+}
+
+double? _scheduleRatio(Object? raw) {
+  final value = (raw as num?)?.toDouble();
+  if (value == null) return null;
+  return value > 1 ? value / 100 : value;
+}
+
+/// 待排产 facets（表头值筛选用）。当前仅 status 键：BOM缺失/紧急/正常 三桶。
+/// 形状对齐主档 GoodsFacets（`fields: Map<key, List<MasterFacetBucket>>`），供 MasterDataTableView。
+class SchedulePendingFacets {
+  const SchedulePendingFacets({this.fields = const {}});
+
+  final Map<String, List<MasterFacetBucket>> fields;
+
+  factory SchedulePendingFacets.fromJson(Map<String, dynamic> json) {
+    final fields = <String, List<MasterFacetBucket>>{};
+    final status = json['status'];
+    if (status is List) {
+      fields['status'] = [
+        for (final b in status)
+          if (b is Map<String, dynamic>) MasterFacetBucket.fromJson(b),
+      ];
+    }
+    return SchedulePendingFacets(fields: fields);
+  }
 }
 
 /// 已审订单明细行（含一层 BOM 零件），对应后端 ScheduleOrderLine。

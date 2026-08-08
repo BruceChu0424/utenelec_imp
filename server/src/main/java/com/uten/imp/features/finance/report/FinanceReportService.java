@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -263,6 +264,8 @@ public class FinanceReportService {
         boolean isAR = "AR".equals(dir);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", isAR ? "立帐单号" : "立帐单号", 150),
+                ReportColumn.text("sourceDocNo", "来源单号", 150),
+                ReportColumn.text("salesOrderNos", "销售订单号", 190),
                 ReportColumn.text("partyName", isAR ? "客户名称" : "供应商", 180),
                 ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.date("dueDate", isAR ? "收款限期" : "付款限期"),
@@ -270,19 +273,45 @@ public class FinanceReportService {
                 ReportColumn.bool("settled", isAR ? "是否已收款" : "是否已付款"),
                 ReportColumn.text("currencyCode", "币别", 80),
                 ReportColumn.number("rate", "汇率"),
-                ReportColumn.money("amount", isAR ? "应收帐款" : "应付帐款"),
-                ReportColumn.text("remark", "摘要", 160));
+                ReportColumn.money("amountOriginal", isAR ? "应收款金额" : "应付款金额"),
+                ReportColumn.money("receivedOriginal", isAR ? "已收款金额" : "已付款金额"),
+                ReportColumn.money("writeOffOriginal", "冲销金额"),
+                ReportColumn.money("balanceOriginal", isAR ? "未收金额" : "未付金额"),
+                ReportColumn.money("amountLocal", "立账人民币"),
+                ReportColumn.money("receivedLocal", isAR ? "到账人民币" : "付款人民币"),
+                ReportColumn.money("writeOffLocal", "冲销人民币"),
+                ReportColumn.money("balanceLocal", "未结人民币"),
+                ReportColumn.text("remark", "备注", 160));
         String dataSelect = """
-                SELECT l.bill_no AS "billNo", COALESCE(c.name, s.name) AS "partyName", l.bill_date AS "billDate",
-                       l.due_date AS "dueDate", CAST(l.settlement_style_legacy AS text) AS "settlementStyle",
+                SELECT l.bill_no AS "billNo", l.source_doc_no AS "sourceDocNo",
+                       refs.sales_order_nos AS "salesOrderNos",
+                       COALESCE(c.name, s.name) AS "partyName", l.bill_date AS "billDate",
+                       l.due_date AS "dueDate",
+                       CASE l.settlement_style_legacy
+                           WHEN 1 THEN '现金' WHEN 2 THEN '提货' WHEN 3 THEN '代付'
+                           WHEN 4 THEN '支票' WHEN 6 THEN '月结' WHEN 7 THEN '垫付'
+                           WHEN 8 THEN '汇款' WHEN 10 THEN '代收' ELSE '未设置'
+                       END AS "settlementStyle",
                        l.is_settled AS "settled", cur.code AS "currencyCode", l.exchange_rate AS "rate",
-                       l.amount_original_local AS "amount", l.remark AS "remark"
+                       l.amount_original AS "amountOriginal",
+                       CASE WHEN l.direction='AR' THEN l.amount_received_original ELSE NULL END AS "receivedOriginal",
+                       CASE WHEN l.direction='AR' THEN l.amount_write_off_original ELSE NULL END AS "writeOffOriginal",
+                       CASE WHEN l.direction='AR' THEN l.amount_balance_original ELSE NULL END AS "balanceOriginal",
+                       l.amount_original_local AS "amountLocal",
+                       CASE WHEN l.direction='AR' THEN l.amount_received_local ELSE l.amount_settled END AS "receivedLocal",
+                       CASE WHEN l.direction='AR' THEN l.amount_write_off_local ELSE 0 END AS "writeOffLocal",
+                       l.amount_balance AS "balanceLocal", l.remark AS "remark"
                 """;
         String fromJoin = """
                 FROM ar_ap_ledger l
                 LEFT JOIN clients c ON c.id=l.client_id
                 LEFT JOIN suppliers s ON s.id=l.supplier_id
                 LEFT JOIN currencies cur ON cur.id=l.currency_id
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(r.source_no, '、' ORDER BY r.source_no) AS sales_order_nos
+                    FROM ar_ap_source_refs r
+                    WHERE r.ledger_id=l.id AND r.source_type='SALES_ORDER'
+                ) refs ON TRUE
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(l.is_deleted,false)=false AND l.direction=:dir AND l.status=1");
         w.add("", "dir", dir);
@@ -292,10 +321,115 @@ public class FinanceReportService {
         if (dateFrom != null) w.add("l.bill_date>=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("l.bill_date<=:dateTo", "dateTo", dateTo);
         if (keyword != null && !keyword.isBlank())
-            w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(c.name,s.name)) LIKE LOWER(:kw))", "kw", "%" + keyword.toLowerCase() + "%");
+            w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(l.source_doc_no,'')) LIKE LOWER(:kw) "
+                    + "OR LOWER(COALESCE(c.name,s.name)) LIKE LOWER(:kw) "
+                    + "OR LOWER(COALESCE(refs.sales_order_nos,'')) LIKE LOWER(:kw))",
+                    "kw", "%" + keyword.toLowerCase() + "%");
         List<FacetSpec> specs = List.of(
                 new FacetSpec("settled", "l.is_settled AS v, CASE WHEN l.is_settled THEN '已收/付' ELSE '未收/付' END AS lbl", "l.is_settled", "l.is_settled", "bool"));
         return execute(cols, dataSelect, fromJoin, w, "l.bill_date DESC, l.bill_no", specs, facets, page, size, sort, order);
+    }
+
+    /**
+     * 已审核销售订单待收计划（经营视图，不是会计 AR）。订单审核后即可供财务跟踪；
+     * 发运金额来自不可变 ar_ap_source_refs，正式应收及收款仍以 ar_ap_ledger 为准，避免重复立账。
+     */
+    @Transactional(readOnly = true)
+    public ReportTableResponse salesOrderReceivablePlan(
+            String billNo, UUID clientId, LocalDate dateFrom, LocalDate dateTo,
+            String keyword, int page, int size, String sort, String order) {
+        List<ReportColumn> cols = List.of(
+                ReportColumn.text("orderNo", "销售订单号", 160),
+                ReportColumn.date("orderDate", "订单日期"),
+                ReportColumn.text("clientName", "客户名称", 180),
+                ReportColumn.text("settlement", "结账方式", 120),
+                ReportColumn.date("expectedDueDate", "预计收款日期"),
+                ReportColumn.text("shippingPolicy", "发运策略", 110),
+                ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.money("orderOriginal", "订单金额"),
+                ReportColumn.money("recognizedOriginal", "已发运立账"),
+                ReportColumn.money("expectedOriginal", "未发运待收"),
+                ReportColumn.money("orderLocal", "订单参考人民币"),
+                ReportColumn.money("recognizedLocal", "已立账人民币"),
+                ReportColumn.money("expectedLocal", "未发运当前参考人民币"),
+                ReportColumn.text("planStatus", "待收计划状态", 120),
+                ReportColumn.text("remark", "备注", 160));
+        String dataSelect = """
+                SELECT sales_order.bill_no AS "orderNo", sales_order.bill_date AS "orderDate",
+                       client.name AS "clientName",
+                       CASE COALESCE(sales_order.payment_style_id,client.price_style)
+                           WHEN 1 THEN '现金' WHEN 2 THEN '提货' WHEN 3 THEN '代付'
+                           WHEN 4 THEN '支票' WHEN 6 THEN '月结' WHEN 7 THEN '垫付'
+                           WHEN 8 THEN '汇款' WHEN 10 THEN '代收' ELSE '未设置' END AS "settlement",
+                       sales_order.bill_date + GREATEST(COALESCE(client.tday,0),0) AS "expectedDueDate",
+                       CASE sales_order.shipment_policy
+                           WHEN 'ALLOW_PARTIAL' THEN '允许分批'
+                           WHEN 'REQUIRE_COMPLETE' THEN '整单齐套'
+                           WHEN 'CUSTOMER_CONFIRM' THEN '逐批客户确认'
+                           ELSE '历史未指定' END AS "shippingPolicy",
+                       currency.code AS "currencyCode",
+                       sales_order.total_original AS "orderOriginal",
+                       COALESCE(recognized.amount_original,0) AS "recognizedOriginal",
+                       GREATEST(COALESCE(sales_order.total_original,0)-COALESCE(recognized.amount_original,0),0)
+                           AS "expectedOriginal",
+                       sales_order.total_local AS "orderLocal",
+                       COALESCE(recognized.amount_local,0) AS "recognizedLocal",
+                        CASE
+                            WHEN currency.status='使用'
+                             AND COALESCE(currency.is_deleted,false)=false
+                             AND currency.exchange_rate>0
+                            THEN ROUND(
+                                GREATEST(COALESCE(sales_order.total_original,0)
+                                    - COALESCE(recognized.amount_original,0),0)
+                                * currency.exchange_rate, 4)
+                            ELSE NULL
+                        END AS "expectedLocal",
+                        CASE
+                            WHEN COALESCE(recognized.amount_original,0)<COALESCE(sales_order.total_original,0)
+                             AND (currency.id IS NULL OR COALESCE(currency.status,'')<>'使用'
+                                  OR COALESCE(currency.is_deleted,false)=true
+                                  OR currency.exchange_rate IS NULL OR currency.exchange_rate<=0)
+                                THEN '汇率待财务维护'
+                            WHEN COALESCE(recognized.amount_original,0)=0 THEN '待发运'
+                           WHEN COALESCE(recognized.amount_original,0)<COALESCE(sales_order.total_original,0)
+                               THEN '部分发运'
+                           ELSE '已全部立账' END AS "planStatus",
+                       sales_order.remark AS "remark"
+                """;
+        String fromJoin = """
+                FROM sales_orders sales_order
+                JOIN clients client ON client.id=sales_order.client_id
+                LEFT JOIN currencies currency ON currency.id=sales_order.currency_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(source.amount_original) AS amount_original,
+                           SUM(source.amount_local) AS amount_local
+                    FROM ar_ap_source_refs source
+                    JOIN ar_ap_ledger ledger ON ledger.id=source.ledger_id
+                    WHERE source.source_type='SALES_ORDER'
+                      AND source.source_id=sales_order.id
+                      AND ledger.direction='AR'
+                      AND ledger.source_doc_type='SALES_SHIPMENT'
+                      AND ledger.status=1
+                      AND COALESCE(ledger.is_deleted,false)=false
+                ) recognized ON TRUE
+                """;
+        WhereBuilder w = new WhereBuilder("WHERE sales_order.status=1"
+                + " AND COALESCE(sales_order.is_deleted,false)=false"
+                + " AND COALESCE(client.is_deleted,false)=false");
+        if (billNo != null && !billNo.isBlank()) {
+            w.add("sales_order.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        }
+        if (clientId != null) w.add("sales_order.client_id=:clientId", "clientId", clientId);
+        if (dateFrom != null) w.add("sales_order.bill_date>=:dateFrom", "dateFrom", dateFrom);
+        if (dateTo != null) w.add("sales_order.bill_date<=:dateTo", "dateTo", dateTo);
+        if (keyword != null && !keyword.isBlank()) {
+            w.add("(LOWER(sales_order.bill_no) LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(client.name,'')) LIKE LOWER(:kw)"
+                            + " OR LOWER(COALESCE(client.full_name,'')) LIKE LOWER(:kw))",
+                    "kw", "%" + keyword.toLowerCase() + "%");
+        }
+        return execute(cols, dataSelect, fromJoin, w, "sales_order.bill_date DESC,sales_order.bill_no",
+                List.of(), Map.of(), page, size, sort, order);
     }
 
     /** B/D 应收/应付汇总（按往来单位 GROUP BY，含期初/本期立帐/核销/期末余额）。 */
@@ -330,12 +464,15 @@ public class FinanceReportService {
                 ReportColumn.money("receivedAmount", "回款金额"),
                 ReportColumn.money("returnAmount", "退货金额"),
                 ReportColumn.money("offsetAmount", "货款冲销"),
+                ReportColumn.money("exchangeDiff", "汇兑差额"),
+                ReportColumn.money("arReductionAmount", "本期冲减应收"),
                 ReportColumn.money("balance", "应收余额"),
                 ReportColumn.money("overFloor", "超出铺底额"),
                 ReportColumn.money("materialAmount", "物料金额"));
-        // 立帐取 ar_ap_ledger.amount_original_local（按 bill_date 归期），收款取 finance_receipts.amount_local
-        // （按 bill_date 归期）。**不用累计 amount_settled**——它无法按期切分，会让 期初/期末 与 回款 口径不一致。
-        // 退货（SALES_RETURN）amount_original_local 为负，自动冲减。恒等式：期初+发货+退货−回款=期末。
+        // 立帐取 ar_ap_ledger.amount_original_local（按 bill_date 归期）。有引用明细的收款按行拆成：
+        // 实际到账、费用冲销、汇兑差额、按开账汇率冲减应收；无明细的历史/预收单保留头表事实。
+        // 不能用累计 amount_settled 做期间发生额。外币下的恒等式是：
+        // 期初 + 发货 + 退货 − 实际到账 − 费用冲销 + 汇兑差额 = 期末。
         String core = """
                 WITH posting AS (
                     SELECT client_id,
@@ -345,12 +482,40 @@ public class FinanceReportService {
                         SUM(CASE WHEN bill_date <= :to THEN amount_original_local ELSE 0 END) AS total_posted
                     FROM ar_ap_ledger WHERE is_deleted=false AND status=1 AND direction='AR' AND client_id IS NOT NULL
                     GROUP BY client_id
+                ), receipt_line_totals AS (
+                    SELECT receipt_id,
+                        COUNT(*) AS line_count,
+                        SUM(amount_local) AS cash_local,
+                        SUM(write_off_local) AS write_off_local,
+                        SUM(applied_amount_local) AS applied_local,
+                        SUM(exchange_diff) AS exchange_diff
+                    FROM finance_receipt_lines
+                    WHERE COALESCE(is_deleted,false)=false
+                    GROUP BY receipt_id
+                ), receipt_fact AS (
+                    SELECT receipt.client_id, receipt.bill_date,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.cash_local,0) ELSE receipt.amount_local END AS cash_local,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.write_off_local,0) ELSE 0 END AS write_off_local,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.applied_local,0) ELSE receipt.amount_local END AS applied_local,
+                        CASE WHEN COALESCE(lines.line_count,0) > 0
+                            THEN COALESCE(lines.exchange_diff,0) ELSE 0 END AS exchange_diff
+                    FROM finance_receipts receipt
+                    LEFT JOIN receipt_line_totals lines ON lines.receipt_id=receipt.id
+                    WHERE COALESCE(receipt.is_deleted,false)=false
+                      AND receipt.status=1
+                      AND receipt.client_id IS NOT NULL
                 ), coll AS (
                     SELECT client_id,
-                        SUM(CASE WHEN bill_date < :from THEN amount_local ELSE 0 END) AS prior_coll,
-                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN amount_local ELSE 0 END) AS period_coll,
-                        SUM(amount_local) AS total_coll
-                    FROM finance_receipts WHERE COALESCE(is_deleted,false)=false AND status=1 AND client_id IS NOT NULL
+                        SUM(CASE WHEN bill_date < :from THEN applied_local ELSE 0 END) AS prior_applied,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN cash_local ELSE 0 END) AS period_cash,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN write_off_local ELSE 0 END) AS period_write_off,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN exchange_diff ELSE 0 END) AS period_exchange_diff,
+                        SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN applied_local ELSE 0 END) AS period_applied,
+                        SUM(CASE WHEN bill_date <= :to THEN applied_local ELSE 0 END) AS total_applied
+                    FROM receipt_fact
                     GROUP BY client_id
                 )
                 SELECT c.code AS "partyCode", c.name AS "partyName", c.full_name AS "partyFull",
@@ -368,13 +533,15 @@ public class FinanceReportService {
                         ELSE CASE WHEN c.tday IS NOT NULL AND c.tday > 0 THEN '月结' || c.tday || '天' ELSE '' END
                     END AS "settlement",
                     c.credit_floor AS "creditFloor",
-                    (COALESCE(p.prior_posted,0) - COALESCE(co.prior_coll,0)) AS "prevBalance",
+                    (COALESCE(p.prior_posted,0) - COALESCE(co.prior_applied,0)) AS "prevBalance",
                     COALESCE(p.shipped,0) AS "shippedAmount",
-                    COALESCE(co.period_coll,0) AS "receivedAmount",
+                    COALESCE(co.period_cash,0) AS "receivedAmount",
                     COALESCE(p.returned,0) AS "returnAmount",
-                    COALESCE(co.period_coll,0) AS "offsetAmount",
-                    (COALESCE(p.total_posted,0) - COALESCE(co.total_coll,0)) AS "balance",
-                    GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_coll,0)) - COALESCE(c.credit_floor,0), 0) AS "overFloor",
+                    COALESCE(co.period_write_off,0) AS "offsetAmount",
+                    COALESCE(co.period_exchange_diff,0) AS "exchangeDiff",
+                    COALESCE(co.period_applied,0) AS "arReductionAmount",
+                    (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) AS "balance",
+                    GREATEST((COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) - COALESCE(c.credit_floor,0), 0) AS "overFloor",
                     NULL AS "materialAmount"
                 FROM clients c
                 JOIN posting p ON p.client_id=c.id
@@ -494,7 +661,7 @@ public class FinanceReportService {
 
     // ======================== ② 收付款明细/汇总 E·F / G·H ========================
 
-    /** E 销售收款明细（finance_receipts + clients + client_director_v + accounts + 人员）。 */
+    /** E 销售收款明细：一行对应一次应收引用；无引用的历史预收保留一行头表事实。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receiptDetail(String billNo, UUID clientId, UUID accountId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String keyword,
@@ -504,53 +671,121 @@ public class FinanceReportService {
                 ReportColumn.text("clientName", "客户名称", 160), ReportColumn.text("clientFull", "客户全称", 200),
                 ReportColumn.text("sellerName", "业务员", 100), ReportColumn.text("director", "总监", 110),
                 ReportColumn.text("region", "区域", 100), ReportColumn.text("district", "所属地区", 110),
-                ReportColumn.text("accountName", "收款帐户", 130), ReportColumn.text("departmentName", "部门", 120),
-                ReportColumn.money("amountOriginal", "收款总额"),
-                ReportColumn.money("uncollected", "未收金额"),
-                ReportColumn.money("balance", "本次余额"),
-                ReportColumn.money("otherFee", "其它费用金额"),
+                ReportColumn.text("accountName", "收款账户", 130),
+                ReportColumn.text("arBillNo", "应收单号", 150),
+                ReportColumn.text("salesOrderNos", "销售订单号", 190),
+                ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.number("receiptRate", "收款汇率"),
+                ReportColumn.money("receivableOriginal", "应收款金额"),
+                ReportColumn.money("balanceBeforeOriginal", "收款前未收"),
+                ReportColumn.money("amountOriginal", "本次收款"),
+                ReportColumn.money("amountLocal", "本次收款人民币"),
+                ReportColumn.money("writeOffOriginal", "本次冲销"),
+                ReportColumn.money("writeOffLocal", "冲销费用人民币"),
+                ReportColumn.money("appliedLocal", "本次冲减应收"),
+                ReportColumn.money("exchangeDiff", "汇兑差额"),
+                ReportColumn.money("balanceAfterOriginal", "本次后未收"),
+                ReportColumn.money("bankFee", "手续费"),
+                ReportColumn.money("otherFee", "其它费用"),
                 ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
-                       COALESCE(c.place_id,'') AS "district", a.name AS "accountName", NULL AS "departmentName",
-                       t.amount_original AS "amountOriginal", COALESCE(ar.bal,0) AS "uncollected",
-                       (COALESCE(ar.bal,0) - t.amount_local) AS "balance",
-                       t.other_fee AS "otherFee", t.remark AS "remark",
+                       COALESCE(c.place_id,'') AS "district", a.name AS "accountName",
+                       COALESCE(i.applied_bill_no, ledger.bill_no) AS "arBillNo",
+                       orders.sales_order_nos AS "salesOrderNos", currency.code AS "currencyCode",
+                       COALESCE(i.exchange_rate, t.exchange_rate) AS "receiptRate",
+                       ledger.amount_original AS "receivableOriginal",
+                       i.balance_before_original AS "balanceBeforeOriginal",
+                       COALESCE(i.amount_original, t.amount_original) AS "amountOriginal",
+                       COALESCE(i.amount_local, t.amount_local) AS "amountLocal",
+                       COALESCE(i.write_off_amount,0) AS "writeOffOriginal",
+                       COALESCE(i.write_off_local,0) AS "writeOffLocal",
+                       COALESCE(i.applied_amount_local, t.amount_local) AS "appliedLocal",
+                       COALESCE(i.exchange_diff,0) AS "exchangeDiff",
+                       i.balance_after_original AS "balanceAfterOriginal",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.bank_fee ELSE 0 END AS "bankFee",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.other_fee ELSE 0 END AS "otherFee",
+                       COALESCE(i.remark, t.remark) AS "remark",
                        t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
+                LEFT JOIN finance_receipt_lines i
+                  ON i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
                 LEFT JOIN clients c ON c.id=t.client_id
                 LEFT JOIN client_director_v d ON d.client_id=t.client_id
                 LEFT JOIN accounts a ON a.id=t.account_id
                 LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
-                LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger WHERE direction='AR' AND is_deleted=false AND status=1 GROUP BY client_id) ar ON ar.client_id=t.client_id
+                LEFT JOIN ar_ap_ledger ledger ON ledger.id=i.applied_ledger_id
+                LEFT JOIN currencies currency ON currency.id=COALESCE(i.currency_id,t.currency_id)
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(ref.source_no, ', ' ORDER BY ref.source_no) AS sales_order_nos
+                    FROM ar_ap_source_refs ref
+                    WHERE ref.ledger_id=i.applied_ledger_id
+                ) orders ON TRUE
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
+        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
+                "t.client_id", "t.bill_no", "t.bill_date",
+                "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
+        return execute(cols, dataSelect, fromJoin, w,
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
-    /** F 销售收款汇总（按客户 GROUP BY）。 */
+    /** F 销售收款汇总（按客户 + 币别；原币金额禁止跨币种直接相加）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse receiptSummary(String billNo, UUID clientId, Short status, LocalDate dateFrom,
                                               LocalDate dateTo, String keyword, Map<String, String> facets, int page, int size, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("clientCode", "客户编号", 110), ReportColumn.text("clientName", "客户名称", 160),
                 ReportColumn.text("clientFull", "客户全称", 200), ReportColumn.text("address", "客户地址", 200),
-                ReportColumn.text("district", "所属地区", 110), ReportColumn.money("amountTotal", "收款总额"),
-                ReportColumn.money("bankFee", "手续费"));
+                ReportColumn.text("district", "所属地区", 110), ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.number("receiptCount", "收款单数"),
+                ReportColumn.money("amountTotal", "实际到账原币"),
+                ReportColumn.money("amountLocal", "实际到账人民币"),
+                ReportColumn.money("writeOffLocal", "费用冲销人民币"),
+                ReportColumn.money("appliedLocal", "冲减应收人民币"),
+                ReportColumn.money("exchangeDiff", "汇兑差额"),
+                ReportColumn.money("bankFee", "手续费"),
+                ReportColumn.money("otherFee", "其它费用"));
         String dataSelect = """
                 SELECT c.code AS "clientCode", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(c.address,'') AS "address", COALESCE(c.place_id,'') AS "district",
-                       SUM(t.amount_original) AS "amountTotal", SUM(t.bank_fee) AS "bankFee"
+                       currency.code AS "currencyCode", COUNT(*) AS "receiptCount",
+                       SUM(t.amount_original) AS "amountTotal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.cash_local,0) ELSE t.amount_local END) AS "amountLocal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.write_off_local,0) ELSE 0 END) AS "writeOffLocal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.applied_local,0) ELSE t.amount_local END) AS "appliedLocal",
+                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                                THEN COALESCE(lines.exchange_diff,0) ELSE 0 END) AS "exchangeDiff",
+                       SUM(t.bank_fee) AS "bankFee", SUM(t.other_fee) AS "otherFee"
                 """;
-        String fromJoin = " FROM finance_receipts t JOIN clients c ON c.id=t.client_id ";
+        String fromJoin = """
+                FROM finance_receipts t
+                JOIN clients c ON c.id=t.client_id
+                LEFT JOIN currencies currency ON currency.id=t.currency_id
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS line_count,
+                           SUM(i.amount_local) AS cash_local,
+                           SUM(i.write_off_local) AS write_off_local,
+                           SUM(i.applied_amount_local) AS applied_local,
+                           SUM(i.exchange_diff) AS exchange_diff
+                    FROM finance_receipt_lines i
+                    WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
+                ) lines ON TRUE
+                """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return executeGrouped(cols, dataSelect, fromJoin, w, "c.name", "c.id,c.code,c.name,c.full_name,c.address,c.place_id", page, size);
+        addFinanceDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, keyword,
+                "t.client_id", "t.bill_no", "t.bill_date", "c.name");
+        return executeGrouped(cols, dataSelect, fromJoin, w, "c.name,currency.code",
+                "c.id,c.code,c.name,c.full_name,c.address,c.place_id,currency.id,currency.code", page, size);
     }
 
     /** G 采购付款明细（finance_payments + suppliers + accounts + 人员）。 */
@@ -584,7 +819,8 @@ public class FinanceReportService {
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
+        addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
+                "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
         return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
@@ -636,7 +872,8 @@ public class FinanceReportService {
                     OR (t.approver_id IS NULL AND em_ap.legacy_id=t.approver_legacy_id)
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "s.name");
+        addFinanceDocFilters(w, billNo, supplierId, null, status, dateFrom, dateTo, keyword,
+                "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
         return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
     }
 
@@ -801,7 +1038,7 @@ public class FinanceReportService {
         return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
-    /** V 费用冲销明细（销售收款侧带 AR 核销 + 其它费用；按用户列规格，覆盖旧"同M"注释）。 */
+    /** V 费用冲销明细：费用是应收冲减而非账户现金，按收款引用行展示。 */
     @Transactional(readOnly = true)
     public ReportTableResponse feeOffsetDetail(String billNo, UUID clientId, UUID accountId, Short status,
                                                LocalDate dateFrom, LocalDate dateTo, String keyword,
@@ -811,31 +1048,68 @@ public class FinanceReportService {
                 ReportColumn.text("clientName", "客户名称", 160), ReportColumn.text("clientFull", "客户全称", 200),
                 ReportColumn.text("sellerName", "业务员", 100), ReportColumn.text("director", "总监", 110),
                 ReportColumn.text("region", "区域", 100), ReportColumn.text("district", "所属地区", 110),
-                ReportColumn.text("operatorName", "收款人", 100), ReportColumn.money("uncollected", "未收金额"),
-                ReportColumn.money("thisReceipt", "本次收款"), ReportColumn.money("balance", "本次余额"),
-                ReportColumn.money("otherFee", "其它费用金额"), ReportColumn.text("remark", "备注", 160),
+                ReportColumn.text("operatorName", "收款人", 100),
+                ReportColumn.text("arBillNo", "应收单号", 150),
+                ReportColumn.text("salesOrderNos", "销售订单号", 190),
+                ReportColumn.text("currencyCode", "币别", 80),
+                ReportColumn.money("balanceBeforeOriginal", "冲销前未收"),
+                ReportColumn.money("thisReceiptOriginal", "本次收款"),
+                ReportColumn.money("thisReceiptLocal", "本次收款人民币"),
+                ReportColumn.money("writeOffOriginal", "本次冲销"),
+                ReportColumn.money("writeOffLocal", "冲销费用人民币"),
+                ReportColumn.money("appliedLocal", "本次冲减应收"),
+                ReportColumn.money("balanceAfterOriginal", "冲销后未收"),
+                ReportColumn.money("bankFee", "手续费"),
+                ReportColumn.money("otherFee", "其它费用"),
+                ReportColumn.text("otherFeeStyle", "其它费用项目", 150),
+                ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳收款单编辑页（费用冲销源单为收款单）
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate", c.name AS "clientName", c.full_name AS "clientFull",
                        COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director", COALESCE(c.region,'') AS "region",
                        COALESCE(c.place_id,'') AS "district",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName",
-                       COALESCE(ar.bal,0) AS "uncollected", t.amount_local AS "thisReceipt", (COALESCE(ar.bal,0) - t.amount_local) AS "balance",
-                       t.other_fee AS "otherFee", t.remark AS "remark",
+                       COALESCE(i.applied_bill_no, ledger.bill_no) AS "arBillNo",
+                       orders.sales_order_nos AS "salesOrderNos", currency.code AS "currencyCode",
+                       i.balance_before_original AS "balanceBeforeOriginal",
+                       COALESCE(i.amount_original,t.amount_original) AS "thisReceiptOriginal",
+                       COALESCE(i.amount_local,t.amount_local) AS "thisReceiptLocal",
+                       COALESCE(i.write_off_amount,0) AS "writeOffOriginal",
+                       COALESCE(i.write_off_local,0) AS "writeOffLocal",
+                       COALESCE(i.applied_amount_local,t.amount_local) AS "appliedLocal",
+                       i.balance_after_original AS "balanceAfterOriginal",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.bank_fee ELSE 0 END AS "bankFee",
+                       CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
+                            THEN t.other_fee ELSE 0 END AS "otherFee",
+                       style.name AS "otherFeeStyle", COALESCE(i.remark,t.remark) AS "remark",
                        t.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM finance_receipts t
+                LEFT JOIN finance_receipt_lines i
+                  ON i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false
                 LEFT JOIN clients c ON c.id=t.client_id
                 LEFT JOIN client_director_v d ON d.client_id=t.client_id
                 LEFT JOIN employees em_sel ON em_sel.legacy_id=CAST(NULLIF(REGEXP_REPLACE(COALESCE(c.emp_id,''),'[^0-9]','','g'),'') AS int)
                 LEFT JOIN employees em_op ON em_op.id=t.operator_id
                     OR (t.operator_id IS NULL AND em_op.legacy_id=t.operator_legacy_id)
-                LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger WHERE direction='AR' AND is_deleted=false AND status=1 GROUP BY client_id) ar ON ar.client_id=t.client_id
+                LEFT JOIN ar_ap_ledger ledger ON ledger.id=i.applied_ledger_id
+                LEFT JOIN currencies currency ON currency.id=COALESCE(i.currency_id,t.currency_id)
+                LEFT JOIN payment_styles style ON style.id=t.other_fee_style_id
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(ref.source_no, ', ' ORDER BY ref.source_no) AS sales_order_nos
+                    FROM ar_ap_source_refs ref
+                    WHERE ref.ledger_id=i.applied_ledger_id
+                ) orders ON TRUE
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false");
-        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword, "t.bill_no", "t.bill_date", "c.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no", List.of(), facets, page, size, sort, order);
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(t.is_deleted,false)=false"
+                + " AND (COALESCE(i.write_off_local,0)<>0 OR COALESCE(t.bank_fee,0)<>0 OR COALESCE(t.other_fee,0)<>0)");
+        addFinanceDocFilters(w, billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
+                "t.client_id", "t.bill_no", "t.bill_date",
+                "CONCAT_WS(' ',c.name,i.applied_bill_no,orders.sales_order_nos)");
+        return execute(cols, dataSelect, fromJoin, w,
+                "t.bill_date DESC, t.bill_no, i.line_no NULLS LAST", List.of(), facets, page, size, sort, order);
     }
 
     // ======================== ④ 往来对帐单 I·J·K·L / X（滚动余额，源=头表+台账） ========================
@@ -846,6 +1120,7 @@ public class FinanceReportService {
                                                   int page, int size) {
         if (partyId == null) return empty(List.of(
                 ReportColumn.date("billDate", "开单日期"), ReportColumn.text("refNo", "关联单号", 150),
+                ReportColumn.text("currencyCode", "币别", 80),
                 ReportColumn.money("salesOriginal", "销售金额(外)"), ReportColumn.number("salesRate", "销售汇率"),
                 ReportColumn.money("salesLocal", "销售金额(本)"), ReportColumn.money("receiptOriginal", "收款金额(外)"),
                 ReportColumn.number("receiptRate", "收款汇率"), ReportColumn.money("receiptLocal", "收款金额(本)"),
@@ -854,27 +1129,38 @@ public class FinanceReportService {
         boolean isAR = "AR".equalsIgnoreCase(side);
         // 立帐行（ar_ap_ledger）+ 收/付款行（finance_receipts/payments 头表）
         String posted = isAR
-                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc "
-                + "FROM ar_ap_ledger l WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
-                : "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0,0,0 "
-                + "FROM ar_ap_ledger l WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
+                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, "
+                + "'立账', cur.code, l.remark, cur.id FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id "
+                + "WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
+                : "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0,0,0, "
+                + "'立账', cur.code, l.remark, cur.id FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id "
+                + "WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
         String settled = isAR
-                ? "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original AS r_org, t.exchange_rate AS r_rate, t.amount_local AS r_loc "
-                + "FROM finance_receipts t WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
-                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local "
-                + "FROM finance_payments t WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
+                ? "SELECT t.bill_date, t.bill_no, 0,0,0, "
+                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_original ELSE t.amount_original END AS r_org, "
+                + "t.exchange_rate AS r_rate, "
+                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_local ELSE t.amount_local END AS r_loc, "
+                + "'冲减应收', cur.code, t.remark, cur.id FROM finance_receipts t "
+                + "LEFT JOIN currencies cur ON cur.id=t.currency_id LEFT JOIN LATERAL (SELECT COUNT(*) AS line_count, "
+                + "SUM(i.amount_original+i.write_off_amount) AS applied_original, SUM(i.applied_amount_local) AS applied_local "
+                + "FROM finance_receipt_lines i WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false) lines ON TRUE "
+                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
+                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, "
+                + "'付款', cur.code, t.remark, cur.id FROM finance_payments t LEFT JOIN currencies cur ON cur.id=t.currency_id "
+                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
         String sql = "SELECT * FROM (" + posted + " UNION ALL " + settled + ") u "
-                + "WHERE (CAST(:from AS date) IS NULL OR bill_date>=:from) AND (CAST(:to AS date) IS NULL OR bill_date<=:to) "
+                + "WHERE (CAST(:to AS date) IS NULL OR bill_date<=:to) "
                 + "ORDER BY bill_date ASC, bill_no ASC";
         return buildRunningBalance(partyStatementFlowCols(isAR), sql, partyId, dateFrom, dateTo, page, size, true);
     }
 
     private static List<ReportColumn> partyStatementFlowCols(boolean isAR) {
         String pre = isAR ? "销售" : "采购";
-        String rec = isAR ? "收款" : "付款";
+        String rec = isAR ? "冲减应收" : "付款";
         String bal = isAR ? "应收" : "应付";
         return List.of(
                 ReportColumn.date("billDate", "开单日期"), ReportColumn.text("refNo", "关联单号", 150),
+                ReportColumn.text("currencyCode", "币别", 80),
                 ReportColumn.money("salesOriginal", pre + "金额(外)"), ReportColumn.number("salesRate", pre + "汇率"),
                 ReportColumn.money("salesLocal", pre + "金额(本)"), ReportColumn.money("receiptOriginal", rec + "金额(外)"),
                 ReportColumn.number("receiptRate", rec + "汇率"), ReportColumn.money("receiptLocal", rec + "金额(本)"),
@@ -890,21 +1176,27 @@ public class FinanceReportService {
         // 复用 flow 的 UNION，扩列 type/currencyCode/remark
         boolean isAR = "AR".equalsIgnoreCase(side);
         String posted = isAR
-                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, '立帐' AS typ, cur.code AS cur, l.remark "
+                ? "SELECT l.bill_date, l.bill_no, l.amount_original AS org, l.exchange_rate AS rate, l.amount_original_local AS loc, 0 AS r_org, 0 AS r_rate, 0 AS r_loc, '立帐' AS typ, cur.code AS cur, l.remark, cur.id "
                 + "FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id WHERE l.is_deleted=false AND l.direction='AR' AND l.status=1 AND l.client_id=:pid"
-                : "SELECT l.bill_date, l.bill_no, l.amount_original, l.exchange_rate, l.amount_original_local, 0,0,0, '立帐', cur.code, l.remark "
+                : "SELECT l.bill_date, l.bill_no, l.amount_original, l.exchange_rate, l.amount_original_local, 0,0,0, '立帐', cur.code, l.remark, cur.id "
                 + "FROM ar_ap_ledger l LEFT JOIN currencies cur ON cur.id=l.currency_id WHERE l.is_deleted=false AND l.direction='AP' AND l.status=1 AND l.supplier_id=:pid";
         String settled = isAR
-                ? "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, '收款', cur.code, t.remark "
-                + "FROM finance_receipts t LEFT JOIN currencies cur ON cur.id=t.currency_id WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
-                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, '付款', cur.code, t.remark "
+                ? "SELECT t.bill_date, t.bill_no, 0,0,0, "
+                + "CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_original ELSE t.amount_original END, "
+                + "t.exchange_rate, CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_local ELSE t.amount_local END, "
+                + "'冲减应收', cur.code, t.remark, cur.id "
+                + "FROM finance_receipts t LEFT JOIN currencies cur ON cur.id=t.currency_id "
+                + "LEFT JOIN LATERAL (SELECT COUNT(*) AS line_count, "
+                + "SUM(i.amount_original+i.write_off_amount) AS applied_original, SUM(i.applied_amount_local) AS applied_local "
+                + "FROM finance_receipt_lines i WHERE i.receipt_id=t.id AND COALESCE(i.is_deleted,false)=false) lines ON TRUE "
+                + "WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.client_id=:pid"
+                : "SELECT t.bill_date, t.bill_no, 0,0,0, t.amount_original, t.exchange_rate, t.amount_local, '付款', cur.code, t.remark, cur.id "
                 + "FROM finance_payments t LEFT JOIN currencies cur ON cur.id=t.currency_id WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
         String sql = "SELECT * FROM (" + posted + " UNION ALL " + settled + ") u "
-                + "WHERE (CAST(:from AS date) IS NULL OR bill_date>=:from) AND (CAST(:to AS date) IS NULL OR bill_date<=:to) "
+                + "WHERE (CAST(:to AS date) IS NULL OR bill_date<=:to) "
                 + "ORDER BY bill_date ASC, bill_no ASC";
         List<ReportColumn> cols = new ArrayList<>(partyStatementFlowCols(isAR));
         cols.add(2, ReportColumn.text("type", "类型", 80));
-        cols.add(3, ReportColumn.text("currencyCode", "币别", 80));
         cols.add(ReportColumn.text("remark", "摘要", 160));
         return buildRunningBalance(cols, sql, partyId, dateFrom, dateTo, page, size, false);
     }
@@ -926,15 +1218,22 @@ public class FinanceReportService {
         LocalDate yearEnd = LocalDate.of(year, 12, 31);
         String partyCol = isAR ? "client_id" : "supplier_id";
         String dirLit = isAR ? "'AR'" : "'AP'";
-        String settledTbl = isAR ? "finance_receipts" : "finance_payments";
+        String settledSelect = isAR
+                ? " SELECT t.bill_date, 0, CASE WHEN EXISTS (SELECT 1 FROM finance_receipt_lines x"
+                + " WHERE x.receipt_id=t.id AND COALESCE(x.is_deleted,false)=false)"
+                + " THEN COALESCE((SELECT SUM(x.applied_amount_local) FROM finance_receipt_lines x"
+                + " WHERE x.receipt_id=t.id AND COALESCE(x.is_deleted,false)=false),0) ELSE t.amount_local END"
+                + " FROM finance_receipts t WHERE COALESCE(t.is_deleted,false)=false"
+                + " AND t.status=1 AND t.client_id=:pid"
+                : " SELECT t.bill_date, 0, t.amount_local FROM finance_payments t"
+                + " WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t.supplier_id=:pid";
         // 按月：期初=该月初前累计余额；期末=下月初前累计余额（滚动）；posted/settled 为当月发生额。
         // returned 简化为 0（退货已在 ar_ap_ledger SALES_RETURN/PURCHASE_RETURN 体现为负 posted）。
         String sql = "WITH party_ledger AS ("
                 + " SELECT bill_date, amount_original_local AS posted, 0 AS settled FROM ar_ap_ledger l"
                 + " WHERE l.is_deleted=false AND l.direction=" + dirLit + " AND l.status=1 AND l." + partyCol + "=:pid"
                 + " UNION ALL"
-                + " SELECT t.bill_date, 0, t.amount_local FROM " + settledTbl + " t"
-                + " WHERE COALESCE(t.is_deleted,false)=false AND t.status=1 AND t." + partyCol + "=:pid"
+                + settledSelect
                 + "), monthly AS ("
                 + " SELECT date_trunc('month', pl.bill_date) AS ms, to_char(date_trunc('month', pl.bill_date),'YYYY-MM') AS ym,"
                 + " COALESCE(SUM(pl.posted),0) AS posted, COALESCE(SUM(pl.settled),0) AS settled"
@@ -965,8 +1264,7 @@ public class FinanceReportService {
                 + "COALESCE(r.source_remark,'') AS source, r.settled_date AS settledDate, "
                 + "r.in_amount AS inAmount, r.out_amount AS outAmount FROM finance_reconciliations r "
                 + "WHERE COALESCE(r.is_deleted,false)=false AND r.account_id=:aid "
-                + "AND (CAST(:from AS date) IS NULL OR r.bill_date>=:from) AND (CAST(:to AS date) IS NULL OR r.bill_date<=:to) "
-                + "AND (CAST(:kw AS text) IS NULL OR LOWER(COALESCE(r.bill_no,'')||' '||COALESCE(r.counterpart_name,'')||' '||COALESCE(r.remark,'')) LIKE LOWER(:kw)) "
+                + "AND (CAST(:to AS date) IS NULL OR r.bill_date<=:to) "
                 + "ORDER BY r.bill_date ASC, r.bill_no ASC";
         return buildAccountRunning(cols, sql, accountId, dateFrom, dateTo, keyword, page, size);
     }
@@ -990,9 +1288,9 @@ public class FinanceReportService {
 
     private static void addFinanceDocFilters(WhereBuilder w, String billNo, UUID partyId, UUID accountId,
                                              Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
-                                             String billNoCol, String dateCol, String partyNameCol) {
+                                             String partyIdCol, String billNoCol, String dateCol, String partyNameCol) {
         if (billNo != null && !billNo.isBlank()) w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
-        if (partyId != null) w.add("t.client_id=:pid OR t.supplier_id=:pid", "pid", partyId);
+        if (partyId != null) w.add(partyIdCol + "=:pid", "pid", partyId);
         if (accountId != null) w.add("t.account_id=:accountId", "accountId", accountId);
         if (status != null) w.add("t.status=:status", "status", status);
         if (dateFrom != null) w.add(dateCol + ">=:dateFrom", "dateFrom", dateFrom);
@@ -1024,24 +1322,35 @@ public class FinanceReportService {
         return new ReportTableResponse(cols, List.of(), new LinkedHashMap<>(), 1, 50, 0, 0);
     }
 
-    /** 滚动余额：全量排序取，Java 累加 running balance，再手动分页（balance 在分页前算完整）。
-     *  金额列统一在索引 [2..7]（org/rate/loc/r_org/r_rate/r_loc）；detail 额外 [8]type [9]cur [10]remark。 */
+    /** 滚动余额：取截止日以前的全量事实，Java 先累加期初再过滤开始日并手动分页。
+     *  金额列统一在索引 [2..7]（org/rate/loc/r_org/r_rate/r_loc），[8]type [9]cur [10]remark [11]currencyId。
+     *  原币余额按币别分别滚动，禁止把 USD/CNY 等原币金额直接相加；本币余额仍可统一累加。 */
     @Transactional(readOnly = true)
     private ReportTableResponse buildRunningBalance(List<ReportColumn> cols, String sql, UUID pid,
                                                     LocalDate dateFrom, LocalDate dateTo, int page, int size, boolean simpleCols) {
-        var q = em.createNativeQuery(sql).setParameter("pid", pid).setParameter("from", dateFrom).setParameter("to", dateTo);
+        var q = em.createNativeQuery(sql).setParameter("pid", pid).setParameter("to", dateTo);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
-        BigDecimal runOrg = BigDecimal.ZERO, runLoc = BigDecimal.ZERO;
+        Map<String, BigDecimal> runOrgByCurrency = new LinkedHashMap<>();
+        BigDecimal runLoc = BigDecimal.ZERO;
         List<Map<String, Object>> all = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             BigDecimal org = num(r[2]); BigDecimal rate = numOrNull(r[3]); BigDecimal loc = num(r[4]);
             BigDecimal rOrg = num(r[5]); BigDecimal rRate = numOrNull(r[6]); BigDecimal rLoc = num(r[7]);
-            runOrg = runOrg.add(org).subtract(rOrg);
+            String currencyCode = Objects.toString(r[9], "(未指定)");
+            String currencyBucket = r[11] == null ? "(未指定)" : r[11].toString();
+            BigDecimal runOrg = runOrgByCurrency.getOrDefault(currencyBucket, BigDecimal.ZERO)
+                    .add(org).subtract(rOrg);
+            runOrgByCurrency.put(currencyBucket, runOrg);
             runLoc = runLoc.add(loc).subtract(rLoc);
+            LocalDate billDate = asLocalDate(r[0]);
+            if (dateFrom != null && billDate != null && billDate.isBefore(dateFrom)) {
+                continue;
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("billDate", norm(r[0])); m.put("refNo", norm(r[1]));
-            if (!simpleCols) { m.put("type", norm(r[8])); m.put("currencyCode", norm(r[9])); }
+            if (!simpleCols) m.put("type", norm(r[8]));
+            m.put("currencyCode", norm(r[9]));
             m.put("salesOriginal", norm(org)); m.put("salesRate", norm(rate)); m.put("salesLocal", norm(loc));
             m.put("receiptOriginal", norm(rOrg)); m.put("receiptRate", norm(rRate)); m.put("receiptLocal", norm(rLoc));
             m.put("balanceOriginal", norm(runOrg)); m.put("balanceRate", norm(rate)); m.put("balanceLocal", norm(runLoc));
@@ -1049,6 +1358,17 @@ public class FinanceReportService {
             all.add(m);
         }
         return paginate(cols, all, page, size);
+    }
+
+    private static LocalDate asLocalDate(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDate date) return date;
+        if (value instanceof java.sql.Date date) return date.toLocalDate();
+        if (value instanceof java.sql.Timestamp timestamp) return timestamp.toLocalDateTime().toLocalDate();
+        if (value instanceof java.time.LocalDateTime dateTime) return dateTime.toLocalDate();
+        if (value instanceof java.time.OffsetDateTime dateTime) return dateTime.toLocalDate();
+        String text = value.toString();
+        return LocalDate.parse(text.length() > 10 ? text.substring(0, 10) : text);
     }
 
     /** 安全 BigDecimal：null→0，BigDecimal/Number→BigDecimal，否则解析字符串。 */
@@ -1067,26 +1387,32 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     private ReportTableResponse buildAccountRunning(List<ReportColumn> cols, String sql, UUID aid,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw, int page, int size) {
-        String k = (kw == null || kw.isBlank()) ? null : "%" + kw.toLowerCase() + "%";
-        var q = em.createNativeQuery(sql).setParameter("aid", aid).setParameter("from", dateFrom)
-                .setParameter("to", dateTo).setParameter("kw", k);
+        String keyword = (kw == null || kw.isBlank()) ? null : kw.toLowerCase(Locale.ROOT);
+        var q = em.createNativeQuery(sql).setParameter("aid", aid).setParameter("to", dateTo);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
-        // 期初余额 = 账户 init_balance + dateFrom 之前的流水净额（保证「余额」跨期连续，不随日期筛选清零）。
-        BigDecimal opening = BigDecimal.ZERO;
-        var oq = em.createNativeQuery(
-                "SELECT COALESCE(a.init_balance,0) + COALESCE((SELECT SUM(r.in_amount - r.out_amount) "
-                        + "FROM finance_reconciliations r WHERE r.account_id=a.id AND COALESCE(r.is_deleted,false)=false "
-                        + "AND (CAST(:of AS date) IS NULL OR r.bill_date < :of)),0) FROM accounts a WHERE a.id=:aid");
-        oq.setParameter("aid", aid);
-        oq.setParameter("of", dateFrom);
-        opening = num(oq.getSingleResult());
-        BigDecimal running = opening;
+        // 从期初额开始遍历截止日以前的全部流水；日期/关键字只裁返回行，不能裁滚动余额事实。
+        BigDecimal running = num(em.createNativeQuery(
+                        "SELECT COALESCE(init_balance,0) FROM accounts WHERE id=:aid")
+                .setParameter("aid", aid)
+                .getSingleResult());
         List<Map<String, Object>> all = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             BigDecimal inAmt = num(r[7]);
             BigDecimal outAmt = num(r[8]);
             running = running.add(inAmt).subtract(outAmt);
+            LocalDate billDate = asLocalDate(r[0]);
+            if (dateFrom != null && billDate != null && billDate.isBefore(dateFrom)) {
+                continue;
+            }
+            if (keyword != null) {
+                String searchable = (Objects.toString(r[1], "") + " "
+                        + Objects.toString(r[4], "") + " "
+                        + Objects.toString(r[3], "")).toLowerCase(Locale.ROOT);
+                if (!searchable.contains(keyword)) {
+                    continue;
+                }
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("billDate", norm(r[0])); m.put("billNo", norm(r[1])); m.put("checkNo", norm(r[2]));
             m.put("summary", norm(r[3])); m.put("counterpartName", norm(r[4])); m.put("source", norm(r[5]));
@@ -1205,6 +1531,7 @@ public class FinanceReportService {
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
             case "ar-ap/overview"    -> (pg, sz) -> arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
             case "ar-ap/detail"      -> (pg, sz) -> arApDetail(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
+            case "ar-ap/order-plan"  -> (pg, sz) -> salesOrderReceivablePlan(billNo, clientId, dateFrom, dateTo, keyword, pg, sz, sort, order);
             case "ar-ap/summary"     -> (pg, sz) -> arApSummary(direction, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
             case "receipt/detail"    -> (pg, sz) -> receiptDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
             case "receipt/summary"   -> (pg, sz) -> receiptSummary(billNo, clientId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);

@@ -9,6 +9,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
+import com.uten.imp.features.finance.arap.ArApLedgerService.SourceRef;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
 import com.uten.imp.features.sales.order.SalesOrder;
 import com.uten.imp.features.sales.order.SalesPriceMasker;
@@ -38,6 +39,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.DateTimeException;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -373,7 +376,11 @@ public class SalesShipmentService {
     private void assertFinanceAudited(SalesShipment s) {
         Object ps = em.createNativeQuery("SELECT price_style FROM clients WHERE id = :id")
                 .setParameter("id", s.getClientId()).getSingleResult();
-        boolean cash = ps != null && ((Number) ps).intValue() == 1;
+        assertFinanceAudited(s, ps == null ? null : ((Number) ps).intValue());
+    }
+
+    private void assertFinanceAudited(SalesShipment s, Integer clientPriceStyle) {
+        boolean cash = clientPriceStyle != null && clientPriceStyle == 1;
         if (cash && (s.getFinanceAudit() == null || s.getFinanceAudit() != 1)) {
             throw new ApiException(ErrorCode.BUSINESS, "现金结算客户须财务审核发货后再审核出货单");
         }
@@ -874,8 +881,9 @@ public class SalesShipmentService {
         if (s.getClientId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "出货单需指定客户");
         }
-        // C6 财务发货审核：现金结算客户（clients.price_style=1）须财务审核「已审发货」后才允许仓库审核出货
-        assertFinanceAudited(s);
+        // C6 财务发货审核及 AR 账期：在任何库存变更前锁定有效客户的结账方式/账期快照。
+        ClientSettlementSnapshot settlement = lockClientSettlementSnapshot(s);
+        assertFinanceAudited(s, settlement.clientPriceStyle());
         List<SalesShipmentItem> items = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -885,6 +893,7 @@ public class SalesShipmentService {
         assertStoredShipmentPolicy(items);
         requireNonNegativeStoredCommercial(items);
         requireNonNegativeTotals(s);
+        applyFinancePostingRate(s, items);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -913,8 +922,9 @@ public class SalesShipmentService {
             }
         }
 
-        // 立应收（AR, SALES_SHIPMENT, BStyle=3, 正应收）。金额为本币总额（正数）。
+        // 立应收（AR, SALES_SHIPMENT, BStyle=3, 正应收）。原/本币金额及订单来源均取本次发运快照。
         if (!s.isArPosted()) {
+            List<SourceRef> sourceRefs = salesOrderSourceRefs(s.getId());
             arApService.postArAp(new ArApPostingRequest(
                     "AR",
                     StockService.SRC_SALES_SHIPMENT,
@@ -923,7 +933,11 @@ public class SalesShipmentService {
                     s.getCurrencyId(), s.getExchangeRate(),
                     s.getTotalLocal(),
                     BSTYLE_SALES_SHIPMENT,
-                    s.getRemark()));
+                    s.getRemark(),
+                    s.getTotalOriginal(),
+                    settlement.dueDate(),
+                    settlement.settlementStyleLegacy(),
+                    sourceRefs));
             s.setArPosted(true);
         }
 
@@ -936,6 +950,187 @@ public class SalesShipmentService {
         shipmentRepo.save(s);
         chainNotice.notifyShipmentApproved(id); // 旁路通知：发货→订单归属销售，提交后发送
         return detail(id);
+    }
+
+    /**
+     * Lock the finance-maintained currency master and make it the authoritative
+     * recognition-rate snapshot for this shipment. Sales-order rate snapshots
+     * are never reused for AR posting.
+     */
+    private void applyFinancePostingRate(
+            SalesShipment shipment, List<SalesShipmentItem> items) {
+        BigDecimal financeRate = lockFinancePostingRate(shipment.getCurrencyId());
+        applyPostingRateSnapshot(shipment, items, financeRate);
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+    }
+
+    private BigDecimal lockFinancePostingRate(UUID currencyId) {
+        if (currencyId == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "发运币别缺失，财务汇率无法确认");
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> rows = em.createNativeQuery("""
+                SELECT currency.exchange_rate
+                FROM currencies currency
+                WHERE currency.id = :currencyId
+                  AND COALESCE(currency.is_deleted, false) = false
+                  AND currency.status = '使用'
+                FOR SHARE
+                """)
+                .setParameter("currencyId", currencyId)
+                .getResultList();
+        if (rows.size() != 1 || rows.getFirst() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "币种未启用或财务汇率缺失，禁止发运立账");
+        }
+        BigDecimal rate = rows.getFirst() instanceof BigDecimal decimal
+                ? decimal
+                : new BigDecimal(rows.getFirst().toString());
+        if (rate.signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "财务维护的币种汇率必须大于 0，禁止发运立账");
+        }
+        return rate;
+    }
+
+    /**
+     * Lock the active client master used by this shipment and derive immutable
+     * AR settlement metadata. {@code last_date} is an operation timestamp and
+     * must never be reused as the receivable due date.
+     */
+    @SuppressWarnings("unchecked")
+    private ClientSettlementSnapshot lockClientSettlementSnapshot(
+            SalesShipment shipment) {
+        if (shipment.getClientId() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "发运客户缺失，无法确认应收账期");
+        }
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT client.price_style, client.tday
+                FROM clients client
+                WHERE client.id = :clientId
+                  AND COALESCE(client.is_deleted, false) = false
+                  AND client.status = '使用'
+                FOR SHARE
+                """)
+                .setParameter("clientId", shipment.getClientId())
+                .getResultList();
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户主档未启用或不存在，禁止发运立账");
+        }
+        Object[] row = rows.getFirst();
+        Integer clientPriceStyle = row[0] == null
+                ? null
+                : ((Number) row[0]).intValue();
+        Integer settlementDays = row[1] == null
+                ? null
+                : ((Number) row[1]).intValue();
+        return settlementSnapshot(
+                shipment.getPaymentStyleId(), clientPriceStyle,
+                settlementDays, shipment.getBillDate());
+    }
+
+    static ClientSettlementSnapshot settlementSnapshot(
+            Integer shipmentPaymentStyle,
+            Integer clientPriceStyle,
+            Integer settlementDays,
+            LocalDate billDate) {
+        if (billDate == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "发运日期缺失，无法确认应收到期日");
+        }
+        Integer effectiveStyle = shipmentPaymentStyle != null
+                ? shipmentPaymentStyle
+                : clientPriceStyle;
+        long days = settlementDays != null && settlementDays > 0
+                ? settlementDays.longValue()
+                : 0L;
+        try {
+            return new ClientSettlementSnapshot(
+                    clientPriceStyle,
+                    settlementStyleLegacy(effectiveStyle),
+                    billDate.plusDays(days));
+        } catch (DateTimeException ex) {
+            throw new ApiException(ErrorCode.CONFLICT, "客户账期超出有效日期范围");
+        }
+    }
+
+    record ClientSettlementSnapshot(
+            Integer clientPriceStyle,
+            Short settlementStyleLegacy,
+            LocalDate dueDate) {
+    }
+
+    static void applyPostingRateSnapshot(
+            SalesShipment shipment,
+            List<SalesShipmentItem> items,
+            BigDecimal financeRate) {
+        if (financeRate == null || financeRate.signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "财务维护的币种汇率必须大于 0，禁止发运立账");
+        }
+        BigDecimal totalOriginal = BigDecimal.ZERO;
+        BigDecimal totalLocal = BigDecimal.ZERO;
+        for (SalesShipmentItem item : items) {
+            BigDecimal original = item.getAmountOriginal() == null
+                    ? BigDecimal.ZERO
+                    : item.getAmountOriginal();
+            if (original.signum() < 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "发运原币金额无效，禁止发运立账");
+            }
+            BigDecimal local = original.multiply(financeRate)
+                    .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+            item.setAmountLocal(local);
+            totalOriginal = totalOriginal.add(original);
+            totalLocal = totalLocal.add(local);
+        }
+        shipment.setExchangeRate(financeRate);
+        shipment.setTotalOriginal(totalOriginal);
+        shipment.setTotalLocal(totalLocal);
+    }
+
+    /**
+     * 按销售订单聚合本次发运行金额，形成不可变 AR 来源快照。
+     *
+     * <p>只接受持久化的 shipment_item.order_item_id 链；不按单号、客户或日期猜历史关联。
+     * 金额使用发运行快照，订单后续修改不会改写已经立账的来源金额。
+     */
+    @SuppressWarnings("unchecked")
+    private List<SourceRef> salesOrderSourceRefs(UUID shipmentId) {
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT sales_order.id,
+                       sales_order.bill_no,
+                       COALESCE(SUM(shipment_item.amount_original), 0),
+                       COALESCE(SUM(shipment_item.amount_local), 0)
+                FROM sales_shipment_items shipment_item
+                JOIN sales_order_items order_item
+                  ON order_item.id = shipment_item.order_item_id
+                 AND COALESCE(order_item.is_deleted, false) = false
+                JOIN sales_orders sales_order
+                  ON sales_order.id = order_item.order_id
+                 AND COALESCE(sales_order.is_deleted, false) = false
+                WHERE shipment_item.shipment_id = :shipmentId
+                  AND shipment_item.order_item_id IS NOT NULL
+                  AND COALESCE(shipment_item.is_deleted, false) = false
+                GROUP BY sales_order.id, sales_order.bill_no
+                ORDER BY sales_order.bill_no, sales_order.id
+                """)
+                .setParameter("shipmentId", shipmentId)
+                .getResultList();
+        return rows.stream()
+                .map(row -> new SourceRef(
+                        SourceRef.SALES_ORDER,
+                        (UUID) row[0],
+                        String.valueOf(row[1]),
+                        row[2] == null ? BigDecimal.ZERO : (BigDecimal) row[2],
+                        row[3] == null ? BigDecimal.ZERO : (BigDecimal) row[3]))
+                .toList();
+    }
+
+    private static Short settlementStyleLegacy(Integer paymentStyleId) {
+        if (paymentStyleId == null) {
+            return null;
+        }
+        if (paymentStyleId < Short.MIN_VALUE || paymentStyleId > Short.MAX_VALUE) {
+            throw new ApiException(ErrorCode.CONFLICT, "销售结账方式超出财务立账范围");
+        }
+        return paymentStyleId.shortValue();
     }
 
     /** 仓库驳回（V96）：草稿出货单备货异常 → 逐行释放预留 + 订单行回退待排产，缺口自动回调度待排产列表。 */

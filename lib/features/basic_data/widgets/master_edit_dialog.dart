@@ -47,6 +47,13 @@ const List<MasterSelectOption> kGoodsSourceTypeOptions = [
   MasterSelectOption(value: '委外', label: '委外'),
 ];
 
+/// 生产 BOM 策略是业务事实，不由“来源”字段隐式推断。
+const List<MasterSelectOption> kGoodsProductionBomPolicyOptions = [
+  MasterSelectOption(value: 'BOM_REQUIRED', label: '必须维护 BOM（组装件）'),
+  MasterSelectOption(value: 'DIRECT_MAKE', label: '直接生产（无 BOM）'),
+  MasterSelectOption(value: 'NOT_PRODUCED', label: '不生产（采购/委外）'),
+];
+
 /// 自定义字段上下文：[MasterEditForm] ↔ 自定义 widget（[MasterFieldDef.customBuilder]）的值通道。
 /// 初值来自 [MasterEditForm.initialValues]（字符串形式：日期=yyyy-MM-dd、picker=id）；
 /// widget 内部自行转成所需类型（DateTime / UtenEmployeePickerItem 等），通过 [onChanged] 回写提交值。

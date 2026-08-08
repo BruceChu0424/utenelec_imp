@@ -27,6 +27,10 @@ public class OrderSaveRequest {
     private UUID clientId;
 
     private UUID currencyId;
+    /**
+     * 旧客户端兼容字段。销售订单服务不采信该值；新建/换币时从启用币种主档取参考汇率，
+     * 同币种编辑保留订单已存快照。
+     */
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;
     private Integer paymentStyleId;
@@ -43,7 +47,8 @@ public class OrderSaveRequest {
 
     /**
      * ALLOW_PARTIAL / REQUIRE_COMPLETE / CUSTOMER_CONFIRM.
-     * Null is normalized by the server to CUSTOMER_CONFIRM for new orders.
+     * Null leaves a new order unset and preserves the stored value on update;
+     * non-null values are normalized and validated by the order service.
      */
     private String shipmentPolicy;
 

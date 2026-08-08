@@ -41,6 +41,7 @@ class SalesDocConfig {
     this.clientRequired = false,
     this.hasWarehouse = false,
     this.hasCurrency = false,
+    this.hasExchangeRate = true,
     this.hasSeller = false,
     this.sellerRequired = false,
     this.hasSender = false,
@@ -74,7 +75,11 @@ class SalesDocConfig {
   final bool clientRequired;
   final bool hasWarehouse;
   final bool hasCurrency;
+
+  /// 汇率是否随币种组展示并提交；仅在 [hasCurrency] 为 true 时生效。
+  final bool hasExchangeRate;
   final bool hasSeller;
+
   /// 业务员是否必填（hasSeller 为真时才生效；现仅 order 强制）。
   final bool sellerRequired;
   final bool hasSender;
@@ -136,6 +141,7 @@ class SalesDocConfig {
     editPerm: SalesPerm.orderEdit,
     clientRequired: true,
     hasCurrency: true,
+    hasExchangeRate: false,
     hasSeller: true,
     sellerRequired: true,
     hasDeliverDate: true,

@@ -49,6 +49,14 @@ public class FinanceReceiptLine extends BaseEntity {
     @Column(name = "client_id")
     private UUID clientId;
 
+    /** Actual receipt currency. Applied AR lines must use the AR currency. */
+    @Column(name = "currency_id")
+    private UUID currencyId;
+
+    /** Receipt-date rate entered by finance; local amounts are server-derived. */
+    @Column(name = "exchange_rate", precision = 18, scale = 6)
+    private BigDecimal exchangeRate = BigDecimal.ONE;
+
     @Column(name = "line_no")
     private Integer lineNo;
 
@@ -57,6 +65,24 @@ public class FinanceReceiptLine extends BaseEntity {
 
     @Column(name = "amount_local", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountLocal;        // CNReceive 本次核销（本币）
+
+    /** Bank/other fee allocated to this AR, expressed in the AR currency. */
+    @Column(name = "write_off_amount", precision = 18, scale = 4)
+    private BigDecimal writeOffAmount = BigDecimal.ZERO;
+
+    @Column(name = "write_off_local", precision = 18, scale = 4)
+    private BigDecimal writeOffLocal = BigDecimal.ZERO;
+
+    /** Carrying value removed from AR, using the recognition-date rate. */
+    @Column(name = "applied_amount_local", precision = 18, scale = 4)
+    private BigDecimal appliedAmountLocal = BigDecimal.ZERO;
+
+    /** Approval-time snapshots used by historical reports. */
+    @Column(name = "balance_before_original", precision = 18, scale = 4)
+    private BigDecimal balanceBeforeOriginal;
+
+    @Column(name = "balance_after_original", precision = 18, scale = 4)
+    private BigDecimal balanceAfterOriginal;
 
     @Column(name = "exchange_diff", precision = 18, scale = 4)
     private BigDecimal exchangeDiff = BigDecimal.ZERO;  // RTotal 汇兑差

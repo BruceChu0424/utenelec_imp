@@ -10,6 +10,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
+import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.plan.dto.PlanDetail;
 import com.uten.imp.features.production.plan.dto.PlanItemDto;
 import com.uten.imp.features.production.plan.dto.PlanItemLine;
@@ -88,6 +89,7 @@ public class ProductionPlanService {
     private final DocNumberService docNumberService;
     private final ChainNoticeService chainNotice;
     private final ProductionDocumentAccessPolicy access;
+    private final MaterialAnalysisService materialAnalysisService;
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
@@ -140,6 +142,10 @@ public class ProductionPlanService {
         ProductionPlan p = requirePlanForUpdate(id);
         access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
         if (p.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
+        if (isMaterialAnalysisPlan(id)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "物料分析生成的计划不可直接编辑，请删除草稿后回到物料分析重新生成");
+        }
         planningDraftService.supersedeActive(id, "生产计划已编辑，原预排草案失效");
         applyHeader(req, p);
         itemRepo.deleteByPlanId(id);
@@ -173,13 +179,14 @@ public class ProductionPlanService {
     public PlanDetail approve(UUID id) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id);
-        access.requireWritable(p.getMakerId(), "只能操作本人负责的生产计划");
+        access.requireWritable(p.getMakerId(), "无权审核此生产计划", access.scope());
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT)
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         if (p.isStopped() || p.isCanceled())
             throw new ApiException(ErrorCode.BUSINESS, "已中止或已取消的生产计划不可审核");
         if (itemRepo.findByPlanIdOrderByLineNoAsc(id).isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        validateMaterialAnalysisPlanForApproval(id);
         p.setStatus(STATUS_APPROVED);
         p.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         planRepo.save(p);
@@ -190,6 +197,79 @@ public class ProductionPlanService {
         planningDraftService.applyActive(id);
         chainNotice.notifyPlanScheduled(id, shortage); // 未核验不伪装成缺料；真实缺料才通知采购/调度
         return detail(id);
+    }
+
+    private boolean isMaterialAnalysisPlan(UUID planId) {
+        Number count = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM production_plans
+                WHERE id = :id AND material_analysis_id IS NOT NULL
+                """).setParameter("id", planId).getSingleResult();
+        return count.longValue() > 0;
+    }
+
+    /** Re-lock and compare the immutable analysis demand, plan line and conservation link. */
+    private void validateMaterialAnalysisPlanForApproval(UUID planId) {
+        List<Object[]> analysisHeaders = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                SELECT analysis.id, plan.material_analysis_item_id
+                FROM production_plans plan
+                JOIN production_material_analyses analysis
+                  ON analysis.id = plan.material_analysis_id
+                WHERE plan.id = :id
+                FOR UPDATE OF analysis
+                """).setParameter("id", planId));
+        if (analysisHeaders.isEmpty()) return;
+        materialAnalysisService.requireCurrentBomSnapshot(
+                (UUID) analysisHeaders.getFirst()[0],
+                java.util.Set.of((UUID) analysisHeaders.getFirst()[1]));
+        List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                        SELECT p.material_analysis_id, p.material_analysis_item_id,
+                               ai.goods_id, ai.color_id, ai.unit_id,
+                               COALESCE(soi.unit_rate,1), ai.sales_order_item_id,
+                               plan_item.goods_id, plan_item.color_id, plan_item.unit_id,
+                               COALESCE(plan_item.unit_rate,1), plan_item.sales_order_item_id,
+                               plan_item.qty, analysis_link.submitted_qty,
+                               analysis_link.allocation_status
+                        FROM production_plans p
+                        JOIN production_material_analysis_items ai
+                          ON ai.analysis_id = p.material_analysis_id
+                         AND ai.id = p.material_analysis_item_id
+                         AND ai.is_deleted = FALSE
+                        JOIN production_material_analysis_plan_links analysis_link
+                          ON analysis_link.plan_id = p.id
+                         AND analysis_link.analysis_id = p.material_analysis_id
+                         AND analysis_link.analysis_item_id = p.material_analysis_item_id
+                        JOIN production_plan_items plan_item
+                          ON plan_item.plan_id = p.id AND plan_item.is_deleted = FALSE
+                        LEFT JOIN sales_order_items soi
+                          ON soi.id = ai.sales_order_item_id AND soi.is_deleted = FALSE
+                        WHERE p.id = :id
+                        FOR UPDATE OF ai, analysis_link, plan_item
+                        """).setParameter("id", planId));
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "物料分析计划缺少有效需求、计划明细或提交守恒关联");
+        }
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "物料分析计划必须且只能包含一条有效计划明细");
+        }
+        Object[] row = rows.getFirst();
+        BigDecimal sourceRate = normalizedPositiveRate(bd(row[5]), "物料分析需求");
+        BigDecimal planRate = normalizedPositiveRate(bd(row[10]), "生产计划明细");
+        BigDecimal planQty = requirePositiveAllocation(bd(row[12]));
+        BigDecimal linkedQty = requirePositiveAllocation(bd(row[13]));
+        if (!Objects.equals(row[2], row[7])
+                || !Objects.equals(row[3], row[8])
+                || !Objects.equals(row[4], row[9])
+                || sourceRate.compareTo(planRate) != 0
+                || !Objects.equals(row[6], row[11])
+                || planQty.compareTo(linkedQty) != 0
+                || !"SUBMITTED".equals(row[14])) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "物料分析需求、计划明细或提交数量已不一致，请释放后重新生成");
+        }
     }
 
     /**
@@ -1136,8 +1216,38 @@ public class ProductionPlanService {
                 p.getDeliveryDate(), p.getDepartmentId(), p.getWorkshopName(), p.getWorkerName(), p.getSellerName(),
                 p.getSellerId(), p.getWorkerId(),
                 p.getMakerId(), p.getApproverId(), p.getMakerLegacyId(), p.getApproverLegacyId(), p.getRemark(),
-                p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getSourceDocNo(), items,
+                p.getStatus(), p.isClosed(), p.isStopped(), p.isCanceled(), p.getSourceDocNo(),
+                p.getMaterialAnalysisId(), p.getMaterialAnalysisItemId(),
+                planDetailAllowedActions(p), items,
                 nameResolver.nameOf(p.getMakerId()), p.getCreatedAt());
+    }
+
+    private List<String> planDetailAllowedActions(ProductionPlan plan) {
+        List<String> actions = new ArrayList<>();
+        actions.add("VIEW");
+        boolean draft = plan.getStatus() != null && plan.getStatus() == 0
+                && !plan.isCanceled() && !plan.isDeleted();
+        boolean writable = access.canWrite(plan.getMakerId(), access.scope());
+        if (plan.getMaterialAnalysisId() != null
+                && canOpenMaterialAnalysis(plan.getMaterialAnalysisId())) {
+            actions.add("RETURN_TO_MATERIAL_ANALYSIS");
+        } else if (draft && writable && access.hasAuthority("production_plan:edit")) {
+            actions.add("EDIT");
+        }
+        if (draft && writable && access.hasAuthority("production_plan:approve")) {
+            actions.add("APPROVE");
+        }
+        return List.copyOf(actions);
+    }
+
+    private boolean canOpenMaterialAnalysis(UUID analysisId) {
+        if (!access.hasAuthority("production_material_analysis:view")) return false;
+        List<?> makers = em.createNativeQuery("""
+                SELECT maker_id FROM production_material_analyses
+                WHERE id=:id AND is_deleted=FALSE
+                """).setParameter("id", analysisId).getResultList();
+        return !makers.isEmpty()
+                && access.canRead((UUID) makers.getFirst(), access.scope());
     }
 
     private ProductionPlan requirePlanForUpdate(UUID id) {

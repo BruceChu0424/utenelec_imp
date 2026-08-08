@@ -90,6 +90,23 @@ public class FinanceReportController {
                 facetsOf(allParams), page, size, sort, order);
     }
 
+    /** 已审核销售订单待收计划（经营视图，不形成会计应收）。 */
+    @GetMapping("/ar-ap/order-plan")
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public ReportTableResponse salesOrderReceivablePlan(
+            @RequestParam(required = false) String billNo,
+            @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.salesOrderReceivablePlan(
+                billNo, clientId, dateFrom, dateTo, keyword, page, size, sort, order);
+    }
+
     /** B/D 应收/应付汇总（按往来单位）。 */
     @GetMapping("/ar-ap/summary")
     @PreAuthorize("hasAuthority('finance_report:view')")

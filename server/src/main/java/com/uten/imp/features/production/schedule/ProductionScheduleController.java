@@ -31,7 +31,7 @@ import java.util.UUID;
  * 生产调度工作台 API（业务链 · 排产段）。
  *
  * <p>GET  /pending      待排产订单行（交货升序，urgent 标红）—— production_plan:view
- * <p>POST /merge-plan   合并排产创建草稿计划（同货合并行 + 预建 links）—— production_plan:edit
+ * <p>POST /merge-plan   旧合并排产写入口（始终拒绝并引导物料分析联合预览）
  */
 @RestController
 @RequestMapping("/api/production/schedule")
@@ -40,7 +40,8 @@ public class ProductionScheduleController {
 
     private final ProductionScheduleService service;
 
-    /** 待排产订单行（服务端分页；交货升序；keyword 模糊单号/客户/货品；dateFrom/dateTo 交货日期范围）。 */
+    /** 待排产订单行（服务端分页；keyword 模糊单号/客户/货品；dateFrom/dateTo 交货日期范围；
+     *  sort/order 表头排序；status 表头值筛选 bom_missing/urgent/normal）。 */
     @GetMapping("/pending")
     @PreAuthorize("hasAuthority('production_plan:view')")
     public com.uten.imp.common.web.PageResponse<PendingPlanRow> pending(
@@ -48,8 +49,21 @@ public class ProductionScheduleController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String status) {
+        return service.pending(page, size, keyword, dateFrom, dateTo, sort, order, status);
+    }
+
+    /** 待排产状态 facets（表头值筛选下拉用）：{status:[{value,count,label}]}（BOM缺失/紧急/正常）。 */
+    @GetMapping("/pending/facets")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public Map<String, List<Map<String, Object>>> pendingFacets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo) {
-        return service.pending(page, size, keyword, dateFrom, dateTo);
+        return service.pendingFacets(keyword, dateFrom, dateTo);
     }
 
     /** 待排产计数（生产部工作台徽标）：{"count": n, "urgent": m}。 */
@@ -76,9 +90,11 @@ public class ProductionScheduleController {
 
     /** 返回 {"planId": "..."}，前端跳计划详情页确认后审核。 */
     @PostMapping("/merge-plan")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
+    @PreAuthorize("hasAuthority('production_material_analysis:manage')")
     public Map<String, UUID> mergePlan(@Valid @RequestBody MergePlanRequest req) {
-        return Map.of("planId", service.createMergePlan(req));
+        throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.CONFLICT,
+                "合并排产已迁移到物料分析联合预览，请使用 /api/production/material-analyses");
     }
 
     /** 待排产 BOM 缺失转发工程研发部（建研发任务 + 通知）。返回 {"taskId": "..."}。 */

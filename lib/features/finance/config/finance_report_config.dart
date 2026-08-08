@@ -45,6 +45,10 @@ const FinanceReportCard financeDetailCard = FinanceReportCard(
   title: '钱流明细报表',
   variants: [
     FinanceReportVariant(
+      label: '销售订单待收计划',
+      endpoint: '/finance/reports/ar-ap/order-plan',
+    ),
+    FinanceReportVariant(
       label: '应收款明细',
       endpoint: '/finance/reports/ar-ap/detail',
       fixedParams: {'direction': 'AR'},

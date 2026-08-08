@@ -332,6 +332,9 @@ List<String>? requiredAnyPermFor(String location) {
       Perm.productionDailyReportView,
       Perm.productionReportView,
       Perm.productionWhereUsedView,
+      Perm.productionMaterialAnalysisView,
+      Perm.productionMaterialAnalysisManage,
+      Perm.productionPlanEdit,
     ];
   }
   if (location.startsWith('/production/reports')) {
@@ -344,13 +347,29 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.productionProgress) {
     return const [Perm.productionPlanView];
   }
+  if (location == RouteName.productionMaterialAnalysis) {
+    return const [
+      Perm.productionMaterialAnalysisView,
+      Perm.productionMaterialAnalysisManage,
+      Perm.productionMaterialAnalysisRoute,
+      Perm.productionMaterialAnalysisNotify,
+      Perm.productionMaterialAnalysisGenerate,
+      Perm.productionMaterialAnalysisReallocate,
+    ];
+  }
+  if (location == RouteName.productionMaterialAnalysisHistory) {
+    return const [Perm.productionMaterialAnalysisView];
+  }
   // 物料反查产成品（BOM where-used）：工程研发部 + 生产部共用入口
   if (location == RouteName.productionWhereUsed) {
     return const [Perm.productionWhereUsedView];
   }
+  if (location == RoutePath.productionPlanNew()) {
+    return const [Perm.productionMaterialAnalysisManage];
+  }
   if (location.startsWith('/production/plans')) {
-    final isEdit = location.endsWith('/new') || location.endsWith('/edit');
-    return [isEdit ? Perm.productionPlanEdit : Perm.productionPlanView];
+    if (location.endsWith('/edit')) return const [Perm.productionPlanEdit];
+    return const [Perm.productionPlanView];
   }
   if (location.startsWith('/production/daily-reports')) {
     final isEdit = location.endsWith('/new') || location.endsWith('/edit');

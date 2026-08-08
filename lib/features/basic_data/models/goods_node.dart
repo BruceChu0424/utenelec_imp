@@ -27,6 +27,7 @@ class GoodsListItem {
     this.colorName,
     this.unitName,
     this.sourceType,
+    this.productionBomPolicy,
     this.categoryId,
     this.autoCreated = false,
     this.stockQty,
@@ -50,6 +51,7 @@ class GoodsListItem {
   final String? colorName;
   final String? unitName;
   final String? sourceType; // 来源（自制/采购/委外；V128）
+  final String? productionBomPolicy;
 
   final String? categoryId; // 所属分类 id（货品资料页"搜货品定位分类"用）
 
@@ -77,6 +79,7 @@ class GoodsListItem {
     colorName: json['colorName'] as String?,
     unitName: json['unitName'] as String?,
     sourceType: json['sourceType'] as String?,
+    productionBomPolicy: json['productionBomPolicy'] as String?,
     categoryId: json['categoryId'] as String?,
     autoCreated: json['autoCreated'] as bool? ?? false,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
@@ -128,6 +131,7 @@ class GoodsDetail {
     this.cTotal,
     this.gTotal,
     this.sourceType,
+    this.productionBomPolicy,
     this.costMasked = false,
     this.discountMasked = false,
     this.stockQty,
@@ -179,6 +183,7 @@ class GoodsDetail {
   final double? gTotal; // 出厂价
 
   final String? sourceType; // 来源（自制/采购/委外；V128）
+  final String? productionBomPolicy;
 
   // ===== 成本可见性（goods:cost:view；未授权时后端清空成本字段并置 costMasked=true） =====
   final bool costMasked;
@@ -236,6 +241,7 @@ class GoodsDetail {
     cTotal: ((json['cTotal'] ?? json['ctotal']) as num?)?.toDouble(),
     gTotal: ((json['gTotal'] ?? json['gtotal']) as num?)?.toDouble(),
     sourceType: json['sourceType'] as String?,
+    productionBomPolicy: json['productionBomPolicy'] as String?,
     costMasked: json['costMasked'] as bool? ?? false,
     discountMasked: json['discountMasked'] as bool? ?? false,
     stockQty: (json['stockQty'] as num?)?.toDouble(),

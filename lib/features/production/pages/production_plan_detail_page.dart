@@ -20,6 +20,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
+import '../models/production_material_analysis.dart';
 import '../widgets/execution_segment_planning_sheet.dart';
 import '../models/production_plan.dart';
 import '../repositories/production_repository.dart';
@@ -31,7 +32,6 @@ import '../widgets/progress_ring.dart';
 import '../widgets/production_material_settlement_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
-import 'production_plan_list_page.dart' show ProductionPerm;
 
 class ProductionPlanDetailPage extends ConsumerStatefulWidget {
   const ProductionPlanDetailPage({
@@ -99,7 +99,28 @@ class _ProductionPlanDetailPageState
   }
 
   bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(ProductionPerm.planEdit);
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanEdit);
+
+  bool get _canApprove =>
+      ref.read(currentPermissionsProvider).contains(Perm.productionPlanApprove);
+
+  bool get _canViewMaterialAnalysis => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.productionMaterialAnalysisView);
+
+  bool get _canReturnToMaterialAnalysis =>
+      _canViewMaterialAnalysis &&
+      _serverAllowsPlanAction('RETURN_TO_MATERIAL_ANALYSIS');
+
+  bool get _isMaterialAnalysisPlan =>
+      _detail?.materialAnalysisId?.isNotEmpty == true ||
+      (_detail?.allowedActions.contains('RETURN_TO_MATERIAL_ANALYSIS') ??
+          false);
+
+  bool _serverAllowsPlanAction(String action) {
+    final actions = _detail?.allowedActions ?? const <String>[];
+    return actions.isEmpty || actions.contains(action);
+  }
 
   bool get _commandBusy => _busy || _mrpBusy;
 
@@ -108,7 +129,7 @@ class _ProductionPlanDetailPageState
 
   bool get _canReport => ref
       .read(currentPermissionsProvider)
-      .contains(ProductionPerm.dailyReportEdit);
+      .contains(Perm.productionDailyReportEdit);
 
   Future<void> _load() async {
     if (!mounted) return;
@@ -1904,33 +1925,64 @@ class _ProductionPlanDetailPageState
   Widget _actions(ThemeData theme) {
     final s = _detail!.status;
     final children = <Widget>[];
-    if (s == kProductionStatusDraft && _canEdit) {
-      children
-        ..add(
+    if (s == kProductionStatusDraft) {
+      if (_isMaterialAnalysisPlan) {
+        children.add(
           UtenButton(
-            type: UtenButtonType.danger,
-            icon: Icons.delete_outline,
-            onPressed: _commandBusy ? null : _delete,
-            onDisabledTap: () =>
-                context.appWarning('预排或其他计划操作正在处理，请完成后再删除', force: true),
-            child: const Text('删除'),
-          ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
-          UtenButton(
+            key: const Key('return-to-material-analysis'),
             type: UtenButtonType.secondary,
-            icon: Icons.edit_outlined,
-            onPressed: _commandBusy
+            icon: Icons.fact_check_outlined,
+            onPressed: _commandBusy || !_canReturnToMaterialAnalysis
                 ? null
-                : () => context.push('/production/plans/${widget.id}/edit'),
-            onDisabledTap: () =>
-                context.appWarning('预排或其他计划操作正在处理，请完成后再编辑', force: true),
-            child: const Text('编辑'),
+                : () => context.push(
+                    RouteName.productionMaterialAnalysis,
+                    extra: ProductionMaterialAnalysisSeed(
+                      analysisId: _detail!.materialAnalysisId,
+                    ),
+                  ),
+            onDisabledTap: !_canReturnToMaterialAnalysis
+                ? () => context.appWarning(
+                    '没有查看该物料分析的权限，或该任务不在当前负责范围',
+                    force: true,
+                  )
+                : () => context.appWarning(
+                    '预排或其他计划操作正在处理，请完成后再返回物料分析',
+                    force: true,
+                  ),
+            child: const Text('回到物料分析'),
           ),
-        )
-        ..add(const SizedBox(width: UtenSpacing.s8))
-        ..add(
+        );
+      } else if (_canEdit && _serverAllowsPlanAction('EDIT')) {
+        children
+          ..add(
+            UtenButton(
+              type: UtenButtonType.danger,
+              icon: Icons.delete_outline,
+              onPressed: _commandBusy ? null : _delete,
+              onDisabledTap: () =>
+                  context.appWarning('预排或其他计划操作正在处理，请完成后再删除', force: true),
+              child: const Text('删除'),
+            ),
+          )
+          ..add(const SizedBox(width: UtenSpacing.s8))
+          ..add(
+            UtenButton(
+              type: UtenButtonType.secondary,
+              icon: Icons.edit_outlined,
+              onPressed: _commandBusy
+                  ? null
+                  : () => context.push('/production/plans/${widget.id}/edit'),
+              onDisabledTap: () =>
+                  context.appWarning('预排或其他计划操作正在处理，请完成后再编辑', force: true),
+              child: const Text('编辑'),
+            ),
+          );
+      }
+      if (_canApprove && _serverAllowsPlanAction('APPROVE')) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
           UtenButton(
             icon: Icons.check_circle_outline,
             onPressed: _commandBusy ? null : _approve,
@@ -1939,6 +1991,7 @@ class _ProductionPlanDetailPageState
             child: const Text('审核'),
           ),
         );
+      }
     } else if (s == kProductionStatusApproved && _canEdit) {
       children.add(
         UtenButton(
@@ -1950,7 +2003,8 @@ class _ProductionPlanDetailPageState
           child: const Text('红冲'),
         ),
       );
-    } else {
+    }
+    if (children.isEmpty) {
       children.add(
         UtenButton(
           type: UtenButtonType.secondary,

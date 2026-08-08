@@ -257,8 +257,7 @@ public final class CompleteKitAllocator {
                 || line.productUnitRate().signum() <= 0
                 || line.plannedQty() == null
                 || line.plannedQty().signum() <= 0
-                || line.materials() == null
-                || line.materials().isEmpty()) {
+                || line.materials() == null) {
             throw new IllegalArgumentException("产品行数据无效");
         }
         List<MaterialUsage> materials = line.materials().stream()

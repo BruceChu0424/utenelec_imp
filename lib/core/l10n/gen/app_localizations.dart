@@ -4516,14 +4516,38 @@ abstract class AppLocalizations {
   /// No description provided for @productionHubPlan.
   ///
   /// In zh, this message translates to:
-  /// **'生产计划单'**
+  /// **'新建生产计划单'**
   String get productionHubPlan;
 
   /// No description provided for @productionHubPlanSub.
   ///
   /// In zh, this message translates to:
-  /// **'计划·明细·审核'**
+  /// **'引用销售订单或手工新建·历史记录'**
   String get productionHubPlanSub;
+
+  /// No description provided for @productionHubPlanHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产计划历史'**
+  String get productionHubPlanHistory;
+
+  /// No description provided for @productionHubPlanHistorySub.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看计划、审批与分批记录'**
+  String get productionHubPlanHistorySub;
+
+  /// No description provided for @productionHubMaterialAnalysis.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料分析准备'**
+  String get productionHubMaterialAnalysis;
+
+  /// No description provided for @productionHubMaterialAnalysisSub.
+  ///
+  /// In zh, this message translates to:
+  /// **'齐套分析·路线确认·分批生成'**
+  String get productionHubMaterialAnalysisSub;
 
   /// No description provided for @productionHubDaily.
   ///

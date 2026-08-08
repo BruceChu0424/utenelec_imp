@@ -2,6 +2,7 @@ package com.uten.imp.features.production.schedule.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -35,5 +36,16 @@ public record PendingPlanRow(
         boolean bomReady,          // 成品已维护至少一条有效 BOM，可进入排产
         boolean urgent,            // 距交货 ≤3 天（含逾期），前端红色醒目
         boolean rdForwarded,       // 该货品已有人转发研发维护 BOM 且仍在等待（存在未完成 BOM 类 rd_task，goods 级）
-        boolean myForward) {       // 当前登录计划员已登记为该货品的等待者（在 rd_task_forwarders 中）
+        boolean myForward,         // 当前登录计划员已登记为该货品的等待者（在 rd_task_forwarders 中）
+        UUID materialAnalysisId,
+        UUID materialAnalysisLineId,
+        String materialAnalysisStatus,
+        Long materialAnalysisVersion,
+        OffsetDateTime materialAnalyzedAt,
+        BigDecimal analyzedQty,
+        BigDecimal submittedPlanQty,
+        BigDecimal approvedPlannedQty,
+        BigDecimal readyNowQty,
+        BigDecimal readyByDateQty,
+        BigDecimal readinessRatio) {
 }

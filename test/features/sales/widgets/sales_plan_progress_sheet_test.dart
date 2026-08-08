@@ -10,6 +10,41 @@ import 'package:uten_imp/features/sales/widgets/sales_plan_progress_sheet.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets('submitted analysis plan is not shown as unplanned', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          salesRepositoryProvider(
+            SalesDocType.order,
+          ).overrideWithValue(_analysisRepository()),
+          currentPermissionsProvider.overrideWithValue(const {}),
+          isSuperAdminProvider.overrideWithValue(false),
+        ],
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, _) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showPlanProgressSheet(context, ref, 'order-1'),
+                child: const Text('查看排产进度'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('查看排产进度'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已提交待批准'), findsOneWidget);
+    expect(find.textContaining('已提交 4'), findsOneWidget);
+    expect(find.textContaining('最后分析 2026-08-08 10:00:00'), findsOneWidget);
+    expect(find.text('尚未排产'), findsNothing);
+    expect(find.textContaining('生产计划已提交待批准'), findsOneWidget);
+  });
+
   testWidgets(
     'sales execution-segment row opens its production plan deep link',
     (tester) async {
@@ -64,6 +99,42 @@ void main() {
       expect(find.text('计划 plan-1 执行段 segment-1'), findsOneWidget);
     },
   );
+}
+
+SalesRepository _analysisRepository() {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) => handler.resolve(
+        Response<dynamic>(
+          requestOptions: request,
+          statusCode: 200,
+          data: [
+            {
+              'orderItemId': 'order-item-1',
+              'goodsCode': 'P-001',
+              'goodsName': '成品灯',
+              'qty': 10,
+              'plannedQty': 0,
+              'producedQty': 0,
+              'shippedQty': 0,
+              'materialAnalysis': {
+                'analysisId': 'analysis-1',
+                'analysisStatus': 'PARTIAL',
+                'requestedQty': 10,
+                'readyNowQty': 4,
+                'submittedQty': 4,
+                'approvedQty': 0,
+                'analyzedAt': '2026-08-08T10:00:00Z',
+              },
+              'links': <Map<String, dynamic>>[],
+            },
+          ],
+        ),
+      ),
+    ),
+  );
+  return SalesRepository(ApiClient(dio), SalesDocType.order);
 }
 
 SalesRepository _repository() {

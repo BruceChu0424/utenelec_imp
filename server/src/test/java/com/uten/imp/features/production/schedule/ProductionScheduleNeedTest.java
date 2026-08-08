@@ -1,12 +1,6 @@
 package com.uten.imp.features.production.schedule;
 
-import com.uten.imp.common.docnumber.DocNumberService;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.mrp.MrpService;
-import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
-import com.uten.imp.features.production.plan.ProductionPlanItemRepository;
-import com.uten.imp.features.production.plan.ProductionPlanRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -16,8 +10,6 @@ import java.math.BigDecimal;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -64,10 +56,6 @@ class ProductionScheduleNeedTest {
         when(mrp.isPlanningWriteReady()).thenReturn(false);
         ProductionScheduleService service = new ProductionScheduleService(
                 em,
-                mock(ProductionPlanRepository.class),
-                mock(ProductionPlanItemRepository.class),
-                mock(PlanOrderItemLinkRepository.class),
-                mock(DocNumberService.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
                 mrp,
@@ -75,28 +63,6 @@ class ProductionScheduleNeedTest {
 
         assertThat(service.shortageCount()).isEqualTo(Map.of("count", 0L));
         verify(em, never()).createNativeQuery(org.mockito.ArgumentMatchers.anyString());
-    }
-
-    @Test
-    void mergePlanRejectsAProductWithoutAnActiveBomBeforeCreatingThePlan() {
-        assertThatThrownBy(() -> ProductionScheduleService.requireBomReady(
-                false, "280149012", "单联单控开关"))
-                .isInstanceOf(ApiException.class)
-                .satisfies(error -> {
-                    ApiException api = (ApiException) error;
-                    assertThat(api.getCode()).isEqualTo(ErrorCode.BUSINESS);
-                    assertThat(api.getMessage())
-                            .contains("280149012")
-                            .contains("单联单控开关")
-                            .contains("请先维护组装物料资料");
-                });
-    }
-
-    @Test
-    void mergePlanAllowsAProductWithAnActiveBomEvenWhenItHasLowerLevels() {
-        assertThatCode(() -> ProductionScheduleService.requireBomReady(
-                true, "FG-MULTI", "多层组装成品"))
-                .doesNotThrowAnyException();
     }
 
     private static BigDecimal bd(String value) {

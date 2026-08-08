@@ -162,7 +162,27 @@ erDiagram
     HvacDevice ||--o{ HvacCommand : "指令历史"
 ```
 
-### 2.7 生产履约（当前 V150–V164）
+### 2.7 生产计划前物料分析（V234 源码候选）
+
+> 分析先于正式计划；全树可以平铺，但必须保留 analysis item、父节点和路径。SUBMITTED/APPROVED 是 plan link 状态，不是分析头状态。V234 未核验目标库和真实 UAT，生产 **NO-GO**。
+
+```mermaid
+erDiagram
+    SalesOrderItem ||--o{ ProductionMaterialAnalysisItem : "销售来源"
+    ProductionMaterialAnalysis ||--|{ ProductionMaterialAnalysisItem : "需求行"
+    ProductionMaterialAnalysisItem ||--o{ ProductionMaterialAnalysisMaterial : "全树节点"
+    ProductionMaterialAnalysisMaterial ||--o{ ProductionMaterialAnalysisMaterial : "父子路径"
+    ProductionMaterialAnalysisMaterial ||--o| ProductionMaterialAnalysisItem : "MAKE_COMPONENT child"
+    ProductionMaterialAnalysis ||--o{ PreplanSupplyAction : "备料动作"
+    PreplanSupplyAction ||--|{ PreplanSupplyActionAllocation : "数量分摊"
+    ProductionMaterialAnalysisMaterial ||--o{ PreplanSupplyActionAllocation : "节点来源"
+    ProductionMaterialAnalysisItem ||--o{ ProductionMaterialAnalysisPlanLink : "分批提交"
+    ProductionPlan ||--|| ProductionMaterialAnalysisPlanLink : "草稿到批准"
+```
+
+分析和 action 不写 `stock_reservations`。普通 generate 只创建计划草稿、ACTIVE planning draft 和 SUBMITTED plan link；approve 才按一个目标仓原子创建 READY、完整预留、DRAW 和销售分摊。BUY/委外/MAKE 未来供给只影响预计量，不能伪装为物理预留。
+
+### 2.7.1 正式生产履约（V150–V164 历史/兼容主链）
 
 > 执行段是计划明细的执行批次，不是新的父生产计划；`subplan_links` 才指向另一张真实自制件生产计划。物料需求、现货占用和未来供给分别记录，不能用一个状态字段互相替代。
 
@@ -315,4 +335,4 @@ erDiagram
 
 ---
 
-**最后更新**：2026-08-02 · **状态**：生产履约已区分真实子计划、执行分段、预留、未来供给和实物移动；V196–V202 采购/委外财务审批、预计到货与超量数量授权仅为源码候选，且不等于 IQC；公司目标库仍只确认到 V190，生产 **NO-GO**
+**最后更新**：2026-08-08 · **状态**：V234 生产计划前物料分析已有源码候选，正式履约继续复用 V150+ 计划、执行分段、预留、DRAW、报工和库存主链；目标库、完整 IQC、真实岗位/实物 UAT 和发布签字未确认，生产 **NO-GO**

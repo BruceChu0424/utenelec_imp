@@ -1,7 +1,7 @@
 // 应收应付台账页（只读查询，ar_ap_ledger:view）。
 //
 // direction(AR/AP) + settled(全部/未清/已清) 双向过滤 + 关键词 + 日期范围。
-// 列表展示：单据号/来源单号/方向/往来方/立帐额/已核销/余额/状态/已结。
+// 列表展示：单据号/来源单号/方向/往来方/到期日/结账方式/金额/备注/状态。
 // 名称解析：AR→客户 / AP→供应商（FinanceNameService）。往来方显示用 partyId + direction。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +21,20 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
+
+const Map<int, String> financeArApSettlementStyleLabels = {
+  1: '现金',
+  2: '提货',
+  3: '代付',
+  4: '支票',
+  6: '月结',
+  7: '垫付',
+  8: '汇款',
+  10: '代收',
+};
+
+String financeArApSettlementStyleLabel(int? code) =>
+    financeArApSettlementStyleLabels[code] ?? '未设置';
 
 class FinanceArApPage extends ConsumerStatefulWidget {
   const FinanceArApPage({super.key});
@@ -92,9 +106,18 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   }
 
   List<MasterColumnDef<ArApLedgerItem>> _columns(FinanceNameService names) {
+    String dateLabel(String? value) {
+      if (value == null || value.isEmpty) return '—';
+      return value.length <= 10 ? value : value.substring(0, 10);
+    }
+
     String partyLabel(ArApLedgerItem it) {
-      if (it.direction == 'AR') return names.client(it.clientId);
-      if (it.direction == 'AP') return names.supplier(it.supplierId);
+      if (it.direction == 'AR') {
+        return it.clientName ?? names.client(it.clientId);
+      }
+      if (it.direction == 'AP') {
+        return it.supplierName ?? names.supplier(it.supplierId);
+      }
       return '—';
     }
 
@@ -113,6 +136,19 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
             it.direction == 'AR' ? '应收' : (it.direction == 'AP' ? '应付' : '—'),
       ),
       MasterColumnDef(
+        key: 'salesOrderNos',
+        label: '销售订单号',
+        width: 190,
+        value: (it) =>
+            it.salesOrderNos.isEmpty ? '—' : it.salesOrderNos.join('、'),
+      ),
+      MasterColumnDef(
+        key: 'sourceDocNo',
+        label: '发运/来源单号',
+        width: 160,
+        value: (it) => it.sourceDocNo,
+      ),
+      MasterColumnDef(
         key: 'party',
         label: '往来方',
         width: 200,
@@ -124,27 +160,67 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         width: 120,
         type: 'date',
         sortable: true,
-        value: (it) => (it.billDate ?? '').substring(0, 10),
+        value: (it) => dateLabel(it.billDate),
       ),
       MasterColumnDef(
-        key: 'amountOriginalLocal',
-        label: '立帐额',
-        width: 130,
-        type: 'money',
-        sortable: true,
-        value: (it) => it.amountOriginalLocal?.toStringAsFixed(2),
+        key: 'dueDate',
+        label: '到期日',
+        width: 120,
+        type: 'date',
+        value: (it) => dateLabel(it.dueDate),
       ),
       MasterColumnDef(
-        key: 'amountSettled',
-        label: '已核销',
+        key: 'settlementStyleLegacy',
+        label: '结账方式',
+        width: 100,
+        value: (it) => financeArApSettlementStyleLabel(
+          it.settlementStyleLegacy,
+        ),
+      ),
+      MasterColumnDef(
+        key: 'currency',
+        label: '币别',
+        width: 90,
+        value: (it) => it.currencyCode ?? it.currencyName,
+      ),
+      MasterColumnDef(
+        key: 'exchangeRate',
+        label: '立账汇率',
+        width: 100,
+        type: 'number',
+        value: (it) => it.exchangeRate?.toStringAsFixed(6),
+      ),
+      MasterColumnDef(
+        key: 'amountOriginal',
+        label: '应收款金额',
         width: 130,
         type: 'money',
-        sortable: true,
-        value: (it) => it.amountSettled?.toStringAsFixed(2),
+        value: (it) => it.amountOriginal?.toStringAsFixed(2),
+      ),
+      MasterColumnDef(
+        key: 'amountReceivedOriginal',
+        label: '已收款金额',
+        width: 130,
+        type: 'money',
+        value: (it) => it.amountReceivedOriginal?.toStringAsFixed(2),
+      ),
+      MasterColumnDef(
+        key: 'amountWriteOffOriginal',
+        label: '冲销金额',
+        width: 120,
+        type: 'money',
+        value: (it) => it.amountWriteOffOriginal?.toStringAsFixed(2),
+      ),
+      MasterColumnDef(
+        key: 'amountBalanceOriginal',
+        label: '未收金额',
+        width: 130,
+        type: 'money',
+        value: (it) => it.amountBalanceOriginal?.toStringAsFixed(2),
       ),
       MasterColumnDef(
         key: 'amountBalance',
-        label: '余额',
+        label: '未收人民币',
         width: 130,
         type: 'money',
         sortable: true,
@@ -155,6 +231,12 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         label: '已结',
         width: 80,
         value: (it) => it.settled ? '是' : '否',
+      ),
+      MasterColumnDef(
+        key: 'remark',
+        label: '备注',
+        width: 180,
+        value: (it) => it.remark,
       ),
     ];
   }

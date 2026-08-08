@@ -20,6 +20,7 @@ import '../models/client_node.dart';
 import '../models/product_category_node.dart';
 import '../repositories/client_category_repository.dart';
 import '../repositories/client_repository.dart';
+import 'category_tree_search.dart';
 import 'uten_category_tree_view.dart';
 
 /// 老库遗留的财务占位客户（非真实客户），列表/搜索一律排除——与
@@ -47,11 +48,16 @@ Future<ClientListItem?> showUtenClientPicker(
       isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.lg),
+        ),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: SizedBox(height: MediaQuery.sizeOf(ctx).height * 0.85, child: sheet),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * 0.85,
+          child: sheet,
+        ),
       ),
     );
   }
@@ -69,8 +75,10 @@ Future<ClientListItem?> showUtenClientPicker(
       ),
     ),
     transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-          .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
       child: child,
     ),
   );
@@ -88,6 +96,10 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   String? _selectedCategoryId;
   final _keywordCtl = TextEditingController();
   Timer? _debounce;
+  String _globalQuery = '';
+  Set<String>? _visibleFilterIds;
+  bool _showingGlobalResults = false;
+  int _requestVersion = 0;
   int _page = 1;
   List<ClientListItem>? _items;
   int _totalPages = 1;
@@ -99,7 +111,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
     super.initState();
     if (widget.tree.isNotEmpty) {
       _selectedCategoryId = widget.tree.first.id;
-      _reload();
+      _reloadCategory();
     }
   }
 
@@ -111,45 +123,84 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
+    _debounce?.cancel();
+    _requestVersion++;
+    _keywordCtl.clear();
     setState(() {
       _selectedCategoryId = node.id;
+      _globalQuery = '';
+      _visibleFilterIds = null;
+      _showingGlobalResults = false;
       _page = 1;
     });
-    _reload();
+    _reloadCategory();
   }
 
   void _onKeywordChanged(String v) {
     _debounce?.cancel();
+    // 用户继续输入时立即让正在飞行的旧请求失效，避免 300ms 防抖期间旧结果回写。
+    _requestVersion++;
+    final query = v.trim();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      setState(() => _page = 1);
-      _reload();
+      _applyGlobalSearch(query);
     });
   }
 
-  Future<void> _reload() async {
+  Future<void> _applyGlobalSearch(String query) async {
+    if (!mounted) return;
+    if (query.isEmpty) {
+      setState(() {
+        _globalQuery = '';
+        _visibleFilterIds = null;
+        _showingGlobalResults = false;
+        _selectedCategoryId ??= widget.tree.isEmpty
+            ? null
+            : widget.tree.first.id;
+        _page = 1;
+      });
+      await _reloadCategory();
+      return;
+    }
+
+    setState(() {
+      _globalQuery = query;
+      _visibleFilterIds = categoryHits(widget.tree, query);
+      _showingGlobalResults = true;
+      _page = 1;
+    });
+    await _reloadGlobalSearch(allowCategoryFallback: true);
+  }
+
+  Future<void> _reloadCategory() async {
+    final categoryId = _selectedCategoryId;
+    final requestVersion = ++_requestVersion;
+    if (categoryId == null) {
+      if (!mounted) return;
+      setState(() {
+        _items = const [];
+        _totalPages = 1;
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final kw = _keywordCtl.text.trim();
-      final repo = ref.read(clientRepositoryProvider);
-      final r = (_selectedCategoryId != null)
-          ? await repo.list(
-              _selectedCategoryId!,
-              page: _page,
-              keyword: kw.isEmpty ? null : kw,
-            )
-          : await repo.search(kw, page: _page);
-      if (!mounted) return;
+      final r = await ref
+          .read(clientRepositoryProvider)
+          .list(categoryId, page: _page);
+      if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _items = r.items.where((c) => !_isStubClient(c)).toList();
-        _totalPages = r.totalPages;
+        _totalPages = r.totalPages < 1 ? 1 : r.totalPages;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _error = '加载客户失败，请稍后重试';
         _loading = false;
@@ -157,10 +208,94 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
     }
   }
 
+  Future<void> _reloadGlobalSearch({
+    required bool allowCategoryFallback,
+  }) async {
+    final query = _globalQuery;
+    final requestedPage = _page;
+    final requestVersion = ++_requestVersion;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final repo = ref.read(clientRepositoryProvider);
+      final result = await repo.search(query, page: requestedPage);
+      if (!mounted ||
+          requestVersion != _requestVersion ||
+          query != _globalQuery ||
+          requestedPage != _page) {
+        return;
+      }
+
+      final items = result.items.where((c) => !_isStubClient(c)).toList();
+      final catHits = categoryHits(widget.tree, query);
+      final visibleIds = <String>{...catHits};
+      String? firstClientCategoryId;
+      for (final client in items) {
+        final categoryId = client.categoryId;
+        if (categoryId == null || categoryId.isEmpty) continue;
+        firstClientCategoryId ??= categoryId;
+        visibleIds.add(categoryId);
+        addAncestors(widget.tree, categoryId, visibleIds);
+      }
+
+      if (items.isEmpty && allowCategoryFallback && requestedPage == 1) {
+        final categoryId = shallowestHit(widget.tree, query, catHits);
+        if (categoryId != null) {
+          final categoryPage = await repo.list(categoryId);
+          if (!mounted ||
+              requestVersion != _requestVersion ||
+              query != _globalQuery ||
+              requestedPage != _page) {
+            return;
+          }
+          setState(() {
+            _selectedCategoryId = categoryId;
+            _visibleFilterIds = catHits;
+            _showingGlobalResults = false;
+            _items = categoryPage.items
+                .where((c) => !_isStubClient(c))
+                .toList();
+            _totalPages = categoryPage.totalPages < 1
+                ? 1
+                : categoryPage.totalPages;
+            _loading = false;
+          });
+          return;
+        }
+      }
+
+      setState(() {
+        _selectedCategoryId =
+            firstClientCategoryId ?? shallowestHit(widget.tree, query, catHits);
+        _visibleFilterIds = visibleIds;
+        _showingGlobalResults = true;
+        _items = items;
+        _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || requestVersion != _requestVersion) return;
+      setState(() {
+        _error = '搜索客户失败，请稍后重试';
+        _loading = false;
+      });
+    }
+  }
+
+  void _reloadCurrentPage() {
+    if (_globalQuery.isNotEmpty && _showingGlobalResults) {
+      _reloadGlobalSearch(allowCategoryFallback: false);
+    } else {
+      _reloadCategory();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final treeWidth = context.breakpoint.isCompact ? 150.0 : 240.0;
+    final treeWidth = context.breakpoint.isCompact ? 176.0 : 240.0;
     return Column(
       children: [
         Padding(
@@ -170,8 +305,9 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
               Expanded(
                 child: Text(
                   '选择客户',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               IconButton(
@@ -194,7 +330,9 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
                       ? const <String>{}
                       : {_selectedCategoryId!},
                   expandOnRowTap: true,
-                  searchHint: '搜索分类',
+                  showSearch: false,
+                  visibleFilterIds: _visibleFilterIds,
+                  header: _buildUnifiedSearch(),
                   onToggleSelect: _onCategoryTap,
                 ),
               ),
@@ -210,22 +348,33 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
   Widget _buildRightPane(ThemeData theme) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: TextField(
-            controller: _keywordCtl,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded, size: 20),
-              hintText: '搜索客户（简称/编号/全称/联系人/手机）',
-              isDense: true,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onChanged: _onKeywordChanged,
-          ),
-        ),
         Expanded(child: _buildList(theme)),
-        if ((_items?.isNotEmpty ?? false) && _totalPages > 1) _buildPager(theme),
+        if ((_items?.isNotEmpty ?? false) && _totalPages > 1)
+          _buildPager(theme),
       ],
+    );
+  }
+
+  Widget _buildUnifiedSearch() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        context.breakpoint.isCompact ? 8 : 16,
+        8,
+        context.breakpoint.isCompact ? 8 : 16,
+        8,
+      ),
+      child: TextField(
+        key: const Key('uten-client-picker-search'),
+        controller: _keywordCtl,
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.search_rounded, size: 20),
+          prefixIconConstraints: const BoxConstraints(minWidth: 36),
+          hintText: '搜索分类/客户',
+          isDense: true,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        onChanged: _onKeywordChanged,
+      ),
     );
   }
 
@@ -286,7 +435,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             onPressed: _page > 1
                 ? () {
                     setState(() => _page -= 1);
-                    _reload();
+                    _reloadCurrentPage();
                   }
                 : null,
           ),
@@ -296,7 +445,7 @@ class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
             onPressed: _page < _totalPages
                 ? () {
                     setState(() => _page += 1);
-                    _reload();
+                    _reloadCurrentPage();
                   }
                 : null,
           ),

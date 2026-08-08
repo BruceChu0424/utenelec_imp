@@ -1,6 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/pages/production_plan_detail_page.dart';
+import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
   group('ProductionMrpErrorGuidance', () {
@@ -101,4 +107,76 @@ void main() {
     await tester.tap(find.text('正在重试'));
     expect(retries, 0);
   });
+
+  testWidgets(
+    'analysis draft returns to analysis, hides generic mutation and keeps approve independent',
+    (tester) async {
+      final api = _planDetailApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionPlanRepositoryProvider.overrideWithValue(
+              ProductionPlanRepository(api),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionPlanEdit,
+              Perm.productionPlanApprove,
+              Perm.productionMaterialAnalysisView,
+            }),
+          ],
+          child: const MaterialApp(
+            home: ProductionPlanDetailPage(id: 'plan-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('return-to-material-analysis')),
+        findsOneWidget,
+      );
+      expect(find.text('回到物料分析'), findsOneWidget);
+      expect(find.text('编辑'), findsNothing);
+      expect(find.text('删除'), findsNothing);
+      expect(find.text('审核'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+ApiClient _planDetailApi() {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) {
+        final Object data = switch (request.path) {
+          '/production/plans/plan-1' => <String, dynamic>{
+            'id': 'plan-1',
+            'billNo': 'SJ-1',
+            'billDate': '2026-08-08',
+            'status': 0,
+            'materialAnalysisId': 'analysis-1',
+            'materialAnalysisItemId': 'analysis-line-1',
+            'allowedActions': [
+              'VIEW',
+              'RETURN_TO_MATERIAL_ANALYSIS',
+              'APPROVE',
+            ],
+            'items': <Map<String, dynamic>>[],
+          },
+          '/production/plans/plan-1/mrp/planning-draft' => <String, dynamic>{},
+          _ => <Map<String, dynamic>>[],
+        };
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: data,
+          ),
+        );
+      },
+    ),
+  );
+  return ApiClient(dio);
 }

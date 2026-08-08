@@ -41,11 +41,11 @@ public class ProductionPlanningRequestValidator {
             ProductionExecutionPlanningService.Snapshot snapshot) {
         Map<CompleteKitAllocator.MaterialKey, String> routes =
                 authoritativeRoutes(request, snapshot);
+        if (!snapshot.noBomPlanItemIds().isEmpty()) {
+            throw conflict("生产计划存在未获 DIRECT_MAKE 或逐计划例外放行的无 BOM 行");
+        }
         CompleteKitAllocator.Allocation allocation =
                 planning.applyRequested(snapshot, request.getSegments());
-        // 「无 BOM」不再视为错误：原材料/叶子件（含自制叶子件，原料走车间领料、本就不进
-        // BOM）无论作为组件还是顶层产品都合法。自制叶子件缺料由派生内核生成「造 N 个」
-        // 裸子计划，可直接报工入库；因此组件层与成品层均不再强制要求 BOM。
         requirePurchaseGeneration(request, allocation);
         return new Validated(snapshot, routes, allocation);
     }

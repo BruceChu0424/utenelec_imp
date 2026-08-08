@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -256,6 +257,22 @@ public class AccountService {
     public AccountDetail update(UUID id, AccountSaveRequest req) {
         tx.bind();
         Account a = requireAccount(id);
+        em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        boolean currencyChanged = !Objects.equals(a.getCurrencyId(), req.getCurrencyId());
+        boolean openingChanged = req.getInitBalance() != null
+                && nz(a.getInitBalance()).compareTo(req.getInitBalance()) != 0;
+        boolean deactivating = "使用".equals(a.getStatus())
+                && req.getStatus() != null
+                && !req.getStatus().isBlank()
+                && !"使用".equals(req.getStatus());
+        if (currencyChanged || openingChanged) {
+            assertHistoricalMoneyFieldsCanChange(
+                    a, currencyChanged && openingChanged ? "币别和期初余额"
+                            : currencyChanged ? "币别" : "期初余额");
+        }
+        if (deactivating) {
+            assertNoApprovedFinancialUsage(a.getId(), "停用");
+        }
         apply(req, a);
         recomputeBalance(a);
         repo.save(a);
@@ -266,6 +283,8 @@ public class AccountService {
     public void delete(UUID id) {
         tx.bind();
         Account a = requireAccount(id);
+        em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        assertNoApprovedFinancialUsage(a.getId(), "删除");
         a.setDeleted(true);
         a.setDeletedAt(OffsetDateTime.now());
         repo.save(a);
@@ -282,6 +301,77 @@ public class AccountService {
         if (req.getParentLegacyId() != null) a.setParentLegacyId(req.getParentLegacyId());
         if (req.getStyleLegacyId() != null) a.setStyleLegacyId(req.getStyleLegacyId());
         if (req.getStatus() != null && !req.getStatus().isBlank()) a.setStatus(req.getStatus());
+    }
+
+    /** 有期初或任何资金事实后，账户币别与期初余额成为不可变历史口径。 */
+    private void assertHistoricalMoneyFieldsCanChange(Account account, String fields) {
+        boolean hasAmounts = nz(account.getInitBalance()).signum() != 0
+                || nz(account.getReceiptsTotal()).signum() != 0
+                || nz(account.getPaymentsTotal()).signum() != 0;
+        long activeFlowCount = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_reconciliations
+                        WHERE account_id=:accountId
+                          AND COALESCE(is_deleted,false)=false
+                        """)
+                .setParameter("accountId", account.getId())
+                .getSingleResult()).longValue();
+        long historicalDocumentCount = financialDocumentUsageCount(account.getId(), "<>0");
+        if (hasAmounts || activeFlowCount > 0 || historicalDocumentCount > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "账户已有期初或资金流水，" + fields + "不可修改；请新建账户或使用调整单");
+        }
+    }
+
+    /** 已审核资金单据仍可能需要红冲，所用账户必须保持可用且不可删除。 */
+    private void assertNoApprovedFinancialUsage(UUID accountId, String action) {
+        long activeFlowCount = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_reconciliations
+                        WHERE account_id=:accountId
+                          AND COALESCE(is_deleted,false)=false
+                        """)
+                .setParameter("accountId", accountId)
+                .getSingleResult()).longValue();
+        if (activeFlowCount > 0 || financialDocumentUsageCount(accountId, "=1") > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "账户仍被已审核资金单据使用，不能" + action + "；请先按业务单据完成红冲");
+        }
+    }
+
+    /**
+     * 账户作为资金收付方的历史单据计数。status=1 用于停用/删除守卫；
+     * status&lt;&gt;0 还包含已红冲事实，用于永久冻结币别与期初口径。
+     */
+    private long financialDocumentUsageCount(UUID accountId, String statusPredicate) {
+        String sql = """
+                SELECT COALESCE(SUM(fact_count),0)
+                FROM (
+                    SELECT COUNT(*) AS fact_count FROM finance_receipts
+                     WHERE account_id=:accountId AND status %s
+                    UNION ALL
+                    SELECT COUNT(*) FROM finance_payments
+                     WHERE account_id=:accountId AND status %s
+                    UNION ALL
+                    SELECT COUNT(*) FROM finance_expenses
+                     WHERE account_id=:accountId AND status %s
+                    UNION ALL
+                    SELECT COUNT(*) FROM finance_other_incomes
+                     WHERE account_id=:accountId AND status %s
+                    UNION ALL
+                    SELECT COUNT(*) FROM finance_bank_transfers
+                     WHERE out_account_id=:accountId AND status %s
+                    UNION ALL
+                    SELECT COUNT(*)
+                    FROM finance_bank_transfer_lines line
+                    JOIN finance_bank_transfers transfer ON transfer.id=line.transfer_id
+                    WHERE line.in_account_id=:accountId AND transfer.status %s
+                ) facts
+                """.formatted(statusPredicate, statusPredicate, statusPredicate,
+                statusPredicate, statusPredicate, statusPredicate);
+        return ((Number) em.createNativeQuery(sql)
+                .setParameter("accountId", accountId)
+                .getSingleResult()).longValue();
     }
 
     /** 余额守恒：balance = init + receipts − payments。 */

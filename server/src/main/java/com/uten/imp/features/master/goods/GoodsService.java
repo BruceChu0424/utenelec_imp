@@ -525,6 +525,11 @@ public class GoodsService {
         tx.bind();
         ensurePriceEditIfTouched(null, req);   // 新建：oldGoods=null，提交了价/折扣即视为触碰
         Goods g = new Goods();
+        if (req.getProductionBomPolicy() == null
+                || req.getProductionBomPolicy().isBlank()) {
+            g.setProductionBomPolicy(defaultProductionBomPolicy(
+                    req.getSourceType()));
+        }
         apply(req, g);
         g.setCode(masterCodeService.nextCode(CODE_PREFIX));
         if (g.getStatus() == null) g.setStatus("使用");
@@ -716,6 +721,11 @@ public class GoodsService {
             }
         }
         g.setSourceType(req.getSourceType());
+        if (req.getProductionBomPolicy() != null
+                && !req.getProductionBomPolicy().isBlank()) {
+            g.setProductionBomPolicy(normalizeProductionBomPolicy(
+                    req.getProductionBomPolicy()));
+        }
         // 成本预算（「成本预算」页签字段；前端表单全量回传，null 即清空）
         g.setSourceE(req.getSourceE());
         g.setMachiningE(req.getMachiningE());
@@ -764,6 +774,7 @@ public class GoodsService {
                 g.getWorkRate(), g.getWorkE(), g.getLostRate(), g.getLostE(),
                 g.getRentRate(), g.getRentE(), g.getMakeRate(), g.getMakeE(),
                 g.getCTotal(), g.getGTotal(), g.getSourceType(),
+                g.getProductionBomPolicy(),
                 g.getThicknessUnitLegacyId(), g.getMWeightUnitLegacyId(),
                 false, false, stock.getTotalQty(), stock.getRows(), g.getVersion());
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
@@ -798,6 +809,7 @@ public class GoodsService {
                         ? (g.getUnitLegacyId() == null ? null : unitNames.get(g.getUnitLegacyId()))
                         : (g.getUnit().isDeleted() ? null : g.getUnit().getName()),
                 g.getSourceType(),
+                g.getProductionBomPolicy(),
                 g.getCategory() == null ? null : g.getCategory().getId(),
                 g.isAutoCreated(),
                 stockByGoods.getOrDefault(g.getId(), BigDecimal.ZERO));
@@ -813,5 +825,23 @@ public class GoodsService {
         return repo.findById(id)
                 .filter(g -> !g.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "货品不存在"));
+    }
+
+    private static String normalizeProductionBomPolicy(String rawPolicy) {
+        String policy = rawPolicy.strip().toUpperCase(java.util.Locale.ROOT);
+        if (!java.util.Set.of(
+                "BOM_REQUIRED", "DIRECT_MAKE", "NOT_PRODUCED").contains(policy)) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "生产 BOM 策略必须为 BOM_REQUIRED、DIRECT_MAKE 或 NOT_PRODUCED");
+        }
+        return policy;
+    }
+
+    private static String defaultProductionBomPolicy(String sourceType) {
+        String normalized = sourceType == null ? "" : sourceType.strip();
+        return "采购".equals(normalized) || "委外".equals(normalized)
+                ? "NOT_PRODUCED"
+                : "BOM_REQUIRED";
     }
 }

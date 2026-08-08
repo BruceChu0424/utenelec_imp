@@ -78,6 +78,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   final _shipLinkPhone = TextEditingController();
   final _parcelCount = TextEditingController();
   final _outType = TextEditingController();
+
   /// 退货原因（销售退货专属）。
   final _returnReason = TextEditingController();
 
@@ -103,6 +104,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
 
   final _grid = UtenEditableGridController<SalesGridRow>();
   final _scrollCtl = ScrollController();
+
   /// 网格底部「总数量」实时汇总（行增删/数量改动时刷新）。
   final _totalQtyNotifier = ValueNotifier<double>(0);
   bool _saving = false;
@@ -274,7 +276,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         // 静默降级
       }
     }
-    if (_grid.isEmpty) _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+    if (_grid.isEmpty) {
+      _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -381,8 +385,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         id: li.goodsId,
         name: ref.read(salesMasterNameServiceProvider).goods(li.goodsId),
       );
-      rows.add(SalesGridRow.fromLinked(li, goods,
-          amountUsesDiscount: _amountUsesDiscount));
+      rows.add(
+        SalesGridRow.fromLinked(
+          li,
+          goods,
+          amountUsesDiscount: _amountUsesDiscount,
+        ),
+      );
     }
     // 引入前清掉占位空白行（新建态预填的无货品空行），直接显示引入项，不留顶部空行。
     _grid.removeWhere(
@@ -631,7 +640,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       if (_cfg.hasWarehouse && _warehouseId != null)
         'warehouseId': _warehouseId,
       if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
-      if (_cfg.hasCurrency) 'exchangeRate': double.tryParse(_rate.text) ?? 1,
+      if (_cfg.hasCurrency && _cfg.hasExchangeRate)
+        'exchangeRate': double.tryParse(_rate.text) ?? 1,
       if (_cfg.hasCurrency && _taxRate.text.isNotEmpty)
         'taxRate': double.tryParse(_taxRate.text),
       if (_cfg.hasSeller && _sellerId != null) 'sellerId': _sellerId,
@@ -808,16 +818,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                           ? '请选择币种'
                                           : null,
                                     ),
-                                    TextField(
-                                      controller: _rate,
-                                      keyboardType:
-                                          const TextInputType.numberWithOptions(
-                                            decimal: true,
-                                          ),
-                                      decoration: const InputDecoration(
-                                        labelText: '汇率',
+                                    if (_cfg.hasExchangeRate)
+                                      TextField(
+                                        controller: _rate,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        decoration: const InputDecoration(
+                                          labelText: '汇率',
+                                        ),
                                       ),
-                                    ),
                                     TextField(
                                       controller: _taxRate,
                                       keyboardType:
@@ -868,7 +879,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                                       },
                                     ),
                                   if (widget.docType == SalesDocType.order)
-                                    _shipmentPolicyField(theme),
+                                    _shipmentPolicyField(),
                                   if (_cfg.hasContractInfo) ...[
                                     TextField(
                                       controller: _contractNo,
@@ -1019,8 +1030,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                           colorEntries: names.colorEntries,
                           unitEntries: names.unitEntries,
                         ),
-                        createBlankRow: () =>
-                            SalesGridRow(amountUsesDiscount: _amountUsesDiscount),
+                        createBlankRow: () => SalesGridRow(
+                          amountUsesDiscount: _amountUsesDiscount,
+                        ),
                         cloneRow: (r) => r.clone(),
                         // 网格底部「添加行」上方：总数量 + 总金额（右对齐实时汇总）。
                         footer: Row(
@@ -1037,7 +1049,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                               builder: (_, t, _) => Text(
                                 '总金额 ¥${t.toStringAsFixed(2)}',
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w700),
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
@@ -1090,14 +1103,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
     );
   }
 
-  Widget _shipmentPolicyField(ThemeData theme) {
+  Widget _shipmentPolicyField() {
     final value = _shipmentPolicy;
     // 可编辑：未选择(null) 或 当前值仍是新单可选策略。历史 CUSTOMER_CONFIRM/LEGACY 只读保留。
     final editable =
         value == null || SalesShipmentPolicy.selectable.contains(value);
-    final description = (editable && value == null)
-        ? '请选择发运策略：允许分批 或 整单齐套。'
-        : salesShipmentPolicyDescription(value);
     return Column(
       key: const ValueKey('sales-order-shipment-policy-field'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1131,15 +1141,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
             ),
             child: Text(salesShipmentPolicyLabel(value)),
           ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          description,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: editable
-                ? theme.colorScheme.onSurfaceVariant
-                : theme.colorScheme.tertiary,
-          ),
-        ),
       ],
     );
   }

@@ -64,12 +64,12 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     });
     try {
       await ref.read(financeNameServiceProvider).ensureLoaded();
-      // 费用/收入单：预载 EXPENSE/INCOME 类别用于明细行项目名解析。
-      if (_cfg.isAllocate) {
+      // 费用/收入单及销售收款的其它费用项目：预载类别名称。
+      if (_cfg.isAllocate || _cfg.type == FinanceDocType.receipt) {
         await ref
             .read(financeNameServiceProvider)
             .loadStyleCategory(
-              _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME',
+              _cfg.type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
             );
       }
       final d = await ref
@@ -232,12 +232,25 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
 
   Widget _headerCard(ThemeData theme, FinanceNameService names) {
     final d = _detail!;
+    final isReceipt = _cfg.type == FinanceDocType.receipt;
     final partyName = _cfg.isClient
         ? names.client(d.clientId)
         : _cfg.isSupplier
         ? names.supplier(d.supplierId)
         : null;
     final accountName = names.account(d.accountId ?? d.outAccountId);
+    final receiptLocal = d.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.amountLocal ?? 0),
+    );
+    final writeOffLocal = d.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.writeOffLocal ?? 0),
+    );
+    final appliedLocal = d.items.fold<double>(
+      0,
+      (sum, item) => sum + (item.appliedAmountLocal ?? 0),
+    );
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
@@ -245,14 +258,24 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       if (_cfg.hasParty) _KV(_cfg.partyLabel, partyName),
       _KV(_cfg.accountLabel, accountName),
-      if (_cfg.hasCurrency) _KV('币种', names.currency(d.currencyId)),
-      if (d.exchangeRate != null) _KV('汇率', d.exchangeRate?.toString()),
+      if (_cfg.hasCurrency && !isReceipt)
+        _KV('币种', names.currency(d.currencyId)),
+      if (!isReceipt && d.exchangeRate != null)
+        _KV('汇率', d.exchangeRate?.toString()),
       if (_cfg.hasBankFee && d.bankFee != null)
-        _KV('银行手续费', d.bankFee?.toStringAsFixed(2)),
+        _KV('手续费（人民币）', d.bankFee?.toStringAsFixed(2)),
       if (_cfg.hasOtherFee && d.otherFee != null)
-        _KV('其它手续费', d.otherFee?.toStringAsFixed(2)),
+        _KV('其它费用（人民币）', d.otherFee?.toStringAsFixed(2)),
+      if (_cfg.hasOtherFee && d.otherFeeStyleId != null)
+        _KV('其它费用项目', names.styleName(d.otherFeeStyleId, 'EXPENSE')),
       if (_cfg.hasInvoiceNo) _KV('发票号', d.invoiceNo),
-      _KV('合计(本币)', d.amountLocal?.toStringAsFixed(2)),
+      if (isReceipt) ...[
+        _KV('本次收到金额（人民币）', receiptLocal.toStringAsFixed(2)),
+        _KV('冲销费用（人民币）', writeOffLocal.toStringAsFixed(2)),
+        _KV('本次总收到金额（人民币）', (receiptLocal + writeOffLocal).toStringAsFixed(2)),
+        _KV('冲减应收账面金额（人民币）', appliedLocal.toStringAsFixed(2)),
+      ] else
+        _KV('合计(本币)', d.amountLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
@@ -311,10 +334,78 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     }
     final styleCat = _cfg.type == FinanceDocType.expense ? 'EXPENSE' : 'INCOME';
     final columns = <MasterColumnDef<FinanceDocItem>>[
-      if (_cfg.isSettle) ...[
+      if (_cfg.type == FinanceDocType.receipt) ...[
         MasterColumnDef(
           key: 'bill',
-          label: '核销单据',
+          label: _cfg.isClient ? '应收单号' : '应付单号',
+          width: 180,
+          value: (it) => it.appliedBillNo,
+        ),
+        MasterColumnDef(
+          key: 'currency',
+          label: '币别',
+          width: 100,
+          value: (it) => names.currency(it.currencyId),
+        ),
+        MasterColumnDef(
+          key: 'amountOriginal',
+          label: _cfg.isClient ? '本次收款金额' : '本次付款金额',
+          width: 130,
+          type: 'money',
+          value: (it) => it.amountOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'exchangeRate',
+          label: '汇率',
+          width: 90,
+          type: 'number',
+          value: (it) => it.exchangeRate?.toStringAsFixed(4),
+        ),
+        MasterColumnDef(
+          key: 'amountLocal',
+          label: '换算人民币',
+          width: 110,
+          type: 'money',
+          value: (it) => it.amountLocal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'writeOffAmount',
+          label: '冲销金额（原币）',
+          width: 110,
+          type: 'money',
+          value: (it) => it.writeOffAmount?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'writeOffLocal',
+          label: '冲销人民币',
+          width: 110,
+          type: 'money',
+          value: (it) => it.writeOffLocal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'balanceBeforeOriginal',
+          label: _cfg.isClient ? '收款前未收' : '付款前未付',
+          width: 110,
+          type: 'money',
+          value: (it) => it.balanceBeforeOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'balanceAfterOriginal',
+          label: _cfg.isClient ? '收款后未收' : '付款后未付',
+          width: 110,
+          type: 'money',
+          value: (it) => it.balanceAfterOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'remark',
+          label: '备注',
+          width: 160,
+          value: (it) => it.remark,
+        ),
+      ] else if (_cfg.isSettle) ...[
+        MasterColumnDef(
+          key: 'bill',
+          label: '应付单号',
           width: 180,
           value: (it) => it.appliedBillNo,
         ),

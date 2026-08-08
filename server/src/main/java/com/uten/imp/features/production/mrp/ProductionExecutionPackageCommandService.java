@@ -151,8 +151,9 @@ public class ProductionExecutionPackageCommandService {
                                                 material.colorId(), "NONE")));
             }
         }
-        List<ProductionMaterialDemand> demands =
-                ledger.createDemands(begin.planningPackage(), demandDrafts);
+        List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
+                ? List.of()
+                : ledger.createDemands(begin.planningPackage(), demandDrafts);
         Map<UUID, List<ProductionMaterialDemand>> demandsBySegment =
                 demands.stream().collect(Collectors.groupingBy(
                         ProductionMaterialDemand::getExecutionSegmentId,
@@ -173,12 +174,19 @@ public class ProductionExecutionPackageCommandService {
                     segment.segment().getStatus())) {
                 continue;
             }
+            List<ProductionMaterialDemand> segmentDemands =
+                    demandsBySegment.getOrDefault(
+                            segment.segment().getId(), List.of());
+            if (segmentDemands.isEmpty()) {
+                // DIRECT_MAKE / authorized no-BOM product: READY is a valid
+                // zero-material execution segment and must not create an empty DRAW.
+                continue;
+            }
             MrpGenerateResult draw = createDraw(
                     plan,
                     begin.planningPackage(),
                     segment.segment(),
-                    demandsBySegment.getOrDefault(
-                            segment.segment().getId(), List.of()),
+                    segmentDemands,
                     allocatedByDemand);
             draws.put(segment.segment().getId(), draw);
         }

@@ -21,8 +21,9 @@ import java.util.UUID;
  * <p>核销关系：{@code finance_receipt_lines.applied_ledger_id} / {@code finance_payment_lines.applied_ledger_id}
  * 显式指向本表 id（取代老库 M_in.M_In 累加推断）。
  *
- * <p>余额等式：{@code amountBalance = amountOriginalLocal − amountSettled}（Service 维护）。
- * DIRECT_RECEIPT/DIRECT_PAYMENT 允许 balance 为负（客户/供应商预付款）。
+ * <p>兼容余额等式：{@code amountBalance = amountOriginalLocal − amountSettled}（Service 维护）。
+ * V236 起同时保存到账/费用冲销拆分以及原币余额；V236 前汇率质量无法确认的原币拆分保持 null，
+ * 不按历史汇率反推。DIRECT_RECEIPT/DIRECT_PAYMENT 允许 balance 为负（客户/供应商预付款）。
  */
 @Getter
 @Setter
@@ -85,6 +86,26 @@ public class ArApLedger extends SoftDeletableEntity {
     @Column(name = "amount_settled", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountSettled = BigDecimal.ZERO;
 
+    /** 累计到账原币；V236 前汇率未核验的历史行可为 null。 */
+    @Column(name = "amount_received_original", precision = 18, scale = 4)
+    private BigDecimal amountReceivedOriginal;
+
+    /** 累计到账本币；V236 前按既有 amount_settled 保守回填。 */
+    @Column(name = "amount_received_local", nullable = false, precision = 18, scale = 4)
+    private BigDecimal amountReceivedLocal = BigDecimal.ZERO;
+
+    /** 累计费用冲销原币；无可靠历史分摊事实时为 null。 */
+    @Column(name = "amount_write_off_original", precision = 18, scale = 4)
+    private BigDecimal amountWriteOffOriginal;
+
+    /** 累计费用冲销本币。 */
+    @Column(name = "amount_write_off_local", nullable = false, precision = 18, scale = 4)
+    private BigDecimal amountWriteOffLocal = BigDecimal.ZERO;
+
+    /** 原币未收余额 = 原币应收 − 原币到账 − 原币冲销；历史未核验行可为 null。 */
+    @Column(name = "amount_balance_original", precision = 18, scale = 4)
+    private BigDecimal amountBalanceOriginal;
+
     /** 未核销余额 = original_local − settled（Service 维护；预付款可负）。 */
     @Column(name = "amount_balance", nullable = false, precision = 18, scale = 4)
     private BigDecimal amountBalance = BigDecimal.ZERO;
@@ -100,6 +121,10 @@ public class ArApLedger extends SoftDeletableEntity {
     /** PStyle 结算方式 id（老库 B_PStyle 字典未 dump，暂不 FK）。 */
     @Column(name = "settlement_type_id")
     private UUID settlementTypeId;
+
+    /** 老库/销售 PStyle 小整数快照（V70 已建列，前端按销售结帐方式字典渲染）。 */
+    @Column(name = "settlement_style_legacy")
+    private Short settlementStyleLegacy;
 
     /** 0 草稿 / 1 已审 / -1 红冲（跨模块立帐默认 1=已生效）。 */
     @Column(nullable = false)

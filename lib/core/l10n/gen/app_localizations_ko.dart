@@ -2320,10 +2320,22 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionHubScheduleSub => '계획·진행·완료';
 
   @override
-  String get productionHubPlan => '생산 계획';
+  String get productionHubPlan => '새 생산 계획';
 
   @override
-  String get productionHubPlanSub => '계획·내역·승인';
+  String get productionHubPlanSub => '판매 주문 참조 또는 수동 생성·이력';
+
+  @override
+  String get productionHubPlanHistory => '생산 계획 이력';
+
+  @override
+  String get productionHubPlanHistorySub => '계획, 승인 및 배치 기록 조회';
+
+  @override
+  String get productionHubMaterialAnalysis => '자재 준비 분석';
+
+  @override
+  String get productionHubMaterialAnalysisSub => '준비도·경로 확인·배치 계획';
 
   @override
   String get productionHubDaily => '생산 일보';

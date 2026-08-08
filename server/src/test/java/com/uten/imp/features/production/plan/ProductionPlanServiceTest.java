@@ -5,6 +5,7 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
+import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.mrp.MrpService;
 import com.uten.imp.features.production.mrp.ProductionPlanningDraftService;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
@@ -47,6 +48,7 @@ class ProductionPlanServiceTest {
     private EmployeeNameResolver nameResolver;
     private EntityManager em;
     private ChainNoticeService chainNotice;
+    private MaterialAnalysisService materialAnalysisService;
 
     private Query allocationLock;
     private Query plannedIncrement;
@@ -59,6 +61,8 @@ class ProductionPlanServiceTest {
     private Query executionV1ParentLink;
     private Query unlinkOrderLock;
     private Query plannedDecrement;
+    private Query analysisHeaderLock;
+    private Query analysisPlanConsistency;
 
     private ProductionPlanService service;
 
@@ -75,6 +79,7 @@ class ProductionPlanServiceTest {
         em = mock(EntityManager.class);
         DocNumberService docNumbers = mock(DocNumberService.class);
         chainNotice = mock(ChainNoticeService.class);
+        materialAnalysisService = mock(MaterialAnalysisService.class);
 
         allocationLock = query();
         plannedIncrement = query();
@@ -87,6 +92,8 @@ class ProductionPlanServiceTest {
         executionV1ParentLink = query();
         unlinkOrderLock = query();
         plannedDecrement = query();
+        analysisHeaderLock = query();
+        analysisPlanConsistency = query();
 
         when(plannedIncrement.executeUpdate()).thenReturn(1);
         when(historicalLinkCount.getSingleResult()).thenReturn(0L);
@@ -96,6 +103,8 @@ class ProductionPlanServiceTest {
         when(purchaseDownstream.getResultList()).thenReturn(List.of());
         when(subplanDownstream.getResultList()).thenReturn(List.of());
         when(executionV1ParentLink.getResultList()).thenReturn(List.of());
+        when(analysisHeaderLock.getResultList()).thenReturn(List.of());
+        when(analysisPlanConsistency.getResultList()).thenReturn(List.of());
         when(mrpService.isPlanningWriteReady()).thenReturn(false);
 
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
@@ -134,13 +143,46 @@ class ProductionPlanServiceTest {
             if (sql.contains("SET planned_qty = COALESCE(planned_qty,0) - :a")) {
                 return plannedDecrement;
             }
+            if (sql.contains("FOR UPDATE OF analysis")) {
+                return analysisHeaderLock;
+            }
+            if (sql.contains("analysis_link.submitted_qty")) {
+                return analysisPlanConsistency;
+            }
             throw new AssertionError("unexpected SQL: " + sql);
         });
 
         service = new ProductionPlanService(
                 planRepo, itemRepo, linkRepo, mrpService, planningDraftService,
                 tx, currentUser, nameResolver, em, docNumbers, chainNotice,
-                mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class));
+                mock(com.uten.imp.features.production.ProductionDocumentAccessPolicy.class),
+                materialAnalysisService);
+    }
+
+    @Test
+    void approveAnalysisPlanRejectsBomDriftBeforeChangingPlanOrSalesQuantities() {
+        UUID analysisId = UUID.randomUUID();
+        UUID analysisItemId = UUID.randomUUID();
+        ProductionPlan plan = plan((short) 0);
+        plan.setMaterialAnalysisId(analysisId);
+        plan.setMaterialAnalysisItemId(analysisItemId);
+        ProductionPlanItem item = item(plan, null, "4");
+        arrangePlan(plan, List.of(item));
+        when(analysisHeaderLock.getResultList()).thenReturn(
+                java.util.Collections.singletonList(
+                        new Object[]{analysisId, analysisItemId}));
+        ApiException bomDrift = new ApiException(ErrorCode.CONFLICT, "BOM changed");
+        org.mockito.Mockito.doThrow(bomDrift).when(materialAnalysisService)
+                .requireCurrentBomSnapshot(analysisId, java.util.Set.of(analysisItemId));
+
+        ApiException error = assertThrows(ApiException.class, () -> service.approve(plan.getId()));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertEquals((short) 0, plan.getStatus());
+        verify(materialAnalysisService).requireCurrentBomSnapshot(
+                analysisId, java.util.Set.of(analysisItemId));
+        verify(planRepo, never()).save(plan);
+        verify(plannedIncrement, never()).executeUpdate();
     }
 
     @Test

@@ -196,14 +196,18 @@ class ArApLedgerRepository {
   Future<PagedResult<ArApLedgerItem>> openItemsForParty({
     required String direction,
     required String partyId,
+    int page = 1,
     int size = 50,
+    String? keyword,
   }) async {
     final query = <String, dynamic>{
-      'page': 1,
+      'page': page,
       'size': size,
       'direction': direction,
       'partyId': partyId,
       'settled': false,
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
     };
     final json = await api.get(FinanceEndpoints.arAp, query: query);
     return PagedResult.fromJson(json, ArApLedgerItem.fromJson);

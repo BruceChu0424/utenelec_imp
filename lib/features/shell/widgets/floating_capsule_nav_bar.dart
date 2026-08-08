@@ -61,8 +61,12 @@ class FloatingCapsuleNavBar extends StatelessWidget {
       )..layout();
       if (tp.width > maxTextWidth) maxTextWidth = tp.width;
     }
-    // 单格 = 文字宽 + 左右 padding（各约 18px）
-    return (maxTextWidth + 36).clamp(_minItemWidth, _maxItemWidth);
+    // 单格 = 文字宽 + 左右 padding（各约 18px）；上限随字号档等比放大，
+    // 否则大字号下文字量宽被卡回 96、标签被迫省略号截断。
+    return (maxTextWidth + 36).clamp(
+      _minItemWidth,
+      _maxItemWidth * textScaler.scale(1),
+    );
   }
 
   @override
@@ -77,11 +81,13 @@ class FloatingCapsuleNavBar extends StatelessWidget {
     final maxOuter = screenW - 24;
     // 内容区最大宽度 = 外壳 - 水平 padding - 描边
     final maxInner = maxOuter - _hPadding - _hBorder;
-    // itemWidth 上限：保证 n 格 + (n-1) 间距不超出 maxInner
+    // itemWidth 上限：保证 n 格 + (n-1) 间距不超出 maxInner；
+    // 上限同样随字号档放大（与 calcItemWidth 一致），避免大字号标签被裁。
+    final maxItemCap = _maxItemWidth * textScaler.scale(1);
     final maxItemW = ((maxInner - (n - 1) * _gap) / n).floorToDouble();
     final itemWidth = rawItemWidth.clamp(
       _minItemWidth,
-      maxItemW.clamp(_minItemWidth, _maxItemWidth),
+      maxItemW.clamp(_minItemWidth, maxItemCap),
     );
     final innerWidth = n * itemWidth + (n - 1) * _gap;
     // 外壳宽度 = 内容区 + padding + 描边（与内部算式完全一致）

@@ -228,6 +228,23 @@ abstract final class Perm {
   // ===== 生产管理（生产部；V55 seed 细粒度）=====
   static const productionPlanView = 'production_plan:view';
   static const productionPlanEdit = 'production_plan:edit';
+  static const productionPlanApprove = 'production_plan:approve';
+  static const productionPlanBatchApprove = 'production_plan:batchApprove';
+  static const productionPlanBatchDelete = 'production_plan:batchDelete';
+  static const productionMaterialAnalysisView =
+      'production_material_analysis:view';
+  static const productionMaterialAnalysisManage =
+      'production_material_analysis:manage';
+  static const productionMaterialAnalysisRoute =
+      'production_material_analysis:route';
+  static const productionMaterialAnalysisNotify =
+      'production_material_analysis:notify';
+  static const productionMaterialAnalysisGenerate =
+      'production_material_analysis:generate';
+  static const productionMaterialAnalysisReallocate =
+      'production_material_analysis:reallocate';
+  static const productionMaterialAnalysisBomOverride =
+      'production_material_analysis:bom_override';
   static const productionDailyReportView = 'production_daily_report:view';
   static const productionDailyReportEdit = 'production_daily_report:edit';
   static const productionReportView = 'production_report:view';
@@ -415,6 +432,15 @@ final currentPermissionsProvider = Provider<Set<String>>((ref) {
       Perm.subcontractViewAll,
       // 生产管理（V55）
       Perm.productionPlanView, Perm.productionPlanEdit,
+      Perm.productionPlanApprove,
+      Perm.productionPlanBatchApprove, Perm.productionPlanBatchDelete,
+      Perm.productionMaterialAnalysisView,
+      Perm.productionMaterialAnalysisManage,
+      Perm.productionMaterialAnalysisRoute,
+      Perm.productionMaterialAnalysisNotify,
+      Perm.productionMaterialAnalysisGenerate,
+      Perm.productionMaterialAnalysisReallocate,
+      Perm.productionMaterialAnalysisBomOverride,
       Perm.productionDailyReportView, Perm.productionDailyReportEdit,
       Perm.productionReportView, Perm.productionReportExport,
       Perm.productionWhereUsedView,

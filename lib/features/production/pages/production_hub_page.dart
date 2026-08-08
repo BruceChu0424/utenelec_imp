@@ -31,6 +31,9 @@ class ProductionHubPage extends ConsumerWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
+    final canCreatePlan = permissions.contains(
+      Perm.productionMaterialAnalysisManage,
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.productionHubTitle,
@@ -59,9 +62,15 @@ class ProductionHubPage extends ConsumerWidget {
                 ),
                 _Entry(
                   icon: Icons.assignment_outlined,
-                  label: l10n.productionHubPlan,
-                  description: l10n.productionHubPlanSub,
-                  location: RouteName.productionPlanList,
+                  label: canCreatePlan
+                      ? l10n.productionHubPlan
+                      : l10n.productionHubPlanHistory,
+                  description: canCreatePlan
+                      ? l10n.productionHubPlanSub
+                      : l10n.productionHubPlanHistorySub,
+                  location: canCreatePlan
+                      ? RouteName.productionMaterialAnalysis
+                      : RouteName.productionPlanList,
                 ),
                 _Entry(
                   icon: Icons.edit_calendar_outlined,

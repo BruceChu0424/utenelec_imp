@@ -3,7 +3,7 @@
 // 复用基础资料布局：UtenAppBar(标题/返回/刷新) + UtenContentContainer > 标题行
 // (Icon+label+(N)+搜索+新建) + 状态筛选(ChoiceChip Wrap) + MasterDataTableView。
 // 过滤由本页自带的状态 ChoiceChip + 关键词搜索 + 日期范围承担（facets 传空，表头降级为纯标签）。
-// 「新建」按 production_plan:edit 权限显隐。
+// 「新建」进入计划前物料分析，按 production_material_analysis:manage 权限显隐。
 //
 // 路径写死（待用户在 route_names.dart 加 RouteName.production* 后替换）。
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
@@ -21,6 +22,7 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -32,7 +34,6 @@ import '../repositories/production_repository.dart';
 class ProductionPerm {
   const ProductionPerm._();
   static const planView = Perm.productionPlanView;
-  static const planEdit = Perm.productionPlanEdit;
   static const dailyReportView = Perm.productionDailyReportView;
   static const dailyReportEdit = Perm.productionDailyReportEdit;
   static const reportView = Perm.productionReportView;
@@ -65,8 +66,25 @@ class _ProductionPlanListPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
-  bool get _canEdit =>
-      ref.read(currentPermissionsProvider).contains(ProductionPerm.planEdit);
+  bool get _canCreate => ref
+      .read(currentPermissionsProvider)
+      .contains(Perm.productionMaterialAnalysisManage);
+
+  /// 多选选中计划单 id（跨页保留；组件只读 + 回交新集合，这里就地同步进 final 集合）。
+  final Set<String> _selectedIds = {};
+  bool _batching = false;
+
+  bool get _canBatchApprove {
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.productionPlanBatchApprove) &&
+        permissions.contains(Perm.productionPlanApprove);
+  }
+
+  bool get _canBatchDelete {
+    final permissions = ref.read(currentPermissionsProvider);
+    return permissions.contains(Perm.productionPlanBatchDelete) &&
+        permissions.contains(Perm.productionPlanEdit);
+  }
 
   Future<void> _load(int page) async {
     final generation = _loadRequests.begin();
@@ -126,6 +144,64 @@ class _ProductionPlanListPageState
       _sortAsc = ascending;
     });
     _load(1);
+  }
+
+  /// 批量审核选中（草稿→已审）：逐条调 approve；非草稿服务端拒绝，计为跳过。
+  Future<void> _batchApprove() => _runBatch(
+        verb: '审核',
+        danger: false,
+        run: (id) async {
+          await ref.read(productionPlanRepositoryProvider).approve(id);
+        },
+      );
+
+  /// 批量删除选中草稿：逐条调 delete（仅草稿）；非草稿跳过，删除不可撤销。
+  Future<void> _batchDelete() => _runBatch(
+        verb: '删除',
+        danger: true,
+        run: (id) => ref.read(productionPlanRepositoryProvider).delete(id),
+      );
+
+  /// 批量执行通用骨架：确认 → 逐条调用（非草稿/失败计跳过）→ 清空选中并刷新 + 结果提示。
+  Future<void> _runBatch({
+    required String verb,
+    required bool danger,
+    required Future<void> Function(String id) run,
+  }) async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty || _batching) return;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '批量$verb（${ids.length} 个）',
+      content: Text(danger
+          ? '将删除选中的 ${ids.length} 个生产计划单草稿；非草稿将被跳过，删除不可撤销。'
+          : '将审核选中的 ${ids.length} 个生产计划单（草稿→已审）；非草稿将被跳过。'),
+      confirmLabel: '确认批量$verb',
+      danger: danger,
+    );
+    if (confirmed != true) return;
+    setState(() => _batching = true);
+    var success = 0;
+    var skipped = 0;
+    for (final id in ids) {
+      try {
+        await run(id);
+        success++;
+      } catch (_) {
+        skipped++;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _batching = false;
+      _selectedIds.clear();
+    });
+    await _load(_pageNum);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('批量$verb完成：成功 $success，跳过 $skipped')),
+      );
+    }
   }
 
   List<MasterColumnDef<ProductionPlanListItem>> _columns(
@@ -220,7 +296,7 @@ class _ProductionPlanListPageState
                         ),
                       ),
                       const Spacer(),
-                      if (_canEdit)
+                      if (_canCreate)
                         UtenButton(
                           type: UtenButtonType.tonal,
                           icon: Icons.add_rounded,
@@ -231,6 +307,58 @@ class _ProductionPlanListPageState
                     ],
                   ),
                 ),
+                // 多选批量操作条：选中行后才出现（已选计数 + 批量审核/删除 + 清空）。
+                if (_selectedIds.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: UtenSpacing.s8,
+                      left: UtenSpacing.s4,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s12,
+                        vertical: UtenSpacing.s8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: UtenColors.deepGreen.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(UtenSpacing.s8),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            '已选 ${_selectedIds.length} 项',
+                            style: theme.textTheme.labelLarge
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const Spacer(),
+                          if (_canBatchApprove) ...[
+                            UtenButton(
+                              type: UtenButtonType.tonal,
+                              onPressed: _batching ? null : _batchApprove,
+                              child: const Text('批量审核'),
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                          ],
+                          if (_canBatchDelete) ...[
+                            UtenButton(
+                              type: UtenButtonType.danger,
+                              onPressed: _batching ? null : _batchDelete,
+                              child: const Text('批量删除'),
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                          ],
+                          UtenButton(
+                            type: UtenButtonType.secondary,
+                            onPressed: _batching
+                                ? null
+                                : () => setState(_selectedIds.clear),
+                            child: const Text('清空'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
                 Expanded(
                   child: UtenListTwoPane(
@@ -278,6 +406,15 @@ class _ProductionPlanListPageState
                       onSortChange: _onSortChange,
                       onRowTap: (it) =>
                           context.push('/production/plans/${it.id}'),
+                      // 多选：仅当用户有任一批量权限时开启勾选列（否则不显示，保持原样）。
+                      selectable: _canBatchApprove || _canBatchDelete,
+                      idOf: (it) => it.id,
+                      selectedIds: _selectedIds,
+                      onSelectedIdsChanged: (next) => setState(() {
+                        _selectedIds
+                          ..clear()
+                          ..addAll(next);
+                      }),
                       isLoading: _loading && _page == null,
                       loadingMore: _loading && _page != null,
                       error: _error,

@@ -249,6 +249,22 @@ class CompleteKitAllocatorTest {
                 .isZero();
     }
 
+    @Test
+    void authorizedZeroMaterialProductIsEntirelyReadyWithoutStockOrDrawDemand() {
+        CompleteKitAllocator.ProductLine directMake = line("12");
+
+        CompleteKitAllocator.Allocation result = allocator.allocate(
+                List.of(directMake), Map.of());
+
+        assertThat(result.segments()).hasSize(1);
+        assertThat(result.segments().getFirst().status())
+                .isEqualTo(ProductionExecutionSegment.STATUS_READY);
+        assertThat(result.segments().getFirst().plannedQty())
+                .isEqualByComparingTo("12");
+        assertThat(result.segments().getFirst().materials()).isEmpty();
+        assertThat(result.remainingAvailability()).isEmpty();
+    }
+
     private static CompleteKitAllocator.ProductLine line(
             String quantity,
             CompleteKitAllocator.MaterialUsage... materials) {

@@ -261,6 +261,9 @@ public class UserAccountAdminService {
         }
         user.setRemoteAccess(remoteAccess);
         userRepo.save(user);   // V241 BEFORE UPDATE 触发器自动 bump auth_version
+        // A remote-access change is a session boundary in either direction. V241
+        // invalidates access JWTs; refresh tokens require explicit family revocation.
+        refreshTokenRepo.revokeAllByUserId(id);
         var actor = support.requireCurrentUser();
         auditService.logExplicit(
                 actor.getId(),

@@ -8,11 +8,13 @@ import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -25,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -222,6 +225,46 @@ class AccountSupportBoundaryTest {
         verify(employees, never()).findById(target.getEmployeeId());
         verify(users, never()).save(target);
         verify(users, never()).bumpAuthVersion(targetId);
+        verify(refreshTokens, never()).revokeAllByUserId(targetId);
+    }
+
+    @Test
+    void remoteAccessChangeRevokesEveryRefreshSession() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        UserAccount target = new UserAccount();
+        target.setRemoteAccess(false);
+        AuthUser actor = new AuthUser(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "super-admin",
+                java.util.Set.of(),
+                java.util.Set.of(),
+                false,
+                true,
+                true);
+        UUID targetId = target.getId();
+        when(support.require(targetId)).thenReturn(target);
+        when(support.requireCurrentUser()).thenReturn(actor);
+
+        service(support).setRemoteAccess(targetId, true);
+
+        assertTrue(target.isRemoteAccess());
+        InOrder order = inOrder(users, refreshTokens);
+        order.verify(users).save(target);
+        order.verify(refreshTokens).revokeAllByUserId(targetId);
+    }
+
+    @Test
+    void repeatedRemoteAccessValueDoesNotRevokeAnUnchangedSession() {
+        AdminUserSupport support = org.mockito.Mockito.mock(AdminUserSupport.class);
+        UserAccount target = new UserAccount();
+        target.setRemoteAccess(true);
+        UUID targetId = target.getId();
+        when(support.require(targetId)).thenReturn(target);
+
+        service(support).setRemoteAccess(targetId, true);
+
+        verify(users, never()).save(target);
         verify(refreshTokens, never()).revokeAllByUserId(targetId);
     }
 

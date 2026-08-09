@@ -6,8 +6,8 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/io/file_saver.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/layout/uten_section_header.dart';
 import '../../core/theme/uten_colors.dart';
@@ -70,8 +70,9 @@ class _ExpenseAttachmentSectionState
           UtenCard(
             child: Text(
               widget.canManage ? '暂无附件，可上传发票照片或 PDF' : '暂无附件',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           )
         else
@@ -81,7 +82,8 @@ class _ExpenseAttachmentSectionState
               children: [
                 for (int i = 0; i < widget.attachments.length; i++) ...[
                   _row(theme, widget.attachments[i]),
-                  if (i < widget.attachments.length - 1) const Divider(height: 1),
+                  if (i < widget.attachments.length - 1)
+                    const Divider(height: 1),
                 ],
               ],
             ),
@@ -106,8 +108,9 @@ class _ExpenseAttachmentSectionState
       ),
       subtitle: Text(
         _fmtSize(a.sizeBytes),
-        style: theme.textTheme.bodySmall
-            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -120,7 +123,11 @@ class _ExpenseAttachmentSectionState
           if (widget.canManage)
             IconButton(
               tooltip: '删除',
-              icon: const Icon(Icons.delete_outline, size: 20, color: UtenColors.error),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: UtenColors.error,
+              ),
               onPressed: () => _delete(a),
             ),
         ],
@@ -133,8 +140,7 @@ class _ExpenseAttachmentSectionState
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final result = await FilePicker.platform
-          .pickFiles(withData: true);
+      final result = await FilePicker.platform.pickFiles(withData: true);
       final files = result?.files ?? const <PlatformFile>[];
       if (files.isEmpty) return;
       final f = files.first;
@@ -148,7 +154,9 @@ class _ExpenseAttachmentSectionState
         if (mounted) context.appError('不支持的文件类型（仅图片/PDF/Office/zip/txt）');
         return;
       }
-      await ref.read(attachmentServiceProvider).upload(
+      await ref
+          .read(attachmentServiceProvider)
+          .upload(
             ownerType: widget.ownerType,
             ownerId: widget.ownerId,
             fileName: f.name,
@@ -167,23 +175,21 @@ class _ExpenseAttachmentSectionState
   Future<void> _view(Attachment a) async {
     try {
       if (a.isImage) {
-        final Uint8List bytes =
-            await ref.read(attachmentServiceProvider).downloadBytes(a.downloadUrl);
+        final Uint8List bytes = await ref
+            .read(attachmentServiceProvider)
+            .downloadBytes(a);
         if (!mounted) return;
         await showDialog<void>(
           context: context,
-          builder: (_) => Dialog(
-            child: InteractiveViewer(
-              child: Image.memory(bytes),
-            ),
-          ),
+          builder: (_) =>
+              Dialog(child: InteractiveViewer(child: Image.memory(bytes))),
         );
-      } else if (a.downloadUrl != null &&
-          (a.downloadUrl!.startsWith('http://') ||
-              a.downloadUrl!.startsWith('https://'))) {
-        await launchUrl(Uri.parse(a.downloadUrl!));
-      } else if (mounted) {
-        context.appError('该文件请用桌面/移动端打开，或切换 OSS 后端后下载');
+      } else {
+        final bytes = await ref
+            .read(attachmentServiceProvider)
+            .downloadBytes(a);
+        final saved = await saveBytes(bytes, a.originalName);
+        if (mounted) context.appSuccess('已保存到 $saved');
       }
     } catch (e) {
       if (mounted) context.appError('打开失败：$e');
@@ -199,11 +205,13 @@ class _ExpenseAttachmentSectionState
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(d, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(d, true),
-              child: const Text('删除')),
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );

@@ -71,6 +71,9 @@ uten:
   deployment:
     # 部署站点：local（公司内网，默认）/ cloud（阿里云，仅 remote_access 授权账号可访问）。
     site: ${UTEN_DEPLOYMENT_SITE:local}
+    # Local /api source boundary. Production may narrow this list to the exact
+    # corporate/VPN networks through UTEN_LOCAL_ALLOWED_CIDRS.
+    local-allowed-cidrs: ${UTEN_LOCAL_ALLOWED_CIDRS:127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
   finance:
     asset:
       # Fail closed until recognition/disposal/termination have dedicated maker-checker reversal workflows.
@@ -149,6 +152,7 @@ uten:
       use-instance-role: ${UTEN_OSS_USE_INSTANCE_ROLE:false}
       role-name: ${UTEN_OSS_ROLE_NAME:}
       key-prefix: ${UTEN_OSS_KEY_PREFIX:attachments/}
+      require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:false}
   reporting:
     materialized-view-refresh:
       enabled: ${UTEN_REPORT_REFRESH_ENABLED:true}

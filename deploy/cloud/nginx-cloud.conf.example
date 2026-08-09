@@ -1,36 +1,182 @@
-# 云端（阿里云 ECS）Nginx 反向代理示例：终结 TLS，反代到本机 8080（cloud 应用）。
-# 放 /etc/nginx/conf.d/ 后 nginx -t && systemctl reload nginx。
-upstream uten_imp_cloud_backend { server 127.0.0.1:8080; }
+# Include this file from Nginx's `http` context only after replacing every
+# all-caps placeholder token. The cloud Spring Boot service must listen on 127.0.0.1:8080
+# (or be firewalled so only this Nginx host can reach it); never expose 8080 to
+# the Internet.
+
+# Coarse IP flood guards. Application account/phone limits remain authoritative.
+# Load-test these values behind the real Alibaba Cloud WAF/SLB/NAT path before GO.
+limit_req_zone $binary_remote_addr zone=uten_cloud_health_ip:10m rate=1000r/s;
+limit_req_zone $binary_remote_addr zone=uten_cloud_auth_ip:10m rate=300r/s;
+limit_req_zone $binary_remote_addr zone=uten_cloud_api_ip:20m rate=3000r/m;
+
+upstream uten_imp_cloud_backend {
+    # Loopback is a required trust boundary. Keep the application bound to
+    # 127.0.0.1:8080 and deny direct security-group/firewall access to 8080.
+    server 127.0.0.1:8080;
+    keepalive 32;
+}
 
 server {
     listen 80;
-    server_name __CLOUD_DOMAIN__;          # 替换为云端域名/IP
+    server_name __CLOUD_DOMAIN__;
+    server_tokens off;
     return 308 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
     server_name __CLOUD_DOMAIN__;
+    server_tokens off;
+    limit_req_status 429;
 
-    ssl_certificate     /etc/nginx/ssl/cloud.pem;       # 替换为证书
-    ssl_certificate_key /etc/nginx/ssl/cloud.key;
+    ssl_certificate __TLS_CERT_PATH__;
+    ssl_certificate_key __TLS_KEY_PATH__;
+    ssl_protocols TLSv1.2 TLSv1.3;
 
-    # 体积上限要覆盖附件本地直传（provider=local 时走 /api/attachments/raw/*）；
-    # provider=oss 时附件直传 OSS 不经此限。
-    client_max_body_size 30m;
+    # `current` must be an atomically replaced symlink to an immutable release.
+    # Never copy a new Flutter build through this path in place.
+    root /opt/uten-imp/current/web;
+    index index.html;
 
-    add_header X-Content-Type-Options nosniff always;
-    add_header X-Frame-Options DENY always;
+    # Cloud production uses OSS presigned uploads; ordinary API JSON stays at
+    # the gateway's 2 MiB boundary. Do not raise this to the attachment maximum.
+    client_max_body_size 2m;
 
-    location / {
-        proxy_pass http://uten_imp_cloud_backend;
+    # Keep Nginx and Tomcat request-header budgets aligned. Each field/request
+    # line must still fit in 8 KiB; the exceptional aggregate is about 16 KiB.
+    client_header_buffer_size 4k;
+    large_client_header_buffers 2 8k;
+
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 30s;
+    proxy_read_timeout 45s;
+
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types
+        application/javascript
+        application/json
+        application/manifest+json
+        application/wasm
+        image/svg+xml
+        text/css
+        text/plain;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # REQUIRED: replace __OSS_PUBLIC_HOST__ with the exact public virtual-host
+    # name used by presigned URLs, for example
+    # bucket-name.oss-cn-hangzhou.aliyuncs.com. Do not use `*`, a scheme, a path,
+    # an internal endpoint, or leave this placeholder in a deployed file. Keep
+    # the bucket private; this CSP exception grants browser network access only.
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self' https://__OSS_PUBLIC_HOST__; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob: https://__OSS_PUBLIC_HOST__; manifest-src 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self' blob:" always;
+    add_header Permissions-Policy "camera=(self), geolocation=(), microphone=(), payment=(), usb=()" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+
+    # Exact health endpoints must precede the generic Actuator deny so Flutter,
+    # watchdogs and load balancers never receive SPA index.html as a false 200.
+    location = /actuator/health {
+        limit_req zone=uten_cloud_health_ip burst=5000 nodelay;
+        proxy_pass http://uten_imp_cloud_backend/actuator/health;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_read_timeout 60s;
+        # Overwrite, do not append, so a client-supplied X-Forwarded-For value
+        # cannot cross the Nginx -> Spring trusted-proxy boundary.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 5s;
     }
 
-    # 仅放行健康探针；其余 actuator 端点不暴露。
-    location = /actuator/health/liveness { proxy_pass http://uten_imp_cloud_backend; }
+    location = /actuator/health/liveness {
+        limit_req zone=uten_cloud_health_ip burst=5000 nodelay;
+        proxy_pass http://uten_imp_cloud_backend/actuator/health/liveness;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 5s;
+    }
+
+    location = /actuator/health/readiness {
+        limit_req zone=uten_cloud_health_ip burst=5000 nodelay;
+        proxy_pass http://uten_imp_cloud_backend/actuator/health/readiness;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 5s;
+    }
+
+    # Every other Actuator path is hidden at the gateway. Do not use ^~ on this
+    # location if the exact probe locations above are later changed to regexes.
+    location /actuator/ {
+        return 404;
+    }
+
+    location ~ ^/api/(?:auth/(?:login|refresh|logout)|visitor/auth/(?:send-code|login|refresh|logout))$ {
+        limit_req zone=uten_cloud_auth_ip burst=2000 nodelay;
+        proxy_pass http://uten_imp_cloud_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    # Encrypted exports are assembled before their first response byte and use
+    # the client's two-minute budget without weakening ordinary API requests.
+    location ~ ^/api/.*/export$ {
+        limit_req zone=uten_cloud_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_cloud_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_read_timeout 120s;
+    }
+
+    location /api/ {
+        limit_req zone=uten_cloud_api_ip burst=500 nodelay;
+        proxy_pass http://uten_imp_cloud_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    # Version-pinned fallback fonts are immutable and must never fall through
+    # to index.html when a requested glyph asset is missing.
+    location ^~ /fallback_fonts/ {
+        try_files $uri =404;
+        expires 1y;
+        access_log off;
+    }
+
+    # Flutter Web SPA entry and client-side routes.
+    location / {
+        try_files $uri $uri/ /index.html;
+        expires -1;
+    }
 }

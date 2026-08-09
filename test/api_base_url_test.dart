@@ -12,6 +12,18 @@ void main() {
   test('Web release defaults to the same-origin API', () {
     expect(resolveApiBaseUrl('', releaseMode: true, web: true), '/api');
     expect(resolveApiBaseUrl('/api/', releaseMode: true, web: true), '/api');
+    expect(
+      () => resolveApiBaseUrl(
+        'https://cloud.example.com/api',
+        releaseMode: true,
+        web: true,
+      ),
+      throwsStateError,
+    );
+    expect(
+      () => resolveApiBaseUrl('/api-other', releaseMode: true, web: true),
+      throwsStateError,
+    );
   });
 
   test('non-Web release requires an explicit HTTPS URL', () {

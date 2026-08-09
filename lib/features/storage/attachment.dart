@@ -55,12 +55,16 @@ class PresignResult {
     required this.url,
     required this.method,
     required this.contentType,
+    required this.headers,
+    required this.confirmToken,
   });
 
   final String storageKey;
   final String url;
   final String method;
   final String contentType;
+  final Map<String, String> headers;
+  final String confirmToken;
 
   factory PresignResult.fromJson(Map<String, dynamic> json) {
     final headers =
@@ -70,6 +74,8 @@ class PresignResult {
       url: json['url'] as String,
       method: (json['method'] as String?) ?? 'PUT',
       contentType: headers['Content-Type'] ?? 'application/octet-stream',
+      headers: headers,
+      confirmToken: json['confirmToken'] as String,
     );
   }
 }

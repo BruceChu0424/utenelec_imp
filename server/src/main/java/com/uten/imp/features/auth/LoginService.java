@@ -8,6 +8,7 @@ import com.uten.imp.features.auth.dto.TokenResponse;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.security.LoginRateLimiter;
+import com.uten.imp.security.RemoteAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class LoginService {
     private final TokenIssuer tokenIssuer;
     private final TxSessionVars tx;
     private final LoginFailureRecorder failureRecorder;
+    private final RemoteAccessPolicy remoteAccessPolicy;
 
     /** 启动时预计算，避免首次未知账号请求多做一次 Argon2 编码而形成可观测时序差。 */
     private final String dummyHash;
@@ -40,7 +42,8 @@ public class LoginService {
     public LoginService(UserAccountRepository userRepo, PasswordEncoder passwordEncoder,
                         LoginRateLimiter rateLimiter,
                         AuditService audit, TokenIssuer tokenIssuer, TxSessionVars tx,
-                        LoginFailureRecorder failureRecorder) {
+                        LoginFailureRecorder failureRecorder,
+                        RemoteAccessPolicy remoteAccessPolicy) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.rateLimiter = rateLimiter;
@@ -48,6 +51,7 @@ public class LoginService {
         this.tokenIssuer = tokenIssuer;
         this.tx = tx;
         this.failureRecorder = failureRecorder;
+        this.remoteAccessPolicy = remoteAccessPolicy;
         this.dummyHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
@@ -105,6 +109,16 @@ public class LoginService {
             audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed",
                     "users", user.getId().toString(), "account_locked_by_admin");
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED, "账号已被管理员锁定，请联系管理员解锁");
+        }
+
+        // Do not reveal remote authorization until password and account status are
+        // valid. Still enforce it before successful-login state or token issuance.
+        try {
+            remoteAccessPolicy.requireStaffAccess(user);
+        } catch (ApiException denied) {
+            audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed",
+                    "users", user.getId().toString(), "remote_access_denied");
+            throw denied;
         }
 
         // 成功：清失败计数与暴力临时锁；仅暴力临时锁（lockedUntil 已到期）恢复 status，

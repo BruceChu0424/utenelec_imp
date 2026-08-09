@@ -1,13 +1,14 @@
-// 运行时可切换的后端服务器地址（本地 / 云端自动选择）。
+// 运行时只在两个构建期可信端点之间切换：API_BASE_URL（本地）和
+// CLOUD_API_BASE_URL（云端）。Release 绝不从本地存储读取任意 host。
 //
-// 默认用编译期 API_BASE_URL（公司内网本地后端）。授权用户可在「服务器」设置页填云端地址并选模式：
-// server_selection 依据「本地是否可达」在本地/云端之间自动选择（auto），或强制其一（排障）。
-// 模式与云端地址持久化在 SharedPreferences；切换后所有 watch apiBaseUrlProvider 的客户端
-// （apiClient / visitorApi / connectionRecovery）自动重建 Dio 指向新地址。
+// 原生端的 auto 模式探测本地服务，本地可达优先本地，否则才使用固定云端地址；
+// Debug 可显式设置开发覆盖。Web Release 始终走当前页面同源 /api，并通过公司
+// 内外网的 split-horizon DNS / 不同访问入口落到对应站点；Web 不运行局域网探针。
 //
 // 不同服务器（本地/云端）若 JWT issuer/secret 不同，切换后需重新登录；为「自动模式」无缝切换，
 // 建议本地与云端部署用相同的 UTEN_JWT_ISSUER 与 UTEN_JWT_SECRET（两者共享同一份数据库副本，
 // 故同一 token 可在两端校验通过）。
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/providers/shared_providers.dart';
@@ -25,5 +26,6 @@ final apiBaseUrlProvider = Provider<String>((ref) {
     local: apiBaseUrl,
     cloud: readCloudUrl(prefs),
     localReachable: ref.watch(localServerReachableProvider),
+    web: kIsWeb,
   );
 });

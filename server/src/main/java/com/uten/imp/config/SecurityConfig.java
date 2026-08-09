@@ -10,9 +10,11 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.SecurityProperties;
 import com.uten.imp.security.ImpersonationWriteGuardFilter;
 import com.uten.imp.security.JwtAuthFilter;
+import com.uten.imp.security.LocalNetworkGuardFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
@@ -52,6 +54,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
                                            AuditRequestContextFilter auditContextFilter,
+                                           LocalNetworkGuardFilter localNetworkGuardFilter,
                                            JwtAuthFilter jwtAuthFilter,
                                            ImpersonationWriteGuardFilter impersonationWriteGuardFilter,
                                            com.uten.imp.security.RemoteAccessGuardFilter remoteAccessGuardFilter,
@@ -90,6 +93,11 @@ public class SecurityConfig {
                         .requestMatchers(publicPaths).permitAll()
                         .anyRequest().authenticated()
                 )
+                // The local source-network boundary covers login/refresh too, so it
+                // must execute before JWT parsing and every controller.
+                .addFilterBefore(
+                        localNetworkGuardFilter,
+                        org.springframework.security.web.authentication.logout.LogoutFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 // 模拟身份只读守卫：主体解析（JwtAuthFilter）之后、进入控制器之前拦截写操作。
                 .addFilterAfter(impersonationWriteGuardFilter, JwtAuthFilter.class)
@@ -128,6 +136,42 @@ public class SecurityConfig {
         return new Argon2PasswordEncoder(16, 32, 1, 19456, 2);
     }
 
+    /**
+     * Security filters are owned exclusively by Spring Security. Disabling servlet
+     * auto-registration prevents an early container invocation from setting the
+     * OncePerRequestFilter marker and silently skipping the intended chain position.
+     */
+    @Bean
+    public FilterRegistrationBean<LocalNetworkGuardFilter> localNetworkFilterRegistration(
+            LocalNetworkGuardFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public FilterRegistrationBean<JwtAuthFilter> jwtFilterRegistration(JwtAuthFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public FilterRegistrationBean<ImpersonationWriteGuardFilter> impersonationFilterRegistration(
+            ImpersonationWriteGuardFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public FilterRegistrationBean<com.uten.imp.security.RemoteAccessGuardFilter>
+            remoteAccessFilterRegistration(
+                    com.uten.imp.security.RemoteAccessGuardFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    private static <T extends jakarta.servlet.Filter> FilterRegistrationBean<T> securityChainOnly(
+            T filter) {
+        FilterRegistrationBean<T> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource(SecurityProperties securityProps) {
         CorsConfiguration cfg = new CorsConfiguration();
@@ -146,6 +190,7 @@ public class SecurityConfig {
                 "Authorization",
                 "Content-Type",
                 "Accept",
+                "X-Uten-Attachment-Upload-Token",
                 AuditDeviceContext.HEADER_CLIENT_EVENT_ID,
                 AuditDeviceContext.HEADER_DEVICE_CONTEXT));
         cfg.setExposedHeaders(List.of(

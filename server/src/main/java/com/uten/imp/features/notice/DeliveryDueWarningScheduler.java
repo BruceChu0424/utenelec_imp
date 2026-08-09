@@ -3,6 +3,7 @@ package com.uten.imp.features.notice;
 import com.uten.imp.common.time.BusinessTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ import java.util.UUID;
  */
 @Slf4j
 @Component
+@Profile("!cloud")
 @RequiredArgsConstructor
 public class DeliveryDueWarningScheduler {
 

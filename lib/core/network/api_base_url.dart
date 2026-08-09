@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment('API_BASE_URL');
 
+/// 公司内网后端地址。原生 Release 必须在构建时固定为 HTTPS；Web Release
+/// 固定走同源 `/api`，由内外网域名（split-horizon DNS）决定实际站点。
+
 /// Validated backend base URL shared by staff and visitor clients.
 final String apiBaseUrl = resolveApiBaseUrl(
   _configuredApiBaseUrl,
@@ -28,7 +31,7 @@ String resolveApiBaseUrl(
   }
 
   if (value.startsWith('/')) {
-    if (!web || !value.startsWith('/api')) {
+    if (!web || value != '/api') {
       throw StateError(
         'Relative API_BASE_URL values are only valid for Web /api.',
       );
@@ -49,6 +52,9 @@ String resolveApiBaseUrl(
   }
   if (releaseMode && uri.scheme != 'https') {
     throw StateError('Release API_BASE_URL must use HTTPS.');
+  }
+  if (releaseMode && web) {
+    throw StateError('Web release API_BASE_URL must use same-origin /api.');
   }
   if (releaseMode &&
       (uri.host == 'localhost' ||

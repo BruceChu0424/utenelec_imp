@@ -13,7 +13,7 @@ import java.util.UUID;
  */
 public record AttachmentPresignRequest(
         @NotBlank @Size(max = 64) String ownerType,
-        UUID ownerId,
+        @NotNull UUID ownerId,
         @NotBlank @Size(max = 255) String fileName,
         @NotBlank @Size(max = 255) String contentType,
         @NotNull @Positive Long sizeBytes) {

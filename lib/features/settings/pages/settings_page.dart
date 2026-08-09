@@ -5,6 +5,7 @@
 // 外观 + 性能 + 关于 三段与 VisitorSettingsPage 共享 SettingsSection 布局。
 // 全断点套 UtenContentContainer.narrow：长列表行在宽屏下收敛到 1120，保证可读性。
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,6 +19,8 @@ import '../../../components/settings/uten_performance_switcher.dart';
 import '../../../components/settings/uten_theme_switcher.dart';
 import '../../../core/constants/app_info.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/server_config.dart';
+import '../../../core/network/server_selection.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -25,6 +28,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/shared_providers.dart';
 import '../widgets/settings_section.dart';
 import '../widgets/server_switch_dialog.dart';
 
@@ -39,6 +43,8 @@ class SettingsPage extends ConsumerWidget {
         .watch(currentPermissionsProvider)
         .contains(Perm.auditLogView);
     final user = ref.watch(sessionProvider).user;
+    final serverEndpoint = ref.watch(apiBaseUrlProvider);
+    final serverMode = readServerMode(ref.watch(sharedPreferencesProvider));
 
     return Scaffold(
       body: UtenContentContainer.narrow(
@@ -167,7 +173,15 @@ class SettingsPage extends ConsumerWidget {
                     child: ListTile(
                       leading: const Icon(Icons.dns_outlined, size: 20),
                       title: const Text('服务器'),
-                      subtitle: const Text('切换公司内网 / 云端地址'),
+                      subtitle: Text(
+                        kIsWeb
+                            ? serverEndpoint.startsWith('/')
+                                  ? '同源接口：$serverEndpoint（由访问入口路由）'
+                                  : 'Debug Web 接口：$serverEndpoint'
+                            : '${_serverModeLabel(serverMode)} · $serverEndpoint',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => showDialog<void>(
                         context: context,
@@ -287,5 +301,16 @@ class SettingsPage extends ConsumerWidget {
         context.go(RouteName.login);
       }
     }
+  }
+}
+
+String _serverModeLabel(ServerMode mode) {
+  switch (mode) {
+    case ServerMode.auto:
+      return '自动优先公司内网';
+    case ServerMode.local:
+      return '仅公司内网';
+    case ServerMode.cloud:
+      return '仅托管云端';
   }
 }

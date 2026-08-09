@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_hub_page.dart';
@@ -19,7 +20,12 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -48,7 +54,12 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -79,14 +90,19 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('任务中心'), findsOneWidget);
     expect(find.text('委外任务中心'), findsOneWidget);
-    expect(find.textContaining('按委外商分解为订货单'), findsOneWidget);
+    expect(find.textContaining('按委外商拆订货'), findsOneWidget);
     await tester.tap(find.text('委外任务中心'));
     await tester.pumpAndSettle();
 

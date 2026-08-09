@@ -7,6 +7,7 @@ import com.uten.imp.features.admin.dto.PermissionOverridesDto;
 import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.admin.dto.TemporaryPasswordResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -83,11 +84,11 @@ public class AdminUserController {
     /** 设置/取消云端(外网)访问授权（仅超管）。变更即时失效旧 token（V241 触发器 bump auth_version）。 */
     @PutMapping("/users/{id}/remote-access")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
-    public void setRemoteAccess(@PathVariable UUID id, @RequestBody RemoteAccessBody req) {
-        userAccountAdmin.setRemoteAccess(id, req == null ? false : req.remoteAccess());
+    public void setRemoteAccess(@PathVariable UUID id, @Valid @RequestBody RemoteAccessBody req) {
+        userAccountAdmin.setRemoteAccess(id, req.remoteAccess());
     }
 
-    public record RemoteAccessBody(boolean remoteAccess) {}
+    public record RemoteAccessBody(@NotNull Boolean remoteAccess) {}
 
 
     // 角色体系已下线（ADR-011/V29）：角色分配相关端点（/users/{id}/roles、/roles、

@@ -1,6 +1,6 @@
 # ADR-014：会话超时与 token 刷新机制修复
 
-> 日期：2026-07-27 · 状态：**源码候选（2026-08-02）；生产 NO-GO**
+> 日期：2026-07-27 · 现行补充：2026-08-09 · 状态：**源码与隔离授权 HTTP 已验证；生产 NO-GO**
 > 前置：[ADR-013](ADR-013-系统设置与安全策略可视化.md)（系统设置）· 原则：安全首位、最小权限、深度防御
 >
 > **现行 TTL 口径**：V75 的“480 分钟/8 小时”只保留为 2026-07-27 的历史决策，不是当前基线。
@@ -53,7 +53,8 @@
 
 `SecurityConfig.filterChain` 加 `.exceptionHandling(e -> e.authenticationEntryPoint(...))`：过期/缺失/伪造 token、匿名访问受保护资源 → **401 + `ApiError(UNAUTHORIZED)`**。前端识别 401 → 自动 refresh + 重试（**用户无感**）。
 
-- permitAll 路径（login/refresh/health/访客）不受影响。
+- login/refresh/health/访客仍是 Spring authorization 的 permitAll 路径；但 local 站点的源 CIDR
+  Filter 位于 JWT/Controller 前，仍覆盖 login/refresh 和访客 `/api/**`。permitAll 不是公网放行。
 - 「账号锁定/停用」仍走 `JwtAuthFilter.writeUnauthorized` 主动 401，不冲突。
 - 「有效 token 但权限不足」仍走 `GlobalExceptionHandler.handleAccessDenied` 返 403 FORBIDDEN（真无权限），语义不变。
 
@@ -85,7 +86,8 @@ V74 曾删 `jwt_access_ttl_minutes`；V75 历史上重新插入并给出 480 分
 
 - `refreshed`：保存新令牌、同步最新用户权限快照并重放原请求；
 - `rejected`：仅本地没有 refresh，或响应精确匹配 `401 + UNAUTHORIZED/ACCOUNT_LOCKED/
-  ACCOUNT_DISABLED`、`422 + VALIDATION_FAILED`；visitor 另含 `403 + VISITOR_BLOCKED`。清理前
+  ACCOUNT_DISABLED`、`422 + VALIDATION_FAILED`；staff 另含
+  `403 + REMOTE_ACCESS_DENIED`，visitor 另含 `403 + VISITOR_BLOCKED`。清理前
   还必须 CAS 命中提交时的当前 token record；
 - `unavailable`：HTML/空体/未知 code 401、status/code 错配、任意 503、429、网络/超时、
   异常响应和缺 access 的畸形 2xx 都保留令牌并传播真实错误。
@@ -155,6 +157,24 @@ external-token-change 三个 Stream 订阅均随 Provider 释放，避免测试�
 - 请求头超限只发生在容器解析阶段，不能证明、也不会主动造成 JVM 停止监听；“localhost 拒绝连接”
   必须单独按进程退出、端口、部署版本和监督服务调查。
 
+### 9. 可信双端点、站点门禁与断链语义（2026-08-09）
+
+- 原生 Release 只在构建期固定的 `API_BASE_URL`（公司本地）与 `CLOUD_API_BASE_URL`（云端）之间
+  选择；auto 在本地 health 可达时优先本地。Web Release 固定当前页面同源 `/api`，由受控入口或
+  split-horizon DNS 决定站点，不接受绝对 API 地址或浏览器“局域网推断”。
+- local 站点的 `LocalNetworkGuardFilter` 在 JWT 之前按可信代理处理后的 `remoteAddr` 对全部
+  `/api/**` fail-closed，覆盖员工/访客 login、refresh 和业务请求。Filter 不直接相信调用者伪造的
+  `Forwarded`/`X-Forwarded-For`。
+- cloud 站点只允许 `users.remote_access=true` 的 staff：密码与账号状态校验后的 login、refresh
+  轮换前、以及每个已认证请求三处都复核。visitor 是独立公网 OTP 主体，只豁免员工远程字段，仍受
+  访客状态、权限、对象范围、限流和审计控制。
+- 超管变更远程授权时，授权和撤权两个方向都 bump 目标 `auth_version` 并撤销全部 refresh token，
+  要求重新登录。撤权后旧 access 先因版本不匹配得到 `401 UNAUTHORIZED`；旧 refresh 在 cloud 得到
+  `403 REMOTE_ACCESS_DENIED` 且无新 token。客户端把后者视为精确破坏性拒绝。
+- cloud 到公司主库的链路断开时，写事务返回 `503 PRIMARY_UNAVAILABLE`；staff 账号/授权版本无法
+  从主库确认时可能先返回 `503 SERVICE_UNAVAILABLE`。两者都保留本地会话且不得解释为提交成功；
+  客户端不排队、自动重放或合并业务写，恢复后先重读权威状态。
+
 ## 安全权衡
 
 - **access TTL**：8 小时只记录 V75 历史；当前源码/迁移基线为 15 分钟，仍保留系统设置覆盖与最小 5。
@@ -190,6 +210,10 @@ external-token-change 三个 Stream 订阅均随 Provider 释放，避免测试�
 - 2026-08-02 在新的无 `target` 隔离快照中，事故相关后端集合编译主源码 1007、测试源码 221；
   Surefire 22 类/89 项，failure 0、error 0、skipped 2。执行范围包含请求头真实 Tomcat parser、
   JWT/StaffAuthority、密码失效、logout/audit、Dashboard 与履约工作台时间戳/query/access。
+- 2026-08-09 在隔离克隆库执行真实 local/cloud HTTP：未授权 local 登录 200、cloud 登录
+  `403 REMOTE_ACCESS_DENIED` 且无 token；授权后 cloud 登录/refresh 200；撤权后旧 access 401、
+  旧 refresh `403 REMOTE_ACCESS_DENIED` 且无替代 token，本地可重新登录；空/缺远程授权 body 不
+  改值。该授权矩阵使用隔离候选并随后验证克隆迁移到 V244，不是目标生产环境放行证据。
 - 两项 skipped 全部属于 `FulfillmentWorkbenchProvisionalStockPostgresTest`，因为
   `UTEN_RUN_DB_TESTS` 未设置；因此不能把 89 项结果表述成 PostgreSQL 条件路径已通过。
 - Flutter 源码已有原子 token record、跨标签页协调、logout fence、撤销队列、精确拒绝、连接恢复和
@@ -200,8 +224,9 @@ external-token-change 三个 Stream 订阅均随 Provider 释放，避免测试�
 
 **生产 NO-GO 门禁**：目标 PostgreSQL/Flyway 与实际 15 分钟 TTL、真实 Nginx/Tomcat header envelope、
 最小 JWT 滚动窗口、多个真实浏览器标签页、Keychain/Keystore/Web secure storage 故障注入、离线退出
-后撤销 drain、NAT/CGNAT 千客户端恢复波次、账号/权限解析 503、进程退出监督、备份/恢复/回滚、岗位 UAT
-和 P95/P99 尚未完成。上述证据关闭前，本 ADR 只能标记为源码候选，不能批准生产。
+后撤销 drain、原生 Release 双端点、Web 同源/split DNS、公司 CIDR/可信代理、visitor 公网边界、
+主库断链 503 与恢复、NAT/CGNAT 千客户端恢复波次、进程退出监督、备份/恢复/回滚、岗位 UAT 和
+P95/P99 尚未完成。上述证据关闭前，本 ADR 不能批准生产。
 
 ## 关联
 

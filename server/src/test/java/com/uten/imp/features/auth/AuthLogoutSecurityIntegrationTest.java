@@ -5,10 +5,12 @@ import com.uten.imp.audit.AuditRequestContextFilter;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.audit.UserOperationAuditInterceptor;
 import com.uten.imp.common.util.HashUtil;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.SecurityConfig;
 import com.uten.imp.config.WebMvcConfig;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.config.props.DeploymentProperties;
 import com.uten.imp.features.auth.model.RefreshToken;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -16,6 +18,10 @@ import com.uten.imp.features.visitor.VisitorAccountRepository;
 import com.uten.imp.security.ExportRateLimitInterceptor;
 import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.JwtService;
+import com.uten.imp.security.LocalNetworkAccessPolicy;
+import com.uten.imp.security.LocalNetworkGuardFilter;
+import com.uten.imp.security.RemoteAccessGuardFilter;
+import com.uten.imp.security.RemoteAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.StaffAuthorityResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,9 +76,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({
         SecurityConfig.class,
         SecurityProperties.class,
+        DeploymentProperties.class,
         AuditDeviceContext.class,
         AuditRequestContextFilter.class,
         JwtAuthFilter.class,
+        LocalNetworkAccessPolicy.class,
+        LocalNetworkGuardFilter.class,
+        RemoteAccessPolicy.class,
+        RemoteAccessGuardFilter.class,
         TokenIssuer.class
 })
 class AuthLogoutSecurityIntegrationTest {
@@ -110,6 +121,22 @@ class AuthLogoutSecurityIntegrationTest {
     @BeforeEach
     void setUp() {
         when(currentUser.get()).thenReturn(Optional.empty());
+    }
+
+    @Test
+    void remoteAccessDenialUsesTheCanonicalStructuredForbiddenResponse() throws Exception {
+        when(loginService.login(any(), any()))
+                .thenThrow(new ApiException(
+                        ErrorCode.REMOTE_ACCESS_DENIED,
+                        RemoteAccessPolicy.DENIED_MESSAGE));
+
+        mvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"loginAccount\":\"E001\",\"password\":\"correct-password\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.code").value(ErrorCode.REMOTE_ACCESS_DENIED.name()))
+                .andExpect(jsonPath("$.message").value(RemoteAccessPolicy.DENIED_MESSAGE));
     }
 
     @Test

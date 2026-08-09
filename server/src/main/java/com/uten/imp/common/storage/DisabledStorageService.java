@@ -1,5 +1,6 @@
 package com.uten.imp.common.storage;
 
+import java.io.InputStream;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -32,12 +33,17 @@ public class DisabledStorageService implements StorageService {
     }
 
     @Override
-    public PresignedDownload presignDownload(String storageKey) {
+    public InputStream openForValidation(String storageKey, String versionId) {
         throw unavailable();
     }
 
     @Override
-    public void delete(String storageKey) {
+    public PresignedDownload presignDownload(String storageKey, String versionId) {
+        throw unavailable();
+    }
+
+    @Override
+    public void delete(String storageKey, String versionId) {
         throw unavailable();
     }
 

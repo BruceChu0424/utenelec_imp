@@ -7,6 +7,7 @@ import com.uten.imp.features.auth.model.RefreshToken;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
+import com.uten.imp.security.RemoteAccessPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,13 +26,16 @@ public class StaffRefreshTransaction {
     private final UserAccountRepository userRepo;
     private final RefreshTokenRepository tokenRepo;
     private final RefreshTokenService tokenService;
+    private final RemoteAccessPolicy remoteAccessPolicy;
 
     public StaffRefreshTransaction(UserAccountRepository userRepo,
                                    RefreshTokenRepository tokenRepo,
-                                   RefreshTokenService tokenService) {
+                                   RefreshTokenService tokenService,
+                                   RemoteAccessPolicy remoteAccessPolicy) {
         this.userRepo = userRepo;
         this.tokenRepo = tokenRepo;
         this.tokenService = tokenService;
+        this.remoteAccessPolicy = remoteAccessPolicy;
     }
 
     public record Outcome(boolean reuseDetected,
@@ -59,6 +63,12 @@ public class StaffRefreshTransaction {
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
 
         if (token.getRevokedAt() != null) {
+            // A remote-access toggle revokes the whole family. On the cloud site,
+            // preserve the explicit policy response instead of misclassifying that
+            // intentional revocation as a stolen-token reuse incident.
+            UserAccount revokedUser = userRepo.findById(token.getUserId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+            remoteAccessPolicy.requireStaffAccess(revokedUser);
             return Outcome.reuse(token.getUserId(), token.getId());
         }
         if (!token.isValid()) {
@@ -78,6 +88,9 @@ public class StaffRefreshTransaction {
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED,
                     "账号已被管理员锁定，请联系管理员解锁");
         }
+
+        // Reject before issuing a replacement or mutating the current token family.
+        remoteAccessPolicy.requireStaffAccess(user);
 
         String newRaw = tokenService.issue(user.getId(), token.getDeviceInfo());
         RefreshToken replacement = tokenRepo

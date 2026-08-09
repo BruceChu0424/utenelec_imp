@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/widgets/department_edit_dialog.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
@@ -200,6 +201,9 @@ Future<void> _pumpWideApp(
     ProviderScope(
       overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(
@@ -298,6 +302,11 @@ Finder _pickerSheetAction(String label) {
   return find.descendant(of: sheet, matching: find.text(label));
 }
 
-Finder _textFieldWithLabel(String label) => find.byWidgetPredicate(
-  (widget) => widget is TextField && widget.decoration?.labelText == label,
-);
+Finder _textFieldWithLabel(String label) => find.byWidgetPredicate((widget) {
+  if (widget is! TextField) return false;
+  if (widget.decoration?.labelText == label) return true;
+  final labelWidget = widget.decoration?.label;
+  if (labelWidget is! Text) return false;
+  final rendered = labelWidget.data ?? labelWidget.textSpan?.toPlainText();
+  return rendered == label || rendered == '$label *';
+});

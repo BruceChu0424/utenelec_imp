@@ -30,7 +30,9 @@ import java.util.Map;
         havingValue = "local", matchIfMissing = true)
 public class LocalDiskStorageService implements StorageService, BlobStore {
 
-    private static final String RAW_PATH = "attachments/raw/";
+    // ApiClient 的 baseUrl 已以 /api 结尾；返回的相对端点必须以 / 开头，
+    // 否则 Dio 会拼成 /apiattachments/raw/...。
+    private static final String RAW_PATH = "/attachments/raw/";
 
     private final StorageProperties properties;
     private Path root;
@@ -59,40 +61,64 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
     public StoredObject describe(String storageKey) {
         Path target = resolve(storageKey);
         if (!Files.isRegularFile(target)) {
-            return new StoredObject(false, 0, null);
+            return new StoredObject(false, 0, null, null, null);
         }
         try {
-            return new StoredObject(true, Files.size(target), null);
+            return new StoredObject(true, Files.size(target), null, null, null);
         } catch (IOException e) {
-            return new StoredObject(false, 0, null);
+            return new StoredObject(false, 0, null, null, null);
         }
     }
 
     @Override
-    public PresignedDownload presignDownload(String storageKey) {
+    public InputStream openForValidation(String storageKey, String versionId) {
+        return read(storageKey);
+    }
+
+    @Override
+    public PresignedDownload presignDownload(String storageKey, String versionId) {
         return new PresignedDownload(
                 RAW_PATH + storageKey,
                 Instant.now().plusSeconds(properties.getPresignedExpirySeconds()));
     }
 
     @Override
-    public void delete(String storageKey) {
+    public void delete(String storageKey, String versionId) {
         Path target = resolve(storageKey);
         try {
             Files.deleteIfExists(target);
         } catch (IOException e) {
             log.warn("本地附件删除失败 key={} type={}", storageKey, e.getClass().getSimpleName());
+            throw new IllegalStateException("删除本地附件失败", e);
         }
     }
 
     @Override
     public void store(String storageKey, InputStream in, long contentLength, String contentType) {
+        if (contentLength <= 0) {
+            throw new IllegalArgumentException("附件 Content-Length 必须大于 0");
+        }
         Path target = resolve(storageKey);
+        Path temporary = null;
         try {
             Files.createDirectories(target.getParent());
-            Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+            temporary = Files.createTempFile(root, "upload-", ".part");
+            long copied = Files.copy(in, temporary, StandardCopyOption.REPLACE_EXISTING);
+            if (copied != contentLength) {
+                throw new IllegalStateException("附件实际字节数与 Content-Length 不一致");
+            }
+            // 默认 move 在目标已存在时失败：storageKey 是一次性能力，绝不覆盖对象。
+            Files.move(temporary, target);
         } catch (IOException e) {
             throw new IllegalStateException("写入本地附件失败: " + storageKey, e);
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException cleanupFailure) {
+                    log.warn("清理附件临时文件失败 type={}", cleanupFailure.getClass().getSimpleName());
+                }
+            }
         }
     }
 

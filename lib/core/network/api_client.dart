@@ -157,10 +157,18 @@ class ApiClient {
   }
 
   /// 上传原始字节（附件直传本地后端 raw 端点；OSS 由调用方用独立 Dio 直传预签名 URL）。
-  Future<void> putBytes(String path, Uint8List bytes, String contentType) async {
+  Future<void> putBytes(
+    String path,
+    Uint8List bytes,
+    String contentType, {
+    Map<String, String>? headers,
+  }) async {
     try {
-      await _dio.put<dynamic>(path,
-          data: bytes, options: Options(contentType: contentType));
+      await _dio.put<dynamic>(
+        path,
+        data: bytes,
+        options: Options(headers: {'Content-Type': contentType, ...?headers}),
+      );
     } on DioException catch (e) {
       throw _convert(e);
     }
@@ -169,8 +177,10 @@ class ApiClient {
   /// 下载原始字节（附件本地后端 raw 端点流式下载）。
   Future<Uint8List> getBytes(String path) async {
     try {
-      final r = await _dio.get<List<int>>(path,
-          options: Options(responseType: ResponseType.bytes));
+      final r = await _dio.get<List<int>>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      );
       return Uint8List.fromList(r.data ?? const []);
     } on DioException catch (e) {
       throw _convert(e);

@@ -1,18 +1,35 @@
-# 主库（公司本地服务器，PostgreSQL 16）复制相关参数。
-# 合并进 postgresql.conf（或放 conf.d/）后重启 PG。适配「本地主库 → 云端只读副本」。
+# PostgreSQL 16 on-premises primary: one writable primary -> one cloud standby.
+# Merge these values into the exact running cluster's postgresql.conf (or use
+# prepare-primary.sh, which applies the same settings with ALTER SYSTEM).
+
 listen_addresses = '*'
+password_encryption = 'scram-sha-256'
 
-wal_level = replica                 # PG16 默认即 replica；显式声明
-max_wal_senders = 10                # 允许的并发复制连接数
-max_replication_slots = 10          # 复制槽数（每个副本一个）
+wal_level = replica
+max_wal_senders = 10
+max_replication_slots = 10
 
-# 断网期间主库保留 WAL；恢复后副本经复制槽从断点续传、不丢数据。
-# 视磁盘空间与「最长预期断网时长 × WAL 产生速率」调大。2GB 约能扛中等业务断网数小时。
-wal_keep_size = 2048
+# wal_keep_size is only a minimum. The physical slot is what normally retains
+# WAL while the cloud link is down. max_slot_wal_keep_size MUST be finite so a
+# dead/lagging standby cannot fill the primary disk indefinitely.
+wal_keep_size = '2GB'
+max_slot_wal_keep_size = '16GB'
 
-# 副本反馈（避免副本上长事务被主库 vacuum 清掉需要的行）。
-hot_standby_feedback = on
+# This design is intentionally asynchronous: local commits do not wait for the
+# WAN/cloud standby. A sudden primary loss can therefore lose acknowledged
+# transactions that had not reached the standby. Set and test an explicit RPO.
+synchronous_commit = on
+synchronous_standby_names = ''
 
-# 可选：超长断网（超过 wal_keep_size）时用归档 WAL 兜底。需配合 archive_command 存档目录。
+# Optional PITR archiving is separate from replication. Do not enable
+# archive_mode until archive_command has been implemented, monitored and
+# restore-tested against independent storage.
 # archive_mode = on
-# archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'
+# archive_command = '/usr/local/sbin/uten-archive-wal %p %f'
+
+# TLS is mandatory across the site-to-site link. Certificate/key paths are
+# installation-specific; clients use sslmode=verify-full.
+ssl = on
+# ssl_cert_file = '/etc/postgresql/tls/server.crt'
+# ssl_key_file = '/etc/postgresql/tls/server.key'
+# ssl_ca_file = '/etc/postgresql/tls/company-root-ca.crt'

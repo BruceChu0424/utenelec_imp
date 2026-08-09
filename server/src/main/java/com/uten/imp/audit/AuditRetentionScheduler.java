@@ -4,6 +4,7 @@ import com.uten.imp.common.time.BusinessTime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +29,7 @@ import java.time.ZonedDateTime;
  */
 @Slf4j
 @Component
+@Profile("!cloud")
 @ConditionalOnProperty(
         prefix = "uten.audit.retention",
         name = "enabled",

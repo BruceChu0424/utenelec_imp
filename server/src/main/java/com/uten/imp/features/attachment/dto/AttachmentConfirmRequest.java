@@ -12,8 +12,9 @@ import java.util.UUID;
  */
 public record AttachmentConfirmRequest(
         @NotBlank @Size(max = 255) String storageKey,
+        @NotBlank @Size(max = 4096) String confirmToken,
         @NotBlank @Size(max = 64) String ownerType,
-        UUID ownerId,
+        @NotNull UUID ownerId,
         @NotBlank @Size(max = 255) String originalName,
         @NotBlank @Size(max = 255) String contentType,
         @NotNull @Positive Long sizeBytes,

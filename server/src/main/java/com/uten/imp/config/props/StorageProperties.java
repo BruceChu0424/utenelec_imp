@@ -65,5 +65,7 @@ public class StorageProperties {
         private String roleName = "";
         /** OSS key 前缀，如 attachments/。 */
         private String keyPrefix = "attachments/";
+        /** 生产门禁：启动时确认 Bucket 已启用版本控制。 */
+        private boolean requireVersioning = false;
     }
 }

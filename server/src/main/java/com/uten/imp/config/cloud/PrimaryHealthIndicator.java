@@ -19,8 +19,12 @@ import java.sql.Statement;
 @Profile("cloud")
 public class PrimaryHealthIndicator {
 
+    private static final int QUERY_TIMEOUT_SECONDS = 5;
+
     private final DataSource primaryDataSource;
-    private volatile boolean up = true;
+    /** 未完成第一次真实探测前不把主库乐观地标成可用。 */
+    private volatile boolean up;
+    private volatile boolean initialized;
 
     public PrimaryHealthIndicator(@Qualifier("primaryDataSource") DataSource primaryDataSource) {
         this.primaryDataSource = primaryDataSource;
@@ -28,6 +32,9 @@ public class PrimaryHealthIndicator {
 
     /** 主库是否可达。 */
     public boolean isUp() {
+        if (!initialized) {
+            ping();
+        }
         return up;
     }
 
@@ -35,16 +42,19 @@ public class PrimaryHealthIndicator {
     void setUp(boolean up) {
         boolean was = this.up;
         this.up = up;
+        this.initialized = true;
         if (was != up) {
             log.info("主库可达性手动翻转 -> {}", up ? "UP" : "DOWN");
         }
     }
 
     @Scheduled(fixedDelayString = "${uten.cloud.primary-health-interval-ms:10000}",
-            initialDelayString = "${uten.cloud.primary-health-initial-delay-ms:30000}")
-    public void ping() {
+            initialDelayString = "${uten.cloud.primary-health-initial-delay-ms:0}")
+    public synchronized void ping() {
         try (Connection c = primaryDataSource.getConnection();
              Statement st = c.createStatement()) {
+            // Bound an already-established but black-holed WAN connection as well as pool checkout.
+            st.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             st.execute("SELECT 1");
             if (!up) {
                 log.info("主库恢复可达，云端退出只读降级");
@@ -55,6 +65,8 @@ public class PrimaryHealthIndicator {
                 log.warn("主库不可达，云端进入只读降级（写请求将 503）: {}", e.getClass().getSimpleName());
             }
             up = false;
+        } finally {
+            initialized = true;
         }
     }
 }

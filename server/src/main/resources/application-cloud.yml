@@ -4,17 +4,27 @@
 # 仅 remote_access 授权账号可访问；HTTPS/CORS/JWT 等由环境变量注入，见 deploy/cloud/README-cloud.md。
 
 server:
-  # 云端由 Nginx 终结 TLS 并反代到 8080；信任内网代理改写 remoteAddr。
+  # Bind to loopback by default: the cloud API is reached only through the local
+  # reverse proxy. A different bind address must be an explicit deployment choice.
+  address: ${UTEN_SERVER_ADDRESS:127.0.0.1}
+  port: ${UTEN_SERVER_PORT:8080}
+  # Cloud TLS terminates at the reverse proxy. Trust only a same-host proxy by
+  # default; non-loopback proxy networks require an explicit regex.
   forward-headers-strategy: native
   tomcat:
     remoteip:
-      internal-proxies: '${UTEN_TRUSTED_PROXY_REGEX:10\..*|192\.168\..*|172\.(1[6-9]|2[0-9]|3[0-1])\..*|127\..*|::1}'
+      internal-proxies: '${UTEN_TRUSTED_PROXY_REGEX:127\..*|::1}'
   ssl:
     enabled: ${UTEN_SSL_ENABLED:false}
 
 spring:
   # 云端不跑 Flyway：schema 由本地 on-prem 主库负责迁移；副本经流复制同步结构。
   flyway:
+    enabled: false
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
     enabled: false
   # 主数据源由 CloudDataSourceConfig 的 @Primary CloudRoutingDataSource 接管（双池：主库 + 副本），
   # 不再使用 application.yml 的单 spring.datasource.*。
@@ -37,9 +47,19 @@ uten:
   deployment:
     # 云端实例：只有 remote_access=TRUE 的账号可访问。
     site: cloud
+  jwt:
+    # Required placeholders deliberately have no fallback in the cloud profile.
+    issuer: ${UTEN_JWT_ISSUER}
+  security:
+    cors-allowed-origins: ${UTEN_CORS_ORIGINS}
+    require-https: ${UTEN_REQUIRE_HTTPS:true}
+    swagger-enabled: false
   storage:
     # 云端 ECS 默认用实例 RAM 角色访问 OSS（免 AccessKey）。
+    provider: ${UTEN_STORAGE_PROVIDER:oss}
     oss:
       use-instance-role: ${UTEN_OSS_USE_INSTANCE_ROLE:true}
+      require-versioning: ${UTEN_OSS_REQUIRE_VERSIONING:true}
   cloud:
     primary-health-interval-ms: ${UTEN_CLOUD_PRIMARY_HEALTH_INTERVAL_MS:10000}
+    primary-health-initial-delay-ms: ${UTEN_CLOUD_PRIMARY_HEALTH_INITIAL_DELAY_MS:0}

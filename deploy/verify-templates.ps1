@@ -10,6 +10,13 @@ $entryWatchdogTimerPath = Join-Path $PSScriptRoot 'systemd/uten-imp-entry-watchd
 $entryWatchdogScriptPath = Join-Path $PSScriptRoot 'watchdog/uten-imp-entry-watchdog.sh'
 $nginxOverridePath = Join-Path $PSScriptRoot 'systemd/nginx-uten-imp-override.conf.example'
 $readmePath = Join-Path $PSScriptRoot 'README.md'
+$cloudNginxPath = Join-Path $PSScriptRoot 'cloud/nginx-cloud.conf.example'
+$cloudSystemdPath = Join-Path $PSScriptRoot 'cloud/uten-imp-cloud.service.example'
+$cloudReadmePath = Join-Path $PSScriptRoot 'cloud/README-cloud.md'
+$preparePrimaryPath = Join-Path $PSScriptRoot 'postgres/prepare-primary.sh'
+$cloneReplicaPath = Join-Path $PSScriptRoot 'postgres/clone-replica.sh'
+$prepareStandbyHbaPath = Join-Path $PSScriptRoot 'postgres/prepare-standby-hba.sh'
+$replicationHarnessPath = Join-Path $PSScriptRoot 'postgres/verify-replication-docker.ps1'
 
 $nginx = Get-Content -LiteralPath $nginxPath -Raw -Encoding UTF8
 $systemd = Get-Content -LiteralPath $systemdPath -Raw -Encoding UTF8
@@ -21,6 +28,13 @@ $entryWatchdogTimer = Get-Content -LiteralPath $entryWatchdogTimerPath -Raw -Enc
 $entryWatchdogScript = Get-Content -LiteralPath $entryWatchdogScriptPath -Raw -Encoding UTF8
 $nginxOverride = Get-Content -LiteralPath $nginxOverridePath -Raw -Encoding UTF8
 $readme = Get-Content -LiteralPath $readmePath -Raw -Encoding UTF8
+$cloudNginx = Get-Content -LiteralPath $cloudNginxPath -Raw -Encoding UTF8
+$cloudSystemd = Get-Content -LiteralPath $cloudSystemdPath -Raw -Encoding UTF8
+$cloudReadme = Get-Content -LiteralPath $cloudReadmePath -Raw -Encoding UTF8
+$preparePrimary = Get-Content -LiteralPath $preparePrimaryPath -Raw -Encoding UTF8
+$cloneReplica = Get-Content -LiteralPath $cloneReplicaPath -Raw -Encoding UTF8
+$prepareStandbyHba = Get-Content -LiteralPath $prepareStandbyHbaPath -Raw -Encoding UTF8
+$replicationHarness = Get-Content -LiteralPath $replicationHarnessPath -Raw -Encoding UTF8
 
 function Assert-Contains {
     param(
@@ -43,6 +57,14 @@ Assert-Contains $nginx 'root /opt/uten-imp/current/web;' 'versioned web symlink 
 Assert-Contains $nginx 'listen 127.0.0.1:8081;' 'loopback-only static entry probe'
 Assert-Contains $nginx 'try_files $uri =503;' 'entry probe requires immutable index'
 Assert-Contains $nginx 'Never copy files through this path in place.' 'web in-place overwrite guard'
+Assert-Contains $nginx 'server 127.0.0.1:8080;' 'on-prem loopback backend boundary'
+Assert-Contains $nginx 'allow __OFFICE_CIDR__;' 'on-prem exact office CIDR placeholder'
+Assert-Contains $nginx 'allow __VPN_CIDR__;' 'on-prem exact VPN CIDR placeholder'
+if ($nginx.Contains('allow 10.0.0.0/8;') -or
+    $nginx.Contains('allow 172.16.0.0/12;') -or
+    $nginx.Contains('allow 192.168.0.0/16;')) {
+    throw 'On-prem Nginx must not ship broad RFC1918 allow rules'
+}
 
 $exactHealth = $nginx.IndexOf('location = /actuator/health {')
 $probeHealth = $nginx.IndexOf('location ~ ^/actuator/health/(?:liveness|readiness)$ {')
@@ -101,6 +123,8 @@ Assert-Contains $nginxOverride 'Restart=on-failure' 'nginx abnormal-exit recover
 Assert-Contains $nginxOverride 'StartLimitBurst=5' 'nginx restart storm guard'
 
 Assert-Contains $readme 'sha256sum -c SHA256SUMS' 'checksum verification'
+Assert-Contains $readme 'deploy/watchdog/uten-imp-watchdog.sh' 'versioned backend watchdog artifact'
+Assert-Contains $readme 'deploy/watchdog/uten-imp-entry-watchdog.sh' 'versioned entry watchdog artifact'
 Assert-Contains $readme 'mv -Tf ".current-<version>" current' 'atomic symlink rename'
 Assert-Contains $readme '/actuator/info' 'non-health Actuator negative check'
 Assert-Contains $readme '1,000' 'shared-NAT recovery capacity check'
@@ -111,5 +135,35 @@ Assert-Contains $readme '不支持集群滚动升级' 'unsupported rolling-upgra
 if ([regex]::IsMatch($readme, '(?m)\+\s{2,}')) {
     throw 'Deployment README contains patch-residue plus markers in commands'
 }
+
+Assert-Contains $cloudNginx 'server 127.0.0.1:8080;' 'cloud loopback backend boundary'
+Assert-Contains $cloudNginx 'ssl_certificate __TLS_CERT_PATH__;' 'cloud TLS certificate placeholder'
+Assert-Contains $cloudNginx 'https://__OSS_PUBLIC_HOST__' 'cloud exact OSS CSP placeholder'
+Assert-Contains $cloudSystemd 'ExecStartPre=/usr/bin/test -r /opt/uten-imp/current/server/uten-imp-server.jar' 'cloud readable JAR guard'
+Assert-Contains $cloudSystemd 'ProtectSystem=full' 'cloud systemd filesystem hardening'
+Assert-Contains $cloudSystemd 'TimeoutStopSec=90' 'cloud graceful shutdown budget'
+
+Assert-Contains $cloudReadme 'UTEN_PROFILE=cloud,prod' 'combined cloud and production profiles'
+Assert-Contains $cloudReadme 'flutter build web --release --no-pub --no-web-resources-cdn' 'self-hosted Flutter Web resources'
+Assert-Contains $cloudReadme '禁止新旧 JAR 滚动混跑' 'two-site mixed-version prohibition'
+Assert-Contains $cloudReadme 'oss:GetObjectVersion' 'OSS pinned-version read permission'
+Assert-Contains $cloudReadme 'oss:ListObjectVersions' 'separate OSS version audit permission'
+Assert-Contains $cloudReadme '不得用 Bucket 生命周期或批量脚本无对账清理' 'confirmed OSS version cleanup guard'
+Assert-Contains $cloudReadme '生产启用版本控制时**不得要求或放行 `x-oss-forbid-overwrite`' 'versioned PUT header boundary'
+Assert-Contains $cloudReadme 'SLOT_NAME=uten_onprem_replica' 'reverse replication slot procedure'
+Assert-Contains $cloudReadme 'RECREATE_INVALID_SLOT=yes' 'invalid slot explicit recovery acknowledgement'
+Assert-Contains $cloudReadme "grep -nE '__[A-Z0-9_]+__'" 'Nginx unresolved-placeholder guard'
+
+Assert-Contains $preparePrimary 'RECREATE_INVALID_SLOT="${RECREATE_INVALID_SLOT:-no}"' 'invalid slot recreation defaults closed'
+Assert-Contains $preparePrimary 'pg_create_physical_replication_slot(' 'physical slot creation'
+Assert-Contains $preparePrimary 'ON_PREM_REPLICA_CIDR' 'reverse replication HBA input'
+Assert-Contains $cloneReplica '--wal-method stream' 'streaming base backup'
+Assert-Contains $cloneReplica 'primary_slot_name' 'permanent standby slot assignment'
+if ($cloneReplica.Contains('--slot "$SLOT_NAME"')) {
+    throw 'pg_basebackup must not claim the permanent slot while the healthy old standby is active'
+}
+Assert-Contains $prepareStandbyHba 'refusing to prepare standby HBA on a writable primary' 'standby-only HBA guard'
+Assert-Contains $prepareStandbyHba 'connected standby hba_file is' 'exact standby HBA path guard'
+Assert-Contains $replicationHarness 'Re-cloning while the permanent slot is active' 'live-slot replacement regression scenario'
 
 'Deployment template contract checks passed.'

@@ -11,6 +11,7 @@ public enum ErrorCode {
     ACCOUNT_DISABLED(401, "账号已停用"),
     UNAUTHORIZED(401, "未登录或会话已过期"),
     FORBIDDEN(403, "无权限访问"),
+    REMOTE_ACCESS_DENIED(403, "该账号未授权外网（云端）访问"),
     NOT_FOUND(404, "资源不存在"),
     CONFLICT(409, "数据冲突"),
     ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待指定财务负责人审核"),

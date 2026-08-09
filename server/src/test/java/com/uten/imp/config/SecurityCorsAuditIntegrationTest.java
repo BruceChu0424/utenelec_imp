@@ -5,12 +5,17 @@ import com.uten.imp.audit.AuditRequestContextFilter;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.audit.UserOperationAuditInterceptor;
 import com.uten.imp.config.props.SecurityProperties;
+import com.uten.imp.config.props.DeploymentProperties;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.visitor.VisitorAccountRepository;
 import com.uten.imp.security.ExportRateLimitInterceptor;
 import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.JwtService;
+import com.uten.imp.security.LocalNetworkAccessPolicy;
+import com.uten.imp.security.LocalNetworkGuardFilter;
+import com.uten.imp.security.RemoteAccessGuardFilter;
+import com.uten.imp.security.RemoteAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.StaffAuthorityResolver;
 import io.jsonwebtoken.Claims;
@@ -20,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
@@ -65,14 +72,28 @@ import static org.mockito.Mockito.when;
 @Import({
         SecurityConfig.class,
         SecurityProperties.class,
+        DeploymentProperties.class,
         AuditDeviceContext.class,
         AuditRequestContextFilter.class,
-        JwtAuthFilter.class
+        JwtAuthFilter.class,
+        LocalNetworkAccessPolicy.class,
+        LocalNetworkGuardFilter.class,
+        RemoteAccessPolicy.class,
+        RemoteAccessGuardFilter.class
 })
 class SecurityCorsAuditIntegrationTest {
 
     @Autowired
     private FilterChainProxy springSecurityFilterChain;
+    @Autowired
+    @Qualifier("localNetworkFilterRegistration")
+    private FilterRegistrationBean<?> localNetworkRegistration;
+    @Autowired
+    @Qualifier("jwtFilterRegistration")
+    private FilterRegistrationBean<?> jwtRegistration;
+    @Autowired
+    @Qualifier("remoteAccessFilterRegistration")
+    private FilterRegistrationBean<?> remoteAccessRegistration;
 
     @MockitoBean
     private AuditService auditService;
@@ -98,10 +119,16 @@ class SecurityCorsAuditIntegrationTest {
         var filters = springSecurityFilterChain.getFilters("/api/cors-audit-probe");
         int auditIndex = indexOf(filters, AuditRequestContextFilter.class);
         int corsIndex = indexOf(filters, CorsFilter.class);
+        int localNetworkIndex = indexOf(filters, LocalNetworkGuardFilter.class);
         int jwtIndex = indexOf(filters, JwtAuthFilter.class);
         assertTrue(auditIndex >= 0);
         assertTrue(corsIndex > auditIndex);
+        assertTrue(localNetworkIndex > corsIndex);
+        assertTrue(jwtIndex > localNetworkIndex);
         assertTrue(jwtIndex > corsIndex);
+        assertFalse(localNetworkRegistration.isEnabled());
+        assertFalse(jwtRegistration.isEnabled());
+        assertFalse(remoteAccessRegistration.isEnabled());
 
         MockHttpServletRequest request = new MockHttpServletRequest(
                 "GET", "/api/cors-audit-probe");

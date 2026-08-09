@@ -34,6 +34,7 @@ class SecurityDefaultsTest {
                         "Authorization",
                         "Content-Type",
                         "Accept",
+                        "X-Uten-Attachment-Upload-Token",
                         "X-Uten-Operation-Id",
                         "X-Uten-Audit-Context"),
                 configuration.getAllowedHeaders());

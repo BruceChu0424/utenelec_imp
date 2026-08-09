@@ -7,6 +7,8 @@ import com.uten.imp.config.WebMvcConfig;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.ExportRateLimitInterceptor;
 import com.uten.imp.security.JwtAuthFilter;
+import com.uten.imp.security.LocalNetworkGuardFilter;
+import com.uten.imp.security.RemoteAccessGuardFilter;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,7 +64,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                         AuditRequestContextFilter.class,
                         UserOperationAuditInterceptor.class,
                         ExportRateLimitInterceptor.class,
-                        JwtAuthFilter.class
+                        JwtAuthFilter.class,
+                        LocalNetworkGuardFilter.class,
+                        RemoteAccessGuardFilter.class
                 }))
 @Import(AuditControllerSecurityTest.MethodSecurityConfiguration.class)
 class AuditControllerSecurityTest {

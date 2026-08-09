@@ -30,13 +30,11 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.AuthUser;
-import com.uten.imp.common.storage.BlobStore;
-import com.uten.imp.common.storage.StorageService;
-import com.uten.imp.common.storage.StorageService.PresignedUpload;
 import com.uten.imp.features.attachment.AttachmentService;
 import com.uten.imp.features.attachment.dto.AttachmentConfirmRequest;
 import com.uten.imp.features.attachment.dto.AttachmentDto;
 import com.uten.imp.features.attachment.dto.AttachmentPresignRequest;
+import com.uten.imp.features.attachment.dto.AttachmentPresignResponse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -59,6 +57,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Base64;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -155,7 +154,6 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.production.analysis.MaterialAnalysisCommandService analysisCommandService;
     @Autowired private com.uten.imp.features.finance.receipt.FinanceReceiptService receiptService;
     @Autowired private com.uten.imp.features.attachment.AttachmentService attachmentService;
-    @Autowired private com.uten.imp.common.storage.StorageService storage;
 
     // ---------------------------------------------------------------------------------------------
     // Smoke: full context boots and the entire schema migrates cleanly.
@@ -799,54 +797,99 @@ class FullChainEndToEndTest {
     @Test
     void attachmentLocalTwoPhaseUploadConfirmListDownloadDelete() throws Exception {
         World w = seedWorld("sAtt");
-        UUID user = createUserWithPerms(w, "user-att", "attachment:manage", "attachment:view");
+        UUID user = createUserWithPerms(
+                w, "user-att", "attachment:manage", "attachment:view", "expense:apply");
         loginAs(user);
 
         UUID ownerId = UUID.randomUUID();
-        byte[] content = "invoice-test-发票内容".getBytes(StandardCharsets.UTF_8);
+        jdbc.update("""
+                insert into expense_claims(
+                    id, applicant_id, applicant_name_snapshot, applicant_department_id,
+                    title, total_amount, status)
+                values (?, ?, '员工-sAtt', ?, '附件真实链路测试', 1.00, 'DRAFT')
+                """, ownerId, employeeIdOf(user), w.departmentId());
+        byte[] content = Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
         String contentType = "image/png";
 
         // 1) presign：服务端生成 storageKey + 本地相对直传 URL
-        PresignedUpload pre = attachmentService.presign(new AttachmentPresignRequest(
+        AttachmentPresignResponse pre = attachmentService.presign(new AttachmentPresignRequest(
                 "EXPENSE_CLAIM", ownerId, "receipt.png", contentType, (long) content.length));
         assertNotNull(pre.storageKey());
         assertFalse(pre.url().startsWith("http"), "本地后端直传 URL 应为相对路径");
 
-        // 2) 模拟客户端直传字节到本地 raw 端点（BlobStore.store 即 controller PUT 的底层）
-        ((BlobStore) storage).store(pre.storageKey(),
+        // 2) 上传授权不能借给另一个同样持附件权限的人使用。
+        UUID other = createUserWithPerms(
+                w, "other-att", "attachment:manage", "attachment:view", "expense:apply");
+        loginAs(other);
+        ApiException stolenGrant = assertThrows(ApiException.class, () -> attachmentService.storeRaw(
+                pre.storageKey(), pre.confirmToken(), new ByteArrayInputStream(content),
+                content.length, contentType));
+        assertEquals(ErrorCode.FORBIDDEN, stolenGrant.getCode());
+
+        // 3) 走真实 local raw service：验证当前用户、业务对象、key、大小和类型绑定。
+        loginAs(user);
+        attachmentService.storeRaw(pre.storageKey(), pre.confirmToken(),
                 new ByteArrayInputStream(content), content.length, contentType);
 
-        // 3) confirm：服务端 describe 校验对象已到位 → 落库
+        // 4) confirm：服务端 describe 校验对象已到位 → 落库
         AttachmentDto saved = attachmentService.confirm(new AttachmentConfirmRequest(
-                pre.storageKey(), "EXPENSE_CLAIM", ownerId,
+                pre.storageKey(), pre.confirmToken(), "EXPENSE_CLAIM", ownerId,
                 "receipt.png", contentType, (long) content.length, null));
         assertEquals(content.length, saved.sizeBytes());
-        assertNotNull(saved.downloadUrl());
+        assertNull(saved.downloadUrl(), "list/confirm responses must not pre-issue expiring credentials");
+        assertNotNull(attachmentService.downloadGrant(saved.id()).url());
+        assertEquals(1, count(
+                "select count(*) from audit_log where action='attachment_download_grant' and target_id=?",
+                saved.id().toString()));
         assertEquals(1, count(
                 "select count(*) from attachments where owner_type=? and owner_id=?",
                 "EXPENSE_CLAIM", ownerId));
+        assertEquals(64, strFor(
+                "select sha256 from attachments where storage_key = ?", pre.storageKey()).length());
 
-        // 4) list：含下载 URL
+        // 响应丢失后相同 confirm 可安全重试，不会多落一行。
+        AttachmentDto retried = attachmentService.confirm(new AttachmentConfirmRequest(
+                pre.storageKey(), pre.confirmToken(), "EXPENSE_CLAIM", ownerId,
+                "receipt.png", contentType, (long) content.length, null));
+        assertEquals(saved.id(), retried.id());
+
+        // storageKey 已可见后也绝不能覆盖原对象。
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class, () ->
+                attachmentService.storeRaw(pre.storageKey(), pre.confirmToken(),
+                        new ByteArrayInputStream(content), content.length, contentType)).getCode());
+
+        // 5) list：含下载 URL
         List<AttachmentDto> list = attachmentService.list("EXPENSE_CLAIM", ownerId);
         assertEquals(1, list.size());
         assertEquals(saved.id(), list.get(0).id());
 
-        // 5) 下载往返：字节一致
+        // 6) 下载往返：字节一致
         try (ByteArrayOutputStream out = new ByteArrayOutputStream();
-             var in = ((BlobStore) storage).read(pre.storageKey())) {
+             var in = attachmentService.openRaw(pre.storageKey()).stream()) {
             in.transferTo(out);
             assertArrayEquals(content, out.toByteArray());
         }
 
-        // 6) 未上传却 confirm → 对象不存在，应 409 CONFLICT
-        PresignedUpload ghost = attachmentService.presign(new AttachmentPresignRequest(
+        // 7) 持相同通用权限的其他员工仍不能枚举、下载或删除这张报销单的附件。
+        loginAs(other);
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> attachmentService.list("EXPENSE_CLAIM", ownerId)).getCode());
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> attachmentService.openRaw(pre.storageKey())).getCode());
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> attachmentService.delete(saved.id())).getCode());
+
+        // 8) 未上传却 confirm → 对象不存在，应 409 CONFLICT
+        loginAs(user);
+        AttachmentPresignResponse ghost = attachmentService.presign(new AttachmentPresignRequest(
                 "EXPENSE_CLAIM", ownerId, "ghost.png", contentType, (long) content.length));
         ApiException conflict = assertThrows(ApiException.class, () -> attachmentService.confirm(
-                new AttachmentConfirmRequest(ghost.storageKey(), "EXPENSE_CLAIM", ownerId,
+                new AttachmentConfirmRequest(ghost.storageKey(), ghost.confirmToken(), "EXPENSE_CLAIM", ownerId,
                         "ghost.png", contentType, (long) content.length, null)));
         assertEquals(ErrorCode.CONFLICT, conflict.getCode());
 
-        // 7) delete：删对象 + 删行 + 磁盘文件
+        // 9) delete：删对象 + 删行 + 磁盘文件
         attachmentService.delete(saved.id());
         assertEquals(0, count(
                 "select count(*) from attachments where owner_type=? and owner_id=?",

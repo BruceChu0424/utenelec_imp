@@ -2,6 +2,7 @@ package com.uten.imp.config.props;
 
 import lombok.Getter;
 import lombok.Setter;
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +19,19 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "uten.deployment")
 public class DeploymentProperties {
 
+    public static final String DEFAULT_LOCAL_ALLOWED_CIDRS =
+            "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+
     /** 部署站点：local / cloud。 */
     private String site = "local";
+
+    /** Source networks allowed to reach /api/** when {@link #site} is local. */
+    private String localAllowedCidrs = DEFAULT_LOCAL_ALLOWED_CIDRS;
+
+    @PostConstruct
+    void validateSite() {
+        if (!"local".equalsIgnoreCase(site) && !"cloud".equalsIgnoreCase(site)) {
+            throw new IllegalStateException("uten.deployment.site must be local or cloud");
+        }
+    }
 }

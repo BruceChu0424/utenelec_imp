@@ -32,6 +32,8 @@ const Map<String, int> _definitiveRefreshRejections = <String, int>{
   'ACCOUNT_DISABLED': 401,
   'VALIDATION_FAILED': 422,
   'VISITOR_BLOCKED': 403,
+  // 远程授权被撤销是明确的员工会话边界；不能把 403 当临时网络故障永久保留旧令牌。
+  'REMOTE_ACCESS_DENIED': 403,
 };
 
 bool isDefinitiveRefreshRejection(Response<dynamic>? response) {

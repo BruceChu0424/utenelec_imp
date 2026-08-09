@@ -39,11 +39,17 @@ public class CloudDataSourceConfig {
     }
 
     private DataSource build(String pool, CloudDbProperties.Target t) {
-        if (t.getUrl() == null || t.getUrl().isBlank()) {
-            // fail-fast：cloud profile 缺密钥/URL 不应静默启动。
+        String prefix = "app.cloud.db." + pool + ".";
+        requireNonBlank(prefix + "url", t.getUrl());
+        requireNonBlank(prefix + "username", t.getUsername());
+        requireNonBlank(prefix + "password", t.getPassword());
+        if (!t.getUrl().startsWith("jdbc:postgresql://")) {
             throw new IllegalStateException(
-                    "app.cloud.db." + pool + ".url 未配置：cloud profile 必须设置 "
-                            + (pool.contains("primary") ? "UTEN_DB_PRIMARY_URL" : "UTEN_DB_REPLICA_URL"));
+                    prefix + "url must be an explicit PostgreSQL JDBC URL");
+        }
+        if (!hasVerifyFull(t.getUrl())) {
+            throw new IllegalStateException(
+                    prefix + "url must include sslmode=verify-full for cross-site database TLS");
         }
         HikariDataSource ds = DataSourceBuilder.create()
                 .type(HikariDataSource.class)
@@ -55,6 +61,22 @@ public class CloudDataSourceConfig {
         ds.setMaximumPoolSize(20);
         ds.setMinimumIdle(2);
         ds.setConnectionTimeout(5_000);
+        ds.setValidationTimeout(5_000);
+        ds.addDataSourceProperty("connectTimeout", "5");
+        ds.addDataSourceProperty("socketTimeout", "5");
+        ds.addDataSourceProperty("tcpKeepAlive", "true");
+        ds.setReadOnly("replica".equals(pool));
         return ds;
+    }
+
+    private static boolean hasVerifyFull(String url) {
+        return url.toLowerCase(java.util.Locale.ROOT)
+                .matches(".*[?&]sslmode=verify-full(?:&.*)?$");
+    }
+
+    private static void requireNonBlank(String property, String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(property + " must be configured for the cloud profile");
+        }
     }
 }

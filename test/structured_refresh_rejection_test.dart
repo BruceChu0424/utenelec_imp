@@ -24,6 +24,7 @@ void main() {
       (401, 'ACCOUNT_DISABLED'),
       (422, 'VALIDATION_FAILED'),
       (403, 'VISITOR_BLOCKED'),
+      (403, 'REMOTE_ACCESS_DENIED'),
     ]) {
       expect(
         isDefinitiveRefreshRejection(
@@ -64,6 +65,43 @@ void main() {
       expect(isDefinitiveRefreshRejection(response), isFalse);
     }
   });
+
+  test(
+    'staff remote-access revocation clears the exact rejected session',
+    () async {
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+      final storage = SecureStorage(const FlutterSecureStorage());
+      await storage.saveTokens(
+        accessToken: 'revoked-remote-access',
+        refreshToken: 'revoked-remote-refresh',
+      );
+      var expirations = 0;
+      final subscription = SessionEventBus.instance.onSessionExpired.listen(
+        (_) => expirations++,
+      );
+      addTearDown(subscription.cancel);
+      final dio = _staffDio(storage, (request) {
+        if (request.path == '/auth/refresh') {
+          return _jsonResponse(request, 403, <String, String>{
+            'code': 'REMOTE_ACCESS_DENIED',
+          });
+        }
+        return _jsonResponse(request, 401, <String, String>{
+          'code': 'UNAUTHORIZED',
+        });
+      });
+
+      await expectLater(
+        dio.get<dynamic>('/protected'),
+        throwsA(isA<DioException>()),
+      );
+      await pumpEventQueue();
+
+      expect(await storage.getAccessToken(), isNull);
+      expect(await storage.getRefreshToken(), isNull);
+      expect(expirations, 1);
+    },
+  );
 
   for (final failure in _nonAuthoritativeFailures) {
     test('staff ${failure.name} refresh failure preserves session', () async {

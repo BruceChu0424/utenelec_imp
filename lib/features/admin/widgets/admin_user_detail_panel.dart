@@ -980,7 +980,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           ),
           const SizedBox(width: UtenSpacing.s8),
           UtenButton(
-            type: remoteAccess ? UtenButtonType.ghost : UtenButtonType.secondary,
+            type: remoteAccess
+                ? UtenButtonType.ghost
+                : UtenButtonType.secondary,
             size: UtenButtonSize.small,
             icon: remoteAccess
                 ? Icons.remove_circle_outline_rounded
@@ -1017,8 +1019,15 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       if (!mounted) return;
       UtenToast.success(context, next ? '已授权云端访问' : '已取消云端访问');
       widget.onAccountChanged();
+    } on ApiException catch (e) {
+      if (mounted) {
+        UtenToast.error(
+          context,
+          e.message.isNotEmpty ? e.message : '远程访问授权变更失败，请稍后重试',
+        );
+      }
     } catch (_) {
-      if (mounted) UtenToast.error(context, '操作失败，请稍后重试');
+      if (mounted) UtenToast.error(context, '远程访问授权变更失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _acting = false);
     }

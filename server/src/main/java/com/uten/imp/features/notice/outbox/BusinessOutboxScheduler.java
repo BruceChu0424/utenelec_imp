@@ -2,11 +2,13 @@ package com.uten.imp.features.notice.outbox;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@Profile("!cloud")
 public class BusinessOutboxScheduler {
 
     private static final int MAX_BATCH = 20;

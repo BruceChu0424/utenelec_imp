@@ -1,11 +1,15 @@
 package com.uten.imp.features.auth;
 
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.config.props.DeploymentProperties;
 import com.uten.imp.features.auth.dto.LoginRequest;
 import com.uten.imp.features.auth.dto.TokenResponse;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.security.LoginRateLimiter;
+import com.uten.imp.security.RemoteAccessPolicy;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +22,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -38,11 +44,15 @@ class LoginServiceAuditOrderingTest {
     private LoginService service;
     private UserAccount user;
     private LoginRequest request;
+    private RemoteAccessPolicy remoteAccessPolicy;
 
     @BeforeEach
     void setUp() {
         when(passwordEncoder.encode("dummy-password-for-timing"))
                 .thenReturn("dummy-hash");
+        DeploymentProperties deployment = new DeploymentProperties();
+        deployment.setSite("cloud");
+        remoteAccessPolicy = new RemoteAccessPolicy(deployment);
         service = new LoginService(
                 userRepo,
                 passwordEncoder,
@@ -50,11 +60,13 @@ class LoginServiceAuditOrderingTest {
                 audit,
                 tokenIssuer,
                 tx,
-                failureRecorder);
+                failureRecorder,
+                remoteAccessPolicy);
         user = new UserAccount();
         user.setLoginAccount("E001");
         user.setPasswordHash("password-hash");
         user.setStatus("active");
+        user.setRemoteAccess(true);
         request = new LoginRequest("E001", "correct-password");
         when(userRepo.findByLoginAccount("E001")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("correct-password", "password-hash"))
@@ -99,5 +111,49 @@ class LoginServiceAuditOrderingTest {
                 "users",
                 user.getId().toString(),
                 "success");
+    }
+
+    @Test
+    void cloudDenialOccursAfterCredentialAndStatusChecksButBeforeIssuance() {
+        user.setRemoteAccess(false);
+
+        ApiException denied = assertThrows(
+                ApiException.class,
+                () -> service.login(request, "203.0.113.9"));
+
+        assertEquals(ErrorCode.REMOTE_ACCESS_DENIED, denied.getCode());
+        assertNull(user.getLastLoginAt());
+        verify(userRepo, never()).save(user);
+        verify(tokenIssuer, never()).issueTokens(user);
+        verify(audit).logExplicit(
+                user.getId(), user.getLoginAccount(), "login_failed",
+                "users", user.getId().toString(), "remote_access_denied");
+    }
+
+    @Test
+    void wrongPasswordDoesNotRevealRemoteAuthorizationState() {
+        user.setRemoteAccess(false);
+        when(passwordEncoder.matches("correct-password", "password-hash"))
+                .thenReturn(false);
+
+        ApiException denied = assertThrows(
+                ApiException.class,
+                () -> service.login(request, "203.0.113.9"));
+
+        assertEquals(ErrorCode.BAD_CREDENTIALS, denied.getCode());
+        verify(tokenIssuer, never()).issueTokens(user);
+    }
+
+    @Test
+    void disabledStatusTakesPrecedenceOverRemoteAuthorization() {
+        user.setStatus("disabled");
+        user.setRemoteAccess(false);
+
+        ApiException denied = assertThrows(
+                ApiException.class,
+                () -> service.login(request, "203.0.113.9"));
+
+        assertEquals(ErrorCode.ACCOUNT_DISABLED, denied.getCode());
+        verify(tokenIssuer, never()).issueTokens(user);
     }
 }

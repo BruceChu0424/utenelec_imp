@@ -32,7 +32,8 @@ write_counter() {
 }
 
 entry_body=""
-if entry_body="$(curl --fail --silent --show-error --max-time 5 "${ENTRY_URL}")" +  && grep -Fq -- "${ENTRY_MARKER}" <<<"${entry_body}"; then
+if entry_body="$(curl --fail --silent --show-error --max-time 5 "${ENTRY_URL}")" &&
+  grep -Fq -- "${ENTRY_MARKER}" <<<"${entry_body}"; then
   write_counter 0
   exit 0
 fi
@@ -47,17 +48,21 @@ fi
 failures=$((failures + 1))
 write_counter "${failures}"
 
-logger -p daemon.warning -t uten-imp-entry-watchdog +  "entry probe failure ${failures}/${FAILURE_THRESHOLD}"
+logger -p daemon.warning -t uten-imp-entry-watchdog \
+  "entry probe failure ${failures}/${FAILURE_THRESHOLD}"
 
 if (( failures < FAILURE_THRESHOLD )); then
   exit 1
 fi
 
-logger -p daemon.err -t uten-imp-entry-watchdog +  "entry probe failed ${FAILURE_THRESHOLD} consecutive probes; restarting ${NGINX_SERVICE}"
+logger -p daemon.err -t uten-imp-entry-watchdog \
+  "entry probe failed ${FAILURE_THRESHOLD} consecutive probes; restarting ${NGINX_SERVICE}"
 if systemctl restart "${NGINX_SERVICE}"; then
   write_counter 0
-  logger -p daemon.notice -t uten-imp-entry-watchdog +    "nginx restart requested successfully"
+  logger -p daemon.notice -t uten-imp-entry-watchdog \
+    "nginx restart requested successfully"
 else
-  logger -p daemon.err -t uten-imp-entry-watchdog +    "nginx restart request failed"
+  logger -p daemon.err -t uten-imp-entry-watchdog \
+    "nginx restart request failed"
 fi
 exit 1

@@ -29,6 +29,14 @@ public class Attachment extends BaseEntity {
     @Column(name = "storage_key", nullable = false)
     private String storageKey;
 
+    /** OSS versioning 开启时固定到 confirm 校验过的版本；本地存储为 null。 */
+    @Column(name = "storage_version")
+    private String storageVersion;
+
+    /** 对象存储返回的 ETag，仅作审计/诊断；可信内容指纹仍是服务端 SHA-256。 */
+    @Column(name = "storage_etag")
+    private String storageEtag;
+
     @Column(name = "original_name", nullable = false)
     private String originalName;
 
@@ -38,7 +46,7 @@ public class Attachment extends BaseEntity {
     @Column(name = "size_bytes", nullable = false)
     private long sizeBytes;
 
-    /** 可选内容指纹，由客户端计算后随 confirm 传入。 */
+    /** 服务端在 confirm 时读取对象并计算的可信 SHA-256（hex）。 */
     @Column(name = "sha256", length = 64)
     private String sha256;
 }

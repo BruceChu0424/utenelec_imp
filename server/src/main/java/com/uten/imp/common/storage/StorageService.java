@@ -1,5 +1,6 @@
 package com.uten.imp.common.storage;
 
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
@@ -31,7 +32,8 @@ public interface StorageService {
     }
 
     /** 对象校验/元信息。 */
-    record StoredObject(boolean exists, long size, String contentType) {
+    record StoredObject(boolean exists, long size, String contentType,
+                        String versionId, String eTag) {
     }
 
     /** 为一次上传生成 storageKey + 客户端直传目标 URL。 */
@@ -40,11 +42,14 @@ public interface StorageService {
     /** 校验对象已上传到位并返回其实际元信息（OSS HEAD / 本地读文件大小）。 */
     StoredObject describe(String storageKey);
 
+    /** Opens the stored bytes so the server can compute a trusted digest/type check at confirm. */
+    InputStream openForValidation(String storageKey, String versionId);
+
     /** 生成下载 URL。 */
-    PresignedDownload presignDownload(String storageKey);
+    PresignedDownload presignDownload(String storageKey, String versionId);
 
     /** 删除对象。 */
-    void delete(String storageKey);
+    void delete(String storageKey, String versionId);
 
     /** 是否启用（provider=disabled 时为 false）。 */
     boolean isEnabled();

@@ -1,9 +1,10 @@
 package com.uten.imp.features.attachment;
 
-import com.uten.imp.common.storage.StorageService.PresignedUpload;
 import com.uten.imp.features.attachment.dto.AttachmentConfirmRequest;
+import com.uten.imp.features.attachment.dto.AttachmentDownloadResponse;
 import com.uten.imp.features.attachment.dto.AttachmentDto;
 import com.uten.imp.features.attachment.dto.AttachmentPresignRequest;
+import com.uten.imp.features.attachment.dto.AttachmentPresignResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -45,7 +47,7 @@ public class AttachmentController {
 
     @PostMapping("/presign")
     @PreAuthorize("hasAuthority('attachment:manage')")
-    public PresignedUpload presign(@Valid @RequestBody AttachmentPresignRequest request) {
+    public AttachmentPresignResponse presign(@Valid @RequestBody AttachmentPresignRequest request) {
         return service.presign(request);
     }
 
@@ -62,6 +64,12 @@ public class AttachmentController {
         return service.list(ownerType, ownerId);
     }
 
+    @GetMapping("/{id}/download-grant")
+    @PreAuthorize("hasAuthority('attachment:view')")
+    public AttachmentDownloadResponse downloadGrant(@PathVariable UUID id) {
+        return service.downloadGrant(id);
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('attachment:manage')")
     public void delete(@PathVariable UUID id) {
@@ -71,14 +79,19 @@ public class AttachmentController {
     // ---- local 后端的原始字节端点（oss 模式下客户端直传 OSS，不调用这里；返回 404）----
 
     @PutMapping("/raw/{key}")
-    public ResponseEntity<Void> uploadRaw(@PathVariable String key, HttpServletRequest request)
+    @PreAuthorize("hasAuthority('attachment:manage')")
+    public ResponseEntity<Void> uploadRaw(
+            @PathVariable String key,
+            @RequestHeader("X-Uten-Attachment-Upload-Token") String uploadToken,
+            HttpServletRequest request)
             throws java.io.IOException {
-        service.storeRaw(key, request.getInputStream(),
+        service.storeRaw(key, uploadToken, request.getInputStream(),
                 request.getContentLengthLong(), request.getContentType());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/raw/{key}")
+    @PreAuthorize("hasAuthority('attachment:view')")
     public ResponseEntity<Resource> downloadRaw(@PathVariable String key) {
         AttachmentService.RawDownload download = service.openRaw(key);
         if (download == null) {
@@ -94,7 +107,8 @@ public class AttachmentController {
                 .replace("+", "%20");
         return ResponseEntity.ok()
                 .contentType(mediaType)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encoded)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encoded)
+                .header("X-Content-Type-Options", "nosniff")
                 .body(new InputStreamResource(download.stream()));
     }
 }

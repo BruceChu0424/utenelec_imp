@@ -7,6 +7,8 @@ import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimCreateRequest;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimItemInput;
 import com.uten.imp.features.expenseclaim.dto.ExpenseClaimPaymentRequest;
+import com.uten.imp.features.attachment.AttachmentRepository;
+import com.uten.imp.features.attachment.AttachmentService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -26,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ExpenseClaimServiceTest {
@@ -36,6 +39,8 @@ class ExpenseClaimServiceTest {
     private EmployeeClaimPostingPort postingPort;
     private SecurityContextCurrentUser currentUser;
     private com.uten.imp.features.common.taskclaim.TaskClaimService taskClaim;
+    private AttachmentRepository attachmentRepository;
+    private AttachmentService attachmentService;
     private ExpenseClaimService service;
     private AuthUser authUser;
     private UUID actorId;
@@ -48,6 +53,8 @@ class ExpenseClaimServiceTest {
         postingPort = mock(EmployeeClaimPostingPort.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         taskClaim = mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class);
+        attachmentRepository = mock(AttachmentRepository.class);
+        attachmentService = mock(AttachmentService.class);
         authUser = mock(AuthUser.class);
         actorId = UUID.randomUUID();
 
@@ -64,8 +71,8 @@ class ExpenseClaimServiceTest {
                 currentUser,
                 mock(TxSessionVars.class),
                 taskClaim,
-                mock(com.uten.imp.features.attachment.AttachmentRepository.class),
-                mock(com.uten.imp.common.storage.StorageService.class));
+                attachmentRepository,
+                attachmentService);
     }
 
     @Test
@@ -177,6 +184,34 @@ class ExpenseClaimServiceTest {
         ApiException error = assertThrows(ApiException.class, () -> service.detail(claim.getId()));
 
         assertEquals(ErrorCode.NOT_FOUND, error.getCode());
+    }
+
+    @Test
+    void detailWithoutAttachmentViewNeverIssuesDownloadCapabilities() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
+        ExpenseClaim claim = claim(actorId, "DRAFT");
+        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        when(itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(any()))
+                .thenReturn(List.of());
+
+        var detail = service.detail(claim.getId());
+
+        assertEquals(List.of(), detail.attachments());
+        verifyNoInteractions(attachmentService);
+    }
+
+    @Test
+    void detailWithAttachmentViewDelegatesToCentralOwnerPolicy() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:apply", "attachment:view"));
+        ExpenseClaim claim = claim(actorId, "DRAFT");
+        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        when(itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(any()))
+                .thenReturn(List.of());
+        when(attachmentService.list("EXPENSE_CLAIM", claim.getId())).thenReturn(List.of());
+
+        service.detail(claim.getId());
+
+        verify(attachmentService).list("EXPENSE_CLAIM", claim.getId());
     }
 
     private static ExpenseClaim claim(UUID applicantId, String status) {

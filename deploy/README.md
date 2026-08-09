@@ -1,5 +1,12 @@
 # Uten IMP 稳定运行与原子发布基线
 
+> **适用边界（2026-08-09）**：本文是通用的单版本、不可变制品、Nginx/systemd 和 watchdog 发布基线。
+> 公司本地唯一写主库、阿里云异步热备、双隧道、远程访问授权、共享 OSS、故障切换/回切的完整步骤见
+> [cloud/README-cloud.md](cloud/README-cloud.md)；当前完成度和所有剩余工作见
+> [2026-08-09 本地云端部署与生产就绪清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)。
+> 模板、脚本和隔离演练通过不等于目标服务器已安装或生产放行；填写环境变量也不能替代 VPN、迁移、
+> PITR、真实 OSS、故障注入和岗位 UAT。
+
 公司员工使用的 Web 入口不得由开发调试进程提供。生产入口必须由 Nginx 持续提供版本化的
 Flutter Web Release，并把同域 /api 反向代理到受系统服务或编排器监督的 Spring Boot。
 
@@ -22,10 +29,15 @@ CI 必须为每个发布生成不可变版本号和 SHA256SUMS；manifest 应来
       server/uten-imp-server.jar
       web/index.html
       web/...
+      deploy/README.md
+      deploy/watchdog/uten-imp-watchdog.sh
+      deploy/watchdog/uten-imp-entry-watchdog.sh
   current -> releases/<version>
 ~~~
 
-生产秘密只放在仅服务账号可读的 /etc/uten-imp/server.env，不进入版本目录、仓库或命令历史。
+watchdog 的 systemd 单元从 `current/deploy/watchdog/` 调用脚本，因此这三个 deploy 文件必须和 JAR/Web
+一起进入同一个不可变制品并纳入 `SHA256SUMS`；只上传 JAR/Web 会让 timer 命令不可运行。生产秘密只放在
+仅服务账号可读的 /etc/uten-imp/server.env，不进入版本目录、仓库或命令历史。
 新制品必须先完整写入一个从未运行过的新版本目录，再执行：
 
 ~~~bash
@@ -160,6 +172,9 @@ test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
 ~~~
 
 还必须完成：
+
+- 对本地/云端部署按 [2026-08-09 权威清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)
+  逐项保存执行人、命令/日志、结果和复核人；任何红项或无证据勾选都不能进入 GO；
 
 - 对版本目录执行 SHA256SUMS 校验，证明 current 只经原子 symlink rename 切换；检查运行 JAR/Web 从未
   原位覆盖，并演练保留目录间的原子回滚；

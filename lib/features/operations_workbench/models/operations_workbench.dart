@@ -67,6 +67,13 @@ class OperationsWorkbenchSummary {
           _statusMetric('WAITING_ORDER', '申请待分解', 'warning'),
           _statusMetric('FINANCE_APPROVED', '财务已通过', 'info'),
           _statusMetric('COMPLETED', '已完成', 'success'),
+          OperationsWorkbenchMetric(
+            key: 'overdueTasks',
+            label: '逾期 / 异常',
+            value: overdueTasks,
+            tone: overdueTasks > 0 ? 'danger' : 'neutral',
+            exceptionFilter: 'OVERDUE_ANY',
+          ),
         ];
       case OperationsWorkbenchDepartment.warehouse:
         // 仓库履约任务台（领料/备料域，与采购/委外不同）：保留状态卡 + 逾期/未完成数量。
@@ -308,6 +315,7 @@ class OperationsWorkbenchTask {
     return actionDocument?.purchaseStageLabel ??
         operationsWorkbenchStatusLabel(taskStatus);
   }
+
   String get exceptionLabel => exceptionCode == null
       ? '正常'
       : operationsWorkbenchExceptionLabel(exceptionCode!);
@@ -389,16 +397,13 @@ class OperationsWorkbenchData {
 
   List<OperationsWorkbenchMetric> get metrics => summary.metricsFor(department);
 
-  List<OperationsWorkbenchFilterOption> get statusOptions => _options(
-    <String>[
-      ...summary.statusCounts.keys,
-      ...metrics
-          .map((metric) => metric.statusFilter)
-          .whereType<String>()
-          .where((status) => status != kOperationsWorkbenchAllStatus),
-    ],
-    operationsWorkbenchStatusLabel,
-  );
+  List<OperationsWorkbenchFilterOption> get statusOptions => _options(<String>[
+    ...summary.statusCounts.keys,
+    ...metrics
+        .map((metric) => metric.statusFilter)
+        .whereType<String>()
+        .where((status) => status != kOperationsWorkbenchAllStatus),
+  ], operationsWorkbenchStatusLabel);
 
   List<OperationsWorkbenchFilterOption> get exceptionOptions =>
       _options(<String>[

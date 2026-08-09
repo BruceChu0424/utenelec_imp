@@ -7,7 +7,9 @@ import com.aliyun.oss.OSSException;
 import com.aliyun.oss.common.auth.CredentialsProvider;
 import com.aliyun.oss.common.auth.DefaultCredentialProvider;
 import com.aliyun.oss.common.auth.InstanceProfileCredentialsProvider;
+import com.aliyun.oss.model.BucketVersioningConfiguration;
 import com.aliyun.oss.model.GeneratePresignedUrlRequest;
+import com.aliyun.oss.model.GetObjectRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.uten.imp.config.props.StorageProperties;
 import jakarta.annotation.PreDestroy;
@@ -16,9 +18,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.net.URI;
 import java.net.URL;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -37,18 +42,26 @@ import java.util.Map;
 @ConditionalOnProperty(prefix = "uten.storage", name = "provider", havingValue = "oss")
 public class OssStorageService implements StorageService {
 
+    private static final String FORBID_OVERWRITE = "x-oss-forbid-overwrite";
+
     private final StorageProperties properties;
     private final OSS client;
     private final String bucket;
     private final String keyPrefix;
 
     public OssStorageService(StorageProperties properties) {
+        this(properties, createClient(properties));
+    }
+
+    OssStorageService(StorageProperties properties, OSS client) {
         this.properties = properties;
-        this.client = createClient(properties);
+        this.client = client;
         StorageProperties.Oss oss = properties.getOss();
+        requireHttpsEndpoint(oss.getEndpoint());
         this.bucket = oss.getBucket();
         this.keyPrefix = oss.getKeyPrefix() == null || oss.getKeyPrefix().isBlank()
                 ? "" : oss.getKeyPrefix();
+        verifyProductionSafety(oss);
         log.info("OssStorageService 已启用，bucket={} prefix={}", bucket, keyPrefix);
     }
 
@@ -62,13 +75,22 @@ public class OssStorageService implements StorageService {
         if (StringUtils.hasText(request.contentType())) {
             req.setContentType(request.contentType());
         }
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Content-Type", request.contentType() == null
+                ? "application/octet-stream" : request.contentType());
+        // OSS ignores this header while Bucket Versioning is enabled or suspended.
+        // It remains useful only for explicitly non-versioned development buckets;
+        // production integrity is provided by pinning the inspected versionId.
+        if (!properties.getOss().isRequireVersioning()) {
+            req.addHeader(FORBID_OVERWRITE, "true");
+            headers.put(FORBID_OVERWRITE, "true");
+        }
         URL url = client.generatePresignedUrl(req);
         return new PresignedUpload(
                 key,
                 url.toString(),
                 "PUT",
-                Map.of("Content-Type", request.contentType() == null
-                        ? "application/octet-stream" : request.contentType()),
+                Map.copyOf(headers),
                 expiration.toInstant());
     }
 
@@ -76,32 +98,54 @@ public class OssStorageService implements StorageService {
     public StoredObject describe(String storageKey) {
         try {
             ObjectMetadata meta = client.getObjectMetadata(bucket, physicalKey(storageKey));
-            return new StoredObject(true, meta.getContentLength(), meta.getContentType());
+            requirePinnedVersion(meta.getVersionId());
+            return new StoredObject(
+                    true, meta.getContentLength(), meta.getContentType(),
+                    meta.getVersionId(), meta.getETag());
         } catch (OSSException e) {
             if ("NoSuchKey".equals(e.getErrorCode())) {
-                return new StoredObject(false, 0, null);
+                return new StoredObject(false, 0, null, null, null);
             }
             throw e;
         }
     }
 
     @Override
-    public PresignedDownload presignDownload(String storageKey) {
+    public InputStream openForValidation(String storageKey, String versionId) {
+        requirePinnedVersion(versionId);
+        GetObjectRequest request = StringUtils.hasText(versionId)
+                ? new GetObjectRequest(bucket, physicalKey(storageKey), versionId)
+                : new GetObjectRequest(bucket, physicalKey(storageKey));
+        return client.getObject(request).getObjectContent();
+    }
+
+    @Override
+    public PresignedDownload presignDownload(String storageKey, String versionId) {
+        requirePinnedVersion(versionId);
         Date expiration = expiryDate();
         GeneratePresignedUrlRequest req =
                 new GeneratePresignedUrlRequest(bucket, physicalKey(storageKey), HttpMethod.GET);
         req.setExpiration(expiration);
+        if (StringUtils.hasText(versionId)) {
+            req.addQueryParameter("versionId", versionId);
+        }
         URL url = client.generatePresignedUrl(req);
         return new PresignedDownload(url.toString(), expiration.toInstant());
     }
 
     @Override
-    public void delete(String storageKey) {
+    public void delete(String storageKey, String versionId) {
+        requirePinnedVersion(versionId);
         try {
-            client.deleteObject(bucket, physicalKey(storageKey));
+            if (StringUtils.hasText(versionId)) {
+                client.deleteVersion(bucket, physicalKey(storageKey), versionId);
+            } else {
+                client.deleteObject(bucket, physicalKey(storageKey));
+            }
         } catch (Exception e) {
-            // 删除失败不阻断业务（行已删），记录类型即可，异常消息可能含 key。
             log.warn("OSS 附件删除失败 key={} type={}", storageKey, e.getClass().getSimpleName());
+            // DB 行必须保留，才能让管理员重试并避免形成不可追踪的孤儿对象。
+            throw new IllegalStateException("删除 OSS 附件失败", e);
         }
     }
 
@@ -130,6 +174,34 @@ public class OssStorageService implements StorageService {
         return Date.from(Instant.now().plusSeconds(properties.getPresignedExpirySeconds()));
     }
 
+    private void requirePinnedVersion(String versionId) {
+        if (properties.getOss().isRequireVersioning()
+                && (!StringUtils.hasText(versionId)
+                || "null".equalsIgnoreCase(versionId.trim()))) {
+            throw new IllegalStateException(
+                    "OSS versionId is required when Bucket versioning is enforced");
+        }
+    }
+
+    private void verifyProductionSafety(StorageProperties.Oss oss) {
+        if (!oss.isRequireVersioning()) {
+            return;
+        }
+        try {
+            BucketVersioningConfiguration versioning = client.getBucketVersioning(bucket);
+            if (versioning == null
+                    || !BucketVersioningConfiguration.ENABLED.equals(versioning.getStatus())) {
+                throw new IllegalStateException(
+                        "OSS Bucket versioning must be Enabled when UTEN_OSS_REQUIRE_VERSIONING=true");
+            }
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException(
+                    "Unable to verify OSS Bucket versioning; grant GetBucketVersioning and check the Bucket", e);
+        }
+    }
+
     private static OSS createClient(StorageProperties properties) {
         StorageProperties.Oss oss = properties.getOss();
         requireConfigured("UTEN_OSS_ENDPOINT", oss.getEndpoint());
@@ -153,6 +225,20 @@ public class OssStorageService implements StorageService {
     private static void requireConfigured(String name, String value) {
         if (!StringUtils.hasText(value)) {
             throw new IllegalStateException(name + " must be configured when UTEN_STORAGE_PROVIDER=oss");
+        }
+    }
+
+    private static void requireHttpsEndpoint(String value) {
+        requireConfigured("UTEN_OSS_ENDPOINT", value);
+        try {
+            URI endpoint = URI.create(value.trim());
+            if (!"https".equalsIgnoreCase(endpoint.getScheme())
+                    || !StringUtils.hasText(endpoint.getHost())
+                    || endpoint.getUserInfo() != null) {
+                throw new IllegalStateException("UTEN_OSS_ENDPOINT must be an HTTPS OSS endpoint");
+            }
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("UTEN_OSS_ENDPOINT must be a valid HTTPS OSS endpoint", e);
         }
     }
 }

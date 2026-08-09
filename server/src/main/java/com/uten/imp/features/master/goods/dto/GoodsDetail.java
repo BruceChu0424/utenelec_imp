@@ -44,7 +44,6 @@ public class GoodsDetail {
     private BigDecimal thickness;
     private UUID unitId;
     private Integer unitLegacyId;
-    @JsonProperty("mWeight")
     private BigDecimal mWeight;      // MWeight 单重（防 Jackson 连续大写 quirk，显式锁定键名）
     private Integer pieces;
     private String colorName;        // 主颜色名（color_legacy_id → colors.name 解析）
@@ -77,9 +76,7 @@ public class GoodsDetail {
     private BigDecimal rentE;        // RentE 厂房租金
     private BigDecimal makeRate;     // MakeRate 生产利率(%)
     private BigDecimal makeE;        // MakeE 生产利润
-    @JsonProperty("cTotal")
     private BigDecimal cTotal;       // CTotal 成本价（防 Jackson 连续大写 quirk）
-    @JsonProperty("gTotal")
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 
     // ===== 来源 =====
@@ -101,4 +98,19 @@ public class GoodsDetail {
     private List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
 
     private Long version;                        // 乐观锁版本（编辑回传，V231）
+
+    @JsonProperty("mWeight")
+    public BigDecimal getMWeight() {
+        return mWeight;
+    }
+
+    @JsonProperty("cTotal")
+    public BigDecimal getCTotal() {
+        return cTotal;
+    }
+
+    @JsonProperty("gTotal")
+    public BigDecimal getGTotal() {
+        return gTotal;
+    }
 }

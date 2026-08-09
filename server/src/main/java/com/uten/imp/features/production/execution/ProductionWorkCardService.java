@@ -103,7 +103,10 @@ public class ProductionWorkCardService {
                                            0) AS shortage_qty,
                                        demand.supply_route,
                                        demand.status,
-                                       segment.auto_promote_when_ready
+                                       segment.auto_promote_when_ready,
+                                       demand.requirement_mode,
+                                       segment.material_requirement_mode,
+                                       segment.zero_material_reason
                                 FROM production_planning_packages package
                                 JOIN production_plans plan
                                   ON plan.id = package.plan_id
@@ -192,7 +195,8 @@ public class ProductionWorkCardService {
                         decimal(row[40]),
                         decimal(row[41]),
                         text(row[42]),
-                        text(row[43])));
+                        text(row[43]),
+                        text(row[45])));
             }
         }
         return new ProductionWorkCardView(
@@ -240,6 +244,8 @@ public class ProductionWorkCardService {
                     decimal(row[20]),
                     text(row[21]),
                     Boolean.TRUE.equals(row[44]),
+                    text(row[46]),
+                    text(row[47]),
                     text(row[22]),
                     text(row[23]),
                     text(row[24]),

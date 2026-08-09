@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,12 +49,18 @@ public class ChainNoticeService {
     static final String EVENT_PLAN_SCHEDULED = "PRODUCTION_PLAN_SCHEDULED";
     static final String EVENT_PRODUCTION_REPORTED = "PRODUCTION_REPORTED";
     static final String EVENT_FINISHED_INBOUND = "PRODUCTION_FINISHED_INBOUND";
+    static final String EVENT_FINISHED_INBOUND_PENDING =
+            "PRODUCTION_FINISHED_INBOUND_PENDING";
     static final String EVENT_REMAKE_CREATED = "PRODUCTION_REMAKE_CREATED";
     static final String EVENT_SEGMENT_READY = "PRODUCTION_SEGMENT_READY";
     static final String EVENT_SEGMENT_DISPATCHED = "PRODUCTION_SEGMENT_DISPATCHED";
     static final String EVENT_SEGMENT_STARTED = "PRODUCTION_SEGMENT_STARTED";
     static final String EVENT_SHIPMENT_APPROVED = "SALES_SHIPMENT_APPROVED";
+    static final String EVENT_SHIPMENT_PENDING_PICK =
+            "SALES_SHIPMENT_PENDING_PICK";
     static final String EVENT_SHIPMENT_REJECTED = "SALES_SHIPMENT_REJECTED";
+    static final String EVENT_MATERIAL_ANALYSIS_READY =
+            "PRODUCTION_MATERIAL_ANALYSIS_READY";
     static final String EVENT_ORDER_CANCELED = "SALES_ORDER_CANCELED";
     static final String EVENT_ORDER_APPROVED = "SALES_ORDER_APPROVED";
     static final String EVENT_DELIVERY_DUE = "SALES_DELIVERY_DUE";
@@ -115,7 +122,10 @@ public class ChainNoticeService {
                         notifyPlanScheduled(aggregateId, payload.path("shortage").asBoolean(false));
                 case EVENT_PRODUCTION_REPORTED ->
                         notifyProductionReported(aggregateId);
-                case EVENT_FINISHED_INBOUND -> notifyFinishedInbound(aggregateId);
+                case EVENT_FINISHED_INBOUND ->
+                        deliverFinishedInbound(aggregateId, payload);
+                case EVENT_FINISHED_INBOUND_PENDING ->
+                        notifyFinishedInboundPending(aggregateId);
                 case EVENT_REMAKE_CREATED ->
                         notifyRemakeCreated(payload.path("reportBillNo").asText());
                 case EVENT_SEGMENT_READY ->
@@ -128,8 +138,12 @@ public class ChainNoticeService {
                 case EVENT_SEGMENT_STARTED ->
                         notifyExecutionSegmentTransition(aggregateId, true);
                 case EVENT_SHIPMENT_APPROVED -> notifyShipmentApproved(aggregateId);
+                case EVENT_SHIPMENT_PENDING_PICK ->
+                        notifyShipmentPendingPick(aggregateId);
                 case EVENT_SHIPMENT_REJECTED ->
                         notifyShipmentRejected(aggregateId, payload.path("reason").asText(""));
+                case EVENT_MATERIAL_ANALYSIS_READY ->
+                        deliverMaterialAnalysisReady(aggregateId, payload);
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
                 case EVENT_ORDER_APPROVED -> notifyOrderApproved(aggregateId);
                 case EVENT_DELIVERY_DUE -> {
@@ -296,30 +310,369 @@ public class ChainNoticeService {
     /** ②③ 完工/部分完工通知销售：成品入库审核后，按本单补的预留溯源订单行。 */
     public void notifyFinishedInbound(UUID stockDocId) {
         if (!isOutboxDelivery()) {
-            outbox.publish(EVENT_FINISHED_INBOUND, "STOCK_DOCUMENT", stockDocId, Map.of());
+            List<Map<String, String>> allocations = finishedInboundSnapshot(stockDocId)
+                    .stream()
+                    .map(FinishedInboundSnapshot::payload)
+                    .toList();
+            outbox.publish(
+                    EVENT_FINISHED_INBOUND,
+                    "STOCK_DOCUMENT",
+                    stockDocId,
+                    Map.of("allocations", allocations));
+            return;
+        }
+        deliverFinishedInbound(stockDocId, null);
+    }
+
+    private void deliverFinishedInbound(UUID stockDocId, JsonNode payload) {
+        deliverAtomically(() -> {
+            List<FinishedInboundSnapshot> allocations =
+                    finishedInboundPayload(payload);
+            if (allocations.isEmpty()
+                    && (payload == null || !payload.has("allocations"))) {
+                // Compatibility for durable events written before the snapshot
+                // payload was introduced.
+                allocations = finishedInboundSnapshot(stockDocId);
+            }
+            for (FinishedInboundSnapshot allocation : allocations) {
+                OrderRef order = orderRef(allocation.orderId());
+                if (order == null) continue;
+                String orderNo = allocation.orderBillNo().isBlank()
+                        ? order.billNo() : allocation.orderBillNo();
+                boolean completeShipmentRequired =
+                        "REQUIRE_COMPLETE".equals(allocation.shipmentPolicy())
+                                && allocation.producedQty()
+                                        .compareTo(allocation.orderQty()) < 0;
+                String availability = completeShipmentRequired
+                        ? "本批新增成品预留 " + qty(allocation.batchQty())
+                                + "；该订单要求整单齐套，当前暂不可分批发货。"
+                        : "本批新增可发数量 " + qty(allocation.batchQty())
+                                + "，可按订单策略安排分批发货。";
+                String content = "订单 " + orderNo + " 货品 "
+                        + allocation.goods() + " 已完成成品入库（入库单 "
+                        + allocation.documentNo() + "）。" + availability
+                        + " 累计成品入库 " + qty(allocation.producedQty())
+                        + "/订货 " + qty(allocation.orderQty()) + "。";
+                notifyUser(
+                        order.ownerUserId(),
+                        TYPE_WORKFLOW,
+                        "本批成品已入库：" + orderNo,
+                        content,
+                        order.route(),
+                        EVENT_FINISHED_INBOUND);
+                notifyRoles(
+                        List.of("planner"),
+                        TYPE_WORKFLOW,
+                        "生产批次已入库：" + orderNo,
+                        content,
+                        "/production/plans");
+            }
+        });
+    }
+
+    private List<FinishedInboundSnapshot> finishedInboundSnapshot(
+            UUID stockDocId) {
+        if (stockDocId == null) return List.of();
+        return jdbc.queryForList("""
+                WITH inbound_item AS (
+                    SELECT reservation.order_item_id,
+                           SUM(
+                               reservation.qty
+                               / CASE
+                                   WHEN COALESCE(item.unit_rate, 1) > 0
+                                       THEN COALESCE(item.unit_rate, 1)
+                                   ELSE 1
+                                 END
+                           ) AS batch_qty
+                    FROM stock_reservations reservation
+                    JOIN sales_order_items item
+                      ON item.id = reservation.order_item_id
+                     AND item.is_deleted = FALSE
+                    WHERE reservation.source_doc_type = 'PRODUCTION_INBOUND'
+                      AND reservation.source_doc_id = ?
+                      AND reservation.order_item_id IS NOT NULL
+                      AND reservation.is_deleted = FALSE
+                      AND COALESCE(reservation.released_qty, 0)
+                            < reservation.qty
+                    GROUP BY reservation.order_item_id
+                ), affected AS (
+                    SELECT item.order_id,
+                           SUM(inbound_item.batch_qty) AS batch_qty,
+                           string_agg(DISTINCT goods.code, ' / ') AS goods
+                    FROM inbound_item
+                    JOIN sales_order_items item
+                      ON item.id = inbound_item.order_item_id
+                     AND item.is_deleted = FALSE
+                    LEFT JOIN goods ON goods.id = item.goods_id
+                    GROUP BY item.order_id
+                ), order_totals AS (
+                    SELECT item.order_id,
+                           SUM(COALESCE(item.produced_qty, 0)) AS produced_qty,
+                           SUM(COALESCE(item.qty, 0)) AS order_qty
+                    FROM sales_order_items item
+                    WHERE item.is_deleted = FALSE
+                    GROUP BY item.order_id
+                )
+                SELECT affected.order_id,
+                       sales_order.bill_no AS order_bill_no,
+                       document.bill_no AS document_no,
+                       affected.goods,
+                       affected.batch_qty,
+                       order_totals.produced_qty,
+                       order_totals.order_qty,
+                       COALESCE(sales_order.shipment_policy, 'ALLOW_PARTIAL')
+                           AS shipment_policy
+                FROM affected
+                JOIN sales_orders sales_order
+                  ON sales_order.id = affected.order_id
+                 AND sales_order.is_deleted = FALSE
+                JOIN order_totals
+                  ON order_totals.order_id = affected.order_id
+                JOIN stock_documents document
+                  ON document.id = ?
+                ORDER BY affected.order_id
+                """, stockDocId, stockDocId).stream()
+                .map(row -> new FinishedInboundSnapshot(
+                        (UUID) row.get("order_id"),
+                        str(row.get("order_bill_no")),
+                        str(row.get("document_no")),
+                        str(row.get("goods")),
+                        bd(row.get("batch_qty")),
+                        bd(row.get("produced_qty")),
+                        bd(row.get("order_qty")),
+                        str(row.get("shipment_policy"))))
+                .toList();
+    }
+
+    private List<FinishedInboundSnapshot> finishedInboundPayload(
+            JsonNode payload) {
+        if (payload == null || !payload.path("allocations").isArray()) {
+            return List.of();
+        }
+        List<FinishedInboundSnapshot> result = new ArrayList<>();
+        for (JsonNode allocation : payload.path("allocations")) {
+            UUID orderId = uuidOrNull(allocation.path("orderId").asText(""));
+            if (orderId == null) continue;
+            result.add(new FinishedInboundSnapshot(
+                    orderId,
+                    allocation.path("orderBillNo").asText(""),
+                    allocation.path("documentNo").asText(""),
+                    allocation.path("goods").asText(""),
+                    decimal(allocation.path("batchQty").asText("0")),
+                    decimal(allocation.path("producedQty").asText("0")),
+                    decimal(allocation.path("orderQty").asText("0")),
+                    allocation.path("shipmentPolicy")
+                            .asText("ALLOW_PARTIAL")));
+        }
+        return List.copyOf(result);
+    }
+
+    /** 报工生成成品入库草稿后，给仓库部门投递一次待审核任务。 */
+    public void notifyFinishedInboundPending(UUID stockDocId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_FINISHED_INBOUND_PENDING,
+                    "STOCK_DOCUMENT",
+                    stockDocId,
+                    Map.of(),
+                    EVENT_FINISHED_INBOUND_PENDING + ':' + stockDocId);
             return;
         }
         deliverAtomically(() -> {
-            String docNo = oneStr("SELECT bill_no FROM stock_documents WHERE id = ?", stockDocId);
-            for (Map<String, Object> r : jdbc.queryForList("""
-                    SELECT oi.order_id, rv.qty, oi.produced_qty, oi.qty AS order_qty,
-                           oi.chain_status, g.code AS goods
-                    FROM stock_reservations rv
-                    JOIN sales_order_items oi ON oi.id = rv.order_item_id
-                    LEFT JOIN goods g ON g.id = oi.goods_id
-                    WHERE rv.source_doc_type = 'PRODUCTION_INBOUND' AND rv.source_doc_id = ?
-                    """, stockDocId)) {
-                OrderRef o = orderRef((UUID) r.get("order_id"));
-                if (o == null) continue;
-                boolean full = r.get("chain_status") != null && ((Number) r.get("chain_status")).shortValue() == 7;
-                notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
-                        (full ? "完工通知：" : "部分完工：") + o.billNo(),
-                        "订单 " + o.billNo() + " 货品 " + str(r.get("goods")) + " 完工入库 " + qty(bd(r.get("qty")))
-                                + "（入库单 " + docNo + "），累计完工 " + qty(bd(r.get("produced_qty")))
-                                + "/订货 " + qty(bd(r.get("order_qty"))) + (full ? "，已可发货。" : "。"),
-                        o.route(), EVENT_FINISHED_INBOUND);
+            Map<String, Object> document = one("""
+                    SELECT stock.bill_no, stock.source_doc_no,
+                           warehouse.name AS warehouse_name
+                    FROM stock_documents stock
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id = stock.warehouse_id
+                    WHERE stock.id = ?
+                      AND stock.doc_type = 'FINISHED_IN'
+                      AND stock.status = 0
+                      AND stock.is_deleted = FALSE
+                    """, stockDocId);
+            if (document == null) return;
+            String billNo = str(document.get("bill_no"));
+            String sourceNo = str(document.get("source_doc_no"));
+            String warehouse = str(document.get("warehouse_name"));
+            String content = "成品入库单 " + billNo
+                    + (sourceNo.isBlank() ? "" : "（来源报工 " + sourceNo + "）")
+                    + " 已生成并等待仓库审核"
+                    + (warehouse.isBlank() ? "。" : "，目标仓库 " + warehouse + "。")
+                    + "请核对实物、数量和库位后处理；通知不代替库存审核。";
+            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_TASK,
+                        "待审核成品入库：" + billNo,
+                        content,
+                        "/warehouse/FINISHED_IN/" + stockDocId,
+                        EVENT_FINISHED_INBOUND_PENDING);
             }
         });
+    }
+
+    /** 销售创建待拣货发货单后，给仓库部门投递一次待拣货任务。 */
+    public void notifyShipmentPendingPick(UUID shipmentId) {
+        if (!isOutboxDelivery()) {
+            outbox.publishOnce(
+                    EVENT_SHIPMENT_PENDING_PICK,
+                    "SALES_SHIPMENT",
+                    shipmentId,
+                    Map.of(),
+                    EVENT_SHIPMENT_PENDING_PICK + ':' + shipmentId);
+            return;
+        }
+        deliverAtomically(() -> {
+            Map<String, Object> shipment = one("""
+                    SELECT shipment.bill_no,
+                           warehouse.name AS warehouse_name,
+                           SUM(COALESCE(item.qty, 0)) AS shipment_qty
+                    FROM sales_shipments shipment
+                    LEFT JOIN warehouses warehouse
+                      ON warehouse.id = shipment.warehouse_id
+                    LEFT JOIN sales_shipment_items item
+                      ON item.shipment_id = shipment.id
+                     AND item.is_deleted = FALSE
+                    WHERE shipment.id = ?
+                      AND shipment.warehouse_work_status = 'PENDING_PICK'
+                      AND shipment.status = 0
+                      AND shipment.is_deleted = FALSE
+                    GROUP BY shipment.bill_no, warehouse.name
+                    """, shipmentId);
+            if (shipment == null) return;
+            String billNo = str(shipment.get("bill_no"));
+            String warehouse = str(shipment.get("warehouse_name"));
+            String content = "发货单 " + billNo + " 已进入待拣货，数量 "
+                    + qty(bd(shipment.get("shipment_qty")))
+                    + (warehouse.isBlank() ? "。" : "，出库仓库 " + warehouse + "。")
+                    + "请按仓库作业流程核对库存并拣货；通知不代表已占用或已出库。";
+            for (UUID warehouseUser : departmentUserIds("SUB_WH")) {
+                sendToUser(
+                        warehouseUser,
+                        TYPE_TASK,
+                        "待拣货发货单：" + billNo,
+                        content,
+                        "/sales/shipments/" + shipmentId,
+                        EVENT_SHIPMENT_PENDING_PICK);
+            }
+        });
+    }
+
+    /**
+     * Publishes the durable handoff used when a receipt or manual recheck makes
+     * more of an existing material analysis executable. Delivery is strictly
+     * scoped to the analysis maker's active account.
+     */
+    public void notifyMaterialAnalysisReady(
+            UUID analysisId,
+            UUID makerEmployeeId,
+            String sourceType,
+            UUID sourceDocumentId,
+            BigDecimal readyFinishDelta,
+            BigDecimal readyFinishQty) {
+        if (isOutboxDelivery()) {
+            throw new IllegalStateException(
+                    "Material-analysis READY delivery must use the outbox payload");
+        }
+        if (analysisId == null
+                || readyFinishDelta == null
+                || readyFinishDelta.signum() <= 0) {
+            return;
+        }
+        UUID authoritativeMaker = materialAnalysisMaker(analysisId);
+        if (authoritativeMaker == null) return;
+        String normalizedSource = normalizeAnalysisReadySource(sourceType);
+        BigDecimal total = readyFinishQty == null
+                ? BigDecimal.ZERO : readyFinishQty.max(BigDecimal.ZERO);
+        String sourceId = sourceDocumentId == null
+                ? "" : sourceDocumentId.toString();
+        Map<String, String> payload = Map.of(
+                "makerEmployeeId", authoritativeMaker.toString(),
+                "sourceType", normalizedSource,
+                "sourceDocumentId", sourceId,
+                "readyFinishDelta", qty(readyFinishDelta),
+                "readyFinishQty", qty(total));
+        String sourceKey = sourceId.isBlank() ? qty(total) : sourceId;
+        outbox.publishOnce(
+                EVENT_MATERIAL_ANALYSIS_READY,
+                "PRODUCTION_MATERIAL_ANALYSIS",
+                analysisId,
+                payload,
+                EVENT_MATERIAL_ANALYSIS_READY + ':' + analysisId + ':'
+                        + normalizedSource + ':' + sourceKey);
+    }
+
+    private void deliverMaterialAnalysisReady(
+            UUID analysisId,
+            JsonNode payload) {
+        deliverAtomically(() -> {
+            UUID currentMaker = materialAnalysisMaker(analysisId);
+            if (currentMaker == null) return;
+            UUID payloadMaker = uuidOrNull(
+                    payload.path("makerEmployeeId").asText(""));
+            // The analysis row remains authoritative if ownership ever changes
+            // between event creation and delivery. Never broadcast to a guessed
+            // role or to the stale payload owner.
+            UUID makerEmployeeId = payloadMaker != null
+                    && payloadMaker.equals(currentMaker)
+                    ? payloadMaker : currentMaker;
+            UUID makerUserId = userIdOfEmployee(makerEmployeeId);
+            if (makerUserId == null) return;
+            BigDecimal delta = decimal(
+                    payload.path("readyFinishDelta").asText("0"));
+            if (delta.signum() <= 0) return;
+            BigDecimal readyQty = decimal(
+                    payload.path("readyFinishQty").asText("0"));
+            String sourceType = normalizeAnalysisReadySource(
+                    payload.path("sourceType").asText(""));
+            String sourceLabel = analysisReadySourceLabel(sourceType);
+            String sourceDocumentId = payload.path("sourceDocumentId")
+                    .asText("");
+            notifyUser(
+                    makerUserId,
+                    TYPE_TASK,
+                    "剩余物料已可下达：新增 " + qty(delta),
+                    sourceLabel + "后，本物料分析新增可完工下达数量 "
+                            + qty(delta) + "，当前累计可完工下达 "
+                            + qty(readyQty)
+                            + (sourceDocumentId.isBlank()
+                                    ? "。"
+                                    : "（来源单据 " + sourceDocumentId + "）。")
+                            + "请打开物料分析复核后，再生成下一批正式生产计划。",
+                    "/production/material-analysis",
+                    EVENT_MATERIAL_ANALYSIS_READY);
+        });
+    }
+
+    private UUID materialAnalysisMaker(UUID analysisId) {
+        Map<String, Object> row = one("""
+                SELECT maker_id
+                FROM production_material_analyses
+                WHERE id = ?
+                  AND is_deleted = FALSE
+                  AND status IN ('ACTIVE', 'PARTIALLY_PLANNED')
+                """, analysisId);
+        return row == null ? null : (UUID) row.get("maker_id");
+    }
+
+    static String analysisReadySourceLabel(String sourceType) {
+        return switch (normalizeAnalysisReadySource(sourceType)) {
+            case "PURCHASE" -> "采购到货";
+            case "SUBCONTRACT" -> "委外回厂";
+            case "MAKE" -> "自制件完工入库";
+            case "MANUAL" -> "人工复核";
+            default -> "物料状态变化";
+        };
+    }
+
+    private static String normalizeAnalysisReadySource(String sourceType) {
+        String normalized = sourceType == null ? "" : sourceType.strip();
+        if ("MANUAL_RELEASE".equals(normalized)) return "MANUAL";
+        return switch (normalized) {
+            case "PURCHASE", "SUBCONTRACT", "MAKE", "MANUAL" ->
+                    normalized;
+            default -> "UNKNOWN";
+        };
     }
 
     /** ④ 数量不足（补产）通知销售：报工完结缺额自动生成补产计划后。 */
@@ -443,8 +796,7 @@ public class ChainNoticeService {
                       AND s.is_deleted = false
                     """, segmentId);
             if (segment == null) return;
-            String sourceLabel = "SUBCONTRACT".equals(normalizedSource)
-                    ? "委外回厂" : "采购到货";
+            String sourceLabel = executionReadySourceLabel(normalizedSource);
             notifyRoles(
                     List.of("planner", "production"),
                     TYPE_TASK,
@@ -459,6 +811,16 @@ public class ChainNoticeService {
                             + str(segment.get("plan_end_date")) + "。",
                     "/production/schedule");
         });
+    }
+
+    static String executionReadySourceLabel(String sourceType) {
+        return switch (sourceType == null ? "" : sourceType.strip()) {
+            case "PURCHASE" -> "采购到货";
+            case "SUBCONTRACT" -> "委外回厂";
+            case "MAKE" -> "自制件完工入库";
+            case "MANUAL_RELEASE" -> "人工解除暂缓";
+            default -> "物料状态变化";
+        };
     }
 
     /** ⑤ 发货通知销售：出货单审核后，按订单聚合本次出货量。（出货单暂无物流单号字段，内容含单号/数量/仓库。） */
@@ -542,7 +904,7 @@ public class ChainNoticeService {
         });
     }
 
-    /** ⑦.5 新订单待排产：订单审核后通知调度（planner），生产部工作台徽标同源（待排产计数）。 */
+    /** ⑦.5 新订单待物料分析：订单审核后通知计划员，但不在通知链创建分析事实。 */
     public void notifyOrderApproved(UUID orderId) {
         if (!isOutboxDelivery()) {
             outbox.publish(EVENT_ORDER_APPROVED, "SALES_ORDER", orderId, Map.of());
@@ -565,10 +927,11 @@ public class ChainNoticeService {
             String deliver = d == null ? "未定" : d.toString();
             String goods = agg == null || agg.get("goods") == null ? "" : str(agg.get("goods"));
             notifyRoles(List.of("planner"), TYPE_TASK,
-                    "新订单待排产：" + o.billNo(),
+                    "新订单待物料分析：" + o.billNo(),
                     "订单 " + o.billNo() + " 已审核，共 " + lines + " 行货品（" + goods
-                            + "）待排产，最早交货日 " + deliver + "，请到「生产调度」处理。",
-                    "/production/schedule");
+                            + "）待分析，最早交货日 " + deliver
+                            + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。",
+                    "/production/material-analysis");
         });
     }
 
@@ -589,8 +952,9 @@ public class ChainNoticeService {
         if (o.ownerUserId() != null) targets.add(o.ownerUserId());
         targets.addAll(userRoleRepo.findUserIdsByRoleCode("planner"));
         for (UUID uid : targets) {
-            // owner 跳订单详情跟进；planner 跳生产调度板。
-            String route = uid.equals(o.ownerUserId()) ? o.route() : "/production/schedule";
+            // owner 跳订单详情跟进；planner 先到物料分析工作台查看待料缺口。
+            String route = uid.equals(o.ownerUserId())
+                    ? o.route() : "/production/material-analysis";
             sendToUser(uid, TYPE_URGENT, title, content, route);
         }
     }
@@ -619,7 +983,8 @@ public class ChainNoticeService {
                         "SELECT EXISTS(SELECT 1 FROM notices WHERE audience_user_id = ? AND title = ? AND published_at >= ?)",
                         Boolean.class, uid, title, startOfToday);
                 if (Boolean.TRUE.equals(sent)) continue;
-                String route = uid.equals(o.ownerUserId()) ? o.route() : "/production/schedule";
+                String route = uid.equals(o.ownerUserId())
+                        ? o.route() : "/production/material-analysis";
                 sendToUser(uid, TYPE_URGENT, title, content, route);
             }
         } catch (Exception error) {
@@ -1132,7 +1497,47 @@ public class ChainNoticeService {
         return v instanceof BigDecimal b ? b : BigDecimal.ZERO;
     }
 
+    private static BigDecimal decimal(String value) {
+        try {
+            return value == null || value.isBlank()
+                    ? BigDecimal.ZERO : new BigDecimal(value);
+        } catch (NumberFormatException ignored) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private static UUID uuidOrNull(String value) {
+        try {
+            return value == null || value.isBlank()
+                    ? null : UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
     private static String qty(BigDecimal v) {
         return v.stripTrailingZeros().toPlainString();
+    }
+
+    private record FinishedInboundSnapshot(
+            UUID orderId,
+            String orderBillNo,
+            String documentNo,
+            String goods,
+            BigDecimal batchQty,
+            BigDecimal producedQty,
+            BigDecimal orderQty,
+            String shipmentPolicy) {
+        Map<String, String> payload() {
+            return Map.of(
+                    "orderId", orderId.toString(),
+                    "orderBillNo", orderBillNo,
+                    "documentNo", documentNo,
+                    "goods", goods,
+                    "batchQty", qty(batchQty),
+                    "producedQty", qty(producedQty),
+                    "orderQty", qty(orderQty),
+                    "shipmentPolicy", shipmentPolicy);
+        }
     }
 }

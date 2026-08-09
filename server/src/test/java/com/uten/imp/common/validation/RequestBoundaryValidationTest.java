@@ -1,7 +1,7 @@
 package com.uten.imp.common.validation;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -346,7 +346,7 @@ class RequestBoundaryValidationTest {
         GoodsController controller = new GoodsController(
                 service,
                 mock(XlsxExportService.class),
-                mock(EncryptedWorkbookService.class),
+                mock(WorkbookDownloadService.class),
                 mock(AuditService.class),
                 mock(SecurityContextCurrentUser.class));
 

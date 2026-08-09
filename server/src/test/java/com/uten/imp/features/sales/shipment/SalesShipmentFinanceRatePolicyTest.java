@@ -15,11 +15,9 @@ class SalesShipmentFinanceRatePolicyTest {
     @Test
     void financeRateRecalculatesEveryShipmentLineAndHeaderSnapshot() {
         SalesShipment shipment = new SalesShipment();
-        shipment.setExchangeRate(new BigDecimal("6.500000"));
-        shipment.setTotalLocal(new BigDecimal("9999.0000"));
 
-        SalesShipmentItem first = item("1.2345", "1.0000");
-        SalesShipmentItem second = item("2.0000", "2.0000");
+        SalesShipmentItem first = item("1.2345");
+        SalesShipmentItem second = item("2.0000");
 
         SalesShipmentService.applyPostingRateSnapshot(
                 shipment, List.of(first, second), new BigDecimal("7.123456"));
@@ -34,7 +32,7 @@ class SalesShipmentFinanceRatePolicyTest {
     @Test
     void missingOrNonPositiveFinanceRateFailsClosed() {
         SalesShipment shipment = new SalesShipment();
-        List<SalesShipmentItem> items = List.of(item("1.0000", "99.0000"));
+        List<SalesShipmentItem> items = List.of(item("1.0000"));
 
         assertThatThrownBy(() -> SalesShipmentService.applyPostingRateSnapshot(
                 shipment, items, null))
@@ -71,10 +69,10 @@ class SalesShipmentFinanceRatePolicyTest {
                 null, 6, -5, billDate).dueDate()).isEqualTo(billDate);
     }
 
-    private static SalesShipmentItem item(String original, String oldLocal) {
+    private static SalesShipmentItem item(String original) {
         SalesShipmentItem item = new SalesShipmentItem();
         item.setAmountOriginal(new BigDecimal(original));
-        item.setAmountLocal(new BigDecimal(oldLocal));
+        item.setAmountLocal(null);
         return item;
     }
 }

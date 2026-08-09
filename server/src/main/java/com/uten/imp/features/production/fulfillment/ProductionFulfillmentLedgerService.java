@@ -105,6 +105,11 @@ public class ProductionFulfillmentLedgerService {
             demand.setExecutionSegmentId(draft.executionSegmentId());
             demand.setSourcePlanItemId(draft.sourcePlanItemId());
             demand.setPerProductQty(draft.perProductQty());
+            demand.setRequirementMode(draft.requirementMode());
+            demand.setRequiredForProductQty(
+                    draft.requiredForProductQty());
+            demand.setRequirementFingerprint(
+                    draft.requirementFingerprint());
             demand.setWarehouseId(planningPackage.getWarehouseId());
             demand.setGoodsId(draft.goodsId());
             demand.setColorId(draft.colorId());
@@ -500,11 +505,28 @@ public class ProductionFulfillmentLedgerService {
                                 ProductionMaterialDemand.ROUTE_SUBCONTRACT)
                         .contains(draft.supplyRoute())
                 || draft.stableKey() == null
-                || draft.stableKey().isBlank()) {
+                || draft.stableKey().isBlank()
+                || !validRequirementSnapshot(draft)) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
                     "物料需求缺少必填字段或数量/路线无效");
         }
+    }
+
+    private static boolean validRequirementSnapshot(DemandDraft draft) {
+        if (ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR.equals(
+                draft.requirementMode())) {
+            return draft.requiredForProductQty() == null
+                    && draft.requirementFingerprint() == null;
+        }
+        return ProductionMaterialDemand.REQUIREMENT_MODE_EXACT_SNAPSHOT.equals(
+                        draft.requirementMode())
+                && draft.executionSegmentId() != null
+                && draft.sourcePlanItemId() != null
+                && draft.requiredForProductQty() != null
+                && draft.requiredForProductQty().signum() > 0
+                && draft.requirementFingerprint() != null
+                && draft.requirementFingerprint().matches("[0-9a-f]{64}");
     }
 
     private static void requireKey(String key) {
@@ -549,7 +571,29 @@ public class ProductionFulfillmentLedgerService {
             BigDecimal requiredQty,
             LocalDate needDate,
             String supplyRoute,
-            String stableKey) {
+            String stableKey,
+            String requirementMode,
+            BigDecimal requiredForProductQty,
+            String requirementFingerprint) {
+
+        public DemandDraft(
+                UUID executionSegmentId,
+                UUID sourcePlanItemId,
+                UUID goodsId,
+                UUID colorId,
+                UUID unitId,
+                BigDecimal perProductQty,
+                BigDecimal requiredQty,
+                LocalDate needDate,
+                String supplyRoute,
+                String stableKey) {
+            this(
+                    executionSegmentId, sourcePlanItemId,
+                    goodsId, colorId, unitId, perProductQty,
+                    requiredQty, needDate, supplyRoute, stableKey,
+                    ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR,
+                    null, null);
+        }
 
         public DemandDraft(
                 UUID goodsId,
@@ -561,7 +605,9 @@ public class ProductionFulfillmentLedgerService {
                 String stableKey) {
             this(
                     null, null, goodsId, colorId, unitId, null,
-                    requiredQty, needDate, supplyRoute, stableKey);
+                    requiredQty, needDate, supplyRoute, stableKey,
+                    ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR,
+                    null, null);
         }
     }
 

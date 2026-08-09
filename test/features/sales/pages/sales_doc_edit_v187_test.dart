@@ -28,6 +28,10 @@ void main() {
       expect(_dropdownWithLabel('币种'), findsOneWidget);
       expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
       expect(_textFieldWithLabel('汇率'), findsNothing);
+      expect(find.text('金额（订单币种）'), findsOneWidget);
+      expect(find.text('总金额（订单币种） 0.00'), findsOneWidget);
+      expect(find.text('合计（订单币种） 0.00'), findsOneWidget);
+      expect(find.textContaining('¥'), findsNothing);
     },
   );
 
@@ -89,7 +93,7 @@ void main() {
               'goodsId': 'goods-1',
               'qty': 2,
               'price': 10,
-              'discount': 1,
+              'discount': 0.8,
             },
           ],
         },
@@ -102,6 +106,11 @@ void main() {
       expect(api.lastPutBody!['currencyId'], 'currency-usd');
       expect(api.lastPutBody!['taxRate'], 13);
       expect(api.lastPutBody!.containsKey('exchangeRate'), isFalse);
+      final item = Map<String, dynamic>.from(
+        (api.lastPutBody!['items'] as List<dynamic>).single as Map,
+      );
+      expect(item['amountOriginal'], 16);
+      expect(item.containsKey('amountLocal'), isFalse);
     },
   );
 

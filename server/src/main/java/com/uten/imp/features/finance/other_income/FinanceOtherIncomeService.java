@@ -7,6 +7,8 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeDetail;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemDto;
 import com.uten.imp.features.finance.other_income.dto.FinanceOtherIncomeItemInput;
@@ -61,13 +63,17 @@ public class FinanceOtherIncomeService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final FinanceDocumentAccessPolicy access;
+    private final GlPostingService glPosting;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceOtherIncomeListItem> list(FinanceOtherIncomeQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<FinanceOtherIncome> spec = (Root<FinanceOtherIncome> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                   CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -87,6 +93,7 @@ public class FinanceOtherIncomeService {
     @Transactional(readOnly = true)
     public FinanceOtherIncomeDetail detail(UUID id) {
         FinanceOtherIncome o = require(id);
+        access.requireReadable(o.getMakerId(), "其它收入单不存在");
         List<FinanceOtherIncomeItemDto> items = itemRepo.findByIncomeIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(o, items);
@@ -109,7 +116,8 @@ public class FinanceOtherIncomeService {
     @Transactional
     public FinanceOtherIncomeDetail update(UUID id, FinanceOtherIncomeSaveRequest req) {
         tx.bind();
-        FinanceOtherIncome o = require(id);
+        FinanceOtherIncome o = lockActive(id);
+        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -125,9 +133,10 @@ public class FinanceOtherIncomeService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        FinanceOtherIncome o = require(id);
-        if (o.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        FinanceOtherIncome o = lockActive(id);
+        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
         o.setDeleted(true);
         o.setDeletedAt(OffsetDateTime.now());
@@ -138,8 +147,8 @@ public class FinanceOtherIncomeService {
     @Transactional
     public FinanceOtherIncomeDetail approve(UUID id) {
         tx.bind();
-        FinanceOtherIncome o = require(id);
-        em.refresh(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
+        FinanceOtherIncome o = lockActive(id);
+        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -150,6 +159,7 @@ public class FinanceOtherIncomeService {
         if (o.getMakerId() != null && o.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
         }
+        glPosting.lockAutoProjectionPeriod(o.getBillDate());
         o.setApproverId(approver);
         BigDecimal amountLocal = nz(o.getAmountLocal());
         if (amountLocal.signum() != 0) {
@@ -165,11 +175,12 @@ public class FinanceOtherIncomeService {
     @Transactional
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
-        FinanceOtherIncome o = require(id);
-        em.refresh(o, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
+        FinanceOtherIncome o = lockActive(id);
+        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        glPosting.removeAutoProjection(RECON_SOURCE, o.getId(), o.getBillNo(), o.getBillDate());
         BigDecimal amountLocal = nz(o.getAmountLocal());
         if (amountLocal.signum() != 0) {
             adjustAccount(o.getAccountId(), amountLocal.negate());
@@ -319,6 +330,15 @@ public class FinanceOtherIncomeService {
     private FinanceOtherIncome require(UUID id) {
         return incomeRepo.findById(id).filter(o -> !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "其它收入单不存在"));
+    }
+
+    private FinanceOtherIncome lockActive(UUID id) {
+        FinanceOtherIncome income = require(id);
+        em.refresh(income, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (income.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "其它收入单不存在");
+        }
+        return income;
     }
 
     private static BigDecimal nz(BigDecimal x) {

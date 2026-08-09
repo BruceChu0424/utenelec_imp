@@ -81,7 +81,7 @@ public class SalesOrderService {
     private static final short CHAIN_CANCELED = -1;         // 已取消
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal");
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalOriginal");
 
     private final SalesOrderRepository orderRepo;
     private final SalesOrderItemRepository itemRepo;
@@ -290,7 +290,9 @@ public class SalesOrderService {
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty,
-                    pct, progressStageOf(orderQty, producedQty, shippedQty, plannedQty));
+                    pct, progressStageOf(
+                            orderQty, producedQty, shippedQty,
+                            reservedQty, plannedQty));
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -304,10 +306,15 @@ public class SalesOrderService {
         return r[i] == null ? null : r[i].toString();
     }
 
-    private static String progressStageOf(double orderQty, double producedQty, double shippedQty, double plannedQty) {
+    static String progressStageOf(
+            double orderQty,
+            double producedQty,
+            double shippedQty,
+            double reservedQty,
+            double plannedQty) {
         if (orderQty <= 0) return "PENDING";
         if (shippedQty + 1e-6 >= orderQty) return "SHIPPED";
-        if (producedQty + 1e-6 >= orderQty) return "SHIPPABLE";
+        if (reservedQty > 1e-6) return "SHIPPABLE";
         if (producedQty > 0 || plannedQty > 0) return "PRODUCING";
         return "PENDING";
     }
@@ -568,7 +575,7 @@ public class SalesOrderService {
             req.setCurrencyId(resolveQuoteConversionCurrencyId());
         }
         SalesOrder o = new SalesOrder();
-        applyHeader(req, o, false);
+        applyHeader(req, o);
         UUID sourceOwner = resolveSourceQuoteOwner(req.getSourceDocNo(), expectedQuoteOwner);
         o.setOwnerEmployeeId(accessPolicy.ownerForNewDocument(sourceOwner));
         o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -616,7 +623,7 @@ public class SalesOrderService {
         if (sourceOwner != null && !sourceOwner.equals(o.getOwnerEmployeeId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源报价与订货单归属不一致");
         }
-        applyHeader(req, o, true);
+        applyHeader(req, o);
         costItemRepo.deleteByOrderId(id);
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
@@ -654,9 +661,10 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         referenceValidator.validateStoredOrder(o.getClientId(), items);
-        // 审核时重验币种仍为启用主档且参考汇率有效，但不重写草稿已保存的汇率快照。
-        requireActiveCurrencyReferenceRate(o.getCurrencyId(), ErrorCode.CONFLICT);
+        // 销售订单只确认币种；汇率在 SHIPPED 正式立账时由财务主档提供。
+        requireActiveCurrency(o.getCurrencyId(), ErrorCode.CONFLICT);
         requireSafeStoredCommercialOrder(o, items);
+        clearSalesStageLocalFacts(o, items);
         reserveOnApprove(o, items);
         o.setStatus(STATUS_APPROVED);
         o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
@@ -756,14 +764,13 @@ public class SalesOrderService {
         if (o.isStopped()) {
             throw new ApiException(ErrorCode.BUSINESS, "已中止订单不可改量");
         }
-        BigDecimal orderExchangeRate = o.getExchangeRate();
-        if (orderExchangeRate == null || orderExchangeRate.signum() <= 0) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "订单汇率无效，禁止改量并请先核查历史商业条款");
-        }
         Map<UUID, SalesOrderItem> items = new HashMap<>();
         List<SalesOrderItem> lockedItems = lockOrderItems(id);
+        // A quantity change can touch a historical order that still carries a
+        // sales-stage local shadow. Clear every line, not only changed lines.
+        clearSalesStageLocalFacts(o, lockedItems);
+        orderRepo.save(o);
+        itemRepo.saveAll(lockedItems);
         for (SalesOrderItem it : lockedItems) items.put(it.getId(), it);
         Map<UUID, List<PlanOrderItemLink>> activeLinks = lockActivePlanLinks(lockedItems);
         for (SalesOrderItem item : lockedItems) {
@@ -880,19 +887,15 @@ public class SalesOrderService {
             BigDecimal amountOriginal = it.getPrice() == null
                     ? it.getAmountOriginal()
                     : authoritativeOrderAmount(newQty, it.getPrice(), it.getDiscount());
-            BigDecimal amountLocal = it.getPrice() == null
-                    ? it.getAmountLocal()
-                    : authoritativeLocalAmount(amountOriginal, orderExchangeRate);
             em.createNativeQuery("""
                     UPDATE sales_order_items
                     SET qty = :q,
                         amount_original = :amountOriginal,
-                        amount_local    = :amountLocal,
+                        amount_local    = NULL,
                         reserved_qty = :r, planned_qty = :p, chain_status = :cs, updated_at = now()
                     WHERE id = :id
                     """).setParameter("q", newQty)
                     .setParameter("amountOriginal", amountOriginal)
-                    .setParameter("amountLocal", amountLocal)
                     .setParameter("r", reserved)
                     .setParameter("p", planned).setParameter("cs", chain)
                     .setParameter("id", it.getId()).executeUpdate();
@@ -1284,8 +1287,7 @@ public class SalesOrderService {
                 UPDATE sales_orders o SET
                     total_original = (SELECT COALESCE(SUM(i.amount_original),0) FROM sales_order_items i
                         WHERE i.order_id = o.id AND COALESCE(i.is_deleted,false) = false),
-                    total_local = (SELECT COALESCE(SUM(i.amount_local),0) FROM sales_order_items i
-                        WHERE i.order_id = o.id AND COALESCE(i.is_deleted,false) = false),
+                    total_local = NULL,
                     is_closed = (SELECT COALESCE(bool_and(
                         COALESCE(i.qty,0) - COALESCE(i.shipped_qty,0)
                         + COALESCE(i.returned_qty,0) - COALESCE(i.flag_qty,0) <= 0), true)
@@ -1338,28 +1340,15 @@ public class SalesOrderService {
         return detail(id);
     }
 
-    private void applyHeader(
-            OrderSaveRequest req, SalesOrder o, boolean preserveSameCurrencySnapshot) {
+    private void applyHeader(OrderSaveRequest req, SalesOrder o) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (o.getBillNo() == null || o.getBillNo().isBlank()) {
             o.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER));
         }
         o.setBillDate(req.getBillDate());
         o.setClientId(req.getClientId());
-        BigDecimal exchangeRate;
-        if (preserveSameCurrencySnapshot
-                && java.util.Objects.equals(o.getCurrencyId(), req.getCurrencyId())) {
-            exchangeRate = o.getExchangeRate();
-            if (exchangeRate == null || exchangeRate.signum() <= 0) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "订单已存汇率快照无效，不能用销售编辑请求覆盖；请先核查币种资料");
-            }
-        } else {
-            // 销售请求中的 exchangeRate 仅为旧客户端兼容字段，永不作为订单金额事实。
-            exchangeRate = requireActiveCurrencyReferenceRate(
-                    req.getCurrencyId(), ErrorCode.VALIDATION_FAILED);
-        }
+        // 销售阶段只确认启用币种，不读取参考汇率，也不接受客户端汇率。
+        requireActiveCurrency(req.getCurrencyId(), ErrorCode.VALIDATION_FAILED);
         BigDecimal taxRate = req.getTaxRate() == null
                 ? BigDecimal.ZERO : req.getTaxRate();
         if (taxRate.signum() < 0 || isNegative(req.getDeposit())) {
@@ -1368,7 +1357,7 @@ public class SalesOrderService {
                     "订单税率和订金不得为负数");
         }
         o.setCurrencyId(req.getCurrencyId());
-        o.setExchangeRate(exchangeRate);
+        o.setExchangeRate(null);
         o.setTaxRate(taxRate);
         o.setPaymentStyleId(req.getPaymentStyleId());
         o.setSellerId(req.getSellerId());
@@ -1387,17 +1376,17 @@ public class SalesOrderService {
     }
 
     /**
-     * 订单新建、切换币种和审核的财务主档守卫。只有未软删且状态为“使用”的币种可用，
-     * 订单汇率快照只取主档正数参考汇率；调用方提交的 exchangeRate 不参与选择。
+     * 订单新建、编辑和审核的币种主档守卫。销售阶段只要求币种存在、未删除且启用，
+     * 不读取参考汇率；正式本币金额只在 SHIPPED 时形成。
      */
-    private BigDecimal requireActiveCurrencyReferenceRate(
+    private void requireActiveCurrency(
             UUID currencyId, ErrorCode errorCode) {
         if (currencyId == null) {
             throw new ApiException(errorCode, "订单币种不能为空");
         }
         @SuppressWarnings("unchecked")
         List<Object> rows = em.createNativeQuery("""
-                        SELECT currency.exchange_rate
+                        SELECT currency.id
                         FROM currencies currency
                         WHERE currency.id = :currencyId
                           AND COALESCE(currency.is_deleted, false) = false
@@ -1409,16 +1398,6 @@ public class SalesOrderService {
         if (rows.size() != 1) {
             throw new ApiException(errorCode, "订单币种不存在、已禁用或已删除");
         }
-        Object rawRate = rows.getFirst();
-        BigDecimal referenceRate = rawRate instanceof BigDecimal decimal
-                ? decimal
-                : rawRate == null ? null : new BigDecimal(rawRate.toString());
-        if (referenceRate == null || referenceRate.signum() <= 0) {
-            throw new ApiException(
-                    errorCode,
-                    "币种参考汇率必须大于 0，请先由财务维护币种资料");
-        }
-        return referenceRate;
     }
 
     /**
@@ -1502,8 +1481,6 @@ public class SalesOrderService {
             requireSafeCommercialLine(l);
             BigDecimal amountOriginal = authoritativeOrderAmount(
                     l.getQty(), l.getPrice(), l.getDiscount());
-            BigDecimal amountLocal = authoritativeLocalAmount(
-                    amountOriginal, o.getExchangeRate());
             SalesOrderItem it = new SalesOrderItem();
             it.setOrderId(o.getId());
             it.setBillNo(o.getBillNo());
@@ -1518,7 +1495,8 @@ public class SalesOrderService {
             // The client may display a preview, but approved commercial facts
             // are always recomputed by the server from quantity and unit price.
             it.setAmountOriginal(amountOriginal);
-            it.setAmountLocal(amountLocal);
+            // 销售订单不形成任何本币金额；SHIPPED 立账时再按财务汇率计算。
+            it.setAmountLocal(null);
             it.setDiscount(l.getDiscount());
             // A tax engine/price-condition ledger is not present yet. Do not
             // accept a client-authored tax amount as an accounting fact.
@@ -1585,23 +1563,9 @@ public class SalesOrderService {
                 .setScale(4, RoundingMode.HALF_UP);
     }
 
-    static BigDecimal authoritativeLocalAmount(
-            BigDecimal amountOriginal, BigDecimal exchangeRate) {
-        if (amountOriginal == null || amountOriginal.signum() < 0
-                || exchangeRate == null || exchangeRate.signum() <= 0) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "订单原币金额不得为负数且汇率必须大于 0");
-        }
-        return amountOriginal.multiply(exchangeRate)
-                .setScale(4, RoundingMode.HALF_UP);
-    }
-
     private static void requireSafeStoredCommercialOrder(
             SalesOrder order, List<SalesOrderItem> items) {
-        if (order.getExchangeRate() == null
-                || order.getExchangeRate().signum() <= 0
-                || isNegative(order.getTaxRate())
+        if (isNegative(order.getTaxRate())
                 || isNegative(order.getDeposit())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -1617,25 +1581,32 @@ public class SalesOrderService {
                                             ? BigDecimal.ONE
                                             : item.getDiscount())
                             .setScale(4, RoundingMode.HALF_UP);
-            BigDecimal expectedLocal = expectedOriginal == null
-                    ? null
-                    : expectedOriginal.multiply(order.getExchangeRate())
-                            .setScale(4, RoundingMode.HALF_UP);
             if (item.getUnitId() == null
                     || item.getUnitRate() == null
                     || item.getUnitRate().signum() <= 0
                     || item.getQty() == null || item.getQty().signum() <= 0
                     || item.getPrice() == null || item.getPrice().signum() < 0
                     || expectedOriginal == null
-                    || expectedLocal == null
                     || item.getAmountOriginal() == null
-                    || item.getAmountLocal() == null
-                    || item.getAmountOriginal().compareTo(expectedOriginal) != 0
-                    || item.getAmountLocal().compareTo(expectedLocal) != 0) {
+                    || item.getAmountOriginal().compareTo(expectedOriginal) != 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
                         "订单明细数量、价格或金额不一致，禁止审核；请重新保存草稿");
             }
+        }
+    }
+
+    /** 清除旧草稿遗留的销售阶段汇率/本币影子，避免审核后继续被误认作会计事实。 */
+    private static void clearSalesStageLocalFacts(
+            SalesOrder order, List<SalesOrderItem> items) {
+        order.setExchangeRate(null);
+        order.setTotalLocal(null);
+        order.setTotalOriginal(items.stream()
+                .map(item -> item.getAmountOriginal() == null
+                        ? BigDecimal.ZERO : item.getAmountOriginal())
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        for (SalesOrderItem item : items) {
+            item.setAmountLocal(null);
         }
     }
 
@@ -1644,13 +1615,10 @@ public class SalesOrderService {
     }
 
     private void applyTotals(SalesOrder o, List<OrderItemDto> items) {
-        BigDecimal local = items.stream()
-                .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal original = items.stream()
                 .map(i -> i.getAmountOriginal() == null ? BigDecimal.ZERO : i.getAmountOriginal())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        o.setTotalLocal(local);
+        o.setTotalLocal(null);
         o.setTotalOriginal(original);
         orderRepo.save(o);
     }
@@ -1663,14 +1631,15 @@ public class SalesOrderService {
                 && !o.getDeliverDate().isAfter(BusinessTime.today().plusDays(3));
         boolean mask = !priceMasker.canView(); // 价格脱敏（SOP §三8）：无权限置 null + priceMasked 标记
         return new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getClientId(),
-                o.getCurrencyId(), mask ? null : o.getTotalLocal(), o.getStatus(), o.isClosed(), o.isStopped(),
+                o.getCurrencyId(), mask ? null : o.getTotalOriginal(),
+                null, o.getStatus(), o.isClosed(), o.isStopped(),
                 o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId());
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
         return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
-                it.getAmountLocal(), it.getShippedQty(), it.getReturnedQty(), it.getFlagQty(),
+                null, it.getShippedQty(), it.getReturnedQty(), it.getFlagQty(),
                 it.getDiscount(), it.getTaxAmount(), it.getWeight(), it.getClientNo(), it.getClientModel(),
                 it.getDeliverDate(), it.getSourceDocNo(), it.getMachiningPrice(), it.getCircumference(),
                 it.getInboundQty(), it.getInNo(), it.getOutNo(), it.getRemark(),
@@ -1693,11 +1662,11 @@ public class SalesOrderService {
             items.forEach(this::maskItemPrices);
         }
         return new OrderDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
-                o.getClientId(), o.getCurrencyId(), o.getExchangeRate(), o.getTaxRate(), o.getPaymentStyleId(),
+                o.getClientId(), o.getCurrencyId(), null, o.getTaxRate(), o.getPaymentStyleId(),
                 o.getSellerId(), o.getMakerId(), o.getApproverId(), o.getDeliverDate(), o.getContractNo(),
                 o.getLinkPhone(), o.getSignAddr(), o.getShipAddr(),
                 mask ? null : o.getDeposit(), o.getRemark(),
-                mask ? null : o.getTotalOriginal(), mask ? null : o.getTotalLocal(),
+                mask ? null : o.getTotalOriginal(), null,
                 o.getStatus(), o.isClosed(), o.isStopped(),
                 o.getShipmentPolicy(), o.getPartialShipmentConfirmedAt(),
                 o.getPartialShipmentConfirmedBy(),

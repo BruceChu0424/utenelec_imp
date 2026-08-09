@@ -13,8 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/responsive/breakpoint.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/client_node.dart';
 import '../models/product_category_node.dart';
@@ -42,45 +42,10 @@ Future<ClientListItem?> showUtenClientPicker(
   }
   if (!context.mounted) return null;
   final sheet = _ClientPickerSheet(tree: tree);
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<ClientListItem>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.lg),
-        ),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * 0.85,
-          child: sheet,
-        ),
-      ),
-    );
-  }
-  return showGeneralDialog<ClientListItem>(
+  return showUtenAdaptivePanel<ClientListItem>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (ctx, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: Theme.of(ctx).colorScheme.surface,
-        child: SizedBox(width: 720, height: double.infinity, child: sheet),
-      ),
-    ),
-    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-      child: child,
-    ),
+    drawerWidth: 720,
+    builder: (_) => sheet,
   );
 }
 

@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -24,6 +26,8 @@ public record ExecutionSegmentPreview(
         LocalDate planBeginDate,
         LocalDate planEndDate,
         String bomFingerprint,
+        String materialRequirementMode,
+        String zeroMaterialReason,
         List<Material> materials) {
 
     public record Material(
@@ -35,6 +39,30 @@ public record ExecutionSegmentPreview(
             BigDecimal availableBeforeQty,
             BigDecimal candidateAllocatedQty,
             BigDecimal shortageQty,
-            String supplyRoute) {
+            String supplyRoute,
+            String requirementMode) {
+
+        public Material(
+                UUID goodsId,
+                UUID colorId,
+                UUID unitId,
+                BigDecimal perProductQty,
+                BigDecimal requiredQty,
+                BigDecimal availableBeforeQty,
+                BigDecimal candidateAllocatedQty,
+                BigDecimal shortageQty,
+                String supplyRoute) {
+            this(
+                    goodsId,
+                    colorId,
+                    unitId,
+                    perProductQty,
+                    requiredQty,
+                    availableBeforeQty,
+                    candidateAllocatedQty,
+                    shortageQty,
+                    supplyRoute,
+                    ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR);
+        }
     }
 }

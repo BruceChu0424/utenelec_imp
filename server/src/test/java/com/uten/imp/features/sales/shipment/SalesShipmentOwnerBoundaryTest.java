@@ -28,7 +28,9 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -77,7 +79,68 @@ class SalesShipmentOwnerBoundaryTest {
     }
 
     @Test
-    void batchNeverMergesSameClientAcrossOwnersAndEachDraftInheritsItsSourceOwner() {
+    void linkedDraftIgnoresForgedClientLocalAmount() {
+        UUID client = UUID.randomUUID();
+        UUID currency = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        Query orderQuery = queryReturningRaw(List.of(orderId));
+        Query lockedQuery = queryReturningRaw(List.of(itemId));
+        Query allocationQuery = queryReturning(Collections.singletonList(
+                allocationRow(itemId)));
+        Query sourceQuery = queryReturning(Collections.singletonList(
+                sourceRow(itemId, goodsId, client, currency, owner, "SO-FORGED")));
+        Query policyQuery = queryReturning(Collections.singletonList(
+                policyRow(itemId, orderId, "SO-FORGED")));
+        Query eventQuery = commandQuery();
+        when(em.createNativeQuery(anyString())).thenReturn(
+                orderQuery, lockedQuery, allocationQuery,
+                sourceQuery, policyQuery, eventQuery);
+        when(currentUser.requireEmployeeId()).thenReturn(UUID.randomUUID());
+        when(docNumberService.nextNumber(any())).thenReturn("OUT-FORGED");
+        when(accessPolicy.ownerForNewDocument(owner)).thenReturn(owner);
+
+        ShipmentItemLine line = new ShipmentItemLine();
+        line.setOrderItemId(itemId);
+        line.setGoodsId(goodsId);
+        line.setUnitId(goodsId);
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(BigDecimal.ONE);
+        line.setPrice(new BigDecimal("999"));
+        line.setAmountOriginal(new BigDecimal("999"));
+        line.setAmountLocal(new BigDecimal("888888"));
+        ShipmentSaveRequest request = new ShipmentSaveRequest();
+        request.setBillDate(LocalDate.now());
+        request.setClientId(client);
+        request.setWarehouseId(UUID.randomUUID());
+        request.setItems(List.of(line));
+
+        SalesShipmentService service = new SalesShipmentService(
+                shipmentRepo, itemRepo, stockService, reservationService,
+                arApService, tx, em, docNumberService, accessPolicy,
+                currentUser, nameResolver, chainNotice);
+
+        service.create(request);
+
+        ArgumentCaptor<SalesShipment> savedShipment =
+                ArgumentCaptor.forClass(SalesShipment.class);
+        org.mockito.Mockito.verify(shipmentRepo, org.mockito.Mockito.atLeastOnce())
+                .save(savedShipment.capture());
+        SalesShipment persisted = savedShipment.getAllValues().getLast();
+        assertEquals(new BigDecimal("10.0000"), persisted.getTotalOriginal());
+        assertNull(persisted.getTotalLocal());
+        assertNull(persisted.getExchangeRate());
+        ArgumentCaptor<SalesShipmentItem> savedItem =
+                ArgumentCaptor.forClass(SalesShipmentItem.class);
+        org.mockito.Mockito.verify(itemRepo).save(savedItem.capture());
+        assertEquals(new BigDecimal("10.0000"), savedItem.getValue().getAmountOriginal());
+        assertNull(savedItem.getValue().getAmountLocal());
+    }
+
+    @Test
+    void noRateOrdersCanOpenDraftsWithoutMergingAcrossOwners() {
         UUID client = UUID.randomUUID();
         UUID currency = UUID.randomUUID();
         UUID ownerA = UUID.randomUUID();
@@ -152,6 +215,8 @@ class SalesShipmentOwnerBoundaryTest {
         assertEquals(Set.of(ownerA, ownerB),
                 distinct.stream().map(SalesShipment::getOwnerEmployeeId)
                         .collect(java.util.stream.Collectors.toSet()));
+        assertTrue(distinct.stream().allMatch(s -> s.getExchangeRate() == null));
+        assertTrue(distinct.stream().allMatch(s -> s.getTotalLocal() == null));
 
         ArgumentCaptor<SalesShipmentItem> savedItems =
                 ArgumentCaptor.forClass(SalesShipmentItem.class);
@@ -162,11 +227,8 @@ class SalesShipmentOwnerBoundaryTest {
                 savedItems.getAllValues().stream()
                         .map(SalesShipmentItem::getPrice)
                         .collect(java.util.stream.Collectors.toSet()));
-        assertEquals(
-                Set.of(new BigDecimal("10.0000")),
-                savedItems.getAllValues().stream()
-                        .map(SalesShipmentItem::getAmountLocal)
-                        .collect(java.util.stream.Collectors.toSet()));
+        assertTrue(savedItems.getAllValues().stream()
+                .allMatch(item -> item.getAmountLocal() == null));
     }
 
     private Query queryReturning(List<Object[]> rows) {
@@ -205,7 +267,7 @@ class SalesShipmentOwnerBoundaryTest {
                 new BigDecimal("999"),
                 BigDecimal.TEN, clientId, currencyId, billNo, ownerId,
                 (short) 1, false, false,
-                BigDecimal.ONE, BigDecimal.ZERO, 1, ownerId
+                BigDecimal.ZERO, 1, ownerId
         };
     }
 
@@ -214,10 +276,9 @@ class SalesShipmentOwnerBoundaryTest {
         return new Object[]{
                 itemId, goodsId, null, goodsId, BigDecimal.ONE,
                 clientId, ownerId, (short) 1, false, false, billNo,
-                currencyId, BigDecimal.ONE, BigDecimal.ZERO,
-                1, ownerId,
-                BigDecimal.TEN, BigDecimal.TEN, BigDecimal.TEN,
-                BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO,
+                currencyId, BigDecimal.ZERO, 1, ownerId,
+                BigDecimal.TEN, BigDecimal.TEN, BigDecimal.ONE,
+                BigDecimal.ZERO, BigDecimal.ZERO,
                 "CLIENT", "MODEL", null
         };
     }

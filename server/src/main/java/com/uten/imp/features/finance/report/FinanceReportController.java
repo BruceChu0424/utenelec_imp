@@ -1,7 +1,7 @@
 package com.uten.imp.features.finance.report;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
@@ -41,6 +41,8 @@ import java.util.UUID;
  * <p>通用参数：billNo / clientId / supplierId / accountId / departmentId / status / dateFrom / dateTo /
  * keyword / direction / side / partyId / displayMode / categoryType / categoryId / year / page / size。
  * 列筛选以 {@code f.<colKey>=<value>} 传（值 {@code __null__} 表空值档）。
+ * 五类单据型报表在服务层继续按 maker 本人/委托范围过滤；AR/AP、对账、账户流水等
+ * 无法安全切片的公司级报表还要求超级管理员或 {@code finance:view:all}，否则返回 403。
  */
 @RestController
 @RequestMapping("/api/finance/reports")
@@ -49,7 +51,7 @@ public class FinanceReportController {
 
     private final FinanceReportService service;
     private final XlsxExportService xlsxExport;
-    private final EncryptedWorkbookService encryptedWorkbook;
+    private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
@@ -377,7 +379,7 @@ public class FinanceReportController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(report, allParams, sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
-        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_finance_report", "finance_reports",
@@ -387,7 +389,7 @@ public class FinanceReportController {
                 .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .body(encrypted);
+                .body(downloadBytes);
     }
 
     // ======================== 辅助 ========================

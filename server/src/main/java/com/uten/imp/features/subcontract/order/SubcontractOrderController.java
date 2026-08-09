@@ -39,6 +39,7 @@ public class SubcontractOrderController {
 
     private final SubcontractOrderService service;
     private final ProcurementFinanceApprovalService financeApproval;
+    private final SubcontractOrderFinanceDecisionCommandService financeDecision;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_order:view')")
@@ -107,9 +108,7 @@ public class SubcontractOrderController {
     public OrderDetail approve(
             @PathVariable UUID id,
             @Valid @RequestBody ApprovalDecisionRequest request) {
-        financeApproval.approve(
-                "SUBCONTRACT", id, request.expectedVersion());
-        return service.detail(id);
+        return financeDecision.approve(id, request.expectedVersion());
     }
 
     @PostMapping("/{id}/reject")
@@ -117,9 +116,8 @@ public class SubcontractOrderController {
     public OrderDetail reject(
             @PathVariable UUID id,
             @Valid @RequestBody RejectionDecisionRequest request) {
-        financeApproval.reject(
-                "SUBCONTRACT", id, request.expectedVersion(), request.reason());
-        return service.detail(id);
+        return financeDecision.reject(
+                id, request.expectedVersion(), request.reason());
     }
 
     @PostMapping("/{id}/reverse")

@@ -1,9 +1,3 @@
-// UtenExportButton - 加密 Excel 导出按钮（页面 AppBar 用）。
-//
-// 点击弹密码对话框 → POST /export（密码 body，过滤/排序 query）→ 跨端保存加密 .xlsx。
-// 防连点 + loading + context.mounted 守卫 + ApiException/兜底错误提示。
-// 设计：紧凑 IconButton（下载图标），loading 时显小转圈并禁用。
-// 文档：docs/02-组件库/UtenExportButton.md
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -11,13 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/io/file_saver.dart';
+import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/app_notification.dart';
 import '../../shared/auth/permissions.dart';
 import 'uten_button.dart';
 
-/// 加密 Excel 导出按钮（紧凑 IconButton，放页面 AppBar.actions）。
+/// 统一 Excel 导出入口，可选择普通下载或密码加密下载。
 ///
 /// [endpoint] 导出端点路径，如 '/purchase/reports/export'。
 /// [report] 报表 key（与后端 GET 路径一致，如 'order/detail' / 'expediting'）。
@@ -69,7 +64,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       context: context,
       builder: (_) => const _ExportPasswordDialog(),
     );
-    // null=取消；非空=加密导出。安全策略禁止从报表端点导出明文工作簿。
+    // null 表示取消；空字符串表示不加密。
     if (pwd == null || !mounted) return;
     await _doExport(pwd);
   }
@@ -87,13 +82,18 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       final name = '${widget.filename ?? 'export_${widget.report}'}.xlsx';
       final saved = await saveBytes(bytes, name);
       if (!mounted) return;
-      context.appSuccess(kIsWeb ? '已开始下载 $name' : '已保存：$saved');
+      final l10n = AppLocalizations.of(context);
+      context.appSuccess(
+        kIsWeb
+            ? l10n.exportDownloadStarted(name)
+            : l10n.exportDownloadSaved(saved),
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       context.appError(e.message);
     } catch (_) {
       if (!mounted) return;
-      context.appError('导出失败，请稍后重试'); // TODO(l10n): 补 arb
+      context.appError(AppLocalizations.of(context).exportFailed);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -118,8 +118,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   }
 }
 
-/// 导出对话框：必须设置 6-128 位打开密码并二次确认。
-/// 确认返回密码，取消返回 null。
+/// 返回空字符串表示普通下载，返回非空密码表示加密下载，取消返回 null。
 class _ExportPasswordDialog extends StatefulWidget {
   const _ExportPasswordDialog();
 
@@ -141,12 +140,16 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
 
   void _submit() {
     final p = _pwd.text;
-    if (p.length < 6 || p.length > 128) {
-      setState(() => _error = '密码长度必须为 6-128 位'); // TODO(l10n): 补 arb
+    if (p.length > 128) {
+      setState(
+        () => _error = AppLocalizations.of(context).exportPasswordTooLong,
+      );
       return;
     }
-    if (p != _confirm.text) {
-      setState(() => _error = '两次密码不一致'); // TODO(l10n): 补 arb
+    if (p.isNotEmpty && p != _confirm.text) {
+      setState(
+        () => _error = AppLocalizations.of(context).exportPasswordMismatch,
+      );
       return;
     }
     Navigator.of(context).pop(p);
@@ -155,14 +158,16 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final hasPassword = _pwd.text.isNotEmpty;
     return AlertDialog(
-      title: const Text('导出 Excel'), // TODO(l10n): 补 arb
+      title: Text(l10n.exportDialogTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '为保护导出数据，必须设置打开密码；Excel/WPS 打开文件时需要输入。',
+            l10n.exportPasswordOptionalHint,
             style: theme.textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
@@ -171,25 +176,29 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
             obscureText: true,
             autofocus: true,
             maxLength: 128,
-            decoration: const InputDecoration(
-              labelText: '密码（6-128 位）', // TODO(l10n): 补 arb
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.exportPasswordOptionalLabel,
+              border: const OutlineInputBorder(),
               isDense: true,
             ),
+            onChanged: (_) => setState(() => _error = null),
             onSubmitted: (_) => _submit(),
           ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _confirm,
-            obscureText: true,
-            maxLength: 128,
-            decoration: const InputDecoration(
-              labelText: '确认密码', // TODO(l10n): 补 arb
-              border: OutlineInputBorder(),
-              isDense: true,
+          if (hasPassword) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _confirm,
+              obscureText: true,
+              maxLength: 128,
+              decoration: InputDecoration(
+                labelText: l10n.exportPasswordConfirmLabel,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (_) => setState(() => _error = null),
+              onSubmitted: (_) => _submit(),
             ),
-            onSubmitted: (_) => _submit(),
-          ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -203,12 +212,19 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'), // TODO(l10n): 补 arb
+          child: Text(l10n.commonCancel),
         ),
         FilledButton.icon(
           onPressed: _submit,
-          icon: const Icon(Icons.lock_outline_rounded, size: 18),
-          label: const Text('加密导出'), // TODO(l10n): 补 arb
+          icon: Icon(
+            hasPassword ? Icons.lock_outline_rounded : Icons.download_rounded,
+            size: 18,
+          ),
+          label: Text(
+            hasPassword
+                ? l10n.exportDownloadEncrypted
+                : l10n.exportDownloadPlain,
+          ),
         ),
       ],
     );

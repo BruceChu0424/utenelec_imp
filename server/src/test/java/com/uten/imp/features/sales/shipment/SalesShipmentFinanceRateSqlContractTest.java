@@ -33,6 +33,16 @@ class SalesShipmentFinanceRateSqlContractTest {
     }
 
     @Test
+    void draftPersistenceIgnoresClientAuthoredLocalAmounts() throws Exception {
+        String source = Files.readString(SOURCE, StandardCharsets.UTF_8)
+                .replaceAll("\\s+", " ")
+                .toLowerCase();
+
+        assertThat(source).contains("it.setamountlocal(null)");
+        assertThat(source).contains("s.settotallocal(null)");
+    }
+
+    @Test
     void arSettlementMetadataLocksActiveClientTermsAndNeverUsesLastOperationDate() throws Exception {
         String source = Files.readString(SOURCE, StandardCharsets.UTF_8)
                 .replaceAll("\\s+", " ")

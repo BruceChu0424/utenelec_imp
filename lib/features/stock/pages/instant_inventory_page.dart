@@ -526,7 +526,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                           .read(instantInventoryPrefsProvider.notifier)
                           .setIncludeDefective(v),
               ),
-              // 加密 Excel 导出 / 预览打印：已移入表格工具条（表头设置旁，深绿大按钮）。
+              // Excel 导出 / 预览打印统一放在表格工具条。
               Text(
                 '共 $total 项', // TODO(l10n): 补 arb
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -541,7 +541,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             columns: _columns,
             items: _page?.items ?? const [],
             toolbarActions: [
-              // 加密 Excel 导出（stock_report:export 权限 + 限流 + AES-256 密码 + 10 万行上限 + 审计）
+              // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
               // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
               UtenPrintPreviewButton(
                 title: '即时库存',

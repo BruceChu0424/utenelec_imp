@@ -18,7 +18,8 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
         assertThat(source).contains("activeOpenActionQty");
         assertThat(source).contains("status IN ('OPEN','CREATED','IN_PROGRESS')");
-        assertThat(source).contains("received_qty");
+        assertThat(source).contains("inspection.passed_base_qty");
+        assertThat(source).contains("inspection.status = 'RESOLVED'");
         assertThat(source).contains("returned_qty");
         assertThat(source).doesNotContain("action.status IN ('OPEN','CREATED','IN_PROGRESS','DONE')");
         assertThat(source).contains("Comparator.comparingInt(ActionGroup::sourcePriority)");
@@ -31,6 +32,9 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         assertThat(source).contains("request.departmentId()");
         assertThat(source).contains("request.workshopName()");
         assertThat(source).contains("request.workerId()");
+        assertThat(source).contains("itemBillDate(quantity, request)");
+        assertThat(source).contains("item.teamDepartmentId()");
+        assertThat(source).contains("Objects.toString(item.workshopName(), \"\")");
         assertThat(source).contains("expectedQty.compareTo(proposedQty) != 0");
         assertThat(source).contains("!\"READY\".equals(segment.suggestedStatus())");
         assertThat(source).contains("line.setUnitRate(product.unitRate())");

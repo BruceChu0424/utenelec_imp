@@ -24,6 +24,8 @@ public class FinanceReceiptLineInput {
 
     private UUID currencyId;
 
+    /** 到账汇率必须由财务逐行明确填写，不得回退主表或应收开账汇率。 */
+    @NotNull
     @DecimalMin(value = "0", inclusive = false)
     private BigDecimal exchangeRate;
 

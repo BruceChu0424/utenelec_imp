@@ -34,8 +34,8 @@ class _ProductionMaterialAnalysisHistoryPageState
     extends ConsumerState<ProductionMaterialAnalysisHistoryPage> {
   static const _statuses = <String, String>{
     'ACTIVE': '进行中',
-    'PARTIALLY_PLANNED': '部分已排产',
-    'COMPLETED': '已完成',
+    'PARTIALLY_PLANNED': '部分已下达，剩余待料',
+    'COMPLETED': '已全部下达',
     'CANCELLED': '已取消',
   };
 

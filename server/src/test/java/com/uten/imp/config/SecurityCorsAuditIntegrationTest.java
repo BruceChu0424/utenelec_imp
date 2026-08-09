@@ -14,6 +14,7 @@ import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.LocalNetworkAccessPolicy;
 import com.uten.imp.security.LocalNetworkGuardFilter;
+import com.uten.imp.security.PasswordChangeRequiredFilter;
 import com.uten.imp.security.RemoteAccessGuardFilter;
 import com.uten.imp.security.RemoteAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -94,6 +95,9 @@ class SecurityCorsAuditIntegrationTest {
     @Autowired
     @Qualifier("remoteAccessFilterRegistration")
     private FilterRegistrationBean<?> remoteAccessRegistration;
+    @Autowired
+    @Qualifier("passwordChangeRequiredFilterRegistration")
+    private FilterRegistrationBean<?> passwordChangeRequiredRegistration;
 
     @MockitoBean
     private AuditService auditService;
@@ -121,14 +125,20 @@ class SecurityCorsAuditIntegrationTest {
         int corsIndex = indexOf(filters, CorsFilter.class);
         int localNetworkIndex = indexOf(filters, LocalNetworkGuardFilter.class);
         int jwtIndex = indexOf(filters, JwtAuthFilter.class);
+        int remoteAccessIndex = indexOf(filters, RemoteAccessGuardFilter.class);
+        int passwordChangeRequiredIndex =
+                indexOf(filters, PasswordChangeRequiredFilter.class);
         assertTrue(auditIndex >= 0);
         assertTrue(corsIndex > auditIndex);
         assertTrue(localNetworkIndex > corsIndex);
         assertTrue(jwtIndex > localNetworkIndex);
         assertTrue(jwtIndex > corsIndex);
+        assertTrue(remoteAccessIndex > jwtIndex);
+        assertTrue(passwordChangeRequiredIndex > remoteAccessIndex);
         assertFalse(localNetworkRegistration.isEnabled());
         assertFalse(jwtRegistration.isEnabled());
         assertFalse(remoteAccessRegistration.isEnabled());
+        assertFalse(passwordChangeRequiredRegistration.isEnabled());
 
         MockHttpServletRequest request = new MockHttpServletRequest(
                 "GET", "/api/cors-audit-probe");

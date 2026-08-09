@@ -956,7 +956,9 @@ public class ProductionPlanService {
         if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退（过滤后总数变少）
 
         // 当前页数据
-        String orderBy = PROGRESS_SORT.getOrDefault(sort, PROGRESS_SORT.get("billDate"));
+        String orderBy = PROGRESS_SORT.getOrDefault(
+                sort == null ? "" : sort,
+                PROGRESS_SORT.get("billDate"));
         var dataQ = em.createNativeQuery("""
                 SELECT p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
                        COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.iqty),0),

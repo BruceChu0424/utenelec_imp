@@ -128,6 +128,79 @@ class ProductionExecutionSegmentPostgresTest {
     }
 
     @Test
+    void exactSnapshotPersists9999Over4000DemandReservationAndDrawAsThree() {
+        assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+            try (Connection connection = connection()) {
+                ExactDemandFixture fixture =
+                        createExactDemandFixture(connection);
+
+                assertEquals(
+                        "EXACT_SNAPSHOT|9999.0000|3.0000",
+                        scalarText(
+                                connection,
+                                """
+                                select concat_ws(
+                                    '|', requirement_mode,
+                                    required_for_product_qty::text,
+                                    required_qty::text)
+                                from production_material_demands
+                                where id = ?
+                                """,
+                                fixture.demandId()));
+                assertQuantity(
+                        connection,
+                        """
+                        select sum(qty - released_qty)
+                        from stock_reservations
+                        where demand_id = ? and is_deleted = false
+                        """,
+                        fixture.demandId(),
+                        "3");
+                assertQuantity(
+                        connection,
+                        """
+                        select sum(i.base_qty)
+                        from production_planning_package_document_items m
+                        join stock_document_items i
+                          on i.id = m.document_item_id
+                        where m.demand_id = ? and m.document_type = 'DRAW'
+                        """,
+                        fixture.demandId(),
+                        "3");
+
+                assertConstraint(
+                        connection,
+                        "production_material_demand_exact_snapshot_guard",
+                        """
+                        update production_material_demands
+                        set required_qty = 2.9997
+                        where id = ?
+                        """,
+                        fixture.demandId());
+                assertConstraint(
+                        connection,
+                        "production_material_demand_exact_snapshot_guard",
+                        """
+                        update production_material_demands
+                        set requirement_fingerprint = ?
+                        where id = ?
+                        """,
+                        "b".repeat(64), fixture.demandId());
+                assertConstraint(
+                        connection,
+                        "production_execution_segment_requirement_immutable_guard",
+                        """
+                        update production_execution_segments
+                        set material_requirement_mode = 'ZERO_MATERIAL',
+                            zero_material_reason = 'DIRECT_MAKE'
+                        where id = ?
+                        """,
+                        fixture.segmentId());
+            }
+        });
+    }
+
+    @Test
     void explicitDeferReleaseRequiresEventAndAdvancesVersionExactlyOnce() {
         assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
             try (Connection connection = connection()) {
@@ -1195,6 +1268,125 @@ class ProductionExecutionSegmentPostgresTest {
                         "1");
             }
         });
+    }
+
+    private static ExactDemandFixture createExactDemandFixture(
+            Connection connection) throws Exception {
+        UUID unitId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID materialId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID balanceId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID packageId = UUID.randomUUID();
+        UUID segmentId = UUID.randomUUID();
+        UUID demandId = UUID.randomUUID();
+        String planNo = "PP-EXACT-" + planId;
+
+        connection.setAutoCommit(false);
+        try {
+            execute(
+                    connection,
+                    "insert into units(id, code, name) values (?, ?, 'piece')",
+                    unitId,
+                    "UNIT-" + unitId);
+            for (UUID goodsId : List.of(productId, materialId)) {
+                execute(
+                        connection,
+                        """
+                        insert into goods(id, code, name, min_qty)
+                        values (?, ?, 'exact fixture goods', 0)
+                        """,
+                        goodsId,
+                        "GOODS-" + goodsId);
+            }
+            execute(
+                    connection,
+                    """
+                    insert into warehouses(id, code, name)
+                    values (?, ?, 'exact fixture warehouse')
+                    """,
+                    warehouseId,
+                    "WH-" + warehouseId);
+            execute(
+                    connection,
+                    """
+                    insert into stock_balances(
+                        id, warehouse_id, goods_id, qty
+                    ) values (?, ?, ?, 3)
+                    """,
+                    balanceId, warehouseId, materialId);
+            execute(
+                    connection,
+                    """
+                    insert into production_plans(
+                        id, bill_no, bill_date, delivery_date, status
+                    ) values (?, ?, ?, ?, 1)
+                    """,
+                    planId, planNo, BILL_DATE, BILL_DATE.plusDays(7));
+            execute(
+                    connection,
+                    """
+                    insert into production_plan_items(
+                        id, bill_no, bill_date, plan_id, line_no,
+                        product_no, goods_id, unit_id, unit_rate, qty
+                    ) values (?, ?, ?, ?, 1, ?, ?, ?, 1, 9999)
+                    """,
+                    planItemId, planNo, BILL_DATE, planId,
+                    "PRODUCT-" + planItemId, productId, unitId);
+            execute(
+                    connection,
+                    """
+                    insert into production_planning_packages(
+                        id, plan_id, warehouse_id, idempotency_key,
+                        request_hash, preview_fingerprint, status,
+                        execution_model_version
+                    ) values (?, ?, ?, ?, ?, ?, 'CONFIRMED', 1)
+                    """,
+                    packageId, planId, warehouseId,
+                    "package-exact-" + packageId,
+                    "a".repeat(64), "b".repeat(64));
+            insertSegment(
+                    connection, segmentId, packageId, planId, planItemId,
+                    1, productId, unitId, "9999", "READY");
+            execute(
+                    connection,
+                    """
+                    insert into production_material_demands(
+                        id, package_id, plan_id, warehouse_id,
+                        goods_id, unit_id, required_qty, need_date,
+                        supply_route, status, idempotency_key,
+                        execution_segment_id, source_plan_item_id,
+                        per_product_qty, requirement_mode,
+                        required_for_product_qty,
+                        requirement_fingerprint
+                    ) values (
+                        ?, ?, ?, ?, ?, ?, 3, ?,
+                        'BUY', 'ALLOCATED', ?, ?, ?,
+                        0.000301, 'EXACT_SNAPSHOT', 9999, ?
+                    )
+                    """,
+                    demandId, packageId, planId, warehouseId,
+                    materialId, unitId, BILL_DATE.plusDays(3),
+                    "demand-exact-" + demandId,
+                    segmentId, planItemId, "a".repeat(64));
+            insertReservation(
+                    connection, packageId, demandId, materialId,
+                    warehouseId, balanceId, "3");
+            createDraw(
+                    connection, packageId, segmentId, planId, planNo,
+                    warehouseId,
+                    List.of(new DrawLine(
+                            demandId, materialId, unitId, decimal("3"))));
+            connection.commit();
+        } catch (Exception error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(true);
+        }
+        return new ExactDemandFixture(segmentId, demandId);
     }
 
     private static SegmentFixture createSegmentFixture(
@@ -2780,6 +2972,9 @@ class ProductionExecutionSegmentPostgresTest {
             UUID waitingBOrderItemId,
             UUID waitingBOrderPegId,
             String planNo) {
+    }
+
+    private record ExactDemandFixture(UUID segmentId, UUID demandId) {
     }
 
     private record DrawLine(

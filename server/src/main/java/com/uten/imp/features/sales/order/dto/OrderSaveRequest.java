@@ -28,8 +28,8 @@ public class OrderSaveRequest {
 
     private UUID currencyId;
     /**
-     * 旧客户端兼容字段。销售订单服务不采信该值；新建/换币时从启用币种主档取参考汇率，
-     * 同币种编辑保留订单已存快照。
+     * 旧客户端兼容字段，服务端忽略该值。关联出货到达 SHIPPED 时，
+     * 才由财务维护的汇率形成正式立账快照。
      */
     private BigDecimal exchangeRate;
     private BigDecimal taxRate;

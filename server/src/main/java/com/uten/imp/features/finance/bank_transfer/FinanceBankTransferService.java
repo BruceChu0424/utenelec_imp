@@ -8,6 +8,8 @@ import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferDetail;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineDto;
 import com.uten.imp.features.finance.bank_transfer.dto.FinanceBankTransferLineInput;
@@ -70,14 +72,18 @@ public class FinanceBankTransferService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final DocNumberService docNumberService;
     private final EntityManager em;
+    private final FinanceDocumentAccessPolicy access;
+    private final GlPostingService glPosting;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceBankTransferListItem> list(FinanceBankTransferQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<FinanceBankTransfer> spec = (Root<FinanceBankTransfer> root,
                                                    jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                    CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -96,6 +102,7 @@ public class FinanceBankTransferService {
     @Transactional(readOnly = true)
     public FinanceBankTransferDetail detail(UUID id) {
         FinanceBankTransfer t = require(id);
+        access.requireReadable(t.getMakerId(), "银行存取款单不存在");
         List<FinanceBankTransferLineDto> items = lineRepo.findByTransferIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
         return toDetail(t, items);
@@ -118,7 +125,8 @@ public class FinanceBankTransferService {
     @Transactional
     public FinanceBankTransferDetail update(UUID id, FinanceBankTransferSaveRequest req) {
         tx.bind();
-        FinanceBankTransfer t = require(id);
+        FinanceBankTransfer t = lockActive(id);
+        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
         if (t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -134,9 +142,10 @@ public class FinanceBankTransferService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        FinanceBankTransfer t = require(id);
-        if (t.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        FinanceBankTransfer t = lockActive(id);
+        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
         t.setDeleted(true);
         t.setDeletedAt(OffsetDateTime.now());
@@ -147,20 +156,21 @@ public class FinanceBankTransferService {
     @Transactional
     public FinanceBankTransferDetail approve(UUID id) {
         tx.bind();
-        FinanceBankTransfer t = require(id);
-        em.refresh(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        FinanceBankTransfer t = lockActive(id);
+        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
         if (t.getStatus() == null || t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
+        UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
+        if (t.getMakerId() != null && t.getMakerId().equals(approver)) {
+            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
+        }
+        glPosting.lockAutoProjectionPeriod(t.getBillDate());
         List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
         TransferPosting posting = preparePosting(t, lines, true);
         assertNoExistingPosting(t.getId());
         applyPosting(t, posting, 1);
         insertReconciliations(t, posting);
-        UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
-        if (t.getMakerId() != null && t.getMakerId().equals(approver)) {
-            throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
-        }
         t.setApproverId(approver);
         t.setStatus(STATUS_APPROVED);
         transferRepo.save(t);
@@ -171,11 +181,12 @@ public class FinanceBankTransferService {
     @Transactional
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
-        FinanceBankTransfer t = require(id);
-        em.refresh(t, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥（多账号同单操作）
+        FinanceBankTransfer t = lockActive(id);
+        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
         if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        glPosting.removeAutoProjection("BANK_TRANSFER", t.getId(), t.getBillNo(), t.getBillDate());
         List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
         TransferPosting posting = preparePosting(t, lines, false);
         assertCompletePosting(t.getId(), posting.incomingByAccount().size() + 1L);
@@ -558,5 +569,14 @@ public class FinanceBankTransferService {
     private FinanceBankTransfer require(UUID id) {
         return transferRepo.findById(id).filter(t -> !t.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "银行存取款单不存在"));
+    }
+
+    private FinanceBankTransfer lockActive(UUID id) {
+        FinanceBankTransfer transfer = require(id);
+        em.refresh(transfer, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (transfer.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "银行存取款单不存在");
+        }
+        return transfer;
     }
 }

@@ -2,6 +2,8 @@ package com.uten.imp.features.finance.bank_transfer;
 
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -30,6 +32,7 @@ class FinanceBankTransferServiceTest {
     private FinanceBankTransferRepository transferRepo;
     private FinanceBankTransferLineRepository lineRepo;
     private SecurityContextCurrentUser currentUser;
+    private GlPostingService glPosting;
     private EntityManager em;
     private Query accountLock;
     private Query postingCount;
@@ -47,6 +50,8 @@ class FinanceBankTransferServiceTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         EmployeeNameResolver names = mock(EmployeeNameResolver.class);
         DocNumberService numbers = mock(DocNumberService.class);
+        FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
+        glPosting = mock(GlPostingService.class);
         em = mock(EntityManager.class);
 
         accountLock = query();
@@ -84,7 +89,7 @@ class FinanceBankTransferServiceTest {
         });
 
         service = new FinanceBankTransferService(
-                transferRepo, lineRepo, tx, currentUser, names, numbers, em);
+                transferRepo, lineRepo, tx, currentUser, names, numbers, em, access, glPosting);
     }
 
     @Test
@@ -120,6 +125,7 @@ class FinanceBankTransferServiceTest {
         verify(outgoingUpdate).setParameter("amount", new BigDecimal("100.0000"));
         verify(incomingUpdate).setParameter("amount", new BigDecimal("50.0000"));
         verify(reconciliationInsert, org.mockito.Mockito.times(2)).executeUpdate();
+        verify(glPosting).lockAutoProjectionPeriod(transfer.getBillDate());
     }
 
     @Test
@@ -151,6 +157,8 @@ class FinanceBankTransferServiceTest {
         verify(outgoingUpdate).setParameter("amount", new BigDecimal("-100.0000"));
         verify(incomingUpdate).setParameter("amount", new BigDecimal("-50.0000"));
         verify(reconciliationDelete).executeUpdate();
+        verify(glPosting).removeAutoProjection(
+                "BANK_TRANSFER", transfer.getId(), transfer.getBillNo(), transfer.getBillDate());
     }
 
     @Test

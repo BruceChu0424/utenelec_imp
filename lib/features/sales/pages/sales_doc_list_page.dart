@@ -274,6 +274,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         width: 200,
         value: (it) => names.client(it.clientId),
       ),
+      if (_cfg.hasCurrency)
+        MasterColumnDef(
+          key: 'currency',
+          label: '币种',
+          width: 100,
+          value: (it) => names.currency(it.currencyId),
+        ),
       if (_cfg.hasWarehouse)
         MasterColumnDef(
           key: 'warehouse',
@@ -297,13 +304,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage> {
         ),
       MasterColumnDef(
         key: 'total',
-        label: '合计',
+        label: _isOrder ? '订单金额' : '合计',
         width: 140,
         type: 'money',
-        sortable: true,
-        // 价格脱敏（SOP §三8）：无 sales_order:price:view 时后端置 null + priceMasked，渲染 ***
-        value: (it) =>
-            it.priceMasked ? '***' : it.totalLocal?.toStringAsFixed(2),
+        // 不同币种的原币金额不可直接横向比较；订单金额列不做跨币种排序。
+        sortable: !_isOrder,
+        // 订单列表显示所选币种的原币合计，不把人民币换算暴露给销售端。
+        // 其它销售单据仍沿用各自既有的本币列表口径。
+        value: (it) => it.priceMasked
+            ? '***'
+            : (_isOrder ? it.totalOriginal : it.totalLocal)?.toStringAsFixed(2),
       ),
       MasterColumnDef(
         key: 'status',

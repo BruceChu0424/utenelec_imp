@@ -208,6 +208,7 @@ class _MaterialDisplayRow {
     this.goodsName,
     this.spec,
     required this.perProductQty,
+    required this.requirementMode,
     required this.requiredQty,
     required this.availableBeforeQty,
     required this.allocatedQty,
@@ -231,6 +232,7 @@ class _MaterialDisplayRow {
   final String? colorId;
   final String unitId;
   final double perProductQty;
+  final String requirementMode;
   final double requiredQty;
   final double availableBeforeQty;
   final double allocatedQty;
@@ -938,6 +940,10 @@ class _ExecutionPlanningSheetState
 
   Widget _productCard(ThemeData theme, _ProductGroup group) {
     final source = group.source;
+    final zeroMaterialText = productionZeroMaterialReasonText(
+      source.materialRequirementMode,
+      source.zeroMaterialReason,
+    );
     final statusColor = group.waitingQty <= _epsilon
         ? Colors.green
         : group.readyQty > _epsilon
@@ -1016,13 +1022,14 @@ class _ExecutionPlanningSheetState
               rowColor: (row) => row.shortageQty > _epsilon
                   ? theme.colorScheme.error.withValues(alpha: 0.06)
                   : Colors.green.withValues(alpha: 0.04),
-              emptyMessage: '该产品没有可用 BOM 物料，不能排产',
+              emptyMessage: zeroMaterialText ?? '该产品没有可用 BOM 物料，不能排产',
             ),
             const SizedBox(height: UtenSpacing.s4),
             Text(
-              group.shortageKinds == 0
-                  ? '全部物料齐套，可锁料并生成领料单。'
-                  : '缺 ${group.shortageKinds} 种物料；待料部分保持零锁料，采购到货后按完整套数回补。',
+              zeroMaterialText ??
+                  (group.shortageKinds == 0
+                      ? '全部物料齐套，可锁料并生成领料单。'
+                      : '缺 ${group.shortageKinds} 种物料；待料部分保持零锁料，采购到货后按完整套数回补。'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: statusColor,
                 fontWeight: FontWeight.w600,
@@ -1062,10 +1069,12 @@ class _ExecutionPlanningSheetState
     ),
     MasterColumnDef(
       key: 'per',
-      label: '单台用量',
-      width: 92,
-      type: 'number',
-      value: (row) => formatProductionPlanningUsage(row.perProductQty),
+      label: '用量口径',
+      width: 186,
+      value: (row) => formatProductionPlanningGroupedMaterialUsage(
+        row.requirementMode,
+        row.perProductQty,
+      ),
     ),
     MasterColumnDef(
       key: 'required',
@@ -1510,6 +1519,10 @@ _ProductGroup _buildProductGroup(
   List<ProductionExecutionSegmentPreview> segments,
   Map<String, ProductionPlanningMaterial> planningByMaterial,
 ) {
+  final totalProductQty = segments.fold<double>(
+    0,
+    (sum, item) => sum + item.plannedQty,
+  );
   final materialGroups = <String, List<ProductionExecutionMaterialPreview>>{};
   for (final segment in segments) {
     for (final material in segment.materials) {
@@ -1520,7 +1533,7 @@ _ProductGroup _buildProductGroup(
   }
   return _ProductGroup(
     source: segments.first,
-    totalQty: segments.fold(0, (sum, item) => sum + item.plannedQty),
+    totalQty: totalProductQty,
     readyQty: segments
         .where((item) => item.suggestedStatus == 'READY')
         .fold(0, (sum, item) => sum + item.plannedQty),
@@ -1535,6 +1548,7 @@ _ProductGroup _buildProductGroup(
             entries.first.goodsId,
             entries.first.colorId,
           )],
+          totalProductQty,
         ),
     ],
   );
@@ -1543,7 +1557,16 @@ _ProductGroup _buildProductGroup(
 _MaterialDisplayRow _materialDisplayRow(
   List<ProductionExecutionMaterialPreview> entries,
   ProductionPlanningMaterial? planning,
+  double totalProductQty,
 ) {
+  final requiredQty = entries.fold<double>(
+    0,
+    (sum, item) => sum + item.requiredQty,
+  );
+  final requirementMode =
+      entries.any((item) => item.requirementMode == 'EXACT_SNAPSHOT')
+      ? 'EXACT_SNAPSHOT'
+      : 'LINEAR';
   return _MaterialDisplayRow(
     goodsId: entries.first.goodsId,
     goodsCode: planning?.goodsCode,
@@ -1551,8 +1574,12 @@ _MaterialDisplayRow _materialDisplayRow(
     spec: planning?.spec,
     colorId: entries.first.colorId,
     unitId: entries.first.unitId,
-    perProductQty: entries.first.perProductQty,
-    requiredQty: entries.fold(0, (sum, item) => sum + item.requiredQty),
+    perProductQty: aggregateProductionPlanningMaterialUsage(
+      entries,
+      totalProductQty,
+    ),
+    requirementMode: requirementMode,
+    requiredQty: requiredQty,
     availableBeforeQty: entries.fold(
       0,
       (maximum, item) =>

@@ -199,6 +199,7 @@ public class SalesShipmentService {
                 s, null, SalesShipment.WORK_PENDING_PICK,
                 "创建待拣货任务", currentUser.requireEmployeeId(),
                 OffsetDateTime.now());
+        chainNotice.notifyShipmentPendingPick(s.getId());
         return toDetail(s, items, true);
     }
 
@@ -228,8 +229,7 @@ public class SalesShipmentService {
                        i.price, i.reserved_qty,
                        o.client_id, o.currency_id, o.bill_no,
                        o.owner_employee_id, o.status, o.is_stopped, o.is_closed,
-                       o.exchange_rate, o.tax_rate, o.payment_style_id,
-                       o.seller_id
+                       o.tax_rate, o.payment_style_id, o.seller_id
                 FROM sales_order_items i
                 JOIN sales_orders o ON o.id = i.order_id
                 WHERE i.id IN (:ids) AND COALESCE(i.is_deleted,false) = false AND COALESCE(o.is_deleted,false) = false
@@ -268,14 +268,13 @@ public class SalesShipmentService {
             l.setQty(line.getQty());
             l.setPrice((BigDecimal) r[5]);
             l.setSourceDocNo((String) r[9]);
-            Integer paymentStyle = r[16] == null
-                    ? null : ((Number) r[16]).intValue();
+            Integer paymentStyle = r[15] == null
+                    ? null : ((Number) r[15]).intValue();
             CommercialTerms terms = new CommercialTerms(
                     (UUID) r[8], (BigDecimal) r[14],
-                    (BigDecimal) r[15], paymentStyle, (UUID) r[17]);
+                    paymentStyle, (UUID) r[16]);
             BatchGroupKey key = new BatchGroupKey(
                     (UUID) r[7], owner, terms.currencyId(),
-                    normalizedDecimalKey(terms.exchangeRate()),
                     normalizedDecimalKey(terms.taxRate()),
                     terms.paymentStyleId(), terms.sellerId());
             grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(l);
@@ -290,7 +289,7 @@ public class SalesShipmentService {
             one.setWarehouseId(req.getWarehouseId());
             CommercialTerms terms = termsByGroup.get(e.getKey());
             one.setCurrencyId(terms.currencyId());
-            one.setExchangeRate(terms.exchangeRate());
+            one.setExchangeRate(null);
             one.setTaxRate(terms.taxRate());
             one.setPaymentStyleId(terms.paymentStyleId());
             one.setSellerId(terms.sellerId());
@@ -961,6 +960,7 @@ public class SalesShipmentService {
             SalesShipment shipment, List<SalesShipmentItem> items) {
         BigDecimal financeRate = lockFinancePostingRate(shipment.getCurrencyId());
         applyPostingRateSnapshot(shipment, items, financeRate);
+        requirePostedLocalAmounts(shipment, items);
         itemRepo.saveAll(items);
         itemRepo.flush();
     }
@@ -1083,6 +1083,20 @@ public class SalesShipmentService {
         shipment.setExchangeRate(financeRate);
         shipment.setTotalOriginal(totalOriginal);
         shipment.setTotalLocal(totalLocal);
+    }
+
+    private static void requirePostedLocalAmounts(
+            SalesShipment shipment, List<SalesShipmentItem> items) {
+        if (shipment.getExchangeRate() == null
+                || shipment.getExchangeRate().signum() <= 0
+                || shipment.getTotalLocal() == null
+                || shipment.getTotalLocal().signum() < 0
+                || items.stream().anyMatch(item -> item.getAmountLocal() == null
+                        || item.getAmountLocal().signum() < 0)) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "发运本币金额未按财务汇率形成，禁止发运立账");
+        }
     }
 
     /**
@@ -1478,9 +1492,8 @@ public class SalesShipmentService {
                 SELECT i.id, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
                        o.client_id, o.owner_employee_id, o.status,
                        o.is_stopped, o.is_closed, o.bill_no,
-                       o.currency_id, o.exchange_rate, o.tax_rate,
-                       o.payment_style_id, o.seller_id,
-                       i.price, i.amount_original, i.amount_local, i.qty,
+                       o.currency_id, o.tax_rate, o.payment_style_id,
+                       o.seller_id, i.price, i.amount_original, i.qty,
                        i.discount, i.machining_price, i.client_no,
                        i.client_model, i.source_doc_no
                 FROM sales_order_items i
@@ -1531,14 +1544,16 @@ public class SalesShipmentService {
                 } else if (!sameCommercialTerms(commonTerms, terms)) {
                     throw new ApiException(
                             ErrorCode.CONFLICT,
-                            "一张出货单不能合并币种、汇率、税率、结算方式或业务员不同的订单");
+                            "一张出货单不能合并币种、税率、结算方式或业务员不同的订单");
                 }
                 normalizeCommercialLine(line, row);
             }
         }
         if (enforceCommercialSource && commonTerms != null) {
             req.setCurrencyId(commonTerms.currencyId());
-            req.setExchangeRate(commonTerms.exchangeRate());
+            // The order rate is not a commercial term. The draft deliberately
+            // carries no local posting rate; SHIPPED fixes the finance rate.
+            req.setExchangeRate(null);
             req.setTaxRate(commonTerms.taxRate());
             req.setPaymentStyleId(commonTerms.paymentStyleId());
             req.setSellerId(commonTerms.sellerId());
@@ -1547,24 +1562,17 @@ public class SalesShipmentService {
     }
 
     private static CommercialTerms commercialTerms(Object[] row) {
-        Integer paymentStyleId = row[14] == null
-                ? null : ((Number) row[14]).intValue();
+        Integer paymentStyleId = row[13] == null
+                ? null : ((Number) row[13]).intValue();
         return new CommercialTerms(
                 (UUID) row[11],
                 (BigDecimal) row[12],
-                (BigDecimal) row[13],
                 paymentStyleId,
-                (UUID) row[15]);
+                (UUID) row[14]);
     }
 
     private static void requireValidCommercialTerms(
             CommercialTerms terms, String sourceBillNo) {
-        if (terms.exchangeRate() != null
-                && terms.exchangeRate().signum() <= 0) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "来源订单 " + sourceBillNo + " 汇率无效，禁止生成出货应收");
-        }
         if (terms.taxRate() != null && terms.taxRate().signum() < 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
@@ -1575,7 +1583,6 @@ public class SalesShipmentService {
     private static boolean sameCommercialTerms(
             CommercialTerms left, CommercialTerms right) {
         return Objects.equals(left.currencyId(), right.currencyId())
-                && sameDecimal(left.exchangeRate(), right.exchangeRate())
                 && sameDecimal(left.taxRate(), right.taxRate())
                 && Objects.equals(
                         left.paymentStyleId(), right.paymentStyleId())
@@ -1584,17 +1591,15 @@ public class SalesShipmentService {
 
     private static void normalizeCommercialLine(
             ShipmentItemLine line, Object[] sourceRow) {
-        BigDecimal sourcePrice = (BigDecimal) sourceRow[16];
-        BigDecimal sourceOriginal = (BigDecimal) sourceRow[17];
-        BigDecimal sourceLocal = (BigDecimal) sourceRow[18];
-        BigDecimal sourceQty = (BigDecimal) sourceRow[19];
+        BigDecimal sourcePrice = (BigDecimal) sourceRow[15];
+        BigDecimal sourceOriginal = (BigDecimal) sourceRow[16];
+        BigDecimal sourceQty = (BigDecimal) sourceRow[17];
         BigDecimal shipQty = line.getQty();
         if (sourceQty == null || sourceQty.signum() <= 0
                 || shipQty == null || shipQty.signum() <= 0
                 || shipQty.compareTo(sourceQty) > 0
                 || sourcePrice == null || sourcePrice.signum() < 0
-                || sourceOriginal == null || sourceOriginal.signum() < 0
-                || sourceLocal == null || sourceLocal.signum() < 0) {
+                || sourceOriginal == null || sourceOriginal.signum() < 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "来源订单 " + sourceRow[10]
@@ -1603,12 +1608,13 @@ public class SalesShipmentService {
         line.setPrice(sourcePrice);
         line.setAmountOriginal(authoritativeShipmentAmount(
                 sourceOriginal, sourceQty, shipQty));
-        line.setAmountLocal(authoritativeShipmentAmount(
-                sourceLocal, sourceQty, shipQty));
-        line.setDiscount((BigDecimal) sourceRow[20]);
-        line.setMachiningPrice((BigDecimal) sourceRow[21]);
-        line.setClientNo((String) sourceRow[22]);
-        line.setClientModel((String) sourceRow[23]);
+        // A draft has no authoritative local amount. SHIPPED recalculates it
+        // from the finance-owned posting rate.
+        line.setAmountLocal(null);
+        line.setDiscount((BigDecimal) sourceRow[18]);
+        line.setMachiningPrice((BigDecimal) sourceRow[19]);
+        line.setClientNo((String) sourceRow[20]);
+        line.setClientModel((String) sourceRow[21]);
         line.setSourceDocNo((String) sourceRow[10]);
         // These fields have no audited sales-order source. A caller may not
         // inject inventory cost or undocumented price components into AR.
@@ -1899,7 +1905,6 @@ public class SalesShipmentService {
             CommercialTerms terms) {
         CommercialTerms storedTerms = new CommercialTerms(
                 shipment.getCurrencyId(),
-                shipment.getExchangeRate(),
                 shipment.getTaxRate(),
                 shipment.getPaymentStyleId(),
                 shipment.getSellerId());
@@ -1916,9 +1921,6 @@ public class SalesShipmentService {
                     || !sameDecimal(
                             stored.getAmountOriginal(),
                             expected.getAmountOriginal())
-                    || !sameDecimal(
-                            stored.getAmountLocal(),
-                            expected.getAmountLocal())
                     || !sameDecimal(
                             stored.getDiscount(), expected.getDiscount())
                     || !sameDecimal(
@@ -2040,7 +2042,8 @@ public class SalesShipmentService {
         s.setClientId(req.getClientId());
         s.setWarehouseId(req.getWarehouseId());
         s.setCurrencyId(req.getCurrencyId());
-        s.setExchangeRate(req.getExchangeRate());
+        // Draft shipments do not carry a sales-authored posting rate.
+        s.setExchangeRate(null);
         s.setTaxRate(req.getTaxRate());
         s.setPaymentStyleId(req.getPaymentStyleId());
         s.setSellerId(req.getSellerId());
@@ -2069,7 +2072,9 @@ public class SalesShipmentService {
             it.setQty(l.getQty());
             it.setPrice(l.getPrice());
             it.setAmountOriginal(l.getAmountOriginal());
-            it.setAmountLocal(l.getAmountLocal() != null ? l.getAmountLocal() : l.getAmountOriginal());
+            // Draft input cannot author a local-currency fact. SHIPPED is the
+            // only transition that writes amount_local from the finance rate.
+            it.setAmountLocal(null);
             it.setCostAmount(l.getCostAmount());
             it.setWeight(l.getWeight());
             it.setParcelQty(l.getParcelQty());
@@ -2091,13 +2096,10 @@ public class SalesShipmentService {
     }
 
     private void applyTotals(SalesShipment s, List<ShipmentItemDto> items) {
-        BigDecimal local = items.stream()
-                .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal original = items.stream()
                 .map(i -> i.getAmountOriginal() == null ? BigDecimal.ZERO : i.getAmountOriginal())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        s.setTotalLocal(local);
+        s.setTotalLocal(null);
         s.setTotalOriginal(original);
         requireNonNegativeTotals(s);
         shipmentRepo.save(s);
@@ -2139,9 +2141,8 @@ public class SalesShipmentService {
 
     private static void requireNonNegativeTotals(SalesShipment shipment) {
         if (shipment.getTotalOriginal() == null
-                || shipment.getTotalLocal() == null
                 || shipment.getTotalOriginal().signum() < 0
-                || shipment.getTotalLocal().signum() < 0) {
+                || isNegative(shipment.getTotalLocal())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "出货合计金额无效，禁止财审或出库");
@@ -2300,7 +2301,6 @@ public class SalesShipmentService {
             CommercialTerms terms) {}
     private record CommercialTerms(
             UUID currencyId,
-            BigDecimal exchangeRate,
             BigDecimal taxRate,
             Integer paymentStyleId,
             UUID sellerId) {}
@@ -2308,7 +2308,6 @@ public class SalesShipmentService {
             UUID clientId,
             UUID ownerEmployeeId,
             UUID currencyId,
-            String exchangeRate,
             String taxRate,
             Integer paymentStyleId,
             UUID sellerId) {}

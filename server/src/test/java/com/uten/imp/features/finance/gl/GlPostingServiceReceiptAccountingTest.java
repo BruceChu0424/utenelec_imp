@@ -24,16 +24,21 @@ class GlPostingServiceReceiptAccountingTest {
         EntityManager em = mock(EntityManager.class);
         List<String> sqlStatements = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
-            sqlStatements.add(invocation.getArgument(0));
-            return queryReturning(1L);
+            String sql = invocation.getArgument(0);
+            sqlStatements.add(sql);
+            return queryReturning(sql.contains("FROM finance_expenses expense")
+                    && sql.contains("expense.gl_status=2") ? 0L : 1L);
         });
 
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
                 .generate("2026-08"))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("销售立账总账科目缺失或已停用");
-        assertThat(sqlStatements).hasSize(1);
+        assertThat(sqlStatements).hasSize(3);
         assertThat(sqlStatements.getFirst())
+                .contains("pg_advisory_xact_lock")
+                .contains("hashtextextended");
+        assertThat(sqlStatements.getLast())
                 .contains("FROM ar_ap_ledger ledger")
                 .contains("'SALES_SHIPMENT','SALES_RETURN'")
                 .contains("style.path='/113/'")
@@ -62,7 +67,7 @@ class GlPostingServiceReceiptAccountingTest {
                 .contains("style.path='/113/'")
                 .contains("style.status='使用'")
                 .contains("COALESCE(style.is_deleted,false)=false"));
-        assertThat(sqlStatements).hasSize(2);
+        assertThat(sqlStatements).hasSize(4);
         assertThat(sqlStatements.stream().noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers")
                 || sql.contains("INSERT INTO gl_vouchers"))).isTrue();
     }

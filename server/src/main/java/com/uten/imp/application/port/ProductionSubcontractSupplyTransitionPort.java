@@ -23,4 +23,9 @@ public interface ProductionSubcontractSupplyTransitionPort {
     void onSubcontractReceiptApproved(UUID receiptId);
 
     void beforeSubcontractReceiptReversed(UUID receiptId);
+
+    /** Called after the receipt's qualified physical stock has been removed. */
+    default void afterSubcontractReceiptReversed(UUID receiptId) {
+        // Optional for test doubles and non-production adapters.
+    }
 }

@@ -37,6 +37,10 @@
   "loginLoggingIn": "Signing in…",
   "loginSuccess": "Signed in",
   "loginFailed": "Invalid account or password",
+  "loginServerRecoveryAction": "Restore automatic server selection",
+  "loginServerRecoveryHint": "Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.",
+  "loginServerRecoverySuccess": "Automatic server selection restored. Please sign in again.",
+  "loginServerRecoveryFailed": "Could not restore server selection. Try again or contact an administrator.",
   "loginFooter": "© 2026 Uten Integrated Management Platform",
 
   "navDashboard": "Dashboard",
@@ -959,5 +963,18 @@
   "impersonationWindowExpired": "Impersonation window expired",
   "impersonationRecent": "Recent",
   "impersonationNoTargets": "No employees available to switch",
-  "impersonationStartFailed": "Switch failed"
+  "impersonationStartFailed": "Switch failed",
+  "exportDialogTitle": "Export Excel",
+  "exportPasswordOptionalHint": "A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.",
+  "exportPasswordOptionalLabel": "Opening password (optional, 1–128)",
+  "exportPasswordConfirmLabel": "Confirm password",
+  "exportPasswordTooLong": "Password cannot exceed 128 characters",
+  "exportPasswordMismatch": "Passwords do not match",
+  "exportDownloadPlain": "Download",
+  "exportDownloadEncrypted": "Download encrypted",
+  "exportFailed": "Export failed. Try again later.",
+  "exportDownloadStarted": "Download started: {name}",
+  "@exportDownloadStarted": {"placeholders": {"name": {"type": "String"}}},
+  "exportDownloadSaved": "Saved to {path}",
+  "@exportDownloadSaved": {"placeholders": {"path": {"type": "String"}}}
 }

@@ -124,7 +124,7 @@ class BomColorResolutionSqlContractTest {
     private static Object[] executionRow(
             UUID resolvedColorId,
             Integer effectiveColorLegacyId) {
-        Object[] row = new Object[24];
+        Object[] row = new Object[29];
         row[0] = UUID.randomUUID();
         row[1] = 1;
         row[2] = UUID.randomUUID();
@@ -149,6 +149,11 @@ class BomColorResolutionSqlContractTest {
         row[21] = null;
         row[22] = "\u91c7\u8d2d";
         row[23] = null; // no analysis route override; master source remains authoritative
+        row[24] = "START";
+        row[25] = true;
+        row[26] = "PER_UNIT";
+        row[27] = BigDecimal.ONE;
+        row[28] = true;
         return row;
     }
 

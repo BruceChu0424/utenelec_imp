@@ -102,7 +102,18 @@ public final class MaterialAnalysisContracts {
     public record PlanQuantity(
             @NotNull UUID analysisLineId,
             @NotNull @DecimalMin(value = "0.0001")
-            @Digits(integer = 14, fraction = 4) BigDecimal qty) {
+            @Digits(integer = 14, fraction = 4) BigDecimal qty,
+            LocalDate billDate,
+            LocalDate deliveryDate,
+            UUID departmentId,
+            @Size(max = 250) String workshopName,
+            UUID workerId,
+            UUID teamDepartmentId) {
+
+        /** Backwards-compatible constructor for preview callers without per-sheet scheduling. */
+        public PlanQuantity(UUID analysisLineId, BigDecimal qty) {
+            this(analysisLineId, qty, null, null, null, null, null, null);
+        }
     }
 
     public record GeneratePlanRequest(
@@ -179,6 +190,9 @@ public final class MaterialAnalysisContracts {
             int allocationPriority,
             BigDecimal readyNowQty,
             BigDecimal readyByDateQty,
+            BigDecimal readyStartQty,
+            BigDecimal readyFinishQty,
+            BigDecimal readyShipQty,
             BigDecimal readinessRatio,
             String productionBomPolicy,
             boolean missingBom,
@@ -228,6 +242,13 @@ public final class MaterialAnalysisContracts {
             String parentNodeKey,
             UUID parentGoodsId,
             String parentLabel,
+            String controlStage,
+            String consumptionBasis,
+            BigDecimal basisOutputQty,
+            boolean allowPartialPackage,
+            boolean hardGate,
+            BigDecimal bomQty,
+            BigDecimal parentPerProductQty,
             BigDecimal perProductQty,
             BigDecimal requiredQty,
             BigDecimal availableQty,

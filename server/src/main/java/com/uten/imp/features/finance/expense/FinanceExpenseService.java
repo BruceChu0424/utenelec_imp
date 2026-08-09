@@ -9,6 +9,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort;
 import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemDto;
 import com.uten.imp.features.finance.expense.dto.FinanceExpenseItemInput;
@@ -30,10 +31,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -65,13 +68,16 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final com.uten.imp.features.finance.gl.GlPostingService glPosting;
+    private final FinanceDocumentAccessPolicy access;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceExpenseListItem> list(FinanceExpenseQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<FinanceExpense> spec = (Root<FinanceExpense> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -91,6 +97,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional(readOnly = true)
     public FinanceExpenseDetail detail(UUID id) {
         FinanceExpense e = require(id);
+        access.requireReadable(e.getMakerId(), "一般费用单不存在");
         List<FinanceExpenseItemDto> items = itemRepo.findByExpenseIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
         return toDetail(e, items);
@@ -113,7 +120,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public FinanceExpenseDetail update(UUID id, FinanceExpenseSaveRequest req) {
         tx.bind();
-        FinanceExpense e = require(id);
+        FinanceExpense e = lockActive(id);
+        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         if (e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -129,9 +137,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        FinanceExpense e = require(id);
-        if (e.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        FinanceExpense e = lockActive(id);
+        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        if (e.getStatus() == null || e.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
         e.setDeleted(true);
         e.setDeletedAt(OffsetDateTime.now());
@@ -142,8 +151,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public FinanceExpenseDetail approve(UUID id) {
         tx.bind();
-        FinanceExpense e = require(id);
-        em.refresh(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
+        FinanceExpense e = lockActiveForProjection(id);
+        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         UUID approver = currentUser.requireEmployeeId();
         if (e.getMakerId() != null && e.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
@@ -257,8 +266,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
-        FinanceExpense e = require(id);
-        em.refresh(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 并发审核/红冲互斥：锁行并重读最新状态
+        FinanceExpense e = lockActiveForProjection(id);
+        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
@@ -271,7 +280,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         }
         deleteReconciliation(e.getId());
         // C6：红冲对称删总账分录，回到未过账
-        glPosting.removeExpenseDoc(e.getBillNo());
+        glPosting.removeExpenseDoc(e.getId(), e.getBillNo(), e.getBillDate());
         e.setGlVoucherId(null);
         e.setGlStatus((short) 0);
         e.setStatus(STATUS_REVERSED);
@@ -283,14 +292,16 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @Transactional
     public FinanceExpenseDetail glConfirm(UUID id) {
         tx.bind();
-        FinanceExpense e = require(id);
-        em.lock(e, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        FinanceExpense e = lockActiveForProjection(id);
+        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可财务确认");
         }
         if (e.getGlStatus() == null || e.getGlStatus() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已过账待确认的单据可财务确认");
         }
+        glPosting.requireConfirmableExpenseVoucher(
+                e.getId(), e.getGlVoucherId(), e.getBillNo(), e.getBillDate());
         e.setGlStatus((short) 2);
         expenseRepo.save(e);
         return detail(id);
@@ -432,6 +443,33 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     private FinanceExpense require(UUID id) {
         return expenseRepo.findById(id).filter(e -> !e.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "一般费用单不存在"));
+    }
+
+    private FinanceExpense lockActive(UUID id) {
+        FinanceExpense expense = require(id);
+        em.refresh(expense, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (expense.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "一般费用单不存在");
+        }
+        return expense;
+    }
+
+    /**
+     * AUTO projection regeneration locks period before touching expense rows. Mirror that order for
+     * approve/reverse/confirm so a generator updating gl_voucher_id cannot deadlock with this command.
+     */
+    private FinanceExpense lockActiveForProjection(UUID id) {
+        FinanceExpense expense = require(id);
+        LocalDate expectedBillDate = expense.getBillDate();
+        glPosting.lockAutoProjectionPeriod(expectedBillDate);
+        em.refresh(expense, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (expense.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "一般费用单不存在");
+        }
+        if (!Objects.equals(expectedBillDate, expense.getBillDate())) {
+            throw new ApiException(ErrorCode.CONFLICT, "一般费用单日期已被并发修改，请刷新后重试");
+        }
+        return expense;
     }
 
     private static BigDecimal nz(BigDecimal x) {

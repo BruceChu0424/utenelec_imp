@@ -4,6 +4,7 @@ import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService;
 import com.uten.imp.features.stock.allocation.ProductionMaterialAllocationFacade;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
@@ -37,6 +38,7 @@ public class ProductionSubcontractSupplyTransitionService
     private final ProductionFulfillmentLedgerService ledger;
     private final ProductionMaterialAllocationFacade stockAllocation;
     private final ProductionExecutionReadinessService readiness;
+    private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -414,12 +416,19 @@ public class ProductionSubcontractSupplyTransitionService
         UUID warehouseId = receiptWarehouse(receiptId);
         readiness.onSubcontractReceiptApproved(
                 receiptId, warehouseId);
+        materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId);
     }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeSubcontractReceiptReversed(UUID receiptId) {
         readiness.beforeSubcontractReceiptReversed(receiptId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterSubcontractReceiptReversed(UUID receiptId) {
+        materialAnalysisWakeup.afterSubcontractReceiptReversed(receiptId);
     }
 
     private void lockReceiptDimensions(
@@ -482,6 +491,7 @@ public class ProductionSubcontractSupplyTransitionService
                                 FROM subcontract_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
+                                  AND status = 1
                                 FOR UPDATE
                                 """)
                         .setParameter("receiptId", receiptId),

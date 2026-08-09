@@ -74,6 +74,41 @@ public class ProcurementApprovalProjectionQuery {
         return Map.copyOf(result);
     }
 
+    /**
+     * A finance reviewer may open an otherwise owner-hidden order only while
+     * that exact order has an actionable approval task. This deliberately does
+     * not widen the purchase/subcontract list scope.
+     */
+    @Transactional(readOnly = true)
+    public boolean canCurrentActorReviewPending(String orderType, UUID orderId) {
+        String normalizedOrderType = requireOrderType(orderType);
+        if (!isCurrentActorEligibleReviewer()) {
+            return false;
+        }
+        Boolean pending = jdbc.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM procurement_order_approval_cases
+                    WHERE order_type = :orderType
+                      AND order_id = :orderId
+                      AND status = 'PENDING'
+                )
+                """,
+                new MapSqlParameterSource()
+                        .addValue("orderType", normalizedOrderType)
+                        .addValue("orderId", orderId),
+                Boolean.class);
+        return Boolean.TRUE.equals(pending);
+    }
+
+    /** Current actor satisfies the authoritative finance reviewer pool. */
+    @Transactional(readOnly = true)
+    public boolean isCurrentActorEligibleReviewer() {
+        AuthUser actor = currentUser.get().orElse(null);
+        return actor != null
+                && reviewerEligibility.findEligible(actor.getId()).isPresent();
+    }
+
     @Transactional(readOnly = true)
     public void requireMutable(String orderType, UUID orderId) {
         Boolean pending = jdbc.getJdbcTemplate().queryForObject("""

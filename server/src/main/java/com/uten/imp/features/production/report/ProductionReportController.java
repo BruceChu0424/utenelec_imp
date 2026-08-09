@@ -1,7 +1,7 @@
 package com.uten.imp.features.production.report;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
@@ -51,7 +51,7 @@ public class ProductionReportController {
     private final ProductionReportService service;
     private final ProductionWhereUsedQueryService whereUsedQuery;
     private final XlsxExportService xlsxExport;
-    private final EncryptedWorkbookService encryptedWorkbook;
+    private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
@@ -147,7 +147,7 @@ public class ProductionReportController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(report, allParams, sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
-        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_production_report", "production_reports",
@@ -157,7 +157,7 @@ public class ProductionReportController {
                 .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .body(encrypted);
+                .body(downloadBytes);
     }
 
     // ===== 生产日报（DAILY · 本期 0 行，结构留位；前端未挂入口） =====

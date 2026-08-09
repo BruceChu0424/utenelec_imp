@@ -265,6 +265,164 @@ class CompleteKitAllocatorTest {
         assertThat(result.remainingAvailability()).isEmpty();
     }
 
+    @Test
+    void wholePackageCounterexampleUsesExactThreeFor9999Over4000() {
+        CompleteKitAllocator.MaterialUsage material = exactUsage(
+                MATERIAL_A, "0.000250", "PER_PACKAGE",
+                "1", "4000", false);
+
+        CompleteKitAllocator.Allocation result = allocator.allocate(
+                List.of(line("9999", material)),
+                Map.of(material.materialKey(), decimal("3")));
+
+        assertThat(result.segments()).singleElement().satisfies(segment -> {
+            assertThat(segment.status())
+                    .isEqualTo(ProductionExecutionSegment.STATUS_READY);
+            assertThat(segment.plannedQty()).isEqualByComparingTo("9999");
+            assertThat(segment.materials().getFirst().requiredQty())
+                    .isEqualByComparingTo("3");
+            assertThat(segment.materials().getFirst().perProductQty())
+                    .isEqualByComparingTo("0.000301");
+            assertThat(segment.materials().getFirst().requirementMode())
+                    .isEqualTo("EXACT_SNAPSHOT");
+            assertThat(segment.materials().getFirst().perProductQty()
+                    .multiply(segment.plannedQty()))
+                    .isNotEqualByComparingTo(
+                            segment.materials().getFirst().requiredQty());
+        });
+        assertThat(material.required(decimal("9999"), BigDecimal.ONE))
+                .isEqualByComparingTo("3");
+    }
+
+    @Test
+    void wholePackageAvailabilitySplitsAtTheExactPackageBoundary() {
+        CompleteKitAllocator.MaterialUsage material = exactUsage(
+                MATERIAL_A, "0.333334", "PER_PACKAGE",
+                "2", "6", false);
+
+        CompleteKitAllocator.Allocation result = allocator.allocate(
+                List.of(line("10", material)),
+                Map.of(material.materialKey(), decimal("2")));
+
+        assertThat(result.segments()).hasSize(2);
+        assertThat(result.segments().getFirst().plannedQty())
+                .isEqualByComparingTo("6");
+        assertThat(result.segments().getFirst().materials().getFirst()
+                .requiredQty()).isEqualByComparingTo("2");
+        assertThat(result.segments().get(1).plannedQty())
+                .isEqualByComparingTo("4");
+        assertThat(result.segments().get(1).materials().getFirst()
+                .requiredQty()).isEqualByComparingTo("2");
+        assertThat(result.segments().getFirst().materials().getFirst()
+                .perProductQty()).isEqualByComparingTo("0.333334");
+        assertThat(result.segments().get(1).materials().getFirst()
+                .perProductQty()).isEqualByComparingTo("0.500000");
+        BigDecimal groupedAverage = result.segments().stream()
+                .flatMap(segment -> segment.materials().stream())
+                .map(CompleteKitAllocator.MaterialAllocation::requiredQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(decimal("10"), 6, java.math.RoundingMode.CEILING);
+        assertThat(groupedAverage).isEqualByComparingTo("0.400000");
+    }
+
+    @Test
+    void partialPackageUsesTheProportionalTailWithoutAverageRateDrift() {
+        CompleteKitAllocator.MaterialUsage material = exactUsage(
+                MATERIAL_A, "0.166667", "PER_PACKAGE",
+                "1", "6", true);
+
+        CompleteKitAllocator.Allocation result = allocator.allocate(
+                List.of(line("3", material)),
+                Map.of(material.materialKey(), decimal("0.5")));
+
+        assertThat(result.segments()).singleElement().satisfies(segment -> {
+            assertThat(segment.status())
+                    .isEqualTo(ProductionExecutionSegment.STATUS_READY);
+            assertThat(segment.materials().getFirst().requiredQty())
+                    .isEqualByComparingTo("0.5");
+        });
+    }
+
+    @Test
+    void fixedBatchChargesTheTailAsAnotherWholeBatch() {
+        CompleteKitAllocator.MaterialUsage material = exactUsage(
+                MATERIAL_A, "0.002500", "FIXED_BATCH",
+                "0.25", "100", true);
+
+        CompleteKitAllocator.Allocation result = allocator.allocate(
+                List.of(line("101", material)),
+                Map.of(material.materialKey(), decimal("0.25")));
+
+        assertThat(result.segments()).hasSize(2);
+        assertThat(result.segments().getFirst().plannedQty())
+                .isEqualByComparingTo("100");
+        assertThat(result.segments().getFirst().materials().getFirst()
+                .requiredQty()).isEqualByComparingTo("0.25");
+        assertThat(result.segments().get(1).plannedQty())
+                .isEqualByComparingTo("1");
+        assertThat(result.segments().get(1).materials().getFirst()
+                .requiredQty()).isEqualByComparingTo("0.25");
+    }
+
+    @Test
+    void repeatedMaterialDimensionSumsEveryExactBomRule() {
+        CompleteKitAllocator.MaterialUsage material =
+                new CompleteKitAllocator.MaterialUsage(
+                        MATERIAL_A,
+                        null,
+                        MATERIAL_UNIT,
+                        decimal("0.583334"),
+                        "BUY",
+                        List.of(
+                                rule("PER_PACKAGE", "2", "6", false),
+                                rule("PER_PACKAGE", "1", "4", true)));
+
+        CompleteKitAllocator.Allocation result = allocator.allocate(
+                List.of(line("6", material)),
+                Map.of(material.materialKey(), decimal("3.5")));
+
+        assertThat(result.segments()).singleElement().satisfies(segment ->
+                assertThat(segment.materials().getFirst().requiredQty())
+                        .isEqualByComparingTo("3.5"));
+        assertThat(material.requirementFingerprint(BigDecimal.ONE))
+                .hasSize(64);
+    }
+
+    @Test
+    void manualSegmentsEachFreezeTheirOwnWholePackageRequirement() {
+        CompleteKitAllocator.MaterialUsage material = exactUsage(
+                MATERIAL_A, "0.333334", "PER_PACKAGE",
+                "2", "6", false);
+        CompleteKitAllocator.ProductLine productLine = line("10", material);
+
+        CompleteKitAllocator.Allocation result = allocator.allocateRequested(
+                List.of(
+                        new CompleteKitAllocator.RequestedSegment(
+                                "manual-1", productLine,
+                                ProductionExecutionSegment.STATUS_READY,
+                                decimal("3")),
+                        new CompleteKitAllocator.RequestedSegment(
+                                "manual-2", productLine,
+                                ProductionExecutionSegment.STATUS_READY,
+                                decimal("3")),
+                        new CompleteKitAllocator.RequestedSegment(
+                                "manual-3", productLine,
+                                ProductionExecutionSegment.STATUS_READY,
+                                decimal("4"))),
+                Map.of(material.materialKey(), decimal("6")));
+
+        assertThat(result.segments()).hasSize(3)
+                .allSatisfy(segment ->
+                        assertThat(segment.materials().getFirst().requiredQty())
+                                .isEqualByComparingTo("2"));
+        BigDecimal allocated = result.segments().stream()
+                .flatMap(segment -> segment.materials().stream())
+                .map(CompleteKitAllocator.MaterialAllocation
+                        ::candidateAllocatedQty)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(allocated).isEqualByComparingTo("6");
+    }
+
     private static CompleteKitAllocator.ProductLine line(
             String quantity,
             CompleteKitAllocator.MaterialUsage... materials) {
@@ -307,6 +465,36 @@ class CompleteKitAllocatorTest {
                 MATERIAL_UNIT,
                 decimal(perProductQty),
                 "BUY");
+    }
+
+    private static CompleteKitAllocator.MaterialUsage exactUsage(
+            UUID goodsId,
+            String perProductQty,
+            String basis,
+            String bomQty,
+            String basisOutputQty,
+            boolean allowPartialPackage) {
+        return new CompleteKitAllocator.MaterialUsage(
+                goodsId,
+                null,
+                MATERIAL_UNIT,
+                decimal(perProductQty),
+                "BUY",
+                List.of(rule(
+                        basis, bomQty, basisOutputQty,
+                        allowPartialPackage)));
+    }
+
+    private static CompleteKitAllocator.ConsumptionRule rule(
+            String basis,
+            String bomQty,
+            String basisOutputQty,
+            boolean allowPartialPackage) {
+        return new CompleteKitAllocator.ConsumptionRule(
+                basis,
+                decimal(bomQty),
+                decimal(basisOutputQty),
+                allowPartialPackage);
     }
 
     private static CompleteKitAllocator.MaterialAllocation material(

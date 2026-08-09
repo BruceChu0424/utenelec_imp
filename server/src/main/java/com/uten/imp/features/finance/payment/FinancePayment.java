@@ -57,6 +57,10 @@ public class FinancePayment extends SoftDeletableEntity {
     @Column(name = "amount_local", precision = 18, scale = 4)
     private BigDecimal amountLocal = BigDecimal.ZERO;
 
+    /** Version 1 means the current service recalculated every accounting amount. */
+    @Column(name = "amount_authority_version", nullable = false)
+    private short amountAuthorityVersion = 0;
+
     @Column(name = "payment_method_id")
     private UUID paymentMethodId;         // PaidStyle（暂不 FK）
 

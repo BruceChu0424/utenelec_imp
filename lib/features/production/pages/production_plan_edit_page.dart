@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -94,7 +95,8 @@ class _ProductionPlanEditPageState
   final _grid = UtenEditableGridController<ProductionGridRow>();
   final _scrollCtl = ScrollController();
   bool _saving = false;
-  bool _loading = false;
+  bool _loading = true;
+  String? _initializationError;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -120,19 +122,23 @@ class _ProductionPlanEditPageState
   }
 
   Future<void> _init() async {
-    setState(() => _loading = true);
-    await ref.read(masterNameServiceProvider).ensureLoaded();
-    await _resolveDeptIds();
-    if (widget.id == null) {
-      // 跟单员默认当前登录人（生产工是车间侧人员，不预填）。
-      final meId = ref.read(sessionProvider).user?.employeeId;
-      if (meId != null && meId.isNotEmpty) {
-        _sellerId = meId;
-        await _preloadEmployees([meId]);
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _initializationError = null;
+    });
+    try {
+      await ref.read(masterNameServiceProvider).ensureLoaded();
+      await _resolveDeptIds();
+      if (widget.id == null) {
+        // 跟单员默认当前登录人（生产工是车间侧人员，不预填）。
+        final meId = ref.read(sessionProvider).user?.employeeId;
+        if (meId != null && meId.isNotEmpty) {
+          _sellerId = meId;
+          await _preloadEmployees([meId]);
+        }
       }
-    }
-    if (widget.id != null) {
-      try {
+      if (widget.id != null) {
         final d = await ref
             .read(productionPlanRepositoryProvider)
             .detail(widget.id!);
@@ -182,18 +188,19 @@ class _ProductionPlanEditPageState
           _wireRow(r);
         }
         _grid.replaceAll(rows);
-      } on ApiException catch (e) {
-        if (mounted) context.appError(e.message);
-      } catch (_) {
-        // 静默降级
       }
+      if (_grid.isEmpty) {
+        final blank = ProductionGridRow();
+        _wireRow(blank);
+        _grid.addRow(blank);
+      }
+    } on ApiException catch (e) {
+      _initializationError = e.message;
+    } catch (_) {
+      _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    if (_grid.isEmpty) {
-      final blank = ProductionGridRow();
-      _wireRow(blank);
-      _grid.addRow(blank);
-    }
-    if (mounted) setState(() => _loading = false);
   }
 
   DateTime? _parseDate(String? s) =>
@@ -601,18 +608,29 @@ class _ProductionPlanEditPageState
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/production'),
         ),
-        actions: [
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.history_rounded,
-            onPressed: () => context.push('/production/plans'),
-            child: const Text('查看历史'),
-          ),
-        ],
+        actions: _loading || _initializationError != null
+            ? null
+            : [
+                UtenButton(
+                  type: UtenButtonType.tonal,
+                  icon: Icons.history_rounded,
+                  onPressed: () => context.push('/production/plans'),
+                  child: const Text('查看历史'),
+                ),
+              ],
       ),
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+            : _initializationError != null
+            ? UtenEmpty.error(
+                key: const ValueKey('production-plan-edit-load-error'),
+                message: '生产计划单加载失败',
+                description:
+                    '${_initializationError!}\n当前未加载任何可编辑数据。请重试，或使用左上角返回按钮退出编辑。',
+                actionLabel: '重试',
+                onAction: _init,
+              )
             : UtenContentContainer(
                 child: Scrollbar(
                   controller: _scrollCtl,
@@ -802,46 +820,48 @@ class _ProductionPlanEditPageState
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
-            ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _grid.totalListenable,
-                builder: (_, total, _) => Text(
-                  '排产合计 ${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+      bottomNavigationBar: _loading || _initializationError != null
+          ? null
+          : SafeArea(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
                 ),
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ValueListenableBuilder<double>(
+                      valueListenable: _grid.totalListenable,
+                      builder: (_, total, _) => Text(
+                        '排产合计 ${total.toStringAsFixed(2)}',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s16),
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      onPressed: () => context.pop(),
+                      child: const Text('取消'),
+                    ),
+                    const SizedBox(width: UtenSpacing.s12),
+                    UtenButton(
+                      isLoading: _saving,
+                      icon: widget.id == null
+                          ? Icons.insights_outlined
+                          : Icons.save_outlined,
+                      onPressed: _saving ? null : _save,
+                      child: Text(widget.id == null ? '进入物料分析' : '保存'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: UtenSpacing.s16),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () => context.pop(),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              UtenButton(
-                isLoading: _saving,
-                icon: widget.id == null
-                    ? Icons.insights_outlined
-                    : Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                child: Text(widget.id == null ? '进入物料分析' : '保存'),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }

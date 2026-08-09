@@ -40,6 +40,10 @@
   "loginLoggingIn": "登录中…",
   "loginSuccess": "登录成功",
   "loginFailed": "账号或密码错误",
+  "loginServerRecoveryAction": "恢复自动选择服务器",
+  "loginServerRecoveryHint": "登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。",
+  "loginServerRecoverySuccess": "已恢复自动选择，请重新登录",
+  "loginServerRecoveryFailed": "服务器选择恢复失败，请稍后重试或联系管理员",
   "loginFooter": "© 2026 优腾 · 综合管理平台",
 
   "navDashboard": "工作台",
@@ -969,5 +973,18 @@
   "impersonationWindowExpired": "模拟窗口已到期，已退出",
   "impersonationRecent": "最近",
   "impersonationNoTargets": "暂无可切换的员工",
-  "impersonationStartFailed": "切换失败"
+  "impersonationStartFailed": "切换失败",
+  "exportDialogTitle": "导出 Excel",
+  "exportPasswordOptionalHint": "密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。",
+  "exportPasswordOptionalLabel": "打开密码（可选，1–128 位）",
+  "exportPasswordConfirmLabel": "确认密码",
+  "exportPasswordTooLong": "密码不能超过 128 位",
+  "exportPasswordMismatch": "两次密码不一致",
+  "exportDownloadPlain": "直接下载",
+  "exportDownloadEncrypted": "加密下载",
+  "exportFailed": "导出失败，请稍后重试",
+  "exportDownloadStarted": "已开始下载 {name}",
+  "@exportDownloadStarted": {"placeholders": {"name": {"type": "String"}}},
+  "exportDownloadSaved": "已保存：{path}",
+  "@exportDownloadSaved": {"placeholders": {"path": {"type": "String"}}}
 }

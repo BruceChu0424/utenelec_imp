@@ -111,6 +111,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get loginFailed => '계정 또는 비밀번호가 올바르지 않습니다';
 
   @override
+  String get loginServerRecoveryAction => '자동 서버 선택 복원';
+
+  @override
+  String get loginServerRecoveryHint =>
+      '네트워크를 변경했거나 로그인에 실패할 때 사용하세요. 앱에 내장된 신뢰할 수 있는 사내 및 클라우드 주소만 사용합니다.';
+
+  @override
+  String get loginServerRecoverySuccess => '자동 서버 선택이 복원되었습니다. 다시 로그인해 주세요.';
+
+  @override
+  String get loginServerRecoveryFailed =>
+      '서버 선택을 복원하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.';
+
+  @override
   String get loginFooter => '© 2026 우텅 통합 관리 플랫폼';
 
   @override
@@ -2698,4 +2712,42 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get impersonationStartFailed => '전환 실패';
+
+  @override
+  String get exportDialogTitle => 'Excel 내보내기';
+
+  @override
+  String get exportPasswordOptionalHint =>
+      '비밀번호는 선택 사항입니다. 비워 두면 일반 Excel 파일로, 1–128자를 입력하면 암호화하여 다운로드합니다.';
+
+  @override
+  String get exportPasswordOptionalLabel => '열기 비밀번호(선택, 1–128자)';
+
+  @override
+  String get exportPasswordConfirmLabel => '비밀번호 확인';
+
+  @override
+  String get exportPasswordTooLong => '비밀번호는 128자를 초과할 수 없습니다.';
+
+  @override
+  String get exportPasswordMismatch => '비밀번호가 일치하지 않습니다.';
+
+  @override
+  String get exportDownloadPlain => '바로 다운로드';
+
+  @override
+  String get exportDownloadEncrypted => '암호화 다운로드';
+
+  @override
+  String get exportFailed => '내보내기에 실패했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String exportDownloadStarted(String name) {
+    return '다운로드 시작: $name';
+  }
+
+  @override
+  String exportDownloadSaved(String path) {
+    return '저장 위치: $path';
+  }
 }

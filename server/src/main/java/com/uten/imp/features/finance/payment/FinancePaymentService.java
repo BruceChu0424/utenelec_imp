@@ -8,6 +8,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -17,6 +18,7 @@ import com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentListItem;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentQueryFilter;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -32,6 +34,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -58,6 +61,9 @@ public class FinancePaymentService {
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
+    private static final int MONEY_SCALE = 4;
+    private static final int RATE_SCALE = 6;
+    private static final short AMOUNT_AUTHORITY_VERSION = 1;
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "amountLocal", "amountLocal");
@@ -74,13 +80,17 @@ public class FinancePaymentService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final FinanceDocumentAccessPolicy access;
+    private final GlPostingService glPostingService;
 
     @Transactional(readOnly = true)
     public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<FinancePayment> spec = (Root<FinancePayment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -100,6 +110,7 @@ public class FinancePaymentService {
     @Transactional(readOnly = true)
     public FinancePaymentDetail detail(UUID id) {
         FinancePayment p = require(id);
+        access.requireReadable(p.getMakerId(), "采购付款单不存在");
         List<FinancePaymentLineDto> items = lineRepo.findByPaymentIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
         return toDetail(p, items);
@@ -116,6 +127,7 @@ public class FinancePaymentService {
         paymentRepo.save(p);
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
         applyLineTotals(p, items);
+        markAmountsAuthoritative(p);
         return toDetail(p, items);
     }
 
@@ -123,6 +135,9 @@ public class FinancePaymentService {
     public FinancePaymentDetail update(UUID id, FinancePaymentSaveRequest req) {
         tx.bind();
         FinancePayment p = require(id);
+        em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireActiveAfterLock(p);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
         if (p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -132,6 +147,7 @@ public class FinancePaymentService {
         lineRepo.flush();
         List<FinancePaymentLineDto> items = saveLines(p, req.getItems());
         applyLineTotals(p, items);
+        markAmountsAuthoritative(p);
         return toDetail(p, items);
     }
 
@@ -139,8 +155,11 @@ public class FinancePaymentService {
     public void delete(UUID id) {
         tx.bind();
         FinancePayment p = require(id);
-        if (p.getStatus() == STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "已审核单据不可删，请红冲");
+        em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireActiveAfterLock(p);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除");
         }
         p.setDeleted(true);
         p.setDeletedAt(OffsetDateTime.now());
@@ -153,9 +172,12 @@ public class FinancePaymentService {
         tx.bind();
         FinancePayment p = require(id);
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // M28：强制 SELECT...FOR UPDATE 重读字段，防陈旧状态绕过守卫
+        requireActiveAfterLock(p);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
         if (p.getStatus() == null || p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
+        requireAuthoritativeAmounts(p, "审核");
         if (p.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "付款单需指定付款账户");
         }
@@ -164,6 +186,7 @@ public class FinancePaymentService {
         if (p.getMakerId() != null && p.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
         }
+        glPostingService.lockAutoProjectionPeriod(p.getBillDate());
         p.setApproverId(approver);
         settlePayment(p);
         p.setStatus(STATUS_APPROVED);
@@ -178,10 +201,14 @@ public class FinancePaymentService {
         tx.bind();
         FinancePayment p = require(id);
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // M28：强制 SELECT...FOR UPDATE 重读字段，防陈旧状态绕过守卫
+        requireActiveAfterLock(p);
+        access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
         if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
+        requireAuthoritativeAmounts(p, "红冲");
         assertCompletePosting(p.getId(), 1L); // M19：红冲前确认流水完整（付款每单恰 1 行）
+        glPostingService.removePaymentDoc(p.getId(), p.getBillNo(), p.getBillDate());
         reverseSettlement(p);
         p.setStatus(STATUS_REVERSED);
         paymentRepo.save(p);
@@ -196,116 +223,165 @@ public class FinancePaymentService {
                 ? Map.of()
                 : lockAppliedLedgers(lines);
         if (!lines.isEmpty()) {
-            applyLineTotals(p, lines.stream().map(this::toLineDto).toList());
+            settleAppliedLines(p, lines, lockedLedgers);
+            BigDecimal accountAmount = adjustAccount(
+                    p.getAccountId(), p.getCurrencyId(), p.getAmountOriginal(), p.getAmountLocal());
+            insertReconciliation(p, accountAmount);
+            return;
         }
-        BigDecimal amountLocal = nz(p.getAmountLocal());
-        if (amountLocal.signum() == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "付款金额必须非零");
+
+        if (p.getSupplierId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "直接付款必须指定供应商");
         }
-        if (!lines.isEmpty()) {
-            for (FinancePaymentLine ln : lines) {
-                ArApLedger led = lockedLedgers.get(ln.getAppliedLedgerId());
-                if (!"AP".equals(led.getDirection())) {
-                    throw new ApiException(ErrorCode.BUSINESS, "付款只能核销 AP 行，传入方向=" + led.getDirection());
-                }
-                if (p.getSupplierId() == null || !Objects.equals(p.getSupplierId(), led.getSupplierId())
-                        || (ln.getSupplierId() != null
-                        && !Objects.equals(p.getSupplierId(), ln.getSupplierId()))) {
-                    throw new ApiException(ErrorCode.CONFLICT, "付款供应商与应付台账供应商不一致");
-                }
-                BigDecimal origLocal = nz(led.getAmountOriginalLocal());
-                BigDecimal lineAmt = nz(ln.getAmountLocal());
-                if (lineAmt.signum() == 0) {
-                    throw new ApiException(ErrorCode.BUSINESS, "核销金额必须非零");
-                }
-                BigDecimal newSettled = nz(led.getAmountSettled()).add(lineAmt);
-                // ②b 防止用正数 line 核销红字负 AP（方向不一致会让 balance 数学错 + refreshSettlement 误判结清）
-                if (origLocal.signum() != 0 && lineAmt.signum() != 0 && origLocal.signum() != lineAmt.signum()) {
-                    throw new ApiException(ErrorCode.BUSINESS, "核销金额方向与应付余额方向不一致，红字应付须用同向金额核销");
-                }
-                // M9：预付立帐行（DIRECT_PAYMENT，原值=0）不得作为明细核销目标，
-                // 否则 amount_settled 会被后续单据无界累加导致余额膨胀。预付款不参与核销循环。
-                if (SRC_DIRECT_PAYMENT.equals(led.getSourceDocType())) {
-                    throw new ApiException(ErrorCode.CONFLICT, "预付不能作为核销目标");
-                }
-                // ②a 超核校验：累计 settled 不得超过 original。
-                if (exceedsOriginal(origLocal, newSettled)) {
-                    throw new ApiException(ErrorCode.BUSINESS, "核销金额超过应付余额");
-                }
-                led.setAmountSettled(newSettled);
-                led.setAmountBalance(origLocal.subtract(newSettled));
-                refreshSettlement(led);
-                ledgerRepo.save(led);
-            }
-        } else {
-            // M6：直接付款（无明细）金额必须大于 0，防止负数造出"供应商多欠 + 现金减少"。
-            if (amountLocal.signum() <= 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "直接付款金额必须大于 0");
-            }
-            // 直接付款 / 供应商预付：建 DIRECT_PAYMENT 立帐行（amount=0），再置 settled/balance
-            arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
-                    "AP", SRC_DIRECT_PAYMENT, p.getId(), p.getBillNo(), p.getBillDate(),
-                    null, p.getSupplierId(), p.getCurrencyId(), p.getExchangeRate(),
-                    BigDecimal.ZERO, (short) 21, "直接付款"));
-            List<ArApLedger> created = ledgerRepo.findBySourceForUpdate(
-                    p.getId(), SRC_DIRECT_PAYMENT);
-            if (created.size() != 1) {
-                throw new ApiException(ErrorCode.CONFLICT, "直接付款立账结果不唯一");
-            }
-            ArApLedger led = created.getFirst();
-            led.setAmountSettled(amountLocal);
-            led.setAmountBalance(nz(led.getAmountOriginalLocal()).subtract(amountLocal));
-            refreshSettlement(led);
-            ledgerRepo.save(led);
+        if (p.getCurrencyId() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "直接付款必须指定币别");
         }
-        if (amountLocal.signum() != 0) {
-            adjustAccount(p.getAccountId(), amountLocal);
+        BigDecimal rate = positiveRate(p.getExchangeRate());
+        BigDecimal amountOriginal = positiveMoney(p.getAmountOriginal(), "直接付款金额");
+        BigDecimal amountLocal = money(amountOriginal.multiply(rate));
+        p.setExchangeRate(rate);
+        p.setAmountOriginal(amountOriginal);
+        p.setAmountLocal(amountLocal);
+        paymentRepo.save(p);
+
+        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+                "AP", SRC_DIRECT_PAYMENT, p.getId(), p.getBillNo(), p.getBillDate(),
+                null, p.getSupplierId(), p.getCurrencyId(), rate,
+                BigDecimal.ZERO, (short) 21, "直接付款", BigDecimal.ZERO));
+        List<ArApLedger> created = ledgerRepo.findBySourceForUpdate(
+                p.getId(), SRC_DIRECT_PAYMENT);
+        if (created.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "直接付款立账结果不唯一");
         }
-        insertReconciliation(p, amountLocal);
+        ArApLedger ledger = created.getFirst();
+        ledger.setAmountReceivedOriginal(amountOriginal);
+        ledger.setAmountReceivedLocal(amountLocal);
+        ledger.setAmountWriteOffOriginal(BigDecimal.ZERO.setScale(MONEY_SCALE));
+        ledger.setAmountWriteOffLocal(BigDecimal.ZERO.setScale(MONEY_SCALE));
+        ledger.setAmountBalanceOriginal(amountOriginal.negate());
+        ledger.setAmountSettled(amountLocal);
+        ledger.setAmountBalance(money(nz(ledger.getAmountOriginalLocal()).subtract(amountLocal)));
+        refreshSettlement(ledger, p.getBillDate());
+        ledgerRepo.save(ledger);
+
+        BigDecimal accountAmount = adjustAccount(
+                p.getAccountId(), p.getCurrencyId(), amountOriginal, amountLocal);
+        insertReconciliation(p, accountAmount);
     }
 
     private void reverseSettlement(FinancePayment p) {
         List<FinancePaymentLine> lines = lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId());
-        BigDecimal amountLocal = nz(p.getAmountLocal());
         if (!lines.isEmpty()) {
-            Map<UUID, ArApLedger> lockedLedgers = lockAppliedLedgers(lines);
-            for (FinancePaymentLine ln : lines) {
-                ArApLedger led = lockedLedgers.get(ln.getAppliedLedgerId());
-                if (!"AP".equals(led.getDirection())
-                        || !Objects.equals(p.getSupplierId(), led.getSupplierId())) {
-                    throw new ApiException(ErrorCode.CONFLICT, "付款反核销来源已不一致");
-                }
-                led.setAmountSettled(nz(led.getAmountSettled()).subtract(nz(ln.getAmountLocal())));
-                led.setAmountBalance(nz(led.getAmountOriginalLocal()).subtract(led.getAmountSettled()));
-                refreshSettlement(led);
-                ledgerRepo.save(led);
-            }
-        } else {
-            List<ArApLedger> rows = ledgerRepo.findBySourceForUpdate(
-                    p.getId(), SRC_DIRECT_PAYMENT);
-            if (rows.size() != 1) {
-                throw new ApiException(ErrorCode.CONFLICT, "直接付款反立账来源缺失或重复");
-            }
-            for (ArApLedger led : rows) {
-                ledgerRepo.delete(led);
-            }
+            reverseAppliedLines(p, lines, lockAppliedLedgers(lines));
+            adjustAccount(p.getAccountId(), p.getCurrencyId(),
+                    nz(p.getAmountOriginal()).negate(), nz(p.getAmountLocal()).negate());
+            deleteReconciliation(p.getId());
+            return;
         }
-        if (amountLocal.signum() != 0) {
-            adjustAccount(p.getAccountId(), amountLocal.negate());
+
+        List<ArApLedger> rows = ledgerRepo.findBySourceForUpdate(
+                p.getId(), SRC_DIRECT_PAYMENT);
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "直接付款反立账来源缺失或重复");
         }
+        for (ArApLedger ledger : rows) {
+            ledgerRepo.delete(ledger);
+        }
+        adjustAccount(p.getAccountId(), p.getCurrencyId(),
+                nz(p.getAmountOriginal()).negate(), nz(p.getAmountLocal()).negate());
         deleteReconciliation(p.getId());
+    }
+
+    private void settleAppliedLines(
+            FinancePayment payment,
+            List<FinancePaymentLine> lines,
+            Map<UUID, ArApLedger> lockedLedgers) {
+        BigDecimal originalTotal = BigDecimal.ZERO;
+        BigDecimal localTotal = BigDecimal.ZERO;
+        for (FinancePaymentLine line : lines) {
+            ArApLedger ledger = lockedLedgers.get(line.getAppliedLedgerId());
+            validateAppliedLedger(payment, line.getSupplierId(), ledger, false);
+            AppliedPayment amounts = calculateAppliedPayment(payment, line.getAmountOriginal(), ledger);
+
+            line.setAppliedBillNo(ledger.getBillNo());
+            line.setSupplierId(ledger.getSupplierId());
+            line.setAmountOriginal(amounts.cashOriginal());
+            line.setAmountLocal(amounts.cashLocal());
+            line.setExchangeDiff(amounts.exchangeDiff());
+            lineRepo.save(line);
+
+            BigDecimal newSettled = money(nz(ledger.getAmountSettled()).add(amounts.appliedLocal()));
+            ledger.setAmountReceivedOriginal(money(
+                    nz(ledger.getAmountReceivedOriginal()).add(amounts.cashOriginal())));
+            ledger.setAmountReceivedLocal(money(
+                    nz(ledger.getAmountReceivedLocal()).add(amounts.cashLocal())));
+            ledger.setAmountBalanceOriginal(amounts.afterOriginal());
+            ledger.setAmountSettled(newSettled);
+            ledger.setAmountBalance(money(nz(ledger.getAmountOriginalLocal()).subtract(newSettled)));
+            refreshSettlement(ledger, payment.getBillDate());
+            ledgerRepo.save(ledger);
+
+            originalTotal = originalTotal.add(amounts.cashOriginal());
+            localTotal = localTotal.add(amounts.cashLocal());
+        }
+        payment.setAmountOriginal(money(originalTotal));
+        payment.setAmountLocal(money(localTotal));
+        paymentRepo.save(payment);
+    }
+
+    private void reverseAppliedLines(
+            FinancePayment payment,
+            List<FinancePaymentLine> lines,
+            Map<UUID, ArApLedger> lockedLedgers) {
+        for (FinancePaymentLine line : lines) {
+            ArApLedger ledger = lockedLedgers.get(line.getAppliedLedgerId());
+            validateAppliedLedger(payment, line.getSupplierId(), ledger, false);
+            BigDecimal cashOriginal = positiveMoney(line.getAmountOriginal(), "本次付款金额");
+            BigDecimal cashLocal = positiveMoney(line.getAmountLocal(), "本次付款本币金额");
+            BigDecimal appliedLocal = positiveMoney(appliedAmountLocal(line), "本次核销账面本币金额");
+            BigDecimal newSettled = money(nz(ledger.getAmountSettled()).subtract(appliedLocal));
+            if (newSettled.signum() < 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "应付累计核销不足，禁止红冲该付款单");
+            }
+
+            BigDecimal receivedOriginal = ledger.getAmountReceivedOriginal();
+            BigDecimal receivedLocal = ledger.getAmountReceivedLocal();
+            if (receivedOriginal == null || receivedLocal == null
+                    || ledger.getAmountBalanceOriginal() == null
+                    || ledger.getAmountWriteOffOriginal() == null) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "应付双币累计不完整，禁止红冲该付款单");
+            }
+            if (receivedOriginal.compareTo(cashOriginal) < 0
+                    || receivedLocal.compareTo(cashLocal) < 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "应付双币累计不足，禁止红冲该付款单");
+            }
+            BigDecimal newReceivedOriginal = money(receivedOriginal.subtract(cashOriginal));
+            BigDecimal newReceivedLocal = money(receivedLocal.subtract(cashLocal));
+            ledger.setAmountReceivedOriginal(newReceivedOriginal);
+            ledger.setAmountReceivedLocal(newReceivedLocal);
+            ledger.setAmountBalanceOriginal(money(nz(ledger.getAmountOriginal())
+                    .subtract(newReceivedOriginal)
+                    .subtract(ledger.getAmountWriteOffOriginal())));
+            ledger.setAmountSettled(newSettled);
+            ledger.setAmountBalance(money(nz(ledger.getAmountOriginalLocal()).subtract(newSettled)));
+            refreshSettlement(ledger, payment.getBillDate());
+            ledgerRepo.save(ledger);
+        }
     }
 
     /**
      * 对齐 V129 数据库约束：仅余额恰好为零时结清。DIRECT_PAYMENT 的负余额
      * 表示仍可使用的供应商预付款，保持未结清。
      */
-    private void refreshSettlement(ArApLedger led) {
+    private void refreshSettlement(ArApLedger led, LocalDate settlementDate) {
         BigDecimal bal = nz(led.getAmountBalance());
         boolean settled = bal.signum() == 0;
         led.setSettled(settled);
-        led.setSettledDate(
-                settled ? (led.getBillDate() != null ? led.getBillDate() : BusinessTime.today()) : null);
+        led.setSettledDate(settled
+                ? (settlementDate != null ? settlementDate : BusinessTime.today())
+                : null);
     }
 
     private Map<UUID, ArApLedger> lockAppliedLedgers(List<FinancePaymentLine> lines) {
@@ -330,6 +406,89 @@ public class FinancePaymentService {
         return byId;
     }
 
+    private void validateAppliedLedger(
+            FinancePayment payment,
+            UUID lineSupplierId,
+            ArApLedger ledger,
+            boolean allowHeaderDefaults) {
+        if (!"AP".equals(ledger.getDirection())) {
+            throw new ApiException(ErrorCode.BUSINESS, "采购付款只能引用应付记录");
+        }
+        if (SRC_DIRECT_PAYMENT.equals(ledger.getSourceDocType())) {
+            throw new ApiException(ErrorCode.CONFLICT, "供应商预付款不能作为普通应付引用");
+        }
+        if (ledger.getSupplierId() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "引用的应付未关联供应商");
+        }
+        if (payment.getSupplierId() == null && allowHeaderDefaults) {
+            payment.setSupplierId(ledger.getSupplierId());
+        }
+        if (!Objects.equals(payment.getSupplierId(), ledger.getSupplierId())
+                || lineSupplierId != null && !Objects.equals(lineSupplierId, ledger.getSupplierId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "付款供应商与引用应付供应商不一致");
+        }
+        if (ledger.getCurrencyId() == null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该历史应付的币别尚未核验，不能自动核销；请先由财务完成历史币别确认");
+        }
+        if (payment.getCurrencyId() == null && allowHeaderDefaults) {
+            payment.setCurrencyId(ledger.getCurrencyId());
+        }
+        if (!Objects.equals(payment.getCurrencyId(), ledger.getCurrencyId())) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "跨币种核销需要双币金额与双汇率；当前付款只能使用应付币别");
+        }
+    }
+
+    private AppliedPayment calculateAppliedPayment(
+            FinancePayment payment,
+            BigDecimal requestedOriginal,
+            ArApLedger ledger) {
+        BigDecimal paymentRate = positiveRate(payment.getExchangeRate());
+        BigDecimal recognitionRate = positiveRate(ledger.getExchangeRate());
+        BigDecimal cashOriginal = positiveMoney(requestedOriginal, "本次付款金额");
+        if (ledger.getAmountBalanceOriginal() == null || ledger.getAmountOriginalLocal() == null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该历史应付的原币余额或账面本币尚未核验，不能自动核销；请先由财务完成历史金额确认");
+        }
+        BigDecimal beforeOriginal = money(ledger.getAmountBalanceOriginal());
+        if (beforeOriginal.signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "引用的应付没有可付余额");
+        }
+        if (cashOriginal.compareTo(beforeOriginal) > 0) {
+            throw new ApiException(ErrorCode.BUSINESS, "本次付款超过应付未付金额");
+        }
+        BigDecimal afterOriginal = money(beforeOriginal.subtract(cashOriginal));
+        BigDecimal cashLocal = money(cashOriginal.multiply(paymentRate));
+        BigDecimal originalLocal = money(ledger.getAmountOriginalLocal());
+        BigDecimal oldSettledLocal = money(nz(ledger.getAmountSettled()));
+        BigDecimal newSettledLocal = money(oldSettledLocal
+                .add(money(cashOriginal.multiply(recognitionRate))));
+        if (afterOriginal.signum() == 0) {
+            newSettledLocal = originalLocal;
+        }
+        if (newSettledLocal.compareTo(originalLocal) > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "应付累计账面核销金额超过应付账面本币总额，禁止审核");
+        }
+        BigDecimal appliedLocal = money(newSettledLocal.subtract(oldSettledLocal));
+        if (appliedLocal.signum() <= 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "引用的应付账面余额异常，不能核销");
+        }
+        BigDecimal exchangeDiff = money(cashLocal.subtract(appliedLocal));
+        return new AppliedPayment(
+                cashOriginal, cashLocal, appliedLocal, exchangeDiff,
+                beforeOriginal, afterOriginal);
+    }
+
+    private record AppliedPayment(
+            BigDecimal cashOriginal,
+            BigDecimal cashLocal,
+            BigDecimal appliedLocal,
+            BigDecimal exchangeDiff,
+            BigDecimal beforeOriginal,
+            BigDecimal afterOriginal) {}
+
     private void applyLineTotals(FinancePayment payment, List<FinancePaymentLineDto> lines) {
         if (lines == null || lines.isEmpty()) {
             return;
@@ -342,42 +501,72 @@ public class FinancePaymentService {
                         ? nz(line.getAmountLocal())
                         : line.getAmountOriginal())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        payment.setAmountLocal(local);
-        payment.setAmountOriginal(original);
+        payment.setAmountLocal(money(local));
+        payment.setAmountOriginal(money(original));
         paymentRepo.save(payment);
     }
 
-    private static boolean exceedsOriginal(BigDecimal original, BigDecimal settled) {
-        if (original.signum() > 0) {
-            return settled.compareTo(original) > 0;
+    /** 扣减付款账户，并返回账户流水使用的同币种金额。 */
+    private BigDecimal adjustAccount(
+            UUID accountId,
+            UUID paymentCurrencyId,
+            BigDecimal originalDelta,
+            BigDecimal localDelta) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                        SELECT account.currency_id, currency.code, currency.name
+                        FROM accounts account
+                        LEFT JOIN currencies currency
+                          ON currency.id=account.currency_id
+                         AND COALESCE(currency.is_deleted,false)=false
+                         AND currency.status='使用'
+                        WHERE account.id=:id
+                          AND COALESCE(account.is_deleted,false)=false
+                          AND account.status='使用'
+                        FOR UPDATE OF account
+                        """)
+                .setParameter("id", accountId)
+                .getResultList();
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.BUSINESS, "付款账户不存在或已停用：" + accountId);
         }
-        if (original.signum() < 0) {
-            return settled.compareTo(original) < 0;
+        Object[] row = rows.getFirst();
+        UUID accountCurrencyId = (UUID) row[0];
+        String currencyCode = row[1] == null ? null : row[1].toString();
+        String currencyName = row[2] == null ? null : row[2].toString();
+        if (accountCurrencyId != null && currencyCode == null && currencyName == null) {
+            throw new ApiException(ErrorCode.BUSINESS, "付款账户币种不存在或已停用");
         }
-        return settled.signum() != 0;
-    }
-
-    /** 付款账户扣减（money-out）：balance_current -= delta, payments_total += delta（delta 已带符号）。 */
-    private void adjustAccount(UUID accountId, BigDecimal delta) {
-        // delta = +amount_local（审核）/ -amount_local（红冲）。balance_current 受 delta 反向影响（付款减余额）。
-        int rows = em.createNativeQuery("""
-                UPDATE accounts
-                SET balance_current = COALESCE(balance_current, 0) - :amt,
-                    payments_total  = COALESCE(payments_total, 0) + :amt,
-                    updated_at = now()
-                WHERE id = :id
-                  AND COALESCE(is_deleted, false) = false
-                  AND status = '使用'
-                """)
-                .setParameter("amt", delta)
+        boolean baseCurrency = accountCurrencyId == null
+                || "CNY".equalsIgnoreCase(currencyCode)
+                || "RMB".equalsIgnoreCase(currencyCode)
+                || "人民币".equals(currencyName == null ? null : currencyName.trim());
+        BigDecimal accountDelta;
+        if (baseCurrency) {
+            accountDelta = money(localDelta);
+        } else if (Objects.equals(accountCurrencyId, paymentCurrencyId)) {
+            accountDelta = money(originalDelta);
+        } else {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "付款账户币别与本次付款币别不兼容：" + accountId);
+        }
+        int updated = em.createNativeQuery("""
+                        UPDATE accounts
+                        SET balance_current=COALESCE(balance_current,0)-:amount,
+                            payments_total=COALESCE(payments_total,0)+:amount,
+                            updated_at=now()
+                        WHERE id=:id
+                        """)
+                .setParameter("amount", accountDelta)
                 .setParameter("id", accountId)
                 .executeUpdate();
-        if (rows == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "账户不存在或已禁用：" + accountId);
+        if (updated != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "付款账户余额更新失败：" + accountId);
         }
+        return accountDelta;
     }
 
-    private void insertReconciliation(FinancePayment p, BigDecimal amountLocal) {
+    private void insertReconciliation(FinancePayment p, BigDecimal accountAmount) {
         String counterpart = p.getSupplierId() == null ? null : lookupSupplierName(p.getSupplierId());
         em.createNativeQuery("""
                 INSERT INTO finance_reconciliations
@@ -391,7 +580,7 @@ public class FinancePaymentService {
                 .setParameter("acc", p.getAccountId())
                 .setParameter("chk", p.getInvoiceNo())
                 .setParameter("cpn", counterpart)
-                .setParameter("outAmt", amountLocal)
+                .setParameter("outAmt", accountAmount)
                 .setParameter("bd", p.getBillDate().atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime()) // M17：bill_date 用单据日期，settled_date 保持审核时刻
                 .setParameter("sd", OffsetDateTime.now())
                 .setParameter("sr", p.getSourceRemark())
@@ -457,9 +646,19 @@ public class FinancePaymentService {
         p.setAccountId(req.getAccountId());
         p.setCounterpartAccountId(req.getCounterpartAccountId());
         p.setCurrencyId(req.getCurrencyId());
-        if (req.getExchangeRate() != null) p.setExchangeRate(req.getExchangeRate());
-        if (req.getAmountOriginal() != null) p.setAmountOriginal(req.getAmountOriginal());
-        if (req.getAmountLocal() != null) p.setAmountLocal(req.getAmountLocal());
+        if (req.getExchangeRate() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "付款汇率不能为空");
+        }
+        p.setExchangeRate(positiveRate(req.getExchangeRate()));
+        boolean appliedPayment = req.getItems() != null && !req.getItems().isEmpty();
+        if (!appliedPayment) {
+            if (p.getCurrencyId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "直接付款必须指定币别");
+            }
+            BigDecimal amountOriginal = positiveMoney(req.getAmountOriginal(), "直接付款金额");
+            p.setAmountOriginal(amountOriginal);
+            p.setAmountLocal(money(amountOriginal.multiply(p.getExchangeRate())));
+        }
         p.setPaymentMethodId(req.getPaymentMethodId());
         p.setPaymentMethodLegacyId(req.getPaymentMethodLegacyId());
         p.setInvoiceNo(req.getInvoiceNo());
@@ -470,26 +669,35 @@ public class FinancePaymentService {
     }
 
     private List<FinancePaymentLineDto> saveLines(FinancePayment p, List<FinancePaymentLineInput> inputs) {
-        // FIN-P2-4（路线图，未实现）：exchange_diff 当前完全由前端传入，服务端零校验/零计算。
-        // 完整汇兑损益（FX gain/loss）需在审核（settlePayment）时按 ar_ap_ledger.exchange_rate
-        // 与 payments.exchange_rate 派生，并落账到汇兑损益科目——独立大特性，不在本次数据完整性
-        // 修复范围。当前仅原样落库，不做符号/数值校验（避免误拒历史合法行）。
-        // TODO: 排入钱流 FX 模块路线图后补服务端校验 + GL 过账。
         if (inputs == null || inputs.isEmpty()) return List.of();
+        List<UUID> ledgerIds = inputs.stream()
+                .map(FinancePaymentLineInput::getAppliedLedgerId)
+                .toList();
+        if (ledgerIds.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "付款核销明细必须关联应付台账");
+        }
+        if (new HashSet<>(ledgerIds).size() != ledgerIds.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一应付台账不能在一张付款单中重复核销");
+        }
         List<FinancePaymentLineDto> out = new ArrayList<>(inputs.size());
         int auto = 1;
         for (FinancePaymentLineInput l : inputs) {
+            ArApLedger ledger = ledgerRepo.findById(l.getAppliedLedgerId())
+                    .filter(item -> !item.isDeleted())
+                    .orElseThrow(() -> new ApiException(ErrorCode.BUSINESS, "引用的应付记录不存在或已删除"));
+            validateAppliedLedger(p, l.getSupplierId(), ledger, true);
+            AppliedPayment amounts = calculateAppliedPayment(p, l.getAmountOriginal(), ledger);
             FinancePaymentLine ln = new FinancePaymentLine();
             ln.setPaymentId(p.getId());
             ln.setBillNo(p.getBillNo());
             ln.setBillDate(p.getBillDate());
             ln.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             ln.setAppliedLedgerId(l.getAppliedLedgerId());
-            ln.setAppliedBillNo(l.getAppliedBillNo());
-            ln.setSupplierId(l.getSupplierId() != null ? l.getSupplierId() : p.getSupplierId());
-            ln.setAmountOriginal(l.getAmountOriginal());
-            ln.setAmountLocal(l.getAmountLocal());
-            ln.setExchangeDiff(l.getExchangeDiff());
+            ln.setAppliedBillNo(ledger.getBillNo());
+            ln.setSupplierId(ledger.getSupplierId());
+            ln.setAmountOriginal(amounts.cashOriginal());
+            ln.setAmountLocal(amounts.cashLocal());
+            ln.setExchangeDiff(amounts.exchangeDiff());
             ln.setRemark(l.getRemark());
             lineRepo.save(ln);
             out.add(toLineDto(ln));
@@ -510,7 +718,7 @@ public class FinancePaymentService {
     private FinancePaymentLineDto toLineDto(FinancePaymentLine ln) {
         return new FinancePaymentLineDto(ln.getId(), ln.getLineNo(), ln.getAppliedLedgerId(),
                 ln.getAppliedBillNo(), ln.getSupplierId(), ln.getAmountOriginal(), ln.getAmountLocal(),
-                ln.getExchangeDiff(), ln.getRemark());
+                appliedAmountLocal(ln), ln.getExchangeDiff(), ln.getRemark());
     }
 
     private FinancePaymentListItem toList(FinancePayment p) {
@@ -533,7 +741,47 @@ public class FinancePaymentService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购付款单不存在"));
     }
 
+    private static void requireActiveAfterLock(FinancePayment payment) {
+        if (payment.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "采购付款单不存在");
+        }
+    }
+
     private static BigDecimal nz(BigDecimal x) {
         return x == null ? BigDecimal.ZERO : x;
+    }
+
+    private static BigDecimal appliedAmountLocal(FinancePaymentLine line) {
+        return money(nz(line.getAmountLocal()).subtract(nz(line.getExchangeDiff())));
+    }
+
+    private void markAmountsAuthoritative(FinancePayment payment) {
+        payment.setAmountAuthorityVersion(AMOUNT_AUTHORITY_VERSION);
+        paymentRepo.save(payment);
+    }
+
+    private static void requireAuthoritativeAmounts(FinancePayment payment, String operation) {
+        if (payment.getAmountAuthorityVersion() != AMOUNT_AUTHORITY_VERSION) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "历史付款金额尚未经过服务端核验，禁止" + operation + "；请先重新编辑并保存草稿，或由财务完成专项核验");
+        }
+    }
+
+    private static BigDecimal positiveRate(BigDecimal value) {
+        if (value == null || value.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "付款汇率必须大于 0");
+        }
+        return value.setScale(RATE_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal positiveMoney(BigDecimal value, String label) {
+        if (value == null || value.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "必须大于 0");
+        }
+        return money(value);
+    }
+
+    private static BigDecimal money(BigDecimal value) {
+        return nz(value).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
     }
 }

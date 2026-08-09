@@ -33,11 +33,8 @@ class SalesOrderQuantityFormulaTest {
     void discountedQuantityChangeReusesAuthoritativeOrderAmountFormula() {
         BigDecimal original = SalesOrderService.authoritativeOrderAmount(
                 bd("20"), bd("100"), bd("0.8"));
-        BigDecimal local = SalesOrderService.authoritativeLocalAmount(
-                original, bd("7.2"));
 
         assertThat(original).isEqualByComparingTo("1600.0000");
-        assertThat(local).isEqualByComparingTo("11520.0000");
     }
 
     private static BigDecimal bd(String value) {

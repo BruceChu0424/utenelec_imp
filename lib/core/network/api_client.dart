@@ -212,7 +212,7 @@ class ApiClient {
     }
   }
 
-  /// 下载二进制（加密 Excel 导出用）：POST [path]，密码走 [body]，过滤/排序走 [query]，
+  /// 下载二进制（Excel 导出用）：POST [path]，可选密码走 [body]，过滤/排序走 [query]，
   /// 以 bytes 接收。AuthInterceptor 自动管 401 刷新。错误体（bytes）尝试解 JSON 取业务消息。
   Future<Uint8List> downloadBytes(
     String path, {

@@ -54,7 +54,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('analysis-history-table')), findsOneWidget);
-      expect(find.text('部分已排产'), findsWidgets);
+      expect(find.text('部分已下达，剩余待料'), findsWidgets);
       expect(find.textContaining('RW-20260808-001'), findsOneWidget);
       expect(find.text('生产调度员'), findsOneWidget);
       expect(find.text('12 / 30'), findsOneWidget);
@@ -89,7 +89,7 @@ void main() {
 
     expect(find.byKey(const Key('analysis-history-cards')), findsOneWidget);
     expect(find.byKey(const Key('analysis-history-table')), findsNothing);
-    expect(find.text('部分已排产'), findsOneWidget);
+    expect(find.text('部分已下达，剩余待料'), findsOneWidget);
     expect(find.byIcon(Icons.pending_actions_outlined), findsOneWidget);
     expect(find.text('继续处理'), findsOneWidget);
     expect(

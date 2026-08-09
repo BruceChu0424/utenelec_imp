@@ -7,9 +7,11 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineDto;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput;
@@ -85,13 +87,17 @@ public class FinanceReceiptService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
     private final DocNumberService docNumberService;
+    private final FinanceDocumentAccessPolicy access;
+    private final GlPostingService glPosting;
 
     @Transactional(readOnly = true)
     public PageResponse<FinanceReceiptListItem> list(FinanceReceiptQueryFilter f, int page, int size, String sort, String order) {
+        var readScope = access.scope();
         Specification<FinanceReceipt> spec = (Root<FinanceReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -111,6 +117,7 @@ public class FinanceReceiptService {
     @Transactional(readOnly = true)
     public FinanceReceiptDetail detail(UUID id) {
         FinanceReceipt r = require(id);
+        access.requireReadable(r.getMakerId(), "销售收款单不存在");
         List<FinanceReceiptLineDto> items = lineRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
         return toDetail(r, items);
@@ -133,8 +140,8 @@ public class FinanceReceiptService {
     @Transactional
     public FinanceReceiptDetail update(UUID id, FinanceReceiptSaveRequest req) {
         tx.bind();
-        FinanceReceipt r = require(id);
-        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        FinanceReceipt r = lockActive(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -150,8 +157,8 @@ public class FinanceReceiptService {
     @Transactional
     public void delete(UUID id) {
         tx.bind();
-        FinanceReceipt r = require(id);
-        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        FinanceReceipt r = lockActive(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可删除；已审核单据请红冲");
         }
@@ -164,8 +171,8 @@ public class FinanceReceiptService {
     @Transactional
     public FinanceReceiptDetail approve(UUID id) {
         tx.bind();
-        FinanceReceipt r = require(id);
-        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // M28：强制 SELECT...FOR UPDATE 重读字段，防陈旧状态绕过守卫
+        FinanceReceipt r = lockActive(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -180,6 +187,7 @@ public class FinanceReceiptService {
         if (r.getMakerId() != null && r.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同（职责分离）");
         }
+        glPosting.lockAutoProjectionPeriod(r.getBillDate());
         r.setApproverId(approver);
         settleReceipt(r);
         r.setStatus(STATUS_APPROVED);
@@ -192,12 +200,13 @@ public class FinanceReceiptService {
     @Transactional
     public FinanceReceiptDetail reverse(UUID id) {
         tx.bind();
-        FinanceReceipt r = require(id);
-        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // M28：强制 SELECT...FOR UPDATE 重读字段，防陈旧状态绕过守卫
+        FinanceReceipt r = lockActive(id);
+        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         assertCompletePosting(r.getId(), 1L); // M19：红冲前确认流水完整（收款每单恰 1 行）
+        glPosting.removeAutoProjection(RECON_SOURCE, r.getId(), r.getBillNo(), r.getBillDate());
         reverseSettlement(r);
         r.setStatus(STATUS_REVERSED);
         receiptRepo.save(r);
@@ -227,16 +236,14 @@ public class FinanceReceiptService {
         if (r.getCurrencyId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "直接预收款必须指定币别");
         }
-        r.setExchangeRate(positiveRate(r.getExchangeRate()));
-        if (amountLocal.signum() == 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "收款金额必须非零");
-        }
+        BigDecimal directRate = positiveRate(r.getExchangeRate());
+        BigDecimal directOriginal = positiveMoney(r.getAmountOriginal(), "直接收款原币金额");
+        amountLocal = money(directOriginal.multiply(directRate));
+        r.setExchangeRate(directRate);
+        r.setAmountOriginal(directOriginal);
+        r.setAmountLocal(amountLocal);
         if (nz(r.getBankFee()).signum() != 0 || nz(r.getOtherFee()).signum() != 0) {
             throw new ApiException(ErrorCode.BUSINESS, "客户预收款暂不支持费用冲销；费用必须分配到引用的应收明细");
-        }
-        // M6：直接收款（无明细）金额必须大于 0，防止负数造出"客户多欠 + 现金减少"。
-        if (amountLocal.signum() <= 0) {
-            throw new ApiException(ErrorCode.BUSINESS, "直接收款金额必须大于 0");
         }
         // 直接收款 / 客户预付：建 DIRECT_RECEIPT 立帐行（amount=0），再置到账和负应收余额。
         arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
@@ -662,18 +669,16 @@ public class FinanceReceiptService {
         r.setAccountId(req.getAccountId());
         r.setCounterpartAccountId(req.getCounterpartAccountId());
         r.setCurrencyId(req.getCurrencyId());
-        if (req.getExchangeRate() != null) r.setExchangeRate(req.getExchangeRate());
-        if (req.getAmountOriginal() != null) {
-            r.setAmountOriginal(req.getAmountOriginal());
-            // 金额服务端权威重算（4 位 HALF_UP）：本币额 = 原币额 × 汇率，忽略客户端 amountLocal，
-            // 防止篡改本币额进而影响 AR 核销与账户增减（与 M1 银行转账服务端权威同型）。
-            java.math.BigDecimal rate = r.getExchangeRate() != null
-                    ? r.getExchangeRate() : java.math.BigDecimal.ONE;
-            r.setAmountLocal(req.getAmountOriginal().multiply(rate)
-                    .setScale(4, java.math.RoundingMode.HALF_UP));
-        } else if (req.getAmountLocal() != null) {
-            r.setAmountLocal(req.getAmountLocal());
-        }
+        // null 必须清掉实体默认值/旧草稿值；直收与预收也只能使用财务显式填写的到账汇率。
+        r.setExchangeRate(req.getExchangeRate());
+        r.setAmountOriginal(req.getAmountOriginal());
+        // 金额服务端权威重算（4 位 HALF_UP）：本币额 = 原币额 × 汇率，忽略客户端 amountLocal，
+        // 防止篡改本币额进而影响 AR 核销与账户增减（与 M1 银行转账服务端权威同型）。
+        java.math.BigDecimal rate = r.getExchangeRate();
+        r.setAmountLocal(req.getAmountOriginal() == null || rate == null
+                ? null
+                : req.getAmountOriginal().multiply(rate)
+                        .setScale(4, java.math.RoundingMode.HALF_UP));
         if (req.getBankFee() != null) r.setBankFee(req.getBankFee());
         if (req.getOtherFee() != null) r.setOtherFee(req.getOtherFee());
         r.setOtherFeeStyleId(req.getOtherFeeStyleId());
@@ -709,8 +714,9 @@ public class FinanceReceiptService {
                 throw new ApiException(ErrorCode.BUSINESS,
                         "跨币种核销需要同时记录到账币种和应收币种金额；当前收款明细只能使用应收币别");
             }
-            BigDecimal rate = positiveRate(l.getExchangeRate() != null
-                    ? l.getExchangeRate() : r.getExchangeRate());
+            // 到账汇率是本次收款事实，必须由财务在 AR 核销行显式填写；
+            // 禁止回退主表默认值、主表请求值或应收开账汇率。
+            BigDecimal rate = positiveRate(l.getExchangeRate());
             BigDecimal cashOriginal = positiveMoney(l.getAmountOriginal(), "本次收款金额");
             BigDecimal writeOffOriginal = nonNegativeMoney(l.getWriteOffAmount(), "冲销金额");
             BigDecimal cashLocal = money(cashOriginal.multiply(rate));
@@ -778,6 +784,15 @@ public class FinanceReceiptService {
     private FinanceReceipt require(UUID id) {
         return receiptRepo.findById(id).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售收款单不存在"));
+    }
+
+    private FinanceReceipt lockActive(UUID id) {
+        FinanceReceipt receipt = require(id);
+        em.refresh(receipt, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (receipt.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "销售收款单不存在");
+        }
+        return receipt;
     }
 
     private static BigDecimal positiveRate(BigDecimal value) {

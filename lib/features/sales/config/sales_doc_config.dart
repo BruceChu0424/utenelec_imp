@@ -161,9 +161,8 @@ class SalesDocConfig {
     editPerm: SalesPerm.shipmentEdit,
     clientRequired: true,
     hasWarehouse: true,
-    // 币种/汇率/税率不展示（hasCurrency 取默认 false，故不显式列出）：出货单创建时后端
-    // 无条件用来源订货单的币种族覆盖（SalesShipmentService enforceCommercialSource），前端发不发
-    // 都被忽略，故编辑/详情一并隐藏。
+    // 出货币种/税率由来源订单携带，销售端不可改；汇率不属于来源商业条件，草稿不保存，
+    // 仅在 SHIPPED 时由财务汇率形成。这里保持隐藏，避免把销售输入误认作立账事实。
     hasSeller: true,
     hasSender: true,
     hasShipInfo: true,

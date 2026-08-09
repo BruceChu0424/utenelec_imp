@@ -24,4 +24,9 @@ public interface ProductionSupplyTransitionPort {
     void onPurchaseReceiptApproved(UUID receiptId);
 
     void beforePurchaseReceiptReversed(UUID receiptId);
+
+    /** Called after the receipt's qualified physical stock has been removed. */
+    default void afterPurchaseReceiptReversed(UUID receiptId) {
+        // Optional for test doubles and non-production adapters.
+    }
 }

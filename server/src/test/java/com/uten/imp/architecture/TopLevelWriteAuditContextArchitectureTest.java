@@ -124,9 +124,9 @@ class TopLevelWriteAuditContextArchitectureTest {
         assertBefore(GL, "public int generateAll()",
                 "tx.bind();", "generatePeriod(");
         assertBefore(GL, "public UUID postExpenseDoc(",
-                "tx.bind();", "removeExpenseDocInternal(");
+                "tx.bind();", "removeAutoProjection(");
         assertBefore(GL, "public void removeExpenseDoc(",
-                "tx.bind();", "removeExpenseDocInternal(");
+                "tx.bind();", "removeAutoProjection(");
 
         assertBefore(MRP, "public MrpGenerateResult generate(UUID planId)",
                 "tx.bind();", "generateInternal(");
@@ -137,14 +137,6 @@ class TopLevelWriteAuditContextArchitectureTest {
                 "tx.bind();", "lockPlan(");
         assertBefore(MRP, "public MrpGenerateResult generateFinishedIn(",
                 "tx.bind();", "lockPlan(");
-        assertBefore(MRP, "public MrpGenerateResult generateSubplan(",
-                "tx.bind();", "lockPlan(");
-        assertBefore(MRP,
-                "public List<GenerateSubplansRequest.Created> generateSubplans(",
-                "tx.bind();", "lockPlan(");
-        assertBefore(MRP, "public PlanningPackageResult generatePlanningPackage(",
-                "tx.bind();", "lockPlan(");
-
         assertBefore(PLANNING_PACKAGE, "public PlanningPackageResult confirm(",
                 "tx.bind();", "executionCommand.confirm(");
         assertBefore(PLANNING_PACKAGE,
@@ -190,17 +182,6 @@ class TopLevelWriteAuditContextArchitectureTest {
                 "public VisitorAuthDto.VisitorTokenResponse login(",
                 "tx.bindActor(account.getId(), account.getVisitorNo());",
                 "accountRepo.save(");
-    }
-
-    @Test
-    void mandatoryMrpSubservicesInheritTheAlreadyBoundTransaction()
-            throws IOException {
-        String mrp = source(MRP);
-        assertFalse(methodBody(mrp, "public List<MrpRow> packageRows(")
-                .contains("tx.bind("));
-        assertFalse(methodBody(mrp,
-                "public List<GenerateSubplansRequest.Created> createPackageSubplans(")
-                .contains("tx.bind("));
     }
 
     private static void assertBefore(

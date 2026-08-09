@@ -125,11 +125,11 @@ public class ProcurementFinanceApprovalService {
             String rawOrderType, UUID orderId, long expectedVersion) {
         tx.bind();
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
+        requireEligibleReviewer();
         ProcurementOrderApprovalPort port = requirePort(orderType);
         OrderSnapshot currentSnapshot =
                 port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
-        requireEligibleReviewer();
         requireVersion(approvalCase, expectedVersion);
         requireUnchangedSnapshot(approvalCase, currentSnapshot);
 
@@ -179,13 +179,13 @@ public class ProcurementFinanceApprovalService {
             long expectedVersion,
             String rawReason) {
         tx.bind();
-        String reason = normalizeReason(rawReason);
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
+        requireEligibleReviewer();
+        String reason = normalizeReason(rawReason);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         OrderSnapshot currentSnapshot =
                 port.lockAndValidateFinanceSubmission(orderId);
         ApprovalCase approvalCase = lockPendingCase(orderType, orderId);
-        requireEligibleReviewer();
         requireVersion(approvalCase, expectedVersion);
         requireUnchangedSnapshot(approvalCase, currentSnapshot);
 

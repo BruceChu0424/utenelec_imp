@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.execution;
 
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -49,6 +51,8 @@ public record ProductionWorkCardView(
             BigDecimal plannedQty,
             String status,
             boolean autoPromoteWhenReady,
+            String materialRequirementMode,
+            String zeroMaterialReason,
             String workshopName,
             String teamName,
             String responsibleEmployeeName,
@@ -74,6 +78,38 @@ public record ProductionWorkCardView(
             BigDecimal stockAllocatedQty,
             BigDecimal shortageQty,
             String supplyRoute,
-            String demandStatus) {
+            String demandStatus,
+            String requirementMode) {
+
+        public Material(
+                UUID demandId,
+                UUID goodsId,
+                String goodsCode,
+                String goodsName,
+                String spec,
+                String colorName,
+                String unitName,
+                BigDecimal perProductQty,
+                BigDecimal requiredQty,
+                BigDecimal stockAllocatedQty,
+                BigDecimal shortageQty,
+                String supplyRoute,
+                String demandStatus) {
+            this(
+                    demandId,
+                    goodsId,
+                    goodsCode,
+                    goodsName,
+                    spec,
+                    colorName,
+                    unitName,
+                    perProductQty,
+                    requiredQty,
+                    stockAllocatedQty,
+                    shortageQty,
+                    supplyRoute,
+                    demandStatus,
+                    ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR);
+        }
     }
 }

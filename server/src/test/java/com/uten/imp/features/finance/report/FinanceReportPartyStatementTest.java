@@ -1,10 +1,13 @@
 package com.uten.imp.features.finance.report;
 
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.asset.FixedAssetService;
 import com.uten.imp.features.finance.cost.FinanceCostService;
 import com.uten.imp.features.finance.gl.GlReportService;
 import com.uten.imp.features.finance.statement.FinanceStatementService;
+import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
+import com.uten.imp.security.OwnerVisibility.OwnerScope;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
@@ -15,11 +18,13 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,6 +44,7 @@ class FinanceReportPartyStatementTest {
 
         FinanceReportService service = new FinanceReportService(
                 em,
+                unrestrictedAccess(),
                 mock(SystemSettingsService.class),
                 mock(FinanceStatementService.class),
                 mock(FinanceCostService.class),
@@ -87,7 +93,7 @@ class FinanceReportPartyStatementTest {
     }
 
     @Test
-    void financeDocumentPartyFiltersUseOnlyTheColumnOwnedByEachDocumentTable() {
+    void financeDocumentPartyFiltersAndOrderPlanUseOriginalCurrencyFacts() {
         EntityManager em = mock(EntityManager.class);
         Query query = mock(Query.class);
         List<String> sqlStatements = new ArrayList<>();
@@ -104,16 +110,24 @@ class FinanceReportPartyStatementTest {
                 null, null, null, Map.of(), 1, 50, null, null);
         service.paymentSummary(null, UUID.randomUUID(), null,
                 null, null, null, Map.of(), 1, 50, null, null);
-        service.salesOrderReceivablePlan(null, null, null, null,
+        ReportTableResponse orderPlan = service.salesOrderReceivablePlan(null, null, null, null,
                 null, 1, 50, null, null);
 
         String sql = String.join("\n", sqlStatements);
+        String orderPlanSql = String.join("\n", sqlStatements.stream()
+                .filter(statement -> statement.contains("FROM sales_orders sales_order"))
+                .toList());
         assertThat(sql)
                 .contains("t.client_id=:pid")
                 .contains("t.supplier_id=:pid")
-                .doesNotContain("t.client_id=:pid OR t.supplier_id=:pid")
-                .contains("THEN '汇率待财务维护'")
-                .contains("ELSE NULL", "END AS \"expectedLocal\"");
+                .doesNotContain("t.client_id=:pid OR t.supplier_id=:pid");
+        assertThat(orderPlan.columns()).extracting(ReportColumn::key)
+                .contains("currencyCode", "orderOriginal", "recognizedOriginal", "expectedOriginal")
+                .doesNotContain("orderLocal", "recognizedLocal", "expectedLocal");
+        assertThat(orderPlanSql)
+                .contains("source.amount_original")
+                .doesNotContain("source.amount_local", "currency.exchange_rate",
+                        "汇率待财务维护", "expectedLocal");
     }
 
     @Test
@@ -155,11 +169,21 @@ class FinanceReportPartyStatementTest {
     private static FinanceReportService service(EntityManager em) {
         return new FinanceReportService(
                 em,
+                unrestrictedAccess(),
                 mock(SystemSettingsService.class),
                 mock(FinanceStatementService.class),
                 mock(FinanceCostService.class),
                 mock(GlReportService.class),
                 mock(FixedAssetService.class));
+    }
+
+    private static FinanceDocumentAccessPolicy unrestrictedAccess() {
+        FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
+        OwnerScope ownerScope = new OwnerScope(true, Set.of());
+        when(access.scope()).thenReturn(ownerScope);
+        when(access.nativeReadScope(anyString(), anyString(), eq(ownerScope)))
+                .thenReturn(new NativeReadScope("1=1", null, Set.of()));
+        return access;
     }
 
     private static String labelFor(ReportTableResponse response, String key) {

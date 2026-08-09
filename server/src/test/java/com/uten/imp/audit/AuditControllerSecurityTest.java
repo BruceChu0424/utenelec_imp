@@ -1,6 +1,6 @@
 package com.uten.imp.audit;
 
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.config.WebMvcConfig;
@@ -88,7 +88,7 @@ class AuditControllerSecurityTest {
     @MockitoBean
     private XlsxExportService xlsxExport;
     @MockitoBean
-    private EncryptedWorkbookService encryptedWorkbook;
+    private WorkbookDownloadService workbookDownload;
     @MockitoBean
     private AuditService audit;
     @MockitoBean
@@ -109,7 +109,7 @@ class AuditControllerSecurityTest {
                 .thenReturn(new ExportPayload(List.of(), List.of(), 0));
         when(runtimeSettings.exportMaxRows()).thenReturn(1_000);
         when(xlsxExport.build(anyList(), anyList())).thenReturn(new byte[]{1});
-        when(encryptedWorkbook.encrypt(any(byte[].class), anyString())).thenReturn(new byte[]{9});
+        when(workbookDownload.protect(any(byte[].class), anyString())).thenReturn(new byte[]{9});
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
                 ACTOR_ID,
                 EMPLOYEE_ID,

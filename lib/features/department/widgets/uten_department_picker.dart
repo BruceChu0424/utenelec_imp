@@ -2,8 +2,9 @@
 //
 // 触发形态：只读输入框样式的 field（显示选中完整路径，placeholder「请选择部门」），
 // 点击拉开抽屉：
-// - compact：showModalBottomSheet（isScrollControlled，约 85% 屏高）
-// - medium/expanded：右侧滑入的 420 宽 end drawer 面板（showGeneralDialog）
+// - compact：约 85% 屏高的底部抽屉；
+// - medium/expanded：右侧滑入的 420dp end drawer。
+// 响应式展示壳统一复用 showUtenAdaptivePanel。
 //
 // 默认人事规则：公司根节点不显示；决策层仅作展开骨架；管理中心和各级业务部门可选。
 // 专业业务场景可传 selectablePredicate 收窄范围。单选默认点选即关，也可要求底部确认。
@@ -13,8 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_toast.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
 import 'uten_department_tree_view.dart';
@@ -273,44 +274,10 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
       initiallyExpandedIds: widget.initiallyExpandedIds,
       selectablePredicate: _canSelect,
     );
-    final List<DeptSelection>? result;
-    if (context.breakpoint.isCompact) {
-      result = await showModalBottomSheet<List<DeptSelection>>(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: SizedBox(
-            height: MediaQuery.sizeOf(ctx).height * 0.85,
-            child: sheet,
-          ),
-        ),
-      );
-    } else {
-      result = await showGeneralDialog<List<DeptSelection>>(
-        context: context,
-        barrierDismissible: true,
-        barrierLabel: MaterialLocalizations.of(
-          context,
-        ).modalBarrierDismissLabel,
-        barrierColor: Colors.black54,
-        transitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (ctx, _, _) => Align(
-          alignment: Alignment.centerRight,
-          child: Material(
-            color: Theme.of(ctx).colorScheme.surface,
-            child: SizedBox(width: 420, height: double.infinity, child: sheet),
-          ),
-        ),
-        transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-      );
-    }
+    final result = await showUtenAdaptivePanel<List<DeptSelection>>(
+      context: context,
+      builder: (_) => sheet,
+    );
     final r = result;
     if (r != null && mounted) {
       setState(() => _selection = r);

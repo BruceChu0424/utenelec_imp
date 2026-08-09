@@ -37,6 +37,10 @@
   "loginLoggingIn": "로그인 중…",
   "loginSuccess": "로그인됨",
   "loginFailed": "계정 또는 비밀번호가 올바르지 않습니다",
+  "loginServerRecoveryAction": "자동 서버 선택 복원",
+  "loginServerRecoveryHint": "네트워크를 변경했거나 로그인에 실패할 때 사용하세요. 앱에 내장된 신뢰할 수 있는 사내 및 클라우드 주소만 사용합니다.",
+  "loginServerRecoverySuccess": "자동 서버 선택이 복원되었습니다. 다시 로그인해 주세요.",
+  "loginServerRecoveryFailed": "서버 선택을 복원하지 못했습니다. 다시 시도하거나 관리자에게 문의하세요.",
   "loginFooter": "© 2026 우텅 통합 관리 플랫폼",
 
   "navDashboard": "워크벤치",
@@ -926,5 +930,18 @@
   "impersonationWindowExpired": "가장 시간이 만료되어 종료되었습니다",
   "impersonationRecent": "최근",
   "impersonationNoTargets": "전환할 직원이 없습니다",
-  "impersonationStartFailed": "전환 실패"
+  "impersonationStartFailed": "전환 실패",
+  "exportDialogTitle": "Excel 내보내기",
+  "exportPasswordOptionalHint": "비밀번호는 선택 사항입니다. 비워 두면 일반 Excel 파일로, 1–128자를 입력하면 암호화하여 다운로드합니다.",
+  "exportPasswordOptionalLabel": "열기 비밀번호(선택, 1–128자)",
+  "exportPasswordConfirmLabel": "비밀번호 확인",
+  "exportPasswordTooLong": "비밀번호는 128자를 초과할 수 없습니다.",
+  "exportPasswordMismatch": "비밀번호가 일치하지 않습니다.",
+  "exportDownloadPlain": "바로 다운로드",
+  "exportDownloadEncrypted": "암호화 다운로드",
+  "exportFailed": "내보내기에 실패했습니다. 잠시 후 다시 시도하세요.",
+  "exportDownloadStarted": "다운로드 시작: {name}",
+  "@exportDownloadStarted": {"placeholders": {"name": {"type": "String"}}},
+  "exportDownloadSaved": "저장 위치: {path}",
+  "@exportDownloadSaved": {"placeholders": {"path": {"type": "String"}}}
 }

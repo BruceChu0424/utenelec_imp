@@ -1,8 +1,11 @@
 package com.uten.imp.features.production.mrp;
 
+import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
+import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -142,6 +145,9 @@ public final class CompleteKitAllocator {
     private static BigDecimal maxReadyQty(
             ProductLine line,
             Map<MaterialKey, BigDecimal> remaining) {
+        if (line.requiresExactSnapshot()) {
+            return maxExactReadyQty(line, remaining);
+        }
         BigDecimal maximum = line.plannedQty();
         for (MaterialUsage usage : line.materials()) {
             BigDecimal available = remaining.getOrDefault(
@@ -159,12 +165,33 @@ public final class CompleteKitAllocator {
         return maximum.max(BigDecimal.ZERO);
     }
 
+    private static BigDecimal maxExactReadyQty(
+            ProductLine line,
+            Map<MaterialKey, BigDecimal> remaining) {
+        BigInteger low = BigInteger.ZERO;
+        BigInteger high = line.plannedQty()
+                .movePointRight(PRODUCT_SCALE)
+                .toBigIntegerExact();
+        while (low.compareTo(high) < 0) {
+            BigInteger middle = low.add(high)
+                    .add(BigInteger.ONE)
+                    .shiftRight(1);
+            BigDecimal qty = new BigDecimal(middle, PRODUCT_SCALE);
+            if (canFullyTake(line, qty, remaining)) {
+                low = middle;
+            } else {
+                high = middle.subtract(BigInteger.ONE);
+            }
+        }
+        return new BigDecimal(low, PRODUCT_SCALE);
+    }
+
     private static boolean canFullyTake(
             ProductLine line,
             BigDecimal qty,
             Map<MaterialKey, BigDecimal> remaining) {
         return line.materials().stream().allMatch(usage ->
-                required(qty, usage.perProductQty()).compareTo(
+                usage.required(qty, line.productUnitRate()).compareTo(
                         remaining.getOrDefault(
                                 usage.materialKey(), BigDecimal.ZERO)) <= 0);
     }
@@ -175,7 +202,8 @@ public final class CompleteKitAllocator {
             Map<MaterialKey, BigDecimal> remaining) {
         List<MaterialAllocation> result = new ArrayList<>(line.materials().size());
         for (MaterialUsage usage : line.materials()) {
-            BigDecimal required = required(segmentQty, usage.perProductQty());
+            BigDecimal required = usage.required(
+                    segmentQty, line.productUnitRate());
             BigDecimal before = remaining.getOrDefault(
                     usage.materialKey(), BigDecimal.ZERO);
             if (before.compareTo(required) < 0) {
@@ -189,12 +217,13 @@ public final class CompleteKitAllocator {
                     usage.goodsId(),
                     usage.colorId(),
                     usage.unitId(),
-                    usage.perProductQty(),
+                    displayPerProductQty(usage, required, segmentQty),
                     required,
                     before,
                     required,
                     BigDecimal.ZERO.setScale(MATERIAL_SCALE),
-                    usage.supplyRoute()));
+                    usage.supplyRoute(),
+                    requirementMode(usage)));
         }
         return List.copyOf(result);
     }
@@ -206,8 +235,8 @@ public final class CompleteKitAllocator {
         List<MaterialAllocation> result =
                 new ArrayList<>(line.materials().size());
         for (MaterialUsage usage : line.materials()) {
-            BigDecimal required = required(
-                    segmentQty, usage.perProductQty());
+            BigDecimal required = usage.required(
+                    segmentQty, line.productUnitRate());
             BigDecimal before = virtualRemaining.getOrDefault(
                     usage.materialKey(), BigDecimal.ZERO);
             BigDecimal virtuallyCovered = required.min(before);
@@ -218,15 +247,35 @@ public final class CompleteKitAllocator {
                     usage.goodsId(),
                     usage.colorId(),
                     usage.unitId(),
-                    usage.perProductQty(),
+                    displayPerProductQty(usage, required, segmentQty),
                     required,
                     before,
                     BigDecimal.ZERO.setScale(MATERIAL_SCALE),
                     required.subtract(virtuallyCovered)
                             .max(BigDecimal.ZERO),
-                    usage.supplyRoute()));
+                    usage.supplyRoute(),
+                    requirementMode(usage)));
         }
         return List.copyOf(result);
+    }
+
+    private static BigDecimal displayPerProductQty(
+            MaterialUsage usage,
+            BigDecimal requiredQty,
+            BigDecimal segmentQty) {
+        if (!usage.requiresExactSnapshot()) {
+            return usage.perProductQty();
+        }
+        // This is a display projection only. requiredQty remains the frozen,
+        // authoritative exact requirement for the segment.
+        return requiredQty.divide(
+                segmentQty, USAGE_SCALE, RoundingMode.CEILING);
+    }
+
+    private static String requirementMode(MaterialUsage usage) {
+        return usage.requiresExactSnapshot()
+                ? ProductionMaterialDemand.REQUIREMENT_MODE_EXACT_SNAPSHOT
+                : ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR;
     }
 
     public static BigDecimal required(
@@ -234,6 +283,12 @@ public final class CompleteKitAllocator {
             BigDecimal perProductQty) {
         return productQty.multiply(perProductQty)
                 .setScale(MATERIAL_SCALE, RoundingMode.CEILING);
+    }
+
+    private static String decimalText(BigDecimal value) {
+        return value == null
+                ? "0"
+                : value.stripTrailingZeros().toPlainString();
     }
 
     private static List<ProductLine> normalizeLines(List<ProductLine> rawLines) {
@@ -285,7 +340,11 @@ public final class CompleteKitAllocator {
                 line.productName(),
                 line.priority(),
                 materials,
-                line.bomFingerprint());
+                line.bomFingerprint(),
+                line.zeroMaterialReason(),
+                line.zeroMaterialAnalysisId(),
+                line.zeroMaterialExceptionReason(),
+                line.zeroMaterialAuthorizedBy());
     }
 
     private static MaterialUsage normalizeUsage(MaterialUsage usage) {
@@ -295,7 +354,8 @@ public final class CompleteKitAllocator {
                 || usage.perProductQty() == null
                 || usage.perProductQty().signum() <= 0
                 || usage.supplyRoute() == null
-                || usage.supplyRoute().isBlank()) {
+                || usage.supplyRoute().isBlank()
+                || usage.consumptionRules() == null) {
             throw new IllegalArgumentException("物料用量数据无效");
         }
         return new MaterialUsage(
@@ -304,7 +364,28 @@ public final class CompleteKitAllocator {
                 usage.unitId(),
                 usage.perProductQty().setScale(
                         USAGE_SCALE, RoundingMode.CEILING),
-                usage.supplyRoute());
+                usage.supplyRoute(),
+                usage.consumptionRules().stream()
+                        .map(CompleteKitAllocator::normalizeRule)
+                        .toList());
+    }
+
+    private static ConsumptionRule normalizeRule(ConsumptionRule rule) {
+        if (rule == null
+                || !ConsumptionRule.SUPPORTED_BASES.contains(
+                        rule.consumptionBasis())
+                || rule.bomQty() == null
+                || rule.bomQty().signum() <= 0
+                || rule.basisOutputQty() == null
+                || rule.basisOutputQty().signum() <= 0) {
+            throw new IllegalArgumentException("物料消耗规则无效");
+        }
+        return new ConsumptionRule(
+                rule.consumptionBasis(),
+                rule.bomQty().setScale(USAGE_SCALE, RoundingMode.CEILING),
+                rule.basisOutputQty().setScale(
+                        USAGE_SCALE, RoundingMode.CEILING),
+                rule.allowPartialPackage());
     }
 
     private static RequestedSegment normalizeRequested(RequestedSegment value) {
@@ -370,7 +451,101 @@ public final class CompleteKitAllocator {
             String productName,
             Priority priority,
             List<MaterialUsage> materials,
-            String bomFingerprint) {
+            String bomFingerprint,
+            String zeroMaterialReason,
+            UUID zeroMaterialAnalysisId,
+            String zeroMaterialExceptionReason,
+            UUID zeroMaterialAuthorizedBy) {
+
+        public ProductLine(
+                UUID sourcePlanItemId,
+                Integer lineNo,
+                UUID productGoodsId,
+                UUID productColorId,
+                UUID productUnitId,
+                BigDecimal productUnitRate,
+                BigDecimal plannedQty,
+                LocalDate planBeginDate,
+                LocalDate planEndDate,
+                UUID defaultWorkshopDepartmentId,
+                UUID defaultTeamDepartmentId,
+                UUID defaultResponsibleEmployeeId,
+                String productCode,
+                String productName,
+                Priority priority,
+                List<MaterialUsage> materials,
+                String bomFingerprint) {
+            this(
+                    sourcePlanItemId,
+                    lineNo,
+                    productGoodsId,
+                    productColorId,
+                    productUnitId,
+                    productUnitRate,
+                    plannedQty,
+                    planBeginDate,
+                    planEndDate,
+                    defaultWorkshopDepartmentId,
+                    defaultTeamDepartmentId,
+                    defaultResponsibleEmployeeId,
+                    productCode,
+                    productName,
+                    priority,
+                    materials,
+                    bomFingerprint,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        public ProductLine(
+                UUID sourcePlanItemId,
+                Integer lineNo,
+                UUID productGoodsId,
+                UUID productColorId,
+                UUID productUnitId,
+                BigDecimal productUnitRate,
+                BigDecimal plannedQty,
+                LocalDate planBeginDate,
+                LocalDate planEndDate,
+                UUID defaultWorkshopDepartmentId,
+                UUID defaultTeamDepartmentId,
+                UUID defaultResponsibleEmployeeId,
+                String productCode,
+                String productName,
+                Priority priority,
+                List<MaterialUsage> materials,
+                String bomFingerprint,
+                String zeroMaterialReason) {
+            this(
+                    sourcePlanItemId,
+                    lineNo,
+                    productGoodsId,
+                    productColorId,
+                    productUnitId,
+                    productUnitRate,
+                    plannedQty,
+                    planBeginDate,
+                    planEndDate,
+                    defaultWorkshopDepartmentId,
+                    defaultTeamDepartmentId,
+                    defaultResponsibleEmployeeId,
+                    productCode,
+                    productName,
+                    priority,
+                    materials,
+                    bomFingerprint,
+                    zeroMaterialReason,
+                    null,
+                    null,
+                    null);
+        }
+
+        boolean requiresExactSnapshot() {
+            return materials.stream().anyMatch(
+                    MaterialUsage::requiresExactSnapshot);
+        }
     }
 
     public record MaterialUsage(
@@ -378,10 +553,98 @@ public final class CompleteKitAllocator {
             UUID colorId,
             UUID unitId,
             BigDecimal perProductQty,
-            String supplyRoute) {
+            String supplyRoute,
+            List<ConsumptionRule> consumptionRules) {
+
+        public MaterialUsage(
+                UUID goodsId,
+                UUID colorId,
+                UUID unitId,
+                BigDecimal perProductQty,
+                String supplyRoute) {
+            this(
+                    goodsId, colorId, unitId, perProductQty,
+                    supplyRoute, List.of());
+        }
 
         MaterialKey materialKey() {
             return new MaterialKey(goodsId, colorId);
+        }
+
+        boolean requiresExactSnapshot() {
+            return consumptionRules.stream().anyMatch(rule ->
+                    !ConsumptionRule.PER_UNIT.equals(
+                            rule.consumptionBasis()));
+        }
+
+        BigDecimal required(
+                BigDecimal productQty,
+                BigDecimal productUnitRate) {
+            if (!requiresExactSnapshot()) {
+                return CompleteKitAllocator.required(
+                        productQty, perProductQty);
+            }
+            BigDecimal parentOutputQty = productQty.multiply(productUnitRate);
+            BigDecimal total = BigDecimal.ZERO.setScale(MATERIAL_SCALE);
+            for (ConsumptionRule rule : consumptionRules) {
+                total = total.add(rule.required(parentOutputQty));
+            }
+            return total.setScale(MATERIAL_SCALE, RoundingMode.UNNECESSARY);
+        }
+
+        String requirementFingerprint(BigDecimal productUnitRate) {
+            if (!requiresExactSnapshot()) {
+                throw new IllegalStateException(
+                        "线性需求不需要精确快照指纹");
+            }
+            List<String> parts = new ArrayList<>();
+            parts.add("EXACT-MATERIAL-REQUIREMENT-V1");
+            parts.add("MATERIAL|" + goodsId + "|"
+                    + Objects.toString(colorId, "") + "|" + unitId
+                    + "|" + supplyRoute);
+            parts.add("PRODUCT-UNIT-RATE|" + decimalText(productUnitRate));
+            for (ConsumptionRule rule : consumptionRules) {
+                parts.add(String.join("|",
+                        "RULE",
+                        rule.consumptionBasis(),
+                        decimalText(rule.bomQty()),
+                        decimalText(rule.basisOutputQty()),
+                        Boolean.toString(rule.allowPartialPackage())));
+            }
+            return PlanningPackageFingerprint.sha256(parts);
+        }
+    }
+
+    public record ConsumptionRule(
+            String consumptionBasis,
+            BigDecimal bomQty,
+            BigDecimal basisOutputQty,
+            boolean allowPartialPackage) {
+
+        public static final String PER_UNIT = "PER_UNIT";
+        public static final String PER_PACKAGE = "PER_PACKAGE";
+        public static final String FIXED_BATCH = "FIXED_BATCH";
+        private static final List<String> SUPPORTED_BASES = List.of(
+                PER_UNIT, PER_PACKAGE, FIXED_BATCH);
+
+        BigDecimal required(BigDecimal parentOutputQty) {
+            BigDecimal raw = switch (consumptionBasis) {
+                case PER_UNIT -> parentOutputQty.multiply(bomQty);
+                case PER_PACKAGE -> allowPartialPackage
+                        ? parentOutputQty.multiply(bomQty).divide(
+                                basisOutputQty, 12, RoundingMode.CEILING)
+                        : wholePackages(parentOutputQty).multiply(bomQty);
+                case FIXED_BATCH ->
+                        wholePackages(parentOutputQty).multiply(bomQty);
+                default -> throw new IllegalStateException(
+                        "不支持的物料消耗规则: " + consumptionBasis);
+            };
+            return raw.setScale(MATERIAL_SCALE, RoundingMode.CEILING);
+        }
+
+        private BigDecimal wholePackages(BigDecimal parentOutputQty) {
+            return parentOutputQty.divide(
+                    basisOutputQty, 0, RoundingMode.CEILING);
         }
     }
 
@@ -439,7 +702,31 @@ public final class CompleteKitAllocator {
             BigDecimal availableBeforeQty,
             BigDecimal candidateAllocatedQty,
             BigDecimal shortageQty,
-            String supplyRoute) {
+            String supplyRoute,
+            String requirementMode) {
+
+        public MaterialAllocation(
+                UUID goodsId,
+                UUID colorId,
+                UUID unitId,
+                BigDecimal perProductQty,
+                BigDecimal requiredQty,
+                BigDecimal availableBeforeQty,
+                BigDecimal candidateAllocatedQty,
+                BigDecimal shortageQty,
+                String supplyRoute) {
+            this(
+                    goodsId,
+                    colorId,
+                    unitId,
+                    perProductQty,
+                    requiredQty,
+                    availableBeforeQty,
+                    candidateAllocatedQty,
+                    shortageQty,
+                    supplyRoute,
+                    ProductionMaterialDemand.REQUIREMENT_MODE_LINEAR);
+        }
     }
 
     public record Allocation(

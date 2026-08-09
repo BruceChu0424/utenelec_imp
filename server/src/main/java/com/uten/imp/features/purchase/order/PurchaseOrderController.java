@@ -37,6 +37,7 @@ public class PurchaseOrderController {
 
     private final PurchaseOrderService service;
     private final ProcurementFinanceApprovalService financeApproval;
+    private final PurchaseOrderFinanceDecisionCommandService financeDecision;
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase_order:view')")
@@ -97,8 +98,7 @@ public class PurchaseOrderController {
     public OrderDetail approve(
             @PathVariable UUID id,
             @Valid @RequestBody ApprovalDecisionRequest request) {
-        financeApproval.approve("PURCHASE", id, request.expectedVersion());
-        return service.detail(id);
+        return financeDecision.approve(id, request.expectedVersion());
     }
 
     @PostMapping("/{id}/reject")
@@ -106,9 +106,8 @@ public class PurchaseOrderController {
     public OrderDetail reject(
             @PathVariable UUID id,
             @Valid @RequestBody RejectionDecisionRequest request) {
-        financeApproval.reject(
-                "PURCHASE", id, request.expectedVersion(), request.reason());
-        return service.detail(id);
+        return financeDecision.reject(
+                id, request.expectedVersion(), request.reason());
     }
 
     @PostMapping("/{id}/reverse")

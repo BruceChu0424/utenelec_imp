@@ -262,6 +262,10 @@ class _ProductionExecutionCardPrintDialogState
     ProductionWorkCardView view,
     ProductionWorkCard card,
   ) {
+    final zeroMaterialText = productionZeroMaterialReasonText(
+      card.materialRequirementMode,
+      card.zeroMaterialReason,
+    );
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
@@ -335,59 +339,74 @@ class _ProductionExecutionCardPrintDialogState
               ],
             ),
             const SizedBox(height: UtenSpacing.s8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowHeight: 40,
-                dataRowMinHeight: 40,
-                dataRowMaxHeight: 56,
-                columns: const [
-                  DataColumn(label: Text('物料编号 / 名称')),
-                  DataColumn(label: Text('规格 / 颜色')),
-                  DataColumn(label: Text('单位')),
-                  DataColumn(numeric: true, label: Text('单支用量')),
-                  DataColumn(numeric: true, label: Text('需求数量')),
-                  DataColumn(numeric: true, label: Text('现货承诺')),
-                  DataColumn(numeric: true, label: Text('缺口')),
-                  DataColumn(label: Text('供给路线')),
-                ],
-                rows: [
-                  for (final material in card.materials)
-                    DataRow(
-                      cells: [
-                        DataCell(
-                          Text(
-                            [
-                              material.goodsCode,
-                              material.goodsName,
-                            ].where(_present).join(' · '),
-                          ),
-                        ),
-                        DataCell(
-                          Text(
-                            [
-                              material.spec,
-                              material.colorName,
-                            ].where(_present).join(' · '),
-                          ),
-                        ),
-                        DataCell(Text(_value(material.unitName))),
-                        DataCell(
-                          Text(
-                            formatProductionPlanningUsage(
-                              material.perProductQty,
+            if (zeroMaterialText != null)
+              Container(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withValues(
+                    alpha: 0.45,
+                  ),
+                  borderRadius: UtenRadius.smAll,
+                ),
+                child: Text(
+                  zeroMaterialText,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              )
+            else
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  headingRowHeight: 40,
+                  dataRowMinHeight: 40,
+                  dataRowMaxHeight: 56,
+                  columns: const [
+                    DataColumn(label: Text('物料编号 / 名称')),
+                    DataColumn(label: Text('规格 / 颜色')),
+                    DataColumn(label: Text('单位')),
+                    DataColumn(label: Text('用量口径')),
+                    DataColumn(numeric: true, label: Text('需求数量')),
+                    DataColumn(numeric: true, label: Text('现货承诺')),
+                    DataColumn(numeric: true, label: Text('缺口')),
+                    DataColumn(label: Text('供给路线')),
+                  ],
+                  rows: [
+                    for (final material in card.materials)
+                      DataRow(
+                        cells: [
+                          DataCell(
+                            Text(
+                              [
+                                material.goodsCode,
+                                material.goodsName,
+                              ].where(_present).join(' · '),
                             ),
                           ),
-                        ),
-                        DataCell(Text(_qty(material.requiredQty))),
-                        DataCell(Text(_qty(material.stockAllocatedQty))),
-                        DataCell(Text(_qty(material.shortageQty))),
-                        DataCell(Text(_routeLabel(material.supplyRoute))),
-                      ],
-                    ),
-                ],
+                          DataCell(
+                            Text(
+                              [
+                                material.spec,
+                                material.colorName,
+                              ].where(_present).join(' · '),
+                            ),
+                          ),
+                          DataCell(Text(_value(material.unitName))),
+                          DataCell(
+                            Text(
+                              formatProductionWorkCardMaterialUsage(material),
+                            ),
+                          ),
+                          DataCell(Text(_qty(material.requiredQty))),
+                          DataCell(Text(_qty(material.stockAllocatedQty))),
+                          DataCell(Text(_qty(material.shortageQty))),
+                          DataCell(Text(_routeLabel(material.supplyRoute))),
+                        ],
+                      ),
+                  ],
+                ),
               ),
-            ),
             if (_present(card.requestNote) || _present(card.remark)) ...[
               const SizedBox(height: UtenSpacing.s8),
               Text(
@@ -586,12 +605,30 @@ pw.Widget _pdfMetadata(ProductionWorkCardView view, ProductionWorkCard card) {
 }
 
 pw.Widget _pdfMaterialTable(ProductionWorkCard card) {
+  final zeroMaterialText = productionZeroMaterialReasonText(
+    card.materialRequirementMode,
+    card.zeroMaterialReason,
+  );
+  if (zeroMaterialText != null) {
+    return pw.Container(
+      width: double.infinity,
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey200,
+        border: pw.Border.all(width: 0.6, color: PdfColors.grey700),
+      ),
+      child: pw.Text(
+        zeroMaterialText,
+        style: const pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+      ),
+    );
+  }
   const headers = [
     '序号',
     '物料编号 / 名称',
     '规格 / 颜色',
     '单位',
-    '单支用量',
+    '用量口径',
     '需求数量',
     '现货承诺',
     '缺口',
@@ -604,7 +641,7 @@ pw.Widget _pdfMaterialTable(ProductionWorkCard card) {
       1: pw.FlexColumnWidth(2.4),
       2: pw.FlexColumnWidth(1.8),
       3: pw.FixedColumnWidth(42),
-      4: pw.FixedColumnWidth(62),
+      4: pw.FixedColumnWidth(112),
       5: pw.FixedColumnWidth(62),
       6: pw.FixedColumnWidth(62),
       7: pw.FixedColumnWidth(54),
@@ -641,9 +678,7 @@ pw.Widget _pdfMaterialTable(ProductionWorkCard card) {
             ),
             _pdfCell(_value(card.materials[index].unitName), center: true),
             _pdfCell(
-              formatProductionPlanningUsage(
-                card.materials[index].perProductQty,
-              ),
+              formatProductionWorkCardMaterialUsage(card.materials[index]),
               center: true,
             ),
             _pdfCell(_qty(card.materials[index].requiredQty), center: true),
@@ -756,6 +791,15 @@ String _routeLabel(String route) => switch (route) {
   'SUBCONTRACT' => '委外',
   _ => route,
 };
+
+String formatProductionWorkCardMaterialUsage(
+  ProductionWorkCardMaterial material,
+) {
+  final value = formatProductionPlanningUsage(material.perProductQty);
+  return material.requirementMode == 'EXACT_SNAPSHOT'
+      ? '按包/批（本段平均） $value'
+      : '单支用量 $value';
+}
 
 String _qty(double value) => formatProductionPlanningQuantity(value);
 

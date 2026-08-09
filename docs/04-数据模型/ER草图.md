@@ -22,12 +22,15 @@ erDiagram
 A4 生产执行工卡是上述确认事实的只读投影，不新增 ER 实体。父包的 MAKE 关系只到当前直接层子计划，后续层级由子计划再次评审生成。V195 只刷新这些公开业务表未来写入的审计触发器覆盖，不新增关系、不补历史审计。
 
 <!-- PROCUREMENT-FINANCE-V202-CURRENT -->
-## 2026-08-02 计划需求分解、财务审批与到货异常关系（V196–V202 候选）
+## 2026-08-10 计划需求分解、财务审批与到货异常关系（V196–V202/V250）
 
 ```mermaid
 erDiagram
     PURCHASE_REQUEST_ITEM ||--o{ PURCHASE_ORDER_ITEM : "采购分解来源"
     SUBCONTRACT_APPLICATION_ITEM ||--o{ SUBCONTRACT_ORDER_ITEM : "委外分解来源"
+    PREPLAN_SUPPLY_ACTION ||--|{ PREPLAN_SUPPLY_ACTION_ALLOCATION : "生产缺口分摊"
+    PREPLAN_SUPPLY_ACTION_ALLOCATION }o--o| PURCHASE_REQUEST_ITEM : "BUY来源"
+    PREPLAN_SUPPLY_ACTION_ALLOCATION }o--o| SUBCONTRACT_APPLICATION_ITEM : "SUBCONTRACT来源"
     PURCHASE_ORDER ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "多次提交历史"
     SUBCONTRACT_ORDER ||--o{ PROCUREMENT_ORDER_APPROVAL_CASE : "多次提交历史"
     PROCUREMENT_ORDER_APPROVAL_CASE ||--o{ PROCUREMENT_ORDER_APPROVAL_EVENT : "追加式事件"
@@ -38,12 +41,15 @@ erDiagram
     PROCUREMENT_ARRIVAL_EXCEPTION ||--o| SUPPLIER_RETURN_TASK : "未批准量"
 ```
 
-申请明细是计划下达、业务端只读的需求事实；订货行必须保留来源，可跨申请选择和部分分解，但一张订货单只有一个供应商/委外商和一个仓库。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有财务审核组（财务部门持 `finance_order_approval:review` 者，含跨部门点名加授）批准才把订单置 `status=1` 并产生预计到货。
+申请明细是生产物料分析对用户所选 BUY/SUBCONTRACT 缺口形成、业务端只读的需求事实，不是商业订货；采购/委外人员从任务中心选择来源并填写商业条件。订货行必须保留来源，可跨申请选择和部分分解，但一张订货单只有一个供应商/委外商和一个仓库。审批 `PENDING/APPROVED/REJECTED` 与订单 `status` 是不同事实，只有财务审核组（财务部门持 `finance_order_approval:review` 者，含跨部门点名加授）批准才把订单置 `status=1` 并产生预计到货。
+
+V250 把已外部化 action/allocation 与采购申请、委外申请及其订货来源行视为不可拆除的历史谱系。它不让生产自动下商业订单；订货草稿只在 action 尚未推进时可正常编辑，批准、反向或 action 推进后通用改删 fail closed。合格财务审核人仅在精确 PENDING 任务期间获得该订单详情的临时对象读取，不扩张列表/`*:view:all`，审批结束后恢复普通 owner 范围。
 
 `procurement_arrival_exceptions` 只隔离“超财务批准余量”的数量：异常待决期间不写库存/AP；财务决定后的批准量仍由仓库再次审核，未批准量才产生原下单人的 `supplier_return_tasks`。它不等于 IQC、质检合格或生产可用。
 
 V202 对全部 `public` 业务表重新执行审计触发器 sweep，不新增上述业务关系、不补历史审计。V196–V202
-已包含在公司目标库当前 V238 以内；真实岗位/实物/IQC 验收仍未完成，生产 **NO-GO**。
+已包含在开发原库 `uten_imp` V244 和公司目标库 V238；V250 仅在一次性隔离克隆 V250/231 验证。真实岗位/实物/IQC
+验收仍未完成，生产 **NO-GO**。
 
 > ⏳ **随实体字典生长的活文档**。新增实体关联时同步更新本图。
 > 这里只画**概念模型**（实体 + 关系），不画物理表结构。
@@ -163,9 +169,9 @@ erDiagram
     HvacDevice ||--o{ HvacCommand : "指令历史"
 ```
 
-### 2.7 生产计划前物料分析（V234 源码候选）
+### 2.7 生产计划前物料分析（V234/V237/V239 与 V247–V250）
 
-> 分析先于正式计划；全树可以平铺，但必须保留 analysis item、父节点和路径。SUBMITTED/APPROVED 是 plan link 状态，不是分析头状态。V234 未核验目标库和真实 UAT，生产 **NO-GO**。
+> 分析先于正式计划；全树可以平铺，但必须保留 analysis item、父节点和路径。SUBMITTED/APPROVED 是 plan link 状态，不是分析头状态。V234 和 V237 已在开发原库 V244 和公司目标库 V238，V237 只刷新新增公开表未来写入的审计；V239 允许剩余 `required_qty` 在全量 claim 后到 0，已在开发原库 V244；V247–V250 已在一次性隔离克隆迁移并覆盖阶段链/HTTP 证据。公司目标库尚缺 V239–V250，目标部署和真实 UAT 未完成，生产 **NO-GO**。
 
 ```mermaid
 erDiagram
@@ -181,7 +187,7 @@ erDiagram
     ProductionPlan ||--|| ProductionMaterialAnalysisPlanLink : "草稿到批准"
 ```
 
-分析和 action 不写 `stock_reservations`。普通 generate 只创建计划草稿、ACTIVE planning draft 和 SUBMITTED plan link；approve 才按一个目标仓原子创建 READY、完整预留、DRAW 和销售分摊。BUY/委外/MAKE 未来供给只影响预计量，不能伪装为物理预留。
+分析和 action 不写 `stock_reservations`。V247 把 BOM 阶段/包装边冻结到分析节点，并把产品量拆为 ready_start/finish/ship；普通 generate 只按 ready_finish 创建计划草稿、ACTIVE planning draft 和 SUBMITTED plan link。approve 才按一个目标仓原子创建 READY、LINEAR 或 EXACT_SNAPSHOT 正式需求、完整预留、DRAW 和销售分摊。BUY/委外/MAKE 未来供给只影响预计量，不能伪装为物理预留。
 
 ### 2.7.1 正式生产履约（V150–V164 历史/兼容主链）
 
@@ -202,6 +208,8 @@ erDiagram
     ProductionExecutionSegment ||--o{ ExecutionSegmentSalesAllocation : "销售归属"
     PlanOrderItemLink ||--o{ ExecutionSegmentSalesAllocation : "提供容量"
 ```
+
+V248 允许 `ProductionMaterialDemand` 以 `EXACT_SNAPSHOT` 冻结整包/固定批次需求，线性逐件需求继续使用 `LINEAR`。V249 要求每个执行段显式为 `DEMANDED` 或证据完备的 `ZERO_MATERIAL`：后者只允许 `DIRECT_MAKE`、`PLAN_BOM_OVERRIDE` 或 BOM 存在但无 START/ASSEMBLY/FINISH 硬门槛的 `NO_PRODUCTION_HARD_GATE`，没有需求、没有 DRAW、直接 READY；不能因为需求表为空而自动推断。
 
 ### 2.8 库存与领退耗
 
@@ -336,4 +344,4 @@ erDiagram
 
 ---
 
-**最后更新**：2026-08-08 · **状态**：V234 生产计划前物料分析已有源码候选，正式履约继续复用 V150+ 计划、执行分段、预留、DRAW、报工和库存主链；目标库、完整 IQC、真实岗位/实物 UAT 和发布签字未确认，生产 **NO-GO**
+**最后更新**：2026-08-10 · **状态**：源码 V250/231 个迁移，开发原库 `uten_imp` V244/225，一次性隔离克隆 V250/231，公司目标库保留 V238 既有只读证据。生产计划前分析继续复用 V150+ 计划、执行分段、预留、DRAW、报工和库存主链；V247–V250 尚未部署到目标库，完整 IQC、真实岗位/实物 UAT 和发布签字未确认，生产 **NO-GO**。

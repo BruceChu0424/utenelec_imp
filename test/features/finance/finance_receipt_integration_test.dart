@@ -7,6 +7,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
+import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
@@ -15,6 +16,17 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  test('receipt line requires a positive rate and auto-converts to RMB', () {
+    final row = FinanceGridRow(mode: ItemMode.settle);
+    addTearDown(row.dispose);
+
+    row.amount.text = '50';
+    row.exchangeRate.text = '7.2';
+
+    expect(row.localAmountNotifier.value, 360);
+    expect(row.amountNotifier.value, 50);
+  });
+
   testWidgets(
     'receipt editor uses referenced AR lines and submits line currency facts',
     (tester) async {
@@ -46,6 +58,22 @@ void main() {
       expect(grid.controller.rows.single.amount.text, '50.0');
       expect(grid.controller.rows.single.writeOff.text, '5.0');
       expect(grid.controller.rows.single.remark.text, '行备注');
+      final currencyColumn = grid.columns.singleWhere(
+        (column) => column.key == 'currency',
+      );
+      final rateColumn = grid.columns.singleWhere(
+        (column) => column.key == 'exchangeRate',
+      );
+      expect(currencyColumn.label, '应收币别');
+      expect(currencyColumn.required, isTrue);
+      expect(rateColumn.label, '到账汇率');
+      expect(rateColumn.required, isTrue);
+      final currencyCell = currencyColumn.cellBuilder(
+        tester.element(find.byType(FinanceDocEditPage)),
+        grid.controller.rows.single,
+      );
+      expect(currencyCell, isA<Text>());
+      expect((currencyCell as Text).data, '美元');
 
       expect(find.text('本次收到金额（人民币） ¥360.00'), findsOneWidget);
       expect(find.text('冲销费用（人民币） ¥36.00'), findsOneWidget);
@@ -130,6 +158,27 @@ void main() {
     ).read(appNotificationProvider);
     expect(notifications.single.message, '请至少引用一条应收明细');
     expect(find.text('暂无明细，请点击顶部“引用应收”添加'), findsOneWidget);
+  });
+
+  testWidgets('receipt save identifies an invalid rate as the arrival rate', (
+    tester,
+  ) async {
+    final api = await _pumpEditor(tester, detail: _receiptDetail());
+    final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+      find.byWidgetPredicate(
+        (widget) => widget is UtenEditableGrid<FinanceGridRow>,
+      ),
+    );
+    grid.controller.rows.single.exchangeRate.clear();
+
+    await tester.tap(find.text('保存'));
+    await tester.pump();
+
+    expect(api.lastPutBody, isNull);
+    final notifications = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceDocEditPage)),
+    ).read(appNotificationProvider);
+    expect(notifications.single.message, '请填写大于 0 的到账汇率');
   });
 
   testWidgets('compact receipt keeps primary actions and summaries reachable', (

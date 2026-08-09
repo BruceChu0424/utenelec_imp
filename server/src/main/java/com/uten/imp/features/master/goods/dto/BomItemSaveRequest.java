@@ -23,6 +23,13 @@ public class BomItemSaveRequest {
     private UUID componentGoodsId;   // 组件货品 id（必填）
 
     private BigDecimal qty;          // 用量（默认 1）
+    private String controlStage;     // START/ASSEMBLY/FINISH/SHIP/REFERENCE
+    private String consumptionBasis; // PER_UNIT/PER_PACKAGE/FIXED_BATCH
+    private BigDecimal basisOutputQty;
+    private Boolean allowPartialPackage;
+    // 仅 START/ASSEMBLY/FINISH 可为 true；SHIP/REFERENCE 只能作参考。
+    // 仅 START/ASSEMBLY/FINISH 可为 true；SHIP/REFERENCE 只能作参考。
+    private Boolean hardGate;
     private BigDecimal price;        // 单价
     private BigDecimal total;        // 金额（可空，后端兜底 qty*price）
     private UUID colorId;

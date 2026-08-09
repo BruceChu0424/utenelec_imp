@@ -1,7 +1,7 @@
 package com.uten.imp.features.stock.report;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
@@ -47,7 +47,7 @@ public class StockReportController {
 
     private final StockReportService service;
     private final XlsxExportService xlsxExport;
-    private final EncryptedWorkbookService encryptedWorkbook;
+    private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
@@ -119,7 +119,7 @@ public class StockReportController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(report, allParams, sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
-        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_stock_report", "stock_reports",
@@ -129,6 +129,6 @@ public class StockReportController {
                 .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .body(encrypted);
+                .body(downloadBytes);
     }
 }

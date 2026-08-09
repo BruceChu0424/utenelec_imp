@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.arap;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     private final ArApLedgerRepository repo;
     private final ArApSourceRefRepository sourceRefRepo;
     private final TxSessionVars tx;
+    private final GlPostingService glPosting;
 
     /**
      * 立应收(AR)/应付(AP)。审核 0→1 同事务调；调用方随后置 ar_posted=true（销售/委外侧）。
@@ -75,6 +77,8 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         if (exchangeRate.signum() <= 0) {
             throw new IllegalArgumentException("postArAp: exchangeRate must be positive");
         }
+        LocalDate billDate = req.billDate() != null ? req.billDate() : BusinessTime.today();
+        glPosting.lockAutoProjectionPeriod(billDate);
         if (!repo.findBySourceForUpdate(req.sourceDocId(), req.sourceDocType()).isEmpty()) {
             throw new IllegalStateException(
                     "source document is already posted: "
@@ -92,7 +96,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setSourceDocId(req.sourceDocId());
         l.setSourceDocNo(req.sourceDocNo());
         l.setBillNo(req.sourceDocNo() != null ? req.sourceDocNo() : "DIRECT-" + System.nanoTime());
-        l.setBillDate(req.billDate() != null ? req.billDate() : BusinessTime.today());
+        l.setBillDate(billDate);
         if ("AR".equals(req.direction())) {
             l.setClientId(req.clientId());
             l.setSupplierId(null);
@@ -145,6 +149,14 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         if (sourceDocId == null || sourceDocType == null) {
             throw new IllegalArgumentException("reverseArAp: sourceDocId/sourceDocType required");
         }
+        List<ArApLedger> snapshot = repo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(
+                sourceDocId, sourceDocType);
+        if (snapshot.size() != 1) {
+            throw new IllegalStateException(
+                    "source posting is missing or duplicated: "
+                            + sourceDocType + "/" + sourceDocId);
+        }
+        glPosting.lockAutoProjectionPeriod(snapshot.getFirst().getBillDate());
         List<ArApLedger> rows = repo.findBySourceForUpdate(sourceDocId, sourceDocType);
         if (rows.size() != 1) {
             throw new IllegalStateException(
@@ -157,7 +169,23 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
                 throw new IllegalStateException("此单已经存在收/付款，请先反审");
             }
         }
+        ArApLedger ledger = rows.getFirst();
+        glPosting.removeAutoProjection(
+                projectionSourceType(ledger.getDirection()),
+                sourceDocType,
+                sourceDocId,
+                ledger.getBillNo(),
+                ledger.getBillDate());
         repo.deleteAll(rows);
+    }
+
+    private static String projectionSourceType(String direction) {
+        return switch (direction) {
+            case "AR" -> "AR_POST";
+            case "AP" -> "AP_POST";
+            default -> throw new IllegalStateException(
+                    "unsupported AR/AP projection direction: " + direction);
+        };
     }
 
     private static BigDecimal nz(BigDecimal x) {

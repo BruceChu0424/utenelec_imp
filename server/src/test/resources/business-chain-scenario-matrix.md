@@ -1,6 +1,6 @@
 # 销售—生产—仓库—采购—委外全链路可执行场景矩阵
 
-> 基线日期：2026-08-02。当前采购/委外候选源码最高为 Flyway V202；公司目标库只读证据仍只到 V190。
+> 当前复核日期：2026-08-09。源码最高 V246，公司目标库只读证据到 V238，隔离非空克隆验证到 V244；V202/V190 数字仅是早期场景快照。目标库 V239–V246 迁移、历史对账、真实岗位 UAT 和发布签字仍未完成。
 > 本文是测试资源，不替代业务需求，也不构成生产放行结论。
 > 需求与口径以 `docs/07-业务链路/04-生产订单排产与执行全链路需求.md` 为准；
 > 计划申请、订货财务审批和超量到货以 `docs/99-决策记录-ADR/ADR-019-计划需求分解与采购委外财务审批.md` 为准；
@@ -19,8 +19,8 @@
 | 业务事实 | 唯一权威来源 | 禁止做法 |
 |---|---|---|
 | 销售需求与未排数量 | 销售订单明细、有效 `plan_order_item_links` 与 V157 `execution_segment_sales_allocations`；精确分摊已有候选回归证据 | 从页面缓存、通知或计划表头反推 |
-| 销售订单商业事实 | 已审核来源订单头/行；订单原币额=数量×单价、本币额=原币额×汇率（4 位），出货重取来源原/本币事实并按发货量比例计算 | 接受客户端金额/成本/商业条款，或把不同商业条件的订单合并成一张出货 |
-| 销售订单有效预留 | 审核后 `stock_reservations`；减少 ATP，不扣在手，`warehouse_id=NULL` 可表示尚未定发货仓；实际从某仓交接时只把本次消耗段拆出并绑定该仓，剩余承诺继续全局有效 | 草稿/提交未审占库存、把有效预留说成已拣货，或把部分发货后的全部剩余预留错误绑定首个仓 |
+| 销售订单商业事实 | 已审核来源订单头/行；订单只形成币种与原币额（数量×单价×折扣），出货按发货量比例重取本次原币事实，`SHIPPED` 才锁财务汇率并形成发运/AR 本币 | 接受客户端汇率、本币金额、成本或商业条款，或把不同币种/商业条件的订单合并成一张出货 |
+| 销售订单有效预留 | 审核后 `stock_reservations`；减少 ATP，不扣在手，`warehouse_id=NULL` 可表示尚未定发货仓；实际从某仓交接时只把本次消耗段拆出并绑定该仓，剩余承诺继续全局有效 | 草稿占库存、把有效预留说成已拣货，或把部分发货后的全部剩余预留错误绑定首个仓；当前销售订单没有独立提交态 |
 | 销售仓库作业事件 | V188 `sales_shipment_warehouse_events` 追加式事件账 + V187 出货当前状态投影 | 只改当前状态不留原因，或 UPDATE/DELETE 已接受事件 |
 | 销售退货质量 | V189 `sales_return_quality_items` 当前冻结投影 + `sales_return_quality_events` 追加式处置证据 | 退货审核即进入可售库存，或伪造历史退货质检结论 |
 | 生产物料需求 | `production_material_demands` 与确认时 BOM 指纹/需求快照 | 用 BOM 当前版本覆盖已确认任务 |
@@ -66,7 +66,7 @@
 
 | ID | 阶段 / 工作台 | 前置与动作 | 必须断言（含反向） | 当前证据 / 明确缺口 | 状态 |
 |---|---|---|---|---|---|
-| SC-01 | 销售提交/审核→待计划 | 草稿、提交未审、审核及重复审核 | 草稿/提交未审不占 ATP；审核只生效一次并形成订单有效预留；未排量不为负；对象范围正确 | 既有销售数量/预留测试；真实 HTTP 同单双审、信用条件与人员范围仍需 UAT | `[PARTIAL][MANUAL]` |
+| SC-01 | 销售草稿/审核→待计划 | 草稿保存、审核及重复审核；验证当前无独立提交端点/状态 | 草稿不占 ATP；审核只生效一次并形成订单有效预留；未排量不为负；对象范围正确；订单保存/审核不读取汇率 | 既有销售数量、币种/汇率与预留测试；真实 HTTP 同单双审、信用条件与人员范围仍需 UAT | `[PARTIAL][MANUAL]` |
 | SC-02 | 部分齐套 | A 可做 10、B 可做 6，需求 10 | 生成 READY 6 + WAITING 4；WAITING 零占用、零 DRAW | `CompleteKitAllocatorTest`、`ProductionExecutionSegmentPostgresTest` | `[GREEN]` |
 | SC-03 | 多任务抢同一库存 | 两事务申请同一仓货色 | 串行后不超余额；失败方整事务回滚；不同键可并行 | `InventoryTransactionalIntegrityPostgresTest`、`ProductionMaterialFulfillmentPostgresTest` | `[GREEN]` |
 | SC-04 | 订单改量/取消 | 未开始、已领、生产中、已入库分别改单 | 未开始可安全释放；冻结销售分摊不得删除/缩到已分配以下；有下游必须变更/反向 | V1 未开始包取消/反向和 V157 冻结 link 409 守卫已有；完整跨阶段变更单仍缺 | `[PARTIAL][RED][MANUAL]` |
@@ -97,26 +97,27 @@
 | SC-29 | 销售进度/通知 | 排产、开工、部分完成、完工、缺料、延期 | 主事务和 `business_outbox` 同提交；同事件一次；READY 按部门范围投递；销售订单行只显示自身执行段及公开数量 | V151/V157、`ChainNoticeReadyEventTest` publishOnce/dedupe、PG 状态迁移、部门映射源码和销售进度 UI；对象范围黑盒和部署 SLO 未验收 | `[PARTIAL][RED][MANUAL]` |
 | SC-30 | 发货交接与受控反向 | 新旧销售出货进入 `SHIPPED` 后尝试普通红冲；完成成品入库再红冲 | 所有 `SHIPPED` 均拒绝普通红冲，即使历史缺交接时间；完成生产段须先显式重开，失败全回滚 | `SalesShipmentReverseGuardTest`、`SalesShipmentWarehouseTransitionPolicyTest`、`ProductionCompletionReversePostgresTest`；退货入库另见 SC-40 | `[GREEN][MANUAL]` |
 | SC-31 | 权限、对象范围、审计 | 六部门越权读写、批量部分越权、退货质检普通查看/PMC 跨 owner 任务发现与处置、handle-only、已知 UUID 直调、查数量变化 | 最小权限；普通查看按 owner/委派过滤；跨 owner 任务须有独立最小投影入口并验证 view/handle 组合，不能靠已知 UUID 绕过发现与查看权限；批量全有或全无；审计可看脱敏 before/after 和幂等来源 | `SalesReturnQualityOwnerBoundaryTest` 只覆盖 Service 调用对象策略的结构契约；独立任务入口、真实 API 多账号权限矩阵、handle-only 负向、Widget 深链和语义覆盖率均未验收 | `[PARTIAL][RED][MANUAL]` |
-| SC-32 | 历史迁移、对账、死锁恢复 | 公司目标库 V190 向候选 V196–V202 升级，构造中断和反锁序 | 历史先快照/隔离再补链；升级前后零差异；死锁整事务回滚并幂等重试；已执行 Flyway 不改原文件 | 隔离 PostgreSQL 16.14 已从空库回放 183 个迁移至 V202，`ProcurementArrivalGuardPostgresTest` 2/2；公司目标库仍只证实 V190，V196–V202 未部署，历史快照、恢复、压力和回滚演练未完成 | `[PARTIAL][RED][MANUAL]` |
+| SC-32 | 历史迁移、对账、死锁恢复 | 公司目标库 V238 向当前源码 V246 升级，构造中断和反锁序 | 历史先快照/隔离再补链；升级前后零差异；死锁整事务回滚并幂等重试；已执行 Flyway 不改原文件 | 早期空库 V202 与当前隔离非空克隆 V244 证据均仅是阶段快照；公司目标库 V239–V246 真迁移、历史快照、恢复、压力和回滚演练未完成 | `[PARTIAL][RED][MANUAL]` |
 | SC-33 | 生产/销售多入口子计划导航 | 点击执行分段、生成结果、销售进度、生产看板真实子计划 | 执行段通过 parentPlanId + `executionSegmentId` 在父计划内开一次详情；真实子计划进 childPlanId；权限/无效链接有反馈；计划切换无旧状态 | 三份新增 Widget 测试与相关 33 项回归通过；登录态浏览器 UAT 未执行 | `[GREEN][MANUAL]` |
 | SC-34 | 现货预留与整单发运策略 | 多品项一项现货、其余长周期；两仓各有余额；部分从 A 仓交接；尝试给 V90 未激活旧单新建出货 | 全局 ATP 为各有货仓分别扣安全库存后的可售容量之和再扣有效预留；按 `ALLOW_PARTIAL/REQUIRE_COMPLETE/CUSTOMER_CONFIRM` 决定；只把本次消耗段绑定 A 仓，剩余仍可由 B 仓履约；旧单在逐行对账并显式激活前提前 fail-closed；不自动抢占/造预留 | V90/V178/V187、`StockReservationWarehouseSplitTest` 与销售安全库存/历史激活守卫测试已有；自动调拨、完整 WMS、目标 PG/历史对账/岗位 UAT仍缺 | `[PARTIAL][RED][MANUAL]` |
 | SC-35 | 采购/委外质量门 | 到货/回厂分批待检、合格、不合格、特采、反向 | 待检不进可用/不唤醒；只有合格结论参与整套；反向保持来源和质量事实 | 完整 IQC/隔离/特采状态未落地 | `[BLOCKED][RED][MANUAL]` |
 | SC-36 | 委外供应商库存守恒 | 分批发料、耗用、良/不良退料、损耗、期末对账 | 按供应商/地点/物料/批次/所有权守恒；差异有责任与版本化合同 | 供应商持有库存/在制实体和逐需求清账未落地 | `[BLOCKED][RED][MANUAL]` |
 | SC-37 | MAKE 子计划供给父需求 | V176 子计划生成、确认自己的包、尝试通用删除/红冲，再完工/入库、改量、取消 | 派生子计划登记为父包 `SUBPLAN` 单据；通用删除/红冲 fail-closed；父包不能越过子计划自己的已确认包；最终仍须由 supply peg 证明子产出回供父需求且反向守恒 | `ProductionMakeSubplanLifecycleContractTest` 已覆盖登记和生命周期防孤儿；父需求↔子计划明细↔`FINISHED_IN` peg/唤醒/反向仍缺 | `[PARTIAL][RED]` |
-| SC-38 | 销售商业事实、财务锁与脱敏 | 客户端篡改价格/原本币金额/成本/币税条件，分批出货，`finance_audit=1` 后再编辑/删除/驳回，无价格权查看 | 订单原币额=qty×price、本币额=原币额×汇率（4 位）；出货按来源原/本币金额和数量比例计额；不兼容条件拒绝合单；财务已审先反审才可变；无权商业字段为空 | 商业权威/出货/状态测试已有；正式价目、折扣/税额最终结算及多次分批舍入尾差 condition/invoice 引擎仍缺 | `[PARTIAL][RED][MANUAL]` |
+| SC-38 | 销售商业事实、财务锁与脱敏 | 客户端篡改价格/汇率/原本币金额/成本/币税条件，分批出货，`finance_audit=1` 后再编辑/删除/驳回，无价格权查看 | 订单原币额=qty×price×discount，订单不形成新本币事实；出货按来源原币金额和数量比例计额，`SHIPPED` 才锁财务汇率形成发运/AR 本币；不兼容条件拒绝合单；财务已审先反审才可变；无权商业字段为空 | 商业权威/出货/状态测试已有；正式价目、折扣/税额最终结算及多次分批舍入尾差 condition/invoice 引擎仍缺 | `[PARTIAL][RED][MANUAL]` |
 | SC-39 | 聚合工作台、财务任务与对象权限 | 计划、采购、委外、财务、仓库及原下单人分别登录并深链 | `department+actionDocType` 精确映射；采购/委外只能看只读申请并分解订货；财务任务只投递审批实例快照账号；仓库看未来入库/异常；退回任务只投递原下单人；无权列表和已知 UUID 直调均拒绝 | `FulfillmentWorkbenchAccessPolicyTest`、`ProcurementApprovalProjectionQueryTest`、Flutter 财务/仓库/订货工作台测试；真实多账号 HTTP/浏览器对象范围 UAT 未完成 | `[GREEN][MANUAL]` |
-| SC-40 | 销售退货冻结、需求重开与客户处置 | 新退货审核、分批良品释放/报废/返工、未处置/处置后红冲；客户选择退款/换货/补发/维修；误判处置 | 审核不改可售库存，但重开替换需求并清空旧确认；不直接加预留；仅 `GOOD_RELEASE` 入库；事件不可改删；处置后整单红冲阻断；纠错须追加补偿而非改历史 | V189 测试覆盖冻结/三类处置；客户处置字段/审批及处置级复核红冲/补偿命令均缺，误判只能停下调查，完整 RMA/QMS/岗位 UAT仍缺 | `[PARTIAL][RED][MANUAL]` |
+| SC-40 | 销售退货冻结、需求重开与客户处置 | 新退货审核、分批良品释放/报废/返工、未处置/处置后红冲；客户选择退款/换货/补发/维修；误判处置 | 审核不改可售库存，但重开替换需求并清空旧确认；不直接加预留；仅 `GOOD_RELEASE` 入库；事件不可改删；V220 客户处置经审批并写追加式事件；处置后整单红冲阻断，纠错须追加补偿而非改历史 | V189 覆盖冻结/三类质量处置，V220 已落 `customer_disposition`、审批和追加式事件；仍缺处置级复核纠错/补偿命令、历史对账、完整 RMA/QMS 与岗位 UAT | `[PARTIAL][RED][MANUAL]` |
 | SC-41 | 财务订货审批越权（审核组） | 财务部门持权者 A/B、非财务持权者、不在财务部门的超管分别尝试审批 | 财务部门树内持 `finance_order_approval:review` 的任一员工可通过/驳回（互为备份）；非财务持权者与不在财务部门的超管被服务层资格判定拒绝；乐观锁防并发双审；任务对所有持 view 权限财务人员可见；处理追加事件且幂等 | V229/ADR-027 审批投影与契约测试；真实多账号正反向 UAT 未完成 | `[GREEN][MANUAL]` |
 | SC-42 | 订 10、实到 100 超量处置 | 仓库登记 100，财务分别拒绝超量、自定义追加 5、批准全部 | 首次仓库审核返回专用 409 且库存/订单累计/AP 均未动；三种结果分别为入库/退回 `10/90`、`15/85`、`100/0`；全收/自定义必填原因；追加量仅原收货可用，仓库再审后才过账 | V201/V202、`ProcurementArrivalWorkflowContractTest`、`ProcurementArrivalGuardPostgresTest` 2/2；三岗位实物演练未完成 | `[GREEN][MANUAL]` |
 | SC-43 | 未接受数量供应商退回 | 财务处置后原采购/委外下单人领取退回任务并确认实物退回 | 任务按原订单创建人精确归属；其他人和管理员对象旁路失败；确认人只能记录退回，不得修改财务接受量；数量和原因可审计 | V201/V202 与到货工作流契约测试；供应商签收、运输损耗及线下责任 UAT 未完成 | `[PARTIAL][MANUAL]` |
+| SC-44 | 销售出货→正式 AR→分批收款→总账 | 外币订单无汇率审核、现金客户财务放行、出货草稿篡改本币、缺开账汇率交接、分批 SHIPPED、收款缺/错到账汇率、同人审核、部分/超额/跨币核销、红冲后重跑期间 | 订单与待收计划只保留币种/原币；财务放行不写汇率或 AR；出货草稿本币为空；`SHIPPED` 原子扣库存/消费预留/回写订单并按财务开账汇率立正式 AR；收款逐行显式到账汇率且制审分离，服务端重算本币/汇兑并同事务更新 AR、账户、流水；GL 按期间从现行审核事实重建且平衡 | `SalesOrderExchangeRateAuthorityTest`、`SalesShipmentFinanceRatePolicyTest`、`FinanceReceiptSettlementTest`、`GlPostingServiceReceiptAccountingTest` 已覆盖定向契约；目标 PostgreSQL 真实 HTTP、历史空币种整链修复/对账和销售/仓库/财务多岗位 UAT 未完成 | `[PARTIAL][RED][MANUAL]` |
 
 ## 5. 发布闸门
 
 1. `PLANNING_WRITE_READY` 或等价灰度开关只能在迁移/对账、规划确认与反向、库存/采购/委外分配、权限和语义审计同版本验收后开启。
-2. SC-04、SC-05、SC-09、SC-10、SC-15 至 SC-43 中标记的 `[RED]`/`[BLOCKED]`/`[MANUAL]` 必须按范围关闭或继续 fail-closed。
+2. SC-04、SC-05、SC-09、SC-10、SC-15 至 SC-44 中标记的 `[RED]`/`[BLOCKED]`/`[MANUAL]` 必须按范围关闭或继续 fail-closed。
 3. 默认测试、`UTEN_RUN_DB_TESTS=true` 的真实 PostgreSQL 测试、Flutter 测试/analyze、迁移回放、人工 UAT、容量、备份恢复和告警演练全部通过。
 4. 仓库、采购、委外卡片的状态必须来自审核单据；“已领取/已收货/已完成”不得由界面直接改状态。
-5. V150–V202 源码存在、空库迁移成功或定向测试通过，均不能替代公司目标库 V190→V202 升级、历史数据快照/对账、真实岗位 UAT、实物退回演练和负责人签字；当前仍是生产 `NO-GO`。
+5. V150–V246 源码存在、空库/隔离克隆迁移成功或定向测试通过，均不能替代公司目标库 V238→V246 升级、历史数据快照/对账、真实岗位 UAT、实物退回演练和负责人签字；当前仍是生产 `NO-GO`。
 
 ## 6. 建议执行命令
 
@@ -127,6 +128,7 @@ cd server
 mvn.cmd -q -Dtest=BusinessChainScenarioMatrixTest,ArchitectureBoundaryTest,CompleteKitAllocatorTest,ProductionPlanningPackageServiceTest,DailyReportExecutionSegmentGuardTest,AuditQueryServiceTest,ProductionMaterialAppendOnlyLedgerMigrationTest,ProductionSupplySourceGuardMigrationTest,ProductionSupplySourceGuardTest,ProductionPurchaseReceiptProvenanceMigrationTest,ProductionLinkedStockDocumentGuardMigrationTest,ProductionLinkedStockDocumentServiceContractTest,ChainNoticeReadyEventTest test
 mvn.cmd -q -Dtest=ProductionExecutionPlanningServiceSupplyRouteTest,ProductionSubcontractSupplyTransitionContractTest,ProductionSubcontractSupplyTransitionMigrationTest test
 mvn.cmd -q -Dtest=SalesOrderCommercialAuthorityTest,SalesShipmentOwnerBoundaryTest,SalesShipmentWarehouseTransitionPolicyTest,SalesShipmentReverseGuardTest,StockReservationWarehouseSplitTest,SalesShipmentWarehouseEventMigrationContractTest,SalesReturnQualityServiceTest,SalesReturnQualityOwnerBoundaryTest,SalesReturnQualityQuarantineMigrationContractTest,FulfillmentWorkbenchAccessPolicyTest,ProductionMakeSubplanLifecycleContractTest,AuditTriggerCoverageMigrationContractTest test
+mvn.cmd -q -Dtest=SalesOrderExchangeRateAuthorityTest,SalesShipmentFinanceRatePolicyTest,FinanceReceiptSettlementTest,GlPostingServiceReceiptAccountingTest test
 mvn.cmd -q -Dtest=ProductionDemandRequestReleaseTest,ProductionRequestApplicantIdentityContractTest,DemandDecompositionControllerContractTest,PurchaseRequestDecompositionPreviewTest,SubcontractApplicationDecompositionPreviewTest,PurchaseOrderPendingCapacityTest,ProcurementOrderSourceRequirementTest,ProcurementApprovalProjectionQueryTest,ProcurementRejectedOrderEditTest,ProcurementArrivalWorkflowContractTest test
 ```
 

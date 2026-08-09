@@ -25,6 +25,9 @@ void main() {
           'approvedQty': 5,
           'remainingQty': 95,
           'readyNowQty': 10,
+          'readyStartQty': 20,
+          'readyFinishQty': 10,
+          'readyShipQty': 8,
           'readyByDateQty': 40,
           'readinessRatio': 25,
           'productionBomPolicy': 'BOM_REQUIRED',
@@ -55,6 +58,11 @@ void main() {
           'sourceSuggestion': 'BUY',
           'sourceConfirmed': null,
           'routeConfirmed': false,
+          'controlStage': 'SHIP',
+          'consumptionBasis': 'PER_PACKAGE',
+          'basisOutputQty': 12,
+          'allowPartialPackage': true,
+          'hardGate': true,
           'downstreamReferences': [
             {
               'route': 'BUY',
@@ -70,6 +78,9 @@ void main() {
 
     expect(view.allowedActions, contains('GENERATE_AND_APPROVE'));
     expect(view.products.single.readinessRatio, 0.25);
+    expect(view.products.single.readyStartQty, 20);
+    expect(view.products.single.readyFinishQty, 10);
+    expect(view.products.single.readyShipQty, 8);
     expect(view.products.single.approvedQty, 5);
     expect(view.products.single.unitRate, 1.5);
     expect(view.products.single.sourceRef, 'XS-20260808-001');
@@ -86,6 +97,11 @@ void main() {
     expect(material.actionable, isFalse);
     expect(material.sourceSuggestion, MaterialSupplyRoute.buy);
     expect(material.confirmedRoute, isNull);
+    expect(material.controlStage, 'SHIP');
+    expect(material.consumptionBasis, 'PER_PACKAGE');
+    expect(material.basisOutputQty, 12);
+    expect(material.allowPartialPackage, isTrue);
+    expect(material.hardGate, isTrue);
     expect(material.notifiedTargets.single.documentNo, 'PR-1');
   });
 

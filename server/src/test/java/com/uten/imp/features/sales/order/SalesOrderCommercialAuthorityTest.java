@@ -15,9 +15,6 @@ class SalesOrderCommercialAuthorityTest {
         assertThat(SalesOrderService.authoritativeOrderAmount(
                 new BigDecimal("3.5"), new BigDecimal("12.34")))
                 .isEqualByComparingTo("43.1900");
-        assertThat(SalesOrderService.authoritativeLocalAmount(
-                new BigDecimal("43.1900"), new BigDecimal("7.200000")))
-                .isEqualByComparingTo("310.9680");
     }
 
     @Test
@@ -29,10 +26,6 @@ class SalesOrderCommercialAuthorityTest {
         assertThatThrownBy(() ->
                 SalesOrderService.authoritativeOrderAmount(
                         BigDecimal.ONE, new BigDecimal("-0.01")))
-                .isInstanceOf(ApiException.class);
-        assertThatThrownBy(() ->
-                SalesOrderService.authoritativeLocalAmount(
-                        BigDecimal.ONE, BigDecimal.ZERO))
                 .isInstanceOf(ApiException.class);
     }
 }

@@ -75,6 +75,7 @@ void main() {
               'candidateAllocatedQty': 7.5,
               'shortageQty': 0,
               'supplyRoute': 'BUY',
+              'requirementMode': 'EXACT_SNAPSHOT',
             },
           ],
         },
@@ -87,10 +88,18 @@ void main() {
     expect(preview.materials.single.availableNow, 6.5);
     expect(preview.targetWarehouseMaterials.single.candidateShortageQty, 2);
     expect(preview.executionSegments.single.suggestedStatus, 'READY');
+    expect(
+      preview.executionSegments.single.materialRequirementMode,
+      'DEMANDED',
+    );
     expect(preview.executionSegments.single.productSpec, 'M8 x 30');
     expect(
       preview.executionSegments.single.materials.single.perProductQty,
       1.25,
+    );
+    expect(
+      preview.executionSegments.single.materials.single.requirementMode,
+      'EXACT_SNAPSHOT',
     );
   });
 
@@ -225,14 +234,90 @@ void main() {
     expect(result.drawDocuments.single.requestId, 'draw-1');
     expect(result.executionSegments.single.segmentCode, 'SEG-001');
     expect(result.executionSegments.single.status, 'READY');
+    expect(result.executionSegments.single.materialRequirementMode, 'DEMANDED');
     expect(
       result.executionSegments.single.materials.single.stockAllocatedQty,
       7.5,
     );
     expect(
+      result.executionSegments.single.materials.single.requirementMode,
+      'LINEAR',
+    );
+    expect(
       result.executionSegments.single.drawDocument?.requestBillNo,
       'DRAW-001',
     );
+  });
+
+  test('exact grouped usage is sum required over sum segment product qty', () {
+    const ready = ProductionExecutionMaterialPreview(
+      goodsId: 'material-1',
+      unitId: 'unit-1',
+      perProductQty: 0.333334,
+      requiredQty: 2,
+      availableBeforeQty: 2,
+      candidateAllocatedQty: 2,
+      shortageQty: 0,
+      supplyRoute: 'BUY',
+      requirementMode: 'EXACT_SNAPSHOT',
+    );
+    const waiting = ProductionExecutionMaterialPreview(
+      goodsId: 'material-1',
+      unitId: 'unit-1',
+      perProductQty: 0.5,
+      requiredQty: 2,
+      availableBeforeQty: 0,
+      candidateAllocatedQty: 0,
+      shortageQty: 2,
+      supplyRoute: 'BUY',
+      requirementMode: 'EXACT_SNAPSHOT',
+    );
+
+    expect(
+      aggregateProductionPlanningMaterialUsage([ready, waiting], 6 + 4),
+      closeTo(0.4, 0.0000001),
+    );
+    expect(
+      formatProductionPlanningGroupedMaterialUsage('EXACT_SNAPSHOT', 0.4),
+      '按包/批（分段合计均耗） 0.4',
+    );
+    expect(
+      formatProductionPlanningGroupedMaterialUsage('LINEAR', 0.4),
+      '单台用量 0.4',
+    );
+
+    const largeTail = ProductionExecutionMaterialPreview(
+      goodsId: 'material-2',
+      unitId: 'unit-1',
+      perProductQty: 0.000301,
+      requiredQty: 3,
+      availableBeforeQty: 3,
+      candidateAllocatedQty: 3,
+      shortageQty: 0,
+      supplyRoute: 'BUY',
+      requirementMode: 'EXACT_SNAPSHOT',
+    );
+    expect(largeTail.perProductQty * 9999, isNot(closeTo(3, 0.0000001)));
+    expect(largeTail.requiredQty, 3);
+  });
+
+  test('zero-material reasons have explicit staff-facing explanations', () {
+    expect(
+      productionZeroMaterialReasonText('ZERO_MATERIAL', 'DIRECT_MAKE'),
+      '无需生产领料：直接自制',
+    );
+    expect(
+      productionZeroMaterialReasonText('ZERO_MATERIAL', 'PLAN_BOM_OVERRIDE'),
+      '无需生产领料：本计划 BOM 例外',
+    );
+    expect(
+      productionZeroMaterialReasonText(
+        'ZERO_MATERIAL',
+        'NO_PRODUCTION_HARD_GATE',
+      ),
+      '无需生产领料：仅发货或参考物料',
+    );
+    expect(productionZeroMaterialReasonText('DEMANDED', null), isNull);
   });
 
   test('decodes a persisted planning draft view', () {

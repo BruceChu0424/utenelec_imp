@@ -27,6 +27,7 @@ import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -45,6 +46,11 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class GoodsBomService {
+
+    private static final Set<String> CONTROL_STAGES = Set.of(
+            "START", "ASSEMBLY", "FINISH", "SHIP", "REFERENCE");
+    private static final Set<String> HARD_GATE_STAGES = Set.of(
+            "START", "ASSEMBLY", "FINISH");
 
     private final GoodsRepository goodsRepo;
     private final GoodsBomItemRepository bomRepo;
@@ -96,7 +102,10 @@ public class GoodsBomService {
                     r.getQty(), r.getPrice(), r.getTotal(),
                     r.getSummary(), r.getLegacyId(),
                     withChildren.contains(c.getId()),
-                    c.getSourceType()));
+                    c.getSourceType(),
+                    r.getControlStage(), r.getConsumptionBasis(),
+                    r.getBasisOutputQty(), r.isAllowPartialPackage(),
+                    r.isHardGate()));
         }
         return views;
     }
@@ -213,6 +222,36 @@ public class GoodsBomService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "用量必须大于 0");
         }
         r.setQty(qty);
+        String controlStage = validChoice(
+                req.getControlStage(), r.getControlStage(), "START",
+                CONTROL_STAGES,
+                "使用阶段只能选择开工前、装配、完工/包装、发货参考或仅参考");
+        r.setControlStage(controlStage);
+        r.setConsumptionBasis(validChoice(
+                req.getConsumptionBasis(), r.getConsumptionBasis(), "PER_UNIT",
+                Set.of("PER_UNIT", "PER_PACKAGE", "FIXED_BATCH"),
+                "计量方式只能选择按每件、按包装或固定批耗"));
+        BigDecimal basisOutputQty = req.getBasisOutputQty();
+        if (basisOutputQty == null) {
+            basisOutputQty = r.getBasisOutputQty() == null
+                    ? BigDecimal.ONE : r.getBasisOutputQty();
+        }
+        if (basisOutputQty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "基准产量必须大于 0");
+        }
+        r.setBasisOutputQty(basisOutputQty);
+        if (req.getAllowPartialPackage() != null) {
+            r.setAllowPartialPackage(req.getAllowPartialPackage());
+        }
+        boolean hardGate = req.getHardGate() == null
+                ? r.isHardGate() : req.getHardGate();
+        if (hardGate && !HARD_GATE_STAGES.contains(controlStage)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "发货参考或仅参考不能设为缺料硬门槛；"
+                            + "纸箱/包装若生产包装必须消耗，请选择 FINISH，"
+                            + "并使用 PER_PACKAGE 或 FIXED_BATCH");
+        }
+        r.setHardGate(hardGate);
         r.setPrice(req.getPrice());
         // 金额：显式传入优先，否则 qty*price 兜底（无单价则 null）
         BigDecimal total = req.getTotal();
@@ -244,6 +283,24 @@ public class GoodsBomService {
         r.setSummary(req.getSummary());
     }
 
+    private static String validChoice(
+            String requested,
+            String current,
+            String fallback,
+            Set<String> allowed,
+            String errorMessage) {
+        String value;
+        if (requested == null) {
+            value = current == null || current.isBlank() ? fallback : current;
+        } else {
+            value = requested.strip().toUpperCase(Locale.ROOT);
+        }
+        if (!allowed.contains(value)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, errorMessage);
+        }
+        return value;
+    }
+
     private static boolean clearsReference(UUID id, Integer legacyId) {
         return id == null && (legacyId == null || legacyId == 0);
     }
@@ -261,7 +318,9 @@ public class GoodsBomService {
                         ? r.getVendLegacyId()
                         : r.getDefaultSupplier().getLegacyId(),
                 r.getQty(), r.getPrice(), r.getTotal(),
-                r.getSummary(), r.getLegacyId(), hasChildren, component.getSourceType());
+                r.getSummary(), r.getLegacyId(), hasChildren, component.getSourceType(),
+                r.getControlStage(), r.getConsumptionBasis(),
+                r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate());
     }
 
     /** Preserve relationship identity for cleanup while hiding an unauthorized target's data. */
@@ -270,7 +329,8 @@ public class GoodsBomService {
                 r.getId(), component.getId(), null, null, null, null, null,
                 null, null, null, null, null, null,
                 r.getQty(), r.getPrice(), r.getTotal(), r.getSummary(), r.getLegacyId(),
-                false, null);
+                false, null, r.getControlStage(), r.getConsumptionBasis(),
+                r.getBasisOutputQty(), r.isAllowPartialPackage(), r.isHardGate());
     }
 
     private int nextSortOrder(UUID goodsId) {

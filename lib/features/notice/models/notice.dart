@@ -191,7 +191,7 @@ class Notice {
   /// 重要度（默认一般；驱动卡片样式与到达弹出通道）
   final NoticePriority priority;
 
-  /// 附件（前端 Mock 用文件名表示）
+  /// 后端返回的附件显示名。
   final List<String> attachments;
 
   /// 全员广播 / 发布时固化的指定接收范围。

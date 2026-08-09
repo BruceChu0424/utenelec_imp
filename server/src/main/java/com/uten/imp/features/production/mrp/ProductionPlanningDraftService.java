@@ -38,13 +38,21 @@ public class ProductionPlanningDraftService {
             GeneratePlanningPackageRequest request) {
         tx.bind();
         ProductionPlan plan = lockDraftPlan(planId);
-        ProductionPlanningRequestValidator.Validated validated =
-                validator.validateCurrent(plan.getId(), request);
         String requestHash =
                 ProductionExecutionPackageCommandService.requestHash(request);
 
         ProductionPlanningDraft active =
                 draftRepo.lockActiveByPlanId(planId).orElse(null);
+        if (active != null && plan.getMaterialAnalysisId() != null) {
+            if (active.getRequestHash().equals(requestHash)) {
+                return toView(active);
+            }
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "物料分析生成的正式计划不能改写预排分段；请取消后从物料分析重新生成");
+        }
+        ProductionPlanningRequestValidator.Validated validated =
+                validator.validateCurrent(plan.getId(), request);
         if (active != null
                 && active.getRequestHash().equals(requestHash)
                 && active.getPreviewFingerprint().equalsIgnoreCase(validated.snapshot().fingerprint())) {

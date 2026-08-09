@@ -11,6 +11,7 @@ import com.uten.imp.config.props.SecurityProperties;
 import com.uten.imp.security.ImpersonationWriteGuardFilter;
 import com.uten.imp.security.JwtAuthFilter;
 import com.uten.imp.security.LocalNetworkGuardFilter;
+import com.uten.imp.security.PasswordChangeRequiredFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,7 +39,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * 安全配置：无状态 JWT、CSRF 关闭（JWT 走 Authorization 头）、CORS 严格白名单、方法级 @PreAuthorize。
- * permitAll：登录/刷新/健康检查/文档；其余 authenticated（含 change-password，首登用户的 CHANGE_PASSWORD 权限可通过）。
+ * permitAll：登录/刷新/健康检查/文档；其余 authenticated。首登账号另由
+ * {@link PasswordChangeRequiredFilter} 收口到改密所需的最小 HTTP 边界。
  *
  * <p>{@link #filterChain} 显式配置 {@code AuthenticationEntryPoint}：未认证/匿名请求（含 access token
  * 过期、缺失、伪造）统一返回 <b>401 + ApiError(UNAUTHORIZED)</b>。否则 Spring 默认用
@@ -58,6 +60,7 @@ public class SecurityConfig {
                                            JwtAuthFilter jwtAuthFilter,
                                            ImpersonationWriteGuardFilter impersonationWriteGuardFilter,
                                            com.uten.imp.security.RemoteAccessGuardFilter remoteAccessGuardFilter,
+                                           PasswordChangeRequiredFilter passwordChangeRequiredFilter,
                                            SecurityProperties securityProps,
                                            ObjectMapper objectMapper,
                                            AuditService auditService) throws Exception {
@@ -103,6 +106,9 @@ public class SecurityConfig {
                 .addFilterAfter(impersonationWriteGuardFilter, JwtAuthFilter.class)
                 // 云端外网访问门禁：site=cloud 时，未授权账号(remote_access=false)一律 403。
                 .addFilterAfter(remoteAccessGuardFilter, JwtAuthFilter.class)
+                // 首登改密门禁：网络与模拟身份边界通过后，除改密/登出/恢复资料外拒绝全部 API。
+                .addFilterAfter(passwordChangeRequiredFilter,
+                        com.uten.imp.security.RemoteAccessGuardFilter.class)
                 // CORS can reject an invalid Origin before JWT/MVC. The audit
                 // filter must wrap that rejection so the resulting 403 is not lost.
                 .addFilterBefore(auditContextFilter, CorsFilter.class)
@@ -162,6 +168,19 @@ public class SecurityConfig {
     public FilterRegistrationBean<com.uten.imp.security.RemoteAccessGuardFilter>
             remoteAccessFilterRegistration(
                     com.uten.imp.security.RemoteAccessGuardFilter filter) {
+        return securityChainOnly(filter);
+    }
+
+    @Bean
+    public PasswordChangeRequiredFilter passwordChangeRequiredFilter(
+            ObjectMapper objectMapper,
+            AuditService auditService) {
+        return new PasswordChangeRequiredFilter(objectMapper, auditService);
+    }
+
+    @Bean
+    public FilterRegistrationBean<PasswordChangeRequiredFilter>
+            passwordChangeRequiredFilterRegistration(PasswordChangeRequiredFilter filter) {
         return securityChainOnly(filter);
     }
 

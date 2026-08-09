@@ -4,6 +4,7 @@ import com.uten.imp.application.port.ProductionCompletionReversePort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
@@ -40,6 +41,7 @@ public class ProductionCompletionReverseService
     private final SecurityContextCurrentUser currentUser;
 
     private final ProductionExecutionReadinessService readiness;
+    private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -62,7 +64,16 @@ public class ProductionCompletionReverseService
         }
         readiness.onFinishedInboundApproved(
                 stockDocumentId, warehouseId);
+        materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentId);
     }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterFinishedInboundReversed(
+            UUID stockDocumentId, UUID warehouseId) {
+        materialAnalysisWakeup.afterFinishedInboundReversed(stockDocumentId);
+    }
+
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeFinishedInboundReversed(UUID stockDocumentId) {

@@ -22,11 +22,11 @@ export default function LoginPage() {
           <h1 className="mt-3 font-heading text-xl font-bold">优腾官网管理后台</h1>
           <p className="text-sm text-muted-foreground">Uten Website Admin</p>
         </div>
-        {err && <div className="mb-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{err}</div>}
-        <label className="label-uten">用户名</label>
-        <input name="username" required autoFocus className="input-uten mb-3" placeholder="admin" />
-        <label className="label-uten">密码</label>
-        <input name="password" type="password" required className="input-uten mb-5" placeholder="••••••" />
+        {err && <div role="alert" aria-live="assertive" className="mb-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{err}</div>}
+        <label htmlFor="admin-username" className="label-uten">用户名</label>
+        <input id="admin-username" name="username" required autoFocus autoComplete="username" className="input-uten mb-3" />
+        <label htmlFor="admin-password" className="label-uten">密码</label>
+        <input id="admin-password" name="password" type="password" required autoComplete="current-password" className="input-uten mb-5" placeholder="••••••" />
         <button type="submit" disabled={pending} className="btn-accent w-full">
           {pending ? '登录中…' : '登录'}
         </button>

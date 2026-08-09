@@ -20,6 +20,8 @@ public class MonthlySummaryRow {
     private LocalDate ym;
     private UUID goodsId;
     private UUID clientId;
+    /** Amount currency; rows are never aggregated across currencies. */
+    private UUID currencyId;
     private BigDecimal qty;
     private BigDecimal amt;
     private Long lines;

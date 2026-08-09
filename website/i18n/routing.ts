@@ -1,11 +1,16 @@
 import { defineRouting } from 'next-intl/routing';
 
 export const routing = defineRouting({
-  // 默认提供中英双语; 结构支持随时扩展更多语言 (外贸)
-  // 扩展示例: 加入 'es','pt','ar','fr','ru','de' 后在 messages/ 增加对应 json 即可
-  locales: ['zh', 'en'],
-  defaultLocale: 'zh',
+  // 覆盖主要全球市场；内容缺失时由 lib/content.ts 逐字段回退英文/中文。
+  locales: ['zh', 'en', 'es', 'fr', 'de', 'pt', 'ar', 'ru', 'ja', 'ko'],
+  // 不受支持的浏览器语言回退英语；中文浏览器仍会自动命中 zh。
+  defaultLocale: 'en',
   localePrefix: 'always',
+  localeDetection: true,
+  // Explicit locale prefixes preserve manual choices without a response cookie,
+  // so public HTML remains cacheable at the CDN/edge. The bare root still uses
+  // Accept-Language detection before redirecting to the matching locale.
+  localeCookie: false,
 });
 
 export type Locale = (typeof routing.locales)[number];

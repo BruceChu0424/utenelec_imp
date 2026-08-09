@@ -19,7 +19,11 @@ export function slugify(s: string): string {
 
 export function formatDate(d: Date | string, locale = 'zh'): string {
   const date = typeof d === 'string' ? new Date(d) : d;
-  return new Intl.DateTimeFormat(locale === 'zh' ? 'zh-CN' : 'en-US', {
+  const dateLocales: Record<string, string> = {
+    zh: 'zh-CN', en: 'en', es: 'es', fr: 'fr', de: 'de',
+    pt: 'pt', ar: 'ar', ru: 'ru', ja: 'ja', ko: 'ko',
+  };
+  return new Intl.DateTimeFormat(dateLocales[locale] || 'en', {
     year: 'numeric', month: 'long', day: 'numeric',
   }).format(date);
 }

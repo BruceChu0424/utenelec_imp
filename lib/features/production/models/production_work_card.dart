@@ -80,6 +80,8 @@ class ProductionWorkCard {
     required this.plannedQty,
     required this.status,
     this.autoPromoteWhenReady = true,
+    this.materialRequirementMode = 'DEMANDED',
+    this.zeroMaterialReason,
     this.sourceLineNo,
     this.productNo,
     this.productCode,
@@ -115,6 +117,8 @@ class ProductionWorkCard {
   final double plannedQty;
   final String status;
   final bool autoPromoteWhenReady;
+  final String materialRequirementMode;
+  final String? zeroMaterialReason;
   final String? workshopName;
   final String? teamName;
   final String? responsibleEmployeeName;
@@ -143,6 +147,9 @@ class ProductionWorkCard {
       plannedQty: (json['plannedQty'] as num).toDouble(),
       status: json['status'] as String,
       autoPromoteWhenReady: json['autoPromoteWhenReady'] != false,
+      materialRequirementMode:
+          json['materialRequirementMode'] as String? ?? 'DEMANDED',
+      zeroMaterialReason: json['zeroMaterialReason'] as String?,
       workshopName: json['workshopName'] as String?,
       teamName: json['teamName'] as String?,
       responsibleEmployeeName: json['responsibleEmployeeName'] as String?,
@@ -172,6 +179,7 @@ class ProductionWorkCardMaterial {
     required this.shortageQty,
     required this.supplyRoute,
     required this.demandStatus,
+    this.requirementMode = 'LINEAR',
     this.goodsCode,
     this.goodsName,
     this.spec,
@@ -192,6 +200,7 @@ class ProductionWorkCardMaterial {
   final double shortageQty;
   final String supplyRoute;
   final String demandStatus;
+  final String requirementMode;
 
   factory ProductionWorkCardMaterial.fromJson(Map<String, dynamic> json) {
     return ProductionWorkCardMaterial(
@@ -208,6 +217,7 @@ class ProductionWorkCardMaterial {
       shortageQty: (json['shortageQty'] as num).toDouble(),
       supplyRoute: json['supplyRoute'] as String,
       demandStatus: json['demandStatus'] as String,
+      requirementMode: json['requirementMode'] as String? ?? 'LINEAR',
     );
   }
 }

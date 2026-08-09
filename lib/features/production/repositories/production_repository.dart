@@ -330,15 +330,6 @@ class ProductionPlanRepository {
     return ProductionExecutionSegmentView.fromJson(json);
   }
 
-  /// 按净需求生成采购申请（草稿）；已生成过且单据有效时后端 409 业务错误。
-  /// D3：strategy=gross 按毛需求开单（不扣库存/在途）。
-  Future<MrpGenerateResult> mrpGenerate(String id, {String? strategy}) async {
-    final json = await api.post(
-      '/production/plans/$id/mrp/generate${strategy != null ? '?strategy=$strategy' : ''}',
-    ); // ENDPOINT
-    return MrpGenerateResult.fromJson(json);
-  }
-
   /// D3 订单物料分析：已审销售订货单直接 BOM 展开。
   Future<List<MrpRow>> mrpOrderPreview(String orderId) async {
     final list = await api.getList(
@@ -372,44 +363,12 @@ class ProductionPlanRepository {
     return MrpGenerateResult.fromJson(json);
   }
 
-  /// 自制件按净需求生成下层生产计划（草稿）；多层 BOM 可在子计划上继续生成。
-  Future<MrpGenerateResult> mrpGenerateSubplan(String id) async {
-    final json = await api.post(
-      '/production/plans/$id/mrp/generate-subplan',
-    ); // ENDPOINT
-    return MrpGenerateResult.fromJson(json);
-  }
-
   /// 已生成的自制件子计划溯源（父计划 MRP 面板展示，可跳子计划详情）。
   Future<List<MrpSubplanRef>> mrpSubplans(String id) async {
     final list = await api.getList(
       '/production/plans/$id/mrp/subplans',
     ); // ENDPOINT
     return list.map(MrpSubplanRef.fromJson).toList();
-  }
-
-  /// 按用户校对后的行生成子计划；服务端按车间分组。
-  Future<List<SubplanCreated>> mrpGenerateSubplans(
-    String id,
-    GenerateSubplansRequest request,
-  ) async {
-    final list = await api.postList(
-      '/production/plans/$id/mrp/generate-subplans', // ENDPOINT
-      body: request.toJson(),
-    );
-    return list.map(SubplanCreated.fromJson).toList();
-  }
-
-  /// 原子生成子计划，并可在同一事务内生成缺料采购申请。
-  Future<PlanningPackageResult> mrpGeneratePlanningPackage(
-    String id,
-    PlanningPackageRequest request,
-  ) async {
-    final json = await api.post(
-      '/production/plans/$id/mrp/generate-planning-package',
-      body: request.toJson(),
-    ); // ENDPOINT
-    return PlanningPackageResult.fromJson(json);
   }
 
   // ───────────────────────── 计划前物料分析 ─────────────────────────
@@ -567,7 +526,7 @@ class ProductionPlanRepository {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
         'warehouseId': warehouseId,
-        'items': [for (final item in items) item.toJson()],
+        'items': [for (final item in items) item.toQuantityJson()],
         if (routes.isNotEmpty)
           'routes': [for (final route in routes) route.toJson()],
         if (bomOverrides.isNotEmpty)
@@ -1240,74 +1199,6 @@ class MrpRow {
   }
 }
 
-/// 一键生成子计划的单行参数；字段与后端 GenerateSubplansRequest.Line 对齐。
-class GenerateSubplanLine {
-  const GenerateSubplanLine({
-    required this.goodsId,
-    required this.qty,
-    this.colorId,
-    this.unitId,
-    this.departmentId,
-    this.workshopName,
-    this.planBeginDate,
-    this.planEndDate,
-    this.workerId,
-    this.workerName,
-  });
-
-  final String goodsId;
-  final double qty;
-  final String? colorId;
-  final String? unitId;
-  final String? departmentId;
-  final String? workshopName;
-  final String? planBeginDate;
-  final String? planEndDate;
-  final String? workerId;
-  final String? workerName;
-
-  Map<String, dynamic> toJson() => {
-    'goodsId': goodsId,
-    'qty': qty,
-    if (colorId != null) 'colorId': colorId,
-    if (unitId != null) 'unitId': unitId,
-    if (departmentId != null) 'departmentId': departmentId,
-    if (workshopName?.trim().isNotEmpty == true)
-      'workshopName': workshopName!.trim(),
-    if (planBeginDate != null) 'planBeginDate': planBeginDate,
-    if (planEndDate != null) 'planEndDate': planEndDate,
-    if (workerId != null) 'workerId': workerId,
-    if (workerName?.trim().isNotEmpty == true) 'workerName': workerName!.trim(),
-  };
-}
-
-/// 生成子计划请求。
-class GenerateSubplansRequest {
-  const GenerateSubplansRequest({required this.items});
-
-  final List<GenerateSubplanLine> items;
-
-  Map<String, dynamic> toJson() => {
-    'items': [for (final item in items) item.toJson()],
-  };
-}
-
-/// 原子生成计划包：子计划 + 可选采购申请。
-class PlanningPackageRequest {
-  const PlanningPackageRequest({
-    required this.items,
-    this.generatePurchaseRequest = false,
-  });
-
-  final List<GenerateSubplanLine> items;
-  final bool generatePurchaseRequest;
-
-  Map<String, dynamic> toJson() => {
-    'items': [for (final item in items) item.toJson()],
-    'generatePurchaseRequest': generatePurchaseRequest,
-  };
-}
-
 /// MRP 生成结果。
 class MrpGenerateResult {
   const MrpGenerateResult({
@@ -1331,48 +1222,6 @@ class MrpGenerateResult {
             id.toString(),
         ],
       );
-}
-
-/// 拆分生成的一张子计划结果（对应后端 GenerateSubplansRequest.Created）。
-class SubplanCreated {
-  const SubplanCreated({
-    required this.planId,
-    this.billNo,
-    this.lineCount = 0,
-    this.workshopName,
-  });
-  final String planId;
-  final String? billNo;
-  final int lineCount;
-  final String? workshopName;
-
-  factory SubplanCreated.fromJson(Map<String, dynamic> j) => SubplanCreated(
-    planId: j['planId'] as String,
-    billNo: j['billNo'] as String?,
-    lineCount: (j['lineCount'] as num?)?.toInt() ?? 0,
-    workshopName: j['workshopName'] as String?,
-  );
-}
-
-/// 原子计划包结果。
-class PlanningPackageResult {
-  const PlanningPackageResult({this.subplans = const [], this.purchaseRequest});
-
-  final List<SubplanCreated> subplans;
-  final MrpGenerateResult? purchaseRequest;
-
-  factory PlanningPackageResult.fromJson(Map<String, dynamic> j) {
-    final purchase = j['purchaseRequest'];
-    return PlanningPackageResult(
-      subplans: [
-        for (final item in (j['subplans'] as List? ?? const []))
-          SubplanCreated.fromJson(item as Map<String, dynamic>),
-      ],
-      purchaseRequest: purchase is Map<String, dynamic>
-          ? MrpGenerateResult.fromJson(purchase)
-          : null,
-    );
-  }
 }
 
 /// 自制件子计划溯源行（父计划 MRP 面板/详情页进度区展示用，含完工进度）。

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
@@ -24,6 +25,11 @@ class _FakeGoodsBomRepository implements GoodsBomRepository {
     colorLegacyId: 9,
     qty: 2,
     price: 12,
+    controlStage: BomControlStage.finish,
+    consumptionBasis: BomConsumptionBasis.perPackage,
+    basisOutputQty: 100,
+    allowPartialPackage: false,
+    hardGate: false,
   );
 
   String? deletedParentId;
@@ -126,5 +132,50 @@ void main() {
     expect(repo.updatedItemId, 'row-c');
     expect(repo.updatedBody?['colorLegacyId'], 9);
     expect(repo.updatedBody?['qty'], 3);
+    expect(repo.updatedBody?['controlStage'], 'FINISH');
+    expect(repo.updatedBody?['consumptionBasis'], 'PER_PACKAGE');
+    expect(repo.updatedBody?['basisOutputQty'], 100);
+    expect(repo.updatedBody?['allowPartialPackage'], isFalse);
+    expect(repo.updatedBody?['hardGate'], isFalse);
+  });
+
+  testWidgets('shipping reference clears and disables the hard gate', (
+    tester,
+  ) async {
+    final repo = _FakeGoodsBomRepository();
+    await _pumpBom(tester, repo);
+
+    await tester.tap(find.text('编辑').first);
+    await tester.pumpAndSettle();
+    final hardGateTile = find.ancestor(
+      of: find.text('缺料作为硬门槛'),
+      matching: find.byType(SwitchListTile),
+    );
+    await tester.ensureVisible(hardGateTile);
+    await tester.tap(hardGateTile);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(hardGateTile).value, isTrue);
+
+    final stageField = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenDropdownField && widget.label == '什么时候需要',
+    );
+    await tester.ensureVisible(stageField);
+    await tester.tap(stageField);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('发货参考').last);
+    await tester.pumpAndSettle();
+
+    final disabledHardGate = tester.widget<SwitchListTile>(hardGateTile);
+    expect(disabledHardGate.value, isFalse);
+    expect(disabledHardGate.onChanged, isNull);
+    expect(find.text('发货参考/仅参考只能提醒，不能设为生产硬门槛'), findsOneWidget);
+    expect(find.textContaining('不预留包材、不阻止实际发货'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('保存'));
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(repo.updatedBody?['controlStage'], 'SHIP');
+    expect(repo.updatedBody?['hardGate'], isFalse);
   });
 }

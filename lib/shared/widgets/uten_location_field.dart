@@ -8,8 +8,8 @@
 import 'package:flutter/material.dart';
 
 import '../../components/buttons/uten_button.dart';
+import '../../components/layout/uten_adaptive_panel.dart';
 import '../../components/layout/uten_bottom_action_bar.dart';
-import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_tokens.dart';
 
 /// 位置选择结果。
@@ -176,55 +176,9 @@ Future<LocationPickResult<T>?> showUtenPickerSheet<T>({
     childBuilder: childBuilder,
   );
 
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<LocationPickResult<T>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final mediaQuery = MediaQuery.of(ctx);
-        final visibleHeight =
-            mediaQuery.size.height - mediaQuery.viewInsets.bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
-          child: SizedBox(
-            height: visibleHeight * 0.85,
-            child: Material(
-              color: Theme.of(ctx).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(UtenRadius.lg),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: buildSheet(ctx),
-            ),
-          ),
-        );
-      },
-    );
-  }
-  return showGeneralDialog<LocationPickResult<T>>(
+  return showUtenAdaptivePanel<LocationPickResult<T>>(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 250),
-    pageBuilder: (ctx, _, _) => Align(
-      alignment: Alignment.centerRight,
-      child: Material(
-        color: Theme.of(ctx).colorScheme.surface,
-        child: SizedBox(
-          width: 420,
-          height: double.infinity,
-          child: buildSheet(ctx),
-        ),
-      ),
-    ),
-    transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-      position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-      child: child,
-    ),
+    builder: buildSheet,
   );
 }
 

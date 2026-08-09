@@ -1,60 +1,86 @@
+import type { Metadata } from 'next';
 import { setRequestLocale, getTranslations } from 'next-intl/server';
 import { getSetting } from '@/lib/queries';
 import { pick } from '@/lib/content';
 import { InquiryForm } from '@/components/InquiryForm';
 import { Phone, Mail, MapPin, Globe } from 'lucide-react';
+import { buildPageMetadata } from '@/lib/seo';
 
-export default async function ContactPage({ params }: { params: { locale: string } }) {
-  const { locale } = params;
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'Contact' });
+  return buildPageMetadata({ locale, path: '/contact', title: t('title'), description: t('intro') });
+}
+
+export default async function ContactPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ product?: string }>;
+}) {
+  const { locale } = await params;
+  const resolvedSearchParams = await searchParams;
   setRequestLocale(locale);
   const t = await getTranslations('Contact');
+  const product = String(resolvedSearchParams.product || '').trim().slice(0, 160);
   const contact = pick<{ phone?: string; phone2?: string; email?: string; address?: string; company?: string }>(await getSetting('contact'), locale) || {};
+  const titleLines = t('title').split(/\n+/).map((line) => line.trim()).filter(Boolean);
 
   const items = [
-    { icon: Phone, label: t('phone'), value: [contact.phone, contact.phone2].filter(Boolean).join(' / ') },
-    { icon: Mail, label: t('email'), value: contact.email },
-    { icon: MapPin, label: t('address'), value: contact.address },
-    { icon: Globe, label: locale === 'zh' ? '外贸出口' : 'Export', value: locale === 'zh' ? '产品远销海外多国' : 'Products sold worldwide' },
-  ].filter((i) => i.value);
+    { icon: Phone, label: t('phone'), values: [contact.phone, contact.phone2].filter((value): value is string => Boolean(value)).map((value) => ({ text: value, href: `tel:${value.replace(/[^+\d]/g, '')}` })) },
+    { icon: Mail, label: t('email'), values: contact.email ? [{ text: contact.email, href: `mailto:${contact.email}` }] : [] },
+    { icon: MapPin, label: t('address'), values: contact.address ? [{ text: contact.address }] : [] },
+    { icon: Globe, label: t('export'), values: [{ text: t('exportValue') }] },
+  ].filter((item) => item.values.length);
 
   return (
     <>
-      <section className="relative overflow-hidden border-b border-border/40 bg-background-elevated/50 py-16 md:py-20">
-        <div className="ambient-blob" style={{ width: 380, height: 380, background: 'hsl(174 100% 40%)', top: '-40%', right: '5%' }} />
-        <div className="container-uten relative">
-          <span className="eyebrow">Contact</span>
-          <h1 className="mt-4 font-heading text-4xl font-bold md:text-5xl"><span className="text-gradient">{t('title')}</span></h1>
+      <section className="page-hero">
+        <div className="container-uten relative grid items-end gap-8 lg:grid-cols-[1fr_.7fr]">
+          <div>
+            <span className="eyebrow">{t('eyebrow')}</span>
+            <h1 className="section-title mt-7 text-balance">{titleLines.map((line) => <span key={line} className="block">{line}</span>)}</h1>
+          </div>
+          <p className="max-w-xl text-base leading-8 text-muted-foreground md:text-lg">{t('intro')}</p>
         </div>
       </section>
 
-      <div className="container-uten py-12">
-        <div className="grid gap-12 lg:grid-cols-2">
+      <div className="container-uten section-tight">
+        <div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr] lg:gap-20">
           <div>
             <div className="space-y-6">
-              {items.map((it) => (
-                <div key={it.label} className="flex items-start gap-4">
+              {items.map((item) => (
+                <div key={item.label} className="flex items-start gap-4">
                   <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
-                    <it.icon className="h-5 w-5" />
+                    <item.icon className="h-5 w-5" />
                   </span>
                   <div>
-                    <p className="text-sm text-muted-foreground">{it.label}</p>
-                    <p className="mt-0.5 font-medium">{it.value}</p>
+                    <p className="text-sm text-muted-foreground">{item.label}</p>
+                    <div className="mt-1 flex flex-wrap gap-x-2 font-medium">
+                      {item.values.map((value, index) => (
+                        <span key={value.text} className="inline-flex items-center gap-2">
+                          {index > 0 && <span className="text-muted-foreground" aria-hidden="true">/</span>}
+                          {'href' in value && value.href ? <a href={value.href} className="transition hover:text-accent">{value.text}</a> : value.text}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-8 overflow-hidden rounded-2xl border border-border bg-muted/40 p-6">
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {locale === 'zh'
-                  ? '我们期待与全球经销商、工程方及采购商合作。请填写右侧表单或直接致电，我们将尽快回复。'
-                  : 'We welcome dealers, project developers and buyers worldwide. Fill in the form or call us directly — we will reply soon.'}
-              </p>
+            <div className="mt-10 rounded-[1.5rem] bg-foreground p-7 text-background">
+              <p className="eyebrow text-background/55">{t('globalSupport')}</p>
+              <p className="mt-4 text-sm leading-7 text-background/75">{t('support')}</p>
             </div>
           </div>
 
           <div className="card-uten p-6 md:p-8">
             <h2 className="mb-5 font-heading text-xl font-bold">{t('formTitle')}</h2>
-            <InquiryForm source="contact" />
+            <InquiryForm
+              source={product ? 'product' : 'contact'}
+              initialMessage={product ? t('productPrefill', { product }) : ''}
+            />
           </div>
         </div>
       </div>

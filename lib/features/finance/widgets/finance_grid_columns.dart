@@ -206,22 +206,21 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'currency',
-      label: '币别',
+      label: '应收币别',
       width: 130,
       required: true,
-      cellBuilder: (context, row) => UtenDropdownField(
-        value: row.currencyId,
-        required: true,
-        items: [
-          for (final entry in names.currencyEntries.entries)
-            UtenDropdownItem(value: entry.key, label: entry.value),
-        ],
-        onChanged: (value) => row.currencyId = value,
+      // 销售收款只能按被引用应收的原币核销。币别由 AR 带入并保持只读，
+      // 财务只填写到账汇率，避免选择其它币别后必然被服务端拒绝。
+      cellBuilder: (context, row) => Text(
+        row.currencyCode?.trim().isNotEmpty == true
+            ? row.currencyCode!.trim()
+            : names.currency(row.currencyId),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'exchangeRate',
-      label: '汇率',
+      label: '到账汇率',
       width: 120,
       numeric: true,
       required: true,

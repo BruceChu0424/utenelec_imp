@@ -222,15 +222,10 @@ void main() {
       },
     );
 
-    test('production progress and lab upload match backend permissions', () {
+    test('production progress uses the backend view permission', () {
       expect(requiredAnyPermFor(RouteName.productionProgress), const [
         Perm.productionPlanView,
       ]);
-      expect(requiredAnyPermFor('/lab/test/upload'), const [
-        Perm.labTestUpload,
-      ]);
-      expect(requiredAnyPermFor('/lab/test'), const [Perm.labTestView]);
-      expect(requiredAnyPermFor('/lab/test/1'), const [Perm.labTestView]);
     });
 
     test('notice and suggestion routes use their backend permission codes', () {

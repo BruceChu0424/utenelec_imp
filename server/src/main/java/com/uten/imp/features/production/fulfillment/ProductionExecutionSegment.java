@@ -34,6 +34,15 @@ public class ProductionExecutionSegment extends SoftDeletableEntity {
     public static final String STATUS_CANCELLED = "CANCELLED";
     public static final String STATUS_REVERSED = "REVERSED";
 
+    public static final String MATERIAL_REQUIREMENT_MODE_DEMANDED = "DEMANDED";
+    public static final String MATERIAL_REQUIREMENT_MODE_ZERO = "ZERO_MATERIAL";
+
+    public static final String ZERO_MATERIAL_REASON_DIRECT_MAKE = "DIRECT_MAKE";
+    public static final String ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE =
+            "PLAN_BOM_OVERRIDE";
+    public static final String ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE =
+            "NO_PRODUCTION_HARD_GATE";
+
     @Column(name = "package_id", nullable = false)
     private UUID packageId;
 
@@ -66,6 +75,21 @@ public class ProductionExecutionSegment extends SoftDeletableEntity {
 
     @Column(name = "planned_qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal plannedQty;
+
+    @Column(name = "material_requirement_mode", nullable = false)
+    private String materialRequirementMode = MATERIAL_REQUIREMENT_MODE_DEMANDED;
+
+    @Column(name = "zero_material_reason")
+    private String zeroMaterialReason;
+
+    @Column(name = "zero_material_analysis_id")
+    private UUID zeroMaterialAnalysisId;
+
+    @Column(name = "zero_material_exception_reason")
+    private String zeroMaterialExceptionReason;
+
+    @Column(name = "zero_material_authorized_by")
+    private UUID zeroMaterialAuthorizedBy;
 
     @Column(nullable = false)
     private String status;

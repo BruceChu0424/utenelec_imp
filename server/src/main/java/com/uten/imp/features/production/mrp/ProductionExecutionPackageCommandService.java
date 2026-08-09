@@ -134,6 +134,14 @@ public class ProductionExecutionPackageCommandService {
         for (SegmentDraft segment : segmentDrafts) {
             for (CompleteKitAllocator.MaterialAllocation material
                     : segment.proposal().materials()) {
+                CompleteKitAllocator.MaterialUsage usage =
+                        materialUsage(segment, material);
+                boolean exactSnapshot = ProductionMaterialDemand
+                        .REQUIREMENT_MODE_EXACT_SNAPSHOT.equals(
+                                material.requirementMode());
+                if (exactSnapshot != usage.requiresExactSnapshot()) {
+                    throw conflict("执行分段物料计量模式与冻结 BOM 规则不一致");
+                }
                 demandDrafts.add(
                         new ProductionFulfillmentLedgerService.DemandDraft(
                                 segment.segment().getId(),
@@ -148,7 +156,20 @@ public class ProductionExecutionPackageCommandService {
                                 segment.segment().getId() + ":"
                                         + material.goodsId() + ":"
                                         + Objects.toString(
-                                                material.colorId(), "NONE")));
+                                                material.colorId(), "NONE"),
+                                exactSnapshot
+                                        ? ProductionMaterialDemand
+                                                .REQUIREMENT_MODE_EXACT_SNAPSHOT
+                                        : ProductionMaterialDemand
+                                                .REQUIREMENT_MODE_LINEAR,
+                                exactSnapshot
+                                        ? segment.segment().getPlannedQty()
+                                        : null,
+                                exactSnapshot
+                                        ? usage.requirementFingerprint(
+                                                segment.proposal().line()
+                                                        .productUnitRate())
+                                        : null));
             }
         }
         List<ProductionMaterialDemand> demands = demandDrafts.isEmpty()
@@ -327,6 +348,7 @@ public class ProductionExecutionPackageCommandService {
             segment.setProductUnitRate(
                     proposal.line().productUnitRate());
             segment.setPlannedQty(proposal.plannedQty());
+            freezeMaterialRequirementShape(segment, proposal);
             segment.setStatus(proposal.status());
             segment.setAutoPromoteWhenReady(
                     proposal.autoPromoteWhenReady());
@@ -348,6 +370,72 @@ public class ProductionExecutionPackageCommandService {
         }
         segmentRepo.flush();
         return List.copyOf(result);
+    }
+
+    static void freezeMaterialRequirementShape(
+            ProductionExecutionSegment segment,
+            CompleteKitAllocator.SegmentAllocation proposal) {
+        String zeroReason = proposal.line().zeroMaterialReason();
+        if (!proposal.materials().isEmpty()) {
+            if (zeroReason != null
+                    || proposal.line().zeroMaterialAnalysisId() != null
+                    || proposal.line().zeroMaterialExceptionReason() != null
+                    || proposal.line().zeroMaterialAuthorizedBy() != null) {
+                throw conflict("有物料需求的执行分段不能携带无物料例外原因");
+            }
+            segment.setMaterialRequirementMode(
+                    ProductionExecutionSegment
+                            .MATERIAL_REQUIREMENT_MODE_DEMANDED);
+            segment.setZeroMaterialReason(null);
+            segment.setZeroMaterialAnalysisId(null);
+            segment.setZeroMaterialExceptionReason(null);
+            segment.setZeroMaterialAuthorizedBy(null);
+            return;
+        }
+        if (!ProductionExecutionSegment.STATUS_READY.equals(
+                proposal.status())) {
+            throw conflict("无物料执行分段必须直接进入 READY");
+        }
+        if (!List.of(
+                        ProductionExecutionSegment
+                                .ZERO_MATERIAL_REASON_DIRECT_MAKE,
+                        ProductionExecutionSegment
+                                .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE,
+                        ProductionExecutionSegment
+                                .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE)
+                .contains(zeroReason)) {
+            throw conflict("无物料执行分段缺少可审计的合法原因");
+        }
+        UUID analysisId = proposal.line().zeroMaterialAnalysisId();
+        String exceptionReason = proposal.line().zeroMaterialExceptionReason();
+        UUID authorizedBy = proposal.line().zeroMaterialAuthorizedBy();
+        boolean validEvidence = switch (zeroReason) {
+            case ProductionExecutionSegment.ZERO_MATERIAL_REASON_DIRECT_MAKE ->
+                    analysisId != null
+                            && exceptionReason == null
+                            && authorizedBy == null;
+            case ProductionExecutionSegment
+                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE ->
+                    analysisId != null
+                            && exceptionReason != null
+                            && !exceptionReason.isBlank()
+                            && authorizedBy != null;
+            case ProductionExecutionSegment
+                    .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE ->
+                    analysisId == null
+                            && exceptionReason == null
+                            && authorizedBy == null;
+            default -> false;
+        };
+        if (!validEvidence) {
+            throw conflict("无物料执行分段的授权或例外事实不完整");
+        }
+        segment.setMaterialRequirementMode(
+                ProductionExecutionSegment.MATERIAL_REQUIREMENT_MODE_ZERO);
+        segment.setZeroMaterialReason(zeroReason);
+        segment.setZeroMaterialAnalysisId(analysisId);
+        segment.setZeroMaterialExceptionReason(exceptionReason);
+        segment.setZeroMaterialAuthorizedBy(authorizedBy);
     }
 
     /**
@@ -653,6 +741,19 @@ public class ProductionExecutionPackageCommandService {
                 document.getId(), document.getBillNo(), lineNo, List.of());
     }
 
+    private static CompleteKitAllocator.MaterialUsage materialUsage(
+            SegmentDraft segment,
+            CompleteKitAllocator.MaterialAllocation material) {
+        CompleteKitAllocator.MaterialKey key =
+                new CompleteKitAllocator.MaterialKey(
+                        material.goodsId(), material.colorId());
+        return segment.proposal().line().materials().stream()
+                .filter(usage -> usage.materialKey().equals(key))
+                .findFirst()
+                .orElseThrow(() -> conflict(
+                        "执行分段物料缺少冻结的 BOM 消耗规则"));
+    }
+
     private MrpGenerateResult createPurchase(
             PlanHeader plan,
             ProductionPlanningPackage planningPackage,
@@ -934,7 +1035,8 @@ public class ProductionExecutionPackageCommandService {
                                         demand.getRequiredQty()
                                                 .subtract(allocated)
                                                 .max(BigDecimal.ZERO),
-                                        demand.getSupplyRoute());
+                                        demand.getSupplyRoute(),
+                                        demand.getRequirementMode());
                             })
                             .toList();
             return new ExecutionSegmentResult(
@@ -946,6 +1048,8 @@ public class ProductionExecutionPackageCommandService {
                     segment.getProductColorId(),
                     segment.getPlannedQty(),
                     segment.getStatus(),
+                    segment.getMaterialRequirementMode(),
+                    segment.getZeroMaterialReason(),
                     segment.getWorkshopDepartmentId(),
                     segment.getTeamDepartmentId(),
                     segment.getResponsibleEmployeeId(),
@@ -1089,7 +1193,8 @@ public class ProductionExecutionPackageCommandService {
                                         demand.getRequiredQty()
                                                 .subtract(stock)
                                                 .max(BigDecimal.ZERO),
-                                        demand.getSupplyRoute());
+                                        demand.getSupplyRoute(),
+                                        demand.getRequirementMode());
                             })
                             .toList();
             return new ExecutionSegmentResult(
@@ -1099,6 +1204,8 @@ public class ProductionExecutionPackageCommandService {
                     segment.getProductGoodsId(),
                     segment.getProductColorId(),
                     segment.getPlannedQty(), segment.getStatus(),
+                    segment.getMaterialRequirementMode(),
+                    segment.getZeroMaterialReason(),
                     segment.getWorkshopDepartmentId(),
                     segment.getTeamDepartmentId(),
                     segment.getResponsibleEmployeeId(),

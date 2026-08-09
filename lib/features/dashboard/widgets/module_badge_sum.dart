@@ -13,13 +13,7 @@ import '../../visitor_approval/providers/visitor_pending_count_provider.dart';
 import '../../warehouse/providers/procurement_inbound_count_providers.dart';
 import '../../sales/providers/sales_completion_count_provider.dart';
 
-/// 工作台模块卡片角标种类。每张工作台卡片声明一种（[WorkbenchBadgeKind.none] = 无角标），
-/// 由 [WorkbenchCardBadge] 统一渲染成**同一款红色数字药丸**——样式天然一致。
-///
-/// 设计原因：工作台卡片列表 `_allGroups` 是 const，provider 引用是运行时 final 变量、
-/// 不能进 const 字面量；而枚举值是 const。故用「枚举值挂在卡片上 + 统一组件按枚举取数」
-/// 的方式，既保 const 又集中渲染。后续给新模块接角标，只需新增一个枚举值并在
-/// [_resolveCount] 接上对应 provider。
+/// 工作台卡片通过枚举声明数据源，由共享组件统一取数和渲染。
 enum WorkbenchBadgeKind {
   visitorHost, // 我的访客（被访人待确认）
   visitorApproval, // 访客审批（HR 待审批）
@@ -35,10 +29,7 @@ enum WorkbenchBadgeKind {
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
-/// 工作台卡片统一角标：红色数字药丸（count<=0 自动不显示）。
-///
-/// 应放在 [UtenLazyMount] 内使用——首帧不 watch 计数 provider、不发请求/启动轮询，
-/// 首帧绘制后再并行拉取（见 workbench_module_area.dart 的 _ModuleTile）。
+/// 工作台卡片角标；应放在 [UtenLazyMount] 内，避免首帧启动计数请求。
 class WorkbenchCardBadge extends ConsumerWidget {
   const WorkbenchCardBadge({
     super.key,
@@ -61,9 +52,7 @@ class WorkbenchCardBadge extends ConsumerWidget {
   }
 }
 
-/// 分组标题综合徽标：组内所有模块角标之和（count<=0 自动不显示）。
-/// 应放在 [UtenLazyMount] 内使用——与 [WorkbenchCardBadge] 一致，首帧不 watch
-/// 计数 provider，首帧绘制后再并行拉取（见 workbench_module_area.dart 的 _buildSection）。
+/// 汇总组内全部模块角标；应放在 [UtenLazyMount] 内延后取数。
 class WorkbenchGroupBadge extends ConsumerWidget {
   const WorkbenchGroupBadge({
     super.key,

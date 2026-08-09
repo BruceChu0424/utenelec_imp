@@ -62,6 +62,28 @@ void main() {
     expect(find.text('开始拣货'), findsNothing);
   });
 
+  testWidgets('order approval describes order activation without AR wording', (
+    tester,
+  ) async {
+    await _pumpDetail(
+      tester,
+      type: SalesDocType.order,
+      detail: const {
+        'id': 'order-draft',
+        'status': 0,
+        'writable': true,
+        'items': <Map<String, dynamic>>[],
+      },
+    );
+
+    await tester.tap(find.text('审核'));
+    await tester.pump();
+
+    expect(find.text('审核后订单将生效，并进入库存预留与后续排产、发运流程，确认审核？'), findsOneWidget);
+    expect(find.textContaining('应收'), findsNothing);
+    expect(find.textContaining('财务汇率'), findsNothing);
+  });
+
   testWidgets('finance actions disappear after picking has started', (
     tester,
   ) async {
@@ -182,13 +204,29 @@ void main() {
         'writable': true,
         'currencyId': 'currency-usd',
         'exchangeRate': 7.2,
+        'totalOriginal': 160,
+        'totalLocal': 1152,
         'shipmentPolicy': 'ALLOW_PARTIAL',
-        'items': <Map<String, dynamic>>[],
+        'items': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'order-line-1',
+            'qty': 2,
+            'price': 100,
+            'discount': 0.8,
+            'amountOriginal': 160,
+            'amountLocal': 1152,
+          },
+        ],
       },
     );
 
     expect(find.text('币种'), findsOneWidget);
     expect(find.text('汇率'), findsNothing);
+    expect(find.text('订单金额（美元）'), findsOneWidget);
+    expect(find.text('160.00'), findsWidgets);
+    expect(find.text('200.00'), findsNothing);
+    expect(find.text('合计(本币)'), findsNothing);
+    expect(find.text('1152.00'), findsNothing);
     expect(find.text('发运策略'), findsOneWidget);
     expect(find.text('策略说明'), findsNothing);
     expect(find.textContaining('允许按可用库存分批发运'), findsNothing);
@@ -259,6 +297,11 @@ class _DetailApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/currencies/dict') {
+      return const [
+        {'id': 'currency-usd', 'name': '美元'},
+      ];
+    }
     return const [];
   }
 }

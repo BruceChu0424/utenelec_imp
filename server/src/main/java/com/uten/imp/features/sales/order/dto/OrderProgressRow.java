@@ -8,7 +8,7 @@ package com.uten.imp.features.sales.order.dto;
  * <ul>
  *   <li>PENDING 待排产：未排产且未完工</li>
  *   <li>PRODUCING 生产中：含已排产/待物料/生产中/部分完工（produced>0 且未齐套）</li>
- *   <li>SHIPPABLE 可发货：已完工齐套但尚未全发</li>
+ *   <li>SHIPPABLE 可分批发货：存在大于零的成品销售预留，不要求整单全部完工</li>
  *   <li>SHIPPED 已发货：已发数量已达订货量</li>
  * </ul>
  * productionPct = 已产/订货（clamp ≤1），即「外层总进度环」口径（用户决策：生产进度为主）。

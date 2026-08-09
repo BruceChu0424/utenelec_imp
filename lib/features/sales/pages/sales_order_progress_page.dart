@@ -232,6 +232,8 @@ class _SalesOrderProgressPageState
                         _kv(theme, '已产', _fmt(r.producedQty)),
                         _kv(theme, '订货', _fmt(r.orderQty)),
                         _kv(theme, '已发', _fmt(r.shippedQty)),
+                        if (r.remainingQty > 0.0001)
+                          _kv(theme, '未交', _fmt(r.remainingQty)),
                         if (r.reservedQty > 0.0001)
                           _kv(theme, '可发', _fmt(r.reservedQty), emphasis: true),
                       ],

@@ -192,10 +192,11 @@ public class MaterialAnalysisCommandService {
             if (product == null) {
                 throw validation("待生成计划产品不属于当前分析");
             }
-            PlanDetail plan = createDraftPlan(analysisId, product, quantity.qty(), request,
+            validatePlanSchedule(quantity, request);
+            PlanDetail plan = createDraftPlan(analysisId, product, quantity, request,
                     overrides.get(product.analysisLineId()));
             ProductionPlanningDraftView draft = savePlanningDraft(
-                    analysisId, product, plan, request);
+                    analysisId, product, plan, quantity, request);
             PlanningPackageResult applied = null;
             if (request.approveNow()) {
                 planService.approve(plan.getId());
@@ -505,8 +506,14 @@ public class MaterialAnalysisCommandService {
     }
 
     private PlanDetail createDraftPlan(
-            UUID analysisId, ProductView product, BigDecimal qty,
+            UUID analysisId, ProductView product, PlanQuantity quantity,
             GeneratePlanRequest request, String overrideReason) {
+        BigDecimal qty = quantity.qty();
+        LocalDate billDate = itemBillDate(quantity, request);
+        LocalDate deliveryDate = itemDeliveryDate(quantity, request);
+        UUID departmentId = itemDepartmentId(quantity, request);
+        String workshopName = itemWorkshopName(quantity, request);
+        UUID workerId = itemWorkerId(quantity, request);
         PlanItemLine line = new PlanItemLine();
         line.setLineNo(1);
         line.setProductNo("MA-" + UUID.randomUUID().toString().replace("-", ""));
@@ -527,17 +534,17 @@ public class MaterialAnalysisCommandService {
         line.setQty(normalizedQty);
         line.setOrderDate(product.orderDate());
         line.setOutboundDate(product.deliveryDate());
-        line.setPlanBeginDate(request.billDate());
-        line.setPlanEndDate(request.deliveryDate());
+        line.setPlanBeginDate(billDate);
+        line.setPlanEndDate(deliveryDate);
         line.setSourceDocNo(product.salesOrderNo());
         line.setRemark("由生产物料分析分批生成");
 
         PlanSaveRequest save = new PlanSaveRequest();
-        save.setBillDate(request.billDate());
-        save.setDeliveryDate(request.deliveryDate());
-        save.setDepartmentId(request.departmentId());
-        save.setWorkshopName(request.workshopName());
-        save.setWorkerId(request.workerId());
+        save.setBillDate(billDate);
+        save.setDeliveryDate(deliveryDate);
+        save.setDepartmentId(departmentId);
+        save.setWorkshopName(workshopName);
+        save.setWorkerId(workerId);
         save.setSourceDocNo(product.salesOrderNo());
         save.setRemark("物料分析 " + analysisId + " 原子生成");
         save.setItems(List.of(line));
@@ -584,7 +591,11 @@ public class MaterialAnalysisCommandService {
 
     private ProductionPlanningDraftView savePlanningDraft(
             UUID analysisId, ProductView product, PlanDetail plan,
-            GeneratePlanRequest request) {
+            PlanQuantity quantity, GeneratePlanRequest request) {
+        LocalDate billDate = itemBillDate(quantity, request);
+        LocalDate deliveryDate = itemDeliveryDate(quantity, request);
+        UUID departmentId = itemDepartmentId(quantity, request);
+        UUID workerId = itemWorkerId(quantity, request);
         PlanningPreviewResult preview = planningPackages.preview(
                 plan.getId(), request.warehouseId());
         if (preview.executionSegments().isEmpty()) {
@@ -617,18 +628,56 @@ public class MaterialAnalysisCommandService {
             segment.setRequestedStatus("READY");
             segment.setDeferUntilManualRelease(false);
             segment.setPlannedQty(proposal.plannedQty());
-            segment.setWorkshopDepartmentId(request.departmentId() == null
-                    ? proposal.workshopDepartmentId() : request.departmentId());
-            segment.setTeamDepartmentId(proposal.teamDepartmentId());
-            segment.setResponsibleEmployeeId(request.workerId() == null
-                    ? proposal.responsibleEmployeeId() : request.workerId());
-            segment.setPlanBeginDate(request.billDate());
-            segment.setPlanEndDate(request.deliveryDate());
+            segment.setWorkshopDepartmentId(departmentId == null
+                    ? proposal.workshopDepartmentId() : departmentId);
+            segment.setTeamDepartmentId(quantity.teamDepartmentId() == null
+                    ? proposal.teamDepartmentId() : quantity.teamDepartmentId());
+            segment.setResponsibleEmployeeId(workerId == null
+                    ? proposal.responsibleEmployeeId() : workerId);
+            segment.setPlanBeginDate(billDate);
+            segment.setPlanEndDate(deliveryDate);
             segment.setBomFingerprint(proposal.bomFingerprint());
             segments.add(segment);
         }
         formal.setSegments(List.copyOf(segments));
         return planningDrafts.save(plan.getId(), formal);
+    }
+
+    private static void validatePlanSchedule(
+            PlanQuantity quantity, GeneratePlanRequest request) {
+        LocalDate billDate = itemBillDate(quantity, request);
+        LocalDate deliveryDate = itemDeliveryDate(quantity, request);
+        if (deliveryDate != null && deliveryDate.isBefore(billDate)) {
+            throw validation("计划完成日期不能早于计划开始日期");
+        }
+    }
+
+    private static LocalDate itemBillDate(
+            PlanQuantity quantity, GeneratePlanRequest request) {
+        return quantity.billDate() == null ? request.billDate() : quantity.billDate();
+    }
+
+    private static LocalDate itemDeliveryDate(
+            PlanQuantity quantity, GeneratePlanRequest request) {
+        return quantity.deliveryDate() == null
+                ? request.deliveryDate() : quantity.deliveryDate();
+    }
+
+    private static UUID itemDepartmentId(
+            PlanQuantity quantity, GeneratePlanRequest request) {
+        return quantity.departmentId() == null
+                ? request.departmentId() : quantity.departmentId();
+    }
+
+    private static String itemWorkshopName(
+            PlanQuantity quantity, GeneratePlanRequest request) {
+        return quantity.workshopName() == null
+                ? request.workshopName() : quantity.workshopName();
+    }
+
+    private static UUID itemWorkerId(
+            PlanQuantity quantity, GeneratePlanRequest request) {
+        return quantity.workerId() == null ? request.workerId() : quantity.workerId();
     }
 
     private GeneratedPlan toGenerated(
@@ -660,7 +709,7 @@ public class MaterialAnalysisCommandService {
                 """, planId);
         List<UUID> segments = packageId == null ? List.of() : uuidList("""
                 SELECT id FROM production_execution_segments
-                WHERE planning_package_id = :id AND is_deleted = FALSE ORDER BY segment_no, id
+                WHERE package_id = :id AND is_deleted = FALSE ORDER BY segment_no, id
                 """, packageId);
         List<UUID> draws = packageId == null ? List.of() : uuidList("""
                 SELECT document_id FROM production_planning_package_documents
@@ -773,9 +822,27 @@ public class MaterialAnalysisCommandService {
                         THEN GREATEST(action.requested_qty - LEAST(
                             action.requested_qty, COALESCE((
                                  SELECT SUM(GREATEST(
-                                     COALESCE(item.received_qty,0)
-                                    - COALESCE(item.returned_qty,0), 0)
-                                    * COALESCE(item.unit_rate,1))
+                                     COALESCE((
+                                         SELECT SUM(CASE
+                                             WHEN inspection.id IS NULL
+                                             THEN receipt_item.qty * COALESCE(
+                                                 receipt_item.unit_rate,1)
+                                             WHEN inspection.status = 'RESOLVED'
+                                             THEN inspection.passed_base_qty
+                                             ELSE 0
+                                         END)
+                                         FROM purchase_receipt_items receipt_item
+                                         JOIN purchase_receipts receipt
+                                           ON receipt.id = receipt_item.receipt_id
+                                          AND receipt.status = 1
+                                          AND receipt.is_deleted = FALSE
+                                         LEFT JOIN procurement_inspection_items inspection
+                                           ON inspection.receipt_type = 'PURCHASE'
+                                          AND inspection.receipt_item_id = receipt_item.id
+                                         WHERE receipt_item.order_item_id = item.id
+                                           AND receipt_item.is_deleted = FALSE
+                                     ),0) - COALESCE(item.returned_qty,0)
+                                         * COALESCE(item.unit_rate,1), 0))
                                 FROM purchase_order_items item
                                 JOIN purchase_orders purchase_order
                                   ON purchase_order.id = item.order_id
@@ -804,9 +871,27 @@ public class MaterialAnalysisCommandService {
                         THEN GREATEST(action.requested_qty - LEAST(
                             action.requested_qty, COALESCE((
                                  SELECT SUM(GREATEST(
-                                     COALESCE(item.received_qty,0)
-                                    - COALESCE(item.returned_qty,0), 0)
-                                    * COALESCE(item.unit_rate,1))
+                                     COALESCE((
+                                         SELECT SUM(CASE
+                                             WHEN inspection.id IS NULL
+                                             THEN receipt_item.qty * COALESCE(
+                                                 receipt_item.unit_rate,1)
+                                             WHEN inspection.status = 'RESOLVED'
+                                             THEN inspection.passed_base_qty
+                                             ELSE 0
+                                         END)
+                                         FROM subcontract_receipt_items receipt_item
+                                         JOIN subcontract_receipts receipt
+                                           ON receipt.id = receipt_item.receipt_id
+                                          AND receipt.status = 1
+                                          AND receipt.is_deleted = FALSE
+                                         LEFT JOIN procurement_inspection_items inspection
+                                           ON inspection.receipt_type = 'SUBCONTRACT'
+                                          AND inspection.receipt_item_id = receipt_item.id
+                                         WHERE receipt_item.order_item_id = item.id
+                                           AND receipt_item.is_deleted = FALSE
+                                     ),0) - COALESCE(item.returned_qty,0)
+                                         * COALESCE(item.unit_rate,1), 0))
                                 FROM subcontract_order_items item
                                 JOIN subcontract_orders subcontract_order
                                   ON subcontract_order.id = item.order_id
@@ -984,7 +1069,13 @@ public class MaterialAnalysisCommandService {
                 Objects.toString(request.workerId(), ""),
                 Boolean.toString(request.approveNow())));
         request.items().forEach(item -> parts.add("ITEM|" + item.analysisLineId()
-                + "|" + MaterialAnalysisService.decimalText(item.qty())));
+                + "|" + MaterialAnalysisService.decimalText(item.qty())
+                + "|" + Objects.toString(item.billDate(), "")
+                + "|" + Objects.toString(item.deliveryDate(), "")
+                + "|" + Objects.toString(item.departmentId(), "")
+                + "|" + Objects.toString(item.workshopName(), "")
+                + "|" + Objects.toString(item.workerId(), "")
+                + "|" + Objects.toString(item.teamDepartmentId(), "")));
         if (request.bomOverrides() != null) request.bomOverrides().forEach(value ->
                 parts.add("BOM|" + value.analysisLineId() + "|" + value.reason().strip()));
         return PlanningPackageFingerprint.sha256(parts);

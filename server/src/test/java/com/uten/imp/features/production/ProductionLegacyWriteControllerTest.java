@@ -11,7 +11,11 @@ import com.uten.imp.features.production.plan.ProductionPlanService;
 import com.uten.imp.features.production.schedule.ProductionScheduleController;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.PostMapping;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,6 +24,23 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 class ProductionLegacyWriteControllerTest {
+
+    @Test
+    void mrpWriteSurfaceKeepsCurrentPackageRouteAndRemovesLegacySubplanRoutes() {
+        Set<String> routes = new HashSet<>();
+        for (var method : MrpController.class.getDeclaredMethods()) {
+            PostMapping mapping = method.getAnnotation(PostMapping.class);
+            if (mapping != null) {
+                routes.addAll(List.of(mapping.value()));
+            }
+        }
+
+        assertThat(routes)
+                .contains("/{id}/mrp/generate-planning-package")
+                .doesNotContain(
+                        "/{id}/mrp/generate-subplan",
+                        "/{id}/mrp/generate-subplans");
+    }
 
     @Test
     void directPlanCreateIsPermanentlyRejectedWithoutCallingTheService() {

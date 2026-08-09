@@ -12,14 +12,6 @@ class ProductionRequestApplicantIdentityContractTest {
 
     @Test
     void everyProductionCallerPassesEmployeeIdentityAsApplicant() throws IOException {
-        String planning = source(
-                "features/production/mrp/ProductionPlanningPackageService.java");
-        assertThat(planning).containsSubsequence(
-                "purchaseFacade.createProductionDraft(",
-                "purchaseLines,",
-                "currentUser.requireEmployeeId(),",
-                "currentUser.requireEmployeeId());");
-
         String execution = source(
                 "features/production/mrp/ProductionExecutionPackageCommandService.java");
         assertThat(execution).containsSubsequence(

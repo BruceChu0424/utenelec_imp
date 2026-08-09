@@ -21,8 +21,8 @@ import java.util.UUID;
  * 数据范围授权管理（V89 user_data_scopes）：按人配置「能看哪些归属人的某模块单据」。
  *
  * <p>三档可见性的中间档：自己（+公共）/ <b>自己+授权归属人</b> / 全部（*:view:all）。
- * scope：goods / client / sales（owner_employee_id 归属）+ purchase / subcontract /
- * production_plan / stock_doc（maker_id 归属，V233）。整体替换语义，同权限覆盖管理。
+ * scope：goods / client / sales 使用 owner_employee_id；finance / purchase / subcontract /
+ * production_plan / stock_doc 使用 maker_id。整体替换语义，同权限覆盖管理。
  * user_data_scopes 的 visibleOwners 同时影响 canRead 和 canWrite，即授权同事看+改。
  */
 @Service
@@ -32,7 +32,7 @@ public class DataScopeAdminService {
 
     /** 合法业务范围（与 user_data_scopes.scope CHECK 一致）。 */
     private static final List<String> SCOPES = List.of(
-            "goods", "client", "sales",
+            "goods", "client", "sales", "finance",
             "purchase", "subcontract", "production_plan", "stock_doc");
 
     private final EntityManager em;
@@ -90,6 +90,12 @@ public class DataScopeAdminService {
                      UNION ALL SELECT owner_employee_id FROM sales_shipments WHERE owner_employee_id IS NOT NULL
                      UNION ALL SELECT owner_employee_id FROM sales_other_shipments WHERE owner_employee_id IS NOT NULL
                      UNION ALL SELECT owner_employee_id FROM sales_returns WHERE owner_employee_id IS NOT NULL) t""";
+            case "finance" -> """
+                    (SELECT maker_id AS owner_employee_id FROM finance_payments WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM finance_receipts WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM finance_expenses WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM finance_bank_transfers WHERE maker_id IS NOT NULL
+                     UNION ALL SELECT maker_id FROM finance_other_incomes WHERE maker_id IS NOT NULL) t""";
             // 采购单据归属列 = maker_id（申请单不隔离，不含 purchase_requests）
             case "purchase" -> """
                     (SELECT maker_id AS owner_employee_id FROM purchase_orders WHERE maker_id IS NOT NULL

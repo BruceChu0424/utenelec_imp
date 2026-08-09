@@ -32,6 +32,10 @@ const config: Config = {
           hover: 'hsl(var(--accent-hover))',
           soft: 'hsl(var(--accent-soft))',
         },
+        warm: {
+          DEFAULT: 'hsl(var(--warm))',
+          foreground: 'hsl(var(--warm-foreground))',
+        },
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
@@ -61,11 +65,11 @@ const config: Config = {
         hero: ['clamp(3rem, 8vw, 6rem)', { lineHeight: '1.02', fontWeight: '700', letterSpacing: '-0.04em' }],
       },
       boxShadow: {
-        sm: '0 1px 2px rgba(0,0,0,.1)',
-        DEFAULT: '0 4px 20px -4px rgba(0,0,0,.3)',
-        lg: '0 24px 60px -16px rgba(0,0,0,.5)',
-        glow: '0 0 0 1px hsl(var(--accent)/.25), 0 12px 40px -8px hsl(var(--accent)/.45)',
-        'inner-hairline': 'inset 0 1px 0 0 rgba(255,255,255,.06)',
+        sm: '0 1px 2px hsl(166 24% 11% / .08)',
+        DEFAULT: '0 18px 55px -42px hsl(166 24% 11% / .45)',
+        lg: '0 32px 80px -44px hsl(166 24% 11% / .5)',
+        glow: '0 0 0 1px hsl(var(--accent)/.2), 0 20px 48px -24px hsl(var(--accent)/.55)',
+        'inner-hairline': 'inset 0 1px 0 0 hsl(0 0% 100% / .55)',
       },
       keyframes: {
         'fade-up': { '0%': { opacity: '0', transform: 'translateY(24px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },

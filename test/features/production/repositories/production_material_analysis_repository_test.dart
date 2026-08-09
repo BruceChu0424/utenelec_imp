@@ -111,6 +111,12 @@ void main() {
           MaterialAnalysisPlanItemInput(
             analysisLineId: 'product-line-1',
             qty: 5,
+            billDate: '2026-08-09',
+            deliveryDate: '2026-08-18',
+            departmentId: 'workshop-1',
+            workshopName: '装配一车间',
+            workerId: 'worker-1',
+            teamDepartmentId: 'team-1',
           ),
         ],
         bomOverrides: const [
@@ -126,10 +132,19 @@ void main() {
         idempotencyKey: 'generate-command-1',
         billDate: '2026-08-08',
         deliveryDate: '2026-08-20',
+        departmentId: 'fallback-workshop',
+        workshopName: '默认车间',
+        workerId: 'fallback-worker',
         items: const [
           MaterialAnalysisPlanItemInput(
             analysisLineId: 'product-line-1',
             qty: 5,
+            billDate: '2026-08-09',
+            deliveryDate: '2026-08-18',
+            departmentId: 'workshop-1',
+            workshopName: '装配一车间',
+            workerId: 'worker-1',
+            teamDepartmentId: 'team-1',
           ),
         ],
         bomOverrides: const [
@@ -212,9 +227,21 @@ void main() {
         'idempotencyKey': 'generate-command-1',
         'billDate': '2026-08-08',
         'deliveryDate': '2026-08-20',
+        'departmentId': 'fallback-workshop',
+        'workshopName': '默认车间',
+        'workerId': 'fallback-worker',
         'approveNow': false,
         'items': [
-          {'analysisLineId': 'product-line-1', 'qty': 5.0},
+          {
+            'analysisLineId': 'product-line-1',
+            'qty': 5.0,
+            'billDate': '2026-08-09',
+            'deliveryDate': '2026-08-18',
+            'departmentId': 'workshop-1',
+            'workshopName': '装配一车间',
+            'workerId': 'worker-1',
+            'teamDepartmentId': 'team-1',
+          },
         ],
         'bomOverrides': [
           {'analysisLineId': 'product-line-1', 'reason': '试制特批，后续补录 BOM'},

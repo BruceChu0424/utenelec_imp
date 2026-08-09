@@ -4,9 +4,11 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
 import com.uten.imp.features.finance.arap.ArApLedger;
 import com.uten.imp.features.finance.arap.ArApLedgerRepository;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptLineInput;
 import com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest;
@@ -67,6 +69,7 @@ class FinanceReceiptSettlementTest {
     private final Map<UUID, ArApLedger> ledgers = new HashMap<>();
     private final List<String> nativeSql = new ArrayList<>();
     private FinanceReceiptService service;
+    private GlPostingService glPosting;
 
     @BeforeEach
     void setUp() {
@@ -78,6 +81,8 @@ class FinanceReceiptSettlementTest {
         currentUser = mock(SecurityContextCurrentUser.class);
         EmployeeNameResolver names = mock(EmployeeNameResolver.class);
         DocNumberService numbers = mock(DocNumberService.class);
+        FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
+        glPosting = mock(GlPostingService.class);
         em = mock(EntityManager.class);
 
         when(receiptRepo.save(any(FinanceReceipt.class))).thenAnswer(invocation -> {
@@ -171,7 +176,7 @@ class FinanceReceiptSettlementTest {
         when(currentUser.requireEmployeeId()).thenReturn(MAKER_ID);
         service = new FinanceReceiptService(
                 receiptRepo, lineRepo, ledgerRepo, arApService, tx,
-                currentUser, names, em, numbers);
+                currentUser, names, em, numbers, access, glPosting);
     }
 
     @Test
@@ -188,8 +193,32 @@ class FinanceReceiptSettlementTest {
         assertMoney(saved.getWriteOffLocal(), "14.4000");
         assertMoney(saved.getAppliedAmountLocal(), "224.0000");
         assertMoney(saved.getExchangeDiff(), "6.4000");
+        assertMoney(saved.getExchangeRate(), "7.200000");
         assertMoney(detail.getAmountOriginal(), "30.0000");
         assertMoney(detail.getAmountLocal(), "216.0000");
+    }
+
+    @Test
+    void appliedReceiptRequiresExplicitPositiveArrivalRatePerLine() {
+        ArApLedger ledger = receivable("100.0000", "7.000000");
+        FinanceReceiptSaveRequest missing = request(
+                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        missing.getItems().getFirst().setExchangeRate(null);
+        // A valid header value must not rescue a missing line-level arrival rate.
+        missing.setExchangeRate(new BigDecimal("6.900000"));
+
+        FinanceReceiptSaveRequest zero = request(
+                ledger, "30.0000", "7.200000", "0.0000", "0.0000",
+                "9999.0000", "9999.0000");
+        zero.getItems().getFirst().setExchangeRate(BigDecimal.ZERO);
+
+        assertThatThrownBy(() -> service.create(missing))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("收款汇率必须大于 0");
+        assertThatThrownBy(() -> service.create(zero))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("收款汇率必须大于 0");
     }
 
     @Test
@@ -263,6 +292,9 @@ class FinanceReceiptSettlementTest {
         assertThat(ledger.isSettled()).isFalse();
         assertThat(ledger.getSettledDate()).isNull();
         assertThat(receipts.get(second.getId()).getStatus()).isEqualTo((short) -1);
+        verify(glPosting, times(2)).lockAutoProjectionPeriod(first.getBillDate());
+        verify(glPosting).removeAutoProjection(
+                "RECEIPT", second.getId(), second.getBillNo(), second.getBillDate());
 
         verify(ledgerRepo, times(3)).findAllByIdInForUpdate(any());
         verify(em, times(3)).refresh(any(FinanceReceipt.class),
@@ -325,20 +357,44 @@ class FinanceReceiptSettlementTest {
     @Test
     void directPrepaymentRejectsMissingCurrencyAndNonPositiveRateBeforePosting() {
         FinanceReceiptDetail missingCurrency = service.create(directRequest(null, "1.000000"));
+        FinanceReceiptDetail missingRate = service.create(directRequest(CURRENCY_ID, null));
         FinanceReceiptDetail zeroRate = service.create(directRequest(CURRENCY_ID, "0.000000"));
+        FinanceReceiptSaveRequest missingOriginalRequest = directRequest(CURRENCY_ID, "7.200000");
+        missingOriginalRequest.setAmountOriginal(null);
+        missingOriginalRequest.setAmountLocal(new BigDecimal("9999.0000"));
+        FinanceReceiptDetail missingOriginal = service.create(missingOriginalRequest);
         when(currentUser.requireEmployeeId()).thenReturn(APPROVER_ID);
-        postingCounts.addAll(List.of(0L, 0L));
+        postingCounts.addAll(List.of(0L, 0L, 0L, 0L));
 
         assertThatThrownBy(() -> service.approve(missingCurrency.getId()))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("直接预收款必须指定币别");
+        assertThatThrownBy(() -> service.approve(missingRate.getId()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("收款汇率必须大于 0");
         assertThatThrownBy(() -> service.approve(zeroRate.getId()))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("收款汇率必须大于 0");
+        assertThatThrownBy(() -> service.approve(missingOriginal.getId()))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("直接收款原币金额必须大于 0");
 
         verify(arApService, never()).postArAp(any());
         verify(accountUpdate, never()).executeUpdate();
         verify(reconciliationInsert, never()).executeUpdate();
+    }
+
+    @Test
+    void directPrepaymentDerivesLocalAmountAndIgnoresClientValue() {
+        FinanceReceiptSaveRequest request = directRequest(CURRENCY_ID, "7.200000");
+        request.setAmountOriginal(new BigDecimal("10.0000"));
+        request.setAmountLocal(new BigDecimal("9999.0000"));
+
+        FinanceReceiptDetail draft = service.create(request);
+
+        assertMoney(draft.getAmountOriginal(), "10.0000");
+        assertMoney(draft.getExchangeRate(), "7.200000");
+        assertMoney(draft.getAmountLocal(), "72.0000");
     }
 
     private ArApLedger receivable(String original, String recognitionRate) {
@@ -404,7 +460,7 @@ class FinanceReceiptSettlementTest {
         request.setClientId(CLIENT_ID);
         request.setAccountId(ACCOUNT_ID);
         request.setCurrencyId(currencyId);
-        request.setExchangeRate(new BigDecimal(exchangeRate));
+        request.setExchangeRate(exchangeRate == null ? null : new BigDecimal(exchangeRate));
         request.setAmountOriginal(new BigDecimal("10.0000"));
         request.setItems(List.of());
         return request;

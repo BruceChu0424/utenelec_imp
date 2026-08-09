@@ -2,184 +2,366 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== 优腾官网 · Cinema Dark 深色电影感设计系统 ===== */
+/*
+ * Uten Architectural — warm editorial surfaces + industrial precision.
+ * Public pages are intentionally light-first. Dark blocks are expressed with
+ * semantic tokens instead of forcing every visitor into a dark theme.
+ */
 
 @layer base {
   :root {
-    /* 浅色（兜底；默认深色由 .dark 控制） */
-    --background: 210 40% 99%;
-    --background-elevated: 210 40% 96%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --primary: 222 47% 11%;
-    --primary-foreground: 0 0% 100%;
-    --primary-hover: 217 33% 17%;
-    --accent: 174 100% 30%;
+    --background: 42 33% 97%;
+    --background-elevated: 38 29% 93%;
+    --foreground: 166 24% 11%;
+    --card: 42 36% 99%;
+    --card-foreground: 166 24% 11%;
+    --primary: 166 36% 12%;
+    --primary-foreground: 42 40% 97%;
+    --primary-hover: 166 34% 17%;
+    --accent: 174 100% 24%;
     --accent-foreground: 0 0% 100%;
-    --accent-hover: 174 100% 24%;
-    --accent-soft: 174 90% 38%;
-    --muted: 214 32% 93%;
-    --muted-foreground: 215 16% 47%;
-    --border: 214 32% 90%;
-    --input: 214 32% 90%;
-    --ring: 174 100% 30%;
-    --destructive: 0 72% 51%;
+    --accent-hover: 174 100% 19%;
+    --accent-soft: 171 48% 88%;
+    --warm: 32 62% 52%;
+    --warm-foreground: 166 24% 11%;
+    --muted: 38 22% 91%;
+    --muted-foreground: 164 10% 38%;
+    --border: 36 17% 82%;
+    --input: 36 17% 78%;
+    --ring: 174 100% 24%;
+    --destructive: 3 70% 45%;
     --destructive-foreground: 0 0% 100%;
-    --radius: 0.875rem;
+    --radius: 1rem;
     --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-    --font-heading: 'Lexend', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
-    --font-body: 'Source Sans 3', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --font-heading: 'Aptos Display', 'Segoe UI Variable Display', 'PingFang SC',
+      'Microsoft YaHei', system-ui, sans-serif;
+    --font-body: 'Aptos', 'Segoe UI Variable Text', 'PingFang SC',
+      'Microsoft YaHei', system-ui, sans-serif;
   }
+
+  html:lang(zh) {
+    --font-heading: 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+      'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif;
+    --font-body: 'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei',
+      'Noto Sans CJK SC', 'Source Han Sans SC', system-ui, sans-serif;
+  }
+
+  html:lang(ja) {
+    --font-heading: 'Hiragino Sans', 'Yu Gothic UI', 'Yu Gothic', Meiryo,
+      'Noto Sans JP', system-ui, sans-serif;
+    --font-body: 'Hiragino Sans', 'Yu Gothic UI', 'Yu Gothic', Meiryo,
+      'Noto Sans JP', system-ui, sans-serif;
+  }
+
+  html:lang(ko) {
+    --font-heading: Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR',
+      'Malgun Gothic', system-ui, sans-serif;
+    --font-body: Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR',
+      'Malgun Gothic', system-ui, sans-serif;
+  }
+
+  html:lang(ar) {
+    --font-heading: 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+    --font-body: 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+  }
+
   .dark {
-    /* Cinema Dark：深空 + 电光青 + 玻璃态 */
-    --background: 228 33% 4%;            /* #06080C 深空 */
-    --background-elevated: 224 26% 7%;   /* #0E1117 抬升层 */
-    --foreground: 210 40% 97%;           /* #FAFCFF 银白 */
-    --card: 224 30% 6%;                  /* #0B0E14 */
-    --card-foreground: 210 40% 97%;
-    --primary: 215 35% 13%;
-    --primary-foreground: 210 40% 97%;
-    --primary-hover: 215 35% 17%;
-    --accent: 174 100% 36%;               /* #009A8E 品牌青绿 */
-    --accent-foreground: 0 0% 100%;
-    --accent-hover: 174 100% 30%;
-    --accent-soft: 174 85% 60%;
-    --muted: 222 20% 11%;
-    --muted-foreground: 215 18% 62%;
-    --border: 220 16% 17%;               /* 发丝边框 */
-    --input: 220 16% 17%;
-    --ring: 174 90% 50%;
-    --destructive: 0 72% 58%;
-    --destructive-foreground: 0 0% 100%;
+    --background: 166 29% 7%;
+    --background-elevated: 165 25% 10%;
+    --foreground: 42 34% 96%;
+    --card: 165 24% 10%;
+    --card-foreground: 42 34% 96%;
+    --primary: 42 34% 96%;
+    --primary-foreground: 166 29% 7%;
+    --primary-hover: 38 20% 88%;
+    --accent: 171 71% 43%;
+    --accent-foreground: 166 29% 7%;
+    --accent-hover: 171 72% 50%;
+    --accent-soft: 167 30% 17%;
+    --muted: 165 18% 14%;
+    --muted-foreground: 40 12% 68%;
+    --border: 165 14% 20%;
+    --input: 165 14% 24%;
+    --ring: 171 71% 43%;
   }
 }
 
 @layer base {
   * { @apply border-border; }
-  html { scroll-behavior: smooth; }
-  body {
-    @apply bg-background text-foreground font-body antialiased;
-    font-feature-settings: 'tnum' 1;
-    overflow-x: hidden;
-  }
-  h1, h2, h3, h4, h5, h6 { @apply font-heading tracking-tight; }
-  ::selection { @apply bg-accent/30 text-foreground; }
-  :focus-visible { @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background; }
 
-  /* 深色滚动条 */
-  .dark { color-scheme: dark; }
+  html {
+    scroll-behavior: smooth;
+    background: hsl(var(--background));
+  }
+
+  body {
+    @apply bg-background font-body text-foreground antialiased;
+    min-width: 320px;
+    overflow-x: hidden;
+    line-height: 1.6;
+    font-feature-settings: 'kern' 1, 'tnum' 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+    letter-spacing: -0.035em;
+  }
+
+  a, button, input, select, textarea { touch-action: manipulation; }
+  button, [role='button'] { cursor: pointer; }
+  img { max-width: 100%; }
+  ::selection { background: hsl(var(--accent) / .2); color: hsl(var(--foreground)); }
+  :focus-visible {
+    outline: 3px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
+
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: hsl(var(--background)); }
-  ::-webkit-scrollbar-thumb { background: hsl(220 14% 22%); border-radius: 5px; }
-  ::-webkit-scrollbar-thumb:hover { background: hsl(220 14% 30%); }
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid hsl(var(--background));
+    border-radius: 999px;
+    background: hsl(var(--foreground) / .28);
+  }
 }
 
 @layer components {
-  .container-uten { @apply mx-auto w-full max-w-7xl px-4 md:px-6; }
-  .section { @apply py-20 md:py-32; }
+  .container-uten { @apply mx-auto w-full max-w-[1320px] px-5 sm:px-6 md:px-8 lg:px-10; }
+  .section { @apply py-16 md:py-20 lg:py-24; }
+  .section-tight { @apply py-12 md:py-16 lg:py-20; }
+
   .eyebrow {
-    @apply inline-flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.28em] text-accent;
+    @apply inline-flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.24em] text-accent;
   }
   .eyebrow::before {
-    content: ''; @apply inline-block h-px w-8 bg-accent/60;
+    content: '';
+    @apply h-px w-7 bg-accent;
   }
 
-  /* 玻璃态卡片 */
+  .display-title {
+    font-size: clamp(3.25rem, 7vw, 6.75rem);
+    font-weight: 650;
+    line-height: 1.08;
+    letter-spacing: -.055em;
+  }
+
+  .section-title {
+    font-size: clamp(2.25rem, 4vw, 4.25rem);
+    font-weight: 620;
+    line-height: 1.12;
+    letter-spacing: -.045em;
+  }
+
+  .page-title {
+    font-size: clamp(2.6rem, 5.2vw, 5.25rem);
+    font-weight: 650;
+    line-height: 1.1;
+    letter-spacing: -.05em;
+  }
+
+  .prose-intro {
+    @apply max-w-[68ch] text-base leading-8 text-muted-foreground md:text-lg md:leading-9;
+  }
+
   .card-uten {
-    @apply rounded-2xl border border-border bg-card transition-all duration-500;
+    @apply rounded-[1.35rem] border border-border/80 bg-card transition duration-300;
+    box-shadow: 0 1px 0 hsl(0 0% 100% / .7), 0 18px 55px -42px hsl(var(--foreground) / .45);
   }
-  .dark .card-uten {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
-    border: 1px solid rgba(255, 255, 255, 0.08);
-  }
-  .glass {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+  .card-uten:hover {
+    border-color: hsl(var(--foreground) / .23);
+    box-shadow: 0 1px 0 hsl(0 0% 100% / .7), 0 26px 65px -40px hsl(var(--foreground) / .42);
   }
 
-  /* 按钮 */
+  .glass {
+    background: hsl(var(--background) / .78);
+    border: 1px solid hsl(var(--border) / .72);
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
+    backdrop-filter: blur(20px) saturate(130%);
+  }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold
-           transition-all duration-300 cursor-pointer select-none
-           focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background
-           disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition duration-200 disabled:pointer-events-none disabled:opacity-45;
     transition-timing-function: var(--ease-out-expo);
   }
-  .btn-primary { @apply btn bg-foreground text-background px-6 py-3 hover:opacity-90; }
-  .btn-accent {
-    @apply btn bg-accent text-accent-foreground px-6 py-3 hover:bg-accent-hover;
-  }
-  .btn-accent:hover {
-    box-shadow: 0 10px 36px -8px hsl(var(--accent) / 0.55);
-    transform: translateY(-1px);
-  }
-  .btn-outline { @apply btn border border-border bg-transparent px-6 py-3 hover:border-foreground/30 hover:bg-foreground/5; }
-  .dark .btn-outline { border-color: rgba(255, 255, 255, 0.16); }
-  .btn-ghost { @apply btn px-4 py-2 text-foreground/70 hover:bg-foreground/5 hover:text-foreground; }
-  .btn-sm { @apply px-4 py-2 text-xs; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(0) scale(.985); }
+  .btn-primary { @apply btn bg-primary text-primary-foreground hover:bg-primary-hover; }
+  .btn-accent { @apply btn bg-accent text-accent-foreground hover:bg-accent-hover; }
+  .btn-accent:hover { box-shadow: 0 16px 34px -18px hsl(var(--accent) / .72); }
+  .btn-outline { @apply btn border border-foreground/20 bg-transparent text-foreground hover:border-foreground/45 hover:bg-foreground/[.045]; }
+  .btn-ghost { @apply btn px-4 text-foreground/65 hover:bg-foreground/[.055] hover:text-foreground; }
+  .btn-sm { @apply min-h-10 px-4 py-2 text-xs; }
 
   .input-uten {
-    @apply w-full rounded-xl border border-input bg-background px-4 py-2.5 text-foreground
-           placeholder:text-muted-foreground/60
-           focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none transition;
+    @apply min-h-11 w-full rounded-xl border border-input bg-card px-4 py-2.5 text-foreground placeholder:text-muted-foreground/65 transition focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/10;
   }
-  .dark .input-uten { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.1); }
-  .label-uten { @apply mb-1.5 block text-sm font-medium text-foreground; }
-  .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground; }
+  .label-uten { @apply mb-2 block text-sm font-semibold text-foreground; }
+  .chip { @apply inline-flex min-h-8 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-muted-foreground; }
+
+  .page-hero {
+    @apply relative overflow-hidden border-b border-border/70 py-14 md:py-20 lg:py-24;
+    background:
+      radial-gradient(circle at 82% 18%, hsl(var(--accent) / .1), transparent 28%),
+      linear-gradient(135deg, hsl(var(--background-elevated)), hsl(var(--background)) 58%);
+  }
+
+  .media-stage {
+    @apply relative overflow-hidden rounded-[1.5rem] border border-border bg-[linear-gradient(145deg,hsl(var(--background-elevated)),hsl(var(--card))_68%)];
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / .68), 0 28px 70px -55px hsl(var(--foreground) / .5);
+  }
+
+  .product-cutout {
+    filter: drop-shadow(0 24px 28px hsl(165 32% 8% / .2));
+    transform: translateZ(0);
+  }
+
+  .panel-dark {
+    color: hsl(var(--primary-foreground));
+    background:
+      radial-gradient(circle at 74% 18%, hsl(var(--accent) / .22), transparent 34%),
+      hsl(var(--primary));
+  }
 }
 
 @layer utilities {
   .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
   .text-gradient {
-    background: linear-gradient(180deg, hsl(var(--foreground)) 20%, hsl(var(--foreground) / 0.65));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+    background: linear-gradient(120deg, hsl(var(--foreground)), hsl(166 20% 37%));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
   .text-gradient-accent {
-    background: linear-gradient(135deg, hsl(var(--accent-soft)), hsl(var(--accent)));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+    background: linear-gradient(120deg, hsl(var(--accent)), hsl(165 58% 43%));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
   .bg-grid {
     background-image:
-      linear-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--border) / 0.5) 1px, transparent 1px);
-    background-size: 56px 56px;
+      linear-gradient(hsl(var(--foreground) / .055) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--foreground) / .055) 1px, transparent 1px);
+    background-size: 72px 72px;
   }
   .bg-dots {
-    background-image: radial-gradient(hsl(var(--border)) 1px, transparent 1px);
-    background-size: 26px 26px;
+    background-image: radial-gradient(hsl(var(--foreground) / .17) .8px, transparent .8px);
+    background-size: 24px 24px;
   }
-  .glow-accent { box-shadow: 0 0 48px -10px hsl(var(--accent) / 0.5); }
   .ambient-blob {
-    position: absolute; border-radius: 9999px; filter: blur(70px);
-    opacity: 0.5; pointer-events: none; will-change: transform;
+    pointer-events: none;
+    position: absolute;
+    border-radius: 999px;
+    filter: blur(80px);
+    opacity: .32;
+    will-change: transform;
   }
-  .hairline { border: 1px solid rgba(255, 255, 255, 0.08); }
-  .mask-fade-b { mask-image: linear-gradient(to bottom, black 55%, transparent 100%); }
+  .mask-fade-b { mask-image: linear-gradient(to bottom, black 58%, transparent); }
   .mask-fade-edges { mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent); }
+  .hairline { border: 1px solid hsl(var(--border) / .72); }
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 }
 
-/* 环境光斑漂移动画 */
-@keyframes blob-drift {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(40px, -30px) scale(1.1); }
-  66% { transform: translate(-30px, 20px) scale(0.95); }
+@keyframes float-soft {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-1deg); }
+  50% { transform: translate3d(0, -13px, 0) rotate(1deg); }
 }
-.animate-blob { animation: blob-drift 18s var(--ease-out-expo, ease-in-out) infinite; }
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+@keyframes scan-line {
+  0% { transform: translate3d(-120%, 0, 0); opacity: 0; }
+  15%, 70% { opacity: .72; }
+  100% { transform: translate3d(420%, 0, 0); opacity: 0; }
+}
+@keyframes marquee {
+  to { transform: translate3d(-50%, 0, 0); }
+}
+@keyframes scene-in {
+  from { opacity: 0; transform: scale(1.025); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-reveal { animation: reveal-in .8s var(--ease-out-expo) both; }
+@keyframes reveal-in {
+  from { opacity: 1; transform: translate3d(0, var(--reveal-y, 24px), 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+.animate-float { animation: float-soft 6s ease-in-out 2 both; }
+.animate-orbit { animation: orbit 22s linear 1 both; }
+.animate-marquee { animation: marquee 36s linear 2 both; }
+.animate-scene-in { animation: scene-in .65s var(--ease-out-expo) both; }
+.scan-line::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  width: 28%;
+  background: linear-gradient(90deg, transparent, hsl(var(--accent) / .24), transparent);
+  transform: translateX(-120%);
+  animation: scan-line 5.5s ease-in-out 2 both;
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
   }
-  .animate-blob { animation: none !important; }
+}
+
+@media (max-width: 767px) {
+  .display-title {
+    font-size: clamp(3rem, 13.5vw, 4.25rem);
+    line-height: 1.1;
+    letter-spacing: -.045em;
+  }
+
+  .section-title,
+  .page-title {
+    line-height: 1.14;
+    letter-spacing: -.035em;
+  }
+}
+
+/*
+ * Script-aware typography. CJK and Arabic glyphs need their native system
+ * fallbacks and more vertical room than the compact Latin display rhythm.
+ */
+:is(html:lang(zh), html:lang(ja)) body {
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+html:lang(ko) body {
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+:is(html:lang(zh), html:lang(ja), html:lang(ko), html:lang(ar))
+  :is(h1, h2, h3, h4, h5, h6) {
+  letter-spacing: 0 !important;
+}
+
+:is(html:lang(zh), html:lang(ja), html:lang(ko))
+  :is(.display-title, .section-title, .page-title) {
+  line-height: 1.22;
+}
+
+html:lang(ar) :is(.display-title, .section-title, .page-title) {
+  line-height: 1.24;
+}
+
+html:lang(zh) [class*='tracking-'] { letter-spacing: .04em !important; }
+html:lang(ja) [class*='tracking-'] { letter-spacing: .025em !important; }
+html:lang(ko) [class*='tracking-'] { letter-spacing: .015em !important; }
+html:lang(ar) [class*='tracking-'] { letter-spacing: 0 !important; }
+
+html:lang(zh) .eyebrow { letter-spacing: .1em !important; }
+html:lang(ja) .eyebrow { letter-spacing: .08em !important; }
+html:lang(ko) .eyebrow { letter-spacing: .06em !important; }
+html:lang(ar) .eyebrow {
+  letter-spacing: 0 !important;
+  text-transform: none;
 }

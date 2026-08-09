@@ -112,6 +112,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginFailed => 'Invalid account or password';
 
   @override
+  String get loginServerRecoveryAction => 'Restore automatic server selection';
+
+  @override
+  String get loginServerRecoveryHint =>
+      'Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.';
+
+  @override
+  String get loginServerRecoverySuccess =>
+      'Automatic server selection restored. Please sign in again.';
+
+  @override
+  String get loginServerRecoveryFailed =>
+      'Could not restore server selection. Try again or contact an administrator.';
+
+  @override
   String get loginFooter => '© 2026 Uten Integrated Management Platform';
 
   @override
@@ -2747,4 +2762,43 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get impersonationStartFailed => 'Switch failed';
+
+  @override
+  String get exportDialogTitle => 'Export Excel';
+
+  @override
+  String get exportPasswordOptionalHint =>
+      'A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.';
+
+  @override
+  String get exportPasswordOptionalLabel =>
+      'Opening password (optional, 1–128)';
+
+  @override
+  String get exportPasswordConfirmLabel => 'Confirm password';
+
+  @override
+  String get exportPasswordTooLong => 'Password cannot exceed 128 characters';
+
+  @override
+  String get exportPasswordMismatch => 'Passwords do not match';
+
+  @override
+  String get exportDownloadPlain => 'Download';
+
+  @override
+  String get exportDownloadEncrypted => 'Download encrypted';
+
+  @override
+  String get exportFailed => 'Export failed. Try again later.';
+
+  @override
+  String exportDownloadStarted(String name) {
+    return 'Download started: $name';
+  }
+
+  @override
+  String exportDownloadSaved(String path) {
+    return 'Saved to $path';
+  }
 }

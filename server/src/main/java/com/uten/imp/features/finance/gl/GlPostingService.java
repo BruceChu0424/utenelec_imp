@@ -7,9 +7,11 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,8 +52,12 @@ public class GlPostingService {
     }
 
     private int generatePeriod(String period) {
+        lockAutoProjectionPeriod(period);
+        assertNoConfirmedExpenseVouchers(period);
         assertArPostingConfiguration(period);
         assertReceiptPostingConfiguration(period);
+        assertPaymentAmountsAuthoritative(period);
+        assertPaymentPostingConfiguration(period);
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes)")
                 .setParameter("p", period)
                 .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
@@ -72,6 +78,279 @@ public class GlPostingService {
                 .setParameter("p", period)
                 .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
                 .getSingleResult()).intValue();
+    }
+
+    /** Remove one projected payment voucher under the same period lock used by regeneration. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removePaymentDoc(UUID paymentId, String billNo, LocalDate billDate) {
+        removeAutoProjection("PAYMENT", "PAYMENT", paymentId, billNo, billDate);
+    }
+
+    /**
+     * Serialize a business-document mutation with the AUTO projection rebuild for its period.
+     * Callers must already own the surrounding business transaction.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockAutoProjectionPeriod(LocalDate billDate) {
+        if (billDate == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "总账投影期间缺失，禁止继续处理");
+        }
+        lockAutoProjectionPeriod(YearMonth.from(billDate).toString());
+    }
+
+    /**
+     * Remove one unconfirmed AUTO projection under the same period lock as regeneration.
+     * The source type is restricted to this service's owned projections and the delete is
+     * narrowed by period plus the persisted document identity.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removeAutoProjection(
+            String sourceType,
+            UUID sourceDocId,
+            String billNo,
+            LocalDate billDate) {
+        removeAutoProjection(sourceType, sourceType, sourceDocId, billNo, billDate);
+    }
+
+    /**
+     * Variant for AR/AP projections, whose voucher source type differs from the originating
+     * document type stored on each entry.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removeAutoProjection(
+            String sourceType,
+            String entrySourceType,
+            UUID sourceDocId,
+            String billNo,
+            LocalDate billDate) {
+        if (!REGENERATED_SOURCE_TYPES.contains(sourceType)
+                || entrySourceType == null
+                || entrySourceType.isBlank()
+                || sourceDocId == null
+                || billNo == null
+                || billNo.isBlank()
+                || billDate == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "总账投影标识不完整，禁止红冲");
+        }
+        String period = YearMonth.from(billDate).toString();
+        lockAutoProjectionPeriod(period);
+        if ("EXPENSE".equals(sourceType)) {
+            assertExpenseProjectionUnconfirmed(sourceDocId, period);
+        }
+        long foreignProjection = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM gl_vouchers voucher
+                        WHERE voucher.source='AUTO'
+                          AND voucher.source_type=:sourceType
+                          AND voucher.period=:period
+                          AND voucher.voucher_no=:billNo
+                          AND voucher.status=1
+                          AND COALESCE(voucher.is_deleted,false)=false
+                          AND (
+                              NOT EXISTS (
+                                  SELECT 1
+                                  FROM gl_entries entry
+                                  WHERE entry.voucher_id=voucher.id
+                                    AND COALESCE(entry.is_deleted,false)=false
+                                    AND entry.source_doc_type=:entrySourceType
+                                    AND entry.source_doc_id=:sourceDocId
+                                    AND entry.source_bill_no=:billNo
+                                    AND entry.period=:period
+                              )
+                              OR EXISTS (
+                                  SELECT 1
+                                  FROM gl_entries entry
+                                  WHERE entry.voucher_id=voucher.id
+                                    AND COALESCE(entry.is_deleted,false)=false
+                                    AND (
+                                        entry.source_doc_type IS DISTINCT FROM :entrySourceType
+                                        OR entry.source_doc_id IS DISTINCT FROM :sourceDocId
+                                        OR entry.source_bill_no IS DISTINCT FROM :billNo
+                                        OR entry.period IS DISTINCT FROM :period
+                                    )
+                              )
+                          )
+                        """)
+                .setParameter("sourceType", sourceType)
+                .setParameter("entrySourceType", entrySourceType)
+                .setParameter("period", period)
+                .setParameter("billNo", billNo)
+                .setParameter("sourceDocId", sourceDocId)
+                .getSingleResult()).longValue();
+        if (foreignProjection > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "总账投影与业务单据归属不一致，禁止物理删除");
+        }
+        em.createNativeQuery("""
+                        DELETE FROM gl_vouchers voucher
+                        WHERE voucher.source='AUTO'
+                          AND voucher.source_type=:sourceType
+                          AND voucher.period=:period
+                          AND voucher.voucher_no=:billNo
+                          AND voucher.status=1
+                          AND COALESCE(voucher.is_deleted,false)=false
+                          AND EXISTS (
+                              SELECT 1 FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND entry.source_doc_type=:entrySourceType
+                                AND entry.source_doc_id=:sourceDocId
+                                AND entry.source_bill_no=:billNo
+                                AND entry.period=:period
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND (
+                                    entry.source_doc_type IS DISTINCT FROM :entrySourceType
+                                    OR entry.source_doc_id IS DISTINCT FROM :sourceDocId
+                                    OR entry.source_bill_no IS DISTINCT FROM :billNo
+                                    OR entry.period IS DISTINCT FROM :period
+                                )
+                          )
+                        """)
+                .setParameter("sourceType", sourceType)
+                .setParameter("entrySourceType", entrySourceType)
+                .setParameter("period", period)
+                .setParameter("billNo", billNo)
+                .setParameter("sourceDocId", sourceDocId)
+                .executeUpdate();
+    }
+
+    /**
+     * Verify the exact expense voucher before the business document becomes financially confirmed.
+     * The period lock prevents regeneration from changing the voucher between validation and commit.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireConfirmableExpenseVoucher(
+            UUID expenseId,
+            UUID voucherId,
+            String billNo,
+            LocalDate billDate) {
+        if (expenseId == null
+                || voucherId == null
+                || billNo == null
+                || billNo.isBlank()
+                || billDate == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "一般费用总账凭证标识不完整，禁止财务确认");
+        }
+        String period = YearMonth.from(billDate).toString();
+        lockAutoProjectionPeriod(period);
+        long valid = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM gl_vouchers voucher
+                        WHERE voucher.id=:voucherId
+                          AND voucher.voucher_no=:billNo
+                          AND voucher.period=:period
+                          AND voucher.source='AUTO'
+                          AND voucher.source_type='EXPENSE'
+                          AND voucher.status=1
+                          AND COALESCE(voucher.is_deleted,false)=false
+                          AND (
+                              SELECT COUNT(*)
+                              FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                          ) >= 2
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND (
+                                    entry.source_doc_type IS DISTINCT FROM 'EXPENSE'
+                                    OR entry.source_doc_id IS DISTINCT FROM :expenseId
+                                    OR entry.period IS DISTINCT FROM :period
+                                )
+                          )
+                          AND EXISTS (
+                              SELECT 1
+                              FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND entry.direction=1
+                          )
+                          AND EXISTS (
+                              SELECT 1
+                              FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND entry.direction=-1
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND entry.direction NOT IN (-1,1)
+                          )
+                          AND COALESCE((
+                              SELECT SUM(ABS(entry.amount))
+                              FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                          ),0)>0
+                          AND ROUND(COALESCE((
+                              SELECT SUM(entry.direction * entry.amount)
+                              FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                          ),0),4)=0
+                        """)
+                .setParameter("voucherId", voucherId)
+                .setParameter("billNo", billNo)
+                .setParameter("period", period)
+                .setParameter("expenseId", expenseId)
+                .getSingleResult()).longValue();
+        if (valid != 1) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "一般费用总账凭证不存在、归属不符、已失效或借贷不平，禁止财务确认");
+        }
+    }
+
+    private void assertExpenseProjectionUnconfirmed(UUID expenseId, String period) {
+        long confirmed = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_expenses expense
+                        WHERE expense.id=:expenseId
+                          AND expense.status=1
+                          AND expense.gl_status=2
+                          AND COALESCE(expense.is_deleted,false)=false
+                          AND to_char(expense.bill_date,'YYYY-MM')=:period
+                        """)
+                .setParameter("expenseId", expenseId)
+                .setParameter("period", period)
+                .getSingleResult()).longValue();
+        if (confirmed > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "一般费用已财务确认，禁止物理删除总账凭证");
+        }
+    }
+
+    private void lockAutoProjectionPeriod(String period) {
+        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
+                .setParameter("key", "uten:gl:auto-period:" + period)
+                .getSingleResult();
+    }
+
+    /** A financially confirmed expense voucher is immutable until an explicit reversal policy exists. */
+    private void assertNoConfirmedExpenseVouchers(String period) {
+        long confirmed = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_expenses expense
+                        WHERE expense.status=1
+                          AND expense.gl_status=2
+                          AND COALESCE(expense.is_deleted,false)=false
+                          AND to_char(expense.bill_date,'YYYY-MM')=:p
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (confirmed > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "本期间存在 " + confirmed
+                            + " 张已财务确认的一般费用凭证，禁止物理删除或重生成");
+        }
     }
 
     /** 重放全部历史期间（ar_ap_ledger 出现过的所有月份）。返回期间数。 */
@@ -303,6 +582,25 @@ public class GlPostingService {
         run(entries, period);
     }
 
+    /** Historical client-era payment amounts must be verified before period regeneration. */
+    private void assertPaymentAmountsAuthoritative(String period) {
+        long unverified = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_payments payment
+                        WHERE payment.status=1
+                          AND COALESCE(payment.is_deleted,false)=false
+                          AND to_char(payment.bill_date,'YYYY-MM')=:p
+                          AND payment.amount_authority_version<>1
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (unverified > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "本期间存在 " + unverified
+                            + " 张历史付款的金额尚未经过服务端核验，禁止重生成总账凭证");
+        }
+    }
+
     /**
      * Receipt entry joins intentionally produce no row when a configured
      * accounting style is missing or inactive. Detect that situation before
@@ -391,33 +689,126 @@ public class GlPostingService {
         }
     }
 
-    /** 付款：借 203 应付账款 / 贷 付款账户科目。 */
+    /** 付款：借 203 应付账款 / 贷付款账户；汇率差额单列汇兑损益。 */
     private void postPayments(String period) {
         String vouchers = """
                 INSERT INTO gl_vouchers (voucher_no, period, voucher_date, source, source_type, remark)
                 SELECT t.bill_no, to_char(t.bill_date,'YYYY-MM'), t.bill_date, 'AUTO', 'PAYMENT', '采购付款'
                 FROM finance_payments t
-                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
+                WHERE t.status=1 AND t.amount_authority_version=1
+                  AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 """;
         String entries = """
                 INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
                                         source_doc_type, source_doc_id, source_bill_no, summary)
-                SELECT v.id, 1, s203.id, 1, t.amount_local, t.bill_date, v.period,
+                SELECT v.id, 1, s203.id, 1,
+                       CASE WHEN EXISTS (
+                                  SELECT 1 FROM finance_payment_lines line
+                                  WHERE line.payment_id=t.id
+                                    AND COALESCE(line.is_deleted,false)=false)
+                            THEN (SELECT COALESCE(SUM(
+                                       line.amount_local-COALESCE(line.exchange_diff,0)),0)
+                                  FROM finance_payment_lines line
+                                  WHERE line.payment_id=t.id
+                                    AND COALESCE(line.is_deleted,false)=false)
+                            ELSE t.amount_local END,
+                       t.bill_date, v.period,
                        'PAYMENT', t.id, t.bill_no, COALESCE(t.remark,'采购付款')
                 FROM finance_payments t
                 JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'PAYMENT'
-                CROSS JOIN (SELECT id FROM payment_styles WHERE path='/203/') s203
-                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
+                CROSS JOIN (
+                  SELECT id FROM payment_styles
+                  WHERE path='/203/' AND status='使用'
+                    AND COALESCE(is_deleted,false)=false
+                  LIMIT 1
+                ) s203
+                WHERE t.status=1 AND t.amount_authority_version=1
+                  AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
                 UNION ALL
                 SELECT v.id, 2, acct.style_id, -1, t.amount_local, t.bill_date, v.period,
                        'PAYMENT', t.id, t.bill_no, COALESCE(t.remark,'采购付款')
                 FROM finance_payments t
                 JOIN gl_vouchers v ON v.voucher_no = t.bill_no AND v.source_type = 'PAYMENT'
-                JOIN LATERAL (SELECT account_style_id(t.account_id) AS style_id) acct ON TRUE
-                WHERE t.status=1 AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
+                JOIN LATERAL (
+                  SELECT style.id AS style_id
+                  FROM payment_styles style
+                  WHERE style.id=account_style_id(t.account_id)
+                    AND style.status='使用'
+                    AND COALESCE(style.is_deleted,false)=false
+                  LIMIT 1
+                ) acct ON TRUE
+                WHERE t.status=1 AND t.amount_authority_version=1
+                  AND COALESCE(t.is_deleted,false)=false AND to_char(t.bill_date,'YYYY-MM') = :p
+                UNION ALL
+                SELECT v.id, 3, fx.id,
+                       CASE WHEN x.diff>0 THEN 1 ELSE -1 END,
+                       ABS(x.diff), t.bill_date, v.period,
+                       'PAYMENT', t.id, t.bill_no, '付款汇兑损益'
+                FROM finance_payments t
+                JOIN gl_vouchers v ON v.voucher_no=t.bill_no AND v.source_type='PAYMENT'
+                JOIN LATERAL (
+                  SELECT COALESCE(SUM(line.exchange_diff),0) AS diff
+                  FROM finance_payment_lines line
+                  WHERE line.payment_id=t.id
+                    AND COALESCE(line.is_deleted,false)=false
+                ) x ON TRUE
+                CROSS JOIN LATERAL (
+                  SELECT id FROM payment_styles
+                  WHERE category='EXPENSE' AND name='汇兑损益'
+                    AND status='使用' AND COALESCE(is_deleted,false)=false
+                  ORDER BY auto_created DESC, created_at LIMIT 1
+                ) fx
+                WHERE t.status=1 AND t.amount_authority_version=1
+                  AND COALESCE(t.is_deleted,false)=false
+                  AND to_char(t.bill_date,'YYYY-MM')=:p AND x.diff<>0
                 """;
         run(vouchers, period);
         run(entries, period);
+    }
+
+    /** Required payment styles are checked before period vouchers are deleted. */
+    private void assertPaymentPostingConfiguration(String period) {
+        long invalid = ((Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM finance_payments payment
+                        WHERE payment.status=1
+                          AND payment.amount_authority_version=1
+                          AND COALESCE(payment.is_deleted,false)=false
+                          AND to_char(payment.bill_date,'YYYY-MM')=:p
+                          AND (
+                              NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.id=account_style_id(payment.account_id)
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              )
+                              OR
+                              NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.path='/203/'
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              )
+                              OR
+                              (COALESCE((
+                                  SELECT SUM(line.exchange_diff)
+                                  FROM finance_payment_lines line
+                                  WHERE line.payment_id=payment.id
+                                    AND COALESCE(line.is_deleted,false)=false
+                              ),0)<>0 AND NOT EXISTS (
+                                  SELECT 1 FROM payment_styles style
+                                  WHERE style.category='EXPENSE' AND style.name='汇兑损益'
+                                    AND style.status='使用'
+                                    AND COALESCE(style.is_deleted,false)=false
+                              ))
+                          )
+                        """)
+                .setParameter("p", period)
+                .getSingleResult()).longValue();
+        if (invalid > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "采购付款总账科目缺失或已停用，请先启用付款账户、应付账款或汇兑损益科目");
+        }
     }
 
     /** 费用：借 费用科目(按行 expense_style_id) / 贷 账户(单头，金额=行合计保平衡)。 */
@@ -598,7 +989,7 @@ public class GlPostingService {
     // ======================== C6 单张开票钩子（报销审核实时过账） ========================
 
     /** 费用单审核钩子：该单幂等过账（先删同单号 AUTO EXPENSE 凭证再重建），返回 voucher_id。 */
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public UUID postExpenseDoc(UUID expenseId) {
         tx.bind();
         @SuppressWarnings("unchecked")
@@ -611,7 +1002,7 @@ public class GlPostingService {
         LocalDate billDate = ((java.sql.Date) d[1]).toLocalDate();
         String period = billDate.toString().substring(0, 7);
 
-        removeExpenseDocInternal(billNo);
+        removeAutoProjection("EXPENSE", expenseId, billNo, billDate);
         UUID voucherId = UUID.randomUUID();
         em.createNativeQuery("""
                 INSERT INTO gl_vouchers (id, voucher_no, period, voucher_date, source, source_type, remark)
@@ -645,15 +1036,10 @@ public class GlPostingService {
     }
 
     /** 费用单红冲钩子：删该单 AUTO EXPENSE 凭证（级联分录）。 */
-    @Transactional
-    public void removeExpenseDoc(String billNo) {
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void removeExpenseDoc(UUID expenseId, String billNo, LocalDate billDate) {
         tx.bind();
-        removeExpenseDocInternal(billNo);
-    }
-
-    private void removeExpenseDocInternal(String billNo) {
-        em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND source_type='EXPENSE' AND voucher_no = :no")
-                .setParameter("no", billNo).executeUpdate();
+        removeAutoProjection("EXPENSE", expenseId, billNo, billDate);
     }
 
     private void run(String sql, String period) {

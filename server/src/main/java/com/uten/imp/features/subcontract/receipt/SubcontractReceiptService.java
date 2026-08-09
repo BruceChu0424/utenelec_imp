@@ -284,9 +284,12 @@ public class SubcontractReceiptService {
         }
         r.setStatus(STATUS_REVERSED);
         r.setApPosted(false);
-        receiptRepo.save(r);
+        // The downstream refresh validates the source's terminal state via a
+        // native query, so make that state visible before invoking the hook.
+        receiptRepo.saveAndFlush(r);
         arrivalControl.recordReversal(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
+        productionSupply.afterSubcontractReceiptReversed(id);
         return detail(id);
     }
 

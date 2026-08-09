@@ -213,7 +213,7 @@
                 <version>2.9.2</version>
                 <executions>
                     <execution>
-                        <phase>package</phase>
+                        <phase>prepare-package</phase>
                         <goals>
                             <goal>makeAggregateBom</goal>
                         </goals>

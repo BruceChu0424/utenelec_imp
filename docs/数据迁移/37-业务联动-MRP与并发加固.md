@@ -3,6 +3,9 @@
 <!-- PRODUCTION-PLANNING-V195-CURRENT -->
 > **2026-08-02 当前正式计划包口径（优先于早期 MRP-lite 快照）**：V191–V195 候选中，审核前仅保存 V191 预排草案，不占库存、不建正式下游；审核同事务重算并生成直接 BOM 层的 MAKE 子计划、BUY 采购申请、SUBCONTRACT 委外申请与 DRAW。父包不得递归替下级子计划生成孙级需求。V194 用精确 peg 与收货分摊约束 MAKE 完工回供、数量守恒、来源有效性、并发容量和红冲后重新齐套；处置明确为 `READY`、`AUTO_WAIT`、`DEFERRED`，`release-defer` 只能将 DEFERRED 单向人工放行并立即重做齐套。车间/班组/负责人/日期受服务端组织层级与 V194 数据库守卫约束。V195 只刷新未来写入审计覆盖，不补历史业务或审计。目标环境仍为 V190，候选未部署且未完成真实岗位 UAT，生产发布仍为 **NO-GO**。本文后续“一键生成三类单”的旧接口仅是历史/兼容说明，不能绕过确认版计划包生命周期。
 
+<!-- PRODUCTION-MATERIAL-ANALYSIS-V250-CURRENT -->
+> **2026-08-10 当前口径（优先于 V87 和上方 V195）**：当前入口是 V234/V239/V247–V250 持久物料分析。库存/BOM 先计算分阶段可生产量，计划员分别多选 BUY / SUBCONTRACT / MAKE 并形成 `preplan_supply_actions/allocations`；自制件选择可完工数量后填写逐张草稿，独立审批才形成 READY、reservation、DRAW 和销售分摊。旧“一键生成三类单”、AUTO_WAIT/DEFERRED 和自动正式子计划不得作为新入口。开发原库 V244/225 未写，一次性 V250/231 HTTP 阶段链只到预计到货，完整实物链仍 NO-GO。详见 [ADR-029](../99-决策记录-ADR/ADR-029-生产计划前需求与物料分析重构.md) 与 [56](56-生产计划前需求与物料分析重构.md)。
+
 > 时间：2026-07-28 · 修订：2026-07-31 · 依据：用户 YTDQ.txt 两条核心诉求——
 > ①「添加了个生产计划 那么会不会自动搭配物料 就是给物料下单」（业务联动）
 > ②「公司平台肯定会多个账号操作同一件事情 这个你是怎么设计的」（并发安全）
@@ -129,11 +132,11 @@ MRP 预览与 `subplan_links` 真实自制件子计划列表独立加载、独�
 - ~~生产完工成品入库~~ → 已于 2026-07-28 落地（generate-finished-in，plan_draw_links 按 doc_type 防重复）。
 - ~~成品入库审核后回写计划明细 iqty~~ → 已在业务链闭环实现；排产/报工共享资源锁仍须分别做
   真实 PostgreSQL 双连接并发回归。
-- ~~自制件子计划自动派生~~ → 已于 2026-08-01 落地（V1 confirm 调 `generateSelfMadeSubplansForPackage`，复用递归 explode，filter 自制件(has_bom) 且净需求>0，建子 production_plans 父号-N + 写 `subplan_links(source='EXECUTION_V1')`，按父计划幂等；V176 加归属列）。
+- ~~自制件子计划自动派生~~ → 已于 2026-08-01 落地（V1 confirm 将本计划包已锁定、已校验的直接层 MAKE allocation 缺口传给 `generateSelfMadeSubplansForPackage`；该内核不递归 explode，只建当前直接层子 `production_plans`，并写 `subplan_links(source='EXECUTION_V1')`，按父计划幂等；V176 加归属列）。
 
 ### 2026-08-01 子计划读取与交互修复
 
-- `MrpService.listSubplans` 改用统一安全日期转换，兼容 JDBC 返回 `LocalDate`、`java.sql.Date` 或文本日期，避免子计划列表因强制类型转换返回 500；数量、状态和谱系口径未改变。
+- `MrpService.subplans` 改用统一安全日期转换，兼容 JDBC 返回 `LocalDate`、`java.sql.Date` 或文本日期，避免子计划列表因强制类型转换返回 500；数量、状态和谱系口径未改变。
 - 父计划详情、MRP 预览和真实子计划列表失败隔离；子计划列表有独立错误卡和重试。
 - 生产进度页的父计划表头、展开控件和具体子计划行使用独立点击域；销售执行分段通过
   `/production/plans/{parentId}?executionSegmentId={segmentId}` 深链定位。

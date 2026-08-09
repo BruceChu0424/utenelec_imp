@@ -21,12 +21,14 @@ void main() {
           'code': 'ADMIN',
           'department': '行政与人力资源部',
           'position': null,
+          'mustChangePassword': true,
           'roles': ['admin', 'hr'],
           'permissions': ['employee:view', 'department:edit'],
         },
       });
       expect(r.accessToken, 'a');
       expect(r.mustChangePassword, isTrue);
+      expect(r.user.mustChangePassword, isTrue);
       expect(r.user.id, 'u1');
       expect(r.user.roles, containsAll(['admin', 'hr']));
       expect(r.user.permissions, contains('employee:view'));

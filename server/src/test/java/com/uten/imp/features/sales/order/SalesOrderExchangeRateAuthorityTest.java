@@ -36,8 +36,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,73 +69,59 @@ class SalesOrderExchangeRateAuthorityTest {
     private final UUID makerId = UUID.randomUUID();
 
     @Test
-    void createIgnoresForgedRequestRateAndUsesActiveCurrencyMasterRate() {
+    void createRequiresOnlyActiveCurrencyAndNeverReadsOrPersistsRate() {
         UUID currencyId = UUID.randomUUID();
         when(currentUser.requireEmployeeId()).thenReturn(makerId);
         when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
                 .thenReturn("XD202608080001");
-        stubActiveCurrencyRate(currencyId, "7.200000");
+        stubActiveCurrency(currencyId);
         when(priceMasker.canView()).thenReturn(true);
-        OrderSaveRequest request = request(currencyId, "999999");
 
-        var detail = service.create(request);
+        var detail = service.create(request(currencyId, "999999"));
 
-        assertThat(detail.getExchangeRate()).isEqualByComparingTo("7.200000");
-        assertThat(detail.getItems().get(0).getAmountOriginal())
+        assertThat(detail.getExchangeRate()).isNull();
+        assertThat(detail.getTotalOriginal()).isEqualByComparingTo("20.0000");
+        assertThat(detail.getTotalLocal()).isNull();
+        assertThat(detail.getItems().getFirst().getAmountOriginal())
                 .isEqualByComparingTo("20.0000");
-        assertThat(detail.getItems().get(0).getAmountLocal())
-                .isEqualByComparingTo("144.0000");
+        assertThat(detail.getItems().getFirst().getAmountLocal()).isNull();
+        verify(em, never()).createNativeQuery(contains("currency.exchange_rate"));
     }
 
     @Test
-    void sameCurrencyUpdatePreservesStoredRateSnapshot() {
+    void sameCurrencyUpdateClearsLegacySalesStageRateAndLocalAmount() {
         UUID currencyId = UUID.randomUUID();
-        SalesOrder order = editableOrder(currencyId, "6.800000");
+        SalesOrder order = editableOrder(currencyId, "6.8");
         prepareUpdate(order);
+        stubActiveCurrency(currencyId);
         when(priceMasker.canView()).thenReturn(true);
-        OrderSaveRequest request = request(currencyId, "999999");
 
-        var detail = service.update(order.getId(), request);
+        var detail = service.update(order.getId(), request(currencyId, "999999"));
 
-        assertThat(detail.getExchangeRate()).isEqualByComparingTo("6.800000");
-        assertThat(detail.getItems().get(0).getAmountLocal())
-                .isEqualByComparingTo("136.0000");
-        verify(em, never()).createNativeQuery(contains("SELECT currency.exchange_rate"));
+        assertThat(detail.getExchangeRate()).isNull();
+        assertThat(detail.getTotalLocal()).isNull();
+        assertThat(detail.getItems().getFirst().getAmountLocal()).isNull();
+        verify(em, never()).createNativeQuery(contains("currency.exchange_rate"));
     }
 
     @Test
-    void currencyChangeIgnoresRequestRateAndUsesNewCurrencyMasterRate() {
+    void currencyChangeValidatesTheNewCurrencyButStillLeavesRateNull() {
         UUID oldCurrencyId = UUID.randomUUID();
         UUID newCurrencyId = UUID.randomUUID();
-        SalesOrder order = editableOrder(oldCurrencyId, "6.800000");
+        SalesOrder order = editableOrder(oldCurrencyId, "6.8");
         prepareUpdate(order);
-        stubActiveCurrencyRate(newCurrencyId, "7.400000");
+        stubActiveCurrency(newCurrencyId);
         when(priceMasker.canView()).thenReturn(true);
-        OrderSaveRequest request = request(newCurrencyId, "999999");
 
-        var detail = service.update(order.getId(), request);
+        var detail = service.update(order.getId(), request(newCurrencyId, "999999"));
 
-        assertThat(detail.getExchangeRate()).isEqualByComparingTo("7.400000");
-        assertThat(detail.getItems().get(0).getAmountLocal())
-                .isEqualByComparingTo("148.0000");
-        verify(em).createNativeQuery(contains("SELECT currency.exchange_rate"));
+        assertThat(detail.getCurrencyId()).isEqualTo(newCurrencyId);
+        assertThat(detail.getExchangeRate()).isNull();
+        assertThat(detail.getItems().getFirst().getAmountLocal()).isNull();
     }
 
     @Test
-    void createRejectsNonPositiveMasterRateEvenWhenRequestRateIsPositive() {
-        UUID currencyId = UUID.randomUUID();
-        when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
-                .thenReturn("XD202608080002");
-        stubActiveCurrencyRate(currencyId, "0");
-        OrderSaveRequest request = request(currencyId, "7.2");
-
-        assertThatThrownBy(() -> service.create(request))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("参考汇率必须大于 0");
-    }
-
-    @Test
-    void approvalRejectsStoredOrderWithoutCurrency() {
+    void approvalStillRejectsAnOrderWithoutCurrency() {
         SalesOrder order = editableOrder(null, "1");
         prepareUpdate(order);
         SalesOrderItem item = new SalesOrderItem();
@@ -152,18 +138,17 @@ class SalesOrderExchangeRateAuthorityTest {
 
         assertThatThrownBy(() -> service.approve(order.getId()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("订单币种不能为空");
+                .hasMessageContaining("币种");
     }
 
     @Test
-    void quoteConversionWithoutCurrencyUsesUniqueActiveCnyMaster() {
+    void quoteConversionResolvesActiveCnyButDoesNotCreateAnOrderRate() {
         UUID currencyId = UUID.randomUUID();
         UUID quoteOwner = UUID.randomUUID();
         Query cnyQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM")))
-                .thenReturn(cnyQuery);
+        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(cnyQuery);
         when(cnyQuery.getResultList()).thenReturn(List.of(currencyId));
-        stubActiveCurrencyRate(currencyId, "7.200000");
+        stubActiveCurrency(currencyId);
         when(currentUser.requireEmployeeId()).thenReturn(makerId);
         when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
                 .thenReturn("XD202608080003");
@@ -179,22 +164,21 @@ class SalesOrderExchangeRateAuthorityTest {
         var detail = service.createFromQuote(request, quoteOwner);
 
         assertThat(detail.getCurrencyId()).isEqualTo(currencyId);
-        assertThat(detail.getExchangeRate()).isEqualByComparingTo("7.200000");
+        assertThat(detail.getExchangeRate()).isNull();
+        assertThat(detail.getTotalLocal()).isNull();
     }
 
     @Test
-    void quoteConversionFallsBackToUniqueRenminbiNameWhenNoCnyCodeExists() {
+    void quoteConversionFallsBackToUniqueRenminbiName() {
         UUID currencyId = UUID.randomUUID();
         UUID quoteOwner = UUID.randomUUID();
         Query codeQuery = mock(Query.class);
         Query nameQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM")))
-                .thenReturn(codeQuery);
-        when(em.createNativeQuery(contains("BTRIM(COALESCE(name")))
-                .thenReturn(nameQuery);
+        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
+        when(em.createNativeQuery(contains("BTRIM(COALESCE(name"))).thenReturn(nameQuery);
         when(codeQuery.getResultList()).thenReturn(List.of());
         when(nameQuery.getResultList()).thenReturn(List.of(currencyId));
-        stubActiveCurrencyRate(currencyId, "7.200000");
+        stubActiveCurrency(currencyId);
         when(currentUser.requireEmployeeId()).thenReturn(makerId);
         when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
                 .thenReturn("XD202608080004");
@@ -210,56 +194,49 @@ class SalesOrderExchangeRateAuthorityTest {
         var detail = service.createFromQuote(request, quoteOwner);
 
         assertThat(detail.getCurrencyId()).isEqualTo(currencyId);
-        assertThat(detail.getExchangeRate()).isEqualByComparingTo("7.200000");
+        assertThat(detail.getExchangeRate()).isNull();
+        assertThat(detail.getTotalLocal()).isNull();
     }
 
     @Test
     void quoteConversionFailsWhenNoActiveCnyOrRenminbiMasterExists() {
         Query codeQuery = mock(Query.class);
         Query nameQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM")))
-                .thenReturn(codeQuery);
-        when(em.createNativeQuery(contains("BTRIM(COALESCE(name")))
-                .thenReturn(nameQuery);
+        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
+        when(em.createNativeQuery(contains("BTRIM(COALESCE(name"))).thenReturn(nameQuery);
         when(codeQuery.getResultList()).thenReturn(List.of());
         when(nameQuery.getResultList()).thenReturn(List.of());
-        OrderSaveRequest request = request(null, "7.2");
 
-        assertThatThrownBy(() -> service.createFromQuote(request, UUID.randomUUID()))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("唯一启用的人民币币种");
+        assertThatThrownBy(() -> service.createFromQuote(
+                request(null, "7.2"), UUID.randomUUID()))
+                .isInstanceOf(ApiException.class);
     }
 
     @Test
     void quoteConversionFailsWhenMultipleActiveCnyMastersExist() {
         Query codeQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM")))
-                .thenReturn(codeQuery);
+        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
         when(codeQuery.getResultList()).thenReturn(
                 List.of(UUID.randomUUID(), UUID.randomUUID()));
-        OrderSaveRequest request = request(null, "7.2");
 
-        assertThatThrownBy(() -> service.createFromQuote(request, UUID.randomUUID()))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("多条启用的 CNY");
+        assertThatThrownBy(() -> service.createFromQuote(
+                request(null, "7.2"), UUID.randomUUID()))
+                .isInstanceOf(ApiException.class);
     }
 
     @Test
     void quoteConversionFailsWhenMultipleRenminbiNameMastersExist() {
         Query codeQuery = mock(Query.class);
         Query nameQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("UPPER(BTRIM")))
-                .thenReturn(codeQuery);
-        when(em.createNativeQuery(contains("BTRIM(COALESCE(name")))
-                .thenReturn(nameQuery);
+        when(em.createNativeQuery(contains("UPPER(BTRIM"))).thenReturn(codeQuery);
+        when(em.createNativeQuery(contains("BTRIM(COALESCE(name"))).thenReturn(nameQuery);
         when(codeQuery.getResultList()).thenReturn(List.of());
         when(nameQuery.getResultList()).thenReturn(
                 List.of(UUID.randomUUID(), UUID.randomUUID()));
-        OrderSaveRequest request = request(null, "7.2");
 
-        assertThatThrownBy(() -> service.createFromQuote(request, UUID.randomUUID()))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("多条启用的人民币");
+        assertThatThrownBy(() -> service.createFromQuote(
+                request(null, "7.2"), UUID.randomUUID()))
+                .isInstanceOf(ApiException.class);
     }
 
     private void prepareUpdate(SalesOrder order) {
@@ -275,19 +252,20 @@ class SalesOrderExchangeRateAuthorityTest {
         order.setClientId(UUID.randomUUID());
         order.setCurrencyId(currencyId);
         order.setExchangeRate(new BigDecimal(exchangeRate));
+        order.setTotalLocal(new BigDecimal("136"));
         order.setTaxRate(BigDecimal.ZERO);
         order.setOwnerEmployeeId(makerId);
         order.setStatus((short) 0);
         return order;
     }
 
-    private void stubActiveCurrencyRate(UUID currencyId, String exchangeRate) {
-        Query rateQuery = mock(Query.class);
-        when(em.createNativeQuery(contains("SELECT currency.exchange_rate")))
-                .thenReturn(rateQuery);
-        when(rateQuery.setParameter("currencyId", currencyId)).thenReturn(rateQuery);
-        when(rateQuery.getResultList())
-                .thenReturn(List.of(new BigDecimal(exchangeRate)));
+    private void stubActiveCurrency(UUID currencyId) {
+        Query currencyQuery = mock(Query.class);
+        when(em.createNativeQuery(contains("SELECT currency.id")))
+                .thenReturn(currencyQuery);
+        when(currencyQuery.setParameter("currencyId", currencyId))
+                .thenReturn(currencyQuery);
+        when(currencyQuery.getResultList()).thenReturn(List.of(currencyId));
     }
 
     private static OrderSaveRequest request(UUID currencyId, String forgedRate) {

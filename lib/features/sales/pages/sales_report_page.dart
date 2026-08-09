@@ -181,7 +181,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
 
   /// 行点击：
   ///  - 明细表：每行带隐藏 __srcId（= 单据头 id），push 源头单据详情页 → pop 回报表（保活筛选/分页）。
-  ///  - 汇总表：每行带隐藏 __clientId（= 客户 id，可空），弹该客户本期明细对话框（表格内可再点行跳单据）。
+  ///  - 汇总表：每行带隐藏 __clientId（= 客户 id，可空）；订货汇总另带
+  ///    __currencyId，弹该客户、该币种的本期明细对话框（表格内可再点行跳单据）。
   /// docType.code（ORDER/SHIPMENT/RETURN/OTHER_SHIPMENT）→ 销售单据路由 seg：
   ///   ORDER→orders、SHIPMENT→shipments、RETURN→returns、OTHER_SHIPMENT→other-shipments（kebab）。
   ///   不能简单 `${code}s`：OTHER_SHIPMENT 期望 other-shipments（短横）非 OTHER_SHIPMENTs。
@@ -202,9 +203,20 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     SalesReportDocType.otherShipment => 'other-shipments',
   };
 
-  /// 汇总表钻取：弹「客户 · 日期范围内全部明细」对话框（明细数据复用 detail 端点 + clientId 过滤）。
+  /// 汇总表钻取：弹「客户 · 日期范围内全部明细」对话框。
+  ///
+  /// 订货汇总按「客户 + 币种」分组，故钻取必须把隐藏 [__currencyId] 一并传给
+  /// detail 端点；缺失时宁可阻止钻取，也不能退化为同客户全部币种混合明细。
   void _showClientDetail(Map<String, dynamic> row) {
     final clientId = row['__clientId']?.toString();
+    final rawCurrencyId = row['__currencyId']?.toString();
+    final currencyId = (rawCurrencyId == null || rawCurrencyId.isEmpty)
+        ? null
+        : rawCurrencyId;
+    if (_docType == SalesReportDocType.order && currencyId == null) {
+      context.appError('订货汇总缺少币种信息，请刷新后重试');
+      return;
+    }
     final clientName = row['clientName']?.toString() ?? '(未指定客户)';
     showDialog<void>(
       context: context,
@@ -212,6 +224,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         docType: _docType,
         docSeg: _docSeg,
         clientId: (clientId == null || clientId.isEmpty) ? null : clientId,
+        currencyId: _docType == SalesReportDocType.order ? currencyId : null,
         clientName: clientName,
         dateFrom: _fmt(_from),
         dateTo: _fmt(_to),
@@ -546,6 +559,7 @@ class SalesClientDetailDialog extends ConsumerStatefulWidget {
     required this.docType,
     required this.docSeg,
     required this.clientId,
+    this.currencyId,
     required this.clientName,
     required this.dateFrom,
     required this.dateTo,
@@ -559,6 +573,9 @@ class SalesClientDetailDialog extends ConsumerStatefulWidget {
 
   /// 客户 id；null = 未指定客户（按 facet 空值档过滤）。
   final String? clientId;
+
+  /// 订货汇总钻取的币种 id；其它销售单据不按币种分组，保持 null。
+  final String? currencyId;
   final String clientName;
   final String dateFrom; // yyyy-MM-dd
   final String dateTo;
@@ -596,6 +613,9 @@ class _SalesClientDetailDialogState
             'clientId': widget.clientId
           else
             'f.clientName': kMasterFilterNullValue, // 空客户档
+          if (widget.docType == SalesReportDocType.order &&
+              widget.currencyId != null)
+            'currencyId': widget.currencyId,
           'page': _page,
           'size': _size,
           ...sortQueryParams(_sortKey, _sortAsc),
@@ -644,6 +664,9 @@ class _SalesClientDetailDialogState
             'clientId': widget.clientId
           else
             'f.clientName': kMasterFilterNullValue,
+          if (widget.docType == SalesReportDocType.order &&
+              widget.currencyId != null)
+            'currencyId': widget.currencyId,
           'page': page,
           'size': 500,
           ...sortQueryParams(_sortKey, _sortAsc),

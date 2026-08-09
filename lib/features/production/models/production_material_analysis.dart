@@ -412,6 +412,9 @@ class ProductionMaterialAnalysisProduct {
     this.approvedQty = 0,
     this.remainingQty = 0,
     this.readyNowQty = 0,
+    this.readyStartQty,
+    this.readyFinishQty,
+    this.readyShipQty,
     this.readyByDateQty,
     this.readinessRatio = 0,
     this.status,
@@ -447,6 +450,9 @@ class ProductionMaterialAnalysisProduct {
   final double approvedQty;
   final double remainingQty;
   final double readyNowQty;
+  final double? readyStartQty;
+  final double? readyFinishQty;
+  final double? readyShipQty;
   final double? readyByDateQty;
   final double readinessRatio;
   final String? status;
@@ -490,6 +496,9 @@ class ProductionMaterialAnalysisProduct {
     approvedQty: _double(json['approvedQty']) ?? 0,
     remainingQty: _double(json['remainingQty']) ?? 0,
     readyNowQty: _double(json['readyNowQty']) ?? 0,
+    readyStartQty: _double(json['readyStartQty']),
+    readyFinishQty: _double(json['readyFinishQty']),
+    readyShipQty: _double(json['readyShipQty']),
     readyByDateQty: _double(json['readyByDateQty']),
     readinessRatio: _normaliseRatio(json['readinessRatio']),
     status: _string(json['status']),
@@ -550,6 +559,11 @@ class ProductionMaterialAnalysisMaterial {
     this.lowerLevelPending = false,
     this.expectedReadyDate,
     this.status,
+    this.controlStage,
+    this.consumptionBasis,
+    this.basisOutputQty,
+    this.allowPartialPackage,
+    this.hardGate,
     this.productionBomPolicy,
     this.hasActiveBom,
     this.notifiedTargets = const [],
@@ -591,6 +605,11 @@ class ProductionMaterialAnalysisMaterial {
   final bool lowerLevelPending;
   final String? expectedReadyDate;
   final String? status;
+  final String? controlStage;
+  final String? consumptionBasis;
+  final double? basisOutputQty;
+  final bool? allowPartialPackage;
+  final bool? hardGate;
   final String? productionBomPolicy;
   final bool? hasActiveBom;
   final List<MaterialAnalysisNotificationTarget> notifiedTargets;
@@ -641,6 +660,11 @@ class ProductionMaterialAnalysisMaterial {
     lowerLevelPending: json['lowerLevelPending'] == true,
     expectedReadyDate: _string(json['expectedReadyDate']),
     status: _string(json['status'] ?? json['materialStatus']),
+    controlStage: _string(json['controlStage']),
+    consumptionBasis: _string(json['consumptionBasis']),
+    basisOutputQty: _double(json['basisOutputQty']),
+    allowPartialPackage: _boolOrNull(json['allowPartialPackage']),
+    hardGate: _boolOrNull(json['hardGate']),
     productionBomPolicy: _string(
       json['productionBomPolicy'] ?? json['bomPolicy'],
     ),
@@ -736,12 +760,39 @@ class MaterialAnalysisPlanItemInput {
   const MaterialAnalysisPlanItemInput({
     required this.analysisLineId,
     required this.qty,
+    this.billDate,
+    this.deliveryDate,
+    this.departmentId,
+    this.workshopName,
+    this.workerId,
+    this.teamDepartmentId,
   });
 
   final String analysisLineId;
   final double qty;
+  final String? billDate;
+  final String? deliveryDate;
+  final String? departmentId;
+  final String? workshopName;
+  final String? workerId;
+  final String? teamDepartmentId;
 
   Map<String, dynamic> toJson() => {
+    'analysisLineId': analysisLineId,
+    'qty': qty,
+    if (billDate != null) 'billDate': billDate,
+    if (deliveryDate != null) 'deliveryDate': deliveryDate,
+    if (departmentId != null) 'departmentId': departmentId,
+    if (workshopName?.trim().isNotEmpty == true)
+      'workshopName': workshopName!.trim(),
+    if (workerId != null) 'workerId': workerId,
+    if (teamDepartmentId != null) 'teamDepartmentId': teamDepartmentId,
+  };
+
+  /// The preview endpoint validates quantities only. Per-plan scheduling
+  /// fields are submitted by the final generate command after the wizard is
+  /// confirmed, keeping the existing preview contract backward compatible.
+  Map<String, dynamic> toQuantityJson() => {
     'analysisLineId': analysisLineId,
     'qty': qty,
   };

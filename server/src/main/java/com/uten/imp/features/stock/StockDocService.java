@@ -274,13 +274,22 @@ public class StockDocService {
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
             applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty（V90）
-            productionCompletionReverse.afterFinishedInboundApproved(
-                    d.getId(), d.getWarehouseId());
-            chainNotice.notifyFinishedInbound(d.getId()); // 旁路通知：完工/部分完工→销售，提交后发送
         }
         d.setStatus(STATUS_APPROVED);
         d.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（服务端权威，忽略客户端值）
         docRepo.save(d);
+        if ("FINISHED_IN".equals(d.getDocType())) {
+            // Flushing the approved status fires the execution-segment completion
+            // reconciliation trigger. Recompute the plan only afterwards: the
+            // database close guard keeps it open while a segment is IN_PROGRESS.
+            em.flush();
+            recomputeFinishedInboundPlanClosed(d.getId());
+            productionCompletionReverse.afterFinishedInboundApproved(
+                    d.getId(), d.getWarehouseId());
+            // Freeze notice payload only after all approved business facts exist.
+            em.flush();
+            chainNotice.notifyFinishedInbound(d.getId()); // 旁路通知：完工/部分完工→销售，提交后发送
+        }
         return detail(id);
     }
 
@@ -322,6 +331,14 @@ public class StockDocService {
         }
         d.setStatus(STATUS_REVERSED);
         docRepo.save(d);
+        if ("FINISHED_IN".equals(d.getDocType())) {
+            // The wake-up query deliberately accepts only a terminal reversed
+            // source. Persist that fact after stock and execution ledgers are
+            // reversed, then refresh affected material analyses.
+            em.flush();
+            productionCompletionReverse.afterFinishedInboundReversed(
+                    d.getId(), d.getWarehouseId());
+        }
         return detail(id);
     }
 
@@ -1082,6 +1099,24 @@ public class StockDocService {
                     WHERE i.plan_id = p.id AND COALESCE(i.is_deleted, false) = false
                 ) WHERE p.id = :pid
                 """).setParameter("pid", planId).executeUpdate();
+    }
+
+    private void recomputeFinishedInboundPlanClosed(UUID stockDocumentId) {
+        List<UUID> planIds = NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT link.plan_id
+                FROM plan_draw_links link
+                WHERE link.draw_id = :documentId
+                  AND link.is_deleted = FALSE
+                ORDER BY link.plan_id
+                """).setParameter("documentId", stockDocumentId), UUID.class);
+        if (planIds.size() > 1) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "成品入库单关联多张生产计划，禁止猜测计划结案归属");
+        }
+        if (!planIds.isEmpty()) {
+            recomputePlanClosed(planIds.getFirst());
+        }
     }
 
     /**

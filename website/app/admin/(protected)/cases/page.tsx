@@ -26,7 +26,7 @@ export default async function CasesAdmin() {
                   <td className="whitespace-nowrap p-3 text-right">
                     <Link href={`/admin/cases/edit/${c.id}`} className="text-accent hover:underline">编辑</Link>
                     <span className="mx-2 text-border">|</span>
-                    <DeleteButton action={() => deleteCase(c.id)} />
+                    <DeleteButton action={deleteCase.bind(null, c.id)} />
                   </td>
                 </tr>
               );

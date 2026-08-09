@@ -5,7 +5,7 @@
 // UUID=String；金额/数量=(json as num?)；日期=ISO 字符串直存（后端 LocalDate）。
 //
 // 对应后端 DTO（server .../features/sales/{quote|order|shipment|other_shipment|ret}/dto）：
-//  - ListItem：id/billNo/billDate/clientId/totalLocal/status/closed/legacyId 共有，
+//  - ListItem：id/billNo/billDate/clientId/totalOriginal/totalLocal/status/closed/legacyId 共有，
 //    currencyId(除报价)、warehouseId(出/退)、outType(其它出货)、stopped(订货)、arPosted(出/退) 差异。
 //  - Detail：超集含全字段（makerId/approverId/sourceDocNo 全有；sellerId 除报价；
 //    senderId 出货/其它出货；contractInfo 订货；shipInfo 出货类；validUntil 报价；deliverDate 订货）。
@@ -378,6 +378,7 @@ class SalesDocListItem {
     this.warehouseId,
     this.currencyId,
     this.outType,
+    this.totalOriginal,
     this.totalLocal,
     this.status,
     this.closed = false,
@@ -412,6 +413,7 @@ class SalesDocListItem {
   final String? warehouseId;
   final String? currencyId;
   final String? outType;
+  final double? totalOriginal;
   final double? totalLocal;
   final int? status;
   final bool closed;
@@ -453,6 +455,7 @@ class SalesDocListItem {
     warehouseId: json['warehouseId'] as String?,
     currencyId: json['currencyId'] as String?,
     outType: json['outType'] as String?,
+    totalOriginal: (json['totalOriginal'] as num?)?.toDouble(),
     totalLocal: (json['totalLocal'] as num?)?.toDouble(),
     status: (json['status'] as num?)?.toInt(),
     closed: (json['closed'] as bool?) ?? false,
@@ -976,8 +979,8 @@ class OrderPlanProgressLine {
       materialAnalysisLineId: fact('materialAnalysisLineId') as String?,
       materialAnalysisStatus:
           (fact('materialAnalysisStatus') ?? fact('analysisStatus')) as String?,
-      materialAnalysisVersion:
-          (fact('materialAnalysisVersion') as num?)?.toInt(),
+      materialAnalysisVersion: (fact('materialAnalysisVersion') as num?)
+          ?.toInt(),
       analyzedQty: quantityFact([
         'analyzedQty',
         'analysisRequestedQty',

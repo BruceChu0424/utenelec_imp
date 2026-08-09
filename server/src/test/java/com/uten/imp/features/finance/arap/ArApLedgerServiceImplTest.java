@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.arap;
 
 import com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest;
 import com.uten.imp.features.finance.arap.ArApLedgerService.SourceRef;
+import com.uten.imp.features.finance.gl.GlPostingService;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -27,7 +28,9 @@ class ArApLedgerServiceImplTest {
         ArApLedgerRepository ledgerRepo = mock(ArApLedgerRepository.class);
         ArApSourceRefRepository sourceRefRepo = mock(ArApSourceRefRepository.class);
         TxSessionVars tx = mock(TxSessionVars.class);
-        ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(ledgerRepo, sourceRefRepo, tx);
+        GlPostingService glPosting = mock(GlPostingService.class);
+        ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(
+                ledgerRepo, sourceRefRepo, tx, glPosting);
 
         UUID shipmentId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
@@ -72,6 +75,7 @@ class ArApLedgerServiceImplTest {
         assertThat(refs).extracting(ArApSourceRef::getSourceNo)
                 .containsExactly("XD26080001", "XD26080002");
         assertThat(refs).allMatch(ref -> ref.getLedgerId().equals(ledger.getId()));
+        verify(glPosting).lockAutoProjectionPeriod(LocalDate.of(2026, 8, 8));
     }
 
     @Test
@@ -79,7 +83,9 @@ class ArApLedgerServiceImplTest {
         ArApLedgerRepository ledgerRepo = mock(ArApLedgerRepository.class);
         ArApSourceRefRepository sourceRefRepo = mock(ArApSourceRefRepository.class);
         TxSessionVars tx = mock(TxSessionVars.class);
-        ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(ledgerRepo, sourceRefRepo, tx);
+        GlPostingService glPosting = mock(GlPostingService.class);
+        ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(
+                ledgerRepo, sourceRefRepo, tx, glPosting);
         UUID sourceId = UUID.randomUUID();
         when(ledgerRepo.findBySourceForUpdate(sourceId, "SALES_SHIPMENT"))
                 .thenReturn(List.of());
@@ -97,5 +103,34 @@ class ArApLedgerServiceImplTest {
                 .hasMessageContaining("source ref amounts");
         verify(ledgerRepo, never()).save(any());
         verify(sourceRefRepo, never()).saveAll(any());
+    }
+
+    @Test
+    void reversingArRemovesItsExactAutoProjectionUnderThePeriodLock() {
+        ArApLedgerRepository ledgerRepo = mock(ArApLedgerRepository.class);
+        ArApSourceRefRepository sourceRefRepo = mock(ArApSourceRefRepository.class);
+        TxSessionVars tx = mock(TxSessionVars.class);
+        GlPostingService glPosting = mock(GlPostingService.class);
+        ArApLedgerServiceImpl service = new ArApLedgerServiceImpl(
+                ledgerRepo, sourceRefRepo, tx, glPosting);
+        UUID sourceId = UUID.randomUUID();
+        LocalDate billDate = LocalDate.of(2026, 8, 9);
+        ArApLedger ledger = new ArApLedger();
+        ledger.setDirection("AR");
+        ledger.setBillNo("XC26080009");
+        ledger.setBillDate(billDate);
+        ledger.setAmountReceivedLocal(BigDecimal.ZERO);
+        ledger.setAmountWriteOffLocal(BigDecimal.ZERO);
+        when(ledgerRepo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(
+                sourceId, "SALES_SHIPMENT")).thenReturn(List.of(ledger));
+        when(ledgerRepo.findBySourceForUpdate(sourceId, "SALES_SHIPMENT"))
+                .thenReturn(List.of(ledger));
+
+        service.reverseArAp(sourceId, "SALES_SHIPMENT");
+
+        verify(glPosting).lockAutoProjectionPeriod(billDate);
+        verify(glPosting).removeAutoProjection(
+                "AR_POST", "SALES_SHIPMENT", sourceId, "XC26080009", billDate);
+        verify(ledgerRepo).deleteAll(List.of(ledger));
     }
 }

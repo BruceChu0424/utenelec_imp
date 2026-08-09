@@ -1,163 +1,85 @@
-# 优腾电器官网 · 设计系统 (MASTER) — Cinema Dark
+# Uten Architectural · Design System v2
 
-> 项目视觉宪法。所有页面、组件、后台均以此为准。建任何页面前先读此文件。
-> 关联记忆: [[uten-website-multilang-cms]]
+## 1. 品牌方向
 
----
+网站是建筑空间中的电气细节目录，不是电商商城。视觉关键词：建筑、精密、安静、自信、触感。采用暖白纸张底、炭黑结构和 Uten 青绿点睛，避免常见科技蓝紫渐变、满屏玻璃态和无意义的连续动画。
 
-## 1. 品牌定位
+## 2. 色彩 tokens
 
-- **企业**: 中山市优腾电器有限公司 (Uten Electrical) — 25 年专注安全墙壁开关 / 插座 / 面板，高新技术企业，**有外贸出口**。
-- **品牌主色**: `#009A8E`（青绿 / teal）。
-- **Logo**:
-  - `logo_name.png` — 横向 wordmark「UTEN ELEC」，UTEN 青绿 + ELEC 灰，**透明背景**，深浅色通用。
-  - `logo_ip.png` — 戴黄色安全帽的 IP 吉祥物，**圆形深青绿底**（非透明），作 Hero 发光徽章。
-- **设计风格**: **Cinema Dark**（深色电影感）— 深空 + 环境光斑 + 玻璃态 + Expo 缓动，苹果式克制。
-
-## 2. 设计原则
-
-1. **克制（苹果风）** — 少而精，大量留白，单屏 1–2 个动效，不堆砌。
-2. **电影质感** — 深空背景 + 漂移光斑 + 玻璃态卡片 + 银白渐变标题。
-3. **品牌一致** — `#009A8E` 贯穿 accent / 光晕 / eyebrow / focus ring。
-4. **可达性** — 对比度 AA/AAA、键盘焦点、`prefers-reduced-motion` 全局降级。
-5. **内容可编辑** — 一切展示内容来自 CMS，前台零硬编码业务文案。
-
-## 3. 色彩系统
-
-> 默认深色（Cinema Dark）。浅色 token 保留作主题切换兜底。
-
-### 深色 Tokens (`.dark`，默认)
-
-| Token | HSL | Hex | 用途 |
-|---|---|---|---|
-| `--background` | `228 33% 4%` | `#06080C` | 深空底色（不用纯黑 #000，防 OLED smear） |
-| `--background-elevated` | `224 26% 7%` | `#0E1117` | 抬升层（banner / section 交替） |
-| `--foreground` | `210 40% 97%` | `#FAFCFF` | 银白正文 / 标题 |
-| `--accent` | `174 100% 36%` | `#009A8E` 区 | 品牌青绿 — CTA / eyebrow / 光晕 |
-| `--accent-soft` | `174 85% 60%` | 亮 teal | 深色背景上的强调文字 / 渐变 |
-| `--primary` | `215 35% 13%` | `#15212E` navy | **深色块**（footer / banner / sidebar） |
-| `--primary-foreground` | `210 40% 97%` | 银白 | 深块上的文字 |
-| `--card` | `224 30% 6%` | `#0B0E14` | 卡片底（玻璃态覆盖） |
-| `--border` | `220 16% 17%` | — | 发丝边框 |
-| `--muted-foreground` | `215 18% 62%` | — | 次级文字 |
-| `--ring` | `174 90% 50%` | teal | 焦点环 |
-
-> ⚠️ **关键约束**: 深色下 `--primary` 必须是 navy（深块），**不能设成银白（前景色）**——否则所有 `bg-primary` 区块（footer/banner/sidebar）会变成刺眼银白。曾踩过。
-
-**对比度**: `#009A8E` on 深空 = **5.74:1**（AAA 正文）；白字 on teal 按钮 = 3.49:1（AA 大字/UI）。
-
-### 玻璃态
-
-```css
-.dark .card-uten {
-  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.012));
-  border: 1px solid rgba(255,255,255,.08);  /* 发丝 */
-}
-.glass { background: rgba(255,255,255,.05); backdrop-filter: blur(20px) saturate(140%); }
-```
-
-## 4. 字体系统
-
-- **标题**: `Lexend`（拉丁）— 现代友好、可读性极佳。
-- **正文**: `Source Sans 3`（拉丁）— 高可读、专业。
-- **中文**: 系统字体栈兜底（PingFang SC / Microsoft YaHei / Hiragino Sans GB）。
-- **加载方式**: 运行时 `<link>`（layout `<head>`），**不用 `next/font/google`**（国内构建时下载会失败）。
-
-```css
---font-heading: 'Lexend', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
---font-body: 'Source Sans 3', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
-```
-
-### 字号阶
-
-| Token | 用途 |
+| Token | 角色 |
 |---|---|
-| `text-hero` | Hero 主标题 `clamp(3rem, 8vw, 6rem)` |
-| `text-display` | 大标题 `clamp(2.75rem, 7vw, 5rem)` |
-| `text-4xl/3xl` | 页面/区块标题 |
-| `text-base` | 正文 16px（移动端最小） |
+| `--background` | 暖白主背景 |
+| `--background-elevated` | 轻微抬升的纸张层 |
+| `--foreground` | 炭黑正文与大标题 |
+| `--muted-foreground` | 次级信息 |
+| `--card` | 产品/内容卡片 |
+| `--border` | 低对比发丝边框 |
+| `--accent` | Uten 青绿，CTA、焦点和关键状态 |
+| `--accent-soft` | 青绿浅底提示 |
 
-## 5. 间距 / 圆角 / 阴影
+深色只用于需要制造节奏的品牌段落、页脚和工艺展示，不提供会破坏品牌一致性的主题切换。
 
-- **间距**: 8pt 节奏（4/8/12/16/24/32/48/64/96）。
-- **圆角**: `--radius` 0.875rem（14px）；卡片 16px；按钮 12px。
-- **阴影**: 深色用 `lg` = `0 24px 60px -16px rgba(0,0,0,.5)`；`glow` = accent 光晕。
-- **容器**: `max-w-7xl` (1280px)。
+## 3. 字体与信息层级
 
-## 6. 动效系统
+- 字体使用可靠的系统无衬线栈，避免构建时依赖远程字体。
+- Hero 标题使用 `clamp()` 大字号、紧凑行高和适度负字距。
+- Eyebrow 采用小号大写、宽字距，不承载关键信息。
+- 正文移动端不小于 16px；辅助标签不小于 12px。
+- 型号、尺寸和数量使用 tabular numerals。
 
-> 统一 **Expo 缓动** `cubic-bezier(0.16, 1, 0.3, 1)`，时长偏慢（500–800ms）更显高级。
+## 4. 布局
 
-| 组件 | 说明 | 文件 |
-|---|---|---|
-| `Reveal` | 滚动进入视口浮现（fade + translate-y），支持 `delay` 做 stagger 序列 | `components/motion/Reveal.tsx` |
-| `CountUp` | 数字 0→目标计数（ease-out cubic），智能解析「25+」「$20」 | `components/motion/CountUp.tsx` |
-| `ambient-blob` + `animate-blob` | 环境光斑（blur 圆 + 18s 漂移） | globals.css |
-| `float` | 产品/IP 形象呼吸悬浮 6s | tailwind keyframes |
+- `container-uten` 最大宽度约 1440px，左右安全边距随视口变化。
+- `section` 为主节奏，`section-tight` 用于连续内容。
+- 首页突出少量产品与场景入口；完整产品通过搜索和系列筛选探索。
+- 产品模型卡内部再聚合颜色/材质款式，避免把每个颜色复制成一张同级卡。
+- 触控目标最小 44×44px；移动筛选使用明确的抽屉/面板。
 
-**铁律**:
-- 只动 `transform` / `opacity`，**禁止动画 width/height**。
-- **必须** `prefers-reduced-motion` 全局降级（globals.css 已加 + 组件内判断）。
-- **克制**: 单屏最多 1–2 个主动效，不是动得越多越高级。
+## 5. 组件
 
-## 7. 组件规范
+- `btn-primary`：炭黑主要动作。
+- `btn-accent`：青绿关键转化，仅每个区块一个首要动作。
+- `btn-outline`：次要探索动作。
+- `card-uten`：暖白卡、细边框、低幅 hover 位移。
+- `input-uten` / `label-uten`：显式标签、可见焦点、错误信息靠近字段。
+- 所有图标使用 Lucide；不以 emoji 代替界面图标。
 
-| 组件 | 规范 |
-|---|---|
-| `card-uten` | 玻璃态深色卡，hover `-translate-y` + `border-accent/40` |
-| `btn-accent` | teal 实心 + hover 光晕 `box-shadow accent/.55` |
-| `btn-primary` | 银白实心（深字） |
-| `btn-outline` | 发丝边框，hover `border-accent/50` |
-| `eyebrow` | 小标签，带前置短线 `::before`，uppercase tracking-[0.28em] text-accent |
-| `text-gradient` | 银白竖向渐变（标题用） |
-| `text-gradient-accent` | teal 渐变（数字/强调） |
-| 图标 | Lucide，统一 1.5px stroke，**禁止 emoji** |
+## 6. 动效
 
-## 8. 页面结构
+- 统一缓动 `cubic-bezier(0.16, 1, 0.3, 1)`。
+- 动画优先只改变 `transform` 和 `opacity`。
+- Hero 可有一个持续的空间/产品微动；列表只在交互时响应。
+- `prefers-reduced-motion: reduce` 时取消持续运动和大幅过渡。
+- 页面可读性不能依赖动画完成后才出现。
 
-### 首页（苹果风，克制少量）
+## 7. 图片原则
 
-`Hero`（全屏电影：光斑 + 银白渐变巨字 + IP 徽章悬浮发光 + 光晕按钮 + 滚动指示）
-→ `Stats`（CountUp 数字）
-→ **`Featured`（4 款精选产品 · 2×2 大卡 · 大图大留白）**
-→ `Craft`（4 大工艺）
-→ `About`（双栏 + 图墙）
-→ `Cases`（样板工程）
-→ `News`（3 条）
-→ `CTA`（合作号召，光斑卡）
+- 产品图使用 `object-contain`，保持真实比例，不裁切面板边缘。
+- 场景图必须保留明确的空墙安装区域；产品以真实款式图叠加。
+- AI 生成背景只能表达空间氛围，不能伪造产品实物、认证或工程案例。
+- 低分辨率旧图不得强行铺满大屏；优先使用克制尺寸、留白和浅底。
 
-> 首页产品区是**少量精选大卡**（苹果风），不是密集罗列。完整 65 款在「产品中心」。精选由 `getLatestProducts(4)` 取最新有图产品，可改为后台 featured。
+## 8. 无障碍与国际化
 
-### 其他页
+- 键盘焦点始终可见；弹层支持 Esc，打开时锁定背景滚动。
+- 文本与背景达到 WCAG AA；不能只靠颜色表达选中状态。
+- 图片具有准确 alt，装饰图 alt 为空。
+- 阿拉伯语页面设置 `dir="rtl"`；组件避免只适用于 LTR 的绝对方向假设。
+- UI 字符串来自 messages，内容按当前语言 → 英文 → 中文逐字段回退。
 
-统一**电影 banner**（background-elevated + 光斑 + eyebrow + `text-gradient` 标题）+ 内容区。
+## 9. 禁止模式
 
-## 9. Logo 用法
+- 不展示虚构价格、库存、销量或评分。
+- 不把企业展示站伪装成商城。
+- 不为“炫酷”加入阻塞首屏的大型 3D 包、自动播放视频或滚动劫持。
+- 不把 1000+ 产品一次性渲染在首屏。
+- 不以翻译回退掩盖待审核的产品技术参数。
 
-| 位置 | 文件 | 尺寸 |
-|---|---|---|
-| 页头 / 页脚 / 登录 / 后台 | `logo_name.png` | h-6 ~ h-7（横向 wordmark） |
-| Hero 右侧 | `logo_ip.png` | 圆形 IP 徽章 + accent 光晕 + `animate-float` |
+## 10. 交付检查
 
-不改色、不改比例、不加描边。文件在 `public/images/logo/`。
-
-## 10. 反模式（禁止）
-
-- ❌ 纯黑 `#000` 背景（OLED smear）— 用 `#06080C`。
-- ❌ 深色下 `--primary` 设银白 — `bg-primary` 会刺眼。
-- ❌ 动画 `width/height/top/left`。
-- ❌ 业务文案硬编码（必须走 CMS / messages）。
-- ❌ Emoji 当图标 / `next/font/google` / 紫粉 AI 渐变。
-- ❌ 密集罗列（首页要苹果风克制）。
-- ❌ 忽略 `prefers-reduced-motion`。
-
-## 11. 交付前检查
-
-- [ ] Lucide SVG 图标统一 stroke；无 emoji。
-- [ ] 玻璃态卡 + 发丝边框 + hover 微浮。
-- [ ] 焦点环 teal 可见；键盘 Tab 顺序正确。
-- [ ] 银白正文对比度 ≥ 4.5:1（深色）。
-- [ ] `prefers-reduced-motion` 降级生效。
-- [ ] 375 / 768 / 1024 / 1440 四档响应式。
-- [ ] 业务内容来自 CMS；UI 文案来自 messages。
-- [ ] 动效克制（单屏 1–2 个）。
+- 375、768、1024、1440px 页面无横向溢出。
+- 导航、筛选、款式色卡、表单和 Studio 可用键盘操作。
+- 减少动态偏好生效。
+- 产品、款式、场景后台保存后前台可见。
+- 每种 locale 均能加载且 key/ICU 参数一致。
+- 首页、产品列表、详情、Studio、联系页通过正式构建和浏览器实测。

@@ -111,6 +111,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get loginFailed => '账号或密码错误';
 
   @override
+  String get loginServerRecoveryAction => '恢复自动选择服务器';
+
+  @override
+  String get loginServerRecoveryHint => '登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。';
+
+  @override
+  String get loginServerRecoverySuccess => '已恢复自动选择，请重新登录';
+
+  @override
+  String get loginServerRecoveryFailed => '服务器选择恢复失败，请稍后重试或联系管理员';
+
+  @override
   String get loginFooter => '© 2026 优腾 · 综合管理平台';
 
   @override
@@ -2694,4 +2706,42 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get impersonationStartFailed => '切换失败';
+
+  @override
+  String get exportDialogTitle => '导出 Excel';
+
+  @override
+  String get exportPasswordOptionalHint =>
+      '密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。';
+
+  @override
+  String get exportPasswordOptionalLabel => '打开密码（可选，1–128 位）';
+
+  @override
+  String get exportPasswordConfirmLabel => '确认密码';
+
+  @override
+  String get exportPasswordTooLong => '密码不能超过 128 位';
+
+  @override
+  String get exportPasswordMismatch => '两次密码不一致';
+
+  @override
+  String get exportDownloadPlain => '直接下载';
+
+  @override
+  String get exportDownloadEncrypted => '加密下载';
+
+  @override
+  String get exportFailed => '导出失败，请稍后重试';
+
+  @override
+  String exportDownloadStarted(String name) {
+    return '已开始下载 $name';
+  }
+
+  @override
+  String exportDownloadSaved(String path) {
+    return '已保存：$path';
+  }
 }

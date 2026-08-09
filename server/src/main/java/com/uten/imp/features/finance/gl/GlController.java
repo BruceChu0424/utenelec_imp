@@ -1,6 +1,8 @@
 package com.uten.imp.features.finance.gl;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -38,8 +40,8 @@ public class GlController {
     @PostMapping("/api/finance/gl/generate")
     @PreAuthorize("hasAuthority('finance_post:execute')")
     public Map<String, Object> generate(@RequestParam String period) {
-        if (!period.matches("\\d{4}-\\d{2}")) {
-            throw new IllegalArgumentException("period 格式 YYYY-MM");
+        if (!period.matches("\\d{4}-(0[1-9]|1[0-2])")) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "period 格式必须为 YYYY-MM");
         }
         int vouchers = posting.generate(period);
         return Map.of("period", period, "vouchers", vouchers);

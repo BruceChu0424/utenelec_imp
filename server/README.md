@@ -4,8 +4,9 @@ Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Dat
 
 > 本目录是独立 Maven 工程，与 Flutter 前端（`lib/`）平级。
 >
-> **当前平台部署状态（2026-08-09）**：源码迁移最高 V244；公司原库仍保持 V238，隔离非空克隆已成功
-> 迁移至 V244。最终后端 1065 项测试 `0 failure / 0 error / 0 skipped`，但真实阿里云 ECS/VPN/OSS、
+> **当前平台部署状态（2026-08-10）**：源码迁移最高 V250（231 个迁移）；公司目标库仍保留既有 V238 口径，
+> 开发原库 `uten_imp` 本轮只读并保持 V244/225。本轮生产物料阶段链使用一次性克隆升至 V250/231，后端
+> 1256 项测试为 `0 failure / 0 error / 1 skipped`，真实 HTTP 链退出码 0 且清理 PASS；这些隔离证据没有部署到公司目标库。真实阿里云 ECS/VPN/OSS、
 > 公司目标库迁移、PITR、故障切换/回切和岗位 UAT 未完成，生产仍为 **NO-GO**。以
 > [本地云端生产就绪清单](../docs/99-项目治理/2026-08-09-本地云端部署与生产就绪清单.md)、
 > [ADR-031](../docs/99-决策记录-ADR/ADR-031-本地云端单主库部署架构.md)和
@@ -19,10 +20,14 @@ Spring Boot 3.5.16 · Java 21 · Spring Security 6 (stateless JWT) · Spring Dat
 ## 快速开始
 ```bash
 cd server
-cp .env.example .env            # 按需改密码/密钥（生产务必换强随机值）
+cp .env.example .env            # 模板已连接 Docker 宿主端口 localhost:5433
 docker compose up -d postgres   # 起开发用 Postgres（含 pgcrypto）
-mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
+mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 ```
+
+`docker-compose.yml` 将容器内 PostgreSQL `5432` 映射为宿主机 `5433`，因此直接运行 Maven/IDE
+时必须连接 `jdbc:postgresql://localhost:5433/uten_imp`；`.env.example` 已与该映射保持一致。若改用
+本机原生 PostgreSQL，需在私有 `.env` 中显式改成实际端口，不要修改共享模板来适配个人环境。
 
 以上命令**只用于本地开发**。生产不得复制开发 `.env` 或直接运行 `spring-boot:run`；应使用不可变 JAR、
 受控密钥注入、Nginx/systemd 和维护窗口迁移，见 Cloud Runbook。
@@ -54,7 +59,7 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
 - API 基址 `http://localhost:8080/api`
 - Swagger UI `http://localhost:8080/swagger-ui.html`（仅显式 `dev` profile 默认开放；base/prod 默认关闭）
 - 健康检查 `http://localhost:8080/actuator/health`（仅暴露 health，启用存活/就绪探针）
-- 空库首次引导超管账号 `admin` / 密码 = `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`（首登强制改）。
+- 空库首次引导超管账号默认 `17665410007`（可由 `uten.bootstrap.admin-login` 配置）/ 密码 = `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD`（首登强制改）。
   账号一旦存在，启动器严格跳过，不会把人工撤销的超级管理员权限重新授回。
 
 ## 本机免 Maven 启动（`_scratch/`，git-ignored）
@@ -83,14 +88,17 @@ mvn spring-boot:run             # 启动后端，Flyway 自动建表 + 种子
    主构造器必须显式 `@Autowired`（否则启动报 "No default constructor found"）。
 
 ## 数据库
-- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V244）。
+- schema 完全由 `src/main/resources/db/migration/` 下的 Flyway 迁移管理（`ddl-auto=validate`，当前源码最高为 V250，共 231 个迁移）。
   2026-08-09 只读证据确认公司原库仍为 `V238 / installed_rank 219`；隔离克隆
   `uten_imp_cloud_audit_20260809` 已从原库 V238 连续成功升到 `V244 / installed_rank 225`。源码、编译、空库或克隆
   迁移通过都不等于公司目标库已升级，实际版本始终以该库 `flyway_schema_history` 为准；禁止用 SQL
   顺序回放或 `flyway repair` 掩盖 checksum/历史缺口。
 - `V239` 修正生产物料分析零需求量；`V240` 建通用附件元数据；`V241` 增加默认关闭的
   `users.remote_access` 并在变化时递增授权版本；`V242` 刷新审计覆盖；`V243` 增加附件对象唯一、正大小
-  和上传完整性约束；`V244` 保存服务端确认时实际读取并哈希的 OSS `versionId`/ETag。目标库切入生产 OSS 前，
+  和上传完整性约束；`V244` 保存服务端确认时实际读取并哈希的 OSS `versionId`/ETag；`V245` 恢复被 V233
+  覆盖遗漏的 `finance` 数据范围约束，并重新启用五类财务单据的对象级委托；`V246` 为付款单增加服务端金额权威版本标记，历史或未验证金额保持显式未验证；
+  `V247` 冻结 BOM 控制阶段和按件/包装/固定批量计量快照；`V248` 为非线性规则冻结执行段精确需求及指纹；
+  `V249` 明确执行段是 `DEMANDED` 还是经审计的 `ZERO_MATERIAL`；`V250` 将物料分析前置采购/委外来源纳入不可拆除的历史追溯守卫。目标库切入生产 OSS 前，
   `attachments.storage_version IS NULL` 必须为 0，否则先隔离并逐对象核对精确版本与服务端哈希。
 
 > 下方按迁移段保留历史实现和当时测试快照；其中“目标库 V190”“候选 V202”等句子只描述对应日期，
@@ -261,12 +269,16 @@ JSON Controller 请求体由 `JsonRequestBodyLimitAdvice` 统一限制，默认
 `UTEN_MAX_JSON_BODY_BYTES=1048576`（1 MiB），同时覆盖无 `Content-Length` 的 chunked 请求；
 超限固定返回 413 `PAYLOAD_TOO_LARGE`，畸形 JSON/类型固定返回 400 `MALFORMED_REQUEST`。
 multipart/二进制不走该缓冲器，未来上传端点必须单独采用流式大小策略。导出密码请求统一使用
-`@Valid @NotBlank @Size(min=6,max=128)`；`EncryptedWorkbookService` 重复校验同一边界，
-报表不提供明文导出分支。登出 refresh token 最大 512 字符，同时继续接受空 body 的公开幂等登出；
+`@Valid @Size(max=128)`；`WorkbookDownloadService` 在密码为空时返回普通 `.xlsx`，提供任意
+1–128 位密码时使用 OOXML Agile AES-256 加密。密码只走 body，不进入 URL、查询参数或日志。
+登出 refresh token 最大 512 字符，同时继续接受空 body 的公开幂等登出；
 已撤销/未知/空 token 都是不泄露差异的 no-op。匹配 token 的审计只记录 owner 用户 ID 与 token UUID，不记录
 token 原文或 hash；after-commit 审计失败不回滚已经完成的撤销。客户端在本地 logout 返回前先把旧 refresh
 写入有界加密待撤销队列，网络发送异步并可在启动/恢复后排空。普通 logout 只撤销 refresh，不保证已签发
 access 立即服务端失效；access 最多存活到短 TTL，紧急全局清退需递增授权版本/epoch或轮换 issuer/签名密钥。
+首登账号由 `PasswordChangeRequiredFilter` 收口：除改密、登出和 `/auth/me` 外，全部 `/api` 请求统一返回
+`403 PASSWORD_CHANGE_REQUIRED`；`/auth/me` 的用户资料包含 `mustChangePassword`，保证客户端冷启动后
+仍回到改密流程，而不是先进入业务页再被动报错。
 老库 Java 迁移模块失败只向客户端返回稳定错误码和 UUID `referenceId`，异常类型、数据库地址和
 底层 message 只进受控服务端日志。
 
@@ -341,9 +353,12 @@ Git 历史 Gitleaks 和 OSV 依赖扫描并行。工作流文件存在或本地�
 Auth、最小 JWT、服务端权限、密码失效、logout/audit、Dashboard 和工作台均在执行范围；这些定向结果仍不替代
 真实多账号 HTTP/UAT、目标 PostgreSQL 非空时间映射、网关 12/18 KiB、容量、恢复、外部告警与生产配置验收。
 
-**当前证据（2026-08-09）**：`UTEN_RUN_DB_TESTS=true` 的最终全套为 269 个测试类、1065/1065，
-0 failure/error/skipped；FullChain 46/46 在 PostgreSQL 16.14 空库应用 225 条迁移至 V244。最终 JAR
-SHA-256、隔离克隆计数、远程授权 HTTP 矩阵和仍未完成的生产项见本页顶部权威清单。
+**当前增量证据（2026-08-10）**：当前共享工作树后端全量为 1256 项，
+`0 failure / 0 error / 1 skipped`；唯一 skipped 是要求特定 V244 起点的一次性迁移演练，不得表述为 PostgreSQL 门控全部执行。
+PostgreSQL 16 一次性克隆从开发原库 V244/225 升至 V250/231，真实 HTTP 已完成生产定向通知 →
+采购/委外分解下单 → 财务审核 → 预计到货，并通过幂等、权限负向、数量守恒和清理检查；开发原库未写。
+尚未在同一 HTTP 链执行实际收货/IQC 唤醒、MAKE 子件正式计划、车间报工/完工/入库、组装及分批发货。
+公司目标库迁移、历史数据/金额/数量对账、真实岗位和实物 UAT、备份恢复及不可变制品发布仍未完成，生产继续 **NO-GO**。
 
 ## 依赖安全基线
 

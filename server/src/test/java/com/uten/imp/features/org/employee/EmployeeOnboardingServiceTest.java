@@ -4,6 +4,7 @@ import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
@@ -11,6 +12,7 @@ import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
+import com.uten.imp.features.rbac.Role;
 import com.uten.imp.features.rbac.RoleRepository;
 import com.uten.imp.features.rbac.UserRoleRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -31,8 +33,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -41,6 +45,13 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class EmployeeOnboardingServiceTest {
+
+    @Test
+    void temporaryPasswordRequiresAtLeastSixIdCardCharacters() {
+        assertEquals("", EmployeeOnboardingService.lastSix("12345"));
+        assertEquals("123456", EmployeeOnboardingService.lastSix("123456"));
+        assertEquals("31002X", EmployeeOnboardingService.lastSix("11010519491231002X"));
+    }
 
     @Mock private EmployeeRepository empRepo;
     @Mock private EmployeeSensitiveRepository sensitiveRepo;
@@ -70,6 +81,7 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void alwaysAllocatesEmployeeCodeOnServerAndSkipsHistoricalCollision() {
+        stubEmployeeRole();
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
         when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE))
@@ -84,6 +96,54 @@ class EmployeeOnboardingServiceTest {
         verify(empRepo).save(employee.capture());
         assertEquals("UT0002", employee.getValue().getCode());
         assertEquals("13800000000", result.loginAccount());
+    }
+
+    @Test
+    void onboardingUsesIdCardLastSixAndStoresOnlyTheEncodedPassword() {
+        stubEmployeeRole();
+        Department center = managementCenter();
+        when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
+        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0006");
+        when(passwordEncoder.encode("31002X")).thenReturn("argon2-encoded");
+
+        EmployeeOnboardingResult result = service.onboard(request(
+                center.getId(), null, null, "IGNORED", "身份证", "11010519491231002X"));
+
+        ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
+        verify(userRepo).save(account.capture());
+        verify(passwordEncoder).encode("31002X");
+        assertEquals("31002X", result.temporaryPassword());
+        assertEquals("argon2-encoded", account.getValue().getPasswordHash());
+        assertFalse(account.getValue().getPasswordHash().contains("31002X"));
+        assertTrue(account.getValue().isMustChangePassword());
+        assertEquals("active", account.getValue().getStatus());
+    }
+
+    @Test
+    void laterAccountProvisioningUsesTheSameIdCardLastSixRule() {
+        stubEmployeeRole();
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setEmployeeId(employee.getId());
+        sensitive.setPhoneEnc("phone-cipher");
+        sensitive.setIdCardEnc("id-cipher");
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.empty());
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+        when(tx.decrypt("phone-cipher")).thenReturn("13800000001");
+        when(tx.decrypt("id-cipher")).thenReturn("11010519491231002X");
+        when(passwordEncoder.encode("31002X")).thenReturn("argon2-provisioned");
+
+        EmployeeOnboardingResult result = service.provisionAccount(employee.getId());
+
+        ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
+        verify(userRepo).save(account.capture());
+        verify(passwordEncoder).encode("31002X");
+        assertEquals("31002X", result.temporaryPassword());
+        assertEquals("13800000001", result.loginAccount());
+        assertEquals("argon2-provisioned", account.getValue().getPasswordHash());
+        assertTrue(account.getValue().isMustChangePassword());
     }
 
     @Test
@@ -107,6 +167,7 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void typedPositionReusesFirstNormalizedActiveMatch() {
+        stubEmployeeRole();
         Department center = managementCenter();
         Position existing = position(center, "ZW0042", "Engineer");
         stubCustomPositionLock();
@@ -125,6 +186,7 @@ class EmployeeOnboardingServiceTest {
 
     @Test
     void typedUnknownPositionIsCreatedAsNeutralEmployeePosition() {
+        stubEmployeeRole();
         Department center = managementCenter();
         stubCustomPositionLock();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
@@ -143,6 +205,29 @@ class EmployeeOnboardingServiceTest {
         assertEquals("数据分析师", position.getValue().getName());
         assertEquals("员工", position.getValue().getLevel());
         assertSame(center, position.getValue().getDepartment());
+    }
+
+    @Test
+    void rejectsUnknownAccountRoleInsteadOfCreatingAnUnprivilegedAccount() {
+        Department center = managementCenter();
+        when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
+        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0007");
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.onboard(request(center.getId(), null, null, "IGNORED")));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        assertEquals("账号角色不存在: employee", error.getMessage());
+        verify(userRepo, never()).save(any(UserAccount.class));
+    }
+
+    private void stubEmployeeRole() {
+        Role employee = new Role();
+        employee.setId(UUID.randomUUID());
+        employee.setCode("employee");
+        employee.setName("员工");
+        when(roleRepo.findByCodeIn(any())).thenReturn(List.of(employee));
     }
 
     private void stubCustomPositionLock() {
@@ -174,13 +259,29 @@ class EmployeeOnboardingServiceTest {
             UUID positionId,
             String positionName,
             String compatibilityCode) {
+        return request(
+                departmentId,
+                positionId,
+                positionName,
+                compatibilityCode,
+                "其他",
+                "CARD-123456");
+    }
+
+    private static OnboardingRequest request(
+            UUID departmentId,
+            UUID positionId,
+            String positionName,
+            String compatibilityCode,
+            String idType,
+            String idNumber) {
         return new OnboardingRequest(
                 new OnboardingRequest.Profile(
                         compatibilityCode,
                         "测试员工",
                         null,
-                        "其他",
-                        "CARD-123456",
+                        idType,
+                        idNumber,
                         null,
                         "13800000000",
                         null,

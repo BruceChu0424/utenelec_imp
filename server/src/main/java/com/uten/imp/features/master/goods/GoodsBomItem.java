@@ -55,6 +55,26 @@ public class GoodsBomItem extends SoftDeletableEntity {
     @Column(nullable = false)
     private BigDecimal qty = BigDecimal.ONE;  // QTY 用量
 
+    /** 该组件在哪个生产阶段参与齐套控制。 */
+    @Column(name = "control_stage", nullable = false)
+    private String controlStage = "START";
+
+    /** 用量换算方式：按件、按包装单位或固定批耗。 */
+    @Column(name = "consumption_basis", nullable = false)
+    private String consumptionBasis = "PER_UNIT";
+
+    /** 一次 BOM 用量对应的产出数量。 */
+    @Column(name = "basis_output_qty", nullable = false, precision = 18, scale = 6)
+    private BigDecimal basisOutputQty = BigDecimal.ONE;
+
+    /** 按包装计量时是否允许最后一个包装不足整包。 */
+    @Column(name = "allow_partial_package", nullable = false)
+    private boolean allowPartialPackage = true;
+
+    /** 缺料是否阻断生产阶段；仅 START/ASSEMBLY/FINISH 可为 true。 */
+    @Column(name = "hard_gate", nullable = false)
+    private boolean hardGate = true;
+
     private BigDecimal price;           // Price 单价
     private BigDecimal total;           // Total 金额（= qty*price，service 兜底重算）
 

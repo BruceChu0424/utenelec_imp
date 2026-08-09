@@ -12,6 +12,48 @@ String formatProductionPlanningQuantity(double value) =>
 String formatProductionPlanningUsage(double value) =>
     _formatProductionDecimal(value, 6);
 
+double aggregateProductionPlanningMaterialUsage(
+  Iterable<ProductionExecutionMaterialPreview> materials,
+  double totalProductQty,
+) {
+  final entries = materials.toList(growable: false);
+  if (entries.isEmpty) return 0;
+  final exact = entries.any(
+    (material) => material.requirementMode == 'EXACT_SNAPSHOT',
+  );
+  if (!exact || totalProductQty <= kProductionPlanningQuantityEpsilon) {
+    return entries.first.perProductQty;
+  }
+  final totalRequired = entries.fold<double>(
+    0,
+    (sum, material) => sum + material.requiredQty,
+  );
+  return totalRequired / totalProductQty;
+}
+
+String formatProductionPlanningGroupedMaterialUsage(
+  String requirementMode,
+  double perProductQty,
+) {
+  final value = formatProductionPlanningUsage(perProductQty);
+  return requirementMode == 'EXACT_SNAPSHOT'
+      ? '按包/批（分段合计均耗） $value'
+      : '单台用量 $value';
+}
+
+String? productionZeroMaterialReasonText(
+  String materialRequirementMode,
+  String? zeroMaterialReason,
+) {
+  if (materialRequirementMode != 'ZERO_MATERIAL') return null;
+  return switch (zeroMaterialReason) {
+    'DIRECT_MAKE' => '无需生产领料：直接自制',
+    'PLAN_BOM_OVERRIDE' => '无需生产领料：本计划 BOM 例外',
+    'NO_PRODUCTION_HARD_GATE' => '无需生产领料：仅发货或参考物料',
+    _ => '无需生产领料：原因待核验',
+  };
+}
+
 String _formatProductionDecimal(double value, int scale) {
   final fixed = value.toStringAsFixed(scale);
   final withoutTrailingZeros = fixed.replaceFirst(RegExp(r'0+$'), '');
@@ -51,8 +93,10 @@ class ProductionPlanningPreview {
   final bool executionSegmentationReady;
   final List<ProductionExecutionSegmentPreview> executionSegments;
   final List<String> noBomPlanItemIds;
+
   /// 成品缺 BOM 的货品 id（供前端判成品的转发态；noBomPlanItemIds 是计划行 id）。
   final List<String> noBomGoodsIds;
+
   /// 已转发工程研发部、仍在等待维护的货品 id（成品 + 自制组件）；不进 fingerprint。
   final List<String> forwardedGoodsIds;
 
@@ -79,10 +123,7 @@ class ProductionPlanningPreview {
         json['noBomPlanItemIds'],
         (e) => e as String,
       ),
-      noBomGoodsIds: _decodeList(
-        json['noBomGoodsIds'],
-        (e) => e as String,
-      ),
+      noBomGoodsIds: _decodeList(json['noBomGoodsIds'], (e) => e as String),
       forwardedGoodsIds: _decodeList(
         json['forwardedGoodsIds'],
         (e) => e as String,
@@ -234,6 +275,8 @@ class ProductionExecutionSegmentPreview {
     this.responsibleEmployeeId,
     this.planBeginDate,
     this.planEndDate,
+    this.materialRequirementMode = 'DEMANDED',
+    this.zeroMaterialReason,
     this.materials = const [],
   });
 
@@ -254,6 +297,8 @@ class ProductionExecutionSegmentPreview {
   final String? planBeginDate;
   final String? planEndDate;
   final String bomFingerprint;
+  final String materialRequirementMode;
+  final String? zeroMaterialReason;
   final List<ProductionExecutionMaterialPreview> materials;
 
   factory ProductionExecutionSegmentPreview.fromJson(
@@ -277,6 +322,9 @@ class ProductionExecutionSegmentPreview {
       planBeginDate: json['planBeginDate'] as String?,
       planEndDate: json['planEndDate'] as String?,
       bomFingerprint: json['bomFingerprint'] as String,
+      materialRequirementMode:
+          json['materialRequirementMode'] as String? ?? 'DEMANDED',
+      zeroMaterialReason: json['zeroMaterialReason'] as String?,
       materials: _decodeList(
         json['materials'],
         ProductionExecutionMaterialPreview.fromJson,
@@ -295,6 +343,7 @@ class ProductionExecutionMaterialPreview {
     required this.candidateAllocatedQty,
     required this.shortageQty,
     required this.supplyRoute,
+    this.requirementMode = 'LINEAR',
     this.colorId,
   });
 
@@ -307,6 +356,7 @@ class ProductionExecutionMaterialPreview {
   final double candidateAllocatedQty;
   final double shortageQty;
   final String supplyRoute;
+  final String requirementMode;
 
   factory ProductionExecutionMaterialPreview.fromJson(
     Map<String, dynamic> json,
@@ -321,6 +371,7 @@ class ProductionExecutionMaterialPreview {
       candidateAllocatedQty: _requiredDouble(json['candidateAllocatedQty']),
       shortageQty: _requiredDouble(json['shortageQty']),
       supplyRoute: json['supplyRoute'] as String,
+      requirementMode: json['requirementMode'] as String? ?? 'LINEAR',
     );
   }
 }
@@ -724,6 +775,8 @@ class ProductionExecutionSegmentResult {
     this.responsibleEmployeeId,
     this.planBeginDate,
     this.planEndDate,
+    this.materialRequirementMode = 'DEMANDED',
+    this.zeroMaterialReason,
     this.materials = const [],
     this.drawDocument,
   });
@@ -736,6 +789,8 @@ class ProductionExecutionSegmentResult {
   final String? productColorId;
   final double plannedQty;
   final String status;
+  final String materialRequirementMode;
+  final String? zeroMaterialReason;
   final String? workshopDepartmentId;
   final String? teamDepartmentId;
   final String? responsibleEmployeeId;
@@ -754,6 +809,9 @@ class ProductionExecutionSegmentResult {
       productColorId: json['productColorId'] as String?,
       plannedQty: _requiredDouble(json['plannedQty']),
       status: json['status'] as String,
+      materialRequirementMode:
+          json['materialRequirementMode'] as String? ?? 'DEMANDED',
+      zeroMaterialReason: json['zeroMaterialReason'] as String?,
       workshopDepartmentId: json['workshopDepartmentId'] as String?,
       teamDepartmentId: json['teamDepartmentId'] as String?,
       responsibleEmployeeId: json['responsibleEmployeeId'] as String?,
@@ -781,6 +839,7 @@ class ProductionExecutionMaterialResult {
     required this.stockAllocatedQty,
     required this.shortageQty,
     required this.supplyRoute,
+    this.requirementMode = 'LINEAR',
     this.colorId,
   });
 
@@ -793,6 +852,7 @@ class ProductionExecutionMaterialResult {
   final double stockAllocatedQty;
   final double shortageQty;
   final String supplyRoute;
+  final String requirementMode;
 
   factory ProductionExecutionMaterialResult.fromJson(
     Map<String, dynamic> json,
@@ -807,6 +867,7 @@ class ProductionExecutionMaterialResult {
       stockAllocatedQty: _requiredDouble(json['stockAllocatedQty']),
       shortageQty: _requiredDouble(json['shortageQty']),
       supplyRoute: json['supplyRoute'] as String,
+      requirementMode: json['requirementMode'] as String? ?? 'LINEAR',
     );
   }
 }

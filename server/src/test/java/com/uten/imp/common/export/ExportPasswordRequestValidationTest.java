@@ -31,17 +31,17 @@ class ExportPasswordRequestValidationTest {
             Validation.buildDefaultValidatorFactory().getValidator();
 
     @Test
-    void passwordRequiresSixToOneHundredTwentyEightNonBlankCharacters() {
-        assertFalse(validator.validate(new ExportPasswordRequest(null)).isEmpty());
-        assertFalse(validator.validate(new ExportPasswordRequest("      ")).isEmpty());
-        assertFalse(validator.validate(new ExportPasswordRequest("x".repeat(5))).isEmpty());
-        assertTrue(validator.validate(new ExportPasswordRequest("x".repeat(6))).isEmpty());
+    void passwordIsOptionalAndOnlyHasAnUpperLengthBound() {
+        assertTrue(validator.validate(new ExportPasswordRequest(null)).isEmpty());
+        assertTrue(validator.validate(new ExportPasswordRequest("")).isEmpty());
+        assertTrue(validator.validate(new ExportPasswordRequest(" ")).isEmpty());
+        assertTrue(validator.validate(new ExportPasswordRequest("x")).isEmpty());
         assertTrue(validator.validate(new ExportPasswordRequest("x".repeat(128))).isEmpty());
         assertFalse(validator.validate(new ExportPasswordRequest("x".repeat(129))).isEmpty());
     }
 
     @Test
-    void everyEncryptedExportEndpointActivatesBeanValidation() {
+    void everyExportEndpointActivatesBeanValidation() {
         List<Class<?>> controllers = List.of(
                 AuditController.class,
                 FinanceReportController.class,

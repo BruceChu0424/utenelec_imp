@@ -38,6 +38,39 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test(
+    'labels linear and exact work-card usage without implying exact math',
+    () {
+      const linear = ProductionWorkCardMaterial(
+        demandId: 'linear-demand',
+        goodsId: 'material-1',
+        perProductQty: 2,
+        requiredQty: 20,
+        stockAllocatedQty: 20,
+        shortageQty: 0,
+        supplyRoute: 'BUY',
+        demandStatus: 'ALLOCATED',
+      );
+      const exact = ProductionWorkCardMaterial(
+        demandId: 'exact-demand',
+        goodsId: 'material-2',
+        perProductQty: 0.333334,
+        requiredQty: 2,
+        stockAllocatedQty: 2,
+        shortageQty: 0,
+        supplyRoute: 'BUY',
+        demandStatus: 'ALLOCATED',
+        requirementMode: 'EXACT_SNAPSHOT',
+      );
+
+      expect(formatProductionWorkCardMaterialUsage(linear), '单支用量 2');
+      expect(
+        formatProductionWorkCardMaterialUsage(exact),
+        '按包/批（本段平均） 0.333334',
+      );
+    },
+  );
 }
 
 ProductionWorkCardView _confirmedView() => const ProductionWorkCardView(

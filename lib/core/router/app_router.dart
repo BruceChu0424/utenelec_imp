@@ -52,11 +52,6 @@ import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
 import '../../features/hr_task/pages/hr_task_list_page.dart';
 import '../../features/hr_task/pages/hr_workbench_page.dart';
 import '../../features/hr_task/widgets/hr_task_widgets.dart';
-import '../../features/hvac/pages/hvac_control_page.dart';
-import '../../features/hvac/pages/hvac_overview_page.dart';
-import '../../features/lab/pages/lab_test_list_page.dart';
-import '../../features/lab/pages/lab_test_report_page.dart';
-import '../../features/lab/pages/lab_test_upload_page.dart';
 import '../../features/notice/pages/notice_detail_page.dart';
 import '../../features/operations_workbench/models/operations_workbench.dart';
 import '../../features/operations_workbench/pages/operations_workbench_page.dart';
@@ -787,37 +782,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => StockDocListPage(
               docType: StockDocType.byCode(s.pathParameters['code']!),
             ),
-          ),
-
-          // —— 实验室（upload 在 :id 前）——
-          GoRoute(
-            path: '/lab/test',
-            name: 'lab-list',
-            builder: (_, _) => const LabTestListPage(),
-          ),
-          GoRoute(
-            path: '/lab/test/upload',
-            name: 'lab-upload',
-            builder: (_, _) => const LabTestUploadPage(),
-          ),
-          GoRoute(
-            path: '/lab/test/:id',
-            name: 'lab-report',
-            builder: (_, s) =>
-                LabTestReportPage(testId: s.pathParameters['id']!),
-          ),
-
-          // —— 空调 ——
-          GoRoute(
-            path: '/hvac',
-            name: 'hvac-overview',
-            builder: (_, _) => const HvacOverviewPage(),
-          ),
-          GoRoute(
-            path: '/hvac/:id',
-            name: 'hvac-control',
-            builder: (_, s) =>
-                HvacControlPage(deviceId: s.pathParameters['id']!),
           ),
 
           // —— 销售管理（综合营销部；静态段 /sales/report 在 :seg 参数路由前）——

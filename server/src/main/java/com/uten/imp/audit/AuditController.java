@@ -1,6 +1,6 @@
 package com.uten.imp.audit;
 
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.XlsxExportService;
@@ -40,7 +40,7 @@ public class AuditController {
     private final AuditQueryService auditQuery;
     private final AuditRuntimeSettings runtimeSettings;
     private final XlsxExportService xlsxExport;
-    private final EncryptedWorkbookService encryptedWorkbook;
+    private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
@@ -140,7 +140,7 @@ public class AuditController {
                 keyword, targetType, targetId, eventSource, requestId, operationKind,
                 dateFrom, dateTo, snapshotId), runtimeSettings.exportMaxRows());
         byte[] workbook = xlsxExport.build(payload.columns(), payload.rows());
-        byte[] encrypted = encryptedWorkbook.encrypt(workbook, body.password());
+        byte[] downloadBytes = workbookDownload.protect(workbook, body.password());
         logAuditAccess(
                 "export_audit_log",
                 exportScope(payload.total(), dateFrom, dateTo, riskLevel));
@@ -152,7 +152,7 @@ public class AuditController {
                 .header(
                         "Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .body(encrypted);
+                .body(downloadBytes);
     }
 
     /** Records that an investigator checked this event against its local device receipt. */

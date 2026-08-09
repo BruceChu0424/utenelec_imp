@@ -13,44 +13,235 @@ datasource db {
 
 /// 产品系列 (Z9 / S300 / Q7 / Q9 / V系列 / 出口 / 地面插座 ...)
 model Series {
-  id         String    @id @default(cuid())
-  code       String    @unique // 短代号, 同时作 URL slug (z9, s300, q7...)
-  i18n       String      // {zh:{name,subtitle,description}, en:{...}}
-  coverImage String?
-  sortOrder  Int       @default(0)
-  published  Boolean   @default(true)
-  products   Product[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id             String               @id @default(cuid())
+  code           String               @unique // 短代号, 同时作 URL slug (z9, s300, q7...)
+  publicSlug     String?              @unique
+  catalogRole    String               @default("UNCLASSIFIED")
+  rowVersion     Int                  @default(1)
+  i18n           String // {zh:{name,subtitle,description}, en:{...}}
+  coverImage     String?
+  sortOrder      Int                  @default(0)
+  published      Boolean              @default(true)
+  sourceIdentity String?              @unique // 仅由受控导入器维护，例如 ch-uten-v2:series:80
+  legacySource   String?
+  legacyId       String?
+  parentId       String?
+  parent         Series?              @relation("SeriesTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children       Series[]             @relation("SeriesTree")
+  products       Product[]
+  media          SeriesMedia[]
+  legacyRecords  LegacySourceRecord[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([parentId])
+  @@index([legacySource, legacyId])
+}
+
+/// 系列级展示素材。role 仅允许 hero / lineup / lifestyle / combination / detail。
+model SeriesMedia {
+  id        String   @id @default(cuid())
+  seriesId  String
+  series    Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  role      String
+  image     String
+  i18n      String   @default("{}")
+  sortOrder Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([seriesId, role, published])
 }
 
 /// 产品 (开关 / 插座 / 面板)
 model Product {
-  id         String   @id @default(cuid())
-  seriesId   String?
-  series     Series?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  slug       String   @unique
-  image      String?  // 主图路径 (/images/raw/xxx 或 /uploads/xxx)
-  gallery    String?    // 多图数组
-  specs      String?    // 规格表 [{label,value}] (可多语言)
-  i18n       String     // {zh:{name,description}, en:{...}}
-  featured   Boolean  @default(false) // 首页推荐
-  sortOrder  Int      @default(0)
-  published  Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                   String               @id @default(cuid())
+  seriesId             String?
+  series               Series?              @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  slug                 String               @unique
+  model                String? // 对外展示的型号；未知时保持 null
+  category             String? // 可维护的产品分类，不替代系列
+  functionType         String?
+  gangCount            Int?
+  controlMode          String?
+  configuration        String?
+  classificationStatus String               @default("NEEDS_REVIEW")
+  rowVersion           Int                  @default(1)
+  image                String? // 兼容旧内容的产品主图；具体款式图优先使用 variants.image
+  gallery              String? // 兼容旧内容的多图 JSON 数组
+  specs                String? // 规格表 [{label,value}] (可多语言)
+  i18n                 String // {zh:{name,description}, en:{...}}
+  minOrderQty          Int? // 最小起订量；询价展示站不在此保存购买价格
+  sceneEnabled         Boolean              @default(false)
+  featured             Boolean              @default(false) // 首页推荐
+  sortOrder            Int                  @default(0)
+  published            Boolean              @default(true)
+  sourceIdentity       String?              @unique // 稳定旧站身份；严禁按名称生成或去重
+  legacySource         String?
+  legacyId             String?
+  variants             ProductVariant[]
+  legacyMedia          ProductMedia[]
+  legacyRecords        LegacySourceRecord[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   @@index([seriesId])
   @@index([featured])
+  @@index([category])
+  @@index([sceneEnabled])
+  @@index([legacySource, legacyId])
+}
+
+/// 产品颜色 / 材质款式。场景试装必须选择到具体款式，避免只知道产品而不知道正面效果。
+model ProductVariant {
+  id               String               @id @default(cuid())
+  productId        String
+  product          Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku              String?
+  i18n             String // {zh:{name,colorName,materialName}, en:{...}}
+  swatchHex        String?
+  image            String? // 正面图，场景试装优先使用透明底或正视产品图
+  gallery          String? // 图片路径 JSON 数组
+  finish           String?
+  widthMm          Float?
+  heightMm         Float?
+  depthMm          Float?
+  legacySynthetic  Boolean              @default(false)
+  dataStatus       String               @default("NEEDS_REVIEW")
+  isDefault        Boolean              @default(false)
+  published        Boolean              @default(true)
+  sortOrder        Int                  @default(0)
+  sourceIdentity   String?              @unique // ch-uten-v2:variant:{productId}:{sourceVariantId}
+  legacySource     String?
+  legacyId         String?
+  defaultForScenes ScenePreset[]
+  legacyMedia      ProductMedia[]
+  legacyRecords    LegacySourceRecord[]
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([productId])
+  @@index([published])
+  @@index([legacySource, legacyId])
+}
+
+/// 场景试装背景与默认安装参数。config 为 JSON 字符串，兼容 SQLite 并便于未来扩展。
+model ScenePreset {
+  id               String          @id @default(cuid())
+  slug             String          @unique
+  i18n             String // {zh:{name,description}, en:{...}}
+  backgroundImage  String
+  config           String
+  defaultVariantId String?
+  defaultVariant   ProductVariant? @relation(fields: [defaultVariantId], references: [id], onDelete: SetNull)
+  published        Boolean         @default(true)
+  sortOrder        Int             @default(0)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([published])
+  @@index([sortOrder])
+  @@index([defaultVariantId])
+}
+
+/// 一次通过完整 QA 门禁后实际落库的旧站目录导入。dry-run 不写本表。
+model LegacyImportRun {
+  id               String               @id // import-{bundleSha256}
+  sourceSystem     String
+  schemaVersion    String
+  catalogSha256    String
+  mediaSha256      String
+  qaReportSha256   String
+  checkpointSha256 String
+  bundleSha256     String               @unique
+  qaStatus         String
+  expectFull       Boolean
+  inputRoot        String
+  backupPath       String
+  stats            String // 机器可读 JSON；不作为前台内容
+  appliedAt        DateTime             @default(now())
+  sourceRecords    LegacySourceRecord[]
+  createdAt        DateTime             @default(now())
+}
+
+/// 每个语言/来源的不可发布原始快照。rawPayload 可能含旧站 HTML，只用于审计，禁止渲染。
+model LegacySourceRecord {
+  id           String          @id @default(cuid())
+  importRunId  String
+  importRun    LegacyImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
+  sourceSystem String
+  entityType   String
+  sourceId     String
+  locale       String
+  identityKey  String
+  sourceUrl    String
+  finalUrl     String?
+  sourceHash   String
+  rawHtmlPath  String?
+  scrapedAt    DateTime?
+  rawPayload   String
+  publishable  Boolean         @default(false)
+  seriesId     String?
+  series       Series?         @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  productId    String?
+  product      Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId    String?
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+
+  @@unique([importRunId, entityType, sourceId, locale])
+  @@index([sourceSystem, entityType, sourceId])
+  @@index([seriesId])
+  @@index([productId])
+  @@index([variantId])
+}
+
+/// 旧站素材按内容哈希去重。非安全栅格素材只保留来源记录，不会写入 publicPath。
+model LegacyMediaAsset {
+  id           String         @id @default(cuid())
+  sha256       String         @unique
+  mimeType     String
+  extension    String
+  bytes        Int
+  width        Int?
+  height       Int?
+  sourcePath   String
+  publicPath   String?        @unique
+  sourceUrls   String // JSON 数组
+  sourceRefs   String // JSON 数组
+  productMedia ProductMedia[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+/// 产品/款式与内容哈希素材之间的稳定图库关系。
+model ProductMedia {
+  id        String           @id // 由产品、款式、素材、语言、角色和顺序的哈希确定
+  productId String
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  assetId   String
+  asset     LegacyMediaAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  role      String // thumbnail / main / gallery
+  locale    String?
+  sourceUrl String?
+  sortOrder Int              @default(0)
+  createdAt DateTime         @default(now())
+
+  @@index([productId, sortOrder])
+  @@index([variantId])
+  @@index([assetId])
 }
 
 /// 新闻资讯
 model News {
   id          String   @id @default(cuid())
   slug        String   @unique
-  category    String   @default("company") // company 公司动态 / industry 行业资讯
+  category    String   @default("company") // company 公司动态 / industry 行业资讯 / guide 采购指南
   coverImage  String?
-  i18n        String     // {zh:{title,summary,content}, en:{...}}
+  i18n        String // {zh:{title,summary,content}, en:{...}}
   publishedAt DateTime @default(now())
   published   Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -65,7 +256,7 @@ model CaseItem {
   id         String   @id @default(cuid())
   slug       String   @unique
   coverImage String?
-  i18n       String     // {zh:{title,location,content}, en:{...}}
+  i18n       String // {zh:{title,location,content}, en:{...}}
   sortOrder  Int      @default(0)
   published  Boolean  @default(true)
   createdAt  DateTime @default(now())
@@ -78,7 +269,7 @@ model Job {
   slug       String   @unique
   location   String?
   department String?
-  i18n       String     // {zh:{title,requirements,description}, en:{...}}
+  i18n       String // {zh:{title,requirements,description}, en:{...}}
   sortOrder  Int      @default(0)
   published  Boolean  @default(true)
   createdAt  DateTime @default(now())
@@ -86,7 +277,7 @@ model Job {
 }
 
 /// 站点设置 (键值对 + 多语言)
-/// key 例: hero, stats, about, milestones, honors, craft, contact, join, careers, footer
+/// key 例: hero, stats, about, craft, contact, capabilities, partners, resources, careers, footer
 model Setting {
   id   String @id @default(cuid())
   key  String @unique
@@ -104,16 +295,28 @@ model User {
 
 /// 客户留言 / 招商留资
 model Inquiry {
-  id        String   @id @default(cuid())
-  name      String
-  phone     String?
-  email     String?
-  company   String?
-  message   String
-  source    String   @default("contact") // contact / join
-  handled   Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id                   String    @id @default(cuid())
+  name                 String
+  phone                String?
+  email                String?
+  company              String?
+  market               String?
+  customerType         String?
+  requiredStandard     String?
+  productInterest      String?
+  requestType          String?
+  estimatedQuantity    String?
+  targetSchedule       String?
+  preferredContact     String?
+  message              String
+  source               String    @default("contact") // contact / join / partner / product / studio
+  locale               String? // 历史记录可能未知；新提交仅接受 routing.locales
+  consentAt            DateTime? // 历史记录不倒填；新提交必须由服务端写入
+  consentPolicyVersion String? // 历史记录不倒填；新提交由服务端固定版本
+  handled              Boolean   @default(false)
+  createdAt            DateTime  @default(now())
 
   @@index([handled])
   @@index([createdAt])
+  @@index([source, locale])
 }

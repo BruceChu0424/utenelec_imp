@@ -36,6 +36,22 @@ void main() {
     expect(columns['settlementStyleLegacy']?.value(item), '月结');
     expect(columns['remark']?.label, '备注');
     expect(columns['remark']?.value(item), '分批收款客户');
+
+    final keys = table.columns.map((column) => column.key).toList();
+    expect(keys.indexOf('currency'), lessThan(keys.indexOf('exchangeRate')));
+    expect(
+      keys.indexOf('exchangeRate'),
+      lessThan(keys.indexOf('amountOriginal')),
+    );
+    expect(
+      keys.indexOf('amountBalanceOriginal'),
+      lessThan(keys.indexOf('amountBalance')),
+    );
+    expect(columns['currency']?.value(item), 'USD');
+    expect(columns['amountOriginal']?.value(item), '100.00');
+    expect(columns['amountReceivedOriginal']?.value(item), '40.00');
+    expect(columns['amountBalanceOriginal']?.value(item), '55.00');
+    expect(columns['amountBalance']?.value(item), '396.00');
   });
 
   test('AR ledger settlement mapping matches the finance sales dictionary', () {
@@ -70,6 +86,13 @@ class _ArApApi extends ApiClient {
             'billDate': '2026-08-08',
             'dueDate': '2026-09-07',
             'settlementStyleLegacy': 6,
+            'currencyCode': 'USD',
+            'exchangeRate': 7.2,
+            'amountOriginal': 100,
+            'amountReceivedOriginal': 40,
+            'amountWriteOffOriginal': 5,
+            'amountBalanceOriginal': 55,
+            'amountBalance': 396,
             'remark': '分批收款客户',
           },
         ],

@@ -233,6 +233,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   Widget _headerCard(ThemeData theme, FinanceNameService names) {
     final d = _detail!;
     final isReceipt = _cfg.type == FinanceDocType.receipt;
+    final isPayment = _cfg.type == FinanceDocType.payment;
     final partyName = _cfg.isClient
         ? names.client(d.clientId)
         : _cfg.isSupplier
@@ -262,6 +263,8 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         _KV('币种', names.currency(d.currencyId)),
       if (!isReceipt && d.exchangeRate != null)
         _KV('汇率', d.exchangeRate?.toString()),
+      if (isPayment && d.amountOriginal != null)
+        _KV('付款原币金额', d.amountOriginal?.toStringAsFixed(2)),
       if (_cfg.hasBankFee && d.bankFee != null)
         _KV('手续费（人民币）', d.bankFee?.toStringAsFixed(2)),
       if (_cfg.hasOtherFee && d.otherFee != null)
@@ -275,7 +278,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         _KV('本次总收到金额（人民币）', (receiptLocal + writeOffLocal).toStringAsFixed(2)),
         _KV('冲减应收账面金额（人民币）', appliedLocal.toStringAsFixed(2)),
       ] else
-        _KV('合计(本币)', d.amountLocal?.toStringAsFixed(2)),
+        _KV(isPayment ? '付款本币合计' : '合计(本币)', d.amountLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
@@ -325,7 +328,9 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
         child: Text(
-          '无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
+          _cfg.type == FinanceDocType.payment
+              ? '无应付核销明细（直接/预付款）'
+              : '无明细（直接${_cfg.shortLabel}，未指定核销/分摊）',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -410,18 +415,32 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           value: (it) => it.appliedBillNo,
         ),
         MasterColumnDef(
+          key: 'amountOriginal',
+          label: '本次付款（原币）',
+          width: 110,
+          type: 'money',
+          value: (it) => it.amountOriginal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
           key: 'amountLocal',
-          label: '本次金额',
+          label: '付款本币',
           width: 110,
           type: 'money',
           value: (it) => it.amountLocal?.toStringAsFixed(2),
         ),
         MasterColumnDef(
-          key: 'amountOriginal',
-          label: '原币额',
+          key: 'appliedAmountLocal',
+          label: '核销账面本币',
+          width: 120,
+          type: 'money',
+          value: (it) => it.appliedAmountLocal?.toStringAsFixed(2),
+        ),
+        MasterColumnDef(
+          key: 'exchangeDiff',
+          label: '汇兑差额',
           width: 110,
           type: 'money',
-          value: (it) => it.amountOriginal?.toStringAsFixed(2),
+          value: (it) => it.exchangeDiff?.toStringAsFixed(2),
         ),
       ] else if (_cfg.isAllocate) ...[
         MasterColumnDef(

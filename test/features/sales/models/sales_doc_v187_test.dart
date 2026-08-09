@@ -37,6 +37,8 @@ void main() {
       () {
         final withWorkflow = SalesDocListItem.fromJson(const {
           'id': 'shipment-1',
+          'totalOriginal': 100,
+          'totalLocal': 720,
           'warehouseWorkStatus': 'PENDING_PICK',
           'canManageWarehouseWork': true,
         });
@@ -49,6 +51,8 @@ void main() {
           SalesWarehouseWorkStatus.pendingPick,
         );
         expect(withWorkflow.canManageWarehouseWork, isTrue);
+        expect(withWorkflow.totalOriginal, 100);
+        expect(withWorkflow.totalLocal, 720);
         expect(legacyShape.warehouseWorkStatus, isNull);
         expect(legacyShape.canManageWarehouseWork, isFalse);
       },

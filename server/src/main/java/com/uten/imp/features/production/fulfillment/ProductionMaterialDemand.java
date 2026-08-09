@@ -32,6 +32,10 @@ public class ProductionMaterialDemand extends SoftDeletableEntity {
     public static final String ROUTE_MAKE = "MAKE";
     public static final String ROUTE_SUBCONTRACT = "SUBCONTRACT";
 
+    public static final String REQUIREMENT_MODE_LINEAR = "LINEAR";
+    public static final String REQUIREMENT_MODE_EXACT_SNAPSHOT =
+            "EXACT_SNAPSHOT";
+
     @Column(name = "package_id", nullable = false)
     private UUID packageId;
 
@@ -61,6 +65,18 @@ public class ProductionMaterialDemand extends SoftDeletableEntity {
 
     @Column(name = "per_product_qty", precision = 18, scale = 6)
     private BigDecimal perProductQty;
+
+    @Column(name = "requirement_mode", nullable = false)
+    private String requirementMode = REQUIREMENT_MODE_LINEAR;
+
+    @Column(
+            name = "required_for_product_qty",
+            precision = 18,
+            scale = 4)
+    private BigDecimal requiredForProductQty;
+
+    @Column(name = "requirement_fingerprint", length = 64)
+    private String requirementFingerprint;
 
     @Column(name = "released_qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal releasedQty = BigDecimal.ZERO;

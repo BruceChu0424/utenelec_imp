@@ -99,6 +99,41 @@ void main() {
     expect(await storage.getAccessToken(), 'new-access');
     expect(await storage.getRefreshToken(), 'new-refresh');
   });
+
+  test(
+    'startup restores a forced-password session to the change-password flow',
+    () async {
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+      final storage = SecureStorage(const FlutterSecureStorage());
+      await storage.saveTokens(
+        accessToken: 'forced-access',
+        refreshToken: 'forced-refresh',
+      );
+      final container = ProviderContainer(
+        overrides: <Override>[
+          secureStorageProvider.overrideWithValue(storage),
+          authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
+          authRepositoryProvider.overrideWithValue(
+            const _FixedProfileAuthRepository(_forcedPasswordProfile),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Riverpod providers are lazy; the first read starts the asynchronous restore.
+      expect(
+        container.read(sessionProvider).status,
+        AuthStatus.unauthenticated,
+      );
+      await pumpEventQueue();
+
+      expect(
+        container.read(sessionProvider).status,
+        AuthStatus.mustChangePassword,
+      );
+      expect(container.read(sessionProvider).user?.name, '待改密用户');
+    },
+  );
 }
 
 const _restoredProfile = UserProfile(
@@ -118,6 +153,39 @@ const _loginProfile = UserProfile(
   permissions: <String>['dashboard:view'],
   superAdmin: true,
 );
+
+const _forcedPasswordProfile = UserProfile(
+  id: 'user-3',
+  loginAccount: '13800000000',
+  name: '待改密用户',
+  roles: <String>['employee'],
+  permissions: <String>['CHANGE_PASSWORD'],
+  superAdmin: false,
+  mustChangePassword: true,
+);
+
+class _FixedProfileAuthRepository implements AuthRepository {
+  const _FixedProfileAuthRepository(this.profile);
+
+  final UserProfile profile;
+
+  @override
+  Future<UserProfile> me() async => profile;
+
+  @override
+  Future<AuthResult> changePassword(String oldPassword, String newPassword) =>
+      throw UnimplementedError();
+
+  @override
+  Future<AuthResult> login(String loginAccount, String password) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> logout(String? refreshToken) => throw UnimplementedError();
+
+  @override
+  Future<AuthResult> refresh(String refreshToken) => throw UnimplementedError();
+}
 
 class _RecoveringAuthRepository implements AuthRepository {
   var meCalls = 0;

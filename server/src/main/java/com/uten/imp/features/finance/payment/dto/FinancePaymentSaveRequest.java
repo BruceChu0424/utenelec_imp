@@ -27,8 +27,10 @@ public class FinancePaymentSaveRequest {
     private UUID accountId;
     private UUID counterpartAccountId;
     private UUID currencyId;
+    @NotNull
     private BigDecimal exchangeRate;
     private BigDecimal amountOriginal;
+    /** 服务端按原币金额与付款汇率重算；仅保留用于兼容旧客户端。 */
     private BigDecimal amountLocal;
     private UUID paymentMethodId;
     private Integer paymentMethodLegacyId;

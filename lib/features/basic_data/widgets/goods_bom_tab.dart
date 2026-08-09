@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -371,6 +372,40 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       value: (r) => r.node.item.componentSourceType,
     ),
     MasterColumnDef(
+      key: 'controlStage',
+      label: '需求阶段',
+      width: 112,
+      value: (r) => r.node.item.controlStage.label,
+    ),
+    MasterColumnDef(
+      key: 'consumptionBasis',
+      label: '计量方式',
+      width: 92,
+      value: (r) => r.node.item.consumptionBasis.label,
+    ),
+    MasterColumnDef(
+      key: 'basisOutputQty',
+      label: '基准产量',
+      width: 88,
+      type: 'number',
+      value: (r) => _num(r.node.item.basisOutputQty),
+    ),
+    MasterColumnDef(
+      key: 'allowPartialPackage',
+      label: '尾包',
+      width: 72,
+      value: (r) =>
+          r.node.item.consumptionBasis == BomConsumptionBasis.perPackage
+          ? (r.node.item.allowPartialPackage ? '允许' : '整包')
+          : '—',
+    ),
+    MasterColumnDef(
+      key: 'hardGate',
+      label: '缺料处理',
+      width: 88,
+      value: (r) => r.node.item.hardGate ? '阻止进入' : '只提醒',
+    ),
+    MasterColumnDef(
       key: 'qty',
       label: '数量',
       width: 72,
@@ -516,6 +551,11 @@ class _PickedComponent {
 class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   late String _parentGoodsId;
   final List<_PickedComponent> _picked = [];
+  final _basisOutputQtyCtl = TextEditingController(text: '1');
+  BomControlStage _controlStage = BomControlStage.start;
+  BomConsumptionBasis _consumptionBasis = BomConsumptionBasis.perUnit;
+  bool _allowPartialPackage = true;
+  bool _hardGate = true;
   bool _saving = false;
   String? _error;
 
@@ -530,6 +570,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
     for (final p in _picked) {
       p.qtyCtl.dispose();
     }
+    _basisOutputQtyCtl.dispose();
     super.dispose();
   }
 
@@ -550,13 +591,18 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       setState(() => _error = '请先选择组件货品'); // TODO(l10n): 补 arb
       return;
     }
+    final basisOutputQty = double.tryParse(_basisOutputQtyCtl.text.trim());
+    if (basisOutputQty == null || basisOutputQty <= 0) {
+      setState(() => _error = '「基准产量」必须是大于 0 的数字');
+      return;
+    }
     final bodies = <Map<String, dynamic>>[];
     for (final p in _picked) {
       final raw = p.qtyCtl.text.trim();
       final qty = raw.isEmpty ? 1.0 : double.tryParse(raw);
-      if (qty == null) {
+      if (qty == null || qty <= 0) {
         setState(
-          () => _error = '「${p.goods.name ?? p.goods.code}」数量需为数字',
+          () => _error = '「${p.goods.name ?? p.goods.code}」数量必须大于 0',
         ); // TODO(l10n)
         return;
       }
@@ -564,6 +610,11 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
         'componentGoodsId': p.goods.id,
         'qty': qty,
         'price': p.goods.price,
+        'controlStage': _controlStage.code,
+        'consumptionBasis': _consumptionBasis.code,
+        'basisOutputQty': basisOutputQty,
+        'allowPartialPackage': _allowPartialPackage,
+        'hardGate': _controlStage.supportsHardGate && _hardGate,
       });
     }
     setState(() {
@@ -650,6 +701,31 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
                         onChanged: (v) {
                           if (v != null) setState(() => _parentGoodsId = v);
                         },
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      Text(
+                        '生产管控（统一应用到本次所选组件）',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s4),
+                      _BomControlFields(
+                        controlStage: _controlStage,
+                        consumptionBasis: _consumptionBasis,
+                        basisOutputQtyController: _basisOutputQtyCtl,
+                        allowPartialPackage: _allowPartialPackage,
+                        hardGate: _hardGate,
+                        onControlStageChanged: (value) => setState(() {
+                          _controlStage = value;
+                          if (!value.supportsHardGate) _hardGate = false;
+                        }),
+                        onConsumptionBasisChanged: (value) =>
+                            setState(() => _consumptionBasis = value),
+                        onAllowPartialPackageChanged: (value) =>
+                            setState(() => _allowPartialPackage = value),
+                        onHardGateChanged: (value) =>
+                            setState(() => _hardGate = value),
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                       Row(
@@ -776,7 +852,8 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   }
 }
 
-/// 编辑组件对话框（单条）：组件与父级锁定（换组件/换父级走删除+新增），仅用量/备注可改。
+/// 编辑组件对话框（单条）：组件与父级锁定（换组件/换父级走删除+新增），
+/// 用量、生产管控和备注可改。
 class _BomItemEditDialog extends ConsumerStatefulWidget {
   const _BomItemEditDialog({
     required this.parentGoodsId,
@@ -792,7 +869,12 @@ class _BomItemEditDialog extends ConsumerStatefulWidget {
 
 class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
   final _qtyCtl = TextEditingController();
+  final _basisOutputQtyCtl = TextEditingController();
   final _summaryCtl = TextEditingController();
+  late BomControlStage _controlStage;
+  late BomConsumptionBasis _consumptionBasis;
+  late bool _allowPartialPackage;
+  late bool _hardGate;
   bool _saving = false;
   String? _error;
 
@@ -801,29 +883,45 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
     super.initState();
     final e = widget.editing;
     _qtyCtl.text = e.qty?.toString() ?? '';
+    _basisOutputQtyCtl.text = e.basisOutputQty.toString();
     _summaryCtl.text = e.summary ?? '';
+    _controlStage = e.controlStage;
+    _consumptionBasis = e.consumptionBasis;
+    _allowPartialPackage = e.allowPartialPackage;
+    _hardGate = e.controlStage.supportsHardGate && e.hardGate;
   }
 
   @override
   void dispose() {
     _qtyCtl.dispose();
+    _basisOutputQtyCtl.dispose();
     _summaryCtl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final qty = double.tryParse(_qtyCtl.text.trim());
-    if (_qtyCtl.text.trim().isNotEmpty && qty == null) {
-      setState(() => _error = '「数量」需为数字'); // TODO(l10n): 补 arb
+    if (qty == null || qty <= 0) {
+      setState(() => _error = '「数量」必须是大于 0 的数字'); // TODO(l10n): 补 arb
+      return;
+    }
+    final basisOutputQty = double.tryParse(_basisOutputQtyCtl.text.trim());
+    if (basisOutputQty == null || basisOutputQty <= 0) {
+      setState(() => _error = '「基准产量」必须是大于 0 的数字');
       return;
     }
     final e = widget.editing;
     final body = <String, dynamic>{
       'componentGoodsId': e.componentGoodsId,
-      'qty': qty ?? 1,
+      'qty': qty,
       'price': e.price,
       // 编辑数量/备注时必须保留迁移来的行级颜色覆盖。
       'colorLegacyId': e.colorLegacyId,
+      'controlStage': _controlStage.code,
+      'consumptionBasis': _consumptionBasis.code,
+      'basisOutputQty': basisOutputQty,
+      'allowPartialPackage': _allowPartialPackage,
+      'hardGate': _controlStage.supportsHardGate && _hardGate,
       'summary': _summaryCtl.text.trim().isEmpty
           ? null
           : _summaryCtl.text.trim(),
@@ -942,6 +1040,31 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                         ],
                       ),
                       const SizedBox(height: UtenSpacing.s12),
+                      Text(
+                        '生产管控',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s4),
+                      _BomControlFields(
+                        controlStage: _controlStage,
+                        consumptionBasis: _consumptionBasis,
+                        basisOutputQtyController: _basisOutputQtyCtl,
+                        allowPartialPackage: _allowPartialPackage,
+                        hardGate: _hardGate,
+                        onControlStageChanged: (value) => setState(() {
+                          _controlStage = value;
+                          if (!value.supportsHardGate) _hardGate = false;
+                        }),
+                        onConsumptionBasisChanged: (value) =>
+                            setState(() => _consumptionBasis = value),
+                        onAllowPartialPackageChanged: (value) =>
+                            setState(() => _allowPartialPackage = value),
+                        onHardGateChanged: (value) =>
+                            setState(() => _hardGate = value),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
                       TextField(
                         controller: _summaryCtl,
                         decoration: const InputDecoration(
@@ -973,6 +1096,162 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// BOM 行的生产管控字段。默认值与历史行为一致，并用说明文字降低培训成本。
+class _BomControlFields extends StatelessWidget {
+  const _BomControlFields({
+    required this.controlStage,
+    required this.consumptionBasis,
+    required this.basisOutputQtyController,
+    required this.allowPartialPackage,
+    required this.hardGate,
+    required this.onControlStageChanged,
+    required this.onConsumptionBasisChanged,
+    required this.onAllowPartialPackageChanged,
+    required this.onHardGateChanged,
+  });
+
+  final BomControlStage controlStage;
+  final BomConsumptionBasis consumptionBasis;
+  final TextEditingController basisOutputQtyController;
+  final bool allowPartialPackage;
+  final bool hardGate;
+  final ValueChanged<BomControlStage> onControlStageChanged;
+  final ValueChanged<BomConsumptionBasis> onConsumptionBasisChanged;
+  final ValueChanged<bool> onAllowPartialPackageChanged;
+  final ValueChanged<bool> onHardGateChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final stageField = UtenDropdownField(
+      label: '什么时候需要',
+      required: true,
+      allowClear: false,
+      searchable: false,
+      value: controlStage.code,
+      items: [
+        for (final item in BomControlStage.values)
+          UtenDropdownItem(value: item.code, label: item.label),
+      ],
+      onChanged: (value) {
+        if (value != null) {
+          onControlStageChanged(BomControlStage.fromCode(value));
+        }
+      },
+    );
+    final basisField = UtenDropdownField(
+      label: '怎样计算用量',
+      required: true,
+      allowClear: false,
+      searchable: false,
+      value: consumptionBasis.code,
+      items: [
+        for (final item in BomConsumptionBasis.values)
+          UtenDropdownItem(value: item.code, label: item.label),
+      ],
+      onChanged: (value) {
+        if (value != null) {
+          onConsumptionBasisChanged(BomConsumptionBasis.fromCode(value));
+        }
+      },
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: UtenRadius.mdAll,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth >= 440) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: stageField),
+                    const SizedBox(width: UtenSpacing.s12),
+                    Expanded(child: basisField),
+                  ],
+                );
+              }
+              return Column(
+                children: [
+                  stageField,
+                  const SizedBox(height: UtenSpacing.s12),
+                  basisField,
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            '${controlStage.description}；${consumptionBasis.description}。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          TextField(
+            controller: basisOutputQtyController,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: consumptionBasis == BomConsumptionBasis.perPackage
+                  ? '每个包装装多少件'
+                  : '基准产量',
+              helperText: switch (consumptionBasis) {
+                BomConsumptionBasis.perUnit => '通常填 1，表示上述用量对应 1 件产品',
+                BomConsumptionBasis.perPackage => '例如一箱装 100 件，这里填 100',
+                BomConsumptionBasis.fixedBatch => '记录本批固定耗用的产量基准',
+              },
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: allowPartialPackage,
+              onChanged: consumptionBasis == BomConsumptionBasis.perPackage
+                  ? onAllowPartialPackageChanged
+                  : null,
+              title: const Text('允许尾包'),
+              subtitle: Text(
+                consumptionBasis == BomConsumptionBasis.perPackage
+                    ? '最后不足整包时按实际产量比例估算用量'
+                    : '仅“按包装”计量时生效',
+              ),
+            ),
+          ),
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              value: controlStage.supportsHardGate && hardGate,
+              onChanged: controlStage.supportsHardGate
+                  ? onHardGateChanged
+                  : null,
+              title: const Text('缺料作为硬门槛'),
+              subtitle: Text(
+                controlStage.supportsHardGate
+                    ? '打开会阻止进入对应生产阶段；关闭只提醒员工'
+                    : '发货参考/仅参考只能提醒，不能设为生产硬门槛',
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -86,8 +86,11 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   }
 
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
-  factory SalesGridRow.fromLinked(SalesLinkedItem li, GoodsOption goods,
-      {bool amountUsesDiscount = false}) {
+  factory SalesGridRow.fromLinked(
+    SalesLinkedItem li,
+    GoodsOption goods, {
+    bool amountUsesDiscount = false,
+  }) {
     final r = SalesGridRow(amountUsesDiscount: amountUsesDiscount)
       ..goods = goods
       ..orderItemId = li.orderItemId
@@ -239,12 +242,15 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             (row.price.text.trim().isEmpty ||
                 double.tryParse(row.price.text.trim()) == null),
         // 订单/出货：单价由货品主档（出货亦可由来源订货单引入）带入、锁定不可改。
-        child: (docType == SalesDocType.order || docType == SalesDocType.shipment)
+        child:
+            (docType == SalesDocType.order || docType == SalesDocType.shipment)
             ? _lockedCell(context, row.price)
             : TextField(
                 controller: row.price,
                 textAlign: TextAlign.right,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(isDense: true, hintText: '0'),
               ),
       ),
@@ -260,23 +266,27 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       ),
     EditableGridColumn<SalesGridRow>(
       key: 'amount',
-      label: '金额',
+      // 销售订单金额是所选订单币种的原币金额；销售端不展示人民币换算，
+      // 也不要用“¥”让外币订单看起来像人民币。
+      label: docType == SalesDocType.order ? '金额（订单币种）' : '金额',
       width: 110,
       numeric: true,
       cellBuilder: (context, row) => ValueListenableBuilder<double>(
         valueListenable: row.amountNotifier,
-        builder: (_, v, _) => Text('¥${v.toStringAsFixed(2)}'),
+        builder: (_, v, _) => Text(
+          docType == SalesDocType.order
+              ? v.toStringAsFixed(2)
+              : '¥${v.toStringAsFixed(2)}',
+        ),
       ),
     ),
     // V66 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
     // 出货单(shipment)只留 货品/颜色/单位/数量/单价/金额/备注：成本分项/折扣等补列不展示
     //（出货是发货履约，价格/折扣沿用订货单）。隐藏列的字段仍在行模型里，编辑既有出货单时
     // 回填并随保存回写，不丢数据。
-    if (docType == SalesDocType.order ||
-        docType == SalesDocType.otherShipment)
+    if (docType == SalesDocType.order || docType == SalesDocType.otherShipment)
       _extraNumericColumn('机加价', 'machiningPrice', (r) => r.machiningPrice),
-    if (docType == SalesDocType.order ||
-        docType == SalesDocType.otherShipment)
+    if (docType == SalesDocType.order || docType == SalesDocType.otherShipment)
       _extraNumericColumn('围数', 'circumference', (r) => r.circumference),
     if (docType == SalesDocType.order)
       _extraNumericColumn('进仓数量', 'inboundQty', (r) => r.inboundQty),
@@ -393,7 +403,10 @@ Widget _returnDropdown(
       decoration: InputDecoration(isDense: true, hintText: hint),
       items: [
         for (final o in options)
-          DropdownMenuItem(value: o, child: Text(o, overflow: TextOverflow.ellipsis)),
+          DropdownMenuItem(
+            value: o,
+            child: Text(o, overflow: TextOverflow.ellipsis),
+          ),
       ],
       onChanged: (v) => notifier.value = v,
     ),

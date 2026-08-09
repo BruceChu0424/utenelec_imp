@@ -270,9 +270,12 @@ public class PurchaseReceiptService {
             }
         }
         r.setStatus(STATUS_REVERSED);
-        receiptRepo.save(r);
+        // The downstream refresh validates the source's terminal state via a
+        // native query, so make that state visible before invoking the hook.
+        receiptRepo.saveAndFlush(r);
         arrivalControl.recordReversal(
                 ProcurementArrivalControlPort.PURCHASE, id);
+        productionSupply.afterPurchaseReceiptReversed(id);
         return detail(id);
     }
 

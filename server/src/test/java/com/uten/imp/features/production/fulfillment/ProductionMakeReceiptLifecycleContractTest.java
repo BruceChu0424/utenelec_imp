@@ -53,12 +53,14 @@ class ProductionMakeReceiptLifecycleContractTest {
                 .contains("readiness.beforeFinishedInboundReversed(");
 
         int chain = stock.indexOf("applyFinishedInChain(d, items, +1)");
+        int approved = stock.indexOf("d.setStatus(STATUS_APPROVED)", chain);
+        int flushed = stock.indexOf("em.flush()", approved);
         int promotion = stock.indexOf(
-                "afterFinishedInboundApproved(", chain);
-        int approved = stock.indexOf("d.setStatus(STATUS_APPROVED)", promotion);
+                "afterFinishedInboundApproved(", flushed);
         assertThat(chain).isGreaterThanOrEqualTo(0);
-        assertThat(promotion).isGreaterThan(chain);
-        assertThat(approved).isGreaterThan(promotion);
+        assertThat(approved).isGreaterThan(chain);
+        assertThat(flushed).isGreaterThan(approved);
+        assertThat(promotion).isGreaterThan(flushed);
     }
 
     @Test

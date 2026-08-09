@@ -184,10 +184,6 @@ List<String>? requiredAnyPermFor(String location) {
   if (location == RouteName.suggestion || location.startsWith('/suggestion/')) {
     return const [Perm.suggestionSubmit];
   }
-  // 实验室：上传权限与查看权限由后端分别授权。
-  if (location == '/lab/test/upload') return const [Perm.labTestUpload];
-  if (location.startsWith('/lab/')) return const [Perm.labTestView];
-
   // 基础资料：hub 按任一主档查看权限放行；详情页使用对应主档权限。
   if (location == RouteName.basicinfo) {
     return const [
@@ -428,10 +424,6 @@ List<String>? requiredAnyPermFor(String location) {
     return const [];
   }
 
-  // 生产辅助：空调（保留旧 broad 守卫；库存 Mock 页已删除，真库存走 /stock/*）
-  if (location.startsWith('/hvac')) {
-    return const ['production:view'];
-  }
   // 访客审批 / 被访人 / 保安
   if (location == '/visitor-approval' ||
       location.startsWith('/visitor-approval/')) {

@@ -17,11 +17,15 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ProcurementApprovalProjectionQueryTest {
@@ -145,6 +149,41 @@ class ProcurementApprovalProjectionQueryTest {
         assertEquals(0, result.attempt());
         assertEquals(0, result.version());
         assertEquals(List.of(), result.allowedActions());
+    }
+
+    @Test
+    void financeTaskDetailAccessRequiresBothEligibleReviewerAndPendingCase() {
+        UUID actorId = UUID.randomUUID();
+        UUID pendingOrderId = UUID.randomUUID();
+        UUID decidedOrderId = UUID.randomUUID();
+        NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
+        when(jdbc.queryForObject(
+                anyString(), any(SqlParameterSource.class), eq(Boolean.class)))
+                .thenReturn(true, false);
+        FinanceReviewerEligibilityPort eligibility = mock(FinanceReviewerEligibilityPort.class);
+        when(eligibility.findEligible(actorId)).thenReturn(Optional.of(
+                new FinanceReviewerEligibilityPort.EligibleFinanceReviewer(
+                        actorId, UUID.randomUUID(), "finance reviewer")));
+        ProcurementApprovalProjectionQuery query = new ProcurementApprovalProjectionQuery(
+                jdbc, currentUser(actorId, Set.of("finance_order_approval:review"), false), eligibility);
+
+        assertTrue(query.canCurrentActorReviewPending("PURCHASE", pendingOrderId));
+        assertFalse(query.canCurrentActorReviewPending("PURCHASE", decidedOrderId));
+        assertTrue(query.isCurrentActorEligibleReviewer());
+    }
+
+    @Test
+    void ineligibleActorCannotProbeWhetherAnOrderHasPendingReview() {
+        UUID actorId = UUID.randomUUID();
+        NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
+        FinanceReviewerEligibilityPort eligibility = mock(FinanceReviewerEligibilityPort.class);
+        when(eligibility.findEligible(actorId)).thenReturn(Optional.empty());
+        ProcurementApprovalProjectionQuery query = new ProcurementApprovalProjectionQuery(
+                jdbc, currentUser(actorId, Set.of("finance_order_approval:review"), true), eligibility);
+
+        assertFalse(query.canCurrentActorReviewPending("SUBCONTRACT", UUID.randomUUID()));
+        assertFalse(query.isCurrentActorEligibleReviewer());
+        verifyNoInteractions(jdbc);
     }
 
     private static ProcurementApprovalProjectionQuery queryWithCase(

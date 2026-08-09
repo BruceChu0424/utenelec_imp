@@ -1,201 +1,182 @@
-import { setRequestLocale, getTranslations } from 'next-intl/server';
-import { Link } from '@/i18n/navigation';
-import { ArrowRight, Phone } from 'lucide-react';
-import { getSetting, getNewsList, getCases, getLatestProducts } from '@/lib/queries';
-import { pick, trArr, tr } from '@/lib/content';
-import { SectionHeading } from '@/components/SectionHeading';
-import { NewsCard } from '@/components/NewsCard';
+import type { Metadata } from 'next';
+import Image from 'next/image';
+import { ArrowUpRight, FileCheck2, Globe2, Handshake, Sparkles } from 'lucide-react';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { Hero } from '@/components/home/Hero';
+import { StudioTeaser } from '@/components/home/StudioTeaser';
 import { Reveal } from '@/components/motion/Reveal';
-import { CountUp } from '@/components/motion/CountUp';
+import { Link } from '@/i18n/navigation';
+import { toCatalogFamily, toCatalogProduct, toStudioScene, toStudioVariants } from '@/lib/catalog';
+import { pickLocale } from '@/lib/content';
+import { getCatalogFamilies, getLatestProducts, getScenePresets, getSetting } from '@/lib/queries';
+import { buildPageMetadata } from '@/lib/seo';
 
-const ABOUT_IMGS = ['/images/raw/images_in1.jpg', '/images/raw/images_in2.jpg', '/images/raw/images_in3.jpg', '/images/raw/images_in4.jpg'];
-
-export default async function HomePage({ params }: { params: { locale: string } }) {
-  const { locale } = params;
-  setRequestLocale(locale);
-  const t = await getTranslations('Home');
-  const tc = await getTranslations('Common');
-  const tn = await getTranslations('Nav');
-
-  const [latest, heroR, statsR, aboutR, craftR, cases, news] = await Promise.all([
-    getLatestProducts(4), getSetting('hero'), getSetting('stats'), getSetting('about'), getSetting('craft'), getCases(), getNewsList(3),
+export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
+  const { locale } = await params;
+  const [t, meta] = await Promise.all([
+    getTranslations({ locale, namespace: 'Home' }),
+    getTranslations({ locale, namespace: 'Meta' }),
   ]);
-  const hero = pick<{ title: string; subtitle: string; cta1: string; cta2: string }>(heroR, locale)!;
-  const stats = trArr<{ value: string; label: string }>(statsR, locale);
-  const about = pick<{ title: string; subtitle: string; body: string; cta: string }>(aboutR, locale)!;
-  const craft = trArr<{ title: string; desc: string }>(craftR, locale);
+  return buildPageMetadata({ locale, path: '/', title: meta('company'), description: t('heroSubtitle'), absoluteTitle: true });
+}
+
+export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const [t, common, productsT] = await Promise.all([
+    getTranslations({ locale, namespace: 'Home' }),
+    getTranslations({ locale, namespace: 'Common' }),
+    getTranslations({ locale, namespace: 'Products' }),
+  ]);
+
+  const [latestRecords, heroRaw, familyRecords, sceneRecords] = await Promise.all([
+    getLatestProducts(6),
+    getSetting('hero'),
+    getCatalogFamilies(),
+    getScenePresets(),
+  ]);
+
+  const localizedHero = pickLocale<Partial<{ title: string; subtitle: string; cta1: string; cta2: string }>>(heroRaw, locale);
+  const hero = {
+    title: localizedHero?.title || t('heroTitle'),
+    subtitle: localizedHero?.subtitle || t('heroSubtitle'),
+    cta1: localizedHero?.cta1 || t('heroPrimary'),
+    cta2: localizedHero?.cta2 || t('heroSecondary'),
+  };
+  const families = familyRecords.map((family) => toCatalogFamily(family, locale));
+  const standardName = productsT('standardVariant');
+  const latest = latestRecords.map((record) => toCatalogProduct(record, locale, standardName));
+  const functionLabels = productsT.raw('functionTypes') as Record<string, string>;
+  const latestVariants = toStudioVariants(latestRecords, locale, standardName).filter((variant) => variant.image);
+  const featuredVariant = latestVariants[0];
+  const featured = featuredVariant ? {
+    image: featuredVariant.image,
+    name: featuredVariant.productName,
+    series: featuredVariant.seriesName,
+    href: featuredVariant.productHref,
+  } : null;
+  const latestStories = featured && latest.length > 1 ? latest.slice(1, 6) : latest.slice(0, 5);
+
+  const scenes = sceneRecords.length
+    ? sceneRecords.map((scene) => toStudioScene(scene, locale))
+    : [
+        { id: 'warm', slug: 'warm', name: t('sceneWarm'), image: '/images/scenes/warm-plaster.webp' },
+        { id: 'mineral', slug: 'mineral', name: t('sceneMineral'), image: '/images/scenes/mineral-gallery.webp' },
+        { id: 'walnut', slug: 'walnut', name: t('sceneWalnut'), image: '/images/scenes/walnut-suite.webp' },
+      ];
+  // Every product surfaced on the homepage comes from the same curated latest
+  // set. The full Studio can still expose the wider scene-enabled catalogue.
+  const teaserVariants = toStudioVariants(latestRecords, locale, standardName).filter((variant) => variant.image);
+  const teaserItems = teaserVariants.slice(0, 8).map((variant) => ({ id: variant.id, name: variant.name, productName: variant.productName, image: variant.image, swatchHex: variant.swatchHex }));
+  const storyBackgrounds = [
+    'bg-[linear-gradient(145deg,hsl(var(--muted)),hsl(var(--card)))]',
+    'bg-[linear-gradient(145deg,hsl(var(--accent)/.10),hsl(var(--card))_68%)]',
+    'bg-[linear-gradient(145deg,hsl(var(--primary)/.08),hsl(var(--muted)))]',
+    'bg-[linear-gradient(145deg,hsl(var(--card)),hsl(var(--accent)/.08))]',
+  ];
 
   return (
     <>
-      <Hero hero={hero} locale={locale} />
+      <Hero
+        hero={hero}
+        featured={featured}
+        collectionCount={families.length}
+        labels={{ eyebrow: t('heroEyebrow'), experience: t('experience'), collections: t('collections'), global: t('global'), featured: t('featured') }}
+      />
 
-      {/* ===== Stats ===== */}
-      <section className="relative border-y border-border/40 bg-background-elevated/40">
-        <div className="container-uten grid grid-cols-2 gap-8 py-14 md:grid-cols-4">
-          {stats.map((s, i) => (
-            <Reveal key={s.label} delay={i * 100} className="text-center">
-              <p className="font-heading text-4xl font-bold text-gradient-accent md:text-5xl">
-                <CountUp value={s.value} />
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">{s.label}</p>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
-      {/* ===== Featured Products (苹果风精选 · 少量大卡) ===== */}
-      <section className="section">
-        <div className="container-uten">
-          <Reveal className="mb-12 flex flex-wrap items-end justify-between gap-4">
-            <SectionHeading
-              eyebrow={locale === 'zh' ? '精选产品' : 'Featured'}
-              title={locale === 'zh' ? '最新产品' : 'Latest Products'}
-            />
-            <Link href="/products" className="btn-ghost">{tc('viewAll')}<ArrowRight className="h-4 w-4" /></Link>
-          </Reveal>
-          {latest.length === 0 ? (
-            <p className="py-20 text-center text-muted-foreground">{tc('noData')}</p>
-          ) : (
-            <div className="grid gap-5 sm:grid-cols-2">
-              {latest.map((p, i) => {
-                const pd = tr<{ name: string; description?: string }>(p.i18n, locale);
-                const seriesName = p.series ? tr<{ name: string }>(p.series.i18n, locale).name : '';
-                const href = p.series ? `/products/${p.series.code}/${p.slug}` : '/products';
-                return (
-                  <Reveal key={p.id} delay={(i % 2) * 120}>
-                    <Link href={href} className="card-uten group block overflow-hidden transition-all duration-500 ease-expo hover:-translate-y-1.5 hover:border-accent/40">
-                      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-background-elevated to-background">
-                        <div className="absolute inset-0 bg-dots opacity-30" />
-                        {p.image && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.image} alt={pd.name} loading="lazy" className="relative h-full w-full object-contain p-10 transition-transform duration-700 ease-expo group-hover:scale-105" />
-                        )}
-                      </div>
-                      <div className="p-7">
-                        {seriesName && <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">{seriesName}</p>}
-                        <h3 className="mt-2 font-heading text-2xl font-bold">{pd.name}</h3>
-                        {pd.description && <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{pd.description}</p>}
-                        <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-accent">
-                          {tc('learnMore')} <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-                        </span>
-                      </div>
-                    </Link>
-                  </Reveal>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ===== Craft ===== */}
-      <section className="section relative overflow-hidden bg-background-elevated/30">
-        <div className="absolute inset-0 bg-dots opacity-40 mask-fade-b" />
-        <div className="container-uten relative">
-          <Reveal className="mx-auto max-w-2xl">
-            <SectionHeading center eyebrow={t('craftSubtitle')} title={t('craftTitle')} />
-          </Reveal>
-          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {craft.map((c, i) => (
-              <Reveal key={c.title} delay={(i % 4) * 80}>
-                <div className="card-uten h-full p-6 transition hover:-translate-y-1 hover:border-accent/30">
-                  <div className="grid h-12 w-12 place-items-center rounded-xl bg-accent/10 font-heading text-lg font-bold text-accent">
-                    {String(i + 1).padStart(2, '0')}
-                  </div>
-                  <h3 className="mt-4 font-semibold">{c.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{c.desc}</p>
-                </div>
-              </Reveal>
+      {families.length > 0 && (
+        <div className="overflow-hidden border-b border-border bg-primary py-4 text-primary-foreground">
+          <div className="animate-marquee flex w-max items-center whitespace-nowrap will-change-transform">
+            {[...families, ...families].map((family, index) => (
+              <span key={`${family.id}-${index}`} className="inline-flex items-center">
+                <Link locale={locale} href={`/products/${family.slug}`} className="mx-3 inline-flex min-h-11 items-center px-4 text-xs font-bold uppercase tracking-[.2em] text-primary-foreground/72 transition hover:text-primary-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-soft">{family.name}</Link>
+                <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              </span>
             ))}
           </div>
         </div>
-      </section>
-
-      {/* ===== About ===== */}
-      <section className="section">
-        <div className="container-uten grid items-center gap-14 lg:grid-cols-2">
-          <Reveal>
-            <SectionHeading eyebrow={about.subtitle} title={about.title} />
-            <p className="mt-5 leading-relaxed text-muted-foreground">{about.body}</p>
-            <Link href="/about" className="btn-outline mt-7">{about.cta}<ArrowRight className="h-4 w-4" /></Link>
-          </Reveal>
-          <Reveal delay={150} className="grid grid-cols-2 gap-4">
-            {ABOUT_IMGS.map((src, i) => (
-              <div key={src} className={`overflow-hidden rounded-2xl border border-border/40 ${i % 3 === 1 ? 'translate-y-6' : ''}`}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="Uten" className="aspect-[4/3] w-full object-cover saturate-[.9]" loading="lazy" />
-              </div>
-            ))}
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ===== Cases ===== */}
-      {cases.length > 0 && (
-        <section className="section bg-background-elevated/30">
-          <div className="container-uten">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <Reveal><SectionHeading eyebrow={t('casesSubtitle')} title={t('casesTitle')} /></Reveal>
-              <Reveal delay={120}><Link href="/cases" className="btn-ghost">{tc('viewAll')}<ArrowRight className="h-4 w-4" /></Link></Reveal>
-            </div>
-            <div className="mt-12 grid gap-5 md:grid-cols-3">
-              {cases.slice(0, 3).map((c, i) => {
-                const ct = tr<{ title: string; location?: string }>(c.i18n, locale);
-                return (
-                  <Reveal key={c.slug} delay={i * 100}>
-                    <Link href="/cases" className="card-uten group block overflow-hidden p-6 transition hover:-translate-y-1 hover:border-accent/30">
-                      <div className="mb-5 grid h-32 place-items-center rounded-xl border border-border/40 bg-gradient-to-br from-background to-background-elevated">
-                        <span className="font-heading text-5xl font-bold text-foreground/15">{(ct.title || 'U')[0]}</span>
-                      </div>
-                      {ct.location && <p className="text-xs uppercase tracking-wider text-accent">{ct.location}</p>}
-                      <h3 className="mt-1 font-semibold transition group-hover:text-accent">{ct.title}</h3>
-                    </Link>
-                  </Reveal>
-                );
-              })}
-            </div>
-          </div>
-        </section>
       )}
 
-      {/* ===== News ===== */}
-      {news.length > 0 && (
-        <section className="section">
-          <div className="container-uten">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <Reveal><SectionHeading eyebrow={t('newsSubtitle')} title={t('newsTitle')} /></Reveal>
-              <Reveal delay={120}><Link href="/news" className="btn-ghost">{tc('viewAll')}<ArrowRight className="h-4 w-4" /></Link></Reveal>
-            </div>
-            <div className="mt-12 grid gap-5 md:grid-cols-3">
-              {news.map((n, i) => (
-                <Reveal key={n.slug} delay={i * 100}>
-                  <div className="card-uten h-full p-5 transition hover:-translate-y-1 hover:border-accent/30">
-                    <NewsCard news={n} locale={locale} />
-                  </div>
+      <section id="latest-products" className="section">
+        <div className="container-uten">
+          <Reveal className="mx-auto max-w-4xl text-center">
+            <p className="eyebrow">{t('latestEyebrow')}</p>
+            <h2 className="section-title mt-7 text-balance">{t('latestTitle')}</h2>
+            <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-8 text-muted-foreground md:text-lg">{t('latestBody')}</p>
+          </Reveal>
+
+          <div className="mt-14 space-y-6 lg:mt-20 lg:space-y-10">
+            {latestStories.map((product, index) => {
+              const variant = product.variants[0];
+              const image = variant?.image || product.image;
+              const href = variant ? `${product.href}?variant=${encodeURIComponent(variant.id)}` : product.href;
+              const studioHref = variant ? `/studio?variant=${encodeURIComponent(variant.id)}` : '/studio';
+              const story = product.classificationStatus === 'VERIFIED' && product.description
+                ? product.description
+                : t('latestProductFallback', {
+                    product: product.name,
+                    series: product.seriesName || 'UTEN',
+                  });
+              const reverse = index % 2 === 1;
+              return (
+                <Reveal key={product.id}>
+                  <article className="grid overflow-hidden rounded-[1.75rem] border border-border bg-card lg:min-h-[520px] lg:grid-cols-2">
+                    <div className={`relative min-h-[340px] overflow-hidden sm:min-h-[430px] lg:min-h-full ${storyBackgrounds[index % storyBackgrounds.length]} ${reverse ? 'lg:order-2' : ''}`}>
+                      <div className="absolute inset-0 bg-dots opacity-35" />
+                      {image ? <Image src={image} alt={product.name} fill priority={index === 0} sizes="(max-width:1024px) 100vw, 50vw" className="product-cutout object-contain p-[18%] sm:p-[20%] lg:p-[21%]" /> : <span className="absolute inset-0 grid place-items-center text-8xl font-bold text-muted-foreground/15">U</span>}
+                      <span className="glass absolute start-5 top-5 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[.14em]">{product.seriesName || t('latestEyebrow')}</span>
+                    </div>
+                    <div className={`flex flex-col justify-center p-7 sm:p-10 lg:p-14 ${reverse ? 'lg:order-1' : ''}`}>
+                      <p className="text-xs font-bold uppercase tracking-[.18em] text-accent">{functionLabels[product.functionType] || functionLabels.other}</p>
+                      <h3 className="mt-5 text-balance text-3xl font-semibold leading-[1.04] tracking-[-.055em] sm:text-5xl lg:text-6xl">{product.name}</h3>
+                      {product.model && product.model.toLocaleLowerCase() !== product.name.toLocaleLowerCase() && <p className="mt-3 font-mono text-sm text-muted-foreground">{product.model}</p>}
+                      <p className="mt-6 max-w-xl text-pretty leading-8 text-muted-foreground">{story}</p>
+                      <div className="mt-8 flex flex-wrap gap-3">
+                        <Link locale={locale} href={href} className="btn-accent">{t('latestView')}<ArrowUpRight className="h-4 w-4" /></Link>
+                        <Link locale={locale} href={studioHref} className="btn-outline">{t('latestStudio')}</Link>
+                      </div>
+                    </div>
+                  </article>
                 </Reveal>
-              ))}
+              );
+            })}
+          </div>
+          <div className="mt-10 text-center"><Link locale={locale} href="/products" className="btn-outline">{t('viewCollections')}<ArrowUpRight className="h-4 w-4" /></Link></div>
+        </div>
+      </section>
+
+      {scenes.length > 0 && teaserItems.length > 0 && (
+        <section className="section border-y border-border bg-background-elevated/55">
+          <div className="container-uten">
+            <div className="mb-10 grid items-end gap-8 lg:grid-cols-[1fr_.8fr]">
+              <Reveal><p className="eyebrow">{t('studioEyebrow')}</p><h2 className="section-title mt-7 text-balance">{t('studioTitle').replace(/\s*\n\s*/g, ' ')}</h2></Reveal>
+              <Reveal delay={100}><p className="max-w-xl text-pretty text-base leading-8 text-muted-foreground md:text-lg">{t('studioBody')}</p></Reveal>
             </div>
+            <Reveal delay={140}><StudioTeaser scenes={scenes.map((scene) => ({ id: scene.id, name: scene.name, image: scene.image }))} variants={teaserItems} labels={{ scene: t('studioScene'), product: t('studioProduct'), openStudio: t('studioOpen'), preview: t('studioPreview') }} /></Reveal>
           </div>
         </section>
       )}
 
-      {/* ===== CTA ===== */}
-      <section className="section">
+      <section className="section panel-dark overflow-hidden">
         <div className="container-uten">
-          <Reveal>
-            <div className="relative overflow-hidden rounded-3xl border border-accent/20 bg-gradient-to-br from-background-elevated to-background p-12 text-center md:p-20">
-              <div className="ambient-blob animate-blob" style={{ width: 420, height: 420, background: 'hsl(174 100% 40%)', top: '-25%', left: '35%' }} />
-              <div className="relative">
-                <h2 className="mx-auto max-w-3xl text-balance font-heading text-3xl font-bold md:text-4xl">{t('ctaTitle')}</h2>
-                <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">{t('ctaSubtitle')}</p>
-                <div className="mt-9 flex flex-wrap justify-center gap-3">
-                  <Link href="/contact" className="btn-accent"><Phone className="h-4 w-4" />{tc('contactUs')}</Link>
-                  <Link href="/join" className="btn-outline">{tn('join')}</Link>
-                </div>
-              </div>
-            </div>
+          <Reveal className="max-w-4xl">
+            <p className="text-[11px] font-bold uppercase tracking-[.22em] text-accent-soft">{t('globalEyebrow')}</p>
+            <h2 className="section-title mt-7">{t('globalTitle')}</h2>
+            <p className="mt-6 max-w-2xl text-pretty leading-8 text-primary-foreground/62">{t('globalBody')}</p>
           </Reveal>
+          <div className="mt-12 grid gap-px overflow-hidden rounded-[1.5rem] border border-primary-foreground/15 bg-primary-foreground/15 md:grid-cols-3">
+            {[
+              { icon: Globe2, title: t('marketTitle'), body: t('marketBody') },
+              { icon: Handshake, title: t('oemTitle'), body: t('oemBody') },
+              { icon: FileCheck2, title: t('documentsTitle'), body: t('documentsBody') },
+            ].map((item, index) => (
+              <Reveal key={item.title} delay={index * 65} className="h-full"><article className="h-full bg-primary p-7 md:p-8"><item.icon className="h-6 w-6 text-accent-soft" /><p className="mt-12 text-xs font-bold tracking-[.16em] text-primary-foreground/38">0{index + 1}</p><h3 className="mt-3 text-xl font-semibold">{item.title}</h3><p className="mt-4 text-sm leading-7 text-primary-foreground/58">{item.body}</p></article></Reveal>
+            ))}
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link locale={locale} href="/capabilities" className="btn bg-primary-foreground text-primary hover:bg-primary-foreground/88">{t('globalCta')}<Sparkles className="h-4 w-4" /></Link>
+            <Link locale={locale} href="/partners#project-brief" className="btn border border-primary-foreground/25 text-primary-foreground hover:bg-primary-foreground/8">{t('partnersCta')}<ArrowUpRight className="h-4 w-4" /></Link>
+          </div>
         </div>
       </section>
     </>

@@ -165,6 +165,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, false,
                 false, false, false, "REQ-BOM-HIBERNATE-001",
                 "Hibernate recursive BOM regression", 1, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO
         });
     }

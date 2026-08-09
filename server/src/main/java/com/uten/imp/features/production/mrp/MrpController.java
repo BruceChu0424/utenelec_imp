@@ -65,23 +65,6 @@ public class MrpController {
         return mrpService.generateFinishedIn(id, body == null ? null : body.warehouseId());
     }
 
-    /** 自制件按净需求生成下层生产计划（草稿）；多层 BOM 可在子计划上继续生成。 */
-    @PostMapping("/{id}/mrp/generate-subplan")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
-    public MrpGenerateResult generateSubplan(@PathVariable UUID id) {
-        return mrpService.generateSubplan(id);
-    }
-
-    /** 按车间拆分生成子计划：用户自选自制件行+数量+车间，按车间分组各生成一张草稿。 */
-    @PostMapping("/{id}/mrp/generate-subplans")
-    @PreAuthorize("hasAuthority('production_plan:edit')")
-    public List<GenerateSubplansRequest.Created> generateSubplans(
-            @PathVariable UUID id,
-            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
-            GenerateSubplansRequest req) {
-        return mrpService.generateSubplans(id, req);
-    }
-
     /**
      * 原子生成计划包：用户校对后的子计划，以及可选的缺料采购申请。
      * 任一校验或写入失败时整包回滚，不留下半套单据。

@@ -115,6 +115,7 @@ public class StaffTokenResponseFactory {
                 employee == null ? null : employee.getCode(),
                 department,
                 position,
+                snapshot.mustChangePassword(),
                 snapshot.superAdmin(),
                 roles,
                 permissions);

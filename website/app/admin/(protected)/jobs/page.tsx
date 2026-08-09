@@ -27,7 +27,7 @@ export default async function JobsAdmin() {
                   <td className="whitespace-nowrap p-3 text-right">
                     <Link href={`/admin/jobs/edit/${j.id}`} className="text-accent hover:underline">编辑</Link>
                     <span className="mx-2 text-border">|</span>
-                    <DeleteButton action={() => deleteJob(j.id)} />
+                    <DeleteButton action={deleteJob.bind(null, j.id)} />
                   </td>
                 </tr>
               );

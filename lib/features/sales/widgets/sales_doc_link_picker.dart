@@ -570,13 +570,22 @@ class _UpstreamImportSheetState extends ConsumerState<_UpstreamImportSheet> {
       width: 200,
       value: (d) => names.client(d.clientId),
     ),
+    if (_upType == SalesDocType.order)
+      MasterColumnDef(
+        key: 'currency',
+        label: '币种',
+        width: 100,
+        value: (d) => names.currency(d.currencyId),
+      ),
     MasterColumnDef(
       key: 'total',
-      label: '合计',
+      label: _upType == SalesDocType.order ? '订单金额' : '合计',
       width: 120,
       type: 'money',
-      sortable: true,
-      value: (d) => d.totalLocal?.toStringAsFixed(2),
+      sortable: _upType != SalesDocType.order,
+      value: (d) =>
+          (_upType == SalesDocType.order ? d.totalOriginal : d.totalLocal)
+              ?.toStringAsFixed(2),
     ),
     MasterColumnDef(
       key: 'status',

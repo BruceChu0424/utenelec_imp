@@ -34,7 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.uten.imp.common.util.Strings.isBlank;
 
@@ -243,26 +245,13 @@ public class EmployeeOnboardingService {
             }
         }
 
-        // 7. 账号（一次性临时密码=证件号后6位，仅在本次响应交付；Argon2id 入库；首登强制改）
         String temporaryPassword = lastSix(normalizedIdNumber);
-        UserAccount user = new UserAccount();
-        user.setEmployeeId(e.getId());
-        user.setLoginAccount(loginAccount);
-        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
-        user.setMustChangePassword(true);
-        user.setStatus("active");
-        user.setFailedAttempts(0);
-        userRepo.save(user);
-
-        // 8. 角色（默认 employee）—— 仅 admin / super admin 可授予 admin 角色（防 HR 提权，C1）
+        if (temporaryPassword.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号不足 6 位，无法生成初始密码");
+        }
         List<String> roleCodes = (req.account() == null || req.account().roles() == null || req.account().roles().isEmpty())
                 ? List.of("employee") : req.account().roles();
-        AdminGrantGuard.checkAdminGrant(currentUser, roleCodes);
-        for (Role role : roleRepo.findByCodeIn(roleCodes)) {
-            UserRole ur = new UserRole();
-            ur.setId(new UserRoleId(user.getId(), role.getId()));
-            userRoleRepo.save(ur);
-        }
+        createAccount(e, loginAccount, temporaryPassword, roleCodes);
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
@@ -294,14 +283,43 @@ public class EmployeeOnboardingService {
         }
         String temporaryPassword = lastSix(tx.decrypt(s.getIdCardEnc()));
         if (isBlank(temporaryPassword)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少身份证号，无法生成初始密码");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工身份证号缺失或不足 6 位，无法生成初始密码");
         }
         if (userRepo.existsByLoginAccount(loginAccount)) {
             throw new ApiException(ErrorCode.CONFLICT, "该手机号已被用作其他账号的登录名，请先修改员工手机号");
         }
 
+        List<String> roleCodes = List.of("employee");
+        createAccount(e, loginAccount, temporaryPassword, roleCodes);
+
+        return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
+    }
+
+    /** Creates a login account using the same credential and role rules for onboarding and later provisioning. */
+    private void createAccount(
+            Employee employee,
+            String loginAccount,
+            String temporaryPassword,
+            List<String> roleCodes) {
+        if (roleCodes == null || roleCodes.isEmpty()
+                || roleCodes.stream().anyMatch(code -> isBlank(code))) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "账号角色不能为空");
+        }
+        List<String> uniqueRoleCodes = roleCodes.stream().distinct().toList();
+        AdminGrantGuard.checkAdminGrant(currentUser, uniqueRoleCodes);
+        List<Role> roles = roleRepo.findByCodeIn(uniqueRoleCodes);
+        Set<String> resolvedCodes = roles.stream().map(Role::getCode).collect(Collectors.toSet());
+        List<String> missingCodes = uniqueRoleCodes.stream()
+                .filter(code -> !resolvedCodes.contains(code))
+                .toList();
+        if (!missingCodes.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "账号角色不存在: " + String.join(", ", missingCodes));
+        }
+
         UserAccount user = new UserAccount();
-        user.setEmployeeId(e.getId());
+        user.setEmployeeId(employee.getId());
         user.setLoginAccount(loginAccount);
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setMustChangePassword(true);
@@ -309,16 +327,11 @@ public class EmployeeOnboardingService {
         user.setFailedAttempts(0);
         userRepo.save(user);
 
-        // 默认仅授 employee 角色；AdminGrantGuard 为防提权兜底（非 admin 无法授更高角色）。
-        List<String> roleCodes = List.of("employee");
-        AdminGrantGuard.checkAdminGrant(currentUser, roleCodes);
-        for (Role role : roleRepo.findByCodeIn(roleCodes)) {
+        for (Role role : roles) {
             UserRole ur = new UserRole();
             ur.setId(new UserRoleId(user.getId(), role.getId()));
             userRoleRepo.save(ur);
         }
-
-        return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
     static void assertHireDateNotFuture(LocalDate hireDate) {
@@ -381,13 +394,13 @@ public class EmployeeOnboardingService {
                 .getSingleResult();
     }
 
-    /** 证件号后 6 位作为一次性临时密码（不足 6 位取全部）。 */
+    /** 身份证号后 6 位作为一次性临时密码；不足 6 位时拒绝开通账号。 */
     static String lastSix(String idNumber) {
         if (idNumber == null) {
             return "";
         }
         String trimmed = idNumber.trim();
-        return trimmed.length() <= 6 ? trimmed : trimmed.substring(trimmed.length() - 6);
+        return trimmed.length() < 6 ? "" : trimmed.substring(trimmed.length() - 6);
     }
 
 }

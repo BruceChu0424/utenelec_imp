@@ -9,6 +9,7 @@
 //   克制不铺渐变
 // - 保留淡入 + 上滑进场动画；认证逻辑 / 校验器 / Provider 不变
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -20,11 +21,15 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
+import '../../../core/network/server_selection.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../shared/providers/shared_providers.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
@@ -48,6 +53,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _isRecoveringServer = false;
   String? _errorMessage;
 
   @override
@@ -74,7 +80,11 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   Future<void> _handleLogin() async {
-    if (_isLoading || !_formKey.currentState!.validate()) return;
+    if (_isLoading ||
+        _isRecoveringServer ||
+        !_formKey.currentState!.validate()) {
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -103,6 +113,29 @@ class _LoginPageState extends ConsumerState<LoginPage>
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _restoreAutomaticServer() async {
+    if (_isLoading || _isRecoveringServer || kIsWeb) return;
+    final l10n = AppLocalizations.of(context);
+    setState(() {
+      _isRecoveringServer = true;
+      _errorMessage = null;
+    });
+    try {
+      final prefs = ref.read(sharedPreferencesProvider);
+      await restoreAutomaticServerSelection(prefs);
+      ref.invalidate(apiBaseUrlProvider);
+      await ref.read(localServerReachableProvider.notifier).probe();
+      ref.invalidate(apiBaseUrlProvider);
+      if (mounted) context.appSuccess(l10n.loginServerRecoverySuccess);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _errorMessage = l10n.loginServerRecoveryFailed);
+      }
+    } finally {
+      if (mounted) setState(() => _isRecoveringServer = false);
     }
   }
 
@@ -232,12 +265,39 @@ class _LoginPageState extends ConsumerState<LoginPage>
           ],
           const SizedBox(height: UtenSpacing.s24),
           UtenButton(
-            onPressed: _isLoading ? null : _handleLogin,
+            onPressed: _isLoading || _isRecoveringServer ? null : _handleLogin,
             isLoading: _isLoading,
             isExpanded: true,
             size: UtenButtonSize.large,
             child: Text(_isLoading ? l10n.loginLoggingIn : l10n.loginButton),
           ),
+          if (!kIsWeb) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Semantics(
+              button: true,
+              label: l10n.loginServerRecoveryAction,
+              hint: l10n.loginServerRecoveryHint,
+              child: TextButton.icon(
+                onPressed: _isLoading || _isRecoveringServer
+                    ? null
+                    : _restoreAutomaticServer,
+                icon: _isRecoveringServer
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.sync_rounded),
+                label: Text(l10n.loginServerRecoveryAction),
+              ),
+            ),
+            Text(
+              l10n.loginServerRecoveryHint,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s24),
           Text(
             l10n.loginFooter,

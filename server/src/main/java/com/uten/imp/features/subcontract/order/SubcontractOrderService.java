@@ -126,8 +126,28 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Transactional(readOnly = true)
     public OrderDetail detail(UUID id) {
         SubcontractOrder r = requireOrder(id);
-        access.requireReadable(r.getMakerId(), "委外订货单不存在");
-        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(id).stream()
+        if (!access.canRead(r.getMakerId())
+                && !approvalProjection.canCurrentActorReviewPending(orderType(), id)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在");
+        }
+        return assembleDetail(r);
+    }
+
+    /** See {@link #detail(UUID)}; this path is only for an approve/reject response. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    OrderDetail financeDecisionResultDetail(UUID id, FinanceApproval decision) {
+        if (!approvalProjection.isCurrentActorEligibleReviewer()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在");
+        }
+        requireDecisionReceipt(decision);
+        SubcontractOrder r = requireOrder(id);
+        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(r.getId()).stream()
+                .map(this::toItemDto).toList();
+        return toDetail(r, items, decision);
+    }
+
+    private OrderDetail assembleDetail(SubcontractOrder r) {
+        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(r.getId()).stream()
                 .map(this::toItemDto).toList();
         return toDetail(r, items);
     }
@@ -322,7 +342,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         r.setStatus(STATUS_REVERSED);
         orderRepo.save(r);
-        return detail(id);
+        return assembleDetail(r);
     }
 
     private void normalizePersistedUnits(
@@ -701,10 +721,17 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private OrderDetail toDetail(
             SubcontractOrder order, List<OrderItemDto> items) {
-        boolean productionLinked =
-                productionSourceGuard.isSubcontractOrderLinked(order.getId());
         FinanceApproval approval = approvalProjection.latestForOrder(
                 orderType(), order.getId(), order.getStatus());
+        return toDetail(order, items, approval);
+    }
+
+    private OrderDetail toDetail(
+            SubcontractOrder order,
+            List<OrderItemDto> items,
+            FinanceApproval approval) {
+        boolean productionLinked =
+                productionSourceGuard.isSubcontractOrderLinked(order.getId());
         boolean pending = approval != null
                 && "PENDING".equals(approval.status());
         boolean canEdit = order.getStatus() == STATUS_DRAFT
@@ -722,6 +749,18 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 order.getStatus() == STATUS_APPROVED,
                 restrictionReason(pending),
                 approval);
+    }
+
+    private static void requireDecisionReceipt(FinanceApproval decision) {
+        if (decision == null
+                || decision.caseId() == null
+                || decision.version() < 2
+                || !("APPROVED".equals(decision.status())
+                || "REJECTED".equals(decision.status()))) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "财务审批结果已变化，请刷新任务后重试");
+        }
     }
 
     private String restrictionReason(boolean financePending) {

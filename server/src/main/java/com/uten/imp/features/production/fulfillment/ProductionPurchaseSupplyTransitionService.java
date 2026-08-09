@@ -7,6 +7,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService;
 import com.uten.imp.features.stock.StockDocument;
 import com.uten.imp.features.stock.StockDocumentItem;
 import com.uten.imp.features.stock.StockDocumentItemRepository;
@@ -56,6 +57,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
     private final ProductionFulfillmentLedgerService ledger;
     private final ProductionMaterialAllocationFacade stockAllocation;
     private final ProductionExecutionReadinessService executionReadiness;
+    private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
 
     /**
      * Moves the production-covered part of each real request item to its
@@ -378,6 +380,7 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 FROM purchase_receipts
                                 WHERE id = :receiptId
                                   AND is_deleted = FALSE
+                                  AND status = 1
                                 FOR UPDATE
                                 """)
                         .setParameter("receiptId", receiptId),
@@ -390,14 +393,29 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         UUID warehouseId = warehouses.getFirst();
         List<Object[]> receiptItems = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT id, order_item_id,
-                                       qty * COALESCE(unit_rate, 1)
-                                FROM purchase_receipt_items
-                                WHERE receipt_id = :receiptId
-                                  AND is_deleted = FALSE
-                                  AND order_item_id IS NOT NULL
-                                ORDER BY order_item_id, id
-                                FOR UPDATE
+                                SELECT receipt_item.id,
+                                       receipt_item.order_item_id,
+                                       CASE
+                                           WHEN inspection.id IS NULL
+                                           THEN receipt_item.qty
+                                               * COALESCE(
+                                                   receipt_item.unit_rate, 1)
+                                           ELSE inspection.passed_base_qty
+                                       END AS qualified_base_qty
+                                FROM purchase_receipt_items receipt_item
+                                LEFT JOIN procurement_inspection_items inspection
+                                  ON inspection.receipt_type = 'PURCHASE'
+                                 AND inspection.receipt_item_id = receipt_item.id
+                                WHERE receipt_item.receipt_id = :receiptId
+                                  AND receipt_item.is_deleted = FALSE
+                                  AND receipt_item.order_item_id IS NOT NULL
+                                  AND (
+                                      inspection.id IS NULL
+                                      OR inspection.status = 'RESOLVED'
+                                  )
+                                ORDER BY receipt_item.order_item_id,
+                                         receipt_item.id
+                                FOR UPDATE OF receipt_item
                                 """)
                         .setParameter("receiptId", receiptId));
 
@@ -558,6 +576,13 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         }
         executionReadiness.onPurchaseReceiptApproved(receiptId, warehouseId);
         ledger.refreshDemandStatuses(touched);
+        materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterPurchaseReceiptReversed(UUID receiptId) {
+        materialAnalysisWakeup.afterPurchaseReceiptReversed(receiptId);
     }
 
     /**

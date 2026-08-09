@@ -163,6 +163,20 @@ void main() {
       expect(readServerMode(prefs), ServerMode.local);
     });
 
+    test('未登录恢复只清理模式和调试覆盖，不接受新的 host', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await writeServerMode(prefs, ServerMode.cloud);
+      await prefs.setString(
+        'uten.server_url_override',
+        'https://attacker.example/steal',
+      );
+
+      await restoreAutomaticServerSelection(prefs);
+
+      expect(readServerMode(prefs), ServerMode.auto);
+      expect(prefs.getString('uten.server_url_override'), isNull);
+    });
+
     test('未知模式值回落 auto', () async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('uten.server_mode', 'garbage');

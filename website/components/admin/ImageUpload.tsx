@@ -8,6 +8,7 @@ export function ImageUpload({ name, value = '' }: { name: string; value?: string
   const [pending, start] = useTransition();
   const [err, setErr] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const previewUrl = /^\/(?:uploads|images)\//.test(url) ? url : '';
 
   const onFile = (f: File) => {
     setErr('');
@@ -24,11 +25,12 @@ export function ImageUpload({ name, value = '' }: { name: string; value?: string
     <div>
       <input type="hidden" name={name} value={url} />
       <div className="flex items-start gap-3">
-        {url ? (
+        {previewUrl ? (
           <div className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt="" className="h-24 w-24 rounded-lg border border-border object-cover" />
+            <img src={previewUrl} alt="" className="h-24 w-24 rounded-lg border border-border object-cover" />
             <button type="button" onClick={() => setUrl('')}
+              aria-label="移除图片"
               className="absolute -right-2 -top-2 grid h-6 w-6 place-items-center rounded-full bg-destructive text-white">
               <X className="h-3 w-3" />
             </button>
@@ -45,10 +47,11 @@ export function ImageUpload({ name, value = '' }: { name: string; value?: string
             placeholder="上传后自动填入, 或粘贴路径如 /images/raw/xxx.png"
             className="input-uten text-xs" />
           {err && <p className="mt-1 text-xs text-destructive">{err}</p>}
-          <p className="mt-1 text-xs text-muted-foreground">支持上传图片或填写已有路径</p>
+          {url && !previewUrl && <p className="mt-1 text-xs text-destructive">仅允许 /uploads/ 或 /images/ 下的站内图片路径</p>}
+          <p className="mt-1 text-xs text-muted-foreground">支持上传图片或填写已有站内路径</p>
         </div>
       </div>
-      <input ref={inputRef} type="file" accept="image/*" className="hidden"
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
     </div>
   );

@@ -1,7 +1,7 @@
 package com.uten.imp.features.subcontract.report;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
@@ -49,7 +49,7 @@ public class SubcontractReportController {
 
     private final SubcontractReportService service;
     private final XlsxExportService xlsxExport;
-    private final EncryptedWorkbookService encryptedWorkbook;
+    private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
@@ -116,7 +116,7 @@ public class SubcontractReportController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(report, allParams, sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
-        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_subcontract_report", "subcontract_reports",
@@ -126,7 +126,7 @@ public class SubcontractReportController {
                 .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .body(encrypted);
+                .body(downloadBytes);
     }
 
     /** 月度汇总（MV，兜底；前端不再暴露入口）。 */

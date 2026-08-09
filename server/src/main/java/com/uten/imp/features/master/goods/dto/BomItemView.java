@@ -33,4 +33,9 @@ public class BomItemView {
     private Integer legacyId;
     private boolean hasChildren;       // 组件自身有 BOM（可展开）
     private String componentSourceType; // 组件来源（自制/采购/委外，组件信息只读展示 + 成本聚合区分用）
+    private String controlStage;
+    private String consumptionBasis;
+    private BigDecimal basisOutputQty;
+    private boolean allowPartialPackage;
+    private boolean hardGate;          // 仅 START/ASSEMBLY/FINISH 可为 true
 }

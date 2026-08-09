@@ -118,8 +118,34 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(readOnly = true)
     public OrderDetail detail(UUID id) {
         PurchaseOrder o = requireOrder(id);
-        access.requireReadable(o.getMakerId(), "采购订货单不存在");
-        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
+        if (!access.canRead(o.getMakerId())
+                && !approvalProjection.canCurrentActorReviewPending(orderType(), id)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在");
+        }
+        return assembleDetail(o);
+    }
+
+    /**
+     * Read-back used only after the approve/reject command has succeeded. The
+     * controller already requires the review authority; the service also
+     * verifies authoritative reviewer eligibility without changing normal
+     * detail or list scope.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    OrderDetail financeDecisionResultDetail(UUID id, FinanceApproval decision) {
+        if (!approvalProjection.isCurrentActorEligibleReviewer()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在");
+        }
+        requireDecisionReceipt(decision);
+        PurchaseOrder o = requireOrder(id);
+        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(o.getId()).stream()
+                .map(this::toItemDto).toList();
+        return toDetail(o, items, decision);
+    }
+
+    private OrderDetail assembleDetail(PurchaseOrder o) {
+        List<OrderItemDto> items = itemRepo.findByOrderIdOrderByLineNoAsc(o.getId()).stream()
+                .map(this::toItemDto).toList();
         return toDetail(o, items);
     }
 
@@ -296,7 +322,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 ProcurementArrivalControlPort.PURCHASE, id);
         o.setStatus(STATUS_REVERSED);
         orderRepo.save(o);
-        return detail(id);
+        return assembleDetail(o);
     }
 
     private void requireCapacityIncludingPending(
@@ -566,10 +592,17 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private OrderDetail toDetail(PurchaseOrder order, List<OrderItemDto> items) {
-        boolean productionLinked =
-                productionSourceGuard.isPurchaseOrderLinked(order.getId());
         FinanceApproval approval = approvalProjection.latestForOrder(
                 orderType(), order.getId(), order.getStatus());
+        return toDetail(order, items, approval);
+    }
+
+    private OrderDetail toDetail(
+            PurchaseOrder order,
+            List<OrderItemDto> items,
+            FinanceApproval approval) {
+        boolean productionLinked =
+                productionSourceGuard.isPurchaseOrderLinked(order.getId());
         boolean pending = approval != null
                 && "PENDING".equals(approval.status());
         boolean canEdit = order.getStatus() == STATUS_DRAFT
@@ -586,6 +619,18 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 order.getStatus() == STATUS_APPROVED,
                 restrictionReason(pending),
                 approval);
+    }
+
+    private static void requireDecisionReceipt(FinanceApproval decision) {
+        if (decision == null
+                || decision.caseId() == null
+                || decision.version() < 2
+                || !("APPROVED".equals(decision.status())
+                || "REJECTED".equals(decision.status()))) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "财务审批结果已变化，请刷新任务后重试");
+        }
     }
 
     private String restrictionReason(boolean financePending) {

@@ -114,28 +114,43 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         BigDecimal requested = request.baseQty() == null ? null : normalizeQty(request.baseQty());
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
 
+        // Match receipt approval/reversal: acquire every inventory-dimension
+        // advisory lock before any inspection row lock. Locking the complete
+        // receipt below also serializes concurrent last-line dispositions, so
+        // exactly one transaction observes whole-receipt completion.
+        lockReceiptMutationDimensions(receiptType, receiptId);
+
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, warehouse_id, goods_id, color_id, unit_id, unit_rate,
                                received_base_qty, received_amount_local,
                                passed_base_qty, failed_base_qty, status, receipt_type
                         FROM procurement_inspection_items
-                        WHERE id = :id AND receipt_type = :rt AND receipt_id = :rid
+                        WHERE receipt_type = :rt AND receipt_id = :rid
+                        ORDER BY id
                         FOR UPDATE
                         """)
-                .setParameter("id", inspectionItemId)
                 .setParameter("rt", receiptType)
                 .setParameter("rid", receiptId)
                 .getResultList();
-        if (rows.size() != 1) {
+        Object[] row = rows.stream()
+                .filter(candidate -> inspectionItemId.equals(candidate[0]))
+                .findFirst()
+                .orElse(null);
+        if (row == null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "待检明细不存在");
         }
-        Object[] row = rows.getFirst();
         if (!Objects.equals(receiptType, row[11])) {
             throw new ApiException(ErrorCode.CONFLICT, "质检结论的单据类型不一致");
         }
         UUID eventId = dispositionEventId(inspectionItemId, idempotencyKey);
-        if (isReplay(eventId, inspectionItemId, action, requested, reason)) return;
+        if (isReplay(eventId, inspectionItemId, action, requested, reason)) {
+            // Older concurrent dispositions may have committed every line without
+            // publishing the whole-receipt wake marker. A same-command replay owns
+            // the receipt-scoped row locks above, so it can safely repair that state.
+            wakeIfWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now());
+            return;
+        }
 
         String currentStatus = (String) row[10];
         if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
@@ -198,11 +213,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         appendEvent(eventId, inspectionItemId, action, requested, reason, actor, now);
 
         // 整单质检结案后唤醒生产一次（WAITING→READY）；已唤醒则幂等跳过。
-        if (allResolved(receiptType, receiptId) && !alreadyWoken(receiptType, receiptId)) {
-            wakeProduction(receiptType, receiptId);
-            appendReceiptEvent(receiptType, receiptId, "PRODUCTION_WOKEN", BigDecimal.ZERO,
-                    "整单质检结案，唤醒生产供给", actor, now);
-        }
+        wakeIfWholeReceiptResolved(receiptType, receiptId, now);
     }
 
     /** 收货红冲前置校验：存在待检行时，必须全部结案（RESOLVED）才能红冲。 */
@@ -248,8 +259,10 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             UUID inspectionItemId = (UUID) row[0];
             BigDecimal passed = dec(row[6]);
             if (passed.signum() > 0) {
-                BigDecimal passedAmount = dec(row[7]);
+                BigDecimal receivedAmount = dec(row[7]);
                 BigDecimal receivedBase = dec(row[8]);
+                BigDecimal passedAmount = proratedIncrement(
+                        receivedAmount, receivedBase, BigDecimal.ZERO, passed);
                 // 反向放行金额 = 已放行金额（一次性反向整条已放行量）。
                 stockService.recordMovement(new StockService.MovementRequest(
                         now, movementType(receiptType), sourceDocType(receiptType),
@@ -257,14 +270,22 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         StockService.DIR_OUT, passed, (UUID) row[4], dec(row[5]), passedAmount,
                         "红冲收货，反向 IQC 已放行库存"));
             }
-            em.createNativeQuery("""
+            int updated = em.createNativeQuery("""
                     UPDATE procurement_inspection_items
-                    SET status = 'REVERSED', updated_at = :now
+                    SET passed_base_qty = 0,
+                        failed_base_qty = 0,
+                        status = 'REVERSED',
+                        updated_at = :now
                     WHERE id = :id AND status = 'RESOLVED'
                     """)
                     .setParameter("now", now)
                     .setParameter("id", inspectionItemId)
                     .executeUpdate();
+            if (updated != 1) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "IQC 明细状态已变化，请刷新后重试");
+            }
             appendEvent(UUID.randomUUID(), inspectionItemId, "RECEIPT_REVERSED", passed, null, actor, now);
         }
         return true;
@@ -321,11 +342,38 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         return woken > 0;
     }
 
+    private void wakeIfWholeReceiptResolved(
+            String receiptType, UUID receiptId, OffsetDateTime now) {
+        if (!allResolved(receiptType, receiptId)
+                || alreadyWoken(receiptType, receiptId)) {
+            return;
+        }
+        wakeProduction(receiptType, receiptId);
+        appendReceiptEvent(
+                receiptType,
+                receiptId,
+                "PRODUCTION_WOKEN",
+                BigDecimal.ZERO,
+                "整单质检结案，唤醒生产供给",
+                currentUser.requireEmployeeId(),
+                now);
+    }
+
     private void wakeProduction(String receiptType, UUID receiptId) {
         if (PURCHASE.equals(receiptType)) {
             purchaseSupply.onPurchaseReceiptApproved(receiptId);
         } else {
             subcontractSupply.onSubcontractReceiptApproved(receiptId);
+        }
+    }
+
+    private void lockReceiptMutationDimensions(String receiptType, UUID receiptId) {
+        if (PURCHASE.equals(receiptType)) {
+            purchaseSupply.lockPurchaseReceiptMutationDimensions(receiptId);
+        } else if (SUBCONTRACT.equals(receiptType)) {
+            subcontractSupply.lockSubcontractReceiptMutationDimensions(receiptId);
+        } else {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "收货单类型无效");
         }
     }
 

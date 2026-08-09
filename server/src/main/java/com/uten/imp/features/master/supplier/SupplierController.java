@@ -1,7 +1,7 @@
 package com.uten.imp.features.master.supplier;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
@@ -52,7 +52,7 @@ public class SupplierController {
 
     private final SupplierService service;
     private final XlsxExportService xlsxExport;
-    private final EncryptedWorkbookService encryptedWorkbook;
+    private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
@@ -145,7 +145,7 @@ public class SupplierController {
                 phone, phone2, fax, postcode, address, bank, bankAccount, taxId,
                 website, shipVia, shipAddress), sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
-        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_supplier", "master_data", String.valueOf(payload.total()), "success"));
         String filename = "suppliers.xlsx";
@@ -153,7 +153,7 @@ public class SupplierController {
                 .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .body(encrypted);
+                .body(downloadBytes);
     }
 
     @PostMapping

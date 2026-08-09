@@ -4,6 +4,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
+import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
 import com.uten.imp.features.production.fulfillment.ProductionMaterialDemand;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,13 @@ public class ProductionExecutionPlanningService {
     private static final String GOODS_SOURCE_PURCHASE = "\u91c7\u8d2d";
     private static final String GOODS_SOURCE_SELF_MADE = "\u81ea\u5236";
     private static final String GOODS_SOURCE_SUBCONTRACT = "\u59d4\u5916";
+    private static final Set<String> SUPPORTED_CONTROL_STAGES = Set.of(
+            "START", "ASSEMBLY", "FINISH", "SHIP", "REFERENCE");
+    private static final Set<String> PRODUCTION_CONTROL_STAGES = Set.of(
+            "START", "ASSEMBLY", "FINISH");
+    private static final Set<String> SUPPORTED_CONSUMPTION_BASES = Set.of(
+            "PER_UNIT", "PER_PACKAGE", "FIXED_BATCH");
+    private static final String CONSUMPTION_BASIS_PER_UNIT = "PER_UNIT";
 
     private final CompleteKitAllocator allocator = new CompleteKitAllocator();
 
@@ -142,6 +150,12 @@ public class ProductionExecutionPlanningService {
                         segment.line().planBeginDate(),
                         segment.line().planEndDate(),
                         segment.line().bomFingerprint(),
+                        segment.materials().isEmpty()
+                                ? ProductionExecutionSegment
+                                        .MATERIAL_REQUIREMENT_MODE_ZERO
+                                : ProductionExecutionSegment
+                                        .MATERIAL_REQUIREMENT_MODE_DEMANDED,
+                        segment.line().zeroMaterialReason(),
                         segment.materials().stream()
                                 .map(material -> new ExecutionSegmentPreview.Material(
                                         material.goodsId(),
@@ -152,7 +166,8 @@ public class ProductionExecutionPlanningService {
                                         material.availableBeforeQty(),
                                         material.candidateAllocatedQty(),
                                         material.shortageQty(),
-                                        material.supplyRoute()))
+                                        material.supplyRoute(),
+                                        material.requirementMode()))
                                 .toList()))
                 .toList();
     }
@@ -233,7 +248,12 @@ public class ProductionExecutionPlanningService {
                                        i.updated_at,
                                        b.updated_at,
                                        component.source_type,
-                                       analysis_material.confirmed_route
+                                       analysis_material.confirmed_route,
+                                       b.control_stage,
+                                       b.hard_gate,
+                                       b.consumption_basis,
+                                       b.basis_output_qty,
+                                       b.allow_partial_package
                                 FROM production_plan_items i
                                 JOIN production_plans p
                                   ON p.id = i.plan_id
@@ -313,26 +333,72 @@ public class ProductionExecutionPlanningService {
         Map<UUID, LineAccumulator> lines = new LinkedHashMap<>();
         for (Object[] row : rows) {
             UUID sourceItemId = (UUID) row[0];
-            UUID componentGoodsId = (UUID) row[14];
-            UUID componentUnitId = (UUID) row[16];
             BigDecimal productRate = decimal(row[5]);
-            BigDecimal bomQty = decimal(row[17]);
-            if (productRate.signum() <= 0
-                    || decimal(row[6]).signum() <= 0
-                    || bomQty.signum() <= 0
-                    || componentUnitId == null
-                    || (row[18] != null && row[15] == null)) {
-                throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+            BigDecimal plannedQty = decimal(row[6]);
+            if (productRate.signum() <= 0 || plannedQty.signum() <= 0) {
+                throw conflict("生产计划行缺少有效单位换算率或数量，禁止生成执行分段");
             }
+            LineAccumulator line = lines.computeIfAbsent(
+                    sourceItemId,
+                    ignored -> new LineAccumulator(row));
+
+            String controlStage = requiredBomEnum(
+                    row[24], SUPPORTED_CONTROL_STAGES,
+                    "BOM 管控阶段配置无效，禁止生成执行分段");
+            boolean hardGate = requiredBomBoolean(row[25]);
+            String consumptionBasis = requiredBomEnum(
+                    row[26], SUPPORTED_CONSUMPTION_BASES,
+                    "BOM 消耗计量配置无效，禁止生成执行分段");
+            BigDecimal basisOutputQty = decimal(row[27]);
+            if (basisOutputQty.signum() <= 0) {
+                throw conflict("BOM 计量基数必须大于零，禁止生成执行分段");
+            }
+            boolean allowPartialPackage = requiredBomBoolean(row[28]);
+            BigDecimal bomQty = decimal(row[17]);
             String componentSourceType =
                     normalizeSourceType((String) row[22]);
             String analysisRoute = row[23] == null ? null
                     : row[23].toString().strip().toUpperCase(java.util.Locale.ROOT);
+            line.recordBomPart(String.join("|",
+                    "BOM",
+                    Objects.toString(row[13], ""),
+                    Objects.toString(row[14], ""),
+                    Objects.toString(row[15], ""),
+                    Objects.toString(row[16], ""),
+                    decimalText(bomQty),
+                    componentSourceType,
+                    Objects.toString(row[21], ""),
+                    Objects.toString(analysisRoute, ""),
+                    controlStage,
+                    Boolean.toString(hardGate),
+                    consumptionBasis,
+                    decimalText(basisOutputQty),
+                    Boolean.toString(allowPartialPackage)));
+
+            boolean productionHardGate = hardGate
+                    && PRODUCTION_CONTROL_STAGES.contains(controlStage);
+            if (!productionHardGate) {
+                // 发货包装、参考行和非硬门槛物料不是正式生产齐套或领料需求。
+                // 该 BOM 行仍已进入指纹，且 LineAccumulator 保留合法零物料成品行。
+                continue;
+            }
+            UUID componentGoodsId = (UUID) row[14];
+            UUID componentUnitId = (UUID) row[16];
+            if (bomQty.signum() <= 0
+                    || componentUnitId == null
+                    || (row[18] != null && row[15] == null)) {
+                throw conflict("BOM、颜色或基本单位数据不完整，禁止生成执行分段");
+            }
             String authoritativeRoute = analysisRoute == null
                     ? supportedSupplyRoute(componentSourceType) : analysisRoute;
             // 自制/多层 BOM 组件不再拒绝：route=MAKE 时参与齐套（消耗半成品现货），
             // 缺口由自制件派生内核生成子生产计划供给。
             BigDecimal perProduct = productRate.multiply(bomQty)
+                    .divide(
+                            CONSUMPTION_BASIS_PER_UNIT.equals(consumptionBasis)
+                                    ? BigDecimal.ONE : basisOutputQty,
+                            12,
+                            RoundingMode.CEILING)
                     .setScale(CompleteKitAllocator.USAGE_SCALE, RoundingMode.CEILING);
             CompleteKitAllocator.MaterialKey key =
                     new CompleteKitAllocator.MaterialKey(
@@ -345,25 +411,18 @@ public class ProductionExecutionPlanningService {
                 throw conflict(
                         "执行分段物料路线必须为采购、委外或自制");
             }
-            LineAccumulator line = lines.computeIfAbsent(
-                    sourceItemId,
-                    ignored -> new LineAccumulator(row));
             line.add(
                     new CompleteKitAllocator.MaterialUsage(
                             componentGoodsId,
                             (UUID) row[15],
                             componentUnitId,
                             perProduct,
-                            route),
-                    String.join("|",
-                            Objects.toString(row[13], ""),
-                            componentGoodsId.toString(),
-                            Objects.toString(row[15], ""),
-                            componentUnitId.toString(),
-                            decimalText(perProduct),
-                            componentSourceType,
-                            Objects.toString(row[21], ""),
-                            authoritativeRoute));
+                            route,
+                            List.of(new CompleteKitAllocator.ConsumptionRule(
+                                    consumptionBasis,
+                                    bomQty,
+                                    basisOutputQty,
+                                    allowPartialPackage))));
         }
         // 收集所有未维护 BOM 的正数量成品行；即使全部缺 BOM，也返回快照供前端精确提示。
         // 正式保存草案/审核下达由共享校验器 fail-closed，禁止形成不完整排产方案。
@@ -444,14 +503,8 @@ public class ProductionExecutionPlanningService {
                 continue; // legacy/history remains visible as unresolved no-BOM.
             }
             String policy = Objects.toString(row[13], "BOM_REQUIRED");
-            boolean explicitOverride = "BOM_REQUIRED".equals(policy)
-                    && row[15] != null && row[16] != null;
-            if ("NOT_PRODUCED".equals(policy)) {
-                throw conflict("明确标记为不生产的货品不能形成执行分段");
-            }
-            if (!"DIRECT_MAKE".equals(policy) && !explicitOverride) {
-                throw conflict("货品要求 BOM 但当前缺失，且没有有效的逐计划例外放行");
-            }
+            String zeroMaterialReason = authorizedZeroMaterialReason(
+                    row[14], policy, row[15], row[16]);
             UUID itemId = (UUID) row[0];
             BigDecimal unitRate = decimal(row[5]);
             BigDecimal plannedQty = decimal(row[6]);
@@ -463,6 +516,7 @@ public class ProductionExecutionPlanningService {
                     "ZERO-MATERIAL-PRODUCT-V1", itemId.toString(), row[2].toString(),
                     Objects.toString(row[3], ""), row[4].toString(),
                     decimalText(unitRate), decimalText(plannedQty), policy,
+                    Objects.toString(row[14], ""),
                     Objects.toString(row[15], ""), Objects.toString(row[16], ""),
                     Objects.toString(row[12], "")));
             result.add(new CompleteKitAllocator.ProductLine(
@@ -473,9 +527,44 @@ public class ProductionExecutionPlanningService {
                     Objects.toString(row[11], null),
                     new CompleteKitAllocator.Priority(
                             begin, ((Number) row[1]).intValue(), itemId),
-                    List.of(), fingerprint));
+                    List.of(), fingerprint, zeroMaterialReason,
+                    (UUID) row[14],
+                    ProductionExecutionSegment
+                                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE
+                            .equals(zeroMaterialReason)
+                            ? row[15].toString().strip()
+                            : null,
+                    ProductionExecutionSegment
+                                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE
+                            .equals(zeroMaterialReason)
+                            ? (UUID) row[16]
+                            : null));
         }
         return List.copyOf(result);
+    }
+
+    static String authorizedZeroMaterialReason(
+            Object materialAnalysisId,
+            String policy,
+            Object overrideReason,
+            Object overrideBy) {
+        if (materialAnalysisId == null) {
+            throw conflict("生产计划尚未形成已确认的物料分析事实，禁止无物料排产");
+        }
+        if ("NOT_PRODUCED".equals(policy)) {
+            throw conflict("明确标记为不生产的货品不能形成执行分段");
+        }
+        if ("DIRECT_MAKE".equals(policy)) {
+            return ProductionExecutionSegment.ZERO_MATERIAL_REASON_DIRECT_MAKE;
+        }
+        if ("BOM_REQUIRED".equals(policy)
+                && overrideReason != null
+                && !overrideReason.toString().isBlank()
+                && overrideBy instanceof UUID) {
+            return ProductionExecutionSegment
+                    .ZERO_MATERIAL_REASON_PLAN_BOM_OVERRIDE;
+        }
+        throw conflict("货品要求 BOM 但当前缺失，且没有有效的逐计划例外放行");
     }
 
     private Map<CompleteKitAllocator.MaterialKey, BigDecimal>
@@ -546,7 +635,11 @@ public class ProductionExecutionPlanningService {
                 line.productName(),
                 line.priority(),
                 line.materials(),
-                line.bomFingerprint());
+                line.bomFingerprint(),
+                line.zeroMaterialReason(),
+                line.zeroMaterialAnalysisId(),
+                line.zeroMaterialExceptionReason(),
+                line.zeroMaterialAuthorizedBy());
     }
 
     private static BigDecimal scaleProduct(BigDecimal value) {
@@ -597,6 +690,26 @@ public class ProductionExecutionPlanningService {
         return rawSourceType == null ? "" : rawSourceType.strip();
     }
 
+    private static String requiredBomEnum(
+            Object rawValue, Set<String> allowed, String errorMessage) {
+        if (rawValue == null) {
+            throw conflict(errorMessage);
+        }
+        String value = rawValue.toString().strip()
+                .toUpperCase(java.util.Locale.ROOT);
+        if (!allowed.contains(value)) {
+            throw conflict(errorMessage);
+        }
+        return value;
+    }
+
+    private static boolean requiredBomBoolean(Object rawValue) {
+        if (!(rawValue instanceof Boolean value)) {
+            throw conflict("BOM 管控配置不完整，禁止生成执行分段");
+        }
+        return value;
+    }
+
     private static ApiException validation(String message) {
         return new ApiException(ErrorCode.VALIDATION_FAILED, message);
     }
@@ -626,9 +739,11 @@ public class ProductionExecutionPlanningService {
             bomParts.add("SOURCE|" + row[0] + "|" + Objects.toString(row[20], ""));
         }
 
-        private void add(
-                CompleteKitAllocator.MaterialUsage material,
-                String fingerprintPart) {
+        private void recordBomPart(String fingerprintPart) {
+            bomParts.add(fingerprintPart);
+        }
+
+        private void add(CompleteKitAllocator.MaterialUsage material) {
             CompleteKitAllocator.MaterialKey key =
                     material.materialKey();
             CompleteKitAllocator.MaterialUsage existing =
@@ -650,9 +765,12 @@ public class ProductionExecutionPlanningService {
                         material.unitId(),
                         existing.perProductQty()
                                 .add(material.perProductQty()),
-                        material.supplyRoute()));
+                        material.supplyRoute(),
+                        java.util.stream.Stream.concat(
+                                        existing.consumptionRules().stream(),
+                                        material.consumptionRules().stream())
+                                .toList()));
             }
-            bomParts.add(fingerprintPart);
         }
 
         private CompleteKitAllocator.ProductLine toProductLine() {
@@ -676,7 +794,11 @@ public class ProductionExecutionPlanningService {
                     (String) row[12],
                     new CompleteKitAllocator.Priority(begin, lineNo, sourceItemId),
                     List.copyOf(materials.values()),
-                    PlanningPackageFingerprint.sha256(bomParts));
+                    PlanningPackageFingerprint.sha256(bomParts),
+                    materials.isEmpty()
+                            ? ProductionExecutionSegment
+                                    .ZERO_MATERIAL_REASON_NO_PRODUCTION_HARD_GATE
+                            : null);
         }
     }
 }

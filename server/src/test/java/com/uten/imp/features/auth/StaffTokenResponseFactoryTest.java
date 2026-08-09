@@ -15,6 +15,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -36,7 +37,7 @@ class StaffTokenResponseFactoryTest {
 
         UUID currentEmployeeId = UUID.randomUUID();
         UserAccountRepository.AccountState current =
-                state(currentEmployeeId, "E2002", false, false, 7, 11);
+                state(currentEmployeeId, "E2002", false, true, 7, 11);
         when(users.findAccountStateById(detached.getId())).thenReturn(Optional.of(current));
         when(permissions.authorizationSnapshot(detached.getId(), currentEmployeeId, false))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
@@ -60,6 +61,8 @@ class StaffTokenResponseFactoryTest {
         assertEquals("E2002", response.user().loginAccount());
         assertEquals(currentEmployeeId.toString(), response.user().employeeId());
         assertEquals("Current User", response.user().name());
+        assertTrue(response.mustChangePassword());
+        assertTrue(response.user().mustChangePassword());
         assertFalse(response.user().superAdmin());
         assertEquals(java.util.List.of("employee", "warehouse"), response.user().roles());
         assertEquals(java.util.List.of("employee:view", "stock:view"), response.user().permissions());

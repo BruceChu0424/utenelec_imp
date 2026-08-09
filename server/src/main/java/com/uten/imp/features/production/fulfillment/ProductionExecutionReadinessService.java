@@ -61,6 +61,11 @@ public class ProductionExecutionReadinessService {
         List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT d.execution_segment_id
                         FROM purchase_receipt_items receipt_item
+                        JOIN purchase_receipts receipt
+                          ON receipt.id = receipt_item.receipt_id
+                         AND receipt.status = 1
+                         AND receipt.is_deleted = FALSE
+                         AND receipt.warehouse_id = :warehouseId
                         JOIN production_material_supply_pegs peg
                           ON peg.supply_type = 'PURCHASE_ORDER_ITEM'
                          AND peg.supply_item_id =
@@ -98,6 +103,11 @@ public class ProductionExecutionReadinessService {
         List<UUID> segmentIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT demand.execution_segment_id
                         FROM subcontract_receipt_items receipt_item
+                        JOIN subcontract_receipts receipt
+                          ON receipt.id = receipt_item.receipt_id
+                         AND receipt.status = 1
+                         AND receipt.is_deleted = FALSE
+                         AND receipt.warehouse_id = :warehouseId
                         JOIN production_material_supply_pegs peg
                           ON peg.supply_type =
                                 'SUBCONTRACT_ORDER_ITEM'
@@ -212,6 +222,7 @@ public class ProductionExecutionReadinessService {
                                 JOIN stock_documents receipt
                                   ON receipt.id = receipt_item.doc_id
                                  AND receipt.doc_type = 'FINISHED_IN'
+                                 AND receipt.status = 1
                                  AND receipt.is_deleted = FALSE
                                  AND receipt.warehouse_id = :warehouseId
                                 JOIN production_material_supply_pegs peg
@@ -1029,11 +1040,19 @@ public class ProductionExecutionReadinessService {
                                                peg.allocated_qty
                                                    - peg.consumed_qty
                                                    - peg.released_qty,
-                                               receipt_item.qty
-                                                   * COALESCE(
-                                                       receipt_item.unit_rate,
-                                                       1)
-                                                   - COALESCE((
+                                                CASE
+                                                    WHEN inspection.id IS NULL
+                                                    THEN receipt_item.qty
+                                                        * COALESCE(
+                                                            receipt_item.unit_rate,
+                                                            1)
+                                                    WHEN inspection.status =
+                                                        'RESOLVED'
+                                                    THEN inspection
+                                                        .passed_base_qty
+                                                    ELSE 0
+                                                END
+                                                    - COALESCE((
                                                        SELECT SUM(
                                                            allocation
                                                                .allocated_qty)
@@ -1058,11 +1077,16 @@ public class ProductionExecutionReadinessService {
                                       ON receipt_item.order_item_id =
                                          peg.supply_item_id
                                      AND receipt_item.is_deleted = FALSE
-                                    JOIN purchase_receipts receipt
+                                     JOIN purchase_receipts receipt
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
-                                     AND receipt.warehouse_id = :warehouseId
+                                      AND receipt.warehouse_id = :warehouseId
+                                    LEFT JOIN procurement_inspection_items
+                                      inspection
+                                      ON inspection.receipt_type = 'PURCHASE'
+                                     AND inspection.receipt_item_id =
+                                         receipt_item.id
                                     WHERE peg.demand_id = :demandId
                                       AND peg.supply_type =
                                           'PURCHASE_ORDER_ITEM'
@@ -1070,21 +1094,13 @@ public class ProductionExecutionReadinessService {
                                       AND peg.allocated_qty
                                             - peg.consumed_qty
                                             - peg.released_qty > 0
-                                      AND (
-                                          receipt.status = 1
-                                          OR receipt.id = :triggeringReceiptId
-                                      )
+                                      AND receipt.status = 1
                                     ORDER BY receipt.bill_date,
                                              receipt.id, receipt_item.id
-                                    FOR UPDATE OF peg, receipt_item, receipt
+                                    FOR UPDATE OF peg
                                     """)
                             .setParameter("warehouseId", warehouseId)
-                            .setParameter("demandId", demand.id())
-                            .setParameter(
-                                    "triggeringReceiptId",
-                                    triggeringKind == ReceiptKind.PURCHASE
-                                            ? triggeringReceiptId
-                                            : new UUID(0L, 0L)));
+                            .setParameter("demandId", demand.id()));
             List<ReceiptContribution> values = new ArrayList<>();
             rows.addAll(NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
@@ -1095,11 +1111,19 @@ public class ProductionExecutionReadinessService {
                                                peg.allocated_qty
                                                    - peg.consumed_qty
                                                    - peg.released_qty,
-                                               receipt_item.qty
-                                                   * COALESCE(
-                                                       receipt_item.unit_rate,
-                                                       1)
-                                                   - COALESCE((
+                                                CASE
+                                                    WHEN inspection.id IS NULL
+                                                    THEN receipt_item.qty
+                                                        * COALESCE(
+                                                            receipt_item.unit_rate,
+                                                            1)
+                                                    WHEN inspection.status =
+                                                        'RESOLVED'
+                                                    THEN inspection
+                                                        .passed_base_qty
+                                                    ELSE 0
+                                                END
+                                                    - COALESCE((
                                                        SELECT SUM(
                                                            allocation
                                                                .allocated_qty)
@@ -1124,11 +1148,17 @@ public class ProductionExecutionReadinessService {
                                       ON receipt_item.order_item_id =
                                          peg.supply_item_id
                                      AND receipt_item.is_deleted = FALSE
-                                    JOIN subcontract_receipts receipt
+                                     JOIN subcontract_receipts receipt
                                       ON receipt.id =
                                          receipt_item.receipt_id
                                      AND receipt.is_deleted = FALSE
-                                     AND receipt.warehouse_id = :warehouseId
+                                      AND receipt.warehouse_id = :warehouseId
+                                    LEFT JOIN procurement_inspection_items
+                                      inspection
+                                      ON inspection.receipt_type =
+                                         'SUBCONTRACT'
+                                     AND inspection.receipt_item_id =
+                                         receipt_item.id
                                     WHERE peg.demand_id = :demandId
                                       AND peg.supply_type =
                                           'SUBCONTRACT_ORDER_ITEM'
@@ -1136,21 +1166,13 @@ public class ProductionExecutionReadinessService {
                                       AND peg.allocated_qty
                                             - peg.consumed_qty
                                             - peg.released_qty > 0
-                                      AND (
-                                          receipt.status = 1
-                                          OR receipt.id = :triggeringReceiptId
-                                      )
+                                      AND receipt.status = 1
                                     ORDER BY receipt.bill_date,
                                              receipt.id, receipt_item.id
-                                    FOR UPDATE OF peg, receipt_item, receipt
+                                    FOR UPDATE OF peg
                                     """)
                             .setParameter("warehouseId", warehouseId)
-                            .setParameter("demandId", demand.id())
-                            .setParameter(
-                                    "triggeringReceiptId",
-                                    triggeringKind == ReceiptKind.SUBCONTRACT
-                                            ? triggeringReceiptId
-                                            : new UUID(0L, 0L))));
+                            .setParameter("demandId", demand.id())));
             rows.addAll(NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
                                     SELECT receipt.id,
@@ -1209,24 +1231,16 @@ public class ProductionExecutionReadinessService {
                                       AND receipt_item.color_id IS NOT DISTINCT
                                           FROM :colorId
                                       AND receipt_item.unit_id = :unitId
-                                      AND (
-                                          receipt.status = 1
-                                          OR receipt.id = :triggeringReceiptId
-                                      )
+                                      AND receipt.status = 1
                                     ORDER BY receipt.bill_date,
                                              receipt.id, receipt_item.id
-                                    FOR UPDATE OF peg, receipt_item, receipt
+                                    FOR UPDATE OF peg
                                     """)
                             .setParameter("warehouseId", warehouseId)
                             .setParameter("demandId", demand.id())
                             .setParameter("goodsId", demand.goodsId())
                             .setParameter("colorId", demand.colorId())
-                            .setParameter("unitId", demand.unitId())
-                            .setParameter(
-                                    "triggeringReceiptId",
-                                    triggeringKind == ReceiptKind.MAKE
-                                            ? triggeringReceiptId
-                                            : new UUID(0L, 0L))));
+                            .setParameter("unitId", demand.unitId())));
             rows.sort(Comparator
                     .comparing(
                             (Object[] row) -> localDate(row[6]),

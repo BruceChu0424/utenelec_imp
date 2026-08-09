@@ -304,6 +304,30 @@ abstract class AppLocalizations {
   /// **'账号或密码错误'**
   String get loginFailed;
 
+  /// No description provided for @loginServerRecoveryAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复自动选择服务器'**
+  String get loginServerRecoveryAction;
+
+  /// No description provided for @loginServerRecoveryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。'**
+  String get loginServerRecoveryHint;
+
+  /// No description provided for @loginServerRecoverySuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已恢复自动选择，请重新登录'**
+  String get loginServerRecoverySuccess;
+
+  /// No description provided for @loginServerRecoveryFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器选择恢复失败，请稍后重试或联系管理员'**
+  String get loginServerRecoveryFailed;
+
   /// No description provided for @loginFooter.
   ///
   /// In zh, this message translates to:
@@ -5262,6 +5286,72 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'切换失败'**
   String get impersonationStartFailed;
+
+  /// No description provided for @exportDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出 Excel'**
+  String get exportDialogTitle;
+
+  /// No description provided for @exportPasswordOptionalHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。'**
+  String get exportPasswordOptionalHint;
+
+  /// No description provided for @exportPasswordOptionalLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开密码（可选，1–128 位）'**
+  String get exportPasswordOptionalLabel;
+
+  /// No description provided for @exportPasswordConfirmLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认密码'**
+  String get exportPasswordConfirmLabel;
+
+  /// No description provided for @exportPasswordTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码不能超过 128 位'**
+  String get exportPasswordTooLong;
+
+  /// No description provided for @exportPasswordMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'两次密码不一致'**
+  String get exportPasswordMismatch;
+
+  /// No description provided for @exportDownloadPlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接下载'**
+  String get exportDownloadPlain;
+
+  /// No description provided for @exportDownloadEncrypted.
+  ///
+  /// In zh, this message translates to:
+  /// **'加密下载'**
+  String get exportDownloadEncrypted;
+
+  /// No description provided for @exportFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出失败，请稍后重试'**
+  String get exportFailed;
+
+  /// No description provided for @exportDownloadStarted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开始下载 {name}'**
+  String exportDownloadStarted(String name);
+
+  /// No description provided for @exportDownloadSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存：{path}'**
+  String exportDownloadSaved(String path);
 }
 
 class _AppLocalizationsDelegate

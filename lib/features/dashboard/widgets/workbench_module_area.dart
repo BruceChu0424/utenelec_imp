@@ -339,7 +339,7 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.production,
         badge: WorkbenchBadgeKind.production,
       ),
-      // 空调控制：按需求置灰占位（功能规划接入中），与财税部 comingSoon 卡片同款，暂不跳转
+      // 纯 Mock 已下线；保留不可点击的规划占位，后续接入真实设备通道后再启用。
       _ModuleItem(
         icon: Icons.hvac_outlined,
         label: '空调控制',
@@ -396,7 +396,7 @@ const _allGroups = <_ModuleGroup>[
     title: '品质管理部',
     color: UtenColors.teal500,
     items: [
-      // 仍为前端 Mock、未接后端：置灰，名字追加「（功能规划接入中）」、暂不跳转
+      // 纯 Mock 已下线；保留不可点击的规划占位，后续接入真实质检链路后再启用。
       _ModuleItem(
         icon: Icons.science_outlined,
         label: '检测记录',

@@ -32,11 +32,15 @@ class SalesOrderProgressRow {
   /// 生产进度 = 已产/订货（外层总进度环口径，clamp≤1）。
   final double productionPct;
 
-  /// PENDING 待排产 / PRODUCING 生产中 / SHIPPABLE 可发货 / SHIPPED 已发货。
+  /// PENDING 待排产 / PRODUCING 生产中 / SHIPPABLE 可分批发货 / SHIPPED 已发货。
   final String stage;
 
   /// 是否有可发货量（reserved_qty>0）。
   bool get shippable => reservedQty > 0.0001;
+
+  /// 订单未交数量；分批可发不代表订单已经完成。
+  double get remainingQty =>
+      (orderQty - shippedQty).clamp(0, double.infinity).toDouble();
 
   factory SalesOrderProgressRow.fromJson(Map<String, dynamic> json) =>
       SalesOrderProgressRow(
@@ -59,7 +63,7 @@ class SalesOrderProgressRow {
 String salesProgressStageLabel(String stage) => switch (stage) {
   'PENDING' => '待排产',
   'PRODUCING' => '生产中',
-  'SHIPPABLE' => '可发货',
+  'SHIPPABLE' => '可分批发货',
   'SHIPPED' => '已发货',
   _ => '—',
 };

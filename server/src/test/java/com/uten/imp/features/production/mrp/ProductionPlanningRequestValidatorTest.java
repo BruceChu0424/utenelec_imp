@@ -85,6 +85,20 @@ class ProductionPlanningRequestValidatorTest {
     }
 
     @Test
+    void rejectsLegacySubplanItemsBeforePreview() {
+        GeneratePlanningPackageRequest request = request("a".repeat(64));
+        request.setItems(List.of(new GenerateSubplansRequest.Line()));
+
+        assertThatThrownBy(() -> validator.validateCurrent(
+                UUID.randomUUID(), request))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getCode())
+                        .isEqualTo(ErrorCode.CONFLICT))
+                .hasMessageContaining("items 是旧自制子计划字段");
+        verify(planning, never()).preview(any(), any());
+    }
+
+    @Test
     void rejectsLeafProductWithoutDirectMakePolicyOrExplicitOverride() {
         // 无 BOM 不再按“叶子件”自动放行；preview 只把未获 DIRECT_MAKE/例外的行列入此集合。
         GeneratePlanningPackageRequest request = request("a".repeat(64));

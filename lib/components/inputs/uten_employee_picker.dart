@@ -2,8 +2,9 @@
 //
 // 触发形态与 UtenDepartmentPicker 对齐：只读输入框样式 field
 //（显示选中人姓名 + 部门），点击拉开抽屉：
-// - compact：showModalBottomSheet（isScrollControlled，约 85% 屏高）
-// - medium/expanded：右侧滑入的 420 宽 end drawer 面板（showGeneralDialog）
+// - compact：约 85% 屏高的底部抽屉；
+// - medium/expanded：右侧滑入的 420dp end drawer。
+// 响应式展示壳统一复用 showUtenAdaptivePanel。
 //
 // 抽屉内：标题行 + 关闭、UtenSearchBar（内置 300ms 防抖）调 loader、
 // 可滚动结果列表（姓名 + 部门副标题），点选即关。
@@ -12,7 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../layout/uten_adaptive_panel.dart';
 import 'required_field_decoration.dart';
 import 'uten_search_bar.dart';
 
@@ -112,44 +113,10 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
       emptyMessage: widget.emptyMessage,
       emptyDescription: widget.emptyDescription,
     );
-    final UtenEmployeePickerItem? result;
-    if (context.breakpoint.isCompact) {
-      result = await showModalBottomSheet<UtenEmployeePickerItem>(
-        context: context,
-        isScrollControlled: true,
-        builder: (ctx) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
-          child: SizedBox(
-            height: MediaQuery.sizeOf(ctx).height * 0.85,
-            child: sheet,
-          ),
-        ),
-      );
-    } else {
-      result = await showGeneralDialog<UtenEmployeePickerItem>(
-        context: context,
-        barrierDismissible: true,
-        barrierLabel: MaterialLocalizations.of(
-          context,
-        ).modalBarrierDismissLabel,
-        barrierColor: Colors.black54,
-        transitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (ctx, _, _) => Align(
-          alignment: Alignment.centerRight,
-          child: Material(
-            color: Theme.of(ctx).colorScheme.surface,
-            child: SizedBox(width: 420, height: double.infinity, child: sheet),
-          ),
-        ),
-        transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-      );
-    }
+    final result = await showUtenAdaptivePanel<UtenEmployeePickerItem>(
+      context: context,
+      builder: (_) => sheet,
+    );
     final r = result;
     if (r != null && mounted) {
       setState(() => _selected = r);

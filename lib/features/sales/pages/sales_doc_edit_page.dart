@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_import_button.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -108,7 +109,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   /// 网格底部「总数量」实时汇总（行增删/数量改动时刷新）。
   final _totalQtyNotifier = ValueNotifier<double>(0);
   bool _saving = false;
-  bool _loading = false;
+  bool _loading = true;
+  String? _initializationError;
 
   /// 必填校验未通过的表头字段 key（client/warehouse/currency/deliverDate/items），
   /// 对应输入框描红；字段改值即时清除。
@@ -153,32 +155,36 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   }
 
   Future<void> _init() async {
-    setState(() => _loading = true);
-    await ref.read(salesMasterNameServiceProvider).ensureLoaded();
-    if (widget.id == null && _cfg.hasWarehouse) {
-      // D1（王浩然）：新建出库单按「本人类型最近一张单的仓库」预填，减少手选。
-      try {
-        final last = await ref
-            .read(salesRepositoryProvider(widget.docType))
-            .list(size: 1);
-        if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
-          _warehouseId = last.items.first.warehouseId;
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _initializationError = null;
+    });
+    try {
+      await ref.read(salesMasterNameServiceProvider).ensureLoaded();
+      if (widget.id == null && _cfg.hasWarehouse) {
+        // D1（王浩然）：新建出库单按「本人类型最近一张单的仓库」预填，减少手选。
+        try {
+          final last = await ref
+              .read(salesRepositoryProvider(widget.docType))
+              .list(size: 1);
+          if (last.items.isNotEmpty && last.items.first.warehouseId != null) {
+            _warehouseId = last.items.first.warehouseId;
+          }
+        } catch (_) {
+          /* 预填失败静默，用户手选 */
         }
-      } catch (_) {
-        /* 预填失败静默，用户手选 */
       }
-    }
-    if (widget.id == null && (_cfg.hasSeller || _cfg.hasSender)) {
-      // 业务员/发货人默认当前登录人（员工档案 id），界面上可改。
-      final meId = ref.read(sessionProvider).user?.employeeId;
-      if (meId != null && meId.isNotEmpty) {
-        if (_cfg.hasSeller) _sellerId = meId;
-        if (_cfg.hasSender) _senderId = meId;
-        await _preloadEmployees([meId]);
+      if (widget.id == null && (_cfg.hasSeller || _cfg.hasSender)) {
+        // 业务员/发货人默认当前登录人（员工档案 id），界面上可改。
+        final meId = ref.read(sessionProvider).user?.employeeId;
+        if (meId != null && meId.isNotEmpty) {
+          if (_cfg.hasSeller) _sellerId = meId;
+          if (_cfg.hasSender) _senderId = meId;
+          await _preloadEmployees([meId]);
+        }
       }
-    }
-    if (widget.id != null) {
-      try {
+      if (widget.id != null) {
         final d = await ref
             .read(salesRepositoryProvider(widget.docType))
             .detail(widget.id!);
@@ -270,16 +276,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           rows.add(row);
         }
         _grid.replaceAll(rows);
-      } on ApiException catch (e) {
-        if (mounted) context.appError(e.message);
-      } catch (_) {
-        // 静默降级
       }
+      if (_grid.isEmpty) {
+        _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+      }
+    } on ApiException catch (e) {
+      _initializationError = e.message;
+    } catch (_) {
+      _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    if (_grid.isEmpty) {
-      _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
-    }
-    if (mounted) setState(() => _loading = false);
   }
 
   DateTime? _parseDate(String? s) =>
@@ -588,8 +595,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
         'qty': qty,
         if (price case final price?) ...{
           'price': price,
-          'amountOriginal': qty * price,
-          'amountLocal': qty * price,
+          'amountOriginal': r.amountNotifier.value,
+          // 销售订单只提交所选币种的原币金额；销售请求不得夹带伪本币事实。
+          if (widget.docType != SalesDocType.order) 'amountLocal': qty * price,
         },
         if (r.orderItemId != null) 'orderItemId': r.orderItemId,
         if (r.outItemId != null) 'outItemId': r.outItemId,
@@ -702,6 +710,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  String _totalText(
+    SalesMasterNameService names, {
+    required String prefix,
+    required double value,
+  }) {
+    if (widget.docType != SalesDocType.order) {
+      return '$prefix ¥${value.toStringAsFixed(2)}';
+    }
+    final resolved = names.currency(_currencyId);
+    final currency = resolved == '—' ? '订单币种' : resolved;
+    return '$prefix（$currency） ${value.toStringAsFixed(2)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -713,7 +734,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
           onPressed: () =>
               popOrBackTo(context, defaultPath: SalesRoutePath.hub),
         ),
-        actions: _cfg.skipListOnCreate
+        actions:
+            !_loading && _initializationError == null && _cfg.skipListOnCreate
             ? [
                 UtenButton(
                   type: UtenButtonType.tonal,
@@ -728,6 +750,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+            : _initializationError != null
+            ? UtenEmpty.error(
+                key: const ValueKey('sales-doc-edit-load-error'),
+                message: '${_cfg.label}加载失败',
+                description:
+                    '${_initializationError!}\n当前未加载任何可编辑数据。请重试，或使用左上角返回按钮退出编辑。',
+                actionLabel: '重试',
+                onAction: _init,
+              )
             : UtenContentContainer(
                 child: Scrollbar(
                   controller: _scrollCtl,
@@ -1047,7 +1078,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                             ValueListenableBuilder<double>(
                               valueListenable: _grid.totalListenable,
                               builder: (_, t, _) => Text(
-                                '总金额 ¥${t.toStringAsFixed(2)}',
+                                _totalText(names, prefix: '总金额', value: t),
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -1061,45 +1092,47 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage> {
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            border: Border(
-              top: BorderSide(color: theme.colorScheme.outlineVariant),
-            ),
-          ),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ValueListenableBuilder<double>(
-                valueListenable: _grid.totalListenable,
-                builder: (_, total, _) => Text(
-                  '合计 ¥${total.toStringAsFixed(2)}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+      bottomNavigationBar: _loading || _initializationError != null
+          ? null
+          : SafeArea(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
                 ),
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ValueListenableBuilder<double>(
+                      valueListenable: _grid.totalListenable,
+                      builder: (_, total, _) => Text(
+                        _totalText(names, prefix: '合计', value: total),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s16),
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      onPressed: () =>
+                          popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+                      child: const Text('取消'),
+                    ),
+                    const SizedBox(width: UtenSpacing.s12),
+                    UtenButton(
+                      isLoading: _saving,
+                      icon: Icons.save_outlined,
+                      onPressed: _saving ? null : _save,
+                      child: const Text('保存'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: UtenSpacing.s16),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: () =>
-                    popOrBackTo(context, defaultPath: SalesRoutePath.hub),
-                child: const Text('取消'),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              UtenButton(
-                isLoading: _saving,
-                icon: Icons.save_outlined,
-                onPressed: _saving ? null : _save,
-                child: const Text('保存'),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 

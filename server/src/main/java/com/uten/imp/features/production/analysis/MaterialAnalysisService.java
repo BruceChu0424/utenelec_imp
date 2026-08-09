@@ -51,6 +51,13 @@ public class MaterialAnalysisService {
     static final String STATUS_PARTIAL = "PARTIALLY_PLANNED";
     static final String SOURCE_SALES = "SALES_ORDER_ITEM";
     static final String SOURCE_MAKE_COMPONENT = "MAKE_COMPONENT";
+    static final String STAGE_START = "START";
+    static final String STAGE_ASSEMBLY = "ASSEMBLY";
+    static final String STAGE_FINISH = "FINISH";
+    static final String STAGE_SHIP = "SHIP";
+    static final String STAGE_REFERENCE = "REFERENCE";
+    static final Set<String> HARD_COMMITMENT_STAGES = Set.of(
+            STAGE_START, STAGE_ASSEMBLY, STAGE_FINISH);
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
@@ -191,7 +198,8 @@ public class MaterialAnalysisService {
                 FROM production_material_analyses analysis
                 WHERE analysis.is_deleted = FALSE
                   AND (:status = '' OR analysis.status = :status)
-                  AND """ + ownerScope.predicate() + """
+                  AND (%s)
+
                   AND EXISTS (
                       SELECT 1
                       FROM production_material_analysis_items source
@@ -209,7 +217,7 @@ public class MaterialAnalysisService {
                              lower(COALESCE(goods.name,'')) LIKE :keywordLike OR
                              lower(COALESCE(sales_order.bill_no,'')) LIKE :keywordLike)
                   )
-                """;
+                """.formatted(ownerScope.predicate());
         Query countQuery = em.createNativeQuery("SELECT COUNT(*) " + filters)
                 .setParameter("status", normalizedStatus)
                 .setParameter("sourceType", normalizedSource)
@@ -335,7 +343,7 @@ public class MaterialAnalysisService {
                         .executeUpdate();
             }
         }
-        bumpFingerprint(analysisId);
+        refreshLocked(analysisId);
         recordSimpleCommand(analysisId, "ROUTE", request.idempotencyKey(), requestHash);
         return detailInternal(analysisId, false);
     }
@@ -466,7 +474,8 @@ public class MaterialAnalysisService {
                       AND pi.is_deleted = FALSE AND p.is_deleted = FALSE
                       AND p.status = 0 AND p.is_canceled = FALSE
                 ) draft ON TRUE
-                WHERE """ + predicate);
+                WHERE
+                """ + predicate);
         if (!kw.isEmpty()) countQuery.setParameter("kw", "%" + kw + "%");
         long total = ((Number) countQuery.getSingleResult()).longValue();
         Query idsQuery = em.createNativeQuery("""
@@ -483,7 +492,8 @@ public class MaterialAnalysisService {
                       AND pi.is_deleted = FALSE AND p.is_deleted = FALSE
                       AND p.status = 0 AND p.is_canceled = FALSE
                 ) draft ON TRUE
-                WHERE """ + predicate + """
+                WHERE
+                """ + predicate + """
                 GROUP BY o.id, o.deliver_date, o.bill_date, o.bill_no
                 ORDER BY o.deliver_date NULLS LAST, o.bill_date, o.bill_no, o.id
                 """);
@@ -606,7 +616,10 @@ public class MaterialAnalysisService {
             Set<String> snapshotted = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
                             SELECT bom_item_id, goods_id, color_id, unit_id,
-                                   per_product_qty, source_suggestion
+                                   parent_per_product_qty, bom_qty, per_product_qty,
+                                   control_stage, consumption_basis, basis_output_qty,
+                                   allow_partial_package, hard_gate, source_suggestion,
+                                   calculation_mode
                             FROM production_material_analysis_materials
                             WHERE analysis_id = :analysisId
                               AND analysis_item_id = :analysisItemId
@@ -615,9 +628,17 @@ public class MaterialAnalysisService {
                             """)
                             .setParameter("analysisId", analysisId)
                             .setParameter("analysisItemId", source.analysisItemId()))
-                    .stream().map(row -> bomSignaturePart(
-                            uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
-                            decimal(row[4]), string(row[5])))
+                    .stream().map(row -> {
+                        if (!"EDGE_RULE".equals(string(row[13]))) {
+                            throw conflict("历史物料快照必须先刷新，才能生成生产计划");
+                        }
+                        return bomSignaturePart(
+                                uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
+                                decimal(row[4]), decimal(row[5]), decimal(row[6]),
+                                string(row[7]), string(row[8]), decimal(row[9]),
+                                Boolean.TRUE.equals(row[10]),
+                                Boolean.TRUE.equals(row[11]), string(row[12]));
+                    })
                     .collect(Collectors.toCollection(TreeSet::new));
             if (!current.equals(snapshotted)) {
                 throw conflict("BOM 直接层已变更，必须刷新物料分析并重新联合预览");
@@ -627,15 +648,25 @@ public class MaterialAnalysisService {
 
     private static String bomSignaturePart(BomNode node) {
         return bomSignaturePart(node.bomItemId(), node.goodsId(), node.colorId(),
-                node.unitId(), node.perProductQty(), node.suggestion());
+                node.unitId(), node.parentPerProductQty(), node.bomQty(),
+                node.perProductQty(), node.controlStage(), node.consumptionBasis(),
+                node.basisOutputQty(), node.allowPartialPackage(), node.hardGate(),
+                node.suggestion());
     }
 
     private static String bomSignaturePart(
             UUID bomItemId, UUID goodsId, UUID colorId, UUID unitId,
-            BigDecimal perProductQty, String suggestion) {
+            BigDecimal parentPerProductQty, BigDecimal bomQty,
+            BigDecimal perProductQty, String controlStage,
+            String consumptionBasis, BigDecimal basisOutputQty,
+            boolean allowPartialPackage, boolean hardGate, String suggestion) {
         return String.join("|", Objects.toString(bomItemId, ""),
                 Objects.toString(goodsId, ""), Objects.toString(colorId, ""),
-                Objects.toString(unitId, ""), decimalText(perProductQty),
+                Objects.toString(unitId, ""), decimalText(parentPerProductQty),
+                decimalText(bomQty), decimalText(perProductQty),
+                Objects.toString(controlStage, ""),
+                Objects.toString(consumptionBasis, ""), decimalText(basisOutputQty),
+                Boolean.toString(allowPartialPackage), Boolean.toString(hardGate),
                 Objects.toString(suggestion, ""));
     }
 
@@ -706,8 +737,7 @@ public class MaterialAnalysisService {
                     key, source.deliveryDate());
             BigDecimal available = stock.available().subtract(node.safetyStock())
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
-            BigDecimal required = node.perProductQty().multiply(source.remainingAnalysisQty())
-                    .setScale(4, RoundingMode.CEILING);
+            BigDecimal required = node.snapshotRequiredQty();
             BigDecimal shortage = required.subtract(available)
                     .max(BigDecimal.ZERO).setScale(4, RoundingMode.CEILING);
             boolean lowerPending = node.hasChildren()
@@ -718,7 +748,11 @@ public class MaterialAnalysisService {
                         bom_item_id, goods_id, color_id, unit_id, depth, path,
                         per_product_qty, required_qty, available_qty, reserved_qty,
                         allocated_available_qty, safety_stock_qty, inbound_qty,
+                        allocated_start_qty, allocated_finish_qty, allocated_ship_qty,
                         shortage_qty, expected_ready_date,
+                        control_stage, consumption_basis, basis_output_qty,
+                        allow_partial_package, hard_gate, bom_qty,
+                        parent_per_product_qty, calculation_mode,
                         source_suggestion, lower_level_pending, active,
                         created_by, updated_by
                     ) VALUES (
@@ -726,7 +760,12 @@ public class MaterialAnalysisService {
                         :bomItemId, :goodsId, :colorId, :unitId, :depth, :path,
                         :perProductQty, :requiredQty, :availableQty, :reservedQty,
                         :allocatedAvailableQty, :safetyStockQty, :inboundQty,
+                        :allocatedAvailableQty, :allocatedAvailableQty,
+                        :allocatedAvailableQty,
                         :shortageQty, :expectedReadyDate,
+                        :controlStage, :consumptionBasis, :basisOutputQty,
+                        :allowPartialPackage, :hardGate, :bomQty,
+                        :parentPerProductQty, 'EDGE_RULE',
                         :suggestion, :lowerPending, TRUE, :actorId, :actorId
                     )
                     ON CONFLICT (analysis_item_id, node_key) DO UPDATE SET
@@ -741,11 +780,22 @@ public class MaterialAnalysisService {
                         required_qty = EXCLUDED.required_qty,
                         available_qty = EXCLUDED.available_qty,
                         allocated_available_qty = EXCLUDED.allocated_available_qty,
+                        allocated_start_qty = EXCLUDED.allocated_start_qty,
+                        allocated_finish_qty = EXCLUDED.allocated_finish_qty,
+                        allocated_ship_qty = EXCLUDED.allocated_ship_qty,
                         reserved_qty = EXCLUDED.reserved_qty,
                         safety_stock_qty = EXCLUDED.safety_stock_qty,
                         inbound_qty = EXCLUDED.inbound_qty,
                         shortage_qty = EXCLUDED.shortage_qty,
                         expected_ready_date = EXCLUDED.expected_ready_date,
+                        control_stage = EXCLUDED.control_stage,
+                        consumption_basis = EXCLUDED.consumption_basis,
+                        basis_output_qty = EXCLUDED.basis_output_qty,
+                        allow_partial_package = EXCLUDED.allow_partial_package,
+                        hard_gate = EXCLUDED.hard_gate,
+                        bom_qty = EXCLUDED.bom_qty,
+                        parent_per_product_qty = EXCLUDED.parent_per_product_qty,
+                        calculation_mode = EXCLUDED.calculation_mode,
                         source_suggestion = EXCLUDED.source_suggestion,
                         lower_level_pending = EXCLUDED.lower_level_pending,
                         confirmed_route = CASE WHEN
@@ -761,6 +811,18 @@ public class MaterialAnalysisService {
                                 IS DISTINCT FROM EXCLUDED.path
                             OR production_material_analysis_materials.per_product_qty
                                 IS DISTINCT FROM EXCLUDED.per_product_qty
+                            OR production_material_analysis_materials.control_stage
+                                IS DISTINCT FROM EXCLUDED.control_stage
+                            OR production_material_analysis_materials.consumption_basis
+                                IS DISTINCT FROM EXCLUDED.consumption_basis
+                            OR production_material_analysis_materials.basis_output_qty
+                                IS DISTINCT FROM EXCLUDED.basis_output_qty
+                            OR production_material_analysis_materials.allow_partial_package
+                                IS DISTINCT FROM EXCLUDED.allow_partial_package
+                            OR production_material_analysis_materials.hard_gate
+                                IS DISTINCT FROM EXCLUDED.hard_gate
+                            OR production_material_analysis_materials.bom_qty
+                                IS DISTINCT FROM EXCLUDED.bom_qty
                             OR production_material_analysis_materials.source_suggestion
                                 IS DISTINCT FROM EXCLUDED.source_suggestion
                             THEN NULL
@@ -778,6 +840,18 @@ public class MaterialAnalysisService {
                                 IS DISTINCT FROM EXCLUDED.path
                             OR production_material_analysis_materials.per_product_qty
                                 IS DISTINCT FROM EXCLUDED.per_product_qty
+                            OR production_material_analysis_materials.control_stage
+                                IS DISTINCT FROM EXCLUDED.control_stage
+                            OR production_material_analysis_materials.consumption_basis
+                                IS DISTINCT FROM EXCLUDED.consumption_basis
+                            OR production_material_analysis_materials.basis_output_qty
+                                IS DISTINCT FROM EXCLUDED.basis_output_qty
+                            OR production_material_analysis_materials.allow_partial_package
+                                IS DISTINCT FROM EXCLUDED.allow_partial_package
+                            OR production_material_analysis_materials.hard_gate
+                                IS DISTINCT FROM EXCLUDED.hard_gate
+                            OR production_material_analysis_materials.bom_qty
+                                IS DISTINCT FROM EXCLUDED.bom_qty
                             OR production_material_analysis_materials.source_suggestion
                                 IS DISTINCT FROM EXCLUDED.source_suggestion
                             THEN NULL
@@ -795,6 +869,18 @@ public class MaterialAnalysisService {
                                 IS DISTINCT FROM EXCLUDED.path
                             OR production_material_analysis_materials.per_product_qty
                                 IS DISTINCT FROM EXCLUDED.per_product_qty
+                            OR production_material_analysis_materials.control_stage
+                                IS DISTINCT FROM EXCLUDED.control_stage
+                            OR production_material_analysis_materials.consumption_basis
+                                IS DISTINCT FROM EXCLUDED.consumption_basis
+                            OR production_material_analysis_materials.basis_output_qty
+                                IS DISTINCT FROM EXCLUDED.basis_output_qty
+                            OR production_material_analysis_materials.allow_partial_package
+                                IS DISTINCT FROM EXCLUDED.allow_partial_package
+                            OR production_material_analysis_materials.hard_gate
+                                IS DISTINCT FROM EXCLUDED.hard_gate
+                            OR production_material_analysis_materials.bom_qty
+                                IS DISTINCT FROM EXCLUDED.bom_qty
                             OR production_material_analysis_materials.source_suggestion
                                 IS DISTINCT FROM EXCLUDED.source_suggestion
                             THEN NULL
@@ -812,6 +898,18 @@ public class MaterialAnalysisService {
                                 IS DISTINCT FROM EXCLUDED.path
                             OR production_material_analysis_materials.per_product_qty
                                 IS DISTINCT FROM EXCLUDED.per_product_qty
+                            OR production_material_analysis_materials.control_stage
+                                IS DISTINCT FROM EXCLUDED.control_stage
+                            OR production_material_analysis_materials.consumption_basis
+                                IS DISTINCT FROM EXCLUDED.consumption_basis
+                            OR production_material_analysis_materials.basis_output_qty
+                                IS DISTINCT FROM EXCLUDED.basis_output_qty
+                            OR production_material_analysis_materials.allow_partial_package
+                                IS DISTINCT FROM EXCLUDED.allow_partial_package
+                            OR production_material_analysis_materials.hard_gate
+                                IS DISTINCT FROM EXCLUDED.hard_gate
+                            OR production_material_analysis_materials.bom_qty
+                                IS DISTINCT FROM EXCLUDED.bom_qty
                             OR production_material_analysis_materials.source_suggestion
                                 IS DISTINCT FROM EXCLUDED.source_suggestion
                             THEN NULL
@@ -839,6 +937,13 @@ public class MaterialAnalysisService {
                     .setParameter("inboundQty", inbound.qty())
                     .setParameter("shortageQty", shortage)
                     .setParameter("expectedReadyDate", inbound.expectedDate())
+                    .setParameter("controlStage", node.controlStage())
+                    .setParameter("consumptionBasis", node.consumptionBasis())
+                    .setParameter("basisOutputQty", node.basisOutputQty())
+                    .setParameter("allowPartialPackage", node.allowPartialPackage())
+                    .setParameter("hardGate", node.hardGate())
+                    .setParameter("bomQty", node.bomQty())
+                    .setParameter("parentPerProductQty", node.parentPerProductQty())
                     .setParameter("suggestion", node.suggestion())
                     .setParameter("lowerPending", lowerPending)
                     .setParameter("actorId", currentUser.requireId())
@@ -898,6 +1003,233 @@ public class MaterialAnalysisService {
                 """).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
 
+        // A physically completed order with rejected IQC quantity cannot satisfy the
+        // planning action. The upstream request/application is already closed by the
+        // approved order, so retaining the action as IN_PROGRESS would permanently cover
+        // the shortage and prevent a replacement notification. Keep every commercial and
+        // inspection fact, but release only the planning projection after every linked
+        // receipt is terminal and no approved order quantity remains in transit.
+        em.createNativeQuery("""
+                UPDATE preplan_supply_actions action
+                SET status = 'CANCELLED', cancelled_by = :actorId,
+                    cancelled_at = now(),
+                    cancellation_reason = '到货质检存在不合格且原采购需求已无在途，需重新通知补采',
+                    updated_at = now()
+                WHERE action.analysis_id = :analysisId
+                  AND action.status IN ('CREATED','IN_PROGRESS','DONE')
+                  AND action.external_document_type = 'PURCHASE_REQUEST'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM purchase_requests request
+                      WHERE request.id = action.external_document_id
+                        AND request.is_deleted = FALSE
+                        AND request.status IN (0,1)
+                        AND request.is_stopped = FALSE
+                        AND request.is_closed = TRUE)
+                  AND action.requested_qty > COALESCE((
+                      SELECT SUM(GREATEST(
+                          COALESCE((
+                              SELECT SUM(CASE
+                                  WHEN inspection.id IS NULL
+                                  THEN receipt_item.qty
+                                      * COALESCE(receipt_item.unit_rate,1)
+                                  WHEN inspection.status = 'RESOLVED'
+                                  THEN inspection.passed_base_qty
+                                  ELSE 0
+                              END)
+                              FROM purchase_receipt_items receipt_item
+                              JOIN purchase_receipts receipt
+                                ON receipt.id = receipt_item.receipt_id
+                               AND receipt.status = 1
+                               AND receipt.is_deleted = FALSE
+                              LEFT JOIN procurement_inspection_items inspection
+                                ON inspection.receipt_type = 'PURCHASE'
+                               AND inspection.receipt_item_id = receipt_item.id
+                              WHERE receipt_item.order_item_id = order_item.id
+                                AND receipt_item.is_deleted = FALSE
+                          ),0) - COALESCE(order_item.returned_qty,0)
+                              * COALESCE(order_item.unit_rate,1), 0))
+                      FROM purchase_order_items order_item
+                      JOIN purchase_orders purchase_order
+                        ON purchase_order.id = order_item.order_id
+                       AND purchase_order.status = 1
+                       AND purchase_order.is_deleted = FALSE
+                      WHERE order_item.is_deleted = FALSE
+                        AND order_item.request_item_id IN (
+                            SELECT allocation.external_item_id
+                            FROM preplan_supply_action_allocations allocation
+                            WHERE allocation.action_id = action.id
+                              AND allocation.external_item_id IS NOT NULL)
+                  ),0)
+                  AND EXISTS (
+                      SELECT 1
+                      FROM preplan_supply_action_allocations allocation
+                      JOIN purchase_order_items order_item
+                        ON order_item.request_item_id = allocation.external_item_id
+                       AND order_item.is_deleted = FALSE
+                      JOIN purchase_orders purchase_order
+                        ON purchase_order.id = order_item.order_id
+                       AND purchase_order.status = 1
+                       AND purchase_order.is_deleted = FALSE
+                      JOIN purchase_receipt_items receipt_item
+                        ON receipt_item.order_item_id = order_item.id
+                       AND receipt_item.is_deleted = FALSE
+                      JOIN purchase_receipts receipt
+                        ON receipt.id = receipt_item.receipt_id
+                       AND receipt.status = 1
+                       AND receipt.is_deleted = FALSE
+                      JOIN procurement_inspection_items inspection
+                        ON inspection.receipt_type = 'PURCHASE'
+                       AND inspection.receipt_item_id = receipt_item.id
+                       AND inspection.status = 'RESOLVED'
+                       AND inspection.failed_base_qty > 0
+                      WHERE allocation.action_id = action.id)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM preplan_supply_action_allocations allocation
+                      JOIN purchase_order_items order_item
+                        ON order_item.request_item_id = allocation.external_item_id
+                       AND order_item.is_deleted = FALSE
+                      JOIN purchase_orders purchase_order
+                        ON purchase_order.id = order_item.order_id
+                       AND purchase_order.status = 1
+                       AND purchase_order.is_deleted = FALSE
+                      WHERE allocation.action_id = action.id
+                        AND GREATEST(
+                            COALESCE(order_item.qty,0)
+                            - COALESCE(order_item.received_qty,0)
+                            + COALESCE(order_item.returned_qty,0), 0) > 0)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM preplan_supply_action_allocations allocation
+                      JOIN purchase_order_items order_item
+                        ON order_item.request_item_id = allocation.external_item_id
+                       AND order_item.is_deleted = FALSE
+                      JOIN purchase_receipt_items receipt_item
+                        ON receipt_item.order_item_id = order_item.id
+                       AND receipt_item.is_deleted = FALSE
+                      JOIN purchase_receipts receipt
+                        ON receipt.id = receipt_item.receipt_id
+                       AND receipt.status = 1
+                       AND receipt.is_deleted = FALSE
+                      JOIN procurement_inspection_items inspection
+                        ON inspection.receipt_type = 'PURCHASE'
+                       AND inspection.receipt_item_id = receipt_item.id
+                       AND inspection.status NOT IN ('RESOLVED','REVERSED')
+                      WHERE allocation.action_id = action.id)
+                """).setParameter("actorId", actorId)
+                .setParameter("analysisId", analysisId).executeUpdate();
+
+        em.createNativeQuery("""
+                UPDATE preplan_supply_actions action
+                SET status = 'CANCELLED', cancelled_by = :actorId,
+                    cancelled_at = now(),
+                    cancellation_reason = '到货质检存在不合格且原委外需求已无在途，需重新通知补委外',
+                    updated_at = now()
+                WHERE action.analysis_id = :analysisId
+                  AND action.status IN ('CREATED','IN_PROGRESS','DONE')
+                  AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM subcontract_applications application
+                      WHERE application.id = action.external_document_id
+                        AND application.is_deleted = FALSE
+                        AND application.status IN (0,1)
+                        AND application.is_closed = TRUE)
+                  AND action.requested_qty > COALESCE((
+                      SELECT SUM(GREATEST(
+                          COALESCE((
+                              SELECT SUM(CASE
+                                  WHEN inspection.id IS NULL
+                                  THEN receipt_item.qty
+                                      * COALESCE(receipt_item.unit_rate,1)
+                                  WHEN inspection.status = 'RESOLVED'
+                                  THEN inspection.passed_base_qty
+                                  ELSE 0
+                              END)
+                              FROM subcontract_receipt_items receipt_item
+                              JOIN subcontract_receipts receipt
+                                ON receipt.id = receipt_item.receipt_id
+                               AND receipt.status = 1
+                               AND receipt.is_deleted = FALSE
+                              LEFT JOIN procurement_inspection_items inspection
+                                ON inspection.receipt_type = 'SUBCONTRACT'
+                               AND inspection.receipt_item_id = receipt_item.id
+                              WHERE receipt_item.order_item_id = order_item.id
+                                AND receipt_item.is_deleted = FALSE
+                          ),0) - COALESCE(order_item.returned_qty,0)
+                              * COALESCE(order_item.unit_rate,1), 0))
+                      FROM subcontract_order_items order_item
+                      JOIN subcontract_orders subcontract_order
+                        ON subcontract_order.id = order_item.order_id
+                       AND subcontract_order.status = 1
+                       AND subcontract_order.is_deleted = FALSE
+                      WHERE order_item.is_deleted = FALSE
+                        AND order_item.application_item_id IN (
+                            SELECT allocation.external_item_id
+                            FROM preplan_supply_action_allocations allocation
+                            WHERE allocation.action_id = action.id
+                              AND allocation.external_item_id IS NOT NULL)
+                  ),0)
+                  AND EXISTS (
+                      SELECT 1
+                      FROM preplan_supply_action_allocations allocation
+                      JOIN subcontract_order_items order_item
+                        ON order_item.application_item_id = allocation.external_item_id
+                       AND order_item.is_deleted = FALSE
+                      JOIN subcontract_orders subcontract_order
+                        ON subcontract_order.id = order_item.order_id
+                       AND subcontract_order.status = 1
+                       AND subcontract_order.is_deleted = FALSE
+                      JOIN subcontract_receipt_items receipt_item
+                        ON receipt_item.order_item_id = order_item.id
+                       AND receipt_item.is_deleted = FALSE
+                      JOIN subcontract_receipts receipt
+                        ON receipt.id = receipt_item.receipt_id
+                       AND receipt.status = 1
+                       AND receipt.is_deleted = FALSE
+                      JOIN procurement_inspection_items inspection
+                        ON inspection.receipt_type = 'SUBCONTRACT'
+                       AND inspection.receipt_item_id = receipt_item.id
+                       AND inspection.status = 'RESOLVED'
+                       AND inspection.failed_base_qty > 0
+                      WHERE allocation.action_id = action.id)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM preplan_supply_action_allocations allocation
+                      JOIN subcontract_order_items order_item
+                        ON order_item.application_item_id = allocation.external_item_id
+                       AND order_item.is_deleted = FALSE
+                      JOIN subcontract_orders subcontract_order
+                        ON subcontract_order.id = order_item.order_id
+                       AND subcontract_order.status = 1
+                       AND subcontract_order.is_deleted = FALSE
+                      WHERE allocation.action_id = action.id
+                        AND GREATEST(
+                            COALESCE(order_item.qty,0)
+                            - COALESCE(order_item.received_qty,0)
+                            + COALESCE(order_item.returned_qty,0), 0) > 0)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM preplan_supply_action_allocations allocation
+                      JOIN subcontract_order_items order_item
+                        ON order_item.application_item_id = allocation.external_item_id
+                       AND order_item.is_deleted = FALSE
+                      JOIN subcontract_receipt_items receipt_item
+                        ON receipt_item.order_item_id = order_item.id
+                       AND receipt_item.is_deleted = FALSE
+                      JOIN subcontract_receipts receipt
+                        ON receipt.id = receipt_item.receipt_id
+                       AND receipt.status = 1
+                       AND receipt.is_deleted = FALSE
+                      JOIN procurement_inspection_items inspection
+                        ON inspection.receipt_type = 'SUBCONTRACT'
+                       AND inspection.receipt_item_id = receipt_item.id
+                       AND inspection.status NOT IN ('RESOLVED','REVERSED')
+                      WHERE allocation.action_id = action.id)
+                """).setParameter("actorId", actorId)
+                .setParameter("analysisId", analysisId).executeUpdate();
+
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
@@ -906,8 +1238,27 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.requested_qty > COALESCE((
                       SELECT SUM(GREATEST(
-                          COALESCE(item.received_qty,0)-COALESCE(item.returned_qty,0),0)
-                          * COALESCE(item.unit_rate,1))
+                          COALESCE((
+                              SELECT SUM(CASE
+                                  WHEN inspection.id IS NULL
+                                  THEN receipt_item.qty * COALESCE(
+                                      receipt_item.unit_rate,1)
+                                  WHEN inspection.status = 'RESOLVED'
+                                  THEN inspection.passed_base_qty
+                                  ELSE 0
+                              END)
+                              FROM purchase_receipt_items receipt_item
+                              JOIN purchase_receipts receipt
+                                ON receipt.id = receipt_item.receipt_id
+                               AND receipt.status = 1
+                               AND receipt.is_deleted = FALSE
+                              LEFT JOIN procurement_inspection_items inspection
+                                ON inspection.receipt_type = 'PURCHASE'
+                               AND inspection.receipt_item_id = receipt_item.id
+                              WHERE receipt_item.order_item_id = item.id
+                                AND receipt_item.is_deleted = FALSE
+                          ),0) - COALESCE(item.returned_qty,0)
+                              * COALESCE(item.unit_rate,1), 0))
                       FROM purchase_order_items item
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = item.order_id
@@ -942,8 +1293,27 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND action.requested_qty > COALESCE((
                       SELECT SUM(GREATEST(
-                          COALESCE(item.received_qty,0)-COALESCE(item.returned_qty,0),0)
-                          * COALESCE(item.unit_rate,1))
+                          COALESCE((
+                              SELECT SUM(CASE
+                                  WHEN inspection.id IS NULL
+                                  THEN receipt_item.qty * COALESCE(
+                                      receipt_item.unit_rate,1)
+                                  WHEN inspection.status = 'RESOLVED'
+                                  THEN inspection.passed_base_qty
+                                  ELSE 0
+                              END)
+                              FROM subcontract_receipt_items receipt_item
+                              JOIN subcontract_receipts receipt
+                                ON receipt.id = receipt_item.receipt_id
+                               AND receipt.status = 1
+                               AND receipt.is_deleted = FALSE
+                              LEFT JOIN procurement_inspection_items inspection
+                                ON inspection.receipt_type = 'SUBCONTRACT'
+                               AND inspection.receipt_item_id = receipt_item.id
+                              WHERE receipt_item.order_item_id = item.id
+                                AND receipt_item.is_deleted = FALSE
+                          ),0) - COALESCE(item.returned_qty,0)
+                              * COALESCE(item.unit_rate,1), 0))
                       FROM subcontract_order_items item
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = item.order_id
@@ -1013,8 +1383,27 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'PURCHASE_REQUEST'
                   AND action.requested_qty <= COALESCE((
                       SELECT SUM(GREATEST(
-                          COALESCE(item.received_qty,0)-COALESCE(item.returned_qty,0),0)
-                          * COALESCE(item.unit_rate,1))
+                          COALESCE((
+                              SELECT SUM(CASE
+                                  WHEN inspection.id IS NULL
+                                  THEN receipt_item.qty * COALESCE(
+                                      receipt_item.unit_rate,1)
+                                  WHEN inspection.status = 'RESOLVED'
+                                  THEN inspection.passed_base_qty
+                                  ELSE 0
+                              END)
+                              FROM purchase_receipt_items receipt_item
+                              JOIN purchase_receipts receipt
+                                ON receipt.id = receipt_item.receipt_id
+                               AND receipt.status = 1
+                               AND receipt.is_deleted = FALSE
+                              LEFT JOIN procurement_inspection_items inspection
+                                ON inspection.receipt_type = 'PURCHASE'
+                               AND inspection.receipt_item_id = receipt_item.id
+                              WHERE receipt_item.order_item_id = item.id
+                                AND receipt_item.is_deleted = FALSE
+                          ),0) - COALESCE(item.returned_qty,0)
+                              * COALESCE(item.unit_rate,1), 0))
                       FROM purchase_order_items item
                       JOIN purchase_orders purchase_order
                         ON purchase_order.id = item.order_id
@@ -1037,8 +1426,27 @@ public class MaterialAnalysisService {
                   AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
                   AND action.requested_qty <= COALESCE((
                       SELECT SUM(GREATEST(
-                          COALESCE(item.received_qty,0)-COALESCE(item.returned_qty,0),0)
-                          * COALESCE(item.unit_rate,1))
+                          COALESCE((
+                              SELECT SUM(CASE
+                                  WHEN inspection.id IS NULL
+                                  THEN receipt_item.qty * COALESCE(
+                                      receipt_item.unit_rate,1)
+                                  WHEN inspection.status = 'RESOLVED'
+                                  THEN inspection.passed_base_qty
+                                  ELSE 0
+                              END)
+                              FROM subcontract_receipt_items receipt_item
+                              JOIN subcontract_receipts receipt
+                                ON receipt.id = receipt_item.receipt_id
+                               AND receipt.status = 1
+                               AND receipt.is_deleted = FALSE
+                              LEFT JOIN procurement_inspection_items inspection
+                                ON inspection.receipt_type = 'SUBCONTRACT'
+                               AND inspection.receipt_item_id = receipt_item.id
+                              WHERE receipt_item.order_item_id = item.id
+                                AND receipt_item.is_deleted = FALSE
+                          ),0) - COALESCE(item.returned_qty,0)
+                              * COALESCE(item.unit_rate,1), 0))
                       FROM subcontract_order_items item
                       JOIN subcontract_orders subcontract_order
                         ON subcontract_order.id = item.order_id
@@ -1090,9 +1498,10 @@ public class MaterialAnalysisService {
     /**
      * Persists the single authoritative pre-plan allocation snapshot.
      *
-     * <p>Pass one allocates complete kits in line-priority order. Pass two assigns any
-     * still-free stock to unmet direct-layer demand, so product readiness, red shortage rows,
-     * downstream notifications and external workbench projections all consume the same facts.</p>
+     * <p>Existing production hard commitments are reserved first. Current production kits are
+     * allocated next and additional START capacity last. SHIP/REFERENCE rows are warning-only
+     * and cannot reserve this pool, so every actionable depth-one readiness projection and
+     * production hard-gate allocation uses one conserved pool.</p>
      */
     private void persistAllocationSnapshot(
             UUID analysisId,
@@ -1104,57 +1513,59 @@ public class MaterialAnalysisService {
                 .filter(node -> node.depth() == 1)
                 .collect(Collectors.groupingBy(BomNode::analysisItemId,
                         LinkedHashMap::new, Collectors.toList()));
-        Map<MaterialDimension, BigDecimal> safetyByDimension = new LinkedHashMap<>();
-        directBySource.values().stream().flatMap(List::stream).forEach(node ->
-                safetyByDimension.merge(node.dimension(), node.safetyStock(), BigDecimal::max));
-        Map<MaterialDimension, BigDecimal> initialNow = new LinkedHashMap<>();
-        Map<MaterialDimension, BigDecimal> softCommitted = softCommittedStock(
-                analysisId, warehouseId,
-                directBySource.values().stream().flatMap(List::stream)
-                        .map(BomNode::dimension).collect(Collectors.toSet()));
-        safetyByDimension.forEach((dimension, safety) -> initialNow.put(
-                dimension,
-                availability.stock().getOrDefault(dimension, StockValue.ZERO).available()
-                        .subtract(safety)
-                        .subtract(softCommitted.getOrDefault(dimension, BigDecimal.ZERO))
-                        .max(BigDecimal.ZERO)
-                        .setScale(4, RoundingMode.DOWN)));
-
-        List<PriorityCompleteKitAllocator.Demand<MaterialDimension>> currentDemands =
-                sources.stream().map(source -> {
-                    List<BomNode> direct = directBySource.getOrDefault(
-                            source.analysisItemId(), List.of());
-                    return new PriorityCompleteKitAllocator.Demand<>(
-                            source.analysisItemId(), source.allocationPriority(),
-                            source.remainingAnalysisQty(), directUsage(direct),
-                            direct.isEmpty()
-                                    && "BOM_REQUIRED".equals(source.productionBomPolicy()));
-                }).toList();
-        PriorityCompleteKitAllocator.Result<MaterialDimension> currentAllocation =
-                PriorityCompleteKitAllocator.allocate(currentDemands, initialNow);
-        TimePhasedPool readyByPool = new TimePhasedPool(initialNow, availability.inbound());
-        for (SourceLine source : sources) {
+        Map<MaterialDimension, BigDecimal> stockAfterSafety = availableAfterSafety(
+                nodes, availability.stock());
+        Set<MaterialDimension> dimensions = Set.copyOf(stockAfterSafety.keySet());
+        Map<MaterialDimension, BigDecimal> externalHardCommitments = softCommittedStock(
+                analysisId, warehouseId, dimensions, HARD_COMMITMENT_STAGES);
+        Map<String, String> effectiveRoutes = loadEffectiveRoutes(analysisId);
+        NestedDiagnosticPlan nestedDiagnostic = allocateNestedDiagnostics(
+                sources, nodes,
+                subtractCommitments(stockAfterSafety, externalHardCommitments),
+                effectiveRoutes);
+        nodes = nestedDiagnostic.nodes();
+        StagePlan stagePlan = allocateNestedStages(
+                sources, directBySource, stockAfterSafety, externalHardCommitments);
+        StageAllocation finishAllocation = stagePlan.finish();
+        StageExtension shipAllocation = stagePlan.ship();
+        StageExtension startAllocation = stagePlan.start();
+        TimePhasedPool readyByPool = new TimePhasedPool(
+                finishAllocation.remainingPool(), availability.inbound());
+        for (SourceLine source : orderedSources(sources)) {
             BigDecimal demand = source.remainingAnalysisQty();
             List<BomNode> direct = directBySource.getOrDefault(
                     source.analysisItemId(), List.of());
-            Map<MaterialDimension, BigDecimal> usage = directUsage(direct);
+            List<BomNode> productionGates = direct.stream()
+                    .filter(MaterialAnalysisService::productionGate).toList();
             boolean missingRequiredBom = direct.isEmpty()
                     && "BOM_REQUIRED".equals(source.productionBomPolicy());
-            BigDecimal readyNow = currentAllocation.readyByItem().getOrDefault(
+            BigDecimal readyStart = startAllocation.readyByItem().getOrDefault(
+                    source.analysisItemId(), BigDecimal.ZERO.setScale(4));
+            BigDecimal readyFinish = finishAllocation.readyByItem().getOrDefault(
+                    source.analysisItemId(), BigDecimal.ZERO.setScale(4));
+            BigDecimal readyShip = shipAllocation.readyByItem().getOrDefault(
                     source.analysisItemId(), BigDecimal.ZERO.setScale(4));
             BigDecimal readyByDate = missingRequiredBom
                     ? BigDecimal.ZERO.setScale(4)
-                    : readyByPool.maxReady(demand, usage, source.deliveryDate());
-            readyByPool.consume(readyByDate, usage, source.deliveryDate());
-            readyByDate = readyByDate.max(readyNow).min(demand)
-                    .setScale(4, RoundingMode.DOWN);
+                    : readyByPool.maxReadyFromBaseExact(
+                            readyFinish, demand, productionGates,
+                            source.deliveryDate());
+            readyByPool.consumeIncrementExact(
+                    readyFinish, readyByDate, productionGates,
+                    source.deliveryDate());
             em.createNativeQuery("""
                     UPDATE production_material_analysis_items
-                    SET ready_now_qty=:readyNow, ready_by_date_qty=:readyByDate,
+                    SET ready_now_qty=:readyFinish,
+                        ready_start_qty=:readyStart,
+                        ready_finish_qty=:readyFinish,
+                        ready_ship_qty=:readyShip,
+                        ready_by_date_qty=:readyByDate,
                         updated_at=now(), updated_by=:actorId
                     WHERE id=:itemId AND analysis_id=:analysisId AND is_deleted=FALSE
                     """)
-                    .setParameter("readyNow", readyNow)
+                    .setParameter("readyStart", readyStart)
+                    .setParameter("readyFinish", readyFinish)
+                    .setParameter("readyShip", readyShip)
                     .setParameter("readyByDate", readyByDate)
                     .setParameter("actorId", currentUser.requireId())
                     .setParameter("itemId", source.analysisItemId())
@@ -1162,66 +1573,68 @@ public class MaterialAnalysisService {
                     .executeUpdate();
         }
 
-        Map<String, NodeAllocation> allocations = new LinkedHashMap<>();
-        for (SourceLine source : sources) {
-            BigDecimal demand = source.remainingAnalysisQty();
-            Map<MaterialDimension, BigDecimal> itemAllocation =
-                    currentAllocation.allocatedByItem().getOrDefault(
-                            source.analysisItemId(), Map.of());
-            Map<MaterialDimension, List<BomNode>> byDimension = directBySource
-                    .getOrDefault(source.analysisItemId(), List.of()).stream()
-                    .collect(Collectors.groupingBy(BomNode::dimension,
-                            LinkedHashMap::new, Collectors.toList()));
-            for (Map.Entry<MaterialDimension, List<BomNode>> entry : byDimension.entrySet()) {
-                List<BomNode> group = entry.getValue().stream()
-                        .sorted(Comparator.comparing(BomNode::nodeKey)).toList();
-                BigDecimal groupRemaining = itemAllocation.getOrDefault(
-                        entry.getKey(), BigDecimal.ZERO);
-                for (BomNode node : group) {
-                    BigDecimal nodeRequired = node.perProductQty().multiply(demand)
-                            .setScale(4, RoundingMode.CEILING);
-                    BigDecimal nodeAllocated = nodeRequired.min(groupRemaining);
-                    groupRemaining = groupRemaining.subtract(nodeAllocated).max(BigDecimal.ZERO);
-                    allocations.put(nodeAllocationKey(node),
-                            new NodeAllocation(nodeAllocated,
-                                    nodeRequired.subtract(nodeAllocated).max(BigDecimal.ZERO)));
-                }
-            }
-        }
+        Map<String, NodeAllocation> hardAllocations = new LinkedHashMap<>(
+                finishAllocation.nodeAllocations());
+        mergeAllocations(hardAllocations, shipAllocation.nodeAllocations());
+        mergeAllocations(hardAllocations, startAllocation.nodeAllocations());
+        Map<String, NodeAllocation> allocations = allocateDirectMaterials(
+                sources, directBySource, startAllocation.remainingPool(),
+                hardAllocations);
 
-        // Recursive descendants remain dependency hints only. Their stock signal is deliberately
-        // not consumed or notified until a MAKE child demand promotes them to its direct layer.
-        nodes.stream().filter(node -> node.depth() > 1).forEach(node -> {
-            SourceLine source = sources.stream()
-                    .filter(value -> value.analysisItemId().equals(node.analysisItemId()))
-                    .findFirst().orElseThrow();
-            BigDecimal required = node.perProductQty().multiply(source.remainingAnalysisQty())
-                    .setScale(4, RoundingMode.CEILING);
-            BigDecimal rawAvailable = availability.stock()
-                    .getOrDefault(node.dimension(), StockValue.ZERO).available()
-                    .subtract(node.safetyStock()).max(BigDecimal.ZERO)
-                    .setScale(4, RoundingMode.DOWN);
-            BigDecimal allocated = required.min(rawAvailable);
-            allocations.put(nodeAllocationKey(node), new NodeAllocation(
-                    allocated, required.subtract(allocated).max(BigDecimal.ZERO)));
-        });
+        // Recursive descendants use a separate, single diagnostic pool. A child's demand is
+        // exploded from its parent's actual shortage, and shared stock is consumed only once
+        // across paths in this projection. These hints are deliberately not added to the
+        // conserved actionable depth-one pool until a MAKE demand promotes that child.
+        nodes.stream().filter(node -> node.depth() > 1).forEach(node ->
+                allocations.put(nodeAllocationKey(node),
+                        nestedDiagnostic.nodeAllocations().getOrDefault(
+                                nodeAllocationKey(node), NodeAllocation.ZERO)));
 
         for (BomNode node : nodes) {
             NodeAllocation allocation = allocations.getOrDefault(
                     nodeAllocationKey(node), NodeAllocation.ZERO);
+            BigDecimal startAllocated = node.depth() == 1 && node.hardGate()
+                    && STAGE_START.equals(node.controlStage())
+                    ? hardAllocations.getOrDefault(
+                            nodeAllocationKey(node), NodeAllocation.ZERO).allocatedQty()
+                    : BigDecimal.ZERO.setScale(4);
+            BigDecimal finishAllocated = node.depth() == 1 && productionGate(node)
+                    ? finishAllocation.nodeAllocations().getOrDefault(
+                            nodeAllocationKey(node), NodeAllocation.ZERO).allocatedQty()
+                    : BigDecimal.ZERO.setScale(4);
+            BigDecimal shipAllocated = node.depth() == 1 && node.hardGate()
+                    && HARD_COMMITMENT_STAGES.contains(node.controlStage())
+                    ? node.requiredForOutput(shipAllocation.readyByItem().getOrDefault(
+                            node.analysisItemId(), BigDecimal.ZERO.setScale(4)))
+                    : BigDecimal.ZERO.setScale(4);
+            if (node.depth() > 1) {
+                startAllocated = allocation.allocatedQty();
+                finishAllocated = allocation.allocatedQty();
+                shipAllocated = allocation.allocatedQty();
+            }
             boolean lowerPending = node.hasChildren()
-                    && "MAKE".equals(node.suggestion())
+                    && "MAKE".equals(effectiveRoutes.getOrDefault(
+                            nodeAllocationKey(node), node.suggestion()))
+                    && !STAGE_REFERENCE.equals(node.controlStage())
                     && allocation.shortageQty().signum() > 0;
             em.createNativeQuery("""
                     UPDATE production_material_analysis_materials
-                    SET allocated_available_qty=:allocated,
+                    SET required_qty=:required,
+                        allocated_available_qty=:allocated,
+                        allocated_start_qty=:allocatedStart,
+                        allocated_finish_qty=:allocatedFinish,
+                        allocated_ship_qty=:allocatedShip,
                         shortage_qty=:shortage,
                         lower_level_pending=:lowerPending,
                         updated_at=now(), updated_by=:actorId
                     WHERE analysis_id=:analysisId AND analysis_item_id=:analysisItemId
                       AND node_key=:nodeKey AND active=TRUE
                     """)
+                    .setParameter("required", node.snapshotRequiredQty())
                     .setParameter("allocated", allocation.allocatedQty())
+                    .setParameter("allocatedStart", startAllocated)
+                    .setParameter("allocatedFinish", finishAllocated)
+                    .setParameter("allocatedShip", shipAllocated)
                     .setParameter("shortage", allocation.shortageQty())
                     .setParameter("lowerPending", lowerPending)
                     .setParameter("actorId", currentUser.requireId())
@@ -1238,8 +1651,13 @@ public class MaterialAnalysisService {
      * because their formal reservations are already reflected by {@code v_stock_available}.
      */
     private Map<MaterialDimension, BigDecimal> softCommittedStock(
-            UUID analysisId, UUID warehouseId, Set<MaterialDimension> dimensions) {
+            UUID analysisId, UUID warehouseId, Set<MaterialDimension> dimensions,
+            Set<String> includedStages) {
         if (dimensions.isEmpty()) return Map.of();
+        Set<String> effectiveStages = includedStages.stream()
+                .filter(HARD_COMMITMENT_STAGES::contains)
+                .collect(Collectors.toUnmodifiableSet());
+        if (effectiveStages.isEmpty()) return Map.of();
         Set<UUID> goodsIds = dimensions.stream().map(MaterialDimension::goodsId)
                 .collect(Collectors.toSet());
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -1247,9 +1665,7 @@ public class MaterialAnalysisService {
                     SELECT material.goods_id, material.color_id, material.unit_id,
                            SUM(LEAST(
                                material.allocated_available_qty,
-                               material.per_product_qty * GREATEST(
-                                   source.requested_qty-source.submitted_qty-source.approved_qty,
-                                   0)
+                               material.required_qty
                            ))::numeric AS qty
                     FROM production_material_analysis_materials material
                     JOIN production_material_analyses analysis
@@ -1264,27 +1680,52 @@ public class MaterialAnalysisService {
                       AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
                       AND source.requested_qty-source.submitted_qty-source.approved_qty > 0
                       AND material.active = TRUE AND material.depth = 1
+                      AND material.hard_gate = TRUE
+                      AND material.control_stage IN (:includedStages)
                       AND material.goods_id IN (:goodsIds)
                     GROUP BY material.goods_id, material.color_id, material.unit_id
                     UNION ALL
                     SELECT material.goods_id, material.color_id, material.unit_id,
-                           SUM(material.per_product_qty * analysis_link.submitted_qty)::numeric
-                    FROM production_material_analysis_plan_links analysis_link
+                           SUM(CASE WHEN material.calculation_mode
+                                   = 'LEGACY_CUMULATIVE_PER_UNIT'
+                               THEN fn_material_analysis_edge_required(
+                                   draft.submitted_qty,
+                                   material.per_product_qty,
+                                   'PER_UNIT', 1, TRUE)
+                               ELSE fn_material_analysis_edge_required(
+                                   draft.submitted_qty
+                                       * material.parent_per_product_qty,
+                                   material.bom_qty,
+                                   material.consumption_basis,
+                                   material.basis_output_qty,
+                                   material.allow_partial_package)
+                           END)::numeric
+                    FROM (
+                        SELECT link.id AS link_id, link.analysis_id,
+                               link.analysis_item_id, link.submitted_qty
+                        FROM production_material_analysis_plan_links link
+                        JOIN production_plans plan
+                          ON plan.id = link.plan_id
+                         AND plan.status = 0
+                         AND plan.is_deleted = FALSE
+                         AND plan.is_canceled = FALSE
+                        WHERE link.allocation_status = 'SUBMITTED'
+                    ) draft
                     JOIN production_material_analyses analysis
-                      ON analysis.id = analysis_link.analysis_id
+                      ON analysis.id = draft.analysis_id
                      AND analysis.is_deleted = FALSE
                      AND analysis.status <> 'CANCELLED'
                     JOIN production_material_analysis_materials material
-                      ON material.analysis_id = analysis_link.analysis_id
-                     AND material.analysis_item_id = analysis_link.analysis_item_id
+                     ON material.analysis_id = draft.analysis_id
+                     AND material.analysis_item_id = draft.analysis_item_id
                      AND material.active = TRUE AND material.depth = 1
-                    JOIN production_plans plan
-                      ON plan.id = analysis_link.plan_id
-                     AND plan.status = 0
-                     AND plan.is_deleted = FALSE
-                     AND plan.is_canceled = FALSE
+                     AND material.hard_gate = TRUE
+                     AND material.control_stage IN (:includedStages)
+                    JOIN production_material_analysis_items source
+                      ON source.id = draft.analysis_item_id
+                     AND source.analysis_id = draft.analysis_id
+                     AND source.is_deleted = FALSE
                     WHERE analysis.warehouse_id = :warehouseId
-                      AND analysis_link.allocation_status = 'SUBMITTED'
                       AND material.goods_id IN (:goodsIds)
                     GROUP BY material.goods_id, material.color_id, material.unit_id
                 )
@@ -1293,6 +1734,7 @@ public class MaterialAnalysisService {
                 GROUP BY goods_id, color_id, unit_id
                 """).setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId)
+                .setParameter("includedStages", effectiveStages)
                 .setParameter("goodsIds", goodsIds));
         Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
         for (Object[] row : rows) {
@@ -1305,15 +1747,430 @@ public class MaterialAnalysisService {
         return Map.copyOf(result);
     }
 
-    private static Map<MaterialDimension, BigDecimal> directUsage(List<BomNode> direct) {
-        Map<MaterialDimension, BigDecimal> usage = new LinkedHashMap<>();
-        direct.forEach(node -> usage.merge(
-                node.dimension(), node.perProductQty(), BigDecimal::add));
-        return usage;
+    private Map<String, String> loadEffectiveRoutes(UUID analysisId) {
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT analysis_item_id, node_key,
+                       COALESCE(confirmed_route, source_suggestion)
+                FROM production_material_analysis_materials
+                WHERE analysis_id=:analysisId AND active=TRUE
+                ORDER BY analysis_item_id, depth, node_key
+                """).setParameter("analysisId", analysisId))) {
+            result.put(uuid(row[0]) + "|" + string(row[1]), string(row[2]));
+        }
+        return Map.copyOf(result);
+    }
+
+    private static Map<MaterialDimension, BigDecimal> subtractCommitments(
+            Map<MaterialDimension, BigDecimal> stock,
+            Map<MaterialDimension, BigDecimal> commitments) {
+        Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
+        stock.forEach((dimension, qty) -> result.put(
+                dimension,
+                qty.subtract(commitments.getOrDefault(dimension, BigDecimal.ZERO))
+                        .max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
+        return Map.copyOf(result);
+    }
+
+    private static Map<MaterialDimension, BigDecimal> availableAfterSafety(
+            List<BomNode> nodes,
+            Map<MaterialDimension, StockValue> stock) {
+        Map<MaterialDimension, BigDecimal> safetyByDimension = new LinkedHashMap<>();
+        nodes.forEach(node -> safetyByDimension.merge(
+                node.dimension(), node.safetyStock(), BigDecimal::max));
+        Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
+        safetyByDimension.forEach((dimension, safety) -> result.put(
+                dimension,
+                stock.getOrDefault(dimension, StockValue.ZERO).available()
+                        .subtract(safety).max(BigDecimal.ZERO)
+                        .setScale(4, RoundingMode.DOWN)));
+        return Map.copyOf(result);
+    }
+
+    /**
+     * Builds the recursive shortage diagnosis from a single stock pool. The gross depth-one
+     * requirement is retained, while a descendant is exploded only from the unfilled quantity
+     * of a parent whose effective route is MAKE. Hard production gates consume first and
+     * warning/reference rows last. SHIP and REFERENCE are never hard gates. This is a
+     * diagnostic projection;
+     * actionable conservation still uses only depth-one rows in
+     * {@link #allocateNestedStages(List, Map, Map, Map)}.
+     */
+    static NestedDiagnosticPlan allocateNestedDiagnostics(
+            List<SourceLine> sources,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> rawStock) {
+        Map<String, String> suggestedRoutes = nodes.stream().collect(Collectors.toMap(
+                MaterialAnalysisService::nodeAllocationKey,
+                BomNode::suggestion,
+                (left, right) -> left,
+                LinkedHashMap::new));
+        return allocateNestedDiagnostics(sources, nodes, rawStock, suggestedRoutes);
+    }
+
+    static NestedDiagnosticPlan allocateNestedDiagnostics(
+            List<SourceLine> sources,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            Map<String, String> effectiveRoutes) {
+        Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
+        rawStock.forEach((dimension, qty) -> pool.put(
+                dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
+        Map<UUID, Integer> sourceRank = new HashMap<>();
+        List<SourceLine> orderedSources = orderedSources(sources);
+        for (int index = 0; index < orderedSources.size(); index++) {
+            sourceRank.put(orderedSources.get(index).analysisItemId(), index);
+        }
+        Comparator<BomNode> allocationOrder = Comparator
+                .comparingInt(MaterialAnalysisService::diagnosticAllocationPriority)
+                .thenComparingInt(node -> sourceRank.getOrDefault(
+                        node.analysisItemId(), Integer.MAX_VALUE))
+                .thenComparingInt(BomNode::depth)
+                .thenComparing(BomNode::nodeKey);
+        List<BomNode> pending = new ArrayList<>(nodes);
+        Map<String, BomNode> adjustedByKey = new LinkedHashMap<>();
+        Map<String, NodeAllocation> allocations = new LinkedHashMap<>();
+        while (!pending.isEmpty()) {
+            BomNode node = pending.stream()
+                    .filter(candidate -> candidate.depth() == 1
+                            || allocations.containsKey(candidate.analysisItemId()
+                                    + "|" + candidate.parentNodeKey()))
+                    .min(allocationOrder)
+                    .orElseThrow(() -> conflict(
+                            "BOM 层级路径不完整，无法按父件短缺展开子件需求"));
+            pending.remove(node);
+            BigDecimal required = node.snapshotRequiredQty();
+            if (node.depth() > 1) {
+                String parentKey = node.analysisItemId() + "|" + node.parentNodeKey();
+                NodeAllocation parent = allocations.get(parentKey);
+                BomNode parentNode = adjustedByKey.get(parentKey);
+                String parentRoute = effectiveRoutes.getOrDefault(
+                        parentKey, parentNode.suggestion());
+                required = "MAKE".equals(parentRoute)
+                        && !STAGE_REFERENCE.equals(parentNode.controlStage())
+                        ? node.requiredForParentOutput(parent.shortageQty())
+                        : BigDecimal.ZERO.setScale(4);
+            }
+            BomNode adjusted = node.withSnapshotRequiredQty(required);
+            String key = nodeAllocationKey(adjusted);
+            BigDecimal available = pool.getOrDefault(
+                    adjusted.dimension(), BigDecimal.ZERO.setScale(4));
+            BigDecimal allocated = required.min(available);
+            pool.put(adjusted.dimension(), available.subtract(allocated)
+                    .max(BigDecimal.ZERO));
+            adjustedByKey.put(key, adjusted);
+            allocations.put(key, new NodeAllocation(
+                    allocated, required.subtract(allocated).max(BigDecimal.ZERO)));
+        }
+        List<BomNode> adjustedNodes = nodes.stream()
+                .map(node -> adjustedByKey.get(nodeAllocationKey(node)))
+                .toList();
+        return new NestedDiagnosticPlan(
+                List.copyOf(adjustedNodes), Map.copyOf(allocations));
+    }
+
+    private static int diagnosticAllocationPriority(BomNode node) {
+        if (productionGate(node)) return 0;
+        return 1;
+    }
+
+    private static boolean productionGate(BomNode node) {
+        return node.hardGate() && Set.of(
+                STAGE_START, STAGE_ASSEMBLY, STAGE_FINISH)
+                .contains(node.controlStage());
+    }
+
+    private static boolean productionGate(MaterialView material) {
+        return material.hardGate() && Set.of(
+                STAGE_START, STAGE_ASSEMBLY, STAGE_FINISH)
+                .contains(material.controlStage());
+    }
+
+    private static BigDecimal requiredForOutput(
+            MaterialView material, BigDecimal productQty) {
+        try {
+            return MaterialConsumptionMath.required(
+                    productQty.multiply(material.parentPerProductQty()),
+                    material.bomQty(), material.consumptionBasis(),
+                    material.basisOutputQty(), material.allowPartialPackage());
+        } catch (IllegalArgumentException ex) {
+            throw conflict("BOM 包装/批次计量数据无效，不能预览生产计划");
+        }
+    }
+
+    /**
+     * Allocates actionable depth-one rows against one physical pool. Existing production
+     * hard commitments are reserved before the current analysis. Current complete kits come
+     * first and extra START capacity last. readyShip remains an analysis reference equal to
+     * the finish projection; SHIP/REFERENCE rows never reserve stock or block production.
+     */
+    static StagePlan allocateNestedStages(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> stockAfterSafety,
+            Map<MaterialDimension, BigDecimal> externalHardCommitments) {
+        Map<MaterialDimension, BigDecimal> finishStock = subtractCommitments(
+                stockAfterSafety, externalHardCommitments);
+        StageAllocation finish = allocateStageReadiness(
+                sources, directBySource, finishStock,
+                Set.of(STAGE_START, STAGE_ASSEMBLY, STAGE_FINISH));
+        StageExtension ship = allocateStageExtension(
+                sources, directBySource, finish.remainingPool(),
+                STAGE_SHIP, Map.of(), finish.readyByItem());
+        Map<UUID, BigDecimal> demandByItem = sources.stream().collect(
+                Collectors.toMap(SourceLine::analysisItemId,
+                        SourceLine::remainingAnalysisQty));
+        StageExtension start = allocateStageExtension(
+                sources, directBySource, ship.remainingPool(),
+                STAGE_START, finish.readyByItem(), demandByItem);
+        return new StagePlan(finish, ship, start);
+    }
+
+    static StageAllocation allocateStageReadiness(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            Set<String> includedStages) {
+        Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
+        rawStock.forEach((key, qty) -> pool.put(
+                key, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
+        List<SourceLine> ordered = orderedSources(sources);
+        Map<UUID, BigDecimal> readiness = new LinkedHashMap<>();
+        Map<String, NodeAllocation> allocations = new LinkedHashMap<>();
+        for (SourceLine source : ordered) {
+            List<BomNode> gates = directBySource.getOrDefault(
+                            source.analysisItemId(), List.of()).stream()
+                    .filter(BomNode::hardGate)
+                    .filter(node -> includedStages.contains(node.controlStage()))
+                    .sorted(Comparator.comparing(BomNode::nodeKey))
+                    .toList();
+            boolean missingRequiredBom = directBySource
+                    .getOrDefault(source.analysisItemId(), List.of()).isEmpty()
+                    && "BOM_REQUIRED".equals(source.productionBomPolicy());
+            BigDecimal ready = missingRequiredBom
+                    ? BigDecimal.ZERO.setScale(4)
+                    : maxReadyExact(source.remainingAnalysisQty(), gates, pool);
+            readiness.put(source.analysisItemId(), ready);
+            for (BomNode node : gates) {
+                BigDecimal required = node.requiredForOutput(ready);
+                BigDecimal available = pool.getOrDefault(
+                        node.dimension(), BigDecimal.ZERO);
+                if (required.compareTo(available) > 0) {
+                    throw new IllegalStateException(
+                            "complete-kit allocation exceeded the verified material pool");
+                }
+                pool.put(node.dimension(), available.subtract(required)
+                        .max(BigDecimal.ZERO));
+                allocations.put(nodeAllocationKey(node), new NodeAllocation(
+                        required, node.snapshotRequiredQty().subtract(required)
+                                .max(BigDecimal.ZERO)));
+            }
+        }
+        return new StageAllocation(
+                Map.copyOf(readiness), Map.copyOf(allocations), Map.copyOf(pool));
+    }
+
+    static BigDecimal maxReadyExact(
+            BigDecimal demand,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> pool) {
+        BigDecimal normalizedDemand = demand.max(BigDecimal.ZERO)
+                .setScale(4, RoundingMode.DOWN);
+        if (nodes.isEmpty()) return normalizedDemand;
+        long low = 0;
+        long high;
+        try {
+            high = normalizedDemand.movePointRight(4).longValueExact();
+        } catch (ArithmeticException ex) {
+            throw conflict("生产数量超出齐套计算范围");
+        }
+        while (low < high) {
+            long middle = low + (high - low + 1) / 2;
+            BigDecimal candidate = BigDecimal.valueOf(middle, 4);
+            if (canConsumeExact(candidate, nodes, pool)) {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        return BigDecimal.valueOf(low, 4);
+    }
+
+    private static BigDecimal maxReadyIncrementExact(
+            BigDecimal base,
+            BigDecimal upper,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> pool) {
+        BigDecimal normalizedUpper = upper.max(BigDecimal.ZERO)
+                .setScale(4, RoundingMode.DOWN);
+        BigDecimal normalizedBase = base.max(BigDecimal.ZERO)
+                .min(normalizedUpper).setScale(4, RoundingMode.DOWN);
+        if (nodes.isEmpty()) return normalizedUpper;
+        long low = normalizedBase.movePointRight(4).longValueExact();
+        long high = normalizedUpper.movePointRight(4).longValueExact();
+        while (low < high) {
+            long middle = low + (high - low + 1) / 2;
+            BigDecimal candidate = BigDecimal.valueOf(middle, 4);
+            boolean feasible = incrementalRequirements(
+                    normalizedBase, candidate, nodes).entrySet().stream()
+                    .allMatch(entry -> entry.getValue().compareTo(
+                            pool.getOrDefault(entry.getKey(), BigDecimal.ZERO)) <= 0);
+            if (feasible) {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        return BigDecimal.valueOf(low, 4);
+    }
+
+    static StageExtension allocateStageExtension(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> rawStock,
+            String stage,
+            Map<UUID, BigDecimal> baseByItem,
+            Map<UUID, BigDecimal> upperByItem) {
+        Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
+        rawStock.forEach((dimension, qty) -> pool.put(
+                dimension, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
+        Map<UUID, BigDecimal> readiness = new LinkedHashMap<>();
+        Map<String, NodeAllocation> allocations = new LinkedHashMap<>();
+        for (SourceLine source : orderedSources(sources)) {
+            List<BomNode> allDirect = directBySource.getOrDefault(
+                    source.analysisItemId(), List.of());
+            List<BomNode> gates = allDirect.stream()
+                    .filter(BomNode::hardGate)
+                    .filter(MaterialAnalysisService::productionGate)
+                    .filter(node -> stage.equals(node.controlStage()))
+                    .sorted(Comparator.comparing(BomNode::nodeKey)).toList();
+            BigDecimal base = baseByItem.getOrDefault(
+                    source.analysisItemId(), BigDecimal.ZERO.setScale(4));
+            BigDecimal upper = upperByItem.getOrDefault(
+                    source.analysisItemId(), source.remainingAnalysisQty());
+            boolean missingRequiredBom = allDirect.isEmpty()
+                    && "BOM_REQUIRED".equals(source.productionBomPolicy());
+            BigDecimal ready = missingRequiredBom
+                    ? BigDecimal.ZERO.setScale(4)
+                    : maxReadyIncrementExact(base, upper, gates, pool);
+            readiness.put(source.analysisItemId(), ready);
+            for (BomNode node : gates) {
+                BigDecimal additional = node.requiredForOutput(ready)
+                        .subtract(node.requiredForOutput(base)).max(BigDecimal.ZERO);
+                BigDecimal available = pool.getOrDefault(
+                        node.dimension(), BigDecimal.ZERO);
+                if (additional.compareTo(available) > 0) {
+                    throw new IllegalStateException(
+                            "stage extension exceeded the verified material pool");
+                }
+                pool.put(node.dimension(), available.subtract(additional)
+                        .max(BigDecimal.ZERO));
+                allocations.put(nodeAllocationKey(node), new NodeAllocation(
+                        additional, BigDecimal.ZERO.setScale(4)));
+            }
+        }
+        return new StageExtension(
+                Map.copyOf(readiness), Map.copyOf(allocations), Map.copyOf(pool));
+    }
+
+    private static void mergeAllocations(
+            Map<String, NodeAllocation> target,
+            Map<String, NodeAllocation> additions) {
+        additions.forEach((key, addition) -> target.merge(
+                key, addition,
+                (left, right) -> new NodeAllocation(
+                        left.allocatedQty().add(right.allocatedQty()),
+                        BigDecimal.ZERO.setScale(4))));
+    }
+
+    private static boolean canConsumeExact(
+            BigDecimal productQty,
+            List<BomNode> nodes,
+            Map<MaterialDimension, BigDecimal> pool) {
+        return exactRequirements(productQty, nodes).entrySet().stream().allMatch(entry ->
+                entry.getValue().compareTo(
+                        pool.getOrDefault(entry.getKey(), BigDecimal.ZERO)) <= 0);
+    }
+
+    private static Map<MaterialDimension, BigDecimal> exactRequirements(
+            BigDecimal productQty, List<BomNode> nodes) {
+        Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
+        nodes.forEach(node -> result.merge(
+                node.dimension(), node.requiredForOutput(productQty), BigDecimal::add));
+        return result;
+    }
+
+    private static Map<MaterialDimension, BigDecimal> incrementalRequirements(
+            BigDecimal baseProductQty,
+            BigDecimal totalProductQty,
+            List<BomNode> nodes) {
+        Map<MaterialDimension, BigDecimal> base = exactRequirements(
+                baseProductQty, nodes);
+        Map<MaterialDimension, BigDecimal> total = exactRequirements(
+                totalProductQty, nodes);
+        Map<MaterialDimension, BigDecimal> result = new LinkedHashMap<>();
+        total.forEach((dimension, required) -> result.put(
+                dimension,
+                required.subtract(base.getOrDefault(dimension, BigDecimal.ZERO))
+                        .max(BigDecimal.ZERO)));
+        return result;
+    }
+
+    static Map<String, NodeAllocation> allocateDirectMaterials(
+            List<SourceLine> sources,
+            Map<UUID, List<BomNode>> directBySource,
+            Map<MaterialDimension, BigDecimal> remainingStock,
+            Map<String, NodeAllocation> kitAllocations) {
+        Map<MaterialDimension, BigDecimal> pool = new LinkedHashMap<>();
+        remainingStock.forEach((key, qty) -> pool.put(
+                key, qty.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN)));
+        List<SourceLine> ordered = orderedSources(sources);
+        Map<String, NodeAllocation> result = new LinkedHashMap<>(kitAllocations);
+        for (SourceLine source : ordered) {
+            List<BomNode> nodes = directBySource.getOrDefault(
+                            source.analysisItemId(), List.of()).stream()
+                    .sorted(Comparator.comparing(BomNode::nodeKey)).toList();
+            for (BomNode node : nodes) {
+                if (node.hardGate()
+                        && !STAGE_REFERENCE.equals(node.controlStage())) {
+                    NodeAllocation existing = result.getOrDefault(
+                            nodeAllocationKey(node), NodeAllocation.ZERO);
+                    BigDecimal allocated = existing.allocatedQty()
+                            .min(node.snapshotRequiredQty());
+                    result.put(nodeAllocationKey(node), new NodeAllocation(
+                            allocated,
+                            node.snapshotRequiredQty().subtract(allocated)
+                                    .max(BigDecimal.ZERO)));
+                    continue;
+                }
+                BigDecimal required = node.snapshotRequiredQty();
+                NodeAllocation existing = result.getOrDefault(
+                        nodeAllocationKey(node), NodeAllocation.ZERO);
+                BigDecimal residual = required.subtract(existing.allocatedQty())
+                        .max(BigDecimal.ZERO);
+                BigDecimal available = pool.getOrDefault(
+                        node.dimension(), BigDecimal.ZERO);
+                BigDecimal extra = residual.min(available);
+                BigDecimal allocated = existing.allocatedQty().add(extra)
+                        .min(required);
+                pool.put(node.dimension(), available.subtract(extra)
+                        .max(BigDecimal.ZERO));
+                result.put(nodeAllocationKey(node), new NodeAllocation(
+                        allocated, required.subtract(allocated).max(BigDecimal.ZERO)));
+            }
+        }
+        return result;
     }
 
     private static String nodeAllocationKey(BomNode node) {
         return node.analysisItemId() + "|" + node.nodeKey();
+    }
+
+    private static List<SourceLine> orderedSources(List<SourceLine> sources) {
+        return sources.stream()
+                .sorted(Comparator.comparingInt(SourceLine::allocationPriority)
+                        .thenComparing(value -> value.analysisItemId().toString()))
+                .toList();
     }
 
     AnalysisView detailInternal(UUID analysisId, boolean enforceAccess) {
@@ -1388,7 +2245,7 @@ public class MaterialAnalysisService {
         List<PlanPreviewItem> items = new ArrayList<>();
         List<PlanDraftPreview> plans = new ArrayList<>();
         List<String> fingerprintParts = new ArrayList<>(List.of(
-                "MATERIAL-ANALYSIS-PLAN-PREVIEW-V1", view.analysisId().toString(),
+                "MATERIAL-ANALYSIS-PLAN-PREVIEW-V2", view.analysisId().toString(),
                 Long.toString(view.version()), view.fingerprint(),
                 Objects.toString(view.warehouseId(), "ALL")));
         boolean allReady = true;
@@ -1406,6 +2263,7 @@ public class MaterialAnalysisService {
             List<MaterialView> direct = view.flatMaterials().stream()
                     .filter(material -> material.analysisLineId().equals(selected.analysisLineId()))
                     .filter(material -> material.level() == 1)
+                    .filter(MaterialAnalysisService::productionGate)
                     .toList();
             String overrideReason = bomOverrides.get(product.analysisLineId());
             boolean requiresOverride = product.missingBom()
@@ -1420,7 +2278,7 @@ public class MaterialAnalysisService {
             boolean canGenerate = canGenerateReadyBatch(
                     missingBlocked, selected.qty(), ready);
             String reason = missingBlocked ? "产品缺少必需 BOM，需逐产品提交例外原因"
-                    : canGenerate ? null : "直接层物料未完整齐套";
+                    : canGenerate ? null : "生产阶段硬门槛物料未完整齐套";
             allReady &= canGenerate;
             List<PlanMaterialPreview> planMaterials = new ArrayList<>();
             Map<MaterialDimension, BigDecimal> previewRemaining = new LinkedHashMap<>();
@@ -1429,8 +2287,7 @@ public class MaterialAnalysisService {
                             material.goodsId(), material.colorId(), material.unitId()),
                     material.allocatedAvailableQty(), BigDecimal::add));
             for (MaterialView material : direct) {
-                BigDecimal requiredQty = material.perProductQty()
-                        .multiply(selected.qty()).setScale(4, RoundingMode.CEILING);
+                BigDecimal requiredQty = requiredForOutput(material, selected.qty());
                 MaterialDimension key = new MaterialDimension(
                         material.goodsId(), material.colorId(), material.unitId());
                 BigDecimal available = previewRemaining.getOrDefault(key, BigDecimal.ZERO);
@@ -1508,12 +2365,13 @@ public class MaterialAnalysisService {
 
     private String fingerprintForAnalysis(UUID analysisId) {
         List<String> parts = new ArrayList<>(List.of(
-                "MATERIAL-ANALYSIS-V1", analysisId.toString()));
+                "MATERIAL-ANALYSIS-V2", analysisId.toString()));
         NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT id, source_type, sales_order_item_id, goods_id, color_id,
                        unit_id, requested_qty, submitted_qty, approved_qty,
                        delivery_date, source_ref, source_reason, line_priority,
-                       ready_now_qty, ready_by_date_qty
+                       ready_now_qty, ready_by_date_qty,
+                       ready_start_qty, ready_finish_qty, ready_ship_qty
                 FROM production_material_analysis_items
                 WHERE analysis_id = :id AND is_deleted = FALSE
                 ORDER BY line_priority, id
@@ -1525,13 +2383,18 @@ public class MaterialAnalysisService {
                 decimalText(decimal(row[8])), Objects.toString(row[9], ""),
                 Objects.toString(row[10], ""), Objects.toString(row[11], ""),
                 Objects.toString(row[12], ""), decimalText(decimal(row[13])),
-                decimalText(decimal(row[14])))));
+                decimalText(decimal(row[14])), decimalText(decimal(row[15])),
+                decimalText(decimal(row[16])), decimalText(decimal(row[17])))));
         NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT analysis_item_id, node_key, parent_node_key, goods_id,
                        color_id, unit_id, depth, per_product_qty, required_qty,
                        available_qty, allocated_available_qty, inbound_qty,
                        shortage_qty, expected_ready_date,
-                       source_suggestion, confirmed_route, route_reason, lower_level_pending
+                       source_suggestion, confirmed_route, route_reason, lower_level_pending,
+                       control_stage, consumption_basis, basis_output_qty,
+                       allow_partial_package, hard_gate, bom_qty, parent_per_product_qty,
+                       calculation_mode, allocated_start_qty,
+                       allocated_finish_qty, allocated_ship_qty
                 FROM production_material_analysis_materials
                 WHERE analysis_id = :id AND active = TRUE
                 ORDER BY analysis_item_id, path, id
@@ -1885,7 +2748,8 @@ public class MaterialAnalysisService {
                        COALESCE(draft.qty,0), so.status, so.is_stopped,
                        so.is_closed, so.is_deleted, soi.is_deleted,
                        ai.source_ref, ai.source_reason, ai.line_priority,
-                       ai.ready_now_qty, ai.ready_by_date_qty
+                       ai.ready_now_qty, ai.ready_by_date_qty,
+                       ai.ready_start_qty, ai.ready_finish_qty, ai.ready_ship_qty
                 FROM production_material_analysis_items ai
                 JOIN goods g ON g.id = ai.goods_id
                 JOIN units u ON u.id = ai.unit_id
@@ -1942,7 +2806,12 @@ public class MaterialAnalysisService {
                            COALESCE(b.color_id, legacy_color.id, component.color_id) AS color_id,
                            COALESCE(component.unit_id, legacy_unit.id) AS unit_id,
                            1 AS depth, ARRAY[b.id]::uuid[] AS bom_path,
-                           (CAST(:unitRate AS numeric) * b.qty)::numeric AS per_product_qty,
+                           CAST(:unitRate AS numeric) AS parent_per_product_qty,
+                           b.qty AS bom_qty,
+                           (CAST(:unitRate AS numeric) * b.qty /
+                                CASE WHEN b.consumption_basis = 'PER_UNIT' THEN 1
+                                     ELSE b.basis_output_qty END
+                           )::numeric AS per_product_qty,
                            component.code, component.name, component.spec,
                            resolved_color.name AS color_name,
                            COALESCE(component_unit.name, legacy_unit.name) AS unit_name,
@@ -1950,7 +2819,9 @@ public class MaterialAnalysisService {
                            component.source_type,
                            EXISTS (SELECT 1 FROM goods_bom_items child
                                    WHERE child.goods_id = b.component_goods_id
-                                     AND child.is_deleted = FALSE) AS has_children
+                                     AND child.is_deleted = FALSE) AS has_children,
+                           b.control_stage, b.consumption_basis,
+                           b.basis_output_qty, b.allow_partial_package, b.hard_gate
                     FROM goods_bom_items b
                     JOIN goods component ON component.id = b.component_goods_id
                                          AND component.is_deleted = FALSE
@@ -1967,7 +2838,12 @@ public class MaterialAnalysisService {
                            COALESCE(b.color_id, legacy_color.id, component.color_id),
                            COALESCE(component.unit_id, legacy_unit.id),
                            exp.depth + 1, exp.bom_path || b.id,
-                           (exp.per_product_qty * b.qty)::numeric,
+                           exp.per_product_qty,
+                           b.qty,
+                           (exp.per_product_qty * b.qty /
+                                CASE WHEN b.consumption_basis = 'PER_UNIT' THEN 1
+                                     ELSE b.basis_output_qty END
+                           )::numeric,
                            component.code, component.name, component.spec,
                            resolved_color.name,
                            COALESCE(component_unit.name, legacy_unit.name),
@@ -1975,7 +2851,9 @@ public class MaterialAnalysisService {
                            component.source_type,
                            EXISTS (SELECT 1 FROM goods_bom_items child
                                    WHERE child.goods_id = b.component_goods_id
-                                     AND child.is_deleted = FALSE)
+                                     AND child.is_deleted = FALSE),
+                           b.control_stage, b.consumption_basis,
+                           b.basis_output_qty, b.allow_partial_package, b.hard_gate
                     FROM exp
                     JOIN goods_bom_items b ON b.goods_id = exp.goods_id
                                           AND b.is_deleted = FALSE
@@ -1994,23 +2872,57 @@ public class MaterialAnalysisService {
                        depth, array_to_string(bom_path, '/'),
                         CASE WHEN depth = 1 THEN NULL
                              ELSE array_to_string(trim_array(bom_path, 1), '/') END,
-                       per_product_qty, code, name, spec, color_name, unit_name,
-                       safety_stock, source_type, has_children
+                       parent_per_product_qty, bom_qty, per_product_qty,
+                       code, name, spec, color_name, unit_name,
+                       safety_stock, source_type, has_children,
+                       control_stage, consumption_basis, basis_output_qty,
+                       allow_partial_package, hard_gate
                 FROM exp
                 ORDER BY bom_path
                 """)
                 .setParameter("unitRate", source.unitRate())
                 .setParameter("goodsId", source.goodsId()));
         List<BomNode> result = new ArrayList<>();
+        Map<String, BomNode> byNodeKey = new LinkedHashMap<>();
         for (Object[] row : rows) {
             if (row[4] == null) {
                 throw conflict("BOM 组件未维护有效基本单位，不能进行物料分析");
             }
-            result.add(new BomNode(source.analysisItemId(), uuid(row[0]), uuid(row[1]),
-                    uuid(row[2]), uuid(row[3]), uuid(row[4]), integer(row[5]),
-                    string(row[6]), string(row[7]), decimal(row[8]), string(row[9]),
-                    string(row[10]), string(row[11]), string(row[12]), string(row[13]),
-                    decimal(row[14]), suggestion(string(row[15])), Boolean.TRUE.equals(row[16])));
+            int depth = integer(row[5]);
+            String nodeKey = string(row[6]);
+            String parentNodeKey = string(row[7]);
+            BigDecimal parentOutputQty;
+            if (depth == 1) {
+                parentOutputQty = source.remainingAnalysisQty().multiply(source.unitRate());
+            } else {
+                BomNode parent = byNodeKey.get(parentNodeKey);
+                if (parent == null) {
+                    throw conflict("BOM 层级路径不完整，无法计算子件需求");
+                }
+                // Gross first pass: this discovers every downstream stock dimension. The
+                // persisted tree is rebased from each parent's stock-backed shortage later.
+                parentOutputQty = parent.snapshotRequiredQty();
+            }
+            BigDecimal snapshotRequired;
+            try {
+                snapshotRequired = MaterialConsumptionMath.required(
+                        parentOutputQty, decimal(row[9]), string(row[20]),
+                        decimal(row[21]), Boolean.TRUE.equals(row[22]));
+            } catch (IllegalArgumentException ex) {
+                throw conflict("BOM 包装/批次计量数据无效，不能进行物料分析");
+            }
+            BomNode node = new BomNode(
+                    source.analysisItemId(), uuid(row[0]), uuid(row[1]),
+                    uuid(row[2]), uuid(row[3]), uuid(row[4]), depth,
+                    nodeKey, parentNodeKey, decimal(row[8]), decimal(row[9]),
+                    decimal(row[10]), snapshotRequired,
+                    string(row[11]), string(row[12]), string(row[13]), string(row[14]),
+                    string(row[15]), decimal(row[16]), suggestion(string(row[17])),
+                    Boolean.TRUE.equals(row[18]), string(row[19]), string(row[20]),
+                    decimal(row[21]), Boolean.TRUE.equals(row[22]),
+                    Boolean.TRUE.equals(row[23]));
+            result.add(node);
+            byNodeKey.put(nodeKey, node);
         }
         return List.copyOf(result);
     }
@@ -2233,6 +3145,9 @@ public class MaterialAnalysisService {
                        m.color_id, c.name, m.unit_id, u.name, m.depth, m.path,
                        m.parent_node_key,
                        parent_material.goods_id AS parent_goods_id,
+                       m.control_stage, m.consumption_basis, m.basis_output_qty,
+                       m.allow_partial_package, m.hard_gate,
+                       m.bom_qty, m.parent_per_product_qty,
                        m.per_product_qty, m.required_qty, m.available_qty,
                        m.allocated_available_qty, m.reserved_qty,
                        m.safety_stock_qty, m.inbound_qty,
@@ -2696,10 +3611,10 @@ public class MaterialAnalysisService {
         return new ApiException(ErrorCode.NOT_FOUND, message);
     }
 
-    private static final class TimePhasedPool {
+    static final class TimePhasedPool {
         private final Map<MaterialDimension, List<SupplyLot>> lots = new LinkedHashMap<>();
 
-        private TimePhasedPool(
+        TimePhasedPool(
                 Map<MaterialDimension, BigDecimal> stock,
                 List<InboundLot> inbound) {
             stock.forEach((dimension, qty) -> lots.computeIfAbsent(
@@ -2712,37 +3627,82 @@ public class MaterialAnalysisService {
                     Comparator.nullsFirst(Comparator.naturalOrder()))));
         }
 
-        private BigDecimal maxReady(
+        BigDecimal maxReadyExact(
                 BigDecimal demand,
-                Map<MaterialDimension, BigDecimal> usage,
+                List<BomNode> nodes,
                 LocalDate cutoff) {
-            if (usage.isEmpty()) return demand.setScale(4, RoundingMode.DOWN);
-            BigDecimal ready = demand;
-            for (Map.Entry<MaterialDimension, BigDecimal> entry : usage.entrySet()) {
-                BigDecimal available = lots.getOrDefault(entry.getKey(), List.of()).stream()
-                        .filter(lot -> lot.eligible(cutoff))
-                        .map(SupplyLot::remaining)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
-                ready = ready.min(available.divide(
-                        entry.getValue(), 4, RoundingMode.DOWN));
-            }
-            return ready.max(BigDecimal.ZERO).setScale(4, RoundingMode.DOWN);
+            return maxReadyFromBaseExact(
+                    BigDecimal.ZERO.setScale(4), demand, nodes, cutoff);
         }
 
-        private void consume(
+        void consumeExact(
                 BigDecimal quantity,
-                Map<MaterialDimension, BigDecimal> usage,
+                List<BomNode> nodes,
                 LocalDate cutoff) {
-            for (Map.Entry<MaterialDimension, BigDecimal> entry : usage.entrySet()) {
-                BigDecimal need = entry.getValue().multiply(quantity)
-                        .setScale(4, RoundingMode.CEILING);
+            consumeIncrementExact(
+                    BigDecimal.ZERO.setScale(4), quantity, nodes, cutoff);
+        }
+
+        BigDecimal maxReadyFromBaseExact(
+                BigDecimal base,
+                BigDecimal demand,
+                List<BomNode> nodes,
+                LocalDate cutoff) {
+            BigDecimal normalizedDemand = demand.max(BigDecimal.ZERO)
+                    .setScale(4, RoundingMode.DOWN);
+            BigDecimal normalizedBase = base.max(BigDecimal.ZERO)
+                    .min(normalizedDemand).setScale(4, RoundingMode.DOWN);
+            if (nodes.isEmpty()) return normalizedDemand;
+            long low = normalizedBase.movePointRight(4).longValueExact();
+            long high = normalizedDemand.movePointRight(4).longValueExact();
+            Map<MaterialDimension, BigDecimal> available = availableAt(cutoff);
+            while (low < high) {
+                long middle = low + (high - low + 1) / 2;
+                BigDecimal candidate = BigDecimal.valueOf(middle, 4);
+                boolean feasible = incrementalRequirements(
+                        normalizedBase, candidate, nodes).entrySet().stream()
+                        .allMatch(entry -> entry.getValue().compareTo(
+                                available.getOrDefault(
+                                        entry.getKey(), BigDecimal.ZERO)) <= 0);
+                if (feasible) {
+                    low = middle;
+                } else {
+                    high = middle - 1;
+                }
+            }
+            return BigDecimal.valueOf(low, 4);
+        }
+
+        void consumeIncrementExact(
+                BigDecimal base,
+                BigDecimal total,
+                List<BomNode> nodes,
+                LocalDate cutoff) {
+            for (Map.Entry<MaterialDimension, BigDecimal> entry
+                    : incrementalRequirements(base, total, nodes).entrySet()) {
+                BigDecimal need = entry.getValue();
                 for (SupplyLot lot : lots.getOrDefault(entry.getKey(), List.of())) {
                     if (!lot.eligible(cutoff) || need.signum() == 0) continue;
                     BigDecimal take = need.min(lot.remaining());
                     lot.consume(take);
                     need = need.subtract(take);
                 }
+                if (need.signum() > 0) {
+                    throw new IllegalStateException(
+                            "time-phased allocation exceeded the verified material pool");
+                }
             }
+        }
+
+        private Map<MaterialDimension, BigDecimal> availableAt(LocalDate cutoff) {
+            Map<MaterialDimension, BigDecimal> available = new LinkedHashMap<>();
+            lots.forEach((dimension, values) -> available.put(
+                    dimension,
+                    values.stream().filter(lot -> lot.eligible(cutoff))
+                            .map(SupplyLot::remaining)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add)
+                            .setScale(4, RoundingMode.DOWN)));
+            return available;
         }
     }
 
@@ -2775,6 +3735,29 @@ public class MaterialAnalysisService {
     record NodeAllocation(BigDecimal allocatedQty, BigDecimal shortageQty) {
         static final NodeAllocation ZERO = new NodeAllocation(
                 BigDecimal.ZERO.setScale(4), BigDecimal.ZERO.setScale(4));
+    }
+
+    record StageAllocation(
+            Map<UUID, BigDecimal> readyByItem,
+            Map<String, NodeAllocation> nodeAllocations,
+            Map<MaterialDimension, BigDecimal> remainingPool) {
+    }
+
+    record StageExtension(
+            Map<UUID, BigDecimal> readyByItem,
+            Map<String, NodeAllocation> nodeAllocations,
+            Map<MaterialDimension, BigDecimal> remainingPool) {
+    }
+
+    record StagePlan(
+            StageAllocation finish,
+            StageExtension ship,
+            StageExtension start) {
+    }
+
+    record NestedDiagnosticPlan(
+            List<BomNode> nodes,
+            Map<String, NodeAllocation> nodeAllocations) {
     }
 
     record AnalysisHeader(UUID id, UUID warehouseId, String status, long version,
@@ -2831,7 +3814,9 @@ public class MaterialAnalysisService {
             Short orderStatus, boolean orderStopped, boolean orderClosed,
             boolean orderDeleted, boolean orderItemDeleted,
             String sourceRef, String sourceReason, int allocationPriority,
-            BigDecimal readyNowQty, BigDecimal readyByDateQty) {
+            BigDecimal readyNowQty, BigDecimal readyByDateQty,
+            BigDecimal readyStartQty, BigDecimal readyFinishQty,
+            BigDecimal readyShipQty) {
 
         static SourceLine from(Object[] row) {
             return new SourceLine(uuid(row[0]), string(row[1]), uuid(row[2]), uuid(row[3]),
@@ -2846,7 +3831,8 @@ public class MaterialAnalysisService {
                     Boolean.TRUE.equals(row[31]), Boolean.TRUE.equals(row[32]),
                     Boolean.TRUE.equals(row[33]), Boolean.TRUE.equals(row[34]),
                     string(row[35]), string(row[36]), integer(row[37]),
-                    decimal(row[38]), decimal(row[39]));
+                    decimal(row[38]), decimal(row[39]), decimal(row[40]),
+                    decimal(row[41]), decimal(row[42]));
         }
 
         BigDecimal remainingAnalysisQty() {
@@ -2865,7 +3851,8 @@ public class MaterialAnalysisService {
                     goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId,
                     unitName, unitRate, requestedQty, submittedQty, approvedQty,
                     remainingAnalysisQty(), allocationPriority,
-                    readyNowQty, readyByDateQty, ratio,
+                    readyNowQty, readyByDateQty,
+                    readyStartQty, readyFinishQty, readyShipQty, ratio,
                     productionBomPolicy, missingBom(),
                     missingBom() && "BOM_REQUIRED".equals(productionBomPolicy));
         }
@@ -2874,12 +3861,37 @@ public class MaterialAnalysisService {
     record BomNode(
             UUID analysisItemId, UUID bomItemId, UUID parentGoodsId,
             UUID goodsId, UUID colorId, UUID unitId, int depth,
-            String nodeKey, String parentNodeKey, BigDecimal perProductQty,
+            String nodeKey, String parentNodeKey,
+            BigDecimal parentPerProductQty, BigDecimal bomQty,
+            BigDecimal perProductQty, BigDecimal snapshotRequiredQty,
             String goodsCode, String goodsName, String spec, String colorName,
             String unitName, BigDecimal safetyStock, String suggestion,
-            boolean hasChildren) {
+            boolean hasChildren, String controlStage, String consumptionBasis,
+            BigDecimal basisOutputQty, boolean allowPartialPackage,
+            boolean hardGate) {
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
+        }
+        BigDecimal requiredForOutput(BigDecimal productQty) {
+            return requiredForParentOutput(productQty.multiply(parentPerProductQty));
+        }
+        BigDecimal requiredForParentOutput(BigDecimal parentOutputQty) {
+            try {
+                return MaterialConsumptionMath.required(
+                        parentOutputQty, bomQty,
+                        consumptionBasis, basisOutputQty, allowPartialPackage);
+            } catch (IllegalArgumentException ex) {
+                throw conflict("BOM 包装/批次计量数据无效，不能计算齐套数量");
+            }
+        }
+        BomNode withSnapshotRequiredQty(BigDecimal requiredQty) {
+            return new BomNode(
+                    analysisItemId, bomItemId, parentGoodsId,
+                    goodsId, colorId, unitId, depth, nodeKey, parentNodeKey,
+                    parentPerProductQty, bomQty, perProductQty, requiredQty,
+                    goodsCode, goodsName, spec, colorName, unitName, safetyStock,
+                    suggestion, hasChildren, controlStage, consumptionBasis,
+                    basisOutputQty, allowPartialPackage, hardGate);
         }
         String path() {
             return nodeKey;
@@ -2924,7 +3936,11 @@ public class MaterialAnalysisService {
             UUID id, UUID analysisItemId, UUID goodsId, String goodsCode,
             String goodsName, String spec, UUID colorId, String colorName,
             UUID unitId, String unitName, int depth, String path,
-            String parentNodeKey, UUID parentGoodsId, BigDecimal perProductQty,
+            String parentNodeKey, UUID parentGoodsId,
+            String controlStage, String consumptionBasis, BigDecimal basisOutputQty,
+            boolean allowPartialPackage, boolean hardGate,
+            BigDecimal bomQty, BigDecimal parentPerProductQty,
+            BigDecimal perProductQty,
             BigDecimal requiredQty, BigDecimal availableQty,
             BigDecimal allocatedAvailableQty, BigDecimal reservedQty,
             BigDecimal safetyStockQty, BigDecimal inboundQty, BigDecimal shortageQty,
@@ -2935,11 +3951,14 @@ public class MaterialAnalysisService {
             return new MaterialRow(uuid(row[0]), uuid(row[1]), uuid(row[2]), string(row[3]),
                     string(row[4]), string(row[5]), uuid(row[6]), string(row[7]),
                     uuid(row[8]), string(row[9]), integer(row[10]), string(row[11]),
-                    string(row[12]), uuid(row[13]), decimal(row[14]), decimal(row[15]),
-                    decimal(row[16]), decimal(row[17]), decimal(row[18]), decimal(row[19]),
-                    decimal(row[20]), decimal(row[21]), date(row[22]), string(row[23]),
-                    string(row[24]), string(row[25]), string(row[26]),
-                    Boolean.TRUE.equals(row[27]), Boolean.TRUE.equals(row[28]));
+                    string(row[12]), uuid(row[13]), string(row[14]), string(row[15]),
+                    decimal(row[16]), Boolean.TRUE.equals(row[17]),
+                    Boolean.TRUE.equals(row[18]), decimal(row[19]), decimal(row[20]),
+                    decimal(row[21]), decimal(row[22]), decimal(row[23]), decimal(row[24]),
+                    decimal(row[25]), decimal(row[26]), decimal(row[27]), decimal(row[28]),
+                    date(row[29]), string(row[30]), string(row[31]), string(row[32]),
+                    string(row[33]), Boolean.TRUE.equals(row[34]),
+                    Boolean.TRUE.equals(row[35]));
         }
         MaterialDimension dimension() {
             return new MaterialDimension(goodsId, colorId, unitId);
@@ -2952,7 +3971,10 @@ public class MaterialAnalysisService {
             return new MaterialView(id, analysisItemId, path, actionGroupKey(), materialKey(),
                     goodsId, goodsCode, goodsName,
                     spec, colorId, colorName, unitId, unitName, depth, displayPath,
-                    parentNodeKey, parentGoodsId, parentLabel, perProductQty, requiredQty,
+                    parentNodeKey, parentGoodsId, parentLabel,
+                    controlStage, consumptionBasis, basisOutputQty,
+                    allowPartialPackage, hardGate, bomQty, parentPerProductQty,
+                    perProductQty, requiredQty,
                     availableQty, allocatedAvailableQty, reservedQty,
                     safetyStockQty, inboundQty, shortageQty,
                     expectedReadyDate, suggestion, confirmedRoute,

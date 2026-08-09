@@ -757,6 +757,7 @@ public class ProductionDailyReportService {
                 VALUES (:planId, :drawId, :by)
                 """).setParameter("planId", planId).setParameter("drawId", d.getId())
                 .setParameter("by", currentUser.requireId()).executeUpdate();
+        chainNotice.notifyFinishedInboundPending(d.getId());
     }
 
     /**

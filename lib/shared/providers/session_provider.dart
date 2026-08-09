@@ -101,8 +101,10 @@ class SessionNotifier extends Notifier<SessionState> {
       unawaited(_reconcileExternalTokenChange(notice));
     });
     // 模拟 token 到期（AuthInterceptor 401 触发）：退出模拟、恢复 admin，不登出主会话。
-    final impersonationExpiredSubscription =
-        SessionEventBus.instance.onImpersonationExpired.listen((_) {
+    final impersonationExpiredSubscription = SessionEventBus
+        .instance
+        .onImpersonationExpired
+        .listen((_) {
           unawaited(_handleImpersonationExpired());
         });
     ref.onDispose(() {
@@ -279,7 +281,9 @@ class SessionNotifier extends Notifier<SessionState> {
       }
       _rememberVisibleRecord(current);
       state = SessionState(
-        status: AuthStatus.authenticated,
+        status: profile.mustChangePassword
+            ? AuthStatus.mustChangePassword
+            : AuthStatus.authenticated,
         user: _toAppUser(profile),
       );
     } on ApiException catch (error) {
@@ -546,8 +550,9 @@ class SessionNotifier extends Notifier<SessionState> {
       status: state.status,
       user: state.user,
       actor: state.actor,
-      impersonationModeExpiresAt:
-          DateTime.now().add(Duration(seconds: mode.expiresIn)),
+      impersonationModeExpiresAt: DateTime.now().add(
+        Duration(seconds: mode.expiresIn),
+      ),
       impersonationReadOnly: state.impersonationReadOnly,
       recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,
     );
@@ -575,8 +580,9 @@ class SessionNotifier extends Notifier<SessionState> {
     final admin = state.actor ?? state.user;
     final recents = <String>[targetEmployeeId]
         .followedBy(
-          state.recentImpersonatedEmployeeIds
-              .where((id) => id != targetEmployeeId),
+          state.recentImpersonatedEmployeeIds.where(
+            (id) => id != targetEmployeeId,
+          ),
         )
         .take(5)
         .toList();
@@ -607,7 +613,8 @@ class SessionNotifier extends Notifier<SessionState> {
   void _restoreAdminState({bool keepModeWindow = false}) {
     final admin = state.actor ?? state.user;
     final modeExpiresAt = state.impersonationModeExpiresAt;
-    final keep = keepModeWindow &&
+    final keep =
+        keepModeWindow &&
         modeExpiresAt != null &&
         DateTime.now().isBefore(modeExpiresAt);
     state = SessionState(

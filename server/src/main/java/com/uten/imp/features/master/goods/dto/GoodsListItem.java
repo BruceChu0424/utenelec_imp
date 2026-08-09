@@ -30,7 +30,6 @@ public class GoodsListItem {
     private Integer legacyId;
     private String series;
     private String material;
-    @JsonProperty("cNumber")
     private String cNumber;
     private String requireRemark;
     private Integer colorLegacyId;
@@ -42,4 +41,10 @@ public class GoodsListItem {
     private UUID categoryId;      // 所属分类 id（goods.category_id；货品资料页"搜货品定位分类"用）
     private boolean autoCreated;  // 迁移兜底占位货品标记（V177；auto_created 列）
     private BigDecimal stockQty;  // 即时库存合计（聚合 stock_balances，仅参与核算仓库；列表展示用）
+
+    /** Keep the public JSON key stable across Jackson/JavaBeans versions. */
+    @JsonProperty("cNumber")
+    public String getCNumber() {
+        return cNumber;
+    }
 }

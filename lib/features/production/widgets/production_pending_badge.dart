@@ -1,6 +1,6 @@
 // 生产部待排产数量红色徽章（工作台「生产管理」卡片 / 生产 hub「生产调度」卡片用）。
 // 数据源 productionPendingCountProvider（60s 轮询 /production/schedule/pending-count），
-// count<=0 时不渲染。范式同 HrPendingBadge。
+// count<=0 时不渲染，数字样式复用 UtenNotificationBadge。
 //
 // overdue>0 时在主徽章左侧追加「逾期 N」描边小标（深红文字），
 // 悬浮提示展示完整拆分：待排产 / 紧急 / 已逾期。

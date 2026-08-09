@@ -79,6 +79,14 @@ ServerMode readServerMode(SharedPreferences prefs) {
 Future<void> writeServerMode(SharedPreferences prefs, ServerMode mode) =>
     prefs.setString(_kServerModeKey, mode.name);
 
+/// Restores the native client to the safe default without accepting a host
+/// from the user. The next endpoint decision is still limited to the local and
+/// cloud URLs embedded in the build.
+Future<void> restoreAutomaticServerSelection(SharedPreferences prefs) async {
+  await writeServerMode(prefs, ServerMode.auto);
+  await writeCloudUrl(prefs, null);
+}
+
 /// 纯函数：选择可信云端地址。
 ///
 /// Release 只使用构建期 `CLOUD_API_BASE_URL`，故意完全忽略本地缓存；这避免被

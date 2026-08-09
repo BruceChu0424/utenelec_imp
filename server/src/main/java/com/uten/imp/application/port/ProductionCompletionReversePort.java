@@ -35,4 +35,10 @@ public interface ProductionCompletionReversePort {
      * a legacy/manual no-op.
      */
     void beforeFinishedInboundReversed(UUID stockDocumentId);
+
+    /** Called after FINISHED_IN physical stock has been removed. */
+    default void afterFinishedInboundReversed(
+            UUID stockDocumentId, UUID warehouseId) {
+        // Optional for test doubles and legacy adapters.
+    }
 }

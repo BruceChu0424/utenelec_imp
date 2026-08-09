@@ -14,12 +14,17 @@ build/
 # db (SQLite 运行时生成)
 *.db
 *.db-journal
+prisma/backups/
 
 # misc
 .DS_Store
 *.log
+*.tsbuildinfo
 .vscode/
 .idea/
+
+# runtime media (persistent volume / object storage, never source control)
+/public/uploads/
 
 # 爬虫临时输出可保留(素材), 但日志忽略
 .scrape/scrape.log

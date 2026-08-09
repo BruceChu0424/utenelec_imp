@@ -1,7 +1,7 @@
 package com.uten.imp.features.sales.report;
 
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.common.export.EncryptedWorkbookService;
+import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
@@ -48,7 +48,7 @@ public class SalesReportController {
 
     private final SalesReportService service;
     private final XlsxExportService xlsxExport;
-    private final EncryptedWorkbookService encryptedWorkbook;
+    private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
@@ -59,6 +59,7 @@ public class SalesReportController {
             @PathVariable String docType,
             @RequestParam(required = false) String billNo,
             @RequestParam(required = false) UUID clientId,
+            @RequestParam(required = false) UUID currencyId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
@@ -69,7 +70,8 @@ public class SalesReportController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.detail(docType, billNo, clientId, warehouseId, status, dateFrom, dateTo, keyword,
+        return service.detail(docType, billNo, clientId, currencyId, warehouseId,
+                status, dateFrom, dateTo, keyword,
                 facetsOf(allParams), page, size, sort, order);
     }
 
@@ -118,7 +120,7 @@ public class SalesReportController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(report, allParams, sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
-        byte[] encrypted = encryptedWorkbook.encrypt(xlsx, body.password());
+        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_sales_report", "sales_reports",
@@ -128,7 +130,7 @@ public class SalesReportController {
                 .header("Content-Disposition", DownloadContentDisposition.attachment(filename))
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                .body(encrypted);
+                .body(downloadBytes);
     }
 
     // ---------- 保留：月度汇总 / 待交货 ----------

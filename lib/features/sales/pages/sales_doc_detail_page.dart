@@ -289,9 +289,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   Future<void> _approve() async => _doAction(
-    // 出货单未财务审核发货时提前告知前置条件（现金客户会被后端拒绝），
-    // 避免用户点完没反应、不知道为什么。
-    _cfg.type == SalesDocType.shipment && _detail?.financeAudit != 1
+    // 销售订单审核只让订单进入库存预留与履约链，不在此形成正式应收；
+    // 出货单未财务审核发货时才提示其真实前置条件。
+    _cfg.type == SalesDocType.order
+        ? '审核后订单将生效，并进入库存预留与后续排产、发运流程，确认审核？'
+        : _cfg.type == SalesDocType.shipment && _detail?.financeAudit != 1
         ? '该出货单尚未「财务审核发货」；现金结算客户须先财务审核，否则审核会被拒绝。确认继续审核？'
         : '审核后将驱动下游（库存/应收），确认审核？',
     (repo) => repo.approve(widget.id),
@@ -939,6 +941,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   Widget _headerCard(ThemeData theme, SalesMasterNameService names) {
     final d = _detail!;
+    final resolvedCurrency = names.currency(d.currencyId);
+    final orderCurrency = resolvedCurrency == '—' ? '订单币种' : resolvedCurrency;
     final rows = <_KV>[
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
@@ -989,7 +993,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       if (_cfg.hasOutType && (d.outType?.isNotEmpty ?? false))
         _KV('出库类型', d.outType),
       // 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族渲染 ***
-      _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
+      if (_cfg.type == SalesDocType.order)
+        _KV(
+          '订单金额（$orderCurrency）',
+          d.priceMasked ? '***' : d.totalOriginal?.toStringAsFixed(2),
+        )
+      else
+        _KV('合计(本币)', d.priceMasked ? '***' : d.totalLocal?.toStringAsFixed(2)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       if (_cfg.type == SalesDocType.returnDoc &&
           (d.returnReason?.isNotEmpty ?? false))
@@ -1160,12 +1170,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             ),
             MasterColumnDef(
               key: 'amount',
-              label: '金额',
+              label: isOrder ? '金额（订单币种）' : '金额',
               width: 100,
               type: 'money',
               value: (it) => masked
                   ? '***'
-                  : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                  : (isOrder
+                            ? it.amountOriginal
+                            : (it.qty ?? 0) * (it.price ?? 0))
+                        ?.toStringAsFixed(2),
             ),
             if (_cfg.showShipped)
               MasterColumnDef(

@@ -1,13 +1,14 @@
 package com.uten.imp.common.export;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * 加密导出请求体：仅含密码（密码走 body，不入 URL/query/日志；行级过滤与排序仍走 query 参数）。
+ * 表格导出请求体。密码只通过请求体传输，不进入 URL、查询参数或日志。
+ *
+ * <p>密码为空时导出普通工作簿；提供密码时对工作簿加密。业务允许弱密码，因此这里只限制
+ * 最大长度，避免无界请求占用资源。
  */
 public record ExportPasswordRequest(
-        @NotBlank(message = "导出密码不能为空")
-        @Size(min = 6, max = 128, message = "导出密码长度必须为 6-128 位")
+        @Size(max = 128, message = "导出密码长度不能超过 128 位")
         String password) {
 }

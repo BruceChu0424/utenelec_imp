@@ -125,6 +125,47 @@ class ProductionPlanningDraftServiceTest {
         assertThat(result.draftId()).isEqualTo(created.getId());
     }
 
+    @Test
+    void analysisLinkedDraftReplaysSameHashBeforeCurrentSnapshotValidation() {
+        UUID planId = UUID.randomUUID();
+        GeneratePlanningPackageRequest request = request();
+        ProductionPlan analysisPlan = plan(planId, (short) 0);
+        analysisPlan.setMaterialAnalysisId(UUID.randomUUID());
+        when(em.find(ProductionPlan.class, planId,
+                LockModeType.PESSIMISTIC_WRITE)).thenReturn(analysisPlan);
+        ProductionPlanningDraft active = active(planId, request);
+        active.setPreviewFingerprint("b".repeat(64));
+        when(draftRepo.lockActiveByPlanId(planId))
+                .thenReturn(Optional.of(active));
+
+        ProductionPlanningDraftView result = service.save(planId, request);
+
+        assertThat(result.draftId()).isEqualTo(active.getId());
+        assertThat(result.previewFingerprint()).isEqualTo("b".repeat(64));
+        verify(validator, never()).validateCurrent(any(), any());
+        verify(draftRepo, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void analysisLinkedDraftRejectsAnySegmentRewriteBeforeValidation() {
+        UUID planId = UUID.randomUUID();
+        GeneratePlanningPackageRequest original = request();
+        GeneratePlanningPackageRequest changed = request();
+        changed.setWarehouseId(UUID.randomUUID());
+        ProductionPlan analysisPlan = plan(planId, (short) 0);
+        analysisPlan.setMaterialAnalysisId(UUID.randomUUID());
+        when(em.find(ProductionPlan.class, planId,
+                LockModeType.PESSIMISTIC_WRITE)).thenReturn(analysisPlan);
+        when(draftRepo.lockActiveByPlanId(planId))
+                .thenReturn(Optional.of(active(planId, original)));
+
+        assertThatThrownBy(() -> service.save(planId, changed))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("不能改写预排分段");
+        verify(validator, never()).validateCurrent(any(), any());
+        verify(draftRepo, never()).saveAndFlush(any());
+    }
+
     private ProductionPlanningDraft active(
             UUID planId,
             GeneratePlanningPackageRequest request) {

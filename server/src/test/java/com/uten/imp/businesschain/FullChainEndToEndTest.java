@@ -19,10 +19,16 @@ import com.uten.imp.features.production.plan.dto.PlanItemLine;
 import com.uten.imp.features.production.plan.dto.PlanSaveRequest;
 import com.uten.imp.features.production.mrp.MrpRow;
 import com.uten.imp.features.production.mrp.MrpService;
+import com.uten.imp.features.production.mrp.ExecutionSegmentPreview;
+import com.uten.imp.features.production.mrp.ExecutionSegmentResult;
 import com.uten.imp.features.production.mrp.GeneratePlanningPackageRequest;
 import com.uten.imp.features.production.mrp.PlanningPackageResult;
 import com.uten.imp.features.production.mrp.PlanningPreviewResult;
 import com.uten.imp.features.production.mrp.ProductionPlanningPackageService;
+import com.uten.imp.features.production.execution.ExecutionSegmentView;
+import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
+import com.uten.imp.features.production.execution.SegmentAssignmentRequest;
+import com.uten.imp.features.production.execution.SegmentTransitionRequest;
 import com.uten.imp.features.production.schedule.ProductionScheduleService;
 import com.uten.imp.features.production.dailyreport.ProductionDailyReportService;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
@@ -139,6 +145,7 @@ class FullChainEndToEndTest {
     @Autowired private ProductionPlanService planService;
     @Autowired private MrpService mrpService;
     @Autowired private ProductionPlanningPackageService planningPackageService;
+    @Autowired private ProductionExecutionSegmentService executionSegmentService;
     @Autowired private com.uten.imp.features.purchase.order.PurchaseOrderService purchaseOrderService;
     @Autowired private com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService financeApproval;
     @Autowired private com.uten.imp.features.purchase.receipt.PurchaseReceiptService purchaseReceiptService;
@@ -444,6 +451,305 @@ class FullChainEndToEndTest {
                 "直层物料需求建立 (B + E)");
     }
 
+    @Test
+    void planningPackage_nonLinearBomFreezesExactDemandReservationAndDraw() {
+        World w = seedWorld("sExactPack");
+        jdbc.update("""
+                update goods_bom_items
+                set qty = 1,
+                    consumption_basis = 'PER_PACKAGE',
+                    basis_output_qty = 4000,
+                    allow_partial_package = false,
+                    control_stage = 'START',
+                    hard_gate = true
+                where goods_id = ? and component_goods_id = ?
+                """, w.goodsA(), w.goodsB());
+        jdbc.update("""
+                update goods_bom_items
+                set hard_gate = false
+                where goods_id = ? and component_goods_id = ?
+                """, w.goodsA(), w.goodsE());
+        jdbc.update("""
+                insert into stock_balances(
+                    warehouse_id, goods_id, color_id, qty)
+                values (?, ?, null, 3)
+                """, w.warehouseId(), w.goodsB());
+        UUID planId = approvedPlan(w, w.goodsA(), "9999", "9999");
+
+        PlanningPreviewResult preview = planningPackageService.preview(
+                planId, w.warehouseId());
+
+        assertEquals(1, preview.executionSegments().size());
+        assertEquals(
+                0,
+                new BigDecimal("9999").compareTo(
+                        preview.executionSegments().getFirst().plannedQty()));
+        assertEquals(1, preview.executionSegments().getFirst()
+                .materials().size());
+        assertEquals(
+                0,
+                new BigDecimal("3").compareTo(
+                        preview.executionSegments().getFirst()
+                                .materials().getFirst().requiredQty()));
+        assertEquals(
+                "EXACT_SNAPSHOT",
+                preview.executionSegments().getFirst()
+                        .materials().getFirst().requirementMode());
+
+        GeneratePlanningPackageRequest request =
+                new GeneratePlanningPackageRequest();
+        request.setWarehouseId(w.warehouseId());
+        request.setIdempotencyKey("idem-exact-pack-" + planId);
+        request.setPreviewFingerprint(preview.fingerprint());
+        request.setGeneratePurchaseRequest(false);
+        PlanningPackageResult first = planningPackageService.confirm(
+                planId, request);
+        assertEquals(
+                "EXACT_SNAPSHOT",
+                first.executionSegments().getFirst()
+                        .materials().getFirst().requirementMode());
+        assertEquals(
+                0,
+                new BigDecimal("0.000301").compareTo(
+                        first.executionSegments().getFirst()
+                                .materials().getFirst().perProductQty()));
+
+        Map<String, Object> demand = jdbc.queryForMap("""
+                select d.id, d.requirement_mode, d.per_product_qty,
+                       d.required_for_product_qty,
+                       d.required_qty,
+                       d.requirement_fingerprint
+                from production_material_demands d
+                join production_planning_packages p on p.id = d.package_id
+                where p.plan_id = ?
+                  and p.status = 'CONFIRMED'
+                  and d.goods_id = ?
+                  and d.is_deleted = false
+                """, planId, w.goodsB());
+        UUID demandId = (UUID) demand.get("id");
+        assertEquals("EXACT_SNAPSHOT", demand.get("requirement_mode"));
+        assertEquals(
+                0,
+                new BigDecimal("0.000301").compareTo(
+                        (BigDecimal) demand.get("per_product_qty")),
+                "exact display rate is this segment's rounded average; required_qty stays authoritative");
+        assertEquals(
+                0,
+                new BigDecimal("9999").compareTo(
+                        (BigDecimal) demand.get("required_for_product_qty")));
+        assertEquals(
+                0,
+                new BigDecimal("3").compareTo(
+                        (BigDecimal) demand.get("required_qty")));
+        assertEquals(
+                64,
+                demand.get("requirement_fingerprint")
+                        .toString().strip().length());
+        assertEquals(
+                0,
+                new BigDecimal("3").compareTo(jdbc.queryForObject("""
+                        select sum(qty - released_qty)
+                        from stock_reservations
+                        where demand_id = ? and is_deleted = false
+                        """, BigDecimal.class, demandId)));
+
+        PlanningPackageResult replay = planningPackageService.confirm(
+                planId, request);
+        assertTrue(replay.replayed());
+        assertEquals(first.packageId(), replay.packageId());
+        assertEquals(1, count("""
+                select count(*)
+                from production_material_demands
+                where id = ? and is_deleted = false
+                """, demandId));
+        assertEquals(1, count("""
+                select count(*)
+                from stock_reservations
+                where demand_id = ? and is_deleted = false
+                """, demandId));
+        assertEquals(1, count("""
+                select count(*)
+                from production_planning_package_document_items
+                where demand_id = ? and document_type = 'DRAW'
+                """, demandId));
+        assertEquals(
+                0,
+                new BigDecimal("3").compareTo(jdbc.queryForObject("""
+                        select sum(i.base_qty)
+                        from production_planning_package_document_items m
+                        join stock_document_items i
+                          on i.id = m.document_item_id
+                        where m.demand_id = ? and m.document_type = 'DRAW'
+                        """, BigDecimal.class, demandId)));
+    }
+
+    @Test
+    void planningPackage_manualExactSegmentsChargeEveryIndependentTailPackage() {
+        World w = seedWorld("sExactTails");
+        jdbc.update("""
+                update goods_bom_items
+                set qty = 2,
+                    consumption_basis = 'PER_PACKAGE',
+                    basis_output_qty = 6,
+                    allow_partial_package = false,
+                    control_stage = 'START',
+                    hard_gate = true
+                where goods_id = ? and component_goods_id = ?
+                """, w.goodsA(), w.goodsB());
+        jdbc.update("""
+                update goods_bom_items
+                set hard_gate = false
+                where goods_id = ? and component_goods_id = ?
+                """, w.goodsA(), w.goodsE());
+        jdbc.update("""
+                insert into stock_balances(
+                    warehouse_id, goods_id, color_id, qty)
+                values (?, ?, null, 6)
+                """, w.warehouseId(), w.goodsB());
+        UUID planId = approvedPlan(w, w.goodsA(), "10", "10");
+        PlanningPreviewResult preview = planningPackageService.preview(
+                planId, w.warehouseId());
+        ExecutionSegmentPreview source = preview.executionSegments().getFirst();
+
+        GeneratePlanningPackageRequest request =
+                new GeneratePlanningPackageRequest();
+        request.setWarehouseId(w.warehouseId());
+        request.setIdempotencyKey("idem-exact-tails-" + planId);
+        request.setPreviewFingerprint(preview.fingerprint());
+        request.setGeneratePurchaseRequest(false);
+        List<GeneratePlanningPackageRequest.ExecutionSegment> segments =
+                new java.util.ArrayList<>();
+        int index = 0;
+        for (String qty : List.of("3", "3", "4")) {
+            index++;
+            GeneratePlanningPackageRequest.ExecutionSegment segment =
+                    new GeneratePlanningPackageRequest.ExecutionSegment();
+            segment.setClientSegmentKey("exact-tail-" + index);
+            segment.setSourcePlanItemId(source.sourcePlanItemId());
+            segment.setRequestedStatus("READY");
+            segment.setPlannedQty(new BigDecimal(qty));
+            segment.setWorkshopDepartmentId(source.workshopDepartmentId());
+            segment.setTeamDepartmentId(source.teamDepartmentId());
+            segment.setResponsibleEmployeeId(source.responsibleEmployeeId());
+            segment.setPlanBeginDate(source.planBeginDate());
+            segment.setPlanEndDate(source.planEndDate());
+            segment.setBomFingerprint(source.bomFingerprint());
+            segments.add(segment);
+        }
+        request.setSegments(List.copyOf(segments));
+
+        planningPackageService.confirm(planId, request);
+
+        Map<String, Object> totals = jdbc.queryForMap("""
+                select count(*) as demand_count,
+                       sum(d.required_qty) as required_qty,
+                       sum(r.qty - r.released_qty) as reserved_qty,
+                       sum(i.base_qty) as draw_qty
+                from production_material_demands d
+                join stock_reservations r
+                  on r.demand_id = d.id and r.is_deleted = false
+                join production_planning_package_document_items mapping
+                  on mapping.demand_id = d.id
+                 and mapping.document_type = 'DRAW'
+                join stock_document_items i on i.id = mapping.document_item_id
+                join production_planning_packages package
+                  on package.id = d.package_id
+                where package.plan_id = ?
+                  and d.goods_id = ?
+                  and d.is_deleted = false
+                """, planId, w.goodsB());
+        assertEquals(3L, ((Number) totals.get("demand_count")).longValue());
+        assertEquals(
+                0,
+                new BigDecimal("6").compareTo(
+                        (BigDecimal) totals.get("required_qty")));
+        assertEquals(
+                0,
+                new BigDecimal("6").compareTo(
+                        (BigDecimal) totals.get("reserved_qty")));
+        assertEquals(
+                0,
+                new BigDecimal("6").compareTo(
+                        (BigDecimal) totals.get("draw_qty")));
+    }
+
+    @Test
+    void planningPackage_zeroMaterialSegmentIsReadyAuditedAndDrawFree() {
+        World w = seedWorld("sZeroMaterial");
+        jdbc.update("""
+                update goods_bom_items
+                set control_stage = 'SHIP', hard_gate = false
+                where goods_id = ?
+                """, w.goodsA());
+        UUID planId = approvedPlan(w, w.goodsA(), "10", "10");
+        PlanningPreviewResult preview = planningPackageService.preview(
+                planId, w.warehouseId());
+        assertEquals(1, preview.executionSegments().size());
+        assertTrue(preview.executionSegments().getFirst().materials().isEmpty());
+
+        GeneratePlanningPackageRequest request =
+                new GeneratePlanningPackageRequest();
+        request.setWarehouseId(w.warehouseId());
+        request.setIdempotencyKey("idem-zero-material-" + planId);
+        request.setPreviewFingerprint(preview.fingerprint());
+        request.setGeneratePurchaseRequest(false);
+        PlanningPackageResult result = planningPackageService.confirm(
+                planId, request);
+        ExecutionSegmentResult zeroSegment =
+                result.executionSegments().getFirst();
+        UUID segmentId = zeroSegment.segmentId();
+        assertEquals("ZERO_MATERIAL", zeroSegment.materialRequirementMode());
+        assertEquals(
+                "NO_PRODUCTION_HARD_GATE",
+                zeroSegment.zeroMaterialReason());
+
+        assertEquals(
+                "READY|ZERO_MATERIAL|NO_PRODUCTION_HARD_GATE",
+                jdbc.queryForObject("""
+                        select concat_ws(
+                            '|', status, material_requirement_mode,
+                            zero_material_reason)
+                        from production_execution_segments
+                        where id = ?
+                        """, String.class, segmentId));
+        assertEquals(0, count("""
+                select count(*)
+                from production_material_demands
+                where execution_segment_id = ? and is_deleted = false
+                """, segmentId));
+        assertEquals(0, count("""
+                select count(*)
+                from stock_reservations reservation
+                join production_material_demands demand
+                  on demand.id = reservation.demand_id
+                where demand.execution_segment_id = ?
+                  and reservation.is_deleted = false
+                """, segmentId));
+        assertEquals(0, count("""
+                select count(*)
+                from production_planning_package_documents
+                where execution_segment_id = ? and document_type = 'DRAW'
+                """, segmentId));
+
+        String frozenFingerprint = jdbc.queryForObject("""
+                select bom_fingerprint
+                from production_execution_segments
+                where id = ?
+                """, String.class, segmentId);
+        jdbc.update("""
+                update goods_bom_items
+                set control_stage = 'START', hard_gate = true
+                where goods_id = ?
+                """, w.goodsA());
+        assertEquals(
+                frozenFingerprint,
+                jdbc.queryForObject("""
+                        select bom_fingerprint
+                        from production_execution_segments
+                        where id = ?
+                        """, String.class, segmentId));
+    }
+
     // ---------------------------------------------------------------------------------------------
     // V234 material-analysis path (analysis-first, the NEW pre-plan flow). Drives the real
     // Controller→Service→DB chain: preview builds the full BOM tree with shortages, routes are
@@ -573,6 +879,83 @@ class FullChainEndToEndTest {
         assertEquals("COMPLETED",
                 strFor("select status from production_material_analyses where id=?", analysisId),
                 "全量分批下达 → 分析头 COMPLETED");
+    }
+
+    @Test
+    void materialAnalysis_draftGenerateReplayKeepsOneDraftAndNoExecutionFacts() {
+        World w = seedWorld("sMADraftReplay");
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsB(), new BigDecimal("20"));
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsE(), new BigDecimal("10"));
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(w, "planner-ma-draft-replay",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:generate");
+        loginAs(planner);
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(),
+                "idem-ma-draft-replay-" + orderItemId,
+                List.of(new PreviewItem(
+                        "SALES_ORDER_ITEM", orderItemId, null, null, null,
+                        null, null, LocalDate.of(2026, 9, 1),
+                        new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        UUID productLineId = view.products().getFirst().analysisLineId();
+        AnalysisView refreshed = analysisService.detail(analysisId);
+        PlanPreview preview = analysisService.planPreview(
+                analysisId,
+                new PlanPreviewRequest(
+                        refreshed.version(), refreshed.fingerprint(),
+                        w.warehouseId(),
+                        List.of(new PlanQuantity(
+                                productLineId, new BigDecimal("10"))),
+                        null, null));
+        AnalysisView preGenerate = analysisService.detail(analysisId);
+        GeneratePlanRequest request = new GeneratePlanRequest(
+                preGenerate.version(), preGenerate.fingerprint(),
+                preview.previewFingerprint(),
+                "gen-ma-draft-replay-" + analysisId,
+                w.warehouseId(), LocalDate.of(2026, 8, 8), null,
+                null, null, null, false,
+                List.of(new PlanQuantity(
+                        productLineId, new BigDecimal("10"))),
+                null, null);
+
+        GeneratedPlan first = analysisCommandService
+                .generatePlan(analysisId, request).plans().getFirst();
+        GeneratedPlan replay = analysisCommandService
+                .generatePlan(analysisId, request).plans().getFirst();
+
+        assertEquals("DRAFT", first.status());
+        assertEquals(first.planId(), replay.planId());
+        assertEquals(first.planningDraftId(), replay.planningDraftId());
+        assertNull(replay.packageId());
+        assertTrue(replay.segmentIds().isEmpty());
+        assertTrue(replay.drawIds().isEmpty());
+        assertEquals(0, count("""
+                select count(*)
+                from production_planning_packages
+                where plan_id = ? and is_deleted = false
+                """, first.planId()));
+        assertEquals(0, count("""
+                select count(*)
+                from production_execution_segments
+                where plan_id = ? and is_deleted = false
+                """, first.planId()));
+        assertEquals(0, count("""
+                select count(*)
+                from production_planning_package_documents document
+                join production_planning_packages package
+                  on package.id = document.package_id
+                where package.plan_id = ? and document.document_type = 'DRAW'
+                """, first.planId()));
+        assertEquals(
+                0,
+                BigDecimal.ZERO.compareTo(plannedQty(orderId)),
+                "草稿生成及幂等重放都不能提前回写销售 planned_qty");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1129,6 +1512,106 @@ class FullChainEndToEndTest {
                 UUID.class, orderId, buy);
     }
 
+    /**
+     * Turns one BUY shortage from the plan-before-production analysis into an
+     * approved PO without creating a formal production demand or reservation.
+     * The later IQC PASS can therefore prove that genuinely free qualified
+     * stock wakes the original analysis.
+     */
+    private UUID approvePurchaseForAnalysis(
+            World w,
+            AnalysisView analysis,
+            UUID buyGoodsId) {
+        MaterialView buyRow = analysis.flatMaterials().stream()
+                .filter(material -> material.goodsId().equals(buyGoodsId)
+                        && material.actionable())
+                .findFirst()
+                .orElseThrow();
+        AnalysisView routed = analysisService.saveRoutes(
+                analysis.analysisId(),
+                new RouteRequest(
+                        analysis.version(),
+                        analysis.fingerprint(),
+                        "route-wakeup-buy-" + analysis.analysisId(),
+                        List.of(new RouteDecision(
+                                buyRow.materialLineId(),
+                                buyRow.actionGroupKey(),
+                                "BUY",
+                                null))));
+        analysisCommandService.notifySupply(
+                analysis.analysisId(),
+                new NotifyRequest(
+                        routed.version(),
+                        routed.fingerprint(),
+                        "notify-wakeup-buy-" + analysis.analysisId(),
+                        "BUY",
+                        List.of(buyRow.materialLineId()),
+                        List.of()));
+
+        Map<String, Object> requestItem = jdbc.queryForMap("""
+                select item.id, item.qty
+                from preplan_supply_actions action
+                join purchase_requests request
+                  on request.id = action.external_document_id
+                join purchase_request_items item
+                  on item.request_id = request.id
+                 and item.is_deleted = false
+                where action.analysis_id = ?
+                  and action.route = 'BUY'
+                  and action.status = 'CREATED'
+                  and item.goods_id = ?
+                """, analysis.analysisId(), buyGoodsId);
+        UUID requestItemId = (UUID) requestItem.get("id");
+        BigDecimal quantity = (BigDecimal) requestItem.get("qty");
+
+        com.uten.imp.features.purchase.order.dto.OrderSaveRequest order =
+                new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        order.setBillDate(LocalDate.of(2026, 1, 15));
+        order.setSupplierId(w.supplierId());
+        order.setWarehouseId(w.warehouseId());
+        order.setCurrencyId(w.currencyId());
+        order.setExchangeRate(BigDecimal.ONE);
+        order.setTaxRate(BigDecimal.ZERO);
+        com.uten.imp.features.purchase.order.dto.OrderItemLine line =
+                new com.uten.imp.features.purchase.order.dto.OrderItemLine();
+        line.setGoodsId(buyGoodsId);
+        line.setRequestItemId(requestItemId);
+        line.setUnitId(w.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(quantity);
+        line.setPrice(new BigDecimal("50"));
+        line.setAmountOriginal(quantity.multiply(new BigDecimal("50")));
+        line.setAmountLocal(quantity.multiply(new BigDecimal("50")));
+        order.setItems(List.of(line));
+        purchaseOrderService.createBatch(order);
+
+        UUID orderId = jdbc.queryForObject("""
+                select purchase_order.id
+                from purchase_orders purchase_order
+                join purchase_order_items item
+                  on item.order_id = purchase_order.id
+                where item.request_item_id = ?
+                  and purchase_order.is_deleted = false
+                  and item.is_deleted = false
+                """, UUID.class, requestItemId);
+        UUID reviewer = createReviewer(
+                w, "finance_order_approval:review");
+        financeApproval.submit("PURCHASE", orderId);
+        loginAs(reviewer);
+        long version = jdbc.queryForObject("""
+                select version
+                from procurement_order_approval_cases
+                where order_type = 'PURCHASE' and order_id = ?
+                """, Long.class, orderId);
+        financeApproval.approve("PURCHASE", orderId, version);
+        loginAs(w.superAdminUserId());
+        return jdbc.queryForObject("""
+                select id
+                from purchase_order_items
+                where order_id = ? and request_item_id = ?
+                """, UUID.class, orderId, requestItemId);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // #23 (receiving, normal path) Warehouse receives H against the approved order. Approval freezes
     // the goods in IQC (NOT yet in usable stock), writes received_qty, and posts AP. An IQC PASS
@@ -1306,6 +1789,158 @@ class FullChainEndToEndTest {
                 "全量入库 → chain_status 6→7 可发货");
         assertEquals(0, stockBalance(w.warehouseId(), w.goodsA()).compareTo(new BigDecimal("10")),
                 "二批入库累加到 10（5+5，非覆盖）");
+    }
+
+    @Test
+    void exactExecutionSegment_partialInboundCanShipWhileSegmentContinuesThenCloses() {
+        World w = seedWorld("s24exactpart");
+        jdbc.update("""
+                UPDATE goods_bom_items
+                SET hard_gate = FALSE
+                WHERE goods_id = ?
+                """, w.goodsA());
+        UUID planId = approvedPlan(w, w.goodsA(), "10", "10");
+        UUID planItemId = planItemIdFor(planId, w.goodsA());
+        UUID orderItemId = orderItemIdOfPlan(planId);
+        UUID orderId = orderIdOfItem(orderItemId);
+
+        PlanningPreviewResult preview = planningPackageService.preview(
+                planId, w.warehouseId());
+        GeneratePlanningPackageRequest confirm =
+                new GeneratePlanningPackageRequest();
+        confirm.setWarehouseId(w.warehouseId());
+        confirm.setIdempotencyKey("idem-s24-exact-part-" + planId);
+        confirm.setPreviewFingerprint(preview.fingerprint());
+        confirm.setGeneratePurchaseRequest(false);
+        PlanningPackageResult confirmed = planningPackageService.confirm(
+                planId, confirm);
+        UUID segmentId = confirmed.executionSegments().getFirst().segmentId();
+        UUID salesAllocationId = jdbc.queryForObject("""
+                SELECT id
+                FROM execution_segment_sales_allocations
+                WHERE execution_segment_id = ?
+                  AND sales_order_item_id = ?
+                """, UUID.class, segmentId, orderItemId);
+
+        ProductionAssignment assignment = productionAssignment("s24exactpart");
+        ExecutionSegmentView current = executionSegmentService.list(planId)
+                .stream()
+                .filter(segment -> segment.id().equals(segmentId))
+                .findFirst()
+                .orElseThrow();
+        ExecutionSegmentView assigned = executionSegmentService.assign(
+                planId,
+                segmentId,
+                new SegmentAssignmentRequest(
+                        current.lockVersion(),
+                        "idem-s24-exact-assign",
+                        assignment.workshopId(),
+                        null,
+                        assignment.workerId(),
+                        LocalDate.of(2026, 1, 25),
+                        LocalDate.of(2026, 1, 31)));
+        ExecutionSegmentView dispatched = executionSegmentService.dispatch(
+                planId,
+                segmentId,
+                new SegmentTransitionRequest(
+                        assigned.lockVersion(),
+                        "idem-s24-exact-dispatch"));
+        executionSegmentService.start(
+                planId,
+                segmentId,
+                new SegmentTransitionRequest(
+                        dispatched.lockVersion(),
+                        "idem-s24-exact-start"));
+
+        UUID report1 = reportAndApproveExecutionSegment(
+                w, planItemId, orderItemId, w.goodsA(),
+                segmentId, salesAllocationId, "5");
+        UUID finishedIn1 = finishedInDocForReport(reportBillNo(report1));
+        assertTrue(count("""
+                SELECT count(*)
+                FROM business_outbox
+                WHERE event_type = 'PRODUCTION_FINISHED_INBOUND_PENDING'
+                  AND aggregate_id = ?
+                """, finishedIn1) >= 1,
+                "首批报工生成 FINISHED_IN 草稿后形成仓库待审核 outbox 任务");
+        stockDocService.approve(finishedIn1);
+
+        assertEquals("IN_PROGRESS", strFor("""
+                SELECT status
+                FROM production_execution_segments
+                WHERE id = ?
+                """, segmentId),
+                "计划 10 的同一执行段首批只入库 5，仍继续生产");
+        assertEquals(0, producedQty(orderItemId).compareTo(new BigDecimal("5")));
+        assertEquals(0, reservedQty(orderItemId).compareTo(new BigDecimal("5")),
+                "首批只增加本批 5 的成品销售预留");
+        assertEquals(0, bigDecimalFor("""
+                SELECT SUM(qty)
+                FROM stock_reservations
+                WHERE source_doc_type = 'PRODUCTION_INBOUND'
+                  AND source_doc_id = ?
+                  AND order_item_id = ?
+                  AND is_deleted = FALSE
+                """, finishedIn1, orderItemId).compareTo(new BigDecimal("5")));
+        assertEquals("5", strFor("""
+                SELECT payload -> 'allocations' -> 0 ->> 'batchQty'
+                FROM business_outbox
+                WHERE event_type = 'PRODUCTION_FINISHED_INBOUND'
+                  AND aggregate_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """, finishedIn1),
+                "完工通知冻结首批新增可发数量，不在异步投递时重算");
+        assertFalse(Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT is_closed FROM production_plans WHERE id = ?",
+                Boolean.class, planId)),
+                "首批入库后原生产计划仍未完成");
+
+        UUID firstShipment = createShipment(
+                w, orderItemId, w.goodsA(), "5");
+        assertTrue(count("""
+                SELECT count(*)
+                FROM business_outbox
+                WHERE event_type = 'SALES_SHIPMENT_PENDING_PICK'
+                  AND aggregate_id = ?
+                """, firstShipment) >= 1,
+                "部分发货草稿形成仓库待拣货 outbox 任务");
+        shipThroughWarehouse(firstShipment);
+        assertEquals(0, shippedQty(orderItemId).compareTo(new BigDecimal("5")));
+        assertEquals(0, reservedQty(orderItemId).compareTo(BigDecimal.ZERO));
+        assertFalse(orderIsClosed(orderId),
+                "首批成品发货后订单保留未交 5，不提前关闭");
+        assertEquals("IN_PROGRESS", strFor("""
+                SELECT status
+                FROM production_execution_segments
+                WHERE id = ?
+                """, segmentId));
+
+        UUID report2 = reportAndApproveExecutionSegment(
+                w, planItemId, orderItemId, w.goodsA(),
+                segmentId, salesAllocationId, "5");
+        UUID finishedIn2 = finishedInDocForReport(reportBillNo(report2));
+        stockDocService.approve(finishedIn2);
+        assertEquals("COMPLETED", strFor("""
+                SELECT status
+                FROM production_execution_segments
+                WHERE id = ?
+                """, segmentId),
+                "累计入库达到执行段计划 10 后才完成");
+        assertEquals(0, producedQty(orderItemId).compareTo(new BigDecimal("10")));
+        assertEquals(0, reservedQty(orderItemId).compareTo(new BigDecimal("5")),
+                "第二批入库仅补回尚未发出的本批 5");
+        assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT is_closed FROM production_plans WHERE id = ?",
+                Boolean.class, planId)),
+                "累计成品入库完成后生产计划结案");
+
+        shipThroughWarehouse(createShipment(
+                w, orderItemId, w.goodsA(), "5"));
+        assertEquals(0, shippedQty(orderItemId).compareTo(new BigDecimal("10")));
+        assertEquals(0, reservedQty(orderItemId).compareTo(BigDecimal.ZERO));
+        assertTrue(orderIsClosed(orderId),
+                "最终未交数量发完后销售订单才关闭");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1656,8 +2291,16 @@ class FullChainEndToEndTest {
         loginAs(w.superAdminUserId());
         UUID receiptId = receiptService.create(receiptRequest(w, arId, accountId, expenseStyleId,
                 "600", "40", "25", "15", BigDecimal.ONE, LocalDate.of(2026, 3, 5))).getId();
-        // (4) approve as a different user (maker≠approver 职责分离).
+        // (4) A different user with feature permission but no finance object scope cannot discover
+        //     or approve the maker's receipt. Delegate the maker explicitly, then approve.
         loginAs(approver);
+        assertEquals(ErrorCode.NOT_FOUND,
+                assertThrows(ApiException.class, () -> receiptService.detail(receiptId)).getCode(),
+                "未授权财务对象不得泄漏单据存在性");
+        assertEquals(ErrorCode.FORBIDDEN,
+                assertThrows(ApiException.class, () -> receiptService.approve(receiptId)).getCode(),
+                "仅有功能权限不得审核他人财务单据");
+        grantDataScope(approver, "finance", w.employeeId());
         receiptService.approve(receiptId);
 
         // AR cumulative updated server-side: 原币到账 600 / 冲销 40 / 未收 360.
@@ -1754,6 +2397,7 @@ class FullChainEndToEndTest {
         jdbc.update("insert into currencies(id, code, name, exchange_rate, status) "
                         + "values (?, 'USD-recvg', '美元', 7, '使用')", usdId);
         UUID approver = createUserWithPerms(w, "fin-approver-g", "finance_receipt:edit");
+        grantDataScope(approver, "finance", w.employeeId());
 
         // (a) cross-currency: line currency ≠ AR currency → rejected at SAVE (saveLines enforces
         //     same-currency-as-AR before the receipt is even persisted; approve is never reached).
@@ -1819,6 +2463,7 @@ class FullChainEndToEndTest {
         jdbc.update("insert into accounts(id, code, name, account_type, currency_id, status) "
                         + "values (?, 'BANK-fx', '美元账户', 'BANK', ?, '使用')", accountId, w.currencyId());
         UUID approver = createUserWithPerms(w, "fin-fx", "finance_receipt:edit");
+        grantDataScope(approver, "finance", w.employeeId());
 
         // receipt: collect $600 at 到账汇率 7.2 (≠ 开账 7.0) → 汇兑收益 120, no fees.
         loginAs(w.superAdminUserId());
@@ -1876,7 +2521,7 @@ class FullChainEndToEndTest {
     }
 
     @Test
-    void amounts_discountedApprovedOrderChangeQtyKeepsDiscountInBothCurrencies() {
+    void amounts_discountedApprovedOrderChangeQtyKeepsOnlyOriginalCurrencyFact() {
         World w = seedWorld("s27discount-change");
         loginAs(w.superAdminUserId());
         OrderSaveRequest request = orderRequest(w, w.goodsA(), "10", "100");
@@ -1896,10 +2541,18 @@ class FullChainEndToEndTest {
                 "select amount_original from sales_order_items where id = ?", orderItemId)
                 .compareTo(new BigDecimal("1600.0000")),
                 "改量原币金额仍为 20×100×0.8");
-        assertEquals(0, bigDecimalFor(
-                "select amount_local from sales_order_items where id = ?", orderItemId)
-                .compareTo(new BigDecimal("1600.0000")),
-                "汇率 1 下改量本币金额仍包含折扣");
+        assertNull(jdbc.queryForObject(
+                "select amount_local from sales_order_items where id = ?",
+                BigDecimal.class, orderItemId),
+                "订单阶段不形成行本币金额");
+        assertNull(jdbc.queryForObject(
+                "select exchange_rate from sales_orders where id = ?",
+                BigDecimal.class, orderId),
+                "订单阶段不形成汇率快照");
+        assertNull(jdbc.queryForObject(
+                "select total_local from sales_orders where id = ?",
+                BigDecimal.class, orderId),
+                "订单阶段不形成本币合计");
     }
 
     @Test
@@ -1915,6 +2568,31 @@ class FullChainEndToEndTest {
 
         assertTrue(error.getMessage().contains("币种"));
         assertEquals(0, orderStatus(orderId), "币种审核失败后订单仍为草稿");
+    }
+
+    @Test
+    void salesOrderCreateAndApproveDoNotRequireAPositiveReferenceRate() {
+        World w = seedWorld("order-zero-reference-rate");
+        loginAs(w.superAdminUserId());
+        jdbc.update("update currencies set exchange_rate = 0 where id = ?", w.currencyId());
+
+        UUID orderId = salesOrderService.create(
+                orderRequest(w, w.goodsA(), "10", "100")).getId();
+        salesOrderService.approve(orderId);
+
+        assertEquals(1, orderStatus(orderId));
+        assertEquals(0, bigDecimalFor(
+                "select total_original from sales_orders where id = ?", orderId)
+                .compareTo(new BigDecimal("1000.0000")));
+        assertNull(jdbc.queryForObject(
+                "select exchange_rate from sales_orders where id = ?",
+                BigDecimal.class, orderId));
+        assertNull(jdbc.queryForObject(
+                "select total_local from sales_orders where id = ?",
+                BigDecimal.class, orderId));
+        assertEquals(0, intFor(
+                "select count(*) from sales_order_items where order_id = ? and amount_local is not null",
+                orderId));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -2114,6 +2792,213 @@ class FullChainEndToEndTest {
                         "PASS", null, "合格", idemKey));
         assertEquals(0, stockBalance(w.warehouseId(), h).compareTo(new BigDecimal("20")),
                 "同 idempotencyKey 重复处置 → 幂等，库存不翻倍（仍 20，非 40）");
+    }
+
+    @Test
+    void qualifiedReceiptWakesMaterialAnalysisAndReversalLowersReadinessWithoutNotice()
+            throws Exception {
+        World w = seedWorld("analysis-wakeup");
+        UUID finished = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        insertGoods(finished, "WAKE-FG", "唤醒测试成品", "自制",
+                w.unitId(), w.unitLegacy());
+        insertGoods(material, "WAKE-RM", "唤醒测试原料", "采购",
+                w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?",
+                w.supplierId(), material);
+        insertBom(finished, material, "2");
+        loginAs(w.superAdminUserId());
+
+        AnalysisView initial = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(),
+                "analysis-wakeup-" + finished,
+                List.of(new PreviewItem(
+                        "OTHER", null, finished, null, w.unitId(),
+                        "WAKE-" + finished, "合格入库自动唤醒回归",
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisId = initial.analysisId();
+        assertEquals(0, initial.products().getFirst().readyFinishQty()
+                        .compareTo(BigDecimal.ZERO),
+                "原料未入库时可完工量为 0");
+
+        // Drive the BUY shortage through a real request, formal PO and finance
+        // approval. It is still a pre-plan source, so the qualified receipt is
+        // free stock for the analysis refresh rather than a formal reservation.
+        UUID orderItemId = approvePurchaseForAnalysis(w, initial, material);
+        UUID receiptId = receiveIntoQuarantine(
+                w, material, orderItemId, "20");
+        UUID inspectionItemId = jdbc.queryForObject(
+                "select id from procurement_inspection_items "
+                        + "where receipt_id = ? and goods_id = ?",
+                UUID.class, receiptId, material);
+        assertEquals(0, analysisService.detail(analysisId).products().getFirst()
+                        .readyFinishQty().compareTo(BigDecimal.ZERO),
+                "待检库存不能提前提高可完工量");
+
+        String idempotencyKey = "analysis-wakeup-pass-" + receiptId;
+        inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
+                new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                        "PASS", null, "合格", idempotencyKey));
+
+        assertEquals(0, stockBalance(w.warehouseId(), material)
+                        .compareTo(new BigDecimal("20")),
+                "IQC 合格后真实库存增加 20");
+        assertEquals(0, analysisService.detail(analysisId).products().getFirst()
+                        .readyFinishQty().compareTo(new BigDecimal("10")),
+                "同事务刷新后可完工量由 0 增至 10");
+        assertEquals(1, count("""
+                select count(*) from business_outbox
+                where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
+                  and aggregate_id = ?
+                  and payload->>'sourceType' = 'PURCHASE'
+                  and payload->>'sourceDocumentId' = ?
+                  and payload->>'readyFinishDelta' = '10'
+                  and payload->>'readyFinishQty' = '10'
+                """, analysisId, receiptId.toString()),
+                "真实增长只产生一条 durable ready 事件");
+
+        inspectionService.dispose("PURCHASE", receiptId, inspectionItemId,
+                new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                        "PASS", null, "合格", idempotencyKey));
+        assertEquals(1, count("""
+                select count(*) from business_outbox
+                where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
+                  and aggregate_id = ?
+                """, analysisId), "IQC replay 不重复发布 ready 事件");
+
+        purchaseReceiptService.reverse(receiptId);
+
+        assertEquals(0, stockBalance(w.warehouseId(), material)
+                        .compareTo(BigDecimal.ZERO),
+                "收货红冲后真实库存回到 0");
+        assertEquals(0, analysisService.detail(analysisId).products().getFirst()
+                        .readyFinishQty().compareTo(BigDecimal.ZERO),
+                "红冲后自动刷新并降低可完工量，不能留下虚高快照");
+        assertEquals(1, count("""
+                select count(*) from business_outbox
+                where event_type = 'PRODUCTION_MATERIAL_ANALYSIS_READY'
+                  and aggregate_id = ?
+                """, analysisId), "红冲只刷新，不发送齐套增加通知");
+    }
+
+    @Test
+    void fullyRejectedReceiptReleasesPlanningCoverageAndAllowsReplacementNotification() {
+        World w = seedWorld("analysis-full-fail-retry");
+        UUID finished = UUID.randomUUID();
+        UUID material = UUID.randomUUID();
+        insertGoods(finished, "FAIL-FG", "全不合格补采成品", "自制",
+                w.unitId(), w.unitLegacy());
+        insertGoods(material, "FAIL-RM", "全不合格补采原料", "采购",
+                w.unitId(), w.unitLegacy());
+        jdbc.update("update goods set default_supplier_id = ? where id = ?",
+                w.supplierId(), material);
+        insertBom(finished, material, "2");
+        loginAs(w.superAdminUserId());
+
+        AnalysisView initial = analysisService.preview(new PreviewRequest(
+                null, null, null, w.warehouseId(),
+                "analysis-full-fail-retry-" + finished,
+                List.of(new PreviewItem(
+                        "OTHER", null, finished, null, w.unitId(),
+                        "FAIL-" + finished, "全 FAIL 后替代需求回归",
+                        LocalDate.of(2026, 9, 2), new BigDecimal("10")))));
+        UUID analysisId = initial.analysisId();
+        UUID orderItemId = approvePurchaseForAnalysis(w, initial, material);
+        Map<String, Object> original = jdbc.queryForMap("""
+                select action.id as action_id,
+                       action.external_document_id as request_id,
+                       order_item.order_id
+                from preplan_supply_actions action
+                join preplan_supply_action_allocations allocation
+                  on allocation.action_id = action.id
+                 and allocation.external_item_id is not null
+                join purchase_order_items order_item
+                  on order_item.request_item_id = allocation.external_item_id
+                 and order_item.id = ?
+                where action.analysis_id = ? and action.route = 'BUY'
+                """, orderItemId, analysisId);
+        UUID originalActionId = (UUID) original.get("action_id");
+        UUID originalRequestId = (UUID) original.get("request_id");
+        UUID originalOrderId = (UUID) original.get("order_id");
+
+        UUID receiptId = receiveIntoQuarantine(
+                w, material, orderItemId, "20");
+        UUID inspectionItemId = jdbc.queryForObject("""
+                select id from procurement_inspection_items
+                where receipt_type = 'PURCHASE'
+                  and receipt_id = ? and goods_id = ?
+                """, UUID.class, receiptId, material);
+
+        inspectionService.dispose(
+                "PURCHASE", receiptId, inspectionItemId,
+                new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest(
+                        "FAIL", null, "整批检验不合格",
+                        "analysis-full-fail-" + receiptId));
+
+        AnalysisView failed = analysisService.detail(analysisId);
+        MaterialView failedMaterial = failed.flatMaterials().stream()
+                .filter(row -> row.goodsId().equals(material) && row.actionable())
+                .findFirst().orElseThrow();
+        assertEquals(0, failedMaterial.inboundQty().compareTo(BigDecimal.ZERO),
+                "全 FAIL 且原订单物理收完结案后，在途必须为 0");
+        assertEquals(0, failedMaterial.shortageQty().compareTo(new BigDecimal("20")),
+                "不合格量不抵扣缺口，20 个基本单位仍需补采");
+        assertEquals(0, stockBalance(w.warehouseId(), material)
+                        .compareTo(BigDecimal.ZERO),
+                "全 FAIL 不进入合格库存");
+        assertEquals("CANCELLED", strFor(
+                "select status from preplan_supply_actions where id = ?",
+                originalActionId),
+                "旧 action 只释放计划占用，避免永久挡住替代通知");
+        assertTrue(strFor("select cancellation_reason from preplan_supply_actions where id = ?",
+                originalActionId).contains("重新通知补采"));
+
+        // The planning projection is cancelled; all commercial and IQC evidence remains.
+        assertEquals(1, count("select count(*) from purchase_requests where id = ?",
+                originalRequestId));
+        assertEquals(1, count("select count(*) from purchase_orders where id = ?",
+                originalOrderId));
+        assertEquals(1, count("select count(*) from purchase_receipts where id = ?",
+                receiptId));
+        assertEquals(1, count("""
+                select count(*) from procurement_inspection_items
+                where id = ? and status = 'RESOLVED'
+                  and passed_base_qty = 0 and failed_base_qty = 20
+                """, inspectionItemId));
+        assertEquals(1, count("""
+                select count(*) from procurement_inspection_events
+                where inspection_item_id = ? and action = 'FAIL'
+                """, inspectionItemId));
+
+        analysisCommandService.notifySupply(
+                analysisId,
+                new NotifyRequest(
+                        failed.version(), failed.fingerprint(),
+                        "notify-full-fail-replacement-" + analysisId,
+                        "BUY", List.of(failedMaterial.materialLineId()), List.of()));
+
+        Map<String, Object> replacement = jdbc.queryForMap("""
+                select action.id, action.generation, action.predecessor_action_id,
+                       action.requested_qty, action.external_document_id
+                from preplan_supply_actions action
+                where action.analysis_id = ? and action.route = 'BUY'
+                  and action.id <> ?
+                order by action.generation desc limit 1
+                """, analysisId, originalActionId);
+        assertEquals(2, ((Number) replacement.get("generation")).intValue(),
+                "替代通知使用下一代 action");
+        assertEquals(originalActionId, replacement.get("predecessor_action_id"),
+                "替代 action 明确追溯旧失败 action");
+        assertEquals(0, ((BigDecimal) replacement.get("requested_qty"))
+                        .compareTo(new BigDecimal("20")),
+                "替代需求只覆盖仍存在的真实缺口");
+        assertEquals(1, count("""
+                select count(*) from purchase_request_items item
+                where item.request_id = ? and item.goods_id = ?
+                  and item.qty = 20 and item.is_deleted = false
+                """, replacement.get("external_document_id"), material));
+        assertEquals(1, count("select count(*) from purchase_receipts where id = ?",
+                receiptId), "替代通知不得删除原收货事实");
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -2603,6 +3488,13 @@ class FullChainEndToEndTest {
         return usr;
     }
 
+    private void grantDataScope(UUID userId, String scope, UUID ownerEmployeeId) {
+        jdbc.update("""
+                insert into user_data_scopes(user_id, scope, owner_employee_id)
+                values (?, ?, ?)
+                """, userId, scope, ownerEmployeeId);
+    }
+
     /** Seed the minimal chart-of-accounts (payment_styles) GL posting needs. These root nodes get
      *  path = '/code/' from the trg_payment_style_path trigger; loaded via data bootstrap in prod. */
     private void seedChartOfAccounts() {
@@ -2631,6 +3523,8 @@ class FullChainEndToEndTest {
     /** Produce a finished good fully (plan→report→FINISHED_IN): chain=7, reserved=produced=qty, stock=qty.
      *  Returns the scoped IDs (decision 2: shipping is only possible after production completes). */
     private record Production(UUID orderItemId, UUID planItemId, UUID finishedInId) {}
+
+    private record ProductionAssignment(UUID workshopId, UUID workerId) {}
 
     private Production produceFinished(World w, UUID goodsId, String orderQty, String planQty) {
         loginAs(w.superAdminUserId());
@@ -2748,6 +3642,60 @@ class FullChainEndToEndTest {
         DailyReportDetail d = reportService.create(req);
         reportService.approve(d.getId());
         return d.getId();
+    }
+
+    private UUID reportAndApproveExecutionSegment(
+            World w,
+            UUID planItemId,
+            UUID orderItemId,
+            UUID goodsId,
+            UUID executionSegmentId,
+            UUID salesAllocationId,
+            String qty) {
+        DailyReportSaveRequest req = new DailyReportSaveRequest();
+        req.setBillDate(LocalDate.of(2026, 1, 25));
+        req.setWarehouseId(w.warehouseId());
+        DailyReportItemLine line = new DailyReportItemLine();
+        line.setGoodsId(goodsId);
+        line.setUnitId(w.unitId());
+        line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal(qty));
+        line.setPlanItemId(planItemId);
+        line.setSalesOrderItemId(orderItemId);
+        line.setExecutionSegmentId(executionSegmentId);
+        line.setExecutionSegmentSalesAllocationId(salesAllocationId);
+        req.setItems(List.of(line));
+        DailyReportDetail report = reportService.create(req);
+        reportService.approve(report.getId());
+        return report.getId();
+    }
+
+    private ProductionAssignment productionAssignment(String tag) {
+        UUID productionDepartmentId = jdbc.queryForObject(
+                "SELECT id FROM departments WHERE code = 'DEPT_PROD'",
+                UUID.class);
+        UUID workshopId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO departments(id, code, name, parent_id, level)
+                VALUES (?, ?, ?, ?, '二级班组')
+                """,
+                workshopId,
+                "WORKSHOP-" + tag,
+                "测试车间-" + tag,
+                productionDepartmentId);
+        UUID workerId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO employees(
+                    id, code, full_name, id_type, department_id,
+                    hire_date, status, employment_type)
+                VALUES (?, ?, ?, '其他', ?, DATE '2026-01-01',
+                        'active', 'regular')
+                """,
+                workerId,
+                "WORKER-" + tag,
+                "测试生产负责人-" + tag,
+                workshopId);
+        return new ProductionAssignment(workshopId, workerId);
     }
 
     private String reportBillNo(UUID reportId) {

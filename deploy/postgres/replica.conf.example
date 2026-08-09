@@ -1,0 +1,9 @@
+# 副本（云端 ECS，PostgreSQL 16，hot standby / 只读）。
+# 由 setup-replication.sh 的 pg_basebackup -R 自动写入 standby.signal 与 primary_conninfo。
+hot_standby = on
+hot_standby_feedback = on
+
+# pg_basebackup -R 会自动生成 primary_conninfo（含密码）与 primary_slot_name。
+# 如需手动填写/核对，取消注释并替换占位（__REPL_PASSWORD__ 与主库 VPN 内网 IP）：
+# primary_conninfo = 'host=__PRIMARY_VPN_IP__ port=5432 user=repl password=__REPL_PASSWORD__ application_name=cloud_rep sslmode=require'
+# primary_slot_name = 'cloud_rep'

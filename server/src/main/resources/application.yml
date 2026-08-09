@@ -68,6 +68,9 @@ server:
   forward-headers-strategy: none
 
 uten:
+  deployment:
+    # 部署站点：local（公司内网，默认）/ cloud（阿里云，仅 remote_access 授权账号可访问）。
+    site: ${UTEN_DEPLOYMENT_SITE:local}
   finance:
     asset:
       # Fail closed until recognition/disposal/termination have dedicated maker-checker reversal workflows.
@@ -129,6 +132,23 @@ uten:
     code-ttl-minutes: 5
     send-interval-seconds: 60
     daily-limit: 10
+  storage:
+    # 附件对象存储后端：local（本地磁盘，开发/本地测试默认）/ oss（阿里云，生产/云端）/ disabled。
+    # 切换只改此变量；云端 ECS 用 RAM 角色（UTEN_OSS_USE_INSTANCE_ROLE=true）可免 AccessKey。
+    provider: ${UTEN_STORAGE_PROVIDER:local}
+    max-bytes: ${UTEN_STORAGE_MAX_BYTES:26214400}
+    presigned-expiry-seconds: ${UTEN_STORAGE_PRESIGN_EXPIRY:300}
+    local-dir: ${UTEN_STORAGE_LOCAL_DIR:./data/attachments}
+    oss:
+      endpoint: ${UTEN_OSS_ENDPOINT:}
+      internal-endpoint: ${UTEN_OSS_INTERNAL_ENDPOINT:}
+      bucket: ${UTEN_OSS_BUCKET:}
+      region: ${UTEN_OSS_REGION:}
+      access-key-id: ${UTEN_OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${UTEN_OSS_ACCESS_KEY_SECRET:}
+      use-instance-role: ${UTEN_OSS_USE_INSTANCE_ROLE:false}
+      role-name: ${UTEN_OSS_ROLE_NAME:}
+      key-prefix: ${UTEN_OSS_KEY_PREFIX:attachments/}
   reporting:
     materialized-view-refresh:
       enabled: ${UTEN_REPORT_REFRESH_ENABLED:true}

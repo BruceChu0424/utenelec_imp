@@ -5,6 +5,10 @@ import com.uten.imp.common.finance.EmployeeClaimPostingPort.EmployeeClaimPosting
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
+import com.uten.imp.common.storage.StorageService;
+import com.uten.imp.features.attachment.Attachment;
+import com.uten.imp.features.attachment.AttachmentRepository;
+import com.uten.imp.features.attachment.dto.AttachmentDto;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
@@ -58,6 +62,8 @@ public class ExpenseClaimService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final TaskClaimService taskClaim;
+    private final AttachmentRepository attachmentRepository;
+    private final StorageService storage;
 
     @Transactional(readOnly = true)
     public PageResponse<ExpenseClaimDto> listMine(
@@ -165,7 +171,10 @@ public class ExpenseClaimService {
     public ExpenseClaimDto detail(UUID id) {
         ExpenseClaim claim = requireClaim(id);
         assertCanRead(claim);
-        return mapClaim(claim, itemsFor(List.of(claim)).getOrDefault(id, List.of()));
+        return mapClaim(
+                claim,
+                itemsFor(List.of(claim)).getOrDefault(id, List.of()),
+                attachmentsFor(List.of(id)).getOrDefault(id, List.of()));
     }
 
     @Transactional
@@ -426,6 +435,11 @@ public class ExpenseClaimService {
 
     private static ExpenseClaimDto mapClaim(
             ExpenseClaim claim, List<ExpenseClaimItem> items) {
+        return mapClaim(claim, items, List.of());
+    }
+
+    private static ExpenseClaimDto mapClaim(
+            ExpenseClaim claim, List<ExpenseClaimItem> items, List<AttachmentDto> attachments) {
         return new ExpenseClaimDto(
                 claim.getId(),
                 claim.getApplicantId(),
@@ -444,7 +458,35 @@ public class ExpenseClaimService {
                 claim.getApprovedAt(),
                 claim.getPaidAt(),
                 claim.getRemark(),
-                claim.getRejectReason());
+                claim.getRejectReason(),
+                attachments);
+    }
+
+    private Map<UUID, List<AttachmentDto>> attachmentsFor(List<UUID> claimIds) {
+        if (claimIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, List<Attachment>> grouped = attachmentRepository
+                .findByOwnerTypeAndOwnerIdInOrderByCreatedAtAsc("EXPENSE_CLAIM", claimIds).stream()
+                .collect(Collectors.groupingBy(
+                        Attachment::getOwnerId, LinkedHashMap::new, Collectors.toList()));
+        Map<UUID, List<AttachmentDto>> result = new LinkedHashMap<>();
+        grouped.forEach((claimId, rows) ->
+                result.put(claimId, rows.stream().map(this::toAttachmentDto).toList()));
+        return result;
+    }
+
+    private AttachmentDto toAttachmentDto(Attachment a) {
+        String downloadUrl = null;
+        try {
+            downloadUrl = storage.presignDownload(a.getStorageKey()).url();
+        } catch (Exception ignored) {
+            // disabled 后端签发失败时下载 URL 为空，前端按缺失处理。
+        }
+        return new AttachmentDto(
+                a.getId(), a.getOwnerType(), a.getOwnerId(), a.getStorageKey(),
+                a.getOriginalName(), a.getContentType(), a.getSizeBytes(),
+                a.getCreatedAt(), a.getCreatedBy(), downloadUrl);
     }
 
     private ExpenseClaim requireClaim(UUID id) {

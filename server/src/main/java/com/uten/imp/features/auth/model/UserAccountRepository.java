@@ -34,6 +34,7 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
         String getStatus();
         boolean isMustChangePassword();
         boolean isSuperAdmin();
+        boolean isRemoteAccess();
         boolean isDeleted();
         long getAuthVersion();
         long getAuthorizationEpoch();
@@ -45,6 +46,7 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
                    u.status AS "status",
                    u.must_change_password AS "mustChangePassword",
                    u.is_super_admin AS "superAdmin",
+                   u.remote_access AS "remoteAccess",
                    u.is_deleted AS "deleted",
                    u.auth_version AS "authVersion",
                    s.epoch AS "authorizationEpoch"

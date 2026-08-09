@@ -11,6 +11,7 @@ class AdminUserSummary {
     required this.status,
     required this.mustChangePassword,
     required this.roles,
+    required this.remoteAccess,
     this.employeeName,
     this.employeeCode,
     this.lastLoginAt,
@@ -27,6 +28,11 @@ class AdminUserSummary {
 
   /// 已分配的角色 code 列表（历史遗留字段，后端仍返回；角色体系下线后仅作展示参考，不参与权限）
   final List<String> roles;
+
+  /// 是否授权云端(外网)访问。仅 remote_access=TRUE 的账号可在云端实例登录；
+  /// 权限页顶部「云端访问」开关据此回显，授权后该账号须重新登录拿新 token。
+  final bool remoteAccess;
+
   final String? employeeName;
   final String? employeeCode;
   final String? lastLoginAt;
@@ -47,6 +53,7 @@ class AdminUserSummary {
         lastLoginAt: json['lastLoginAt'] as String?,
         departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
+        remoteAccess: json['remoteAccess'] as bool? ?? false,
       );
 }
 

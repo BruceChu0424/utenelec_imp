@@ -25,6 +25,7 @@ import '../../../core/ui/app_notification.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
+import '../../storage/attachment_section.dart';
 
 class ExpenseDetailPage extends ConsumerWidget {
   const ExpenseDetailPage({super.key, required this.claimId});
@@ -152,6 +153,18 @@ class _Content extends ConsumerWidget {
                       ),
                     ],
                   ),
+                ),
+
+                // 附件 / 发票
+                const SizedBox(height: UtenSpacing.s16),
+                ExpenseAttachmentSection(
+                  ownerType: 'EXPENSE_CLAIM',
+                  ownerId: claim.id,
+                  attachments: claim.attachments,
+                  canManage: claim.status == ExpenseClaimStatus.draft ||
+                      claim.status == ExpenseClaimStatus.rejected,
+                  onChanged: () =>
+                      ref.invalidate(expenseDetailProvider(claim.id)),
                 ),
               ],
             ),

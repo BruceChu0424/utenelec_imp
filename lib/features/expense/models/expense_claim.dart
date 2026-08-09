@@ -2,6 +2,7 @@
 // 文档：docs/04-数据模型/实体字典.md#ExpenseClaim
 
 import '../../../core/utils/china_datetime.dart';
+import '../../storage/attachment.dart';
 import 'expense_item.dart';
 
 /// 报销单状态
@@ -67,6 +68,7 @@ class ExpenseClaim {
     this.paidAt,
     this.remark,
     this.rejectReason,
+    this.attachments = const [],
   });
 
   final String id;
@@ -103,6 +105,9 @@ class ExpenseClaim {
   /// 驳回原因
   final String? rejectReason;
 
+  /// 附件（发票等）；详情接口返回，列表接口可能为空
+  final List<Attachment> attachments;
+
   factory ExpenseClaim.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'] as List<dynamic>? ?? const [];
     return ExpenseClaim(
@@ -121,6 +126,9 @@ class ExpenseClaim {
       paidAt: _dateTime(json['paidAt']),
       remark: json['remark'] as String?,
       rejectReason: json['rejectReason'] as String?,
+      attachments: (json['attachments'] as List<dynamic>? ?? const [])
+          .map((e) => Attachment.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false),
     );
   }
 
@@ -145,6 +153,7 @@ class ExpenseClaim {
       paidAt: paidAt ?? this.paidAt,
       remark: remark,
       rejectReason: rejectReason ?? this.rejectReason,
+      attachments: attachments,
     );
   }
 }

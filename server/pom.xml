@@ -22,6 +22,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <bucket4j.version>8.10.1</bucket4j.version>
         <aliyun-sms.version>4.6.0</aliyun-sms.version>
+        <aliyun-oss.version>3.18.5</aliyun-oss.version>
         <!-- Security patch floors; keep the Jackson family aligned via its BOM. -->
         <commons-lang3.version>3.18.0</commons-lang3.version>
         <jackson-bom.version>2.21.5</jackson-bom.version>
@@ -127,6 +128,16 @@
             <groupId>com.aliyun</groupId>
             <artifactId>dysmsapi20170525</artifactId>
             <version>${aliyun-sms.version}</version>
+        </dependency>
+
+        <!-- 阿里云 OSS SDK；附件/票据二进制存对象存储。
+             预签名 URL 直传直下（不经应用服务器）；云端 ECS 用 RAM 角色免密钥（InstanceProfileCredentialsProvider）。
+             本地开发用 provider=local（LocalDiskStorageService），不加载本 SDK 的 Bean。
+             Java21 兼容；若 provider=oss 启动报 JAXB 相关错误，再补 jakarta.xml.bind-api + jaxb-runtime。 -->
+        <dependency>
+            <groupId>com.aliyun.oss</groupId>
+            <artifactId>aliyun-sdk-oss</artifactId>
+            <version>${aliyun-oss.version}</version>
         </dependency>
 
         <!-- 加载 server/.env（仅开发便利；生产用环境变量/密钥管理，.env 不进 git） -->

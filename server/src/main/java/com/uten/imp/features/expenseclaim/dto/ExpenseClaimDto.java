@@ -1,5 +1,7 @@
 package com.uten.imp.features.expenseclaim.dto;
 
+import com.uten.imp.features.attachment.dto.AttachmentDto;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -18,6 +20,7 @@ public record ExpenseClaimDto(
         Instant approvedAt,
         Instant paidAt,
         String remark,
-        String rejectReason
+        String rejectReason,
+        List<AttachmentDto> attachments
 ) {
 }

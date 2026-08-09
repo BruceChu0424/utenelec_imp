@@ -1,0 +1,36 @@
+# 云端（阿里云 ECS）Nginx 反向代理示例：终结 TLS，反代到本机 8080（cloud 应用）。
+# 放 /etc/nginx/conf.d/ 后 nginx -t && systemctl reload nginx。
+upstream uten_imp_cloud_backend { server 127.0.0.1:8080; }
+
+server {
+    listen 80;
+    server_name __CLOUD_DOMAIN__;          # 替换为云端域名/IP
+    return 308 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name __CLOUD_DOMAIN__;
+
+    ssl_certificate     /etc/nginx/ssl/cloud.pem;       # 替换为证书
+    ssl_certificate_key /etc/nginx/ssl/cloud.key;
+
+    # 体积上限要覆盖附件本地直传（provider=local 时走 /api/attachments/raw/*）；
+    # provider=oss 时附件直传 OSS 不经此限。
+    client_max_body_size 30m;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+
+    location / {
+        proxy_pass http://uten_imp_cloud_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 60s;
+    }
+
+    # 仅放行健康探针；其余 actuator 端点不暴露。
+    location = /actuator/health/liveness { proxy_pass http://uten_imp_cloud_backend; }
+}

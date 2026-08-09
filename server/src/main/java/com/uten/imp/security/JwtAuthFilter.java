@@ -183,6 +183,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 user.isMustChangePassword(),
                 true,
                 user.isSuperAdmin(),
+                user.isRemoteAccess(),
                 impersonatedBy);
     }
 

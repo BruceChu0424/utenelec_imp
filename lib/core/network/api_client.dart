@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../audit/device_audit_store.dart';
 import '../security/secure_storage.dart';
 import 'api_base_url.dart';
+import 'server_config.dart';
 import 'connection_recovery.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
@@ -155,6 +156,27 @@ class ApiClient {
     }
   }
 
+  /// 上传原始字节（附件直传本地后端 raw 端点；OSS 由调用方用独立 Dio 直传预签名 URL）。
+  Future<void> putBytes(String path, Uint8List bytes, String contentType) async {
+    try {
+      await _dio.put<dynamic>(path,
+          data: bytes, options: Options(contentType: contentType));
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
+  /// 下载原始字节（附件本地后端 raw 端点流式下载）。
+  Future<Uint8List> getBytes(String path) async {
+    try {
+      final r = await _dio.get<List<int>>(path,
+          options: Options(responseType: ResponseType.bytes));
+      return Uint8List.fromList(r.data ?? const []);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
     try {
       final r = await _dio.patch<dynamic>(path, data: body);
@@ -257,18 +279,19 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final recovery = ref.read(connectionRecoveryProvider.notifier);
   final storage = ref.watch(secureStorageProvider);
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
+  final baseUrl = ref.watch(apiBaseUrlProvider);
   Dio auditedDioFactory() {
-    final client = Dio(buildApiBaseOptions(apiBaseUrl));
+    final client = Dio(buildApiBaseOptions(baseUrl));
     client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
     return client;
   }
 
-  final dio = Dio(buildApiBaseOptions(apiBaseUrl));
+  final dio = Dio(buildApiBaseOptions(baseUrl));
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
   dio.interceptors.add(
     AuthInterceptor(
       storage: storage,
-      baseUrl: apiBaseUrl,
+      baseUrl: baseUrl,
       dioFactory: auditedDioFactory,
     ),
   );

@@ -37,6 +37,7 @@ public class AuthUser implements UserDetails {
     private final boolean accountNonLocked;
     private final boolean superAdmin;       // 超级管理员标记
     private final UUID impersonatedBy;      // 非 null = 当前为「模拟身份」会话，值为真实操作人（admin）的 userId
+    private final boolean remoteAccess;     // 是否允许云端(外网)访问；云端实例(uten.deployment.site=cloud)门禁依据
 
     /** 员工构造（含 superAdmin 标记）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
@@ -44,23 +45,23 @@ public class AuthUser implements UserDetails {
                     boolean mustChangePassword, boolean accountNonLocked,
                     boolean superAdmin) {
         this(id, employeeId, loginAccount, roles, permissions,
-                mustChangePassword, accountNonLocked, superAdmin, null);
+                mustChangePassword, accountNonLocked, superAdmin, false, null);
     }
 
     /** 员工构造（模拟身份：impersonatedBy 为发起模拟的 admin userId，非 null 时触发只读守卫）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
                     Set<String> roles, Set<String> permissions,
                     boolean mustChangePassword, boolean accountNonLocked,
-                    boolean superAdmin, UUID impersonatedBy) {
+                    boolean superAdmin, boolean remoteAccess, UUID impersonatedBy) {
         this(id, SubjectType.STAFF, employeeId, null, loginAccount, null,
-                roles, permissions, mustChangePassword, accountNonLocked, superAdmin, impersonatedBy);
+                roles, permissions, mustChangePassword, accountNonLocked, superAdmin, remoteAccess, impersonatedBy);
     }
 
     private AuthUser(UUID id, SubjectType subjectType, UUID employeeId, UUID visitorId,
                      String loginAccount, String visitorNo,
                      Set<String> roles, Set<String> permissions,
                      boolean mustChangePassword, boolean accountNonLocked, boolean superAdmin,
-                     UUID impersonatedBy) {
+                     boolean remoteAccess, UUID impersonatedBy) {
         this.id = id;
         this.subjectType = subjectType;
         this.employeeId = employeeId;
@@ -72,13 +73,14 @@ public class AuthUser implements UserDetails {
         this.mustChangePassword = mustChangePassword;
         this.accountNonLocked = accountNonLocked;
         this.superAdmin = superAdmin;
+        this.remoteAccess = remoteAccess;
         this.impersonatedBy = impersonatedBy;
     }
 
     /** 访客主体工厂。 */
     public static AuthUser visitor(UUID visitorId, String visitorAccount, String visitorNo, Set<String> permissions) {
         return new AuthUser(visitorId, SubjectType.VISITOR, null, visitorId, visitorAccount, visitorNo,
-                Set.of(), permissions, false, true, false, null);
+                Set.of(), permissions, false, true, false, false, null);
     }
 
     public boolean isVisitor() {

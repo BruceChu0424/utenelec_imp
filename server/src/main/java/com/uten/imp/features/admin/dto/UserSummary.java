@@ -21,4 +21,6 @@ public class UserSummary {
     private boolean mustChangePassword;
     private OffsetDateTime lastLoginAt;
     private List<String> roles;
+    /** 是否授权云端(外网)访问；权限页「云端访问」开关据此回显当前状态。 */
+    private boolean remoteAccess;
 }

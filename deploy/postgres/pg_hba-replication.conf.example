@@ -1,0 +1,4 @@
+# 主库 pg_hba.conf 追加：允许复制用户仅从 VPN/专线网段连接。
+# 把 __VPN_SUBNET__ 换成实际的 VPN/专线网段（如 10.8.0.0/24）。生产务必收窄到云端 ECS 的真实地址。
+# host  replication  repl  10.8.0.0/24  scram-sha-256
+host  replication  repl  __VPN_SUBNET__  scram-sha-256

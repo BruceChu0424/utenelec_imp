@@ -30,6 +30,17 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.common.storage.BlobStore;
+import com.uten.imp.common.storage.StorageService;
+import com.uten.imp.common.storage.StorageService.PresignedUpload;
+import com.uten.imp.features.attachment.AttachmentService;
+import com.uten.imp.features.attachment.dto.AttachmentConfirmRequest;
+import com.uten.imp.features.attachment.dto.AttachmentDto;
+import com.uten.imp.features.attachment.dto.AttachmentPresignRequest;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import org.junit.jupiter.api.Test;
@@ -51,6 +62,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -98,9 +110,18 @@ class FullChainEndToEndTest {
                     .withUsername("uten")
                     .withPassword("uten");
 
+    /** 附件本地存储测试目录（隔离，避免污染工程目录）。 */
+    private static java.nio.file.Path ATTACH_TEST_DIR;
+
     @DynamicPropertySource
     static void registerDataSource(DynamicPropertyRegistry registry) {
         POSTGRES.start();
+        try {
+            ATTACH_TEST_DIR = java.nio.file.Files.createTempDirectory("uten-attach-test-");
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("无法创建附件测试临时目录", e);
+        }
+        registry.add("uten.storage.local-dir", () -> ATTACH_TEST_DIR.toString());
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
@@ -133,6 +154,8 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.production.analysis.MaterialAnalysisService analysisService;
     @Autowired private com.uten.imp.features.production.analysis.MaterialAnalysisCommandService analysisCommandService;
     @Autowired private com.uten.imp.features.finance.receipt.FinanceReceiptService receiptService;
+    @Autowired private com.uten.imp.features.attachment.AttachmentService attachmentService;
+    @Autowired private com.uten.imp.common.storage.StorageService storage;
 
     // ---------------------------------------------------------------------------------------------
     // Smoke: full context boots and the entire schema migrates cleanly.
@@ -651,6 +674,220 @@ class FullChainEndToEndTest {
                         "cancel-other-" + analysisId, "越权尝试")));
         assertTrue(denied.getMessage().contains("本人") || denied.getMessage().contains("无权"),
                 "非归属人不能操作他人物料分析（实际：" + denied.getMessage() + "）");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V234 material-analysis PARTIAL batch (the headline "需100/齐10产10" scenario). Stock covers 10
+    // (readyNow=10) but the planner only generates 5 this batch. Sales planned_qty must advance by 5
+    // (not 10), the analysis lands PARTIALLY_PLANNED (remaining 5 still schedulable later). Test B
+    // above covers the full-batch edge (required_qty→0); this covers the common partial case.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void materialAnalysis_partialBatchLeavesRemainingDemandPartiallyPlanned() {
+        World w = seedWorld("sMA5");
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsB(), new BigDecimal("20"));
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsE(), new BigDecimal("10"));
+        UUID orderId = createApprovedOrder(w, w.goodsA(), "10", "100");
+        UUID orderItemId = orderItemId(orderId);
+        UUID planner = createUserWithPerms(w, "planner-ma5",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:generate", "production_plan:approve");
+        loginAs(planner);
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(null, null, null,
+                w.warehouseId(), "idem-ma5-" + orderItemId, List.of(new PreviewItem(
+                        "SALES_ORDER_ITEM", orderItemId, null, null, null, null, null,
+                        LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        UUID productLineId = view.products().getFirst().analysisLineId();
+        // 可立即生产 10，本次只下达 5（分批）
+        AnalysisView refreshed = analysisService.detail(analysisId);
+        PlanPreview plan = analysisService.planPreview(analysisId, new PlanPreviewRequest(
+                refreshed.version(), refreshed.fingerprint(), w.warehouseId(),
+                List.of(new PlanQuantity(productLineId, new BigDecimal("5"))), null, null));
+        assertTrue(plan.allReady(), "5 ≤ 可立即生产 10 → 本批齐套");
+        AnalysisView preGen = analysisService.detail(analysisId);
+
+        GenerateResult result = analysisCommandService.generatePlan(analysisId, new GeneratePlanRequest(
+                preGen.version(), preGen.fingerprint(), plan.previewFingerprint(),
+                "gen-ma5-" + analysisId, w.warehouseId(), LocalDate.of(2026, 8, 8), null,
+                null, null, null, true,
+                List.of(new PlanQuantity(productLineId, new BigDecimal("5"))), null, null));
+        GeneratedPlan g = result.plans().getFirst();
+        assertEquals("APPROVED", g.status(), "分批也是 approveNow 一步批准");
+        assertEquals(1, planStatus(g.planId()));
+        // 销售只回写 5；剩余 5 留待后续分批
+        assertEquals(0, new BigDecimal("5").compareTo(plannedQty(orderId)),
+                "分批：销售 planned_qty=5（非 10），剩余可后续下达");
+        // 分析头 PARTIALLY_PLANNED（10 中已批 5，未全部下达 → 非 COMPLETED）
+        assertEquals("PARTIALLY_PLANNED",
+                strFor("select status from production_material_analyses where id=?", analysisId),
+                "分批未全量 → PARTIALLY_PLANNED");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V234 material-analysis SHARED-MATERIAL REALLOCATION ("物料划拨"). Two products in one analysis
+    // share one scarce component M (stock 10, 2/unit → only 5 products' worth). Allocating priority
+    // to P1 → P1 can produce 5, P2 gets 0; SWAPPING priority to P2 → P2 produces 5, P1 gets 0. This
+    // is the "A 缺 X 但把料让给 B 先产" decision the planner makes on the workbench.
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void materialAnalysis_sharedMaterialReallocationByPriority() {
+        World w = seedWorld("sMA6");
+        UUID p1 = UUID.randomUUID(), p2 = UUID.randomUUID(), m = UUID.randomUUID();
+        insertGoods(p1, "P1-sMA6", "成品P1-sMA6", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(p2, "P2-sMA6", "成品P2-sMA6", "自制", w.unitId(), w.unitLegacy());
+        insertGoods(m, "M-sMA6", "共用件M-sMA6", "采购", w.unitId(), w.unitLegacy());
+        insertBom(p1, m, "2");
+        insertBom(p2, m, "2");
+        // M 库存 10，每个成品需 2 → 整池只够 5 个成品
+        jdbc.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), m, new BigDecimal("10"));
+        UUID o1 = createApprovedOrder(w, p1, "10", "100");
+        UUID o2 = createApprovedOrder(w, p2, "10", "100");
+        UUID planner = createUserWithPerms(w, "planner-ma6",
+                "production_material_analysis:view", "production_material_analysis:manage",
+                "production_material_analysis:reallocate");
+        loginAs(planner);
+
+        AnalysisView view = analysisService.preview(new PreviewRequest(null, null, null,
+                w.warehouseId(), "idem-ma6-" + o1 + "-" + o2, List.of(
+                        new PreviewItem("SALES_ORDER_ITEM", orderItemId(o1), null, null, null, null, null,
+                                LocalDate.of(2026, 9, 1), new BigDecimal("10")),
+                        new PreviewItem("SALES_ORDER_ITEM", orderItemId(o2), null, null, null, null, null,
+                                LocalDate.of(2026, 9, 1), new BigDecimal("10")))));
+        UUID analysisId = view.analysisId();
+        UUID line1 = view.products().stream().filter(p -> p.goodsId().equals(p1))
+                .findFirst().orElseThrow().analysisLineId();
+        UUID line2 = view.products().stream().filter(p -> p.goodsId().equals(p2))
+                .findFirst().orElseThrow().analysisLineId();
+
+        // 划拨给 P1（优先级 1）：P1 可产 5，P2 可产 0
+        AnalysisView p1First = analysisService.saveAllocationPriorities(analysisId, new AllocationPriorityRequest(
+                view.version(), view.fingerprint(), "alloc-p1-" + analysisId, List.of(
+                        new AllocationPriorityItem(line1, 1),
+                        new AllocationPriorityItem(line2, 2))));
+        assertEquals(0, new BigDecimal("5").compareTo(productReadyNow(p1First, p1)),
+                "M 划拨给 P1 → P1 可产 5（实际 " + productReadyNow(p1First, p1) + "）");
+        assertEquals(0, BigDecimal.ZERO.compareTo(productReadyNow(p1First, p2)),
+                "P2 无料 → 可产 0（实际 " + productReadyNow(p1First, p2) + "）");
+
+        // 改划拨给 P2（优先级对调）：P2 可产 5，P1 可产 0 —— "让别的产品先生产"
+        AnalysisView refreshed = analysisService.detail(analysisId);
+        AnalysisView p2First = analysisService.saveAllocationPriorities(analysisId, new AllocationPriorityRequest(
+                refreshed.version(), refreshed.fingerprint(), "alloc-p2-" + analysisId, List.of(
+                        new AllocationPriorityItem(line1, 2),
+                        new AllocationPriorityItem(line2, 1))));
+        assertEquals(0, BigDecimal.ZERO.compareTo(productReadyNow(p2First, p1)),
+                "改划拨 → P1 可产 0（实际 " + productReadyNow(p2First, p1) + "）");
+        assertEquals(0, new BigDecimal("5").compareTo(productReadyNow(p2First, p2)),
+                "改划拨 → P2 可产 5（实际 " + productReadyNow(p2First, p2) + "）");
+    }
+
+    private BigDecimal productReadyNow(AnalysisView view, UUID goodsId) {
+        return view.products().stream()
+                .filter(product -> product.goodsId().equals(goodsId))
+                .map(ProductView::readyNowQty).findFirst().orElse(BigDecimal.ZERO);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V240 附件（本地存储后端）两阶段上传：presign → 直传字节 → confirm 校验落库 → 列表 → 下载往返 → 删除。
+    // 默认 provider=local，LocalDiskStorageService 写隔离临时目录；验全栈：服务 + 本地盘 + 真实库。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void attachmentLocalTwoPhaseUploadConfirmListDownloadDelete() throws Exception {
+        World w = seedWorld("sAtt");
+        UUID user = createUserWithPerms(w, "user-att", "attachment:manage", "attachment:view");
+        loginAs(user);
+
+        UUID ownerId = UUID.randomUUID();
+        byte[] content = "invoice-test-发票内容".getBytes(StandardCharsets.UTF_8);
+        String contentType = "image/png";
+
+        // 1) presign：服务端生成 storageKey + 本地相对直传 URL
+        PresignedUpload pre = attachmentService.presign(new AttachmentPresignRequest(
+                "EXPENSE_CLAIM", ownerId, "receipt.png", contentType, (long) content.length));
+        assertNotNull(pre.storageKey());
+        assertFalse(pre.url().startsWith("http"), "本地后端直传 URL 应为相对路径");
+
+        // 2) 模拟客户端直传字节到本地 raw 端点（BlobStore.store 即 controller PUT 的底层）
+        ((BlobStore) storage).store(pre.storageKey(),
+                new ByteArrayInputStream(content), content.length, contentType);
+
+        // 3) confirm：服务端 describe 校验对象已到位 → 落库
+        AttachmentDto saved = attachmentService.confirm(new AttachmentConfirmRequest(
+                pre.storageKey(), "EXPENSE_CLAIM", ownerId,
+                "receipt.png", contentType, (long) content.length, null));
+        assertEquals(content.length, saved.sizeBytes());
+        assertNotNull(saved.downloadUrl());
+        assertEquals(1, count(
+                "select count(*) from attachments where owner_type=? and owner_id=?",
+                "EXPENSE_CLAIM", ownerId));
+
+        // 4) list：含下载 URL
+        List<AttachmentDto> list = attachmentService.list("EXPENSE_CLAIM", ownerId);
+        assertEquals(1, list.size());
+        assertEquals(saved.id(), list.get(0).id());
+
+        // 5) 下载往返：字节一致
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream();
+             var in = ((BlobStore) storage).read(pre.storageKey())) {
+            in.transferTo(out);
+            assertArrayEquals(content, out.toByteArray());
+        }
+
+        // 6) 未上传却 confirm → 对象不存在，应 409 CONFLICT
+        PresignedUpload ghost = attachmentService.presign(new AttachmentPresignRequest(
+                "EXPENSE_CLAIM", ownerId, "ghost.png", contentType, (long) content.length));
+        ApiException conflict = assertThrows(ApiException.class, () -> attachmentService.confirm(
+                new AttachmentConfirmRequest(ghost.storageKey(), "EXPENSE_CLAIM", ownerId,
+                        "ghost.png", contentType, (long) content.length, null)));
+        assertEquals(ErrorCode.CONFLICT, conflict.getCode());
+
+        // 7) delete：删对象 + 删行 + 磁盘文件
+        attachmentService.delete(saved.id());
+        assertEquals(0, count(
+                "select count(*) from attachments where owner_type=? and owner_id=?",
+                "EXPENSE_CLAIM", ownerId));
+        assertFalse(java.nio.file.Files.exists(ATTACH_TEST_DIR.resolve(pre.storageKey())));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // V241 remote_access：开关变更即时 bump auth_version（旧 token 即时失效）；幂等不重复 bump。
+    // ---------------------------------------------------------------------------------------------
+    @Test
+    void remoteAccessToggleBumpsAuthVersion() {
+        World w = seedWorld("sRA");
+        UUID target = createUserWithPerms(w, "user-ra", "expense:apply");
+        loginAs(w.superAdminUserId());
+
+        long before = jdbc.queryForObject(
+                "select auth_version from users where id=?", Long.class, target);
+        assertFalse(Boolean.TRUE.equals(jdbc.queryForObject(
+                "select remote_access from users where id=?", Boolean.class, target)),
+                "默认不允许外网访问");
+
+        // 授予云端访问 → 触发器应 bump auth_version（旧 token 即时失效）
+        userAccountAdmin.setRemoteAccess(target, true);
+        assertTrue(Boolean.TRUE.equals(jdbc.queryForObject(
+                "select remote_access from users where id=?", Boolean.class, target)));
+        long afterGrant = jdbc.queryForObject(
+                "select auth_version from users where id=?", Long.class, target);
+        assertEquals(before + 1, afterGrant, "授予 remote_access 应 bump auth_version");
+
+        // 幂等：同值再设不应再 bump
+        userAccountAdmin.setRemoteAccess(target, true);
+        assertEquals(afterGrant, jdbc.queryForObject(
+                "select auth_version from users where id=?", Long.class, target));
+
+        // 回收 → 再 bump
+        userAccountAdmin.setRemoteAccess(target, false);
+        assertFalse(Boolean.TRUE.equals(jdbc.queryForObject(
+                "select remote_access from users where id=?", Boolean.class, target)));
+        assertEquals(afterGrant + 1, jdbc.queryForObject(
+                "select auth_version from users where id=?", Long.class, target));
     }
 
     private int count(String sql, Object... args) {

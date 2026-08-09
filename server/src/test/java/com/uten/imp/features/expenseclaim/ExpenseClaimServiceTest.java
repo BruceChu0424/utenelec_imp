@@ -63,7 +63,9 @@ class ExpenseClaimServiceTest {
                 postingPort,
                 currentUser,
                 mock(TxSessionVars.class),
-                taskClaim);
+                taskClaim,
+                mock(com.uten.imp.features.attachment.AttachmentRepository.class),
+                mock(com.uten.imp.common.storage.StorageService.class));
     }
 
     @Test

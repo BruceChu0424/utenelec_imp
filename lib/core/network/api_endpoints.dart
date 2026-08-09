@@ -258,6 +258,9 @@ abstract final class ApiEndpoints {
   /// 设置/取消超级管理员（仅超管；允许多个超管）。
   static String userSuperAdmin(String id) => '/admin/users/$id/super-admin';
 
+  /// 设置/取消云端(外网)访问授权（仅超管；变更即时失效旧 token，V241 触发器 bump auth_version）。
+  static String userRemoteAccess(String id) => '/admin/users/$id/remote-access';
+
   // 权限管理（超级管理员）
   /// 列全部权限点（GET /admin/permissions；与前端路由 /admin/permissions 同名，注意区分）
   static const adminPermissionList = '/admin/permissions';

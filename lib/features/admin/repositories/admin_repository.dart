@@ -77,6 +77,9 @@ abstract interface class AdminRepository {
 
   /// 设置/取消超级管理员（仅超管可调；降级禁止降本人/最后一位超管，由后端校验）。
   Future<void> setSuperAdmin(String userId, {required bool superAdmin});
+
+  /// 设置/取消云端(外网)访问授权（仅超管可调；变更即时失效旧 token，由后端校验）。
+  Future<void> setRemoteAccess(String userId, {required bool remoteAccess});
 }
 
 class DioAdminRepository implements AdminRepository {
@@ -218,6 +221,13 @@ class DioAdminRepository implements AdminRepository {
       api.put(
         ApiEndpoints.userSuperAdmin(userId),
         body: {'superAdmin': superAdmin},
+      );
+
+  @override
+  Future<void> setRemoteAccess(String userId, {required bool remoteAccess}) =>
+      api.put(
+        ApiEndpoints.userRemoteAccess(userId),
+        body: {'remoteAccess': remoteAccess},
       );
 }
 

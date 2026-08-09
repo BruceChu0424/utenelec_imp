@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -31,6 +32,14 @@ import 'packaging_picker_field.dart';
 import 'uten_goods_picker.dart';
 
 enum _GoodsDialogMode { create, edit, view }
+
+/// 查看态详情的一个分组（标题 + 字段行），用于把扁平字段切成带小标题的区块。
+class _DetailSection {
+  const _DetailSection(this.title, this.rows);
+
+  final String title;
+  final List<MasterDetailRow> rows;
+}
 
 /// 弹出货品详情/编辑弹窗（mode 感知）。
 ///
@@ -549,30 +558,38 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
   Widget _buildBasicView(ThemeData theme) {
     final twoColumn = !context.breakpoint.isCompact;
     final colCount = twoColumn ? 2 : 1;
-    final rows = _detailRows();
-    final gridRows = <Widget>[];
-    for (var i = 0; i < rows.length; i += colCount) {
-      final first = rows[i];
-      final second = i + 1 < rows.length ? rows[i + 1] : null;
-      gridRows.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _cell(theme, first)),
-              if (colCount > 1) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: second != null
-                      ? _cell(theme, second)
-                      : const SizedBox.shrink(),
-                ),
+    final sections = _detailSections();
+    final bodyChildren = <Widget>[];
+    for (var si = 0; si < sections.length; si++) {
+      final sec = sections[si];
+      if (si > 0) bodyChildren.add(const SizedBox(height: UtenSpacing.s20));
+      bodyChildren
+        ..add(UtenSectionHeader(title: sec.title, subdued: true))
+        ..add(const SizedBox(height: UtenSpacing.s12));
+      final rows = sec.rows;
+      for (var i = 0; i < rows.length; i += colCount) {
+        final first = rows[i];
+        final second = i + 1 < rows.length ? rows[i + 1] : null;
+        bodyChildren.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _cell(theme, first)),
+                if (colCount > 1) ...[
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: second != null
+                        ? _cell(theme, second)
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
     return Column(
       children: [
@@ -581,7 +598,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
             padding: const EdgeInsets.all(UtenSpacing.s16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: gridRows,
+              children: bodyChildren,
             ),
           ),
         ),
@@ -643,7 +660,10 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     return '';
   }
 
-  List<MasterDetailRow> _detailRows() {
+  /// 查看态详情分组：与编辑态（[_goodsFields] 的 group）口径一致——基础 / 规格 / 商务，
+  /// 外加查看态专属的「库存」段。同一货品在「查看」与「编辑」间切换时区块结构保持一致，
+  /// 字段过多时分组小标题也便于快速定位。
+  List<_DetailSection> _detailSections() {
     final d = _detail;
     if (d == null) return const [];
     // 无 goods:discount:view 权限者：查看态不显示折扣行（后端已置 discount=null）。
@@ -657,38 +677,46 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
     }
 
     return [
-      MasterDetailRow('编号', d.code),
-      MasterDetailRow('货品名称', d.name),
-      MasterDetailRow('简称', d.shortName),
-      MasterDetailRow('状态', d.status),
-      MasterDetailRow('来源', d.sourceType),
-      MasterDetailRow(
-        '生产 BOM 策略',
-        switch (d.productionBomPolicy) {
-          'BOM_REQUIRED' => '必须维护 BOM（组装件）',
-          'DIRECT_MAKE' => '直接生产（无 BOM）',
-          'NOT_PRODUCED' => '不生产（采购/委外）',
-          _ => '未设置',
-        },
-      ),
-      MasterDetailRow('型号', d.model),
-      MasterDetailRow('规格', d.spec),
-      MasterDetailRow('材质', d.material),
-      MasterDetailRow('厚度', withUnit(d.thickness, d.thicknessUnitLegacyId)),
-      MasterDetailRow('单重', withUnit(d.mWeight, d.mWeightUnitLegacyId)),
-      MasterDetailRow('主颜色', d.colorName),
-      MasterDetailRow('单位', d.unitName),
-      MasterDetailRow('价格', s(d.price)),
-      if (canViewDiscount)
-        MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
-      MasterDetailRow('包装', d.pack),
-      MasterDetailRow('件数', s(d.pieces)),
-      MasterDetailRow('库存量(合计)', s(d.stockQty)),
-      for (final w in d.stockByWarehouse)
+      _DetailSection('基础', [
+        MasterDetailRow('编号', d.code),
+        MasterDetailRow('货品名称', d.name),
+        MasterDetailRow('简称', d.shortName),
+        MasterDetailRow('状态', d.status),
+        MasterDetailRow('来源', d.sourceType),
         MasterDetailRow(
-          '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}${w.colorName != null ? '·${w.colorName}' : ''}',
-          '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}',
+          '生产 BOM 策略',
+          switch (d.productionBomPolicy) {
+            'BOM_REQUIRED' => '必须维护 BOM（组装件）',
+            'DIRECT_MAKE' => '直接生产（无 BOM）',
+            'NOT_PRODUCED' => '不生产（采购/委外）',
+            _ => '未设置',
+          },
         ),
+      ]),
+      _DetailSection('规格', [
+        MasterDetailRow('型号', d.model),
+        MasterDetailRow('规格', d.spec),
+        MasterDetailRow('材质', d.material),
+        MasterDetailRow('厚度', withUnit(d.thickness, d.thicknessUnitLegacyId)),
+        MasterDetailRow('单重', withUnit(d.mWeight, d.mWeightUnitLegacyId)),
+        MasterDetailRow('主颜色', d.colorName),
+      ]),
+      _DetailSection('商务', [
+        MasterDetailRow('价格', s(d.price)),
+        if (canViewDiscount)
+          MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
+        MasterDetailRow('包装', d.pack),
+        MasterDetailRow('单位', d.unitName),
+        MasterDetailRow('件数', s(d.pieces)),
+      ]),
+      _DetailSection('库存', [
+        MasterDetailRow('库存量(合计)', s(d.stockQty)),
+        for (final w in d.stockByWarehouse)
+          MasterDetailRow(
+            '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}${w.colorName != null ? '·${w.colorName}' : ''}',
+            '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}',
+          ),
+      ]),
     ];
   }
 

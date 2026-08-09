@@ -1,0 +1,45 @@
+# 云端（阿里云 ECS）profile：UTEN_PROFILE=cloud 激活。
+# 双数据源：主库(on-prem,经 VPN/专线) + 副本(云端本地只读)；CloudRoutingDataSource 路由
+# （主库健康→全走主库；断网→只读走副本、写 503）。
+# 仅 remote_access 授权账号可访问；HTTPS/CORS/JWT 等由环境变量注入，见 deploy/cloud/README-cloud.md。
+
+server:
+  # 云端由 Nginx 终结 TLS 并反代到 8080；信任内网代理改写 remoteAddr。
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: '${UTEN_TRUSTED_PROXY_REGEX:10\..*|192\.168\..*|172\.(1[6-9]|2[0-9]|3[0-1])\..*|127\..*|::1}'
+  ssl:
+    enabled: ${UTEN_SSL_ENABLED:false}
+
+spring:
+  # 云端不跑 Flyway：schema 由本地 on-prem 主库负责迁移；副本经流复制同步结构。
+  flyway:
+    enabled: false
+  # 主数据源由 CloudDataSourceConfig 的 @Primary CloudRoutingDataSource 接管（双池：主库 + 副本），
+  # 不再使用 application.yml 的单 spring.datasource.*。
+
+app:
+  cloud:
+    db:
+      primary:
+        # 本地主库（on-prem PostgreSQL），经 IPsec VPN / 高速通道专线到达。
+        url: ${UTEN_DB_PRIMARY_URL}
+        username: ${UTEN_DB_USER}
+        password: ${UTEN_DB_PASSWORD}
+      replica:
+        # 云端本地只读副本（hot standby）。
+        url: ${UTEN_DB_REPLICA_URL}
+        username: ${UTEN_DB_USER}
+        password: ${UTEN_DB_PASSWORD}
+
+uten:
+  deployment:
+    # 云端实例：只有 remote_access=TRUE 的账号可访问。
+    site: cloud
+  storage:
+    # 云端 ECS 默认用实例 RAM 角色访问 OSS（免 AccessKey）。
+    oss:
+      use-instance-role: ${UTEN_OSS_USE_INSTANCE_ROLE:true}
+  cloud:
+    primary-health-interval-ms: ${UTEN_CLOUD_PRIMARY_HEALTH_INTERVAL_MS:10000}

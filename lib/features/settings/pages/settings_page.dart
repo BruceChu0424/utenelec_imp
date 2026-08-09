@@ -26,6 +26,7 @@ import '../../../core/ui/uten_notify.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../widgets/settings_section.dart';
+import '../widgets/server_switch_dialog.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -161,6 +162,23 @@ class SettingsPage extends ConsumerWidget {
               SettingsSection(
                 title: '账号',
                 children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: ListTile(
+                      leading: const Icon(Icons.dns_outlined, size: 20),
+                      title: const Text('服务器'),
+                      subtitle: const Text('切换公司内网 / 云端地址'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => const ServerSwitchDialog(),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s8,
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
                   if (canViewAuditLog) ...[
                     Material(
                       color: Colors.transparent,

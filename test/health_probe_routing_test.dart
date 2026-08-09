@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/core/network/connection_recovery.dart';
+import 'package:uten_imp/core/network/health_probe.dart';
 
 void main() {
   test('health probe targets actuator outside the API base path', () {

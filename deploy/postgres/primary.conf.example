@@ -1,0 +1,18 @@
+# 主库（公司本地服务器，PostgreSQL 16）复制相关参数。
+# 合并进 postgresql.conf（或放 conf.d/）后重启 PG。适配「本地主库 → 云端只读副本」。
+listen_addresses = '*'
+
+wal_level = replica                 # PG16 默认即 replica；显式声明
+max_wal_senders = 10                # 允许的并发复制连接数
+max_replication_slots = 10          # 复制槽数（每个副本一个）
+
+# 断网期间主库保留 WAL；恢复后副本经复制槽从断点续传、不丢数据。
+# 视磁盘空间与「最长预期断网时长 × WAL 产生速率」调大。2GB 约能扛中等业务断网数小时。
+wal_keep_size = 2048
+
+# 副本反馈（避免副本上长事务被主库 vacuum 清掉需要的行）。
+hot_standby_feedback = on
+
+# 可选：超长断网（超过 wal_keep_size）时用归档 WAL 兜底。需配合 archive_command 存档目录。
+# archive_mode = on
+# archive_command = 'test ! -f /var/lib/postgresql/archive/%f && cp %p /var/lib/postgresql/archive/%f'

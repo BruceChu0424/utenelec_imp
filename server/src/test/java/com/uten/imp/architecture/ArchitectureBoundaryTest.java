@@ -46,6 +46,7 @@ class ArchitectureBoundaryTest {
             "dashboard->production",
             "dashboard->profilechange",
             "dashboard->visitor",
+            "expenseclaim->attachment",
             "finance->admin",
             "notice->auth",
             "notice->org",

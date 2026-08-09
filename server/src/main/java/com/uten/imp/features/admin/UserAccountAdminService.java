@@ -101,7 +101,8 @@ public class UserAccountAdminService {
                 user.getStatus(),
                 user.isMustChangePassword(),
                 user.getLastLoginAt(),
-                roles);
+                roles,
+                user.isRemoteAccess());
     }
 
     @PreAuthorize("hasAuthority('account:support')")
@@ -241,6 +242,30 @@ public class UserAccountAdminService {
                 actor.getId(),
                 actor.getLoginAccount(),
                 superAdmin ? "super_admin_grant" : "super_admin_revoke",
+                "user",
+                id.toString(),
+                "success");
+    }
+
+    /**
+     * 设置/取消云端（外网）访问授权。仅超管可操作。变更由 V241 触发器即时 bump auth_version，
+     * 目标账号的旧 access token 立即失效（须重新登录拿新 token）。
+     */
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    @Transactional
+    public void setRemoteAccess(UUID id, boolean remoteAccess) {
+        tx.bind();
+        UserAccount user = support.require(id);
+        if (remoteAccess == user.isRemoteAccess()) {
+            return;
+        }
+        user.setRemoteAccess(remoteAccess);
+        userRepo.save(user);   // V241 BEFORE UPDATE 触发器自动 bump auth_version
+        var actor = support.requireCurrentUser();
+        auditService.logExplicit(
+                actor.getId(),
+                actor.getLoginAccount(),
+                remoteAccess ? "remote_access_grant" : "remote_access_revoke",
                 "user",
                 id.toString(),
                 "success");

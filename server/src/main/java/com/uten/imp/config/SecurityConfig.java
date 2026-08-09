@@ -54,6 +54,7 @@ public class SecurityConfig {
                                            AuditRequestContextFilter auditContextFilter,
                                            JwtAuthFilter jwtAuthFilter,
                                            ImpersonationWriteGuardFilter impersonationWriteGuardFilter,
+                                           com.uten.imp.security.RemoteAccessGuardFilter remoteAccessGuardFilter,
                                            SecurityProperties securityProps,
                                            ObjectMapper objectMapper,
                                            AuditService auditService) throws Exception {
@@ -92,6 +93,8 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 // 模拟身份只读守卫：主体解析（JwtAuthFilter）之后、进入控制器之前拦截写操作。
                 .addFilterAfter(impersonationWriteGuardFilter, JwtAuthFilter.class)
+                // 云端外网访问门禁：site=cloud 时，未授权账号(remote_access=false)一律 403。
+                .addFilterAfter(remoteAccessGuardFilter, JwtAuthFilter.class)
                 // CORS can reject an invalid Origin before JWT/MVC. The audit
                 // filter must wrap that rejection so the resulting 403 is not lost.
                 .addFilterBefore(auditContextFilter, CorsFilter.class)

@@ -86,3 +86,12 @@ _scratch/
 /.tmp_*.patch
 /scratchpad_problems_dump.txt
 /YTDQ.txt
+
+# 临时账号排查脚本与导出（真实登录账号 PII：ID/账号/姓名/状态，不入库）
+server/legacy_migration/inspect_users*.ps1
+server/legacy_migration/users_names.txt
+
+# 临时会话/调试目录（含 DB dump 等，不入库）
+.codex-tmp/
+# Flutter 构建产物（误生成于源码目录的 .last_build_id，可随时重建）
+**/.last_build_id

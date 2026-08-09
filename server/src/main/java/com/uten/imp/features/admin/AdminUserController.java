@@ -80,6 +80,15 @@ public class AdminUserController {
 
     public record SuperAdminBody(boolean superAdmin) {}
 
+    /** 设置/取消云端(外网)访问授权（仅超管）。变更即时失效旧 token（V241 触发器 bump auth_version）。 */
+    @PutMapping("/users/{id}/remote-access")
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public void setRemoteAccess(@PathVariable UUID id, @RequestBody RemoteAccessBody req) {
+        userAccountAdmin.setRemoteAccess(id, req == null ? false : req.remoteAccess());
+    }
+
+    public record RemoteAccessBody(boolean remoteAccess) {}
+
 
     // 角色体系已下线（ADR-011/V29）：角色分配相关端点（/users/{id}/roles、/roles、
     // /department-roles、/departments/{id}/roles）已移除，权限只走

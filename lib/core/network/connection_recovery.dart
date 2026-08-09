@@ -7,7 +7,8 @@ import 'dart:math';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'api_base_url.dart';
+import 'server_config.dart';
+import 'health_probe.dart';
 import 'network_policy.dart';
 
 enum ConnectionRecoveryPhase { connected, reconnecting, disconnected, restored }
@@ -196,25 +197,13 @@ class ConnectionRecoveryController
   }
 }
 
-/// Actuator is deliberately outside `/api`. Web release probes the same
-/// origin; absolute API URLs are reduced to their origin so clients cannot get
-/// stuck probing a nonexistent `/api/actuator` route.
-String healthProbeBaseUrl(String apiBase) {
-  if (apiBase.startsWith('/')) return '';
-  final uri = Uri.parse(apiBase);
-  return uri.replace(path: '').toString().replaceFirst(RegExp(r'/$'), '');
-}
-
-bool isHealthyProbeResponse(int? statusCode, Object? data) =>
-    statusCode == 200 && data is Map && data['status'] == 'UP';
-
 final connectionRecoveryProvider =
     StateNotifierProvider<
       ConnectionRecoveryController,
       ConnectionRecoveryState
     >((ref) {
       final healthDio = Dio(
-        buildApiBaseOptions(healthProbeBaseUrl(apiBaseUrl)).copyWith(
+        buildApiBaseOptions(healthProbeBaseUrl(ref.watch(apiBaseUrlProvider))).copyWith(
           connectTimeout: const Duration(seconds: 5),
           sendTimeout: const Duration(seconds: 5),
           receiveTimeout: const Duration(seconds: 5),

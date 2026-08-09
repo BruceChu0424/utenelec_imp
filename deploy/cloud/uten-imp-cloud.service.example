@@ -1,0 +1,20 @@
+# 云端（阿里云 ECS）systemd 单元示例。复制为 /etc/systemd/system/uten-imp-cloud.service，
+# 改 /etc/uten-imp/server-cloud.env（见 README-cloud.md）后 systemctl daemon-reload && enable --now。
+[Unit]
+Description=Uten IMP cloud instance (remote-access gateway + read replica)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=uten-imp
+WorkingDirectory=/opt/uten-imp/current
+EnvironmentFile=/etc/uten-imp/server-cloud.env
+ExecStartPre=/usr/bin/test -L /opt/uten-imp/current
+ExecStart=/usr/bin/java -XX:+ExitOnOutOfMemoryError -jar /opt/uten-imp/current/server/uten-imp-server.jar
+Restart=always
+RestartSec=5
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

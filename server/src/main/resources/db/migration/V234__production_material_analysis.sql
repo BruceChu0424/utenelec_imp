@@ -188,7 +188,7 @@ CREATE TABLE production_material_analysis_materials (
     CONSTRAINT production_material_analysis_material_depth_chk
         CHECK (depth BETWEEN 1 AND 10),
     CONSTRAINT production_material_analysis_material_qty_chk CHECK (
-        per_product_qty > 0 AND required_qty >= 0
+        per_product_qty > 0 AND required_qty > 0
         AND available_qty >= 0 AND reserved_qty >= 0
         AND allocated_available_qty >= 0
         AND allocated_available_qty <= required_qty

@@ -198,6 +198,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               _userSummary(),
               if (widget.canManageAuthorization) ...[
                 const SizedBox(height: UtenSpacing.s12),
+                // 云端访问授权置于最顶部（用户要求「权限设置最顶部」），最显眼。
+                _remoteAccessTile(widget.user.remoteAccess),
+                const SizedBox(height: UtenSpacing.s12),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: UtenSegmentedFilter<_UserDetailSection>(
@@ -922,6 +925,103 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         ],
       ),
     );
+  }
+
+  // ===== 云端(外网)访问授权 =====
+
+  /// 置于详情最顶部：授权/取消该账号在云端(外网)使用本平台。
+  /// 仅超管可见可改（canManageAuthorization = 超管 + authorization:manage）；
+  /// 变更由后端 V241 触发器即时 bump auth_version，旧 access token 立即失效。
+  Widget _remoteAccessTile(bool remoteAccess) {
+    final theme = Theme.of(context);
+    final name = widget.user.employeeName ?? widget.user.loginAccount;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: remoteAccess
+              ? UtenColors.primary.withValues(alpha: 0.5)
+              : theme.colorScheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            remoteAccess ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+            size: 20,
+            color: remoteAccess
+                ? UtenColors.primary
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  remoteAccess ? '已授权云端访问' : '未授权云端访问',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  remoteAccess
+                      ? '「$name」可在外网(云端)登录使用；居家/出差可用。'
+                      : '「$name」仅可在公司内网使用。授权云端后该账号需重新登录。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          UtenButton(
+            type: remoteAccess ? UtenButtonType.ghost : UtenButtonType.secondary,
+            size: UtenButtonSize.small,
+            icon: remoteAccess
+                ? Icons.remove_circle_outline_rounded
+                : Icons.cloud_upload_outlined,
+            isLoading: _acting,
+            onPressed: _acting ? null : () => _toggleRemoteAccess(remoteAccess),
+            child: Text(remoteAccess ? '取消授权' : '授权云端'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleRemoteAccess(bool current) async {
+    final next = !current;
+    final name = widget.user.employeeName ?? widget.user.loginAccount;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: next ? '授权云端访问' : '取消云端访问',
+      content: Text(
+        next
+            ? '授权「$name」在外网(云端)使用本平台？授权后该账号需重新登录。'
+            : '取消「$name」的云端访问授权？该账号在外网的会话将立即失效。',
+      ),
+      confirmLabel: next ? '授权' : '取消授权',
+      danger: !next,
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _acting = true);
+    try {
+      await ref
+          .read(adminRepositoryProvider)
+          .setRemoteAccess(widget.user.id, remoteAccess: next);
+      if (!mounted) return;
+      UtenToast.success(context, next ? '已授权云端访问' : '已取消云端访问');
+      widget.onAccountChanged();
+    } catch (_) {
+      if (mounted) UtenToast.error(context, '操作失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
   }
 
   // ===== 账号安全 =====

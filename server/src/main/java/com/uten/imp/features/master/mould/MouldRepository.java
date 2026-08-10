@@ -36,4 +36,10 @@ public interface MouldRepository extends JpaRepository<Mould, UUID>, JpaSpecific
             """, nativeQuery = true)
     @Modifying
     int softDeleteByCategoryIds(@Param("ids") Collection<UUID> ids, @Param("now") OffsetDateTime now);
+
+    /** 编号查重（仅未软删）—— 手动编号校验用。 */
+    boolean existsByCodeAndDeletedFalse(String code);
+
+    /** 编号查重排除自身（编辑改码用）。 */
+    boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);
 }

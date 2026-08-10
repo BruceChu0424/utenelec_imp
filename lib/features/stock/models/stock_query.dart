@@ -150,6 +150,9 @@ class InstantInventoryRow {
     this.qty,
     this.costAmount,
     this.moreQty,
+    this.goodsCode,
+    this.series,
+    this.stockPlace,
   });
 
   final String? goodsId;
@@ -166,6 +169,9 @@ class InstantInventoryRow {
   final double? qty; // 库存数量
   final double? costAmount; // 成本金额
   final double? moreQty; // 多排数量
+  final String? goodsCode; // 物料编码（goods.code）
+  final String? series; // 物料系列（goods.series）
+  final String? stockPlace; // 库位号（goods.stock_place）
 
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
       InstantInventoryRow(
@@ -183,5 +189,8 @@ class InstantInventoryRow {
         qty: (json['qty'] as num?)?.toDouble(),
         costAmount: (json['costAmount'] as num?)?.toDouble(),
         moreQty: (json['moreQty'] as num?)?.toDouble(),
+        goodsCode: json['goodsCode'] as String?,
+        series: json['series'] as String?,
+        stockPlace: json['stockPlace'] as String?,
       );
 }

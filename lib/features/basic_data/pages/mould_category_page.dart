@@ -714,8 +714,7 @@ class _DetailPaneState extends State<_DetailPane> {
         key: 'code',
         label: '编号',
         group: '基础',
-        readOnly: true,
-        hint: '保存后自动生成',
+        hint: '留空自动生成',
       ),
       // 分类：只读显示外面选中分类名（添加模具即在当前分类下）；categoryId 走 fixedValues。
       const MasterFieldDef(

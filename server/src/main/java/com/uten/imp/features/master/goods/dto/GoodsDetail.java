@@ -99,6 +99,9 @@ public class GoodsDetail {
 
     private Long version;                        // 乐观锁版本（编辑回传，V231）
 
+    private String series;                       // 物料系列（goods.series，如塑胶件/五金件）
+    private String stockPlace;                   // 库位号（goods.stock_place，仓库摆放位置）
+
     @JsonProperty("mWeight")
     public BigDecimal getMWeight() {
         return mWeight;

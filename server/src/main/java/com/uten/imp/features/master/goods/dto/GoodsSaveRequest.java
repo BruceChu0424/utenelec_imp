@@ -31,7 +31,9 @@ public class GoodsSaveRequest {
 
     @NotBlank
     private String name;         // Goods_Name 名称
-    private String code;         // ANumber 编号
+    private String code;         // ANumber 编号（手填，留空自动生成；V77 唯一）
+    private String series;       // Series 物料系列（如塑胶件/五金件）
+    private String stockPlace;   // StockPlace 库位号（仓库摆放位置）
     private String shortName;    // Short_Name 简称
     private String model;        // Number 型号
     private String spec;         // Standard 规格

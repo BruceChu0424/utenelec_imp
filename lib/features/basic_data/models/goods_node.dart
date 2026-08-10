@@ -136,6 +136,8 @@ class GoodsDetail {
     this.discountMasked = false,
     this.stockQty,
     this.stockByWarehouse = const [],
+    this.series,
+    this.stockPlace,
   });
 
   final String id;
@@ -195,6 +197,9 @@ class GoodsDetail {
   final double? stockQty; // 各参与核算仓库余量合计
   final List<GoodsStockRow> stockByWarehouse; // 按仓库（×颜色）展开
 
+  final String? series; // 物料系列（如塑胶件/五金件）
+  final String? stockPlace; // 库位号（仓库摆放位置）
+
   factory GoodsDetail.fromJson(Map<String, dynamic> json) => GoodsDetail(
     id: json['id'] as String,
     code: json['code'] as String?,
@@ -249,6 +254,8 @@ class GoodsDetail {
             ?.map((e) => GoodsStockRow.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [],
+    series: json['series'] as String?,
+    stockPlace: json['stockPlace'] as String?,
   );
 }
 

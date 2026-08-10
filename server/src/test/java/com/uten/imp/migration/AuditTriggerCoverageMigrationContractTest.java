@@ -104,7 +104,9 @@ class AuditTriggerCoverageMigrationContractTest {
             Map.entry("legacy_migration_reconciliation_items", "legacy reconciliation metadata"),
             Map.entry("legacy_migration_rejects", "legacy migration rejection metadata"),
             Map.entry("legacy_migration_run_files", "legacy migration file metadata"),
-            Map.entry("legacy_migration_runs", "legacy migration run metadata"));
+            Map.entry("legacy_migration_runs", "legacy migration run metadata"),
+            Map.entry("goods_import_batches", "import-batch tracking log; created_by/created_at on the row already record who/when and status captures IMPORTED→UNDONE"),
+            Map.entry("goods_import_creations", "import batch→created-entity join; purely structural, no independent business facts"));
 
     @Test
     void latestTrustedSweepValidatesTheFullTriggerContract() throws IOException {

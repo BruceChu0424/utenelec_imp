@@ -174,6 +174,28 @@ class ApiClient {
     }
   }
 
+  /// 上传原始字节（POST，octet-stream）并返回 JSON——货品导入 detect/commit 用。
+  Future<Map<String, dynamic>> postBytes(
+    String path,
+    Uint8List bytes, {
+    Map<String, dynamic>? query,
+  }) async {
+    try {
+      final r = await _dio.post<dynamic>(
+        path,
+        data: bytes,
+        queryParameters: query,
+        options: Options(
+          contentType: 'application/octet-stream',
+          responseType: ResponseType.json,
+        ),
+      );
+      return _asMap(r.data);
+    } on DioException catch (e) {
+      throw _convert(e);
+    }
+  }
+
   /// 下载原始字节（附件本地后端 raw 端点流式下载）。
   Future<Uint8List> getBytes(String path) async {
     try {

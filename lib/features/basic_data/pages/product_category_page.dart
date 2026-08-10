@@ -38,6 +38,9 @@ import '../repositories/product_category_repository.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/goods_detail_dialog.dart';
+import '../widgets/goods_import_dialog.dart';
+import '../models/goods_import.dart';
+import '../repositories/goods_import_repository.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/category_tree_search.dart';
 import '../widgets/uten_category_tree_view.dart';
@@ -69,6 +72,58 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  int _detailEpoch = 0;
+
+  /// 导入/撤回后：刷新分类树 + 重挂详情面板（强刷货品列表）。
+  void _reloadAll() {
+    _load();
+    setState(() => _detailEpoch++);
+  }
+
+  Future<void> _undoLatestImport() async {
+    GoodsImportBatchInfo? batch;
+    try {
+      batch = await ref.read(goodsImportRepositoryProvider).latest();
+    } catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+      return;
+    }
+    if (!mounted) return;
+    if (batch == null) {
+      context.appError('没有可撤回的导入');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('撤回最近一次导入'),
+        content: Text('将撤销最近一次导入的 ${batch!.rowCount} 条货品'
+            '${(batch.filename != null && batch.filename!.isNotEmpty) ? "（${batch.filename}）" : ""}'
+            '，及本次新建的分类/颜色/单位。确认撤回？'),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认撤回')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(goodsImportRepositoryProvider).undo(batch.id);
+      if (!mounted) return;
+      context.appSuccess('已撤回最近一次导入');
+      _reloadAll();
+    } catch (e) {
+      if (!mounted) return;
+      context.appApiError(e);
+    }
   }
 
   Future<void> _load() async {
@@ -448,6 +503,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
               )
             : UtenContentContainer(
                 child: _DetailPane(
+                  key: ValueKey('dp-${selected.id}-$_detailEpoch'),
                   ref: ref,
                   nodeId: selected.id,
                   canEdit: canEdit,
@@ -455,6 +511,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
                   onAddChild: () => _showCreateDialog(parent: selected),
                   onEdit: (detail) => _showEditDialog(detail),
                   onDelete: () => _delete(selected),
+                  onDataChanged: _load,
                 ),
               );
       } else {
@@ -482,6 +539,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
                       ),
                     )
                   : _DetailPane(
+                      key: ValueKey('dp-${selected.id}-$_detailEpoch'),
                       ref: ref,
                       nodeId: selected.id,
                       canEdit: canEdit,
@@ -489,6 +547,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
                       onAddChild: () => _showCreateDialog(parent: selected),
                       onEdit: (detail) => _showEditDialog(detail),
                       onDelete: () => _delete(selected),
+                      onDataChanged: _load,
                     ),
             ),
           ],
@@ -521,6 +580,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
+          if (ref.read(currentPermissionsProvider).contains(Perm.goodsImport))
+            IconButton(
+              icon: const Icon(Icons.undo_rounded),
+              tooltip: '撤回导入', // TODO(l10n): 补 arb
+              onPressed: _undoLatestImport,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
@@ -559,6 +624,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage> {
 /// 分类详情面板：只调 detail（不拉员工/岗位）。
 class _DetailPane extends StatefulWidget {
   const _DetailPane({
+    super.key,
     required this.ref,
     required this.nodeId,
     required this.canEdit,
@@ -566,6 +632,7 @@ class _DetailPane extends StatefulWidget {
     required this.onAddChild,
     required this.onEdit,
     required this.onDelete,
+    required this.onDataChanged,
   });
 
   final WidgetRef ref;
@@ -578,6 +645,7 @@ class _DetailPane extends StatefulWidget {
   final VoidCallback onAddChild;
   final void Function(ProductCategoryDetail detail) onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onDataChanged;
 
   @override
   State<_DetailPane> createState() => _DetailPaneState();
@@ -932,6 +1000,17 @@ class _DetailPaneState extends State<_DetailPane> {
   /// showDialog 会让 Navigator 上多个对话框路由交错 push/pop，触发 element
   /// 生命周期断言（framework `_activateRecursively`：
   /// `_lifecycleState == _ElementLifecycle.inactive is not true`）。
+  Future<void> _showImport() {
+    return showGoodsImportDialog(
+      context,
+      widget.ref,
+      onImported: () {
+        _loadGoods(1);
+        widget.onDataChanged();
+      },
+    );
+  }
+
   Future<void> _showGoodsDetail(String id) async {
     if (_detailLoading) return;
     _detailLoading = true;
@@ -1095,6 +1174,15 @@ class _DetailPaneState extends State<_DetailPane> {
               // 同款列渲染，且「表头设置」列显隐对它同样生效。
               leadingGroups: _leadingGroups,
               toolbarActions: [
+                if (widget.ref
+                        .read(currentPermissionsProvider)
+                        .contains(Perm.goodsImport))
+                  UtenButton(
+                    size: UtenButtonSize.large,
+                    icon: Icons.file_upload_outlined,
+                    onPressed: _showImport,
+                    child: const Text('导入货品'),
+                  ),
                 UtenPrintPreviewButton(
                   title: '货品资料',
                   subtitle: '最多前 2000 行',

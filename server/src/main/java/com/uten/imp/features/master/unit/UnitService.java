@@ -155,7 +155,7 @@ public class UnitService {
         if (repo.existsByNameIgnoreCaseAndDeletedFalse(name)) {
             throw new ApiException(ErrorCode.CONFLICT, "该单位已存在：" + name);
         }
-        u.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        u.setCode(resolveCode(req, null));
         if (u.getStatus() == null) u.setStatus("使用");
         // 手工新建分配合成 legacy_id：货品 goods.unit_legacy_id 引用 legacy_id（老库 int），
         // 新单位必须有值才能进货品下拉、存进货品。取 max+1 保证不撞迁移来的老库 id。
@@ -170,6 +170,7 @@ public class UnitService {
         tx.bind();
         Unit u = requireUnit(id);
         apply(req, u);
+        u.setCode(resolveCode(req, u));
         repo.save(u);
         return toDetail(u);
     }
@@ -186,6 +187,24 @@ public class UnitService {
     private void apply(UnitSaveRequest req, Unit u) {
         u.setName(req.getName() == null ? null : req.getName().trim());
         u.setStatus(req.getStatus());
+    }
+
+    /**
+     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
+     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
+     */
+    private String resolveCode(UnitSaveRequest req, Unit existing) {
+        String code = req.getCode() == null ? null : req.getCode().trim();
+        if (code == null || code.isEmpty()) {
+            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+        }
+        boolean dup = existing == null
+                ? repo.existsByCodeAndDeletedFalse(code)
+                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
+        if (dup) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        }
+        return code;
     }
 
     private UnitDetail toDetail(Unit u) {

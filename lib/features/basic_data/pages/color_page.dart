@@ -136,8 +136,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
       key: 'code',
       label: '颜色编号',
       group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
+      hint: '留空自动生成',
     ),
     MasterFieldDef(
       key: 'status',

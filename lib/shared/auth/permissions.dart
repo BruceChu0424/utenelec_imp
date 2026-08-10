@@ -95,6 +95,8 @@ abstract final class Perm {
   static const goodsView = 'goods:view';
   static const goodsEdit = 'goods:edit';
   static const goodsExport = 'goods:export';
+  /// 导入货品（V251；独立权限点，跟随 goods:edit 授予）。
+  static const goodsImport = 'goods:import';
   static const goodsViewAll = 'goods:view:all';
   /// 编辑货品售价/折扣（V226；默认仅财务部，可在权限管理页授权他人）。
   static const goodsPriceEdit = 'goods:price:edit';

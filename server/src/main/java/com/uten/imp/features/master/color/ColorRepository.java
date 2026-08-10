@@ -29,4 +29,13 @@ public interface ColorRepository extends JpaRepository<Color, UUID>, JpaSpecific
 
     /** 名称查重（大小写不敏感，货品编辑内联新建颜色用）。 */
     boolean existsByNameIgnoreCaseAndDeletedFalse(String name);
+
+    /** 编号查重（仅未软删）—— 手动编号校验用。 */
+    boolean existsByCodeAndDeletedFalse(String code);
+
+    /** 编号查重排除自身（编辑改码用）。 */
+    boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);
+
+    /** 按名称查（大小写不敏感，仅未软删）——导入颜色名→既有 legacyId 解析用。 */
+    Optional<Color> findFirstByNameIgnoreCaseAndDeletedFalse(String name);
 }

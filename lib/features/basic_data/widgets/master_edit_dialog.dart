@@ -17,6 +17,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -161,6 +162,10 @@ class MasterEditFormState extends State<MasterEditForm> {
 
   /// custom 字段的当前值（key → 提交值，未填为 null）。date/picker 等经 customBuilder 回写。
   final Map<String, dynamic> _customValues = {};
+
+  /// 外部字段错误（key → 错误文案），如后端编号查重 409 回填「编号已存在」。
+  /// 由 [setFieldError] 设置；用户开始编辑该字段或 [buildBody] 成功时清除。
+  final Map<String, String> _fieldErrors = {};
   String? _error;
 
   @override
@@ -189,6 +194,19 @@ class MasterEditFormState extends State<MasterEditForm> {
         _customValues[f.key] = (init == null || init.isEmpty) ? null : init;
       }
     }
+    // 字段错误（如后端编号查重）随用户开始编辑自动清除。
+    for (final entry in _controllers.entries) {
+      entry.value.addListener(() {
+        if (_fieldErrors.containsKey(entry.key)) {
+          setState(() => _fieldErrors.remove(entry.key));
+        }
+      });
+    }
+  }
+
+  /// 外部设置某字段错误（如编号查重 409）→ 字段描红边 + 字段下显错文案；不关弹窗。
+  void setFieldError(String key, String message) {
+    setState(() => _fieldErrors[key] = message);
   }
 
   @override
@@ -271,7 +289,10 @@ class MasterEditFormState extends State<MasterEditForm> {
           break; // 不可达（上方已处理）
       }
     }
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _fieldErrors.clear(); // 重新提交：清掉旧字段错误（如编号查重），按本次结果重判
+    });
     return body;
   }
 
@@ -362,31 +383,48 @@ class MasterEditFormState extends State<MasterEditForm> {
         ),
       );
     }
-    // text / integer / money：听控制器，必填且为空时描红边 + 红 *，填好即恢复。
+    // text / integer / money：听控制器，必填且为空时描红边 + 红 *，填好即恢复；
+    // 另支持外部字段错误（如后端编号查重 409）→ 描红边 + 字段下红字提示，用户开始编辑即清除。
     final theme = Theme.of(context);
     final controller = _controllers[f.key]!;
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
         final requiredEmpty = f.required && controller.text.trim().isEmpty;
-        return TextField(
-          controller: controller,
-          keyboardType: f.type == MasterFieldType.text
-              ? TextInputType.text
-              : const TextInputType.numberWithOptions(decimal: true),
-          decoration: applyRequiredEmpty(
-            InputDecoration(
-              label: requiredLabel(
-                f.label,
+        final fieldError = _fieldErrors[f.key];
+        final showRed = requiredEmpty || fieldError != null;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: controller,
+              keyboardType: f.type == MasterFieldType.text
+                  ? TextInputType.text
+                  : const TextInputType.numberWithOptions(decimal: true),
+              decoration: applyRequiredEmpty(
+                InputDecoration(
+                  label: requiredLabel(
+                    f.label,
+                    theme,
+                    required: f.required,
+                    base: theme.inputDecorationTheme.labelStyle,
+                  ),
+                  hintText: f.hint,
+                ),
                 theme,
-                required: f.required,
-                base: theme.inputDecorationTheme.labelStyle,
+                requiredEmpty: showRed,
               ),
-              hintText: f.hint,
             ),
-            theme,
-            requiredEmpty: requiredEmpty,
-          ),
+            if (fieldError != null) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                fieldError,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.error),
+              ),
+            ],
+          ],
         );
       },
     );
@@ -515,6 +553,11 @@ class _MasterEditDialogState extends State<_MasterEditDialog> {
       ok = await widget.onSubmit(body);
     } catch (e) {
       if (!mounted) return;
+      // 编号查重 409：编号字段描红 + 显文案，保持弹窗不关让用户改。
+      if (e is ApiException && e.message.contains('编号已存在')) {
+        widget.formKey.currentState?.setFieldError('code', e.message);
+        return;
+      }
       context.appApiError(e);
       return;
     }

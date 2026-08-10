@@ -49,4 +49,10 @@ public class InstantInventoryRow {
     private BigDecimal costAmount;
     /** 多排数量（生产计划可排余量）。 */
     private BigDecimal moreQty;
+    /** 货品编号（goods.code）。 */
+    private String goodsCode;
+    /** 物料系列（goods.series，如塑胶件/五金件）。 */
+    private String series;
+    /** 库位号（goods.stock_place，仓库摆放位置；按货品一个值）。 */
+    private String stockPlace;
 }

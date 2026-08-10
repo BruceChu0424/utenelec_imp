@@ -293,6 +293,24 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           value: (r) => r.categoryName ?? '—',
         ),
         MasterColumnDef(
+          key: 'goodsCode',
+          label: '物料编码',
+          width: 120,
+          value: (r) => r.goodsCode ?? '',
+        ),
+        MasterColumnDef(
+          key: 'series',
+          label: '物料系列',
+          width: 90,
+          value: (r) => r.series ?? '',
+        ),
+        MasterColumnDef(
+          key: 'stockPlace',
+          label: '库位号',
+          width: 90,
+          value: (r) => r.stockPlace ?? '',
+        ),
+        MasterColumnDef(
           key: 'model',
           label: '型号',
           width: 110,

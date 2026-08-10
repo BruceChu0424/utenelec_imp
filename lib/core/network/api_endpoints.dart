@@ -108,6 +108,11 @@ abstract final class ApiEndpoints {
   static String goodsBomItem(String id, String itemId) =>
       '/master/goods/$id/bom/$itemId';
   static String goodsBomExport(String id) => '/master/goods/$id/bom/export';
+  // 货品批量导入（V251）：detect 只读检测 / commit 原子导入 / latest 最近批次 / undo 撤回。
+  static const goodsImportDetect = '/master/goods/import/detect';
+  static const goodsImportCommit = '/master/goods/import/commit';
+  static const goodsImportLatest = '/master/goods/import/latest';
+  static String goodsImportUndo(String batchId) => '/master/goods/import/$batchId';
 
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
   static const mouldCategories = '/master/mould-categories';

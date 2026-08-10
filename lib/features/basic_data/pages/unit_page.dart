@@ -135,8 +135,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
       key: 'code',
       label: '单位编号',
       group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
+      hint: '留空自动生成',
     ),
     MasterFieldDef(
       key: 'status',

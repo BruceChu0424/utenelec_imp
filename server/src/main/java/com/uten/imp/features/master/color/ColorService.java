@@ -155,7 +155,7 @@ public class ColorService {
         if (repo.existsByNameIgnoreCaseAndDeletedFalse(name)) {
             throw new ApiException(ErrorCode.CONFLICT, "该颜色已存在：" + name);
         }
-        c.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        c.setCode(resolveCode(req, null));
         if (c.getStatus() == null) c.setStatus("使用");
         // 手工新建分配合成 legacy_id：货品 goods.color_legacy_id 引用 legacy_id（老库 int），
         // 新颜色必须有值才能进货品下拉、存进货品。取 max+1 保证不撞迁移来的老库 id。
@@ -170,6 +170,7 @@ public class ColorService {
         tx.bind();
         Color c = requireColor(id);
         apply(req, c);
+        c.setCode(resolveCode(req, c));
         repo.save(c);
         return toDetail(c);
     }
@@ -186,6 +187,24 @@ public class ColorService {
     private void apply(ColorSaveRequest req, Color c) {
         c.setName(req.getName() == null ? null : req.getName().trim());
         c.setStatus(req.getStatus());
+    }
+
+    /**
+     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
+     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
+     */
+    private String resolveCode(ColorSaveRequest req, Color existing) {
+        String code = req.getCode() == null ? null : req.getCode().trim();
+        if (code == null || code.isEmpty()) {
+            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+        }
+        boolean dup = existing == null
+                ? repo.existsByCodeAndDeletedFalse(code)
+                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
+        if (dup) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        }
+        return code;
     }
 
     private ColorDetail toDetail(Color c) {

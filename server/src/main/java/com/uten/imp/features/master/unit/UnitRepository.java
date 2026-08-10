@@ -29,4 +29,13 @@ public interface UnitRepository extends JpaRepository<Unit, UUID>, JpaSpecificat
 
     /** 名称查重（大小写不敏感，货品编辑内联新建单位用）。 */
     boolean existsByNameIgnoreCaseAndDeletedFalse(String name);
+
+    /** 编号查重（仅未软删）—— 手动编号校验用。 */
+    boolean existsByCodeAndDeletedFalse(String code);
+
+    /** 编号查重排除自身（编辑改码用）。 */
+    boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);
+
+    /** 按名称查（大小写不敏感，仅未软删）——导入单位名→既有 legacyId 解析用。 */
+    Optional<Unit> findFirstByNameIgnoreCaseAndDeletedFalse(String name);
 }

@@ -235,6 +235,31 @@ public class GoodsService {
     }
 
     /**
+     * 全分类 id → 中文名 dash 路径（如「货品资料-成品-外贸系列-老系列」，含根）。
+     * 一次性载入全树（~881 节点）内存走 parent_id，避免逐行递归/CTE；导出「类别」列用。
+     */
+    private Map<UUID, String> categoryPathMap() {
+        List<MaterialCategory> all = categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc();
+        Map<UUID, MaterialCategory> byId = new java.util.HashMap<>();
+        for (MaterialCategory c : all) {
+            byId.put(c.getId(), c);
+        }
+        Map<UUID, String> paths = new java.util.HashMap<>();
+        for (MaterialCategory leaf : all) {
+            java.util.Deque<String> chain = new java.util.ArrayDeque<>();
+            MaterialCategory cur = leaf;
+            Set<UUID> guard = new java.util.HashSet<>();
+            while (cur != null && guard.add(cur.getId())) {
+                if (cur.getName() != null) chain.push(cur.getName());
+                MaterialCategory p = cur.getParent();
+                cur = (p == null) ? null : byId.get(p.getId());
+            }
+            paths.put(leaf.getId(), String.join("-", chain));
+        }
+        return paths;
+    }
+
+    /**
      * 批量按 legacy_id 查 colors 取 name（仅未软删）。空集合返回空 map。
      * 历史迁移允许颜色名称为 null；此类记录不放入名称 map，调用方保留 legacy id 并按未解析处理。
      */
@@ -347,8 +372,10 @@ public class GoodsService {
      */
     @Transactional(readOnly = true)
     public ExportPayload export(GoodsQueryFilter f, String sort, String order) {
+        Map<UUID, String> categoryPath = categoryPathMap();
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
+                new ExportColumn("categoryPath", "类别", ExportColumn.TEXT),
                 new ExportColumn("series", "系列", ExportColumn.TEXT),
                 new ExportColumn("model", "型号", ExportColumn.TEXT),
                 new ExportColumn("name", "货品名称", ExportColumn.TEXT),
@@ -371,6 +398,7 @@ public class GoodsService {
             for (GoodsListItem g : page.getItems()) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("code", g.getCode());
+                row.put("categoryPath", categoryPath.get(g.getCategoryId()));
                 row.put("series", g.getSeries());
                 row.put("model", g.getModel());
                 row.put("name", g.getName());
@@ -531,10 +559,28 @@ public class GoodsService {
                     req.getSourceType()));
         }
         apply(req, g);
-        g.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        g.setCode(resolveCode(req, null));
         if (g.getStatus() == null) g.setStatus("使用");
         repo.save(g);
         return toDetail(g, colorNameOf(g), unitNameOf(g));
+    }
+
+    /**
+     * 批量导入复用入口（goods:import）：apply + resolveCode + 默认状态 + 保存，返回新货品 id。
+     * 不走 create() 的价权校验/详情/库存聚合（导入是特权批量操作，由 goods:import 权限把关）。
+     * 调用方须在导入事务内调用（MANDATORY 加入导入事务）。编号查重命中抛 CONFLICT → 整批回滚。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public UUID saveImported(GoodsSaveRequest req) {
+        Goods g = new Goods();
+        if (req.getProductionBomPolicy() == null || req.getProductionBomPolicy().isBlank()) {
+            g.setProductionBomPolicy(defaultProductionBomPolicy(req.getSourceType()));
+        }
+        apply(req, g);
+        g.setCode(resolveCode(req, null));
+        if (g.getStatus() == null) g.setStatus("使用");
+        repo.save(g);
+        return g.getId();
     }
 
     @Transactional
@@ -546,6 +592,7 @@ public class GoodsService {
         OptimisticLocks.requireUpToDate(g.getVersion(), req.getVersion());
         ensurePriceEditIfTouched(g, req);      // 编辑：与既有值比对，未改价/折扣则放行
         apply(req, g);
+        g.setCode(resolveCode(req, g));
         repo.save(g);
         return toDetail(g, colorNameOf(g), unitNameOf(g));
     }
@@ -648,12 +695,32 @@ public class GoodsService {
         goods.setColorLegacyId(target.getLegacyId());
     }
 
+    /**
+     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
+     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。导入（Phase 5）复用同口径。
+     */
+    private String resolveCode(GoodsSaveRequest req, Goods existing) {
+        String code = req.getCode() == null ? null : req.getCode().trim();
+        if (code == null || code.isEmpty()) {
+            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+        }
+        boolean dup = existing == null
+                ? repo.existsByCodeAndDeletedFalse(code)
+                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
+        if (dup) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        }
+        return code;
+    }
+
     private void apply(GoodsSaveRequest req, Goods g) {
         g.setCategory(requireCategory(req.getCategoryId()));
         g.setName(req.getName());
         g.setShortName(req.getShortName());
         g.setModel(req.getModel());
         g.setSpec(req.getSpec());
+        g.setSeries(req.getSeries() == null ? null : req.getSeries().trim());
+        g.setStockPlace(req.getStockPlace() == null ? null : req.getStockPlace().trim());
         g.setPrice(req.getPrice());
         // 折扣（goods.zk）：仅可查看折扣者（goods:discount:view）提交的折扣才落库。
         // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防 V226 遗漏 setDiscount
@@ -776,7 +843,8 @@ public class GoodsService {
                 g.getCTotal(), g.getGTotal(), g.getSourceType(),
                 g.getProductionBomPolicy(),
                 g.getThicknessUnitLegacyId(), g.getMWeightUnitLegacyId(),
-                false, false, stock.getTotalQty(), stock.getRows(), g.getVersion());
+                false, false, stock.getTotalQty(), stock.getRows(), g.getVersion(),
+                g.getSeries(), g.getStockPlace());
         // 成本可见性（goods:cost:view）：未授权清空 18 个成本字段 + 置 costMasked（前端隐藏成本 Tab）
         if (!costMasker.canView()) {
             d.setSourceE(null); d.setMachiningE(null); d.setIncidentalE(null); d.setLacquerE(null);

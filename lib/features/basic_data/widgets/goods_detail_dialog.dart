@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -196,8 +197,7 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       const MasterFieldDef(
         key: 'code',
         label: '编号',
-        readOnly: true,
-        hint: '保存后自动生成',
+        hint: '留空自动生成',
         group: '基础',
       ),
       const MasterFieldDef(key: 'shortName', label: '简称', group: '基础'),
@@ -227,6 +227,8 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       const MasterFieldDef(key: 'model', label: '型号', group: '规格'),
       const MasterFieldDef(key: 'spec', label: '规格', group: '规格'),
       const MasterFieldDef(key: 'material', label: '材质', group: '规格'),
+      const MasterFieldDef(key: 'series', label: '系列', group: '规格'),
+      const MasterFieldDef(key: 'stockPlace', label: '库位号', group: '规格'),
       MasterFieldDef(
         key: 'thickness',
         label: '厚度',
@@ -338,6 +340,8 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       'model': d.model ?? '',
       'spec': d.spec ?? '',
       'material': d.material ?? '',
+      'series': d.series ?? '',
+      'stockPlace': d.stockPlace ?? '',
       'thickness': s(d.thickness),
       'mWeight': s(d.mWeight),
       'colorLegacyId': d.colorLegacyId == null ? '' : '${d.colorLegacyId}',
@@ -401,6 +405,11 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
       }
     } catch (e) {
       if (!mounted) return;
+      // 编号查重 409：编号字段描红 + 显文案，保持弹窗不关让用户改。
+      if (e is ApiException && e.message.contains('编号已存在')) {
+        _formKey?.currentState?.setFieldError('code', e.message);
+        return;
+      }
       context.appApiError(e);
     } finally {
       if (mounted) setState(() => _savingBasic = false);
@@ -700,6 +709,8 @@ class _GoodsDetailBodyState extends ConsumerState<_GoodsDetailBody> {
         MasterDetailRow('厚度', withUnit(d.thickness, d.thicknessUnitLegacyId)),
         MasterDetailRow('单重', withUnit(d.mWeight, d.mWeightUnitLegacyId)),
         MasterDetailRow('主颜色', d.colorName),
+        MasterDetailRow('系列', d.series),
+        MasterDetailRow('库位号', d.stockPlace),
       ]),
       _DetailSection('商务', [
         MasterDetailRow('价格', s(d.price)),

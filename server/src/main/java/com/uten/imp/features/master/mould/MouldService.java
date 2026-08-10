@@ -180,7 +180,7 @@ public class MouldService {
         tx.bind();
         Mould m = new Mould();
         apply(req, m);
-        m.setCode(masterCodeService.nextCode(CODE_PREFIX));
+        m.setCode(resolveCode(req, null));
         if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
         return toDetail(m);
@@ -191,6 +191,7 @@ public class MouldService {
         tx.bind();
         Mould m = requireMould(id);
         apply(req, m);
+        m.setCode(resolveCode(req, m));
         repo.save(m);
         return toDetail(m);
     }
@@ -202,6 +203,24 @@ public class MouldService {
         m.setDeleted(true);
         m.setDeletedAt(OffsetDateTime.now());
         repo.save(m);
+    }
+
+    /**
+     * 编号解析：留空→新建自动生成兜底 / 编辑保留原值；非空→查重命中抛 409（前端编号字段描红）。
+     * DB 部分唯一索引（V77）作最终兜底；服务层先拦给友好文案。
+     */
+    private String resolveCode(MouldSaveRequest req, Mould existing) {
+        String code = req.getCode() == null ? null : req.getCode().trim();
+        if (code == null || code.isEmpty()) {
+            return existing == null ? masterCodeService.nextCode(CODE_PREFIX) : existing.getCode();
+        }
+        boolean dup = existing == null
+                ? repo.existsByCodeAndDeletedFalse(code)
+                : repo.existsByCodeAndDeletedFalseAndIdNot(code, existing.getId());
+        if (dup) {
+            throw new ApiException(ErrorCode.CONFLICT, "编号已存在：" + code);
+        }
+        return code;
     }
 
     /** 把请求字段覆写到实体（含 category 解析）。 */

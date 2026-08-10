@@ -16,4 +16,10 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
 
     /** 迁移/校验用：按老库主键反查。 */
     Optional<Goods> findByLegacyId(Integer legacyId);
+
+    /** 编号查重（仅未软删）—— 手动编号校验用。 */
+    boolean existsByCodeAndDeletedFalse(String code);
+
+    /** 编号查重排除自身（编辑改码用）。 */
+    boolean existsByCodeAndDeletedFalseAndIdNot(String code, UUID id);
 }
